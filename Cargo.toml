@@ -1,0 +1,67 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/beatbyte-core",
+    "crates/beatbyte-chart",
+    "crates/beatbyte-audio",
+    "crates/beatbyte-game",
+    "crates/beatbyte-cli",
+    "crates/beatbyte-editor",
+    "apps/beatbyte",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+license = "MIT"
+authors = ["Martin Pfeffer"]
+repository = "https://github.com/pepperonas/beatbyte"
+homepage = "https://github.com/pepperonas/beatbyte"
+rust-version = "1.95"
+keywords = ["game", "rhythm", "music", "bevy", "pixel-art"]
+categories = ["games"]
+
+[workspace.dependencies]
+# Internal crates
+beatbyte-core = { path = "crates/beatbyte-core", version = "0.0.1" }
+beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.0.1" }
+beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.0.1" }
+beatbyte-game = { path = "crates/beatbyte-game", version = "0.0.1" }
+beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.0.1" }
+beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.0.1" }
+
+# Engine
+bevy = "0.19"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Errors
+thiserror = "2"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+# Keep gameplay/analysis code honest about float handling and panics.
+unwrap_used = "warn"
+dbg_macro = "warn"
+todo = "warn"
+
+# Bevy-recommended dev profile: keep our code fast to compile,
+# but optimize dependencies (Bevy itself is unusable unoptimized).
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"

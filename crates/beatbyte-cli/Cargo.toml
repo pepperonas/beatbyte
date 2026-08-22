@@ -1,0 +1,18 @@
+[package]
+name = "beatbyte-cli"
+description = "BeatByte command line: analyze songs, generate and validate charts."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+beatbyte-core = { workspace = true }
+beatbyte-chart = { workspace = true }
+beatbyte-audio = { workspace = true }
+clap = { workspace = true }
+
+[lints]
+workspace = true

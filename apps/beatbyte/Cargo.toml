@@ -1,0 +1,16 @@
+[package]
+name = "beatbyte"
+description = "BeatByte — an original 8-bit rhythm game."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+beatbyte-game = { workspace = true }
+bevy = { workspace = true }
+
+[lints]
+workspace = true

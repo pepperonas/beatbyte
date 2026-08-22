@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive: tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bevy system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release binaries
+        run: cargo build --release --target ${{ matrix.target }} -p beatbyte -p beatbyte-cli
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist/beatbyte-${{ matrix.target }}
+          cp target/${{ matrix.target }}/release/beatbyte dist/beatbyte-${{ matrix.target }}/
+          cp target/${{ matrix.target }}/release/beatbyte-cli dist/beatbyte-${{ matrix.target }}/
+          cp -r assets dist/beatbyte-${{ matrix.target }}/assets
+          cp README.md LICENSE CHANGELOG.md dist/beatbyte-${{ matrix.target }}/
+          tar -czf beatbyte-${{ github.ref_name }}-${{ matrix.target }}.tar.gz -C dist beatbyte-${{ matrix.target }}
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/beatbyte-${{ matrix.target }}
+          Copy-Item target/${{ matrix.target }}/release/beatbyte.exe dist/beatbyte-${{ matrix.target }}/
+          Copy-Item target/${{ matrix.target }}/release/beatbyte-cli.exe dist/beatbyte-${{ matrix.target }}/
+          Copy-Item -Recurse assets dist/beatbyte-${{ matrix.target }}/assets
+          Copy-Item README.md,LICENSE,CHANGELOG.md dist/beatbyte-${{ matrix.target }}/
+          Compress-Archive -Path dist/beatbyte-${{ matrix.target }} -DestinationPath beatbyte-${{ github.ref_name }}-${{ matrix.target }}.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: beatbyte-${{ matrix.target }}
+          path: beatbyte-${{ github.ref_name }}-${{ matrix.target }}.*
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          draft: true
+          generate_release_notes: true

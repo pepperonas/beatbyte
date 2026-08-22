@@ -1,0 +1,16 @@
+[package]
+name = "beatbyte-editor"
+description = "BeatByte chart editor (architecture prepared; implemented in a later milestone)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+beatbyte-core = { workspace = true }
+beatbyte-chart = { workspace = true }
+
+[lints]
+workspace = true

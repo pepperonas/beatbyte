@@ -1,0 +1,21 @@
+# Rust
+/target
+**/*.rs.bk
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Local scratch space (not part of the project)
+/temp/
+
+# Local user configuration / saves created during development runs
+/local/
+
+# Imported songs are user content, never committed.
+# Bundled demo songs live in songs/ and are explicitly added.
+/songs/imported/

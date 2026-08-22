@@ -1,0 +1,4 @@
+[toolchain]
+# Bevy 0.19 requires Rust 1.95+. We track stable.
+channel = "stable"
+components = ["rustfmt", "clippy"]

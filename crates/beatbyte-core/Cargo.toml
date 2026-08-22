@@ -1,0 +1,15 @@
+[package]
+name = "beatbyte-core"
+description = "BeatByte domain model: timing, notes, judgment, scoring, rules. Engine-free."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+
+[lints]
+workspace = true
