@@ -138,7 +138,7 @@ chart format v1 can be frozen as a promise.
 - [x] B1 **Second synthesized demo song.** "Solder Groove", 92 BPM half-time groove (Dm–Bb–F–C, syncopated bass, held pad bars → real sustains). Multi-builtin refactor: `SongSource::Builtin(usize)` + `BuiltinSongs`; CLI `demo` writes both. *Verified: analyzes to 92.06 BPM (a tresillo bass first read as ~122 — reshaped to keep the quarter pulse dominant); autopilot flawless 1P (89/89) + 2P; Circuit Breaker unaffected; 158 tests.*
 - [x] B2 **Autopilot over any library song.** `BEATBYTE_AUTOPILOT_SONG=<index|title-substring>` (bad selector = loud failure). *Verified: 4 unit tests (one mutation-checked); live run with `=circuit` flawless, `=nonexistent` exits 1. Second-song run covered under B1.*
 - [ ] B3 **Import walkthrough verified end-to-end.** Follow `docs/` chart workflow with a real (user-supplied, uncommitted) audio file: analyze → generate → correct in editor → play. Fix doc drift found on the way. *Verify: walkthrough completes; doc updated with actual commands.*
-- [ ] B4 **Supported-audio-formats truth.** Establish and document exactly which import formats the build decodes (wav/ogg/flac/mp3?); add a decode test per supported format with a tiny generated fixture. *Verify: table in chart-format doc + passing tests.*
+- [x] B4 **Supported-audio-formats truth.** 5 decode tests against committed synthesized fixtures (~5-22 KB each, recipe in `tests/fixtures/README.md`); table in chart-format spec. Finding: **M4A/AAC decodes** — the "not supported" pin failed immediately, README undersold the decoder; docs updated, pin flipped positive. The ogg fixture is stereo on purpose (pins the downmix). *Verified: 5/5 passing.*
 
 ### C — Robustness & platform coverage
 

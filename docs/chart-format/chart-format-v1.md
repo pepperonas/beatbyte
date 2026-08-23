@@ -108,6 +108,24 @@ Charts are treated as **untrusted input** throughout: numeric ranges are
 checked, the audio reference cannot escape the chart directory, and
 malformed files produce errors, never crashes.
 
+## Supported audio formats
+
+What the `audio` field may point at — **verified by decode tests**
+(`beatbyte-audio/tests/decode_formats.rs`), not assumed. The game and
+the CLI share one decoder, so the list holds everywhere:
+
+| Format | Extension | Status |
+|--------|-----------|--------|
+| WAV (PCM) | `.wav` | ✅ decodes |
+| Ogg Vorbis | `.ogg` | ✅ decodes (stereo is downmixed to mono) |
+| FLAC | `.flac` | ✅ decodes |
+| MP3 | `.mp3` | ✅ decodes (encoder delay may pad the start by a few ms) |
+| AAC in MP4 | `.m4a` | ✅ decodes |
+
+Anything else fails with a decode error at import time — never a
+crash. When the bundled decoder changes, the tests fail before the
+docs can drift.
+
 ## Planned for future versions
 
 Tempo changes and time signatures (the domain `TempoMap` already

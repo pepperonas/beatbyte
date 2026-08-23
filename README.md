@@ -42,7 +42,7 @@ ember backdrop.*
 
 - 🎸 **Classic five-lane gameplay** — single notes, chords, sustains,
   hammer-ons/pull-offs, combos, multipliers and the Hype meter
-- 🎵 **Bring your own music** — OGG / WAV / FLAC / MP3; drop generated
+- 🎵 **Bring your own music** — WAV / OGG / FLAC / MP3 / M4A; drop generated
   charts into `songs/` and they appear in the browser
 - 🤖 **Automatic chart generation** — BPM & onset analysis turns any song
   into a playable chart across four difficulties (playable, not perfect —

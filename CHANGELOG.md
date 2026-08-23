@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Supported import formats are now verified by decode tests against
+  committed synthesized fixtures (WAV, Ogg Vorbis, FLAC, MP3 — and
+  M4A/AAC, which turned out to work and is now documented) and listed
+  in the chart-format spec.
 - **Second built-in song: "Solder Groove"** (92 BPM) — a half-time
   groove over Dm–Bb–F–C with syncopated bass, sparse drums and held
   pad bars, so generated charts exercise sustains and slower reading
