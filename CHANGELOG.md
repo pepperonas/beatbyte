@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-23
+
+**The themes milestone** (Milestone 10): six original stages, all
+data (ADR-0008).
+
+### Added
+
+- **Six stage themes**: Garage (warm amber, twinkling starfield),
+  Punk (hot pink, pogo crowd), Metal (steel, rising embers), Stadium
+  (deep blue, sweeping spotlights), Psychedelic (violet, drifting
+  bubbles), Cyber (neon, rolling synth grid).
+- **Procedural backdrops** — engine-drawn pixel sprites animated by
+  one system, beat-aware where it reads well; no textures, no
+  assets.
+- Theme selection in settings: a fixed stage or **AUTO**, which picks
+  deterministically per song title (same song, same stage).
+- Highway beds, lane guides, receptors, notes, sustain tails and hit
+  particles all take the active theme's palette; the beat pulse
+  strength is per theme. Judgment colors stay constant — readability
+  first.
+
 ## [0.5.0] - 2026-08-23
 
 **The multiplayer milestone** (Milestone 9): 2–4 players, one machine.
@@ -242,7 +263,8 @@ a tech demo.
   Records (Rust + Bevy, workspace layout).
 - README, MIT license, contributing guide, code of conduct, security policy.
 
-[Unreleased]: https://github.com/pepperonas/beatbyte/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/pepperonas/beatbyte/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/pepperonas/beatbyte/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/pepperonas/beatbyte/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/pepperonas/beatbyte/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/pepperonas/beatbyte/compare/v0.2.0...v0.3.0

@@ -119,9 +119,11 @@ pub fn spawn_fx_scenery(
 }
 
 /// Turn judgment events into bursts, shake and flashes.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn react_to_feedback(
     mut commands: Commands,
     layout: Res<HighwayLayout>,
+    theme: Res<crate::theme::ActiveTheme>,
     mut feedback: MessageReader<SessionFeedback>,
     players: Query<(&PlayerIndex, &PlayerSession)>,
     settings: Res<EffectSettings>,
@@ -151,7 +153,7 @@ fn react_to_feedback(
                     _ => (7, 180.0, false),
                 };
                 for lane in event.lanes.iter() {
-                    let color = palette::lane_color(lane);
+                    let color = theme.0.lane_color(lane);
                     let x = layout.lane_x(player, lane);
                     spawn_burst(
                         &mut commands,
@@ -282,9 +284,11 @@ fn simulate_particles(
 }
 
 /// While a sustain is held, its receptor sprays little sparks.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn sustain_sparks(
     mut commands: Commands,
     layout: Res<HighwayLayout>,
+    theme: Res<crate::theme::ActiveTheme>,
     players: Query<(&PlayerIndex, &PlayerSession)>,
     settings: Res<EffectSettings>,
     time: Res<Time>,
@@ -313,7 +317,7 @@ fn sustain_sparks(
                 &mut commands,
                 &mut live,
                 Vec2::new(layout.lane_x(index.0, lane), RECEPTOR_Y + 10.0),
-                palette::lane_color(lane),
+                theme.0.lane_color(lane),
                 ticks.min(2),
                 130.0,
                 sustain_index * 101 + i + (time.elapsed_secs() * 60.0) as usize,
@@ -327,6 +331,7 @@ fn sustain_sparks(
 fn beat_pulse(
     players: Query<&PlayerSession>,
     settings: Res<EffectSettings>,
+    theme: Res<crate::theme::ActiveTheme>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
     mut beds: Query<&mut Sprite, With<HighwayBed>>,
@@ -355,8 +360,8 @@ fn beat_pulse(
         1.0
     };
     for mut sprite in &mut beds {
-        let base = palette::SURFACE.to_linear();
-        let lift = 1.0 + 0.55 * pulse * boost;
+        let base = theme.0.surface.to_linear();
+        let lift = 1.0 + theme.0.pulse_strength * pulse * boost;
         sprite.color = Color::LinearRgba(LinearRgba {
             red: base.red * lift,
             green: base.green * lift,

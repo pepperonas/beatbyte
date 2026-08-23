@@ -39,8 +39,10 @@ pub struct Receptor {
 pub fn spawn_highways(
     mut commands: Commands,
     layout: Res<HighwayLayout>,
+    theme: Res<crate::theme::ActiveTheme>,
     players: Query<&PlayerIndex, With<PlayerSession>>,
 ) {
+    let theme = theme.0;
     for index in players.iter() {
         let player = index.0;
         let origin = layout.origin(player);
@@ -48,7 +50,7 @@ pub fn spawn_highways(
         commands.spawn((
             GameplayScreen,
             super::fx::HighwayBed,
-            Sprite::from_color(palette::SURFACE, Vec2::new(layout.bed_width(), 900.0)),
+            Sprite::from_color(theme.surface, Vec2::new(layout.bed_width(), 900.0)),
             Transform::from_xyz(origin, 0.0, -10.0),
         ));
         // Lane guide lines.
@@ -56,7 +58,7 @@ pub fn spawn_highways(
             commands.spawn((
                 GameplayScreen,
                 Sprite::from_color(
-                    palette::dimmed(palette::lane_color(lane), 0.06),
+                    palette::dimmed(theme.lane_color(lane), 0.06),
                     Vec2::new(2.0, 900.0),
                 ),
                 Transform::from_xyz(layout.lane_x(player, lane), 0.0, -9.0),
@@ -70,14 +72,14 @@ pub fn spawn_highways(
                 GameplayScreen,
                 Receptor { player, lane },
                 Sprite::from_color(
-                    palette::dimmed(palette::lane_color(lane), 0.35),
+                    palette::dimmed(theme.lane_color(lane), 0.35),
                     Vec2::splat(receptor),
                 ),
                 Transform::from_xyz(x, RECEPTOR_Y, -5.0),
             ));
             commands.spawn((
                 GameplayScreen,
-                Sprite::from_color(palette::BACKGROUND, Vec2::splat(receptor * 0.75)),
+                Sprite::from_color(theme.background, Vec2::splat(receptor * 0.75)),
                 Transform::from_xyz(x, RECEPTOR_Y, -4.0),
             ));
         }
@@ -89,6 +91,7 @@ pub fn spawn_due_notes(
     mut commands: Commands,
     mut players: Query<(&PlayerIndex, &mut PlayerSession)>,
     layout: Res<HighwayLayout>,
+    theme: Res<crate::theme::ActiveTheme>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
     settings: Res<Settings>,
@@ -108,6 +111,7 @@ pub fn spawn_due_notes(
             spawn_event_sprites(
                 &mut commands,
                 &layout,
+                &theme.0,
                 index.0,
                 cursor,
                 &event,
@@ -118,9 +122,11 @@ pub fn spawn_due_notes(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_event_sprites(
     commands: &mut Commands,
     layout: &HighwayLayout,
+    theme: &crate::theme::Theme,
     player: usize,
     event_index: usize,
     event: &beatbyte_core::NoteEvent,
@@ -128,7 +134,7 @@ fn spawn_event_sprites(
 ) {
     let size = layout.note_size();
     for lane in event.lanes.iter() {
-        let color = palette::lane_color(lane);
+        let color = theme.lane_color(lane);
         let entity = commands
             .spawn((
                 GameplayScreen,
@@ -196,6 +202,7 @@ pub fn move_notes(
 /// Receptors light up while their player holds the fret.
 pub fn update_receptors(
     players: Query<(&PlayerIndex, &PlayerSession)>,
+    theme: Res<crate::theme::ActiveTheme>,
     mut receptors: Query<(&Receptor, &mut Sprite)>,
 ) {
     for (index, player) in &players {
@@ -204,7 +211,7 @@ pub fn update_receptors(
             if receptor.player != index.0 {
                 continue;
             }
-            let color = palette::lane_color(receptor.lane);
+            let color = theme.0.lane_color(receptor.lane);
             sprite.color = if held.contains(receptor.lane) {
                 color
             } else {

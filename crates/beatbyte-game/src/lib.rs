@@ -22,6 +22,7 @@ pub mod settings_ui;
 pub mod sfx;
 pub mod song_select;
 pub mod states;
+pub mod theme;
 pub mod ui;
 
 use bevy::prelude::*;
@@ -64,9 +65,12 @@ pub fn run() -> AppExit {
         menu::MenuPlugin,
         multiplayer::MultiplayerPlugin,
         song_select::SongSelectPlugin,
+    ))
+    .add_plugins((
         settings_ui::SettingsUiPlugin,
         controls_ui::ControlsUiPlugin,
         calibration::CalibrationPlugin,
+        theme::ThemePlugin,
         gameplay::GameplayPlugin,
         results::ResultsPlugin,
         sfx::SfxPlugin,

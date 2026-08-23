@@ -22,11 +22,12 @@ enum Row {
     ScreenShake,
     BeatPulse,
     Fullscreen,
+    Theme,
     Controls,
 }
 
 impl Row {
-    const ALL: [Row; 9] = [
+    const ALL: [Row; 10] = [
         Row::MusicVolume,
         Row::SfxVolume,
         Row::ScrollSpeed,
@@ -35,6 +36,7 @@ impl Row {
         Row::ScreenShake,
         Row::BeatPulse,
         Row::Fullscreen,
+        Row::Theme,
         Row::Controls,
     ];
 
@@ -48,6 +50,7 @@ impl Row {
             Row::ScreenShake => "SCREEN SHAKE",
             Row::BeatPulse => "BEAT PULSE",
             Row::Fullscreen => "FULLSCREEN",
+            Row::Theme => "STAGE THEME",
             Row::Controls => "CONTROLS",
         }
     }
@@ -62,6 +65,7 @@ impl Row {
             Row::ScreenShake => on_off(settings.screen_shake),
             Row::BeatPulse => on_off(settings.beat_pulse),
             Row::Fullscreen => on_off(settings.fullscreen),
+            Row::Theme => settings.theme.to_uppercase(),
             Row::Controls => "...".to_owned(),
         }
     }
@@ -87,6 +91,15 @@ impl Row {
             Row::ScreenShake => settings.screen_shake = !settings.screen_shake,
             Row::BeatPulse => settings.beat_pulse = !settings.beat_pulse,
             Row::Fullscreen => settings.fullscreen = !settings.fullscreen,
+            Row::Theme => {
+                // Cycle auto → themes → auto.
+                let mut ids = vec!["auto"];
+                ids.extend(crate::theme::THEMES.iter().map(|theme| theme.id));
+                let position = ids.iter().position(|id| *id == settings.theme).unwrap_or(0) as i32;
+                let count = ids.len() as i32;
+                let next = (position + direction as i32 + count) % count;
+                settings.theme = ids[next as usize].to_owned();
+            }
             Row::Controls => {}
         }
     }

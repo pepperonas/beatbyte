@@ -186,7 +186,7 @@ and the [Code of Conduct](CODE_OF_CONDUCT.md) first. Security issues: see
 - [x] **M7 — UI**: menus, song browser, settings, calibration, results
 - [x] **M8 — Controllers**: gamepads, guitar controllers, remapping
 - [x] **M9 — Local multiplayer**: 2–4 players, versus & co-op
-- [ ] **M10 — Themes**: Garage, Punk, Metal, Stadium, Psychedelic, Cyber
+- [x] **M10 — Themes**: Garage, Punk, Metal, Stadium, Psychedelic, Cyber
 - [ ] **M11 — Chart editor**
 - [ ] **M12 — Packaging**: .dmg, installer, AppImage
 - [ ] **M13 — Polish pass**

@@ -36,6 +36,8 @@ pub struct Settings {
     pub fullscreen: bool,
     /// The bindings table (see [`crate::controls`]).
     pub input_map: InputMap,
+    /// The stage theme id, or "auto" to rotate per song.
+    pub theme: String,
 }
 
 impl Default for Settings {
@@ -50,6 +52,7 @@ impl Default for Settings {
             beat_pulse: true,
             fullscreen: false,
             input_map: InputMap::default(),
+            theme: "auto".to_owned(),
         }
     }
 }
@@ -68,6 +71,9 @@ impl Settings {
         self.latency_offset_ms = clean(self.latency_offset_ms, -250.0, 250.0, 0.0);
         self.scroll_speed = clean(self.scroll_speed, 240.0, 900.0, 420.0);
         self.input_map.sanitize();
+        if self.theme != "auto" && crate::theme::Theme::by_id(&self.theme).is_none() {
+            self.theme = "auto".to_owned();
+        }
     }
 }
 

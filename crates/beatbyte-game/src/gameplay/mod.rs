@@ -184,6 +184,7 @@ impl Plugin for GameplayPlugin {
                     notes::spawn_highways,
                     hud::spawn_huds,
                     fx::spawn_fx_scenery,
+                    crate::theme::spawn_backdrop,
                 )
                     .chain(),
             )
@@ -227,8 +228,15 @@ fn setup_gameplay(
     music: Res<Music>,
     mut game_clock: ResMut<GameClock>,
     time: Res<Time>,
+    settings: Res<crate::config::Settings>,
+    mut theme: ResMut<crate::theme::ActiveTheme>,
+    mut clear: ResMut<ClearColor>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
+    // Stage identity for this song.
+    theme.0 = crate::theme::choose_theme(&settings.theme, &song.chart.song.title);
+    clear.0 = theme.0.background;
+
     let track = match song.chart.to_track(selected.0) {
         Ok(track) => track,
         Err(error) => {
