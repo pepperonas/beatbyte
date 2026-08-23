@@ -1,7 +1,10 @@
 //! The song browser: pick a song and a difficulty, see your best.
 
 use beatbyte_core::Difficulty;
+use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
+
+use crate::controls::MenuNav;
 
 use crate::boot::{DemoSong, LoadedSong, SongAudio};
 use crate::library::{SongEntry, SongLibrary, SongSource};
@@ -120,26 +123,29 @@ fn spawn_browser(
         });
 }
 
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn browser_input(
     mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
+    pads: Query<&Gamepad>,
     library: Res<SongLibrary>,
     mut cursor: ResMut<BrowserCursor>,
     mut selected: ResMut<SelectedDifficulty>,
     demo: Res<DemoSong>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
+    let nav = MenuNav::read(&keys, &pads);
     let count = library.entries.len();
     if count == 0 {
-        if keys.just_pressed(KeyCode::Escape) {
+        if nav.back {
             next_state.set(AppState::MainMenu);
         }
         return;
     }
-    if keys.just_pressed(KeyCode::ArrowUp) {
+    if nav.up {
         cursor.0 = (cursor.0 + count - 1) % count;
     }
-    if keys.just_pressed(KeyCode::ArrowDown) {
+    if nav.down {
         cursor.0 = (cursor.0 + 1) % count;
     }
     let entry = &library.entries[cursor.0];
@@ -152,14 +158,14 @@ fn browser_input(
         selected.0 = first;
     }
     let position = offered.iter().position(|d| *d == selected.0).unwrap_or(0);
-    if keys.just_pressed(KeyCode::ArrowLeft) && position > 0 {
+    if nav.left && position > 0 {
         selected.0 = offered[position - 1];
     }
-    if keys.just_pressed(KeyCode::ArrowRight) && position + 1 < offered.len() {
+    if nav.right && position + 1 < offered.len() {
         selected.0 = offered[position + 1];
     }
 
-    if keys.just_pressed(KeyCode::Enter) {
+    if nav.confirm {
         match prepare_song(entry, &demo) {
             Ok(song) => {
                 commands.insert_resource(song);
@@ -168,7 +174,7 @@ fn browser_input(
             Err(reason) => error!("cannot load \"{}\": {reason}", entry.title),
         }
     }
-    if keys.just_pressed(KeyCode::Escape) {
+    if nav.back {
         next_state.set(AppState::MainMenu);
     }
 }

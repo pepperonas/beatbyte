@@ -9,6 +9,8 @@ pub mod autopilot;
 pub mod boot;
 pub mod calibration;
 pub mod config;
+pub mod controls;
+pub mod controls_ui;
 pub mod gameplay;
 pub mod library;
 pub mod menu;
@@ -61,6 +63,7 @@ pub fn run() -> AppExit {
         menu::MenuPlugin,
         song_select::SongSelectPlugin,
         settings_ui::SettingsUiPlugin,
+        controls_ui::ControlsUiPlugin,
         calibration::CalibrationPlugin,
         gameplay::GameplayPlugin,
         results::ResultsPlugin,

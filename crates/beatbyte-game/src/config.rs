@@ -8,6 +8,7 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::controls::InputMap;
 use crate::gameplay::fx::EffectSettings;
 
 /// All persisted settings. Every field has a sane default so partial
@@ -33,6 +34,8 @@ pub struct Settings {
     pub beat_pulse: bool,
     /// Fullscreen window mode.
     pub fullscreen: bool,
+    /// The bindings table (see [`crate::controls`]).
+    pub input_map: InputMap,
 }
 
 impl Default for Settings {
@@ -46,6 +49,7 @@ impl Default for Settings {
             screen_shake: true,
             beat_pulse: true,
             fullscreen: false,
+            input_map: InputMap::default(),
         }
     }
 }
@@ -63,6 +67,7 @@ impl Settings {
         self.sfx_volume = clean(self.sfx_volume, 0.0, 1.0, 0.45);
         self.latency_offset_ms = clean(self.latency_offset_ms, -250.0, 250.0, 0.0);
         self.scroll_speed = clean(self.scroll_speed, 240.0, 900.0, 420.0);
+        self.input_map.sanitize();
     }
 }
 
@@ -137,7 +142,10 @@ impl Plugin for ConfigPlugin {
             settings.latency_offset_ms,
             settings.scroll_speed
         );
-        app.insert_resource(settings)
+        // The live bindings table mirrors the persisted one; the
+        // controls screen edits the resource and writes it back.
+        app.insert_resource(settings.input_map.clone())
+            .insert_resource(settings)
             .add_systems(Update, apply_settings);
     }
 }

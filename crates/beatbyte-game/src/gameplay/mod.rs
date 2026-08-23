@@ -223,18 +223,25 @@ fn check_song_end(
 
 fn pause_input(
     keys: Res<ButtonInput<KeyCode>>,
+    pads: Query<&bevy::input::gamepad::Gamepad>,
+    map: Res<crate::controls::InputMap>,
     phase: Res<State<GamePhase>>,
     mut next_phase: ResMut<NextState<GamePhase>>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
+    let sources = crate::controls::InputSources {
+        keys: &keys,
+        pads: pads.iter().collect(),
+    };
+    let pause = sources.just_pressed(&map, crate::controls::GameAction::Pause);
     match phase.get() {
         GamePhase::Playing => {
-            if keys.just_pressed(KeyCode::Escape) {
+            if pause {
                 next_phase.set(GamePhase::Paused);
             }
         }
         GamePhase::Paused => {
-            if keys.just_pressed(KeyCode::Escape) || keys.just_pressed(KeyCode::Enter) {
+            if pause || keys.just_pressed(KeyCode::Enter) {
                 next_phase.set(GamePhase::Playing);
             }
             if keys.just_pressed(KeyCode::KeyQ) {

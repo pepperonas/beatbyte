@@ -1,33 +1,26 @@
-//! Keyboard → gameplay session input.
+//! Player input → gameplay session, through the binding table.
 //!
-//! Milestone 5 keeps a fixed keyboard mapping; the remappable input
-//! abstraction (device → action → gameplay) is Milestone 8. Inputs are
-//! timestamped with the current song time — one frame of latency at
-//! most, which the calibration milestone will let players compensate.
+//! Physical inputs (keyboard keys, buttons on any connected gamepad —
+//! guitar-style controllers included) resolve to game actions via
+//! [`InputMap`]; the session only ever sees actions. Inputs are
+//! timestamped with the current song time minus the calibration
+//! offset (ADR-0004).
 
-use beatbyte_core::{GameInput, InputKind, Lane};
+use beatbyte_core::{GameInput, InputKind};
+use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
 
 use super::PlayerSession;
 use crate::audio_sys::GameClock;
 use crate::config::Settings;
+use crate::controls::{GameAction, InputMap, InputSources};
 
-/// The fixed Milestone-5 fret mapping.
-pub const FRET_KEYS: [(KeyCode, Lane); 5] = [
-    (KeyCode::KeyA, Lane::One),
-    (KeyCode::KeyS, Lane::Two),
-    (KeyCode::KeyD, Lane::Three),
-    (KeyCode::KeyF, Lane::Four),
-    (KeyCode::KeyG, Lane::Five),
-];
-
-/// Strum keys (direction is irrelevant to judgment).
-pub const STRUM_KEYS: [KeyCode; 2] = [KeyCode::ArrowUp, KeyCode::ArrowDown];
-
-/// Feed this frame's keyboard activity into the (single-player)
-/// session. Multiplayer input routing arrives with Milestone 8/9.
+/// Feed this frame's inputs into the (single-player) session.
+/// Per-player device routing arrives with local multiplayer.
 pub fn gameplay_input(
     keys: Res<ButtonInput<KeyCode>>,
+    pads: Query<&Gamepad>,
+    map: Res<InputMap>,
     mut players: Query<&mut PlayerSession>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
@@ -43,26 +36,32 @@ pub fn gameplay_input(
         return;
     };
     let player = &mut *player;
+    let sources = InputSources {
+        keys: &keys,
+        pads: pads.iter().collect(),
+    };
     let mut send = |kind: InputKind| {
         player
             .session
             .handle(GameInput { time_s: now, kind }, &mut player.frame_events);
     };
 
-    for (key, lane) in FRET_KEYS {
-        if keys.just_pressed(key) {
+    for index in 0..5u8 {
+        let action = GameAction::Fret(index);
+        let Some(lane) = action.lane() else { continue };
+        if sources.just_pressed(&map, action) {
             send(InputKind::FretDown(lane));
         }
-        if keys.just_released(key) {
+        if sources.just_released(&map, action) {
             send(InputKind::FretUp(lane));
         }
     }
-    for key in STRUM_KEYS {
-        if keys.just_pressed(key) {
-            send(InputKind::Strum);
-        }
+    if sources.just_pressed(&map, GameAction::StrumUp)
+        || sources.just_pressed(&map, GameAction::StrumDown)
+    {
+        send(InputKind::Strum);
     }
-    if keys.just_pressed(KeyCode::Space) {
+    if sources.just_pressed(&map, GameAction::Hype) {
         send(InputKind::ActivateHype);
     }
 }

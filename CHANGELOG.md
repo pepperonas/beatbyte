@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-23
+
+**The controllers milestone** (Milestone 8).
+
+### Added
+
+- **Input abstraction**: physical input → binding → game action.
+  Bindings are data, persisted with the settings; gameplay only ever
+  sees actions (ADR-0004's input model).
+- **Gamepad support** on every connected pad: frets on the face
+  buttons + left shoulder (the common guitar-controller layout —
+  green=South … orange=LB), strum on the D-pad, Hype on Select/RT,
+  pause on Start. Guitar-style controllers that enumerate as gamepads
+  work out of the box.
+- **Menus speak gamepad**: D-pad navigation, South=confirm,
+  East=back on all menu screens.
+- **Remapping screen** (Settings → Controls): every action listed
+  with its bindings; Enter captures the next key or button (stealing
+  it from whichever action held it), Backspace restores a row's
+  defaults. Persisted with the settings; invalid entries in edited
+  config files are dropped safely.
+
+### Changed
+
+- Bevy's `serialize` feature is enabled so input types persist
+  naturally.
+
 ## [0.3.0] - 2026-08-23
 
 **The UI milestone** (Milestone 7): BeatByte grows its screens — and
@@ -182,7 +209,8 @@ a tech demo.
   Records (Rust + Bevy, workspace layout).
 - README, MIT license, contributing guide, code of conduct, security policy.
 
-[Unreleased]: https://github.com/pepperonas/beatbyte/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/pepperonas/beatbyte/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/pepperonas/beatbyte/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/pepperonas/beatbyte/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/pepperonas/beatbyte/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/pepperonas/beatbyte/compare/v0.0.3...v0.1.0

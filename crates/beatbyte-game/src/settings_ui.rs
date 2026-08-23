@@ -2,9 +2,11 @@
 //! effect toggles, fullscreen. Changes apply immediately and persist
 //! on leaving the screen.
 
+use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
 
 use crate::config::{Settings, save_settings};
+use crate::controls::MenuNav;
 use crate::palette;
 use crate::states::AppState;
 use crate::ui::UiFont;
@@ -20,10 +22,11 @@ enum Row {
     ScreenShake,
     BeatPulse,
     Fullscreen,
+    Controls,
 }
 
 impl Row {
-    const ALL: [Row; 8] = [
+    const ALL: [Row; 9] = [
         Row::MusicVolume,
         Row::SfxVolume,
         Row::ScrollSpeed,
@@ -32,6 +35,7 @@ impl Row {
         Row::ScreenShake,
         Row::BeatPulse,
         Row::Fullscreen,
+        Row::Controls,
     ];
 
     const fn label(self) -> &'static str {
@@ -44,6 +48,7 @@ impl Row {
             Row::ScreenShake => "SCREEN SHAKE",
             Row::BeatPulse => "BEAT PULSE",
             Row::Fullscreen => "FULLSCREEN",
+            Row::Controls => "CONTROLS",
         }
     }
 
@@ -57,6 +62,7 @@ impl Row {
             Row::ScreenShake => on_off(settings.screen_shake),
             Row::BeatPulse => on_off(settings.beat_pulse),
             Row::Fullscreen => on_off(settings.fullscreen),
+            Row::Controls => "...".to_owned(),
         }
     }
 
@@ -81,6 +87,7 @@ impl Row {
             Row::ScreenShake => settings.screen_shake = !settings.screen_shake,
             Row::BeatPulse => settings.beat_pulse = !settings.beat_pulse,
             Row::Fullscreen => settings.fullscreen = !settings.fullscreen,
+            Row::Controls => {}
         }
     }
 }
@@ -163,25 +170,31 @@ fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
 
 fn settings_input(
     keys: Res<ButtonInput<KeyCode>>,
+    pads: Query<&Gamepad>,
     mut cursor: ResMut<SettingsCursor>,
     mut settings: ResMut<Settings>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
+    let nav = MenuNav::read(&keys, &pads);
     let count = Row::ALL.len();
-    if keys.just_pressed(KeyCode::ArrowUp) {
+    if nav.up {
         cursor.0 = (cursor.0 + count - 1) % count;
     }
-    if keys.just_pressed(KeyCode::ArrowDown) {
+    if nav.down {
         cursor.0 = (cursor.0 + 1) % count;
     }
     let row = Row::ALL[cursor.0];
-    if keys.just_pressed(KeyCode::ArrowLeft) {
+    if row == Row::Controls && (nav.confirm || nav.right) {
+        next_state.set(AppState::Controls);
+        return;
+    }
+    if nav.left {
         row.adjust(&mut settings, -1.0);
     }
-    if keys.just_pressed(KeyCode::ArrowRight) || keys.just_pressed(KeyCode::Enter) {
+    if nav.right || nav.confirm {
         row.adjust(&mut settings, 1.0);
     }
-    if keys.just_pressed(KeyCode::Escape) {
+    if nav.back {
         next_state.set(AppState::MainMenu);
     }
 }

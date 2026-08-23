@@ -18,6 +18,8 @@ pub enum AppState {
     SongSelect,
     /// The settings screen.
     Settings,
+    /// The controls remapping screen.
+    Controls,
     /// The latency calibration screen.
     Calibration,
     /// Playing a song.

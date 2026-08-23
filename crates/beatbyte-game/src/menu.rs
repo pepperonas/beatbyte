@@ -1,7 +1,9 @@
 //! The main menu: play, settings, calibration, quit.
 
+use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
 
+use crate::controls::MenuNav;
 use crate::palette;
 use crate::states::AppState;
 use crate::ui::UiFont;
@@ -119,18 +121,20 @@ fn spawn_menu(mut commands: Commands, font: Res<UiFont>) {
 
 fn menu_input(
     keys: Res<ButtonInput<KeyCode>>,
+    pads: Query<&Gamepad>,
     mut cursor: ResMut<MenuCursor>,
     mut next_state: ResMut<NextState<AppState>>,
     mut app_exit: MessageWriter<AppExit>,
 ) {
+    let nav = MenuNav::read(&keys, &pads);
     let count = MenuAction::ALL.len();
-    if keys.just_pressed(KeyCode::ArrowUp) {
+    if nav.up {
         cursor.0 = (cursor.0 + count - 1) % count;
     }
-    if keys.just_pressed(KeyCode::ArrowDown) {
+    if nav.down {
         cursor.0 = (cursor.0 + 1) % count;
     }
-    if keys.just_pressed(KeyCode::Enter) {
+    if nav.confirm {
         match MenuAction::ALL[cursor.0] {
             MenuAction::Play => next_state.set(AppState::SongSelect),
             MenuAction::Settings => next_state.set(AppState::Settings),

@@ -11,7 +11,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 license = "MIT"
 authors = ["Martin Pfeffer"]
@@ -23,15 +23,16 @@ categories = ["games"]
 
 [workspace.dependencies]
 # Internal crates
-beatbyte-core = { path = "crates/beatbyte-core", version = "0.3.0" }
-beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.3.0" }
-beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.3.0" }
-beatbyte-game = { path = "crates/beatbyte-game", version = "0.3.0" }
-beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.3.0" }
-beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.3.0" }
+beatbyte-core = { path = "crates/beatbyte-core", version = "0.4.0" }
+beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.4.0" }
+beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.4.0" }
+beatbyte-game = { path = "crates/beatbyte-game", version = "0.4.0" }
+beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.4.0" }
+beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.4.0" }
 
-# Engine ("wav" lets bevy_audio play our procedurally generated SFX)
-bevy = { version = "0.19", features = ["wav"] }
+# Engine ("wav" lets bevy_audio play our procedurally generated SFX;
+# "serialize" gives input types serde for the persisted bindings table)
+bevy = { version = "0.19", features = ["wav", "serialize"] }
 
 # Audio: playback/decoding and FFT for analysis
 rodio = "0.22"
