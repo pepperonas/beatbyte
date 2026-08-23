@@ -75,7 +75,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
             libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev \
-            xvfb mesa-vulkan-drivers libvulkan1
+            xvfb mesa-vulkan-drivers libvulkan1 libxkbcommon-x11-0
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

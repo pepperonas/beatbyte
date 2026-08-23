@@ -151,8 +151,8 @@ chart format v1 can be frozen as a promise.
 ### D — Accessibility & options
 
 - [ ] D1 **Colorblind-safe lane identity.** Per-lane shapes/symbols on notes + receptors (color no longer the only channel), always on or as an option. *Verify: screenshot; deuteranopia simulation check.*
-- [ ] D2 **Reduced-motion option.** Setting that stills backdrop animation and particle bursts; respects it everywhere. *Verify: setting persists; visual check per theme.*
-- [ ] D3 **Audio mix options.** Separate music vs SFX volume in settings (add whichever is missing). *Verify: settings rows work + persist; audible difference.*
+- [x] D2 **Reduced-motion option.** New `backdrop_motion` setting ("STAGE MOTION" row) wired Settings → EffectSettings → `animate_backdrop` early-out; particles/shake/beat-pulse toggles already existed. *Verified by transform probe: ON = bit drifts continuously, OFF = position bit-identical over 25 s; both runs flawless. Side catch: the verification exposed that a window-closed autopilot run faked exit 0 — harness hardened (DontExit + fail-on-vanished-window).*
+- [x] D3 **Audio mix options.** Already fully implemented (M7-era): `music_volume`/`sfx_volume` settings rows, persisted, music applied centrally in `apply_settings` on any change, SFX per-play. Closed by code-trace audit during C5/D2 work; no change needed.
 - [ ] D4 **Scroll-speed option.** Per-player highway scroll speed independent of difficulty. *Verify: setting persists; autopilot still flawless at extremes (judgment must be unaffected).*
 
 ### E — Editor v2 (quality-of-life)

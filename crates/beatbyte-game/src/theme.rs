@@ -252,10 +252,15 @@ pub fn spawn_backdrop(mut commands: Commands, theme: Res<ActiveTheme>, layout: R
 /// Animate the backdrop per style — beat-aware where it reads well.
 fn animate_backdrop(
     time: Res<Time>,
+    effects: Res<crate::gameplay::fx::EffectSettings>,
     players: Query<&PlayerSession>,
     game_clock: Res<crate::audio_sys::GameClock>,
     mut bits: Query<(&BackdropBit, &mut Transform, &mut Sprite)>,
 ) {
+    // Reduced motion: leave the backdrop as a still image.
+    if !effects.backdrop_motion {
+        return;
+    }
     let t = time.elapsed_secs();
     // Beat phase drives crowd bounce / star twinkle.
     let beat_pulse = players

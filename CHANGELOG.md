@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Stage Motion setting** (reduced-motion accessibility): turning it
+  off leaves the themed backdrop as a still image; particles, screen
+  shake and beat pulse already had their own toggles.
+
 - Forward-compatibility pins: settings and chart files with unknown
   (newer-version) fields load cleanly; missing settings fields fall
   back to defaults. This was already true — now tests keep it true.
@@ -32,6 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wrong song.
 
 ### Fixed
+
+- **Autopilot can no longer fake a pass**: with the default window
+  behavior, an environment-killed run (e.g. macOS display sleep
+  closing the window mid-song) exited 0 without ever reaching a
+  verdict. In autopilot mode the app now ignores window-close as an
+  exit condition and fails loudly if the window vanishes before the
+  results verdict.
+- CI Linux smoke: `libxkbcommon-x11-0` was missing at runtime
+  (winit's X11 path dlopens it).
 
 - The song library now finds charts up to two folder levels below
   `songs/` — the documented `songs/imported/<song>/` layout was

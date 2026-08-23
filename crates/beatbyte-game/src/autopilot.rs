@@ -66,6 +66,7 @@ impl Plugin for AutopilotPlugin {
                         .before(crate::gameplay::advance_sessions)
                         .run_if(in_state(crate::states::GamePhase::Playing)),
                     autopilot_results.run_if(in_state(AppState::Results)),
+                    fail_if_window_vanishes,
                 ),
             )
             .add_systems(OnEnter(AppState::Gameplay), autopilot_reset);
@@ -288,6 +289,25 @@ fn autopilot_song_select(
             Err(reason) => error!("autopilot: cannot start song: {reason}"),
         }
     }
+}
+
+/// The run is only a PASS if the autopilot itself says so. If the
+/// window disappears mid-run (display sleep, WM kill), the app must
+/// exit with an error — with the default exit condition it exited 0
+/// and a killed run was indistinguishable from a flawless one
+/// (happened: macOS display sleep at 1 AM, "Monitor removed",
+/// 66-second song "passed" in 18).
+fn fail_if_window_vanishes(
+    mut seen: Local<bool>,
+    windows: Query<(), With<bevy::window::PrimaryWindow>>,
+    mut app_exit: MessageWriter<AppExit>,
+) {
+    let present = !windows.is_empty();
+    if *seen && !present {
+        error!("autopilot: window vanished before a verdict — failing the run");
+        app_exit.write(AppExit::error());
+    }
+    *seen |= present;
 }
 
 /// Resolve which library song the autopilot plays.

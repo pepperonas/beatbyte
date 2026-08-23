@@ -21,13 +21,14 @@ enum Row {
     Particles,
     ScreenShake,
     BeatPulse,
+    BackdropMotion,
     Fullscreen,
     Theme,
     Controls,
 }
 
 impl Row {
-    const ALL: [Row; 10] = [
+    const ALL: [Row; 11] = [
         Row::MusicVolume,
         Row::SfxVolume,
         Row::ScrollSpeed,
@@ -35,6 +36,7 @@ impl Row {
         Row::Particles,
         Row::ScreenShake,
         Row::BeatPulse,
+        Row::BackdropMotion,
         Row::Fullscreen,
         Row::Theme,
         Row::Controls,
@@ -49,6 +51,7 @@ impl Row {
             Row::Particles => "PARTICLES",
             Row::ScreenShake => "SCREEN SHAKE",
             Row::BeatPulse => "BEAT PULSE",
+            Row::BackdropMotion => "STAGE MOTION",
             Row::Fullscreen => "FULLSCREEN",
             Row::Theme => "STAGE THEME",
             Row::Controls => "CONTROLS",
@@ -64,6 +67,7 @@ impl Row {
             Row::Particles => on_off(settings.particles),
             Row::ScreenShake => on_off(settings.screen_shake),
             Row::BeatPulse => on_off(settings.beat_pulse),
+            Row::BackdropMotion => on_off(settings.backdrop_motion),
             Row::Fullscreen => on_off(settings.fullscreen),
             Row::Theme => settings.theme.to_uppercase(),
             Row::Controls => "...".to_owned(),
@@ -90,6 +94,7 @@ impl Row {
             Row::Particles => settings.particles = !settings.particles,
             Row::ScreenShake => settings.screen_shake = !settings.screen_shake,
             Row::BeatPulse => settings.beat_pulse = !settings.beat_pulse,
+            Row::BackdropMotion => settings.backdrop_motion = !settings.backdrop_motion,
             Row::Fullscreen => settings.fullscreen = !settings.fullscreen,
             Row::Theme => {
                 // Cycle auto → themes → auto.

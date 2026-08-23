@@ -212,6 +212,12 @@ artifact, smoke-test it (neutral CWD!), then
   up); `grep -c` exits 1 on zero matches and breaks `&&` chains.
 - State-entry screenshots must wait out the 0.25 s transition fade
   (autopilot uses a 0.6 s settle delay).
+- **Wrap long local game runs in `caffeinate -dis`** — macOS display
+  sleep removes the monitor, the window closes, and the run dies
+  mid-song (with the old harness that even faked a PASS; autopilot now
+  fails loudly on a vanished window). For visual checks prefer
+  ECS-level probes over screenshots: an occluded window renders black
+  and md5-identical "evidence".
 - **Release CI disk**: the arm64 macOS runner ran out of space during
   `hdiutil` — `packaging/macos.sh` reclaims `target/` first (CI-only,
   gated on `CI=true`; never on a developer machine).

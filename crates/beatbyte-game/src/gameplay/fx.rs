@@ -25,6 +25,8 @@ pub struct EffectSettings {
     pub screen_shake: bool,
     /// Stage elements pulsing with the beat.
     pub beat_pulse: bool,
+    /// Backdrop animation (off = a still stage, reduced motion).
+    pub backdrop_motion: bool,
 }
 
 impl Default for EffectSettings {
@@ -33,6 +35,7 @@ impl Default for EffectSettings {
             particles: true,
             screen_shake: true,
             beat_pulse: true,
+            backdrop_motion: true,
         }
     }
 }

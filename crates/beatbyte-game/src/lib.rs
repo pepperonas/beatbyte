@@ -100,6 +100,18 @@ pub fn run() -> AppExit {
                     present_mode: PresentMode::AutoVsync,
                     ..default()
                 }),
+                // Harness integrity: in autopilot mode the ONLY valid
+                // exits are the autopilot's own verdicts. Bevy's
+                // default "all windows closed => AppExit::Success"
+                // turned an environment-killed run (macOS display
+                // sleep removed the monitor mid-song) into a fake
+                // PASS. Autopilot instead detects the vanished window
+                // and fails loudly.
+                exit_condition: if std::env::var_os("BEATBYTE_AUTOPILOT").is_some() {
+                    bevy::window::ExitCondition::DontExit
+                } else {
+                    bevy::window::ExitCondition::OnAllClosed
+                },
                 ..default()
             })
             // Pixel art: nearest-neighbor sampling keeps pixels crisp.
