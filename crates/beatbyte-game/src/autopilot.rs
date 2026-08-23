@@ -158,10 +158,15 @@ fn autopilot_menu(
 
 /// In editor-validation mode (`BEATBYTE_AUTOPILOT_EDIT=1`), drive the
 /// real editor: add a note, undo, redo, save, verify, exit.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn autopilot_edit(
     time: Res<Time>,
     mut delay: Local<f32>,
+    mut edits_done: Local<bool>,
     state: Option<ResMut<crate::editor_ui::EditorState>>,
+    music: Res<crate::audio_sys::Music>,
+    mut game_clock: ResMut<crate::audio_sys::GameClock>,
+    clicks: Res<crate::editor_ui::AuditionClicks>,
     mut app_exit: MessageWriter<AppExit>,
 ) {
     let Some(mut state) = state else {
@@ -169,6 +174,26 @@ fn autopilot_edit(
     };
     *delay += time.delta_secs();
     if *delay < 1.0 {
+        return;
+    }
+    // Phase 2: audition ran for ~4 s — the metronome overlay must
+    // have ticked (E3). Then deliver the verdict.
+    if *edits_done {
+        if *delay < 5.0 {
+            return;
+        }
+        music.0.stop();
+        game_clock.clock.stop();
+        if clicks.0 >= 3 {
+            info!("autopilot: editor validation PASSED ({} clicks)", clicks.0);
+            app_exit.write(AppExit::Success);
+        } else {
+            error!(
+                "autopilot: editor validation FAILED — audition ticked {} times (need >= 3)",
+                clicks.0
+            );
+            app_exit.write(AppExit::error());
+        }
         return;
     }
     use beatbyte_editor::EditOp;
@@ -283,8 +308,16 @@ fn autopilot_edit(
         .and_then(|chart| chart.chart_for(difficulty).map(|d| d.notes.len()))
         == after_redo;
     if ok {
-        info!("autopilot: editor validation PASSED");
-        app_exit.write(AppExit::Success);
+        // Edits verified; start the audition (preview from cursor)
+        // and let phase 2 assert the metronome overlay.
+        music.0.set_volume(0.05);
+        music.0.play_file(state.audio_path.clone());
+        music.0.seek_s(state.cursor_s);
+        game_clock
+            .clock
+            .start(time.elapsed_secs_f64(), state.cursor_s);
+        state.previewing = true;
+        *edits_done = true;
     } else {
         error!("autopilot: editor validation FAILED");
         app_exit.write(AppExit::error());

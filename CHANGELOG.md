@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Editor: metronome overlay during audition** — `P` already played
+  from the cursor; it now ticks on every beat so grid alignment is
+  audible against the music.
+
 - **Editor: range selection and bulk edits** — `V` anchors a
   selection at the cursor, `X` deletes every note in the range (all
   lanes), `H` toggles HOPO on the whole selection; each bulk edit is

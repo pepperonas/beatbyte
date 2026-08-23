@@ -114,10 +114,17 @@ pub struct EditorUiPlugin;
 
 impl Plugin for EditorUiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(AppState::Editor), spawn_editor)
+        app.init_resource::<AuditionClicks>()
+            .add_systems(OnEnter(AppState::Editor), spawn_editor)
             .add_systems(
                 Update,
-                (editor_input, follow_preview, redraw_notes, refresh_hud)
+                (
+                    editor_input,
+                    follow_preview,
+                    preview_clicks,
+                    redraw_notes,
+                    refresh_hud,
+                )
                     .chain()
                     .run_if(in_state(AppState::Editor)),
             )
@@ -563,6 +570,51 @@ fn teardown_editor(
     }
     music.0.stop();
     game_clock.clock.stop();
+}
+
+/// Ticks played by the audition metronome this session — the editor
+/// harness asserts the overlay actually fires.
+#[derive(Resource, Default)]
+pub struct AuditionClicks(pub u32);
+
+/// Metronome overlay while auditioning: one tick per beat, so grid
+/// alignment is audible against the actual music (the point of the
+/// correction pass). Runs only while previewing.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
+pub fn preview_clicks(
+    mut commands: Commands,
+    state: Option<Res<EditorState>>,
+    game_clock: Res<GameClock>,
+    time: Res<Time>,
+    sfx: Res<crate::sfx::SfxLib>,
+    settings: Res<crate::config::Settings>,
+    mut last_beat: Local<Option<i64>>,
+    mut clicks: ResMut<AuditionClicks>,
+) {
+    let Some(state) = state else {
+        return;
+    };
+    if !state.previewing {
+        *last_beat = None;
+        return;
+    }
+    let Some(position) = game_clock.song_time(&time) else {
+        return;
+    };
+    let beat = state.tempo().beats_at(position).floor() as i64;
+    if *last_beat != Some(beat) {
+        // Skip the very first sample so scrubbing does not tick
+        // retroactively for the beat the cursor sits inside.
+        if last_beat.is_some() && beat >= 0 {
+            clicks.0 += 1;
+            commands.spawn((
+                AudioPlayer::new(sfx.click.clone()),
+                bevy::audio::PlaybackSettings::DESPAWN
+                    .with_volume(bevy::audio::Volume::Linear(settings.sfx_volume)),
+            ));
+        }
+        *last_beat = Some(beat);
+    }
 }
 
 /// The notes between the anchor and the cursor (inclusive, all

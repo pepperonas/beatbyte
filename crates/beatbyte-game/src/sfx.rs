@@ -27,6 +27,8 @@ pub struct SfxLib {
     pub miss: Handle<AudioSource>,
     /// Hype activation: a rising sweep.
     pub hype: Handle<AudioSource>,
+    /// Metronome tick (editor audition overlay).
+    pub click: Handle<AudioSource>,
 }
 
 /// The sound-effects plugin.
@@ -62,6 +64,7 @@ fn build_sfx(mut commands: Commands, mut assets: ResMut<Assets<AudioSource>>) {
         ui_confirm: register(confirm()),
         miss: register(thud()),
         hype: register(riser()),
+        click: register(blip(1760.0, 0.03, 0.6)),
     });
 }
 

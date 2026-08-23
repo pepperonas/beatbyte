@@ -78,6 +78,7 @@ song in the browser and press `E`:
   (grab, navigate, place), toggle HOPOs, adjust sustains
 - select a range with `V`, then `X` deletes it or `H` toggles HOPO on
   it — bulk edits undo as a single step
+- `P` auditions from the cursor with a metronome tick on every beat
 - undo/redo covers everything
 - saving re-validates the chart; an invalid state cannot be saved
 
