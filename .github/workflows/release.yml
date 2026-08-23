@@ -106,6 +106,9 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*
+          # merge-multiple keeps the dist/ subpath from the upload glob,
+          # so this must recurse — a flat artifacts/* silently drops the
+          # DMG and AppImage (bitten once, v0.8.1 had them hand-attached).
+          files: artifacts/**
           draft: true
           generate_release_notes: true

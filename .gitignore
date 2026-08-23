@@ -13,6 +13,9 @@
 # Local scratch space (not part of the project)
 /temp/
 
+# Packaging output (DMG/.app/AppImage) — build products, never committed
+/dist/
+
 # Local user configuration / saves created during development runs
 /local/
 
