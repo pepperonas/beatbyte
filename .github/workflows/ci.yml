@@ -90,3 +90,25 @@ jobs:
         run: |
           BEATBYTE_SMOKE_TEST=1 xvfb-run -a -s "-screen 0 1280x720x24" \
             cargo run -p beatbyte
+
+  windows-smoke:
+    name: Boot smoke (Windows)
+    needs: lint-and-test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Boots the real game on a GPU-less Windows runner (wgpu falls
+      # back to the DX12 WARP software rasterizer) with no audio
+      # device — the same degradation paths the Linux smoke covers,
+      # on the platform whose artifacts we could not otherwise test.
+      - name: Boot to menu
+        shell: pwsh
+        run: |
+          $env:BEATBYTE_SMOKE_TEST = "1"
+          cargo run -p beatbyte
