@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Second built-in song: "Solder Groove"** (92 BPM) — a half-time
+  groove over Dm–Bb–F–C with syncopated bass, sparse drums and held
+  pad bars, so generated charts exercise sustains and slower reading
+  instead of note streams (Medium charts 6 sustains vs 1 in "Circuit
+  Breaker"). The library, song browser, autopilot and `beatbyte-cli
+  demo` all know both songs.
 - Autopilot can validate any library song: `BEATBYTE_AUTOPILOT_SONG`
   selects by index or case-insensitive title substring; a selector
   that matches nothing fails the run instead of silently playing the

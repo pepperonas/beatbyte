@@ -1,11 +1,17 @@
-//! "Circuit Breaker" by The Null Pointers — BeatByte's original,
-//! fully synthesized demo track.
+//! BeatByte's original, fully synthesized built-in tracks.
 //!
-//! BeatByte ships no copyrighted audio. This module renders a
-//! deterministic ~64-second chiptune-flavored rock track (kick, snare,
-//! hats, bass, lead over an Am–F–C–G progression) so the game, the CLI
-//! and new users always have something legal to play, analyze and
-//! chart. Same code, same song, every time — no randomness.
+//! BeatByte ships no copyrighted audio. This module renders two
+//! deterministic tracks by the fictional band The Null Pointers, so
+//! the game, the CLI and new users always have something legal to
+//! play, analyze and chart — same code, same songs, every time, no
+//! randomness:
+//!
+//! - **"Circuit Breaker"** (~64 s, 128 BPM): chiptune-flavored rock —
+//!   driving eighths, kick/snare/hats, bass, lead over Am–F–C–G.
+//! - **"Solder Groove"** (~70 s, 92 BPM): a half-time groove over
+//!   Dm–Bb–F–C — syncopated bass, sparse drums, long sustained lead
+//!   notes and a drum-less bridge, so generated charts exercise
+//!   sustains and slower reading instead of note streams.
 
 use crate::decode::AudioData;
 
@@ -207,6 +213,118 @@ fn lead_note(mix: &mut [f32], rate: u32, time_s: f64, semis: i32, length_s: f64)
     }
 }
 
+/// Tempo of the groove track.
+pub const GROOVE_BPM: f64 = 92.0;
+
+/// Groove song title.
+pub const GROOVE_TITLE: &str = "Solder Groove";
+
+/// Groove song artist.
+pub const GROOVE_ARTIST: &str = "The Null Pointers";
+
+/// Bars in the groove track (4/4).
+const GROOVE_BARS: usize = 26;
+
+/// Groove chord roots per bar as semitones relative to A2:
+/// Dm, Bb, F, C.
+const GROOVE_PROGRESSION: [i32; 4] = [5, 1, -4, 3];
+
+/// Syncopated bass slots per bar (sixteenths): (slot, semitone offset
+/// from the root, length in sixteenths). The inter-onset pattern is
+/// 3-1-4 / 3-1-4: the quarter-note lag stays dominant so the analyzer
+/// hears 92 BPM — a straight 3-3-2 tresillo here made the *dotted
+/// eighth* the strongest pulse and the whole track analyzed as
+/// ~122 BPM (measured), which would put the count-in at war with the
+/// music.
+const GROOVE_BASS: [(usize, i32, f64); 6] = [
+    (0, 0, 2.5),
+    (3, 0, 0.8),
+    (4, 7, 3.0),
+    (8, 0, 2.5),
+    (11, 12, 0.8),
+    (12, 7, 3.0),
+];
+
+/// Lead phrase per bar (sixteenths): (slot, semitone offset from the
+/// root into D-minor-pentatonic territory, length in sixteenths).
+/// Long values are the point — they chart as sustains.
+const GROOVE_LEAD: [(usize, i32, f64); 3] = [(0, 12, 6.0), (8, 15, 4.0), (13, 10, 3.0)];
+
+/// Render the groove track as mono audio.
+#[must_use]
+pub fn render_groove_song() -> AudioData {
+    let rate = DEMO_SAMPLE_RATE;
+    let beat_s = 60.0 / GROOVE_BPM;
+    let bar_s = beat_s * 4.0;
+    let sixteenth_s = bar_s / 16.0;
+    let duration_s = GROOVE_BARS as f64 * bar_s + 2.0;
+    let mut mix = vec![0.0f32; (duration_s * f64::from(rate)) as usize];
+
+    for bar in 0..GROOVE_BARS {
+        let bar_start = bar as f64 * bar_s;
+        let root = GROOVE_PROGRESSION[bar % GROOVE_PROGRESSION.len()];
+        // Sections: bass-only intro, drum-less sustained bridge, groove.
+        let (drums, lead_mode) = match bar {
+            0..=1 => (false, LeadMode::Off),
+            10..=13 => (false, LeadMode::Pad),
+            22..=25 => (true, LeadMode::Pad),
+            _ => (true, LeadMode::Phrase),
+        };
+
+        if drums {
+            // Half-time: kick on 1 and the and-of-3, snare on 3 only.
+            kick(&mut mix, rate, bar_start);
+            kick(&mut mix, rate, bar_start + 2.5 * beat_s);
+            snare(&mut mix, rate, bar_start + 2.0 * beat_s);
+            for beat in 0..4 {
+                hat(&mut mix, rate, bar_start + beat as f64 * beat_s);
+            }
+            hat(&mut mix, rate, bar_start + 3.75 * beat_s);
+        }
+        if matches!(lead_mode, LeadMode::Pad) {
+            // Pad bars hold ONE long bass note: the resulting onset
+            // silence (>2 s to the next note) is what the chart
+            // generator turns into sustains — with the full pattern
+            // running, no difficulty ever got a gap wide enough.
+            bass_note(&mut mix, rate, bar_start, root, bar_s * 0.9);
+        } else {
+            for (slot, offset, len) in GROOVE_BASS {
+                let t = bar_start + slot as f64 * sixteenth_s;
+                bass_note(&mut mix, rate, t, root + offset, len * sixteenth_s * 0.9);
+            }
+        }
+        match lead_mode {
+            LeadMode::Off => {}
+            LeadMode::Phrase => {
+                for (slot, offset, len) in GROOVE_LEAD {
+                    let t = bar_start + slot as f64 * sixteenth_s;
+                    lead_note(&mut mix, rate, t, root + offset, len * sixteenth_s);
+                }
+            }
+            LeadMode::Pad => {
+                // A held two-note chord for the whole bar.
+                lead_note(&mut mix, rate, bar_start, root + 12, bar_s * 0.95);
+                lead_note(&mut mix, rate, bar_start, root + 19, bar_s * 0.95);
+            }
+        }
+    }
+
+    for sample in &mut mix {
+        *sample = (*sample * 0.7).tanh();
+    }
+    AudioData::from_mono(mix, rate)
+}
+
+/// What the groove lead plays in a bar.
+enum LeadMode {
+    /// Silence.
+    Off,
+    /// The syncopated phrase with long notes.
+    Phrase,
+    /// A bar-long sustained chord.
+    Pad,
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -221,6 +339,36 @@ mod tests {
         assert!(a.duration_s() > 60.0);
         // Every sample must be finite and within range after soft clip.
         assert!(a.samples().iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+    }
+
+    #[test]
+    fn groove_song_renders_deterministically() {
+        let a = render_groove_song();
+        let b = render_groove_song();
+        assert_eq!(a, b);
+        assert!(a.duration_s() > 60.0);
+        assert!(a.samples().iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+    }
+
+    #[test]
+    fn groove_song_analyzes_to_its_own_tempo() {
+        let audio = render_groove_song();
+        let analysis = SpectralAnalyzer::default().analyze(&audio);
+        // Half-time feel makes the octave (184) a legitimate reading;
+        // either locks the grid to the same onsets.
+        let near =
+            |bpm: f64| (bpm - GROOVE_BPM).abs() < 3.0 || (bpm - GROOVE_BPM * 2.0).abs() < 6.0;
+        assert!(
+            near(analysis.bpm) || analysis.alt_bpm.is_some_and(near),
+            "groove should analyze near {GROOVE_BPM} (or its octave), got {} (alt {:?})",
+            analysis.bpm,
+            analysis.alt_bpm
+        );
+        assert!(
+            analysis.onsets.len() > 60,
+            "the groove should produce onsets, got {}",
+            analysis.onsets.len()
+        );
     }
 
     #[test]

@@ -56,9 +56,10 @@ ember backdrop.*
 - 👥 **Local multiplayer** — 2–4 players, versus and co-op, split highways
 - ⏱️ **Serious timing** — deterministic judgment engine, reconciled song
   clock, configurable hit windows, in-game latency calibration
-- 🏆 **High scores**, persistent settings, procedural SFX, an original
-  synthesized demo track — and an autopilot that must play every build
-  flawlessly before release
+- 🏆 **High scores**, persistent settings, procedural SFX, two original
+  synthesized tracks ("Circuit Breaker" at 128 BPM, "Solder Groove" at
+  92) — and an autopilot that must play every build flawlessly before
+  release
 - 🖥️ **Cross-platform** — macOS (.dmg), Windows (portable), Linux
   (AppImage); WebAssembly on the horizon
 
@@ -167,7 +168,7 @@ beatbyte-cli analyze song.ogg      # BPM, beats, onsets
 beatbyte-cli generate song.ogg     # produce a BeatByte chart
 beatbyte-cli validate chart.json   # validate a chart file
 beatbyte-cli inspect chart.json    # summarize a chart
-beatbyte-cli demo                  # render the built-in demo song + chart
+beatbyte-cli demo                  # render the built-in songs + charts
 ```
 
 ## Testing

@@ -6,7 +6,7 @@ use bevy::prelude::*;
 
 use crate::controls::MenuNav;
 
-use crate::boot::{DemoSong, LoadedSong, SongAudio};
+use crate::boot::{BuiltinSongs, LoadedSong, SongAudio};
 use crate::library::{SongEntry, SongLibrary, SongSource};
 use crate::palette;
 use crate::scores::ScoreBoard;
@@ -131,7 +131,7 @@ fn browser_input(
     library: Res<SongLibrary>,
     mut cursor: ResMut<BrowserCursor>,
     mut selected: ResMut<SelectedDifficulty>,
-    demo: Res<DemoSong>,
+    builtins: Res<BuiltinSongs>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     let nav = MenuNav::read(&keys, pads.iter());
@@ -166,7 +166,7 @@ fn browser_input(
     }
 
     if nav.confirm {
-        match prepare_song(entry, &demo) {
+        match prepare_song(entry, &builtins) {
             Ok(song) => {
                 commands.insert_resource(song);
                 next_state.set(AppState::Gameplay);
@@ -192,12 +192,16 @@ fn browser_input(
     }
 }
 
-/// Build the [`LoadedSong`] for an entry. Demo comes from cache; file
-/// songs re-read their chart (it may have changed on disk) and stream
-/// audio from the resolved path.
-pub fn prepare_song(entry: &SongEntry, demo: &DemoSong) -> Result<LoadedSong, String> {
+/// Build the [`LoadedSong`] for an entry. Built-ins come from cache;
+/// file songs re-read their chart (it may have changed on disk) and
+/// stream audio from the resolved path.
+pub fn prepare_song(entry: &SongEntry, builtins: &BuiltinSongs) -> Result<LoadedSong, String> {
     match &entry.source {
-        SongSource::BuiltinDemo => Ok(demo.0.clone()),
+        SongSource::Builtin(index) => builtins
+            .0
+            .get(*index)
+            .cloned()
+            .ok_or_else(|| format!("built-in song index {index} not loaded")),
         SongSource::File {
             chart_path,
             audio_path,

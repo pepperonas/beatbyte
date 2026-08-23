@@ -1,6 +1,6 @@
-//! The boot screen: shows the title while the demo song renders,
-//! analyzes and charts itself in the background, then scans the song
-//! library and moves to the main menu.
+//! The boot screen: shows the title while the built-in songs render,
+//! analyze and chart themselves in the background, then scans the
+//! song library and moves to the main menu.
 
 use beatbyte_audio::decode::AudioData;
 use beatbyte_audio::{Analyzer, SpectralAnalyzer};
@@ -32,14 +32,15 @@ pub enum SongAudio {
     File(std::path::PathBuf),
 }
 
-/// The cached demo song (survives across screens; selecting the demo
-/// in the browser clones from here instead of re-rendering).
+/// The cached built-in songs, in library order (survive across
+/// screens; selecting one in the browser clones from here instead of
+/// re-rendering).
 #[derive(Resource, Clone)]
-pub struct DemoSong(pub LoadedSong);
+pub struct BuiltinSongs(pub Vec<LoadedSong>);
 
-/// The in-flight background build of the demo song.
+/// The in-flight background build of the built-in songs.
 #[derive(Resource)]
-struct DemoLoadTask(Task<LoadedSong>);
+struct DemoLoadTask(Task<Vec<LoadedSong>>);
 
 /// Plugin for the boot screen shown in [`AppState::Boot`].
 pub struct BootPlugin;
@@ -92,44 +93,63 @@ fn spawn_boot_screen(mut commands: Commands, font: Res<UiFont>) {
         });
 }
 
-/// Kick off the demo song build: render → analyze → chart, off-thread.
+/// Kick off the built-in song builds: render → analyze → chart each,
+/// off-thread.
 fn start_demo_load(mut commands: Commands) {
     let task = AsyncComputeTaskPool::get().spawn(async move {
-        let audio = beatbyte_audio::demo::render_demo_song();
-        let analysis = SpectralAnalyzer::default().analyze(&audio);
-        let chart = generate_chart(
-            &analysis,
-            &GenerateMeta {
-                title: beatbyte_audio::demo::DEMO_TITLE.to_owned(),
-                artist: beatbyte_audio::demo::DEMO_ARTIST.to_owned(),
-                audio: String::new(), // played from memory, not a file
-            },
-        );
-        LoadedSong {
-            chart,
-            audio: SongAudio::Memory(audio),
-        }
+        let build = |audio: beatbyte_audio::decode::AudioData, title: &str, artist: &str| {
+            let analysis = SpectralAnalyzer::default().analyze(&audio);
+            let chart = generate_chart(
+                &analysis,
+                &GenerateMeta {
+                    title: title.to_owned(),
+                    artist: artist.to_owned(),
+                    audio: String::new(), // played from memory, not a file
+                },
+            );
+            LoadedSong {
+                chart,
+                audio: SongAudio::Memory(audio),
+            }
+        };
+        use beatbyte_audio::demo;
+        vec![
+            build(
+                demo::render_demo_song(),
+                demo::DEMO_TITLE,
+                demo::DEMO_ARTIST,
+            ),
+            build(
+                demo::render_groove_song(),
+                demo::GROOVE_TITLE,
+                demo::GROOVE_ARTIST,
+            ),
+        ]
     });
     commands.insert_resource(DemoLoadTask(task));
 }
 
-/// When the demo is ready: publish it, scan the library, enter the menu.
+/// When the built-ins are ready: publish them, scan the library,
+/// enter the menu.
 fn poll_demo_load(
     mut commands: Commands,
     mut task: ResMut<DemoLoadTask>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
-    if let Some(song) = block_on(future::poll_once(&mut task.0)) {
-        info!(
-            "demo song ready: \"{}\" — {:.1} BPM, {} difficulties",
-            song.chart.song.title,
-            song.chart.song.bpm,
-            song.chart.charts.len()
-        );
-        let library = scan_library(&song.chart);
+    if let Some(songs) = block_on(future::poll_once(&mut task.0)) {
+        for song in &songs {
+            info!(
+                "built-in song ready: \"{}\" — {:.1} BPM, {} difficulties",
+                song.chart.song.title,
+                song.chart.song.bpm,
+                song.chart.charts.len()
+            );
+        }
+        let charts: Vec<_> = songs.iter().map(|song| song.chart.clone()).collect();
+        let library = scan_library(&charts);
         info!("song library: {} entr(ies)", library.entries.len());
         commands.insert_resource(library);
-        commands.insert_resource(DemoSong(song));
+        commands.insert_resource(BuiltinSongs(songs));
         commands.remove_resource::<DemoLoadTask>();
         next_state.set(AppState::MainMenu);
     }

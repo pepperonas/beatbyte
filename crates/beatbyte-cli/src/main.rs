@@ -54,10 +54,10 @@ enum Command {
         /// Path to the chart JSON file.
         chart: PathBuf,
     },
-    /// Render the built-in demo song and generate its chart.
+    /// Render the built-in songs and generate their charts.
     Demo {
-        /// Directory to write `circuit-breaker.wav` + chart into.
-        #[arg(long, default_value = "songs/circuit-breaker")]
+        /// Directory to write the songs' WAV + chart files into.
+        #[arg(long, default_value = "songs/builtin")]
         out_dir: PathBuf,
     },
 }
@@ -78,30 +78,51 @@ fn main() -> ExitCode {
 }
 
 fn demo(out_dir: &Path) -> ExitCode {
-    use beatbyte_audio::demo::{DEMO_ARTIST, DEMO_TITLE, render_demo_song};
+    use beatbyte_audio::demo;
 
     if let Err(error) = std::fs::create_dir_all(out_dir) {
         eprintln!("cannot create `{}`: {error}", out_dir.display());
         return ExitCode::from(2);
     }
-    eprintln!("rendering \"{DEMO_TITLE}\" by {DEMO_ARTIST}…");
-    let audio = render_demo_song();
-    let wav_path = out_dir.join("circuit-breaker.wav");
-    if let Err(error) = beatbyte_audio::write_wav_mono16(&wav_path, &audio) {
-        eprintln!("cannot write `{}`: {error}", wav_path.display());
-        return ExitCode::from(2);
+    type Render = fn() -> beatbyte_audio::decode::AudioData;
+    let songs: [(Render, &str, &str, &str); 2] = [
+        (
+            demo::render_demo_song,
+            demo::DEMO_TITLE,
+            demo::DEMO_ARTIST,
+            "circuit-breaker",
+        ),
+        (
+            demo::render_groove_song,
+            demo::GROOVE_TITLE,
+            demo::GROOVE_ARTIST,
+            "solder-groove",
+        ),
+    ];
+    for (render, title, artist, stem) in songs {
+        eprintln!("rendering \"{title}\" by {artist}…");
+        let audio = render();
+        let wav_path = out_dir.join(format!("{stem}.wav"));
+        if let Err(error) = beatbyte_audio::write_wav_mono16(&wav_path, &audio) {
+            eprintln!("cannot write `{}`: {error}", wav_path.display());
+            return ExitCode::from(2);
+        }
+        println!(
+            "Wrote `{}` ({:.0} s)",
+            wav_path.display(),
+            audio.duration_s()
+        );
+        let code = generate(
+            &wav_path,
+            Some(title.to_owned()),
+            artist,
+            Some(out_dir.join(format!("{stem}.chart.json"))),
+        );
+        if code != ExitCode::SUCCESS {
+            return code;
+        }
     }
-    println!(
-        "Wrote `{}` ({:.0} s)",
-        wav_path.display(),
-        audio.duration_s()
-    );
-    generate(
-        &wav_path,
-        Some(DEMO_TITLE.to_owned()),
-        DEMO_ARTIST,
-        Some(out_dir.join("circuit-breaker.chart.json")),
-    )
+    ExitCode::SUCCESS
 }
 
 fn analyze(song: &Path) -> ExitCode {

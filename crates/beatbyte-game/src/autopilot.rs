@@ -220,7 +220,7 @@ fn autopilot_song_select(
     time: Res<Time>,
     mut delay: Local<f32>,
     library: Res<crate::library::SongLibrary>,
-    demo: Res<crate::boot::DemoSong>,
+    builtins: Res<crate::boot::BuiltinSongs>,
     mut roster: ResMut<crate::multiplayer::PlayerRoster>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
@@ -276,7 +276,7 @@ fn autopilot_song_select(
             .unwrap_or(1)
             .clamp(1, crate::multiplayer::MAX_PLAYERS);
         roster.devices = vec![crate::multiplayer::DeviceId::Keyboard; players];
-        match crate::song_select::prepare_song(entry, &demo) {
+        match crate::song_select::prepare_song(entry, &builtins) {
             Ok(song) => {
                 info!(
                     "autopilot: starting \"{}\" with {players} player(s)",
@@ -477,7 +477,7 @@ mod tests {
             bpm: 120.0,
             duration_s: None,
             difficulties: vec![],
-            source: SongSource::BuiltinDemo,
+            source: SongSource::Builtin(0),
         }
     }
 
