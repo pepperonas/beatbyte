@@ -6,7 +6,8 @@
 //! beat grid; audio preview plays from the cursor.
 //!
 //! Keys: UP/DOWN step the grid (PGUP/PGDN by bar), LEFT/RIGHT pick
-//! the lane, SPACE toggles a note, H toggles HOPO, TAB cycles the
+//! the lane, SPACE toggles a note, M moves one (grab, navigate,
+//! place — ESC cancels), H toggles HOPO, TAB cycles the
 //! grid division, P previews, U/R undo/redo, S saves (validated),
 //! ESC leaves (twice if unsaved).
 
@@ -42,6 +43,8 @@ pub struct EditorState {
     pub exit_armed: f32,
     /// A transient status line ("saved", validation errors, …).
     pub status: String,
+    /// A note picked up with M, waiting to be placed (time, lane).
+    pub grabbed: Option<(f64, u8)>,
     /// The view needs a rebuild.
     pub dirty_view: bool,
 }
@@ -90,6 +93,7 @@ pub fn open_editor(
         previewing: false,
         exit_armed: 0.0,
         status: String::new(),
+        grabbed: None,
         dirty_view: true,
     });
     Ok(())
@@ -275,6 +279,44 @@ fn editor_input(
         };
         state.dirty_view = true;
     }
+    // M: grab the note under the cursor, or place a grabbed one.
+    if keys.just_pressed(KeyCode::KeyM) {
+        let time_s = state.snap(state.cursor_s);
+        let lane = state.lane.index() as u8;
+        let difficulty = state.session.difficulty;
+        if let Some((from_time, from_lane)) = state.grabbed {
+            let op = EditOp::MoveNote {
+                difficulty,
+                from_time,
+                from_lane,
+                to_time: time_s,
+                to_lane: lane,
+            };
+            state.status = match state.session.edit(op) {
+                Ok(()) => {
+                    state.grabbed = None;
+                    "note moved".to_owned()
+                }
+                Err(error) => format!("cannot place: {error}"),
+            };
+            state.dirty_view = true;
+        } else {
+            let existing = state.session.chart().chart_for(difficulty).and_then(|def| {
+                def.notes.iter().copied().find(|note| {
+                    note.lane == lane
+                        && (note.time - time_s).abs() <= beatbyte_editor::EDIT_EPSILON_S
+                })
+            });
+            state.status = match existing {
+                Some(note) => {
+                    state.grabbed = Some((note.time, note.lane));
+                    "moving - M places, ESC cancels".to_owned()
+                }
+                None => "no note here to move".to_owned(),
+            };
+        }
+    }
+
     if keys.just_pressed(KeyCode::KeyH) {
         let op = EditOp::ToggleHopo {
             difficulty: state.session.difficulty,
@@ -337,9 +379,11 @@ fn editor_input(
         }
     }
 
-    // Exit (twice if dirty).
+    // Exit (twice if dirty). ESC first cancels a pending move.
     if keys.just_pressed(KeyCode::Escape) {
-        if state.session.dirty() && state.exit_armed <= 0.0 {
+        if state.grabbed.take().is_some() {
+            state.status = "move cancelled".to_owned();
+        } else if state.session.dirty() && state.exit_armed <= 0.0 {
             state.exit_armed = 2.0;
             state.status = "unsaved changes! ESC again to discard".to_owned();
         } else {
@@ -434,7 +478,7 @@ fn refresh_hud(state: Option<Res<EditorState>>, mut hud: Query<&mut Text2d, With
         .chart_for(state.session.difficulty)
         .map_or(0, |def| def.notes.len());
     let line = format!(
-        "EDIT  {} [{}]\nbar {bar} beat {beat_in_bar:.2}  grid 1/{}\nnotes {notes}  undo {}  {}{}\n\nUP/DOWN step  PGUP/PGDN bar\nLEFT/RIGHT lane  SPACE note\nH hopo  TAB grid  P preview\nU undo  R redo  S save  ESC exit\n\n{}",
+        "EDIT  {} [{}]\nbar {bar} beat {beat_in_bar:.2}  grid 1/{}\nnotes {notes}  undo {}  {}{}\n\nUP/DOWN step  PGUP/PGDN bar\nLEFT/RIGHT lane  SPACE note\nH hopo  M move  TAB grid  P preview\nU undo  R redo  S save  ESC exit\n\n{}",
         state.session.chart().song.title,
         state.session.difficulty,
         state.division,

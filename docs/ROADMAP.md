@@ -157,7 +157,7 @@ chart format v1 can be frozen as a promise.
 
 ### E — Editor v2 (quality-of-life)
 
-- [ ] E1 **Move/nudge op** (time and lane), invertible like the rest. *Verify: inverse round-trip test; editor autopilot extended.*
+- [x] E1 **Move/nudge op.** `EditOp::MoveNote` (keeps len/hopo, sorted invariant, Occupied unless the destination is the note itself) + M grab/place UI with ESC cancel. *Verified: 4 op tests incl. exact-chart inverse round-trip; editor autopilot extended with move+undo+redo position checks — which exposed that the harness had been SAVING its probe note into the chart (now sweeps its slots first; passes twice in a row).*
 - [ ] E2 **Selection + bulk ops** (delete range, toggle HOPO on selection) composed of primitive ops so undo stays exact. *Verify: undo restores byte-identical chart; tests.*
 - [ ] E3 **Audition playback in editor** (play from cursor with click overlay). dep: E1 not required. *Verify: manual; no clock regressions (autopilot).*
 

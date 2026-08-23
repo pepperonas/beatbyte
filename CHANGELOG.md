@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Editor: move a note** with `M` (grab, navigate, place; `ESC`
+  cancels) — an invertible `MoveNote` op that keeps sustain and HOPO
+  flags, so undo/redo stays exact.
+
 - **Per-lane gem shapes** (square, circle, diamond, triangle, cross)
   on notes and receptors — color is never the only lane signal
   (colorblind accessibility, always on). Generated pixel-art masks,

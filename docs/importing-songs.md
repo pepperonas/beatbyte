@@ -74,8 +74,8 @@ Generated charts are **playable, not perfect** — the intended workflow
 is `generated chart → human correction → final chart`. Highlight the
 song in the browser and press `E`:
 
-- move through the beat grid, add/remove notes, toggle HOPOs, adjust
-  sustains
+- move through the beat grid, add/remove notes, move a note with `M`
+  (grab, navigate, place), toggle HOPOs, adjust sustains
 - undo/redo covers everything
 - saving re-validates the chart; an invalid state cannot be saved
 

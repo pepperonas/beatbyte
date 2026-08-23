@@ -38,6 +38,20 @@ pub enum EditOp {
         /// The note's lane.
         lane: u8,
     },
+    /// Move a note to a new time and/or lane (keeps its sustain and
+    /// HOPO flag).
+    MoveNote {
+        /// The difficulty chart to edit.
+        difficulty: Difficulty,
+        /// The note's current time.
+        from_time: f64,
+        /// The note's current lane.
+        from_lane: u8,
+        /// The destination time.
+        to_time: f64,
+        /// The destination lane.
+        to_lane: u8,
+    },
     /// Change a note's sustain length (stores the old one for undo).
     SetLen {
         /// The difficulty chart to edit.
@@ -90,6 +104,7 @@ pub fn apply(chart: &mut ChartFile, op: EditOp) -> Result<EditOp, EditError> {
         EditOp::AddNote { difficulty, .. }
         | EditOp::RemoveNote { difficulty, .. }
         | EditOp::ToggleHopo { difficulty, .. }
+        | EditOp::MoveNote { difficulty, .. }
         | EditOp::SetLen { difficulty, .. } => difficulty,
     };
     let def = chart
@@ -127,6 +142,40 @@ pub fn apply(chart: &mut ChartFile, op: EditOp) -> Result<EditOp, EditError> {
                 find_note(&def.notes, time, lane).ok_or(EditError::NoteNotFound { time, lane })?;
             def.notes[index].hopo = !def.notes[index].hopo;
             Ok(op)
+        }
+        EditOp::MoveNote {
+            from_time,
+            from_lane,
+            to_time,
+            to_lane,
+            ..
+        } => {
+            let index =
+                find_note(&def.notes, from_time, from_lane).ok_or(EditError::NoteNotFound {
+                    time: from_time,
+                    lane: from_lane,
+                })?;
+            // The destination must be free — unless it is the note
+            // itself (a nudge within the epsilon is a no-op, not a
+            // collision).
+            if let Some(occupied) = find_note(&def.notes, to_time, to_lane)
+                && occupied != index
+            {
+                return Err(EditError::Occupied {
+                    time: to_time,
+                    lane: to_lane,
+                });
+            }
+            def.notes[index].time = to_time;
+            def.notes[index].lane = to_lane;
+            def.notes.sort_by(|a, b| a.time.total_cmp(&b.time));
+            Ok(EditOp::MoveNote {
+                difficulty,
+                from_time: to_time,
+                from_lane: to_lane,
+                to_time: from_time,
+                to_lane: from_lane,
+            })
         }
         EditOp::SetLen {
             time, lane, len, ..
@@ -275,6 +324,98 @@ mod tests {
         assert!((c.charts[0].notes[0].len - 1.5).abs() < 1e-9);
         apply(&mut c, inverse).unwrap();
         assert!((c.charts[0].notes[0].len - 0.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn move_then_inverse_restores_exactly() {
+        let mut c = chart();
+        // Give the note a sustain and HOPO so the move must carry them.
+        c.charts[0].notes[0].len = 0.8;
+        c.charts[0].notes[0].hopo = true;
+        let before = c.clone();
+        let inverse = apply(
+            &mut c,
+            EditOp::MoveNote {
+                difficulty: Difficulty::Expert,
+                from_time: 1.0,
+                from_lane: 2,
+                to_time: 2.5,
+                to_lane: 4,
+            },
+        )
+        .unwrap();
+        assert!((c.charts[0].notes[0].time - 2.5).abs() < 1e-9);
+        assert_eq!(c.charts[0].notes[0].lane, 4);
+        assert!((c.charts[0].notes[0].len - 0.8).abs() < 1e-9);
+        assert!(c.charts[0].notes[0].hopo);
+        apply(&mut c, inverse).unwrap();
+        assert_eq!(c, before, "inverse must restore the exact chart");
+    }
+
+    #[test]
+    fn move_keeps_notes_sorted() {
+        let mut c = chart();
+        apply(
+            &mut c,
+            EditOp::AddNote {
+                difficulty: Difficulty::Expert,
+                note: note(2.0, 0),
+            },
+        )
+        .unwrap();
+        apply(
+            &mut c,
+            EditOp::MoveNote {
+                difficulty: Difficulty::Expert,
+                from_time: 2.0,
+                from_lane: 0,
+                to_time: 0.5,
+                to_lane: 0,
+            },
+        )
+        .unwrap();
+        let times: Vec<f64> = c.charts[0].notes.iter().map(|n| n.time).collect();
+        assert_eq!(times, vec![0.5, 1.0]);
+    }
+
+    #[test]
+    fn move_onto_another_note_fails() {
+        let mut c = chart();
+        apply(
+            &mut c,
+            EditOp::AddNote {
+                difficulty: Difficulty::Expert,
+                note: note(2.0, 2),
+            },
+        )
+        .unwrap();
+        let result = apply(
+            &mut c,
+            EditOp::MoveNote {
+                difficulty: Difficulty::Expert,
+                from_time: 2.0,
+                from_lane: 2,
+                to_time: 1.0005,
+                to_lane: 2,
+            },
+        );
+        assert!(matches!(result, Err(EditError::Occupied { .. })));
+    }
+
+    #[test]
+    fn move_of_missing_note_fails() {
+        let mut c = chart();
+        let result = apply(
+            &mut c,
+            EditOp::MoveNote {
+                difficulty: Difficulty::Expert,
+                from_time: 9.0,
+                from_lane: 0,
+                to_time: 3.0,
+                to_lane: 0,
+            },
+        );
+        assert!(matches!(result, Err(EditError::NoteNotFound { .. })));
     }
 
     #[test]

@@ -180,6 +180,23 @@ fn autopilot_edit(
         hopo: false,
     };
     let mut ok = true;
+    // Idempotence: an earlier cycle SAVED its probe note into this
+    // chart (found the hard way — the next run's add collided).
+    // Sweep both probe slots before starting.
+    for (time, lane) in [(0.123, 0u8), (0.321, 3u8)] {
+        let leftover = state.session.chart().chart_for(difficulty).and_then(|d| {
+            d.notes
+                .iter()
+                .copied()
+                .find(|n| n.lane == lane && (n.time - time).abs() < 1e-6)
+        });
+        if let Some(note) = leftover {
+            ok &= state
+                .session
+                .edit(EditOp::RemoveNote { difficulty, note })
+                .is_ok();
+        }
+    }
     ok &= state
         .session
         .edit(EditOp::AddNote { difficulty, note })
@@ -197,6 +214,36 @@ fn autopilot_edit(
         .chart_for(difficulty)
         .map(|d| d.notes.len());
     ok &= after_add == after_redo;
+    // Move the added note, then undo/redo the move — position must
+    // track exactly (E1: invertible MoveNote through the real session).
+    let note_at = |state: &crate::editor_ui::EditorState, time: f64, lane: u8| {
+        state
+            .session
+            .chart()
+            .chart_for(difficulty)
+            .is_some_and(|d| {
+                d.notes
+                    .iter()
+                    .any(|n| n.lane == lane && (n.time - time).abs() < 1e-9)
+            })
+    };
+    ok &= state
+        .session
+        .edit(EditOp::MoveNote {
+            difficulty,
+            from_time: 0.123,
+            from_lane: 0,
+            to_time: 0.321,
+            to_lane: 3,
+        })
+        .is_ok();
+    ok &= note_at(&state, 0.321, 3) && !note_at(&state, 0.123, 0);
+    ok &= state.session.undo();
+    ok &= note_at(&state, 0.123, 0) && !note_at(&state, 0.321, 3);
+    ok &= state.session.redo();
+    ok &= note_at(&state, 0.321, 3);
+    // Put it back so the on-disk count/undo checks stay meaningful.
+    ok &= state.session.undo();
     ok &= state.session.is_valid();
     ok &= beatbyte_chart::save_chart_file(&state.chart_path, state.session.chart()).is_ok();
     state.session.mark_saved();
