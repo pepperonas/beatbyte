@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the workspace `target/` tree.
 - Autopilot screenshots taken on state entry no longer capture the
   transition fade (short settle delay before each capture).
+- Release CI: the arm64 macOS runner ran out of disk while creating
+  the DMG — the packaging script now reclaims the build tree (CI only)
+  before `hdiutil` runs.
 
 ### Changed
 

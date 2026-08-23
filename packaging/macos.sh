@@ -64,6 +64,15 @@ PLIST
 # flow instead of refusing outright.
 codesign --force --deep -s - "$APP"
 
+# CI runners (especially arm64 macOS) run out of disk during hdiutil —
+# the build tree is no longer needed once the binary is inside the
+# .app, so reclaim it there. Never touch a developer's target/.
+if [ "${CI:-}" = "true" ]; then
+  df -h / || true
+  rm -rf "$ROOT/target"
+  df -h / || true
+fi
+
 DMG="$OUT/BeatByte-${VERSION}-${TARGET}.dmg"
 rm -f "$DMG"
 hdiutil create -volname "BeatByte" -srcfolder "$APP" -ov -format UDZO "$DMG" >/dev/null
