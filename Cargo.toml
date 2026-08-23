@@ -11,7 +11,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 license = "MIT"
 authors = ["Martin Pfeffer"]
@@ -23,12 +23,12 @@ categories = ["games"]
 
 [workspace.dependencies]
 # Internal crates
-beatbyte-core = { path = "crates/beatbyte-core", version = "0.2.0" }
-beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.2.0" }
-beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.2.0" }
-beatbyte-game = { path = "crates/beatbyte-game", version = "0.2.0" }
-beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.2.0" }
-beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.2.0" }
+beatbyte-core = { path = "crates/beatbyte-core", version = "0.3.0" }
+beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.3.0" }
+beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.3.0" }
+beatbyte-game = { path = "crates/beatbyte-game", version = "0.3.0" }
+beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.3.0" }
+beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.3.0" }
 
 # Engine ("wav" lets bevy_audio play our procedurally generated SFX)
 bevy = { version = "0.19", features = ["wav"] }
@@ -48,6 +48,10 @@ thiserror = "2"
 
 # CLI
 clap = { version = "4", features = ["derive"] }
+
+# Platform config/data directories (settings, scores)
+dirs = "6"
+
 
 [workspace.lints.rust]
 unsafe_code = "warn"

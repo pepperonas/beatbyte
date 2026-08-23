@@ -20,9 +20,9 @@ use beatbyte_core::{PlayerPerformance, ScoreConfig, SessionEvent, TimingWindows,
 use bevy::prelude::*;
 
 use crate::audio_sys::{GameClock, Music};
-use crate::boot::LoadedSong;
-use crate::menu::SelectedDifficulty;
+use crate::boot::{LoadedSong, SongAudio};
 use crate::palette;
+use crate::song_select::SelectedDifficulty;
 use crate::states::{AppState, GamePhase};
 
 /// Horizontal center-to-center lane spacing in pixels.
@@ -31,9 +31,6 @@ pub const LANE_STEP: f32 = 76.0;
 /// Y position of the receptor row (notes are judged here).
 pub const RECEPTOR_Y: f32 = -240.0;
 
-/// Pixels a note travels per second (base scroll speed).
-pub const SCROLL_SPEED: f32 = 420.0;
-
 /// Notes spawn when they are this many seconds away.
 pub const SPAWN_LOOKAHEAD_S: f64 = 2.6;
 
@@ -41,12 +38,6 @@ pub const SPAWN_LOOKAHEAD_S: f64 = 2.6;
 #[must_use]
 pub fn lane_x(lane: beatbyte_core::Lane) -> f32 {
     (lane.index() as f32 - 2.0) * LANE_STEP
-}
-
-/// The y position of a note event's head at the given song time.
-#[must_use]
-pub fn note_y(event_time_s: f64, song_time_s: f64) -> f32 {
-    RECEPTOR_Y + ((event_time_s - song_time_s) as f32) * SCROLL_SPEED
 }
 
 /// One player's live gameplay state. A component, not a resource:
@@ -62,7 +53,7 @@ pub struct PlayerSession {
 
 /// A session event broadcast to every presentation consumer (note
 /// visuals, particles, sounds, popups) — written once per frame by
-/// [`drain_feedback`], read via `MessageReader<SessionFeedback>`.
+/// the feedback drain system, read via `MessageReader<SessionFeedback>`.
 #[derive(Message, Debug, Clone, Copy)]
 pub struct SessionFeedback {
     /// The player entity the event belongs to.
@@ -93,6 +84,8 @@ pub struct LastResults {
     pub performance: PlayerPerformance,
     /// The song title played.
     pub title: String,
+    /// The artist.
+    pub artist: String,
     /// The difficulty played.
     pub difficulty: beatbyte_core::Difficulty,
 }
@@ -174,7 +167,10 @@ fn setup_gameplay(
         },
     ));
 
-    music.0.play_buffer(song.audio.clone());
+    match &song.audio {
+        SongAudio::Memory(audio) => music.0.play_buffer(audio.clone()),
+        SongAudio::File(path) => music.0.play_file(path.clone()),
+    }
     game_clock.clock.start(time.elapsed_secs_f64(), 0.0);
 }
 
@@ -217,6 +213,7 @@ fn check_song_end(
             commands.insert_resource(LastResults {
                 performance: player.session.performance().clone(),
                 title: song.chart.song.title.clone(),
+                artist: song.chart.song.artist.clone(),
                 difficulty: selected.0,
             });
         }
@@ -261,7 +258,7 @@ fn resume_audio(music: Res<Music>, mut game_clock: ResMut<GameClock>, time: Res<
 #[derive(Component)]
 struct PauseOverlay;
 
-fn spawn_pause_overlay(mut commands: Commands) {
+fn spawn_pause_overlay(mut commands: Commands, font: Res<crate::ui::UiFont>) {
     commands
         .spawn((
             PauseOverlay,
@@ -281,18 +278,12 @@ fn spawn_pause_overlay(mut commands: Commands) {
         .with_children(|parent| {
             parent.spawn((
                 Text::new("PAUSED"),
-                TextFont {
-                    font_size: FontSize::Px(64.0),
-                    ..default()
-                },
+                font.text(40.0),
                 TextColor(palette::BRAND),
             ));
             parent.spawn((
                 Text::new("ESC/ENTER resume   |   Q quit"),
-                TextFont {
-                    font_size: FontSize::Px(22.0),
-                    ..default()
-                },
+                font.text(13.0),
                 TextColor(palette::TEXT_DIM),
             ));
         });

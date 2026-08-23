@@ -116,8 +116,14 @@ Architecture decisions are documented as ADRs in
 |--------|----------|
 | Frets 1–5 | `A` `S` `D` `F` `G` |
 | Strum | `↑` / `↓` |
-| Special | `Space` |
+| Hype (special) | `Space` |
 | Pause | `Esc` |
+| Menus | arrows + `Enter` / `Esc` |
+
+Settings (volumes, scroll speed, effect toggles, fullscreen) and the
+latency calibration live in-game and persist between sessions. Put
+charts into `songs/` (e.g. from `beatbyte-cli generate`) and they appear
+in the song browser.
 
 ## Chart Format & Song Importing
 

@@ -8,10 +8,11 @@ use beatbyte_core::{Lane, NoteKind, SessionEvent};
 use bevy::prelude::*;
 
 use super::{
-    GameplayScreen, LANE_STEP, PlayerSession, RECEPTOR_Y, SCROLL_SPEED, SPAWN_LOOKAHEAD_S,
-    SessionFeedback, lane_x, note_y,
+    GameplayScreen, LANE_STEP, PlayerSession, RECEPTOR_Y, SPAWN_LOOKAHEAD_S, SessionFeedback,
+    lane_x,
 };
 use crate::audio_sys::GameClock;
+use crate::config::Settings;
 use crate::palette;
 
 /// One visible note head (chords have one per lane).
@@ -79,6 +80,7 @@ pub fn spawn_due_notes(
     players: Query<&PlayerSession>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
+    settings: Res<Settings>,
 ) {
     let Ok(mut cursor) = cursor.single_mut() else {
         return;
@@ -92,7 +94,7 @@ pub fn spawn_due_notes(
         if event.time_s > now + SPAWN_LOOKAHEAD_S {
             break;
         }
-        spawn_event_sprites(&mut commands, cursor.0, &event);
+        spawn_event_sprites(&mut commands, cursor.0, &event, settings.scroll_speed);
         cursor.0 += 1;
     }
 }
@@ -101,6 +103,7 @@ fn spawn_event_sprites(
     commands: &mut Commands,
     event_index: usize,
     event: &beatbyte_core::NoteEvent,
+    scroll_speed: f32,
 ) {
     for lane in event.lanes.iter() {
         let color = palette::lane_color(lane);
@@ -118,7 +121,7 @@ fn spawn_event_sprites(
 
         // Sustain tail: extends upward (later in time).
         if event.is_sustain() {
-            let tail_height = (event.sustain_s as f32) * SCROLL_SPEED;
+            let tail_height = (event.sustain_s as f32) * scroll_speed;
             commands.entity(entity).with_children(|parent| {
                 parent.spawn((
                     Sprite::from_color(color.with_alpha(0.35), Vec2::new(12.0, tail_height)),
@@ -145,6 +148,7 @@ pub fn move_notes(
     players: Query<&PlayerSession>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
+    settings: Res<Settings>,
 ) {
     let (Some(now), Ok(player)) = (game_clock.song_time(&time), players.single()) else {
         return;
@@ -154,7 +158,8 @@ pub fn move_notes(
         let Some(event) = events.get(note.event_index) else {
             continue;
         };
-        transform.translation.y = note_y(event.time_s, now);
+        transform.translation.y =
+            RECEPTOR_Y + ((event.time_s - now) as f32) * settings.scroll_speed;
         // Off the bottom (well past miss territory): clean up.
         if transform.translation.y < RECEPTOR_Y - 260.0 {
             commands.entity(entity).despawn();

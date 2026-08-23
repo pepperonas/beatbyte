@@ -12,6 +12,7 @@ use beatbyte_core::SessionEvent;
 use bevy::audio::Volume;
 use bevy::prelude::*;
 
+use crate::config::Settings;
 use crate::gameplay::SessionFeedback;
 use crate::states::AppState;
 
@@ -28,9 +29,6 @@ pub struct SfxLib {
     pub hype: Handle<AudioSource>,
 }
 
-/// SFX volume (music balance lives on the music thread).
-const SFX_VOLUME: f32 = 0.45;
-
 /// The sound-effects plugin.
 pub struct SfxPlugin;
 
@@ -39,7 +37,11 @@ impl Plugin for SfxPlugin {
         app.add_systems(Startup, build_sfx).add_systems(
             Update,
             (
-                menu_sounds.run_if(in_state(AppState::MainMenu)),
+                menu_sounds.run_if(
+                    in_state(AppState::MainMenu)
+                        .or_else(in_state(AppState::SongSelect))
+                        .or_else(in_state(AppState::Settings)),
+                ),
                 gameplay_sounds.run_if(in_state(AppState::Gameplay)),
                 results_sound.run_if(in_state(AppState::Results)),
             ),
@@ -138,21 +140,34 @@ fn mix(target: &mut [f32], source: &AudioData, offset: usize) {
     }
 }
 
-/// Play a one-shot effect.
-fn play(commands: &mut Commands, handle: &Handle<AudioSource>) {
+/// Play a one-shot effect at the configured volume.
+fn play(commands: &mut Commands, handle: &Handle<AudioSource>, volume: f32) {
     commands.spawn((
         AudioPlayer::new(handle.clone()),
-        PlaybackSettings::DESPAWN.with_volume(Volume::Linear(SFX_VOLUME)),
+        PlaybackSettings::DESPAWN.with_volume(Volume::Linear(volume)),
     ));
 }
 
-/// Menu: cursor movement and confirm.
-fn menu_sounds(mut commands: Commands, keys: Res<ButtonInput<KeyCode>>, sfx: Res<SfxLib>) {
-    if keys.just_pressed(KeyCode::ArrowLeft) || keys.just_pressed(KeyCode::ArrowRight) {
-        play(&mut commands, &sfx.ui_move);
+/// Menu-like screens: cursor movement and confirm.
+fn menu_sounds(
+    mut commands: Commands,
+    keys: Res<ButtonInput<KeyCode>>,
+    sfx: Res<SfxLib>,
+    settings: Res<Settings>,
+) {
+    let moved = [
+        KeyCode::ArrowLeft,
+        KeyCode::ArrowRight,
+        KeyCode::ArrowUp,
+        KeyCode::ArrowDown,
+    ]
+    .iter()
+    .any(|key| keys.just_pressed(*key));
+    if moved {
+        play(&mut commands, &sfx.ui_move, settings.sfx_volume);
     }
     if keys.just_pressed(KeyCode::Enter) {
-        play(&mut commands, &sfx.ui_confirm);
+        play(&mut commands, &sfx.ui_confirm, settings.sfx_volume);
     }
 }
 
@@ -162,6 +177,7 @@ fn gameplay_sounds(
     mut commands: Commands,
     mut feedback: MessageReader<SessionFeedback>,
     sfx: Res<SfxLib>,
+    settings: Res<Settings>,
     time: Res<Time>,
     mut last_miss: Local<f32>,
 ) {
@@ -173,18 +189,25 @@ fn gameplay_sounds(
                 let now = time.elapsed_secs();
                 if now - *last_miss > 0.12 {
                     *last_miss = now;
-                    play(&mut commands, &sfx.miss);
+                    play(&mut commands, &sfx.miss, settings.sfx_volume);
                 }
             }
-            SessionEvent::HypeActivated => play(&mut commands, &sfx.hype),
+            SessionEvent::HypeActivated => {
+                play(&mut commands, &sfx.hype, settings.sfx_volume);
+            }
             _ => {}
         }
     }
 }
 
 /// Results: confirm chirp on leaving.
-fn results_sound(mut commands: Commands, keys: Res<ButtonInput<KeyCode>>, sfx: Res<SfxLib>) {
+fn results_sound(
+    mut commands: Commands,
+    keys: Res<ButtonInput<KeyCode>>,
+    sfx: Res<SfxLib>,
+    settings: Res<Settings>,
+) {
     if keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::Escape) {
-        play(&mut commands, &sfx.ui_confirm);
+        play(&mut commands, &sfx.ui_confirm, settings.sfx_volume);
     }
 }

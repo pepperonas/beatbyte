@@ -4,6 +4,7 @@ use bevy::prelude::*;
 
 use super::{GameplayScreen, PlayerSession};
 use crate::palette;
+use crate::ui::UiFont;
 
 /// Marker components for the HUD's dynamic text fields.
 #[derive(Component)]
@@ -25,7 +26,7 @@ pub struct HypeBar;
 pub struct HypeHint;
 
 /// Spawn the HUD.
-pub fn spawn_hud(mut commands: Commands) {
+pub fn spawn_hud(mut commands: Commands, font: Res<UiFont>) {
     commands
         .spawn((
             GameplayScreen,
@@ -42,19 +43,13 @@ pub fn spawn_hud(mut commands: Commands) {
             parent.spawn((
                 ScoreText,
                 Text::new("0"),
-                TextFont {
-                    font_size: FontSize::Px(44.0),
-                    ..default()
-                },
+                font.text(26.0),
                 TextColor(palette::BRAND),
             ));
             parent.spawn((
                 AccuracyText,
                 Text::new("100.0%"),
-                TextFont {
-                    font_size: FontSize::Px(20.0),
-                    ..default()
-                },
+                font.text(12.0),
                 TextColor(palette::TEXT_DIM),
             ));
         });
@@ -76,19 +71,13 @@ pub fn spawn_hud(mut commands: Commands) {
             parent.spawn((
                 MultiplierText,
                 Text::new("x1"),
-                TextFont {
-                    font_size: FontSize::Px(38.0),
-                    ..default()
-                },
+                font.text(22.0),
                 TextColor(palette::TEXT),
             ));
             parent.spawn((
                 ComboText,
                 Text::new(""),
-                TextFont {
-                    font_size: FontSize::Px(22.0),
-                    ..default()
-                },
+                font.text(12.0),
                 TextColor(palette::TEXT_DIM),
             ));
             // Hype meter: outline + fill.
@@ -117,10 +106,7 @@ pub fn spawn_hud(mut commands: Commands) {
             parent.spawn((
                 HypeHint,
                 Text::new(""),
-                TextFont {
-                    font_size: FontSize::Px(15.0),
-                    ..default()
-                },
+                font.text(10.0),
                 TextColor(palette::HYPE),
             ));
         });

@@ -10,6 +10,7 @@ use bevy::prelude::*;
 
 use super::PlayerSession;
 use crate::audio_sys::GameClock;
+use crate::config::Settings;
 
 /// The fixed Milestone-5 fret mapping.
 pub const FRET_KEYS: [(KeyCode, Lane); 5] = [
@@ -30,10 +31,14 @@ pub fn gameplay_input(
     mut players: Query<&mut PlayerSession>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
+    settings: Res<Settings>,
 ) {
-    let Some(now) = game_clock.song_time(&time) else {
+    let Some(raw_now) = game_clock.song_time(&time) else {
         return;
     };
+    // Calibration: a positive offset means the player's inputs arrive
+    // late; subtracting re-aligns them with the song timeline.
+    let now = raw_now - settings.latency_offset_s();
     let Ok(mut player) = players.single_mut() else {
         return;
     };

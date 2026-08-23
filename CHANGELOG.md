@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-23
+
+**The UI milestone** (Milestone 7): BeatByte grows its screens — and
+its voice.
+
+### Added
+
+- **Pixel font identity**: Press Start 2P (OFL 1.1, license bundled)
+  across every screen — boot, menus, HUD, popups, results.
+- **Main menu**: Play / Settings / Calibration / Quit with keyboard
+  navigation.
+- **Song browser**: the bundled demo plus every valid chart found in
+  `songs/` (invalid charts are skipped with a log line, never a
+  crash). Difficulty stepping is constrained to what each chart
+  offers; the details line shows BPM, duration and your best score.
+  File songs stream from disk; the demo plays from memory.
+- **Settings screen**: music/SFX volume, scroll speed, latency
+  offset, particles/shake/beat-pulse toggles, fullscreen — changes
+  apply immediately and persist to the platform config directory.
+  Corrupt settings files fall back to defaults instead of crashing.
+- **Latency calibration**: tap along with a click track, the median
+  offset (8+ taps) becomes your setting. Gameplay subtracts the
+  offset from input timestamps (ADR-0004's calibration model).
+- **High scores**: best score/accuracy/streak per song + difficulty,
+  saved to the platform data directory; the results screen celebrates
+  new records, the browser shows your best.
+- Scroll speed and latency offset now actually drive gameplay
+  rendering and input timestamping.
+
+### Fixed
+
+- A startup ordering crash (system reading a resource before its
+  startup command applied) — caught by the autopilot harness; shared
+  UI resources are now inserted at plugin build time.
+- Strict-docs CI failure (private intra-doc link).
+
 ## [0.2.0] - 2026-08-23
 
 **The game feel milestone** (Milestone 6): BeatByte stops feeling like
@@ -146,7 +182,8 @@ a tech demo.
   Records (Rust + Bevy, workspace layout).
 - README, MIT license, contributing guide, code of conduct, security policy.
 
-[Unreleased]: https://github.com/pepperonas/beatbyte/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/pepperonas/beatbyte/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/pepperonas/beatbyte/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/pepperonas/beatbyte/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/pepperonas/beatbyte/compare/v0.0.3...v0.1.0
 [0.0.3]: https://github.com/pepperonas/beatbyte/compare/v0.0.2...v0.0.3

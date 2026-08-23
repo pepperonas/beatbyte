@@ -7,12 +7,19 @@
 pub mod audio_sys;
 pub mod autopilot;
 pub mod boot;
+pub mod calibration;
+pub mod config;
 pub mod gameplay;
+pub mod library;
 pub mod menu;
 pub mod palette;
 pub mod results;
+pub mod scores;
+pub mod settings_ui;
 pub mod sfx;
+pub mod song_select;
 pub mod states;
+pub mod ui;
 
 use bevy::prelude::*;
 use bevy::window::PresentMode;
@@ -46,9 +53,15 @@ pub fn run() -> AppExit {
     .add_sub_state::<GamePhase>()
     .add_systems(Startup, spawn_camera)
     .add_plugins((
+        ui::UiPlugin,
         audio_sys::AudioBridgePlugin,
+        config::ConfigPlugin,
+        scores::ScoresPlugin,
         boot::BootPlugin,
         menu::MenuPlugin,
+        song_select::SongSelectPlugin,
+        settings_ui::SettingsUiPlugin,
+        calibration::CalibrationPlugin,
         gameplay::GameplayPlugin,
         results::ResultsPlugin,
         sfx::SfxPlugin,

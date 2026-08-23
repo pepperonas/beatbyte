@@ -12,8 +12,14 @@ pub enum AppState {
     /// Initial boot screen while the demo song renders/analyzes.
     #[default]
     Boot,
-    /// The main menu: difficulty selection, start.
+    /// The main menu: play, settings, calibration.
     MainMenu,
+    /// The song browser.
+    SongSelect,
+    /// The settings screen.
+    Settings,
+    /// The latency calibration screen.
+    Calibration,
     /// Playing a song.
     Gameplay,
     /// Post-song results.

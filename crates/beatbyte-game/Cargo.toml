@@ -13,6 +13,9 @@ beatbyte-core = { workspace = true }
 beatbyte-chart = { workspace = true }
 beatbyte-audio = { workspace = true }
 bevy = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+dirs = { workspace = true }
 
 [lints]
 workspace = true

@@ -1,36 +1,56 @@
-//! The main menu: pick a difficulty, start the song.
-//!
-//! Milestone 5 scope — one bundled song, keyboard-driven. The real
-//! song browser arrives with the UI milestone.
+//! The main menu: play, settings, calibration, quit.
 
-use beatbyte_core::Difficulty;
 use bevy::prelude::*;
 
-use crate::boot::LoadedSong;
 use crate::palette;
 use crate::states::AppState;
+use crate::ui::UiFont;
 
-/// The difficulty the player will play.
-#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SelectedDifficulty(pub Difficulty);
+/// The four menu actions, in display order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuAction {
+    /// Open the song browser.
+    Play,
+    /// Open settings.
+    Settings,
+    /// Open latency calibration.
+    Calibration,
+    /// Quit the game.
+    Quit,
+}
 
-impl Default for SelectedDifficulty {
-    fn default() -> Self {
-        SelectedDifficulty(Difficulty::Medium)
+impl MenuAction {
+    const ALL: [MenuAction; 4] = [
+        MenuAction::Play,
+        MenuAction::Settings,
+        MenuAction::Calibration,
+        MenuAction::Quit,
+    ];
+
+    const fn label(self) -> &'static str {
+        match self {
+            MenuAction::Play => "PLAY",
+            MenuAction::Settings => "SETTINGS",
+            MenuAction::Calibration => "CALIBRATION",
+            MenuAction::Quit => "QUIT",
+        }
     }
 }
+
+/// The currently highlighted menu row.
+#[derive(Resource, Default)]
+struct MenuCursor(usize);
 
 /// Plugin for the main menu.
 pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<SelectedDifficulty>()
+        app.init_resource::<MenuCursor>()
             .add_systems(OnEnter(AppState::MainMenu), spawn_menu)
             .add_systems(
                 Update,
-                (menu_input, update_difficulty_row, pulse_title)
-                    .run_if(in_state(AppState::MainMenu)),
+                (menu_input, highlight_cursor, pulse_title).run_if(in_state(AppState::MainMenu)),
             )
             .add_systems(OnExit(AppState::MainMenu), despawn_menu);
     }
@@ -39,15 +59,15 @@ impl Plugin for MenuPlugin {
 #[derive(Component)]
 struct MenuScreen;
 
-/// Marker for the difficulty labels, carrying their difficulty.
-#[derive(Component)]
-struct DifficultyLabel(Difficulty);
-
 /// Marker for the pulsing title.
 #[derive(Component)]
 struct MenuTitle;
 
-fn spawn_menu(mut commands: Commands, song: Res<LoadedSong>) {
+/// A selectable row, carrying its index.
+#[derive(Component)]
+struct MenuRow(usize);
+
+fn spawn_menu(mut commands: Commands, font: Res<UiFont>) {
     commands
         .spawn((
             MenuScreen,
@@ -57,7 +77,7 @@ fn spawn_menu(mut commands: Commands, song: Res<LoadedSong>) {
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
-                row_gap: px(18),
+                row_gap: px(22),
                 ..default()
             },
         ))
@@ -65,102 +85,67 @@ fn spawn_menu(mut commands: Commands, song: Res<LoadedSong>) {
             parent.spawn((
                 MenuTitle,
                 Text::new("BEATBYTE"),
-                TextFont {
-                    font_size: FontSize::Px(84.0),
-                    ..default()
-                },
+                font.text(52.0),
                 TextColor(palette::BRAND),
             ));
             parent.spawn((
-                Text::new(format!(
-                    "\"{}\" by {}",
-                    song.chart.song.title, song.chart.song.artist
-                )),
-                TextFont {
-                    font_size: FontSize::Px(28.0),
-                    ..default()
-                },
-                TextColor(palette::TEXT),
-            ));
-            parent.spawn((
-                Text::new(format!("{:.0} BPM", song.chart.song.bpm)),
-                TextFont {
-                    font_size: FontSize::Px(18.0),
-                    ..default()
-                },
+                Text::new("an 8-bit rhythm game"),
+                font.text(11.0),
                 TextColor(palette::TEXT_DIM),
-            ));
-
-            // Difficulty row.
-            parent
-                .spawn(Node {
-                    column_gap: px(28),
-                    margin: UiRect::top(px(26)),
-                    ..default()
-                })
-                .with_children(|row| {
-                    for difficulty in Difficulty::ALL {
-                        row.spawn((
-                            DifficultyLabel(difficulty),
-                            Text::new(difficulty.display_name().to_uppercase()),
-                            TextFont {
-                                font_size: FontSize::Px(26.0),
-                                ..default()
-                            },
-                            TextColor(palette::TEXT_DIM),
-                        ));
-                    }
-                });
-
-            parent.spawn((
-                Text::new("LEFT/RIGHT difficulty      ENTER rock"),
-                TextFont {
-                    font_size: FontSize::Px(20.0),
+                Node {
+                    margin: UiRect::bottom(px(26)),
                     ..default()
                 },
-                TextColor(palette::TEXT_DIM),
+            ));
+            for (index, action) in MenuAction::ALL.iter().enumerate() {
+                parent.spawn((
+                    MenuRow(index),
+                    Text::new(action.label()),
+                    font.text(18.0),
+                    TextColor(palette::TEXT_DIM),
+                ));
+            }
+            parent.spawn((
+                Text::new("UP/DOWN choose    ENTER confirm"),
+                font.text(10.0),
+                TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
                 Node {
                     margin: UiRect::top(px(30)),
                     ..default()
                 },
-            ));
-            parent.spawn((
-                Text::new("frets A S D F G  |  strum UP/DOWN  |  hype SPACE  |  pause ESC"),
-                TextFont {
-                    font_size: FontSize::Px(16.0),
-                    ..default()
-                },
-                TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
             ));
         });
 }
 
 fn menu_input(
     keys: Res<ButtonInput<KeyCode>>,
-    mut selected: ResMut<SelectedDifficulty>,
+    mut cursor: ResMut<MenuCursor>,
     mut next_state: ResMut<NextState<AppState>>,
+    mut app_exit: MessageWriter<AppExit>,
 ) {
-    let all = Difficulty::ALL;
-    let index = all.iter().position(|d| *d == selected.0).unwrap_or(1);
-    if keys.just_pressed(KeyCode::ArrowLeft) && index > 0 {
-        selected.0 = all[index - 1];
+    let count = MenuAction::ALL.len();
+    if keys.just_pressed(KeyCode::ArrowUp) {
+        cursor.0 = (cursor.0 + count - 1) % count;
     }
-    if keys.just_pressed(KeyCode::ArrowRight) && index + 1 < all.len() {
-        selected.0 = all[index + 1];
+    if keys.just_pressed(KeyCode::ArrowDown) {
+        cursor.0 = (cursor.0 + 1) % count;
     }
     if keys.just_pressed(KeyCode::Enter) {
-        next_state.set(AppState::Gameplay);
+        match MenuAction::ALL[cursor.0] {
+            MenuAction::Play => next_state.set(AppState::SongSelect),
+            MenuAction::Settings => next_state.set(AppState::Settings),
+            MenuAction::Calibration => next_state.set(AppState::Calibration),
+            MenuAction::Quit => {
+                app_exit.write(AppExit::Success);
+            }
+        }
     }
 }
 
-/// Highlight the selected difficulty (cheap enough to run every frame,
-/// which also covers the freshly spawned labels).
-fn update_difficulty_row(
-    selected: Res<SelectedDifficulty>,
-    mut labels: Query<(&DifficultyLabel, &mut TextColor)>,
-) {
-    for (label, mut color) in &mut labels {
-        color.0 = if label.0 == selected.0 {
+/// Paint the highlighted row.
+fn highlight_cursor(cursor: Res<MenuCursor>, mut rows: Query<(&MenuRow, &mut TextColor)>) {
+    for (row, mut color) in &mut rows {
+        color.0 = if row.0 == cursor.0 {
             palette::BRAND
         } else {
             palette::TEXT_DIM

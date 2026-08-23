@@ -49,6 +49,7 @@ impl Plugin for AutopilotPlugin {
                 Update,
                 (
                     autopilot_menu.run_if(in_state(AppState::MainMenu)),
+                    autopilot_song_select.run_if(in_state(AppState::SongSelect)),
                     // Judgment is input-stamp-driven, so playing *before*
                     // the session advances makes the autopilot exact and
                     // frame-rate independent (hitches cannot cause
@@ -91,6 +92,7 @@ fn autopilot_screenshots(
 ) {
     let moment = match state.get() {
         AppState::MainMenu => Some("menu"),
+        AppState::SongSelect => Some("songselect"),
         AppState::Gameplay => {
             let now = game_clock.song_time(&time).unwrap_or(0.0);
             if (24.0..26.0).contains(&now) {
@@ -102,7 +104,7 @@ fn autopilot_screenshots(
             }
         }
         AppState::Results => Some("results"),
-        AppState::Boot => None,
+        _ => None,
     };
     if let Some(name) = moment
         && !taken.contains(name)
@@ -116,7 +118,7 @@ fn autopilot_screenshots(
     }
 }
 
-/// Start the song shortly after the menu appears.
+/// Head into the song browser shortly after the menu appears.
 fn autopilot_menu(
     time: Res<Time>,
     mut delay: Local<f32>,
@@ -124,12 +126,39 @@ fn autopilot_menu(
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     *delay += time.delta_secs();
-    if *delay > 1.0 {
+    if *delay > 0.8 {
         *delay = 0.0;
         // Unattended runs should not blast anyone's speakers.
         music.0.set_volume(0.05);
-        info!("autopilot: starting gameplay (volume lowered)");
-        next_state.set(AppState::Gameplay);
+        info!("autopilot: opening song select (volume lowered)");
+        next_state.set(AppState::SongSelect);
+    }
+}
+
+/// Pick the demo song and start it.
+fn autopilot_song_select(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut delay: Local<f32>,
+    library: Res<crate::library::SongLibrary>,
+    demo: Res<crate::boot::DemoSong>,
+    mut next_state: ResMut<NextState<AppState>>,
+) {
+    *delay += time.delta_secs();
+    if *delay > 0.6 {
+        *delay = 0.0;
+        let Some(entry) = library.entries.first() else {
+            error!("autopilot: empty song library");
+            return;
+        };
+        match crate::song_select::prepare_song(entry, &demo) {
+            Ok(song) => {
+                info!("autopilot: starting \"{}\"", entry.title);
+                commands.insert_resource(song);
+                next_state.set(AppState::Gameplay);
+            }
+            Err(reason) => error!("autopilot: cannot start song: {reason}"),
+        }
     }
 }
 

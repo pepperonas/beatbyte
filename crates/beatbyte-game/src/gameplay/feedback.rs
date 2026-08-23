@@ -8,6 +8,7 @@ use bevy::prelude::*;
 
 use super::{GameplayScreen, PlayerSession, RECEPTOR_Y, SessionFeedback, lane_x};
 use crate::palette;
+use crate::ui::UiFont;
 
 /// A short-lived visual effect.
 #[derive(Component)]
@@ -33,6 +34,7 @@ pub fn spawn_feedback(
     players: Query<&PlayerSession>,
     mut feedback: MessageReader<SessionFeedback>,
     mut popup: Query<(&mut Text, &mut TextColor, &mut JudgmentPopup)>,
+    font: Res<UiFont>,
 ) {
     let Ok(player) = players.single() else {
         return;
@@ -58,13 +60,13 @@ pub fn spawn_feedback(
                         Transform::from_xyz(lane_x(lane), RECEPTOR_Y, 5.0),
                     ));
                 }
-                show_popup(&mut popup, &mut commands, label, color);
+                show_popup(&mut popup, &mut commands, &font, label, color);
             }
             SessionEvent::NoteMissed { .. } | SessionEvent::Overstrum => {
-                show_popup(&mut popup, &mut commands, "MISS", palette::MISS);
+                show_popup(&mut popup, &mut commands, &font, "MISS", palette::MISS);
             }
             SessionEvent::HypeActivated => {
-                show_popup(&mut popup, &mut commands, "HYPE!", palette::HYPE);
+                show_popup(&mut popup, &mut commands, &font, "HYPE!", palette::HYPE);
             }
             _ => {}
         }
@@ -84,6 +86,7 @@ fn judgment_style(judgment: Judgment) -> (&'static str, Color) {
 fn show_popup(
     popup: &mut Query<(&mut Text, &mut TextColor, &mut JudgmentPopup)>,
     commands: &mut Commands,
+    font: &UiFont,
     label: &str,
     color: Color,
 ) {
@@ -96,10 +99,7 @@ fn show_popup(
             GameplayScreen,
             JudgmentPopup { ttl: 0.5 },
             Text::new(label),
-            TextFont {
-                font_size: FontSize::Px(34.0),
-                ..default()
-            },
+            font.text(20.0),
             TextColor(color),
             Node {
                 position_type: PositionType::Absolute,

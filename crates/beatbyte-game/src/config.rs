@@ -1,0 +1,169 @@
+//! Persistent player settings.
+//!
+//! Stored as JSON in the platform config directory
+//! (`~/Library/Application Support`, `%APPDATA%`, `~/.config`, …).
+//! Corrupt or missing files fall back to defaults with a warning —
+//! a broken settings file must never brick the game.
+
+use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
+
+use crate::gameplay::fx::EffectSettings;
+
+/// All persisted settings. Every field has a sane default so partial
+/// files from older versions keep working.
+#[derive(Resource, Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Settings {
+    /// Music volume, 0.0–1.0.
+    pub music_volume: f32,
+    /// Sound-effect volume, 0.0–1.0.
+    pub sfx_volume: f32,
+    /// Latency calibration offset in milliseconds. Positive = the
+    /// player's inputs arrive late (typical audio latency); the offset
+    /// is subtracted from input timestamps.
+    pub latency_offset_ms: f32,
+    /// Note scroll speed in pixels per second.
+    pub scroll_speed: f32,
+    /// Particle effects.
+    pub particles: bool,
+    /// Screen shake.
+    pub screen_shake: bool,
+    /// Stage beat pulse.
+    pub beat_pulse: bool,
+    /// Fullscreen window mode.
+    pub fullscreen: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Settings {
+            music_volume: 0.8,
+            sfx_volume: 0.45,
+            latency_offset_ms: 0.0,
+            scroll_speed: 420.0,
+            particles: true,
+            screen_shake: true,
+            beat_pulse: true,
+            fullscreen: false,
+        }
+    }
+}
+
+impl Settings {
+    /// The latency offset in seconds.
+    #[must_use]
+    pub fn latency_offset_s(&self) -> f64 {
+        f64::from(self.latency_offset_ms) / 1000.0
+    }
+
+    /// Clamp all values into their valid ranges (files are input too).
+    pub fn sanitize(&mut self) {
+        self.music_volume = clean(self.music_volume, 0.0, 1.0, 0.8);
+        self.sfx_volume = clean(self.sfx_volume, 0.0, 1.0, 0.45);
+        self.latency_offset_ms = clean(self.latency_offset_ms, -250.0, 250.0, 0.0);
+        self.scroll_speed = clean(self.scroll_speed, 240.0, 900.0, 420.0);
+    }
+}
+
+fn clean(value: f32, min: f32, max: f32, fallback: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(min, max)
+    } else {
+        fallback
+    }
+}
+
+/// Where the settings file lives.
+#[must_use]
+pub fn settings_path() -> Option<std::path::PathBuf> {
+    dirs::config_dir().map(|dir| dir.join("beatbyte").join("settings.json"))
+}
+
+/// Load settings, falling back to defaults on any problem.
+#[must_use]
+pub fn load_settings() -> Settings {
+    let Some(path) = settings_path() else {
+        warn!("no config directory on this platform; settings won't persist");
+        return Settings::default();
+    };
+    match std::fs::read_to_string(&path) {
+        Ok(text) => match serde_json::from_str::<Settings>(&text) {
+            Ok(mut settings) => {
+                settings.sanitize();
+                settings
+            }
+            Err(error) => {
+                warn!(
+                    "settings file {} is invalid ({error}); using defaults",
+                    path.display()
+                );
+                Settings::default()
+            }
+        },
+        // Missing file is the normal first run.
+        Err(_) => Settings::default(),
+    }
+}
+
+/// Persist settings (best effort, logged on failure).
+pub fn save_settings(settings: &Settings) {
+    let Some(path) = settings_path() else {
+        return;
+    };
+    let write = || -> std::io::Result<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let json = serde_json::to_string_pretty(settings).unwrap_or_default();
+        std::fs::write(&path, json)
+    };
+    if let Err(error) = write() {
+        warn!("cannot save settings to {}: {error}", path.display());
+    }
+}
+
+/// Plugin: loads settings at startup and mirrors them into the
+/// resources other systems consume.
+pub struct ConfigPlugin;
+
+impl Plugin for ConfigPlugin {
+    fn build(&self, app: &mut App) {
+        let settings = load_settings();
+        info!(
+            "settings: music {:.0}%, sfx {:.0}%, offset {} ms, scroll {}",
+            settings.music_volume * 100.0,
+            settings.sfx_volume * 100.0,
+            settings.latency_offset_ms,
+            settings.scroll_speed
+        );
+        app.insert_resource(settings)
+            .add_systems(Update, apply_settings);
+    }
+}
+
+/// Push settings changes into their consumers whenever they change.
+fn apply_settings(
+    settings: Res<Settings>,
+    music: Res<crate::audio_sys::Music>,
+    mut effects: ResMut<EffectSettings>,
+    mut windows: Query<&mut Window>,
+) {
+    if !settings.is_changed() {
+        return;
+    }
+    music.0.set_volume(settings.music_volume);
+    effects.particles = settings.particles;
+    effects.screen_shake = settings.screen_shake;
+    effects.beat_pulse = settings.beat_pulse;
+    if let Ok(mut window) = windows.single_mut() {
+        let wanted = if settings.fullscreen {
+            bevy::window::WindowMode::BorderlessFullscreen(MonitorSelection::Current)
+        } else {
+            bevy::window::WindowMode::Windowed
+        };
+        if window.mode != wanted {
+            window.mode = wanted;
+        }
+    }
+}

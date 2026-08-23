@@ -4,7 +4,9 @@ use bevy::prelude::*;
 
 use crate::gameplay::LastResults;
 use crate::palette;
+use crate::scores::{BestScore, ScoreBoard, save_scores};
 use crate::states::AppState;
+use crate::ui::UiFont;
 
 /// Plugin for the results screen.
 pub struct ResultsPlugin;
@@ -36,7 +38,12 @@ struct ScoreCountUp {
     age: f32,
 }
 
-fn spawn_results(mut commands: Commands, results: Option<Res<LastResults>>) {
+fn spawn_results(
+    mut commands: Commands,
+    results: Option<Res<LastResults>>,
+    mut scores: ResMut<ScoreBoard>,
+    font: Res<UiFont>,
+) {
     let Some(results) = results else {
         return;
     };
@@ -44,6 +51,21 @@ fn spawn_results(mut commands: Commands, results: Option<Res<LastResults>>) {
     let counts = perf.counts();
     let accuracy = perf.accuracy() * 100.0;
     let grade = grade_for(accuracy, counts.miss);
+
+    // Record the run; celebrate a new best.
+    let new_record = scores.record(
+        &results.title,
+        &results.artist,
+        results.difficulty,
+        BestScore {
+            score: perf.score(),
+            accuracy: perf.accuracy(),
+            best_streak: perf.best_streak(),
+        },
+    );
+    if new_record {
+        save_scores(&scores);
+    }
 
     commands
         .spawn((
@@ -62,18 +84,19 @@ fn spawn_results(mut commands: Commands, results: Option<Res<LastResults>>) {
             parent.spawn((
                 GradeSlam { age: 0.0 },
                 Text::new(grade),
-                TextFont {
-                    font_size: FontSize::Px(30.0),
-                    ..default()
-                },
+                font.text(20.0),
                 TextColor(palette::BRAND.with_alpha(0.0)),
             ));
+            if new_record {
+                parent.spawn((
+                    Text::new("NEW RECORD!"),
+                    font.text(14.0),
+                    TextColor(palette::PERFECT),
+                ));
+            }
             parent.spawn((
                 Text::new(format!("\"{}\" on {}", results.title, results.difficulty)),
-                TextFont {
-                    font_size: FontSize::Px(22.0),
-                    ..default()
-                },
+                font.text(12.0),
                 TextColor(palette::TEXT_DIM),
             ));
             parent.spawn((
@@ -82,10 +105,7 @@ fn spawn_results(mut commands: Commands, results: Option<Res<LastResults>>) {
                     age: 0.0,
                 },
                 Text::new("0"),
-                TextFont {
-                    font_size: FontSize::Px(52.0),
-                    ..default()
-                },
+                font.text(30.0),
                 TextColor(palette::TEXT),
             ));
             parent.spawn((
@@ -93,10 +113,7 @@ fn spawn_results(mut commands: Commands, results: Option<Res<LastResults>>) {
                     "accuracy {accuracy:.1}%  |  best streak {}",
                     perf.best_streak()
                 )),
-                TextFont {
-                    font_size: FontSize::Px(24.0),
-                    ..default()
-                },
+                font.text(12.0),
                 TextColor(palette::TEXT_DIM),
             ));
             parent.spawn((
@@ -108,18 +125,12 @@ fn spawn_results(mut commands: Commands, results: Option<Res<LastResults>>) {
                     counts.miss,
                     perf.overstrums()
                 )),
-                TextFont {
-                    font_size: FontSize::Px(20.0),
-                    ..default()
-                },
+                font.text(10.0),
                 TextColor(palette::TEXT_DIM),
             ));
             parent.spawn((
                 Text::new("ENTER back to menu"),
-                TextFont {
-                    font_size: FontSize::Px(20.0),
-                    ..default()
-                },
+                font.text(10.0),
                 TextColor(palette::TEXT_DIM),
                 Node {
                     margin: UiRect::top(px(30)),
@@ -151,7 +162,7 @@ fn animate_grade(
         let t = (slam.age / 0.35).min(1.0);
         // Ease-out-back: overshoot to ~1.1× then settle.
         let eased = 1.0 + 2.7 * (t - 1.0).powi(3) + 1.7 * (t - 1.0).powi(2);
-        font.font_size = FontSize::Px(30.0 + 80.0 * eased);
+        font.font_size = FontSize::Px(20.0 + 50.0 * eased);
         color.0 = palette::BRAND.with_alpha(t.min(1.0));
     }
 }

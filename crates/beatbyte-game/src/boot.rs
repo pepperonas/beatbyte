@@ -1,6 +1,6 @@
 //! The boot screen: shows the title while the demo song renders,
-//! analyzes and charts itself in the background, then moves to the
-//! main menu.
+//! analyzes and charts itself in the background, then scans the song
+//! library and moves to the main menu.
 
 use beatbyte_audio::decode::AudioData;
 use beatbyte_audio::{Analyzer, SpectralAnalyzer};
@@ -9,19 +9,35 @@ use bevy::prelude::*;
 use bevy::tasks::futures_lite::future;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on};
 
+use crate::library::scan_library;
 use crate::palette;
 use crate::states::AppState;
+use crate::ui::UiFont;
 
-/// A song ready to play: audio plus its chart.
+/// A song ready to play.
 #[derive(Resource, Clone)]
 pub struct LoadedSong {
-    /// Decoded (or synthesized) audio.
-    pub audio: AudioData,
     /// The chart file (all difficulties).
     pub chart: ChartFile,
+    /// Where the audio comes from.
+    pub audio: SongAudio,
 }
 
-/// The in-flight background load of the demo song.
+/// The audio side of a loaded song.
+#[derive(Clone)]
+pub enum SongAudio {
+    /// Fully synthesized/decoded samples (the demo).
+    Memory(AudioData),
+    /// A file on disk, streamed by the music thread.
+    File(std::path::PathBuf),
+}
+
+/// The cached demo song (survives across screens; selecting the demo
+/// in the browser clones from here instead of re-rendering).
+#[derive(Resource, Clone)]
+pub struct DemoSong(pub LoadedSong);
+
+/// The in-flight background build of the demo song.
 #[derive(Resource)]
 struct DemoLoadTask(Task<LoadedSong>);
 
@@ -43,7 +59,7 @@ impl Plugin for BootPlugin {
 #[derive(Component)]
 struct BootScreen;
 
-fn spawn_boot_screen(mut commands: Commands) {
+fn spawn_boot_screen(mut commands: Commands, font: Res<UiFont>) {
     commands
         .spawn((
             BootScreen,
@@ -53,33 +69,24 @@ fn spawn_boot_screen(mut commands: Commands) {
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
-                row_gap: px(12),
+                row_gap: px(18),
                 ..default()
             },
         ))
         .with_children(|parent| {
             parent.spawn((
                 Text::new("BEATBYTE"),
-                TextFont {
-                    font_size: FontSize::Px(96.0),
-                    ..default()
-                },
+                font.text(52.0),
                 TextColor(palette::BRAND),
             ));
             parent.spawn((
                 Text::new(format!("v{}", crate::VERSION)),
-                TextFont {
-                    font_size: FontSize::Px(20.0),
-                    ..default()
-                },
+                font.text(12.0),
                 TextColor(palette::TEXT_DIM),
             ));
             parent.spawn((
                 Text::new("tuning the amps..."),
-                TextFont {
-                    font_size: FontSize::Px(24.0),
-                    ..default()
-                },
+                font.text(14.0),
                 TextColor(palette::TEXT_DIM),
             ));
         });
@@ -98,12 +105,15 @@ fn start_demo_load(mut commands: Commands) {
                 audio: String::new(), // played from memory, not a file
             },
         );
-        LoadedSong { audio, chart }
+        LoadedSong {
+            chart,
+            audio: SongAudio::Memory(audio),
+        }
     });
     commands.insert_resource(DemoLoadTask(task));
 }
 
-/// When the demo is ready, publish it and enter the menu.
+/// When the demo is ready: publish it, scan the library, enter the menu.
 fn poll_demo_load(
     mut commands: Commands,
     mut task: ResMut<DemoLoadTask>,
@@ -116,7 +126,10 @@ fn poll_demo_load(
             song.chart.song.bpm,
             song.chart.charts.len()
         );
-        commands.insert_resource(song);
+        let library = scan_library(&song.chart);
+        info!("song library: {} entr(ies)", library.entries.len());
+        commands.insert_resource(library);
+        commands.insert_resource(DemoSong(song));
         commands.remove_resource::<DemoLoadTask>();
         next_state.set(AppState::MainMenu);
     }
