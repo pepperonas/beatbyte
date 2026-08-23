@@ -1,4 +1,4 @@
-//! The gameplay screen: highway, notes, judgment, HUD.
+//! The gameplay screen: highways, notes, judgment, HUD.
 //!
 //! Layer discipline: every gameplay *rule* lives in
 //! [`beatbyte_core::TrackSession`]. This module feeds it inputs with
@@ -6,9 +6,10 @@
 //! it reports. Rendering derives note positions from the song timeline
 //! every frame — nothing here integrates positions incrementally.
 //!
-//! Players are entities: each carries its own [`PlayerSession`]
-//! component. Single-player spawns one; local multiplayer (Milestone 9)
-//! spawns more without touching these systems' logic.
+//! Players are entities: each carries its own [`PlayerSession`],
+//! [`PlayerIndex`] and [`PlayerDevice`]. Local multiplayer spawns more
+//! of them; every system below iterates players instead of assuming
+//! one.
 
 pub mod feedback;
 pub mod fx;
@@ -16,17 +17,17 @@ pub mod hud;
 pub mod input;
 pub mod notes;
 
-use beatbyte_core::{PlayerPerformance, ScoreConfig, SessionEvent, TimingWindows, TrackSession};
+use beatbyte_core::{
+    Lane, PlayerPerformance, ScoreConfig, SessionEvent, TimingWindows, TrackSession,
+};
 use bevy::prelude::*;
 
 use crate::audio_sys::{GameClock, Music};
 use crate::boot::{LoadedSong, SongAudio};
+use crate::multiplayer::{DeviceId, MultiplayerMode, PLAYER_COLORS, PlayerRoster};
 use crate::palette;
 use crate::song_select::SelectedDifficulty;
 use crate::states::{AppState, GamePhase};
-
-/// Horizontal center-to-center lane spacing in pixels.
-pub const LANE_STEP: f32 = 76.0;
 
 /// Y position of the receptor row (notes are judged here).
 pub const RECEPTOR_Y: f32 = -240.0;
@@ -34,14 +35,73 @@ pub const RECEPTOR_Y: f32 = -240.0;
 /// Notes spawn when they are this many seconds away.
 pub const SPAWN_LOOKAHEAD_S: f64 = 2.6;
 
-/// X position of a lane's center.
-#[must_use]
-pub fn lane_x(lane: beatbyte_core::Lane) -> f32 {
-    (lane.index() as f32 - 2.0) * LANE_STEP
+/// Where each player's highway sits and how big everything is.
+#[derive(Resource, Debug, Clone)]
+pub struct HighwayLayout {
+    origins: Vec<f32>,
+    /// Center-to-center lane spacing in pixels.
+    pub lane_step: f32,
 }
 
-/// One player's live gameplay state. A component, not a resource:
-/// multiplayer is more entities, not more code paths.
+impl HighwayLayout {
+    /// Layout for a player count (1–4).
+    #[must_use]
+    pub fn for_players(count: usize) -> HighwayLayout {
+        let (origins, lane_step) = match count.max(1) {
+            1 => (vec![0.0], 76.0),
+            2 => (vec![-330.0, 330.0], 64.0),
+            3 => (vec![-420.0, 0.0, 420.0], 48.0),
+            _ => (vec![-465.0, -155.0, 155.0, 465.0], 40.0),
+        };
+        HighwayLayout { origins, lane_step }
+    }
+
+    /// Number of players in this layout.
+    #[must_use]
+    pub fn players(&self) -> usize {
+        self.origins.len()
+    }
+
+    /// The x center of a player's highway.
+    #[must_use]
+    pub fn origin(&self, player: usize) -> f32 {
+        self.origins.get(player).copied().unwrap_or(0.0)
+    }
+
+    /// The x position of a lane's center for a player.
+    #[must_use]
+    pub fn lane_x(&self, player: usize, lane: Lane) -> f32 {
+        self.origin(player) + (lane.index() as f32 - 2.0) * self.lane_step
+    }
+
+    /// Width of one highway bed.
+    #[must_use]
+    pub fn bed_width(&self) -> f32 {
+        self.lane_step * 5.0 + 24.0
+    }
+
+    /// Side length of a note sprite.
+    #[must_use]
+    pub fn note_size(&self) -> f32 {
+        self.lane_step * 0.45
+    }
+
+    /// Side length of a receptor.
+    #[must_use]
+    pub fn receptor_size(&self) -> f32 {
+        self.lane_step * 0.58
+    }
+}
+
+/// Which player an entity belongs to (0-based).
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlayerIndex(pub usize);
+
+/// The device driving a player.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlayerDevice(pub DeviceId);
+
+/// One player's live gameplay state.
 #[derive(Component)]
 pub struct PlayerSession {
     /// The deterministic judgment engine.
@@ -49,45 +109,61 @@ pub struct PlayerSession {
     /// Session events produced this frame (input + time advance);
     /// drained into [`SessionFeedback`] messages once per frame.
     pub frame_events: Vec<SessionEvent>,
+    /// How far note spawning has progressed for this player.
+    pub spawn_cursor: usize,
 }
 
 /// A session event broadcast to every presentation consumer (note
 /// visuals, particles, sounds, popups) — written once per frame by
-/// the feedback drain system, read via `MessageReader<SessionFeedback>`.
+/// the feedback drain, read via `MessageReader<SessionFeedback>`.
 #[derive(Message, Debug, Clone, Copy)]
 pub struct SessionFeedback {
     /// The player entity the event belongs to.
     pub player: Entity,
+    /// The player's index (avoids a lookup in every consumer).
+    pub player_index: usize,
     /// What happened.
     pub event: SessionEvent,
 }
 
 /// Publish each player's buffered session events as messages.
 fn drain_feedback(
-    mut players: Query<(Entity, &mut PlayerSession)>,
+    mut players: Query<(Entity, &PlayerIndex, &mut PlayerSession)>,
     mut writer: MessageWriter<SessionFeedback>,
 ) {
-    for (entity, mut player) in &mut players {
+    for (entity, index, mut player) in &mut players {
         for event in player.frame_events.drain(..) {
             writer.write(SessionFeedback {
                 player: entity,
+                player_index: index.0,
                 event,
             });
         }
     }
 }
 
+/// One player's final result.
+#[derive(Debug, Clone)]
+pub struct PlayerResult {
+    /// The player index (0-based).
+    pub index: usize,
+    /// The final performance.
+    pub performance: PlayerPerformance,
+}
+
 /// The last finished run, for the results screen.
 #[derive(Resource, Clone)]
 pub struct LastResults {
-    /// The final performance.
-    pub performance: PlayerPerformance,
     /// The song title played.
     pub title: String,
     /// The artist.
     pub artist: String,
     /// The difficulty played.
     pub difficulty: beatbyte_core::Difficulty,
+    /// The mode (relevant for more than one player).
+    pub mode: MultiplayerMode,
+    /// Every player's outcome, in player order.
+    pub players: Vec<PlayerResult>,
 }
 
 /// Marker for everything belonging to the gameplay screen.
@@ -103,7 +179,13 @@ impl Plugin for GameplayPlugin {
             .add_plugins(fx::FxPlugin)
             .add_systems(
                 OnEnter(AppState::Gameplay),
-                (setup_gameplay, notes::spawn_highway, hud::spawn_hud),
+                (
+                    setup_gameplay,
+                    notes::spawn_highways,
+                    hud::spawn_huds,
+                    fx::spawn_fx_scenery,
+                )
+                    .chain(),
             )
             .add_systems(
                 Update,
@@ -117,7 +199,7 @@ impl Plugin for GameplayPlugin {
                     notes::apply_note_events,
                     feedback::spawn_feedback,
                     feedback::animate_feedback,
-                    hud::update_hud,
+                    hud::update_huds,
                     check_song_end,
                 )
                     .chain()
@@ -136,10 +218,12 @@ impl Plugin for GameplayPlugin {
     }
 }
 
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn setup_gameplay(
     mut commands: Commands,
     song: Res<LoadedSong>,
     selected: Res<SelectedDifficulty>,
+    roster: Res<PlayerRoster>,
     music: Res<Music>,
     mut game_clock: ResMut<GameClock>,
     time: Res<Time>,
@@ -153,19 +237,35 @@ fn setup_gameplay(
             return;
         }
     };
+    let devices: Vec<DeviceId> = if roster.devices.is_empty() {
+        vec![DeviceId::Keyboard]
+    } else {
+        roster.devices.clone()
+    };
     info!(
-        "starting \"{}\" on {} — {} note events",
+        "starting \"{}\" on {} — {} note events, {} player(s)",
         song.chart.song.title,
         selected.0,
-        track.len()
+        track.len(),
+        devices.len()
     );
-    commands.spawn((
-        GameplayScreen,
-        PlayerSession {
-            session: TrackSession::new(track, TimingWindows::default(), ScoreConfig::default()),
-            frame_events: Vec::new(),
-        },
-    ));
+    commands.insert_resource(HighwayLayout::for_players(devices.len()));
+    for (index, device) in devices.into_iter().enumerate() {
+        commands.spawn((
+            GameplayScreen,
+            PlayerIndex(index),
+            PlayerDevice(device),
+            PlayerSession {
+                session: TrackSession::new(
+                    track.clone(),
+                    TimingWindows::default(),
+                    ScoreConfig::default(),
+                ),
+                frame_events: Vec::new(),
+                spawn_cursor: 0,
+            },
+        ));
+    }
 
     match &song.audio {
         SongAudio::Memory(audio) => music.0.play_buffer(audio.clone()),
@@ -190,11 +290,13 @@ pub(crate) fn advance_sessions(
 }
 
 /// End of song → snapshot results → results screen.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn check_song_end(
     mut commands: Commands,
-    players: Query<&PlayerSession>,
+    players: Query<(&PlayerIndex, &PlayerSession)>,
     song: Res<LoadedSong>,
     selected: Res<SelectedDifficulty>,
+    roster: Res<PlayerRoster>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
     mut next_state: ResMut<NextState<AppState>>,
@@ -203,20 +305,27 @@ fn check_song_end(
         return;
     };
     let all_finished =
-        !players.is_empty() && players.iter().all(|player| player.session.finished());
+        !players.is_empty() && players.iter().all(|(_, player)| player.session.finished());
     let content_end = players
         .iter()
-        .map(|player| player.session.track().content_end_s())
+        .map(|(_, player)| player.session.track().content_end_s())
         .fold(0.0, f64::max);
     if all_finished && now > content_end + 1.5 {
-        if let Some(player) = players.iter().next() {
-            commands.insert_resource(LastResults {
+        let mut results: Vec<PlayerResult> = players
+            .iter()
+            .map(|(index, player)| PlayerResult {
+                index: index.0,
                 performance: player.session.performance().clone(),
-                title: song.chart.song.title.clone(),
-                artist: song.chart.song.artist.clone(),
-                difficulty: selected.0,
-            });
-        }
+            })
+            .collect();
+        results.sort_by_key(|result| result.index);
+        commands.insert_resource(LastResults {
+            title: song.chart.song.title.clone(),
+            artist: song.chart.song.artist.clone(),
+            difficulty: selected.0,
+            mode: roster.mode,
+            players: results,
+        });
         next_state.set(AppState::Results);
     }
 }
@@ -313,4 +422,10 @@ fn teardown_gameplay(
     }
     music.0.stop();
     game_clock.clock.stop();
+}
+
+/// The accent color for a player index.
+#[must_use]
+pub fn player_color(index: usize) -> Color {
+    PLAYER_COLORS[index % PLAYER_COLORS.len()]
 }

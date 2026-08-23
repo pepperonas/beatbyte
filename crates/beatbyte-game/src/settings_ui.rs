@@ -175,7 +175,7 @@ fn settings_input(
     mut settings: ResMut<Settings>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
-    let nav = MenuNav::read(&keys, &pads);
+    let nav = MenuNav::read(&keys, pads.iter());
     let count = Row::ALL.len();
     if nav.up {
         cursor.0 = (cursor.0 + count - 1) % count;

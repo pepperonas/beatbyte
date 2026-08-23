@@ -134,7 +134,7 @@ fn browser_input(
     demo: Res<DemoSong>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
-    let nav = MenuNav::read(&keys, &pads);
+    let nav = MenuNav::read(&keys, pads.iter());
     let count = library.entries.len();
     if count == 0 {
         if nav.back {

@@ -1,4 +1,4 @@
-//! Highway, receptors and note sprites.
+//! Highways, receptors and note sprites — one set per player.
 //!
 //! Note positions are a pure function of song time — a dropped frame
 //! shifts pixels for one frame, never judgment.
@@ -8,8 +8,8 @@ use beatbyte_core::{Lane, NoteKind, SessionEvent};
 use bevy::prelude::*;
 
 use super::{
-    GameplayScreen, LANE_STEP, PlayerSession, RECEPTOR_Y, SPAWN_LOOKAHEAD_S, SessionFeedback,
-    lane_x,
+    GameplayScreen, HighwayLayout, PlayerIndex, PlayerSession, RECEPTOR_Y, SPAWN_LOOKAHEAD_S,
+    SessionFeedback,
 };
 use crate::audio_sys::GameClock;
 use crate::config::Settings;
@@ -18,104 +18,127 @@ use crate::palette;
 /// One visible note head (chords have one per lane).
 #[derive(Component)]
 pub struct NoteSprite {
+    /// The player this note belongs to.
+    pub player: usize,
     /// Index into the track's events.
     pub event_index: usize,
     /// Whether this event was already resolved visually.
     pub resolved: bool,
 }
 
-/// A receptor (hit-line target) for one lane.
+/// A receptor (hit-line target) for one lane of one player.
 #[derive(Component)]
-pub struct Receptor(pub Lane);
+pub struct Receptor {
+    /// The player.
+    pub player: usize,
+    /// The lane.
+    pub lane: Lane,
+}
 
-/// Tracks how far note spawning has progressed.
-#[derive(Component)]
-pub struct SpawnCursor(pub usize);
-
-/// Build the static highway: bed, receptor row, lane guides.
-pub fn spawn_highway(mut commands: Commands) {
-    // Highway bed (tagged: the beat pulse modulates its brightness).
-    commands.spawn((
-        GameplayScreen,
-        super::fx::HighwayBed,
-        Sprite::from_color(palette::SURFACE, Vec2::new(LANE_STEP * 5.0 + 24.0, 900.0)),
-        Transform::from_xyz(0.0, 0.0, -10.0),
-    ));
-    // Lane guide lines.
-    for lane in Lane::ALL {
+/// Build every player's highway: bed, receptor row, lane guides.
+pub fn spawn_highways(
+    mut commands: Commands,
+    layout: Res<HighwayLayout>,
+    players: Query<&PlayerIndex, With<PlayerSession>>,
+) {
+    for index in players.iter() {
+        let player = index.0;
+        let origin = layout.origin(player);
+        // Highway bed (tagged: the beat pulse modulates its brightness).
         commands.spawn((
             GameplayScreen,
-            Sprite::from_color(
-                palette::dimmed(palette::lane_color(lane), 0.06),
-                Vec2::new(2.0, 900.0),
-            ),
-            Transform::from_xyz(lane_x(lane), 0.0, -9.0),
+            super::fx::HighwayBed,
+            Sprite::from_color(palette::SURFACE, Vec2::new(layout.bed_width(), 900.0)),
+            Transform::from_xyz(origin, 0.0, -10.0),
         ));
+        // Lane guide lines.
+        for lane in Lane::ALL {
+            commands.spawn((
+                GameplayScreen,
+                Sprite::from_color(
+                    palette::dimmed(palette::lane_color(lane), 0.06),
+                    Vec2::new(2.0, 900.0),
+                ),
+                Transform::from_xyz(layout.lane_x(player, lane), 0.0, -9.0),
+            ));
+        }
+        // Receptor row: ring look = colored square under a bg square.
+        let receptor = layout.receptor_size();
+        for lane in Lane::ALL {
+            let x = layout.lane_x(player, lane);
+            commands.spawn((
+                GameplayScreen,
+                Receptor { player, lane },
+                Sprite::from_color(
+                    palette::dimmed(palette::lane_color(lane), 0.35),
+                    Vec2::splat(receptor),
+                ),
+                Transform::from_xyz(x, RECEPTOR_Y, -5.0),
+            ));
+            commands.spawn((
+                GameplayScreen,
+                Sprite::from_color(palette::BACKGROUND, Vec2::splat(receptor * 0.75)),
+                Transform::from_xyz(x, RECEPTOR_Y, -4.0),
+            ));
+        }
     }
-    // Receptor row: ring look = colored square under a background square.
-    for lane in Lane::ALL {
-        commands.spawn((
-            GameplayScreen,
-            Receptor(lane),
-            Sprite::from_color(
-                palette::dimmed(palette::lane_color(lane), 0.35),
-                Vec2::new(44.0, 44.0),
-            ),
-            Transform::from_xyz(lane_x(lane), RECEPTOR_Y, -5.0),
-        ));
-        commands.spawn((
-            GameplayScreen,
-            Sprite::from_color(palette::BACKGROUND, Vec2::new(34.0, 34.0)),
-            Transform::from_xyz(lane_x(lane), RECEPTOR_Y, -4.0),
-        ));
-    }
-    // Spawn cursor.
-    commands.spawn((GameplayScreen, SpawnCursor(0)));
 }
 
 /// Spawn note entities as their time approaches.
 pub fn spawn_due_notes(
     mut commands: Commands,
-    mut cursor: Query<&mut SpawnCursor>,
-    players: Query<&PlayerSession>,
+    mut players: Query<(&PlayerIndex, &mut PlayerSession)>,
+    layout: Res<HighwayLayout>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
     settings: Res<Settings>,
 ) {
-    let Ok(mut cursor) = cursor.single_mut() else {
+    let Some(now) = game_clock.song_time(&time) else {
         return;
     };
-    let (Some(now), Ok(player)) = (game_clock.song_time(&time), players.single()) else {
-        return;
-    };
-    let events = player.session.track().events();
-    while cursor.0 < events.len() {
-        let event = events[cursor.0];
-        if event.time_s > now + SPAWN_LOOKAHEAD_S {
-            break;
+    for (index, mut player) in &mut players {
+        // The track is shared, but each player's cursor advances alone
+        // (their sessions resolve notes independently).
+        while player.spawn_cursor < player.session.track().events().len() {
+            let cursor = player.spawn_cursor;
+            let event = player.session.track().events()[cursor];
+            if event.time_s > now + SPAWN_LOOKAHEAD_S {
+                break;
+            }
+            spawn_event_sprites(
+                &mut commands,
+                &layout,
+                index.0,
+                cursor,
+                &event,
+                settings.scroll_speed,
+            );
+            player.spawn_cursor += 1;
         }
-        spawn_event_sprites(&mut commands, cursor.0, &event, settings.scroll_speed);
-        cursor.0 += 1;
     }
 }
 
 fn spawn_event_sprites(
     commands: &mut Commands,
+    layout: &HighwayLayout,
+    player: usize,
     event_index: usize,
     event: &beatbyte_core::NoteEvent,
     scroll_speed: f32,
 ) {
+    let size = layout.note_size();
     for lane in event.lanes.iter() {
         let color = palette::lane_color(lane);
         let entity = commands
             .spawn((
                 GameplayScreen,
                 NoteSprite {
+                    player,
                     event_index,
                     resolved: false,
                 },
-                Sprite::from_color(color, Vec2::new(34.0, 34.0)),
-                Transform::from_xyz(lane_x(lane), 2000.0, 0.0),
+                Sprite::from_color(color, Vec2::splat(size)),
+                Transform::from_xyz(layout.lane_x(player, lane), 2000.0, 0.0),
             ))
             .id();
 
@@ -124,7 +147,7 @@ fn spawn_event_sprites(
             let tail_height = (event.sustain_s as f32) * scroll_speed;
             commands.entity(entity).with_children(|parent| {
                 parent.spawn((
-                    Sprite::from_color(color.with_alpha(0.35), Vec2::new(12.0, tail_height)),
+                    Sprite::from_color(color.with_alpha(0.35), Vec2::new(size * 0.35, tail_height)),
                     Transform::from_xyz(0.0, tail_height / 2.0, -1.0),
                 ));
             });
@@ -133,7 +156,7 @@ fn spawn_event_sprites(
         if event.kind == NoteKind::Hopo {
             commands.entity(entity).with_children(|parent| {
                 parent.spawn((
-                    Sprite::from_color(Color::WHITE, Vec2::new(14.0, 14.0)),
+                    Sprite::from_color(Color::WHITE, Vec2::splat(size * 0.4)),
                     Transform::from_xyz(0.0, 0.0, 1.0),
                 ));
             });
@@ -145,44 +168,49 @@ fn spawn_event_sprites(
 pub fn move_notes(
     mut commands: Commands,
     mut notes: Query<(Entity, &NoteSprite, &mut Transform)>,
-    players: Query<&PlayerSession>,
+    players: Query<(&PlayerIndex, &PlayerSession)>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
     settings: Res<Settings>,
 ) {
-    let (Some(now), Ok(player)) = (game_clock.song_time(&time), players.single()) else {
+    let Some(now) = game_clock.song_time(&time) else {
         return;
     };
-    let events = player.session.track().events();
+    // The track is identical across players; take any session's view.
+    let Some((_, reference)) = players.iter().next() else {
+        return;
+    };
+    let events = reference.session.track().events();
     for (entity, note, mut transform) in &mut notes {
         let Some(event) = events.get(note.event_index) else {
             continue;
         };
         transform.translation.y =
             RECEPTOR_Y + ((event.time_s - now) as f32) * settings.scroll_speed;
-        // Off the bottom (well past miss territory): clean up.
         if transform.translation.y < RECEPTOR_Y - 260.0 {
             commands.entity(entity).despawn();
         }
     }
 }
 
-/// Receptors light up while their fret is held.
+/// Receptors light up while their player holds the fret.
 pub fn update_receptors(
-    players: Query<&PlayerSession>,
+    players: Query<(&PlayerIndex, &PlayerSession)>,
     mut receptors: Query<(&Receptor, &mut Sprite)>,
 ) {
-    let Ok(player) = players.single() else {
-        return;
-    };
-    let held = player.session.held();
-    for (receptor, mut sprite) in &mut receptors {
-        let color = palette::lane_color(receptor.0);
-        sprite.color = if held.contains(receptor.0) {
-            color
-        } else {
-            palette::dimmed(color, 0.35)
-        };
+    for (index, player) in &players {
+        let held = player.session.held();
+        for (receptor, mut sprite) in &mut receptors {
+            if receptor.player != index.0 {
+                continue;
+            }
+            let color = palette::lane_color(receptor.lane);
+            sprite.color = if held.contains(receptor.lane) {
+                color
+            } else {
+                palette::dimmed(color, 0.35)
+            };
+        }
     }
 }
 
@@ -190,47 +218,55 @@ pub fn update_receptors(
 pub fn apply_note_events(
     mut commands: Commands,
     mut notes: Query<(Entity, &mut NoteSprite, &mut Sprite)>,
-    players: Query<&PlayerSession>,
+    players: Query<(&PlayerIndex, &PlayerSession)>,
     mut feedback: MessageReader<SessionFeedback>,
 ) {
-    let Ok(player) = players.single() else {
-        return;
-    };
-    // Collect the events that resolve notes this frame.
-    let mut hit_events: Vec<usize> = Vec::new();
-    let mut missed_events: Vec<usize> = Vec::new();
+    // (player, event) pairs resolved this frame.
+    let mut hit: Vec<(usize, usize)> = Vec::new();
+    let mut missed: Vec<(usize, usize)> = Vec::new();
     for message in feedback.read() {
         match message.event {
-            SessionEvent::NoteHit { event_index, .. } => hit_events.push(event_index),
-            SessionEvent::NoteMissed { event_index } => missed_events.push(event_index),
+            SessionEvent::NoteHit { event_index, .. } => {
+                hit.push((message.player_index, event_index));
+            }
+            SessionEvent::NoteMissed { event_index } => {
+                missed.push((message.player_index, event_index));
+            }
             _ => {}
         }
     }
-    if hit_events.is_empty() && missed_events.is_empty() {
+    if hit.is_empty() && missed.is_empty() {
         return;
     }
     for (entity, mut note, mut sprite) in &mut notes {
         if note.resolved {
             continue;
         }
-        if hit_events.contains(&note.event_index) {
+        let key = (note.player, note.event_index);
+        if hit.contains(&key) {
             // A sustain head stays visible (shrunk) while its tail runs.
-            let is_sustain = matches!(
-                player.session.note_state(note.event_index),
-                Some(NoteState::Hit(_))
-            ) && player
-                .session
-                .track()
-                .events()
-                .get(note.event_index)
-                .is_some_and(beatbyte_core::NoteEvent::is_sustain);
+            let session = players
+                .iter()
+                .find(|(index, _)| index.0 == note.player)
+                .map(|(_, player)| &player.session);
+            let is_sustain = session.is_some_and(|session| {
+                matches!(
+                    session.note_state(note.event_index),
+                    Some(NoteState::Hit(_))
+                ) && session
+                    .track()
+                    .events()
+                    .get(note.event_index)
+                    .is_some_and(beatbyte_core::NoteEvent::is_sustain)
+            });
             if is_sustain {
                 note.resolved = true;
-                sprite.custom_size = Some(Vec2::new(22.0, 22.0));
+                let size = sprite.custom_size.unwrap_or(Vec2::splat(30.0));
+                sprite.custom_size = Some(size * 0.65);
             } else {
                 commands.entity(entity).despawn();
             }
-        } else if missed_events.contains(&note.event_index) {
+        } else if missed.contains(&key) {
             note.resolved = true;
             sprite.color = palette::dimmed(sprite.color, 0.25);
         }

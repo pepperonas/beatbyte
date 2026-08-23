@@ -26,14 +26,21 @@ pub struct Autopilot {
     pub enabled: bool,
 }
 
-/// Frets the autopilot currently holds.
+/// Frets the autopilot currently holds, per player.
 #[derive(Resource, Default)]
 struct AutopilotHands {
-    held: LaneSet,
-    /// Index of the next event to play.
-    next_event: usize,
+    held: Vec<LaneSet>,
+    /// Index of the next event to play, per player.
+    next_event: Vec<usize>,
     /// Time spent on the results screen.
     results_time: f32,
+}
+
+impl AutopilotHands {
+    fn ensure(&mut self, players: usize) {
+        self.held.resize(players, LaneSet::EMPTY);
+        self.next_event.resize(players, 0);
+    }
 }
 
 /// Plugin wiring the autopilot systems.
@@ -93,6 +100,7 @@ fn autopilot_screenshots(
     let moment = match state.get() {
         AppState::MainMenu => Some("menu"),
         AppState::SongSelect => Some("songselect"),
+        AppState::MultiplayerSetup => Some("join"),
         AppState::Gameplay => {
             let now = game_clock.song_time(&time).unwrap_or(0.0);
             if (24.0..26.0).contains(&now) {
@@ -135,13 +143,15 @@ fn autopilot_menu(
     }
 }
 
-/// Pick the demo song and start it.
+/// Pick the demo song and start it (optionally with simulated
+/// multiplayer via `BEATBYTE_AUTOPILOT_PLAYERS=N`).
 fn autopilot_song_select(
     mut commands: Commands,
     time: Res<Time>,
     mut delay: Local<f32>,
     library: Res<crate::library::SongLibrary>,
     demo: Res<crate::boot::DemoSong>,
+    mut roster: ResMut<crate::multiplayer::PlayerRoster>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     *delay += time.delta_secs();
@@ -151,9 +161,18 @@ fn autopilot_song_select(
             error!("autopilot: empty song library");
             return;
         };
+        let players: usize = std::env::var("BEATBYTE_AUTOPILOT_PLAYERS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(1)
+            .clamp(1, crate::multiplayer::MAX_PLAYERS);
+        roster.devices = vec![crate::multiplayer::DeviceId::Keyboard; players];
         match crate::song_select::prepare_song(entry, &demo) {
             Ok(song) => {
-                info!("autopilot: starting \"{}\"", entry.title);
+                info!(
+                    "autopilot: starting \"{}\" with {players} player(s)",
+                    entry.title
+                );
                 commands.insert_resource(song);
                 next_state.set(AppState::Gameplay);
             }
@@ -166,82 +185,85 @@ fn autopilot_reset(mut hands: ResMut<AutopilotHands>) {
     *hands = AutopilotHands::default();
 }
 
-/// Play every note event exactly on time through the real session API.
+/// Play every note event exactly on time through the real session
+/// API — for every player.
 fn autopilot_play(
-    mut players: Query<&mut PlayerSession>,
+    mut players: Query<(&crate::gameplay::PlayerIndex, &mut PlayerSession)>,
     mut hands: ResMut<AutopilotHands>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
 ) {
-    let Ok(mut player) = players.single_mut() else {
-        return;
-    };
     let Some(now) = game_clock.song_time(&time) else {
         return;
     };
-    let player = &mut *player;
+    hands.ensure(players.iter().count());
 
-    while hands.next_event < player.session.track().events().len() {
-        let index = hands.next_event;
-        let event = player.session.track().events()[index];
-        if event.time_s > now {
-            break;
-        }
-        // Skip anything the engine already resolved (shouldn't happen
-        // when we're on time, but stay honest).
-        if !matches!(player.session.note_state(index), Some(NoteState::Pending)) {
-            hands.next_event += 1;
-            continue;
-        }
-        let stamp = event.time_s;
-        // Release frets not needed anymore, press the event's frets.
-        for lane in hands.held.iter() {
-            if !event.lanes.contains(lane) {
-                player.session.handle(
-                    GameInput {
-                        time_s: stamp,
-                        kind: InputKind::FretUp(lane),
-                    },
-                    &mut player.frame_events,
-                );
+    for (index, mut player) in &mut players {
+        let slot = index.0;
+        let player = &mut *player;
+        while hands.next_event[slot] < player.session.track().events().len() {
+            let event_index = hands.next_event[slot];
+            let event = player.session.track().events()[event_index];
+            if event.time_s > now {
+                break;
             }
-        }
-        for lane in event.lanes.iter() {
-            if !hands.held.contains(lane) {
-                player.session.handle(
-                    GameInput {
-                        time_s: stamp,
-                        kind: InputKind::FretDown(lane),
-                    },
-                    &mut player.frame_events,
-                );
+            if !matches!(
+                player.session.note_state(event_index),
+                Some(NoteState::Pending)
+            ) {
+                hands.next_event[slot] += 1;
+                continue;
             }
-        }
-        hands.held = event.lanes;
-        player.session.handle(
-            GameInput {
-                time_s: stamp,
-                kind: InputKind::Strum,
-            },
-            &mut player.frame_events,
-        );
-        // Fire Hype the moment it becomes available.
-        if player.session.performance().hype_meter()
-            >= player
-                .session
-                .performance()
-                .config()
-                .hype_activation_threshold
-        {
+            let stamp = event.time_s;
+            // Release frets not needed anymore, press the event's frets.
+            for lane in hands.held[slot].iter() {
+                if !event.lanes.contains(lane) {
+                    player.session.handle(
+                        GameInput {
+                            time_s: stamp,
+                            kind: InputKind::FretUp(lane),
+                        },
+                        &mut player.frame_events,
+                    );
+                }
+            }
+            for lane in event.lanes.iter() {
+                if !hands.held[slot].contains(lane) {
+                    player.session.handle(
+                        GameInput {
+                            time_s: stamp,
+                            kind: InputKind::FretDown(lane),
+                        },
+                        &mut player.frame_events,
+                    );
+                }
+            }
+            hands.held[slot] = event.lanes;
             player.session.handle(
                 GameInput {
                     time_s: stamp,
-                    kind: InputKind::ActivateHype,
+                    kind: InputKind::Strum,
                 },
                 &mut player.frame_events,
             );
+            // Fire Hype the moment it becomes available.
+            if player.session.performance().hype_meter()
+                >= player
+                    .session
+                    .performance()
+                    .config()
+                    .hype_activation_threshold
+            {
+                player.session.handle(
+                    GameInput {
+                        time_s: stamp,
+                        kind: InputKind::ActivateHype,
+                    },
+                    &mut player.frame_events,
+                );
+            }
+            hands.next_event[slot] += 1;
         }
-        hands.next_event += 1;
     }
 }
 
@@ -261,26 +283,35 @@ fn autopilot_results(
         app_exit.write(AppExit::error());
         return;
     };
-    let perf = &results.performance;
-    let counts = perf.counts();
-    info!(
-        "autopilot: finished \"{}\" ({}) — score {}, accuracy {:.1}%, \
-         streak {}, perfect {}, great {}, good {}, miss {}, overstrums {}",
-        results.title,
-        results.difficulty,
-        perf.score(),
-        perf.accuracy() * 100.0,
-        perf.best_streak(),
-        counts.perfect,
-        counts.great,
-        counts.good,
-        counts.miss,
-        perf.overstrums()
-    );
-    // A perfect autopilot must produce a perfect run; anything else is
-    // a gameplay bug worth failing loudly over.
-    let ok = counts.miss == 0 && perf.overstrums() == 0 && counts.total() > 0;
-    if ok {
+    if results.players.is_empty() {
+        error!("autopilot: results carry no players");
+        app_exit.write(AppExit::error());
+        return;
+    }
+    let mut all_ok = true;
+    for player in &results.players {
+        let perf = &player.performance;
+        let counts = perf.counts();
+        info!(
+            "autopilot: P{} \"{}\" ({}) — score {}, accuracy {:.1}%, \
+             streak {}, perfect {}, great {}, good {}, miss {}, overstrums {}",
+            player.index + 1,
+            results.title,
+            results.difficulty,
+            perf.score(),
+            perf.accuracy() * 100.0,
+            perf.best_streak(),
+            counts.perfect,
+            counts.great,
+            counts.good,
+            counts.miss,
+            perf.overstrums()
+        );
+        // A perfect autopilot must produce a perfect run; anything
+        // else is a gameplay bug worth failing loudly over.
+        all_ok &= counts.miss == 0 && perf.overstrums() == 0 && counts.total() > 0;
+    }
+    if all_ok {
         info!("autopilot: run PASSED");
         app_exit.write(AppExit::Success);
     } else {

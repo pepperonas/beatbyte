@@ -11,8 +11,10 @@ use crate::ui::UiFont;
 /// The four menu actions, in display order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuAction {
-    /// Open the song browser.
+    /// Open the song browser (solo).
     Play,
+    /// Open the multiplayer join screen.
+    Multiplayer,
     /// Open settings.
     Settings,
     /// Open latency calibration.
@@ -22,8 +24,9 @@ pub enum MenuAction {
 }
 
 impl MenuAction {
-    const ALL: [MenuAction; 4] = [
+    const ALL: [MenuAction; 5] = [
         MenuAction::Play,
+        MenuAction::Multiplayer,
         MenuAction::Settings,
         MenuAction::Calibration,
         MenuAction::Quit,
@@ -32,6 +35,7 @@ impl MenuAction {
     const fn label(self) -> &'static str {
         match self {
             MenuAction::Play => "PLAY",
+            MenuAction::Multiplayer => "MULTIPLAYER",
             MenuAction::Settings => "SETTINGS",
             MenuAction::Calibration => "CALIBRATION",
             MenuAction::Quit => "QUIT",
@@ -123,10 +127,11 @@ fn menu_input(
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<&Gamepad>,
     mut cursor: ResMut<MenuCursor>,
+    mut roster: ResMut<crate::multiplayer::PlayerRoster>,
     mut next_state: ResMut<NextState<AppState>>,
     mut app_exit: MessageWriter<AppExit>,
 ) {
-    let nav = MenuNav::read(&keys, &pads);
+    let nav = MenuNav::read(&keys, pads.iter());
     let count = MenuAction::ALL.len();
     if nav.up {
         cursor.0 = (cursor.0 + count - 1) % count;
@@ -136,7 +141,12 @@ fn menu_input(
     }
     if nav.confirm {
         match MenuAction::ALL[cursor.0] {
-            MenuAction::Play => next_state.set(AppState::SongSelect),
+            MenuAction::Play => {
+                // Solo: one keyboard player.
+                *roster = crate::multiplayer::PlayerRoster::default();
+                next_state.set(AppState::SongSelect);
+            }
+            MenuAction::Multiplayer => next_state.set(AppState::MultiplayerSetup),
             MenuAction::Settings => next_state.set(AppState::Settings),
             MenuAction::Calibration => next_state.set(AppState::Calibration),
             MenuAction::Quit => {

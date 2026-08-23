@@ -273,7 +273,11 @@ pub struct MenuNav {
 impl MenuNav {
     /// Read this frame's menu navigation from all devices.
     #[must_use]
-    pub fn read(keys: &ButtonInput<KeyCode>, pads: &Query<&Gamepad>) -> MenuNav {
+    pub fn read<'a>(
+        keys: &ButtonInput<KeyCode>,
+        pads: impl IntoIterator<Item = &'a Gamepad>,
+    ) -> MenuNav {
+        let pads: Vec<&Gamepad> = pads.into_iter().collect();
         let pad = |button: GamepadButton| pads.iter().any(|p| p.just_pressed(button));
         MenuNav {
             up: keys.just_pressed(KeyCode::ArrowUp) || pad(GamepadButton::DPadUp),

@@ -40,7 +40,8 @@ impl Plugin for SfxPlugin {
                 menu_sounds.run_if(
                     in_state(AppState::MainMenu)
                         .or_else(in_state(AppState::SongSelect))
-                        .or_else(in_state(AppState::Settings)),
+                        .or_else(in_state(AppState::Settings))
+                        .or_else(in_state(AppState::MultiplayerSetup)),
                 ),
                 gameplay_sounds.run_if(in_state(AppState::Gameplay)),
                 results_sound.run_if(in_state(AppState::Results)),

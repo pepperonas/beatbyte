@@ -14,6 +14,8 @@ pub enum AppState {
     Boot,
     /// The main menu: play, settings, calibration.
     MainMenu,
+    /// The multiplayer join screen.
+    MultiplayerSetup,
     /// The song browser.
     SongSelect,
     /// The settings screen.

@@ -1,8 +1,9 @@
-//! The results screen: how did the run go?
+//! The results screen: solo glory or the band's verdict.
 
 use bevy::prelude::*;
 
-use crate::gameplay::LastResults;
+use crate::gameplay::{LastResults, player_color};
+use crate::multiplayer::MultiplayerMode;
 use crate::palette;
 use crate::scores::{BestScore, ScoreBoard, save_scores};
 use crate::states::AppState;
@@ -47,24 +48,26 @@ fn spawn_results(
     let Some(results) = results else {
         return;
     };
-    let perf = &results.performance;
-    let counts = perf.counts();
-    let accuracy = perf.accuracy() * 100.0;
-    let grade = grade_for(accuracy, counts.miss);
 
-    // Record the run; celebrate a new best.
-    let new_record = scores.record(
-        &results.title,
-        &results.artist,
-        results.difficulty,
-        BestScore {
-            score: perf.score(),
-            accuracy: perf.accuracy(),
-            best_streak: perf.best_streak(),
-        },
-    );
-    if new_record {
-        save_scores(&scores);
+    // Record solo runs only — multiplayer scoreboards would mix
+    // devices and players into one book.
+    let solo = results.players.len() == 1;
+    let mut new_record = false;
+    if solo && let Some(player) = results.players.first() {
+        let perf = &player.performance;
+        new_record = scores.record(
+            &results.title,
+            &results.artist,
+            results.difficulty,
+            BestScore {
+                score: perf.score(),
+                accuracy: perf.accuracy(),
+                best_streak: perf.best_streak(),
+            },
+        );
+        if new_record {
+            save_scores(&scores);
+        }
     }
 
     commands
@@ -81,53 +84,11 @@ fn spawn_results(
             },
         ))
         .with_children(|parent| {
-            parent.spawn((
-                GradeSlam { age: 0.0 },
-                Text::new(grade),
-                font.text(20.0),
-                TextColor(palette::BRAND.with_alpha(0.0)),
-            ));
-            if new_record {
-                parent.spawn((
-                    Text::new("NEW RECORD!"),
-                    font.text(14.0),
-                    TextColor(palette::PERFECT),
-                ));
+            if solo {
+                spawn_solo(parent, &results, new_record, &font);
+            } else {
+                spawn_multi(parent, &results, &font);
             }
-            parent.spawn((
-                Text::new(format!("\"{}\" on {}", results.title, results.difficulty)),
-                font.text(12.0),
-                TextColor(palette::TEXT_DIM),
-            ));
-            parent.spawn((
-                ScoreCountUp {
-                    target: perf.score(),
-                    age: 0.0,
-                },
-                Text::new("0"),
-                font.text(30.0),
-                TextColor(palette::TEXT),
-            ));
-            parent.spawn((
-                Text::new(format!(
-                    "accuracy {accuracy:.1}%  |  best streak {}",
-                    perf.best_streak()
-                )),
-                font.text(12.0),
-                TextColor(palette::TEXT_DIM),
-            ));
-            parent.spawn((
-                Text::new(format!(
-                    "perfect {}   great {}   good {}   miss {}   overstrums {}",
-                    counts.perfect,
-                    counts.great,
-                    counts.good,
-                    counts.miss,
-                    perf.overstrums()
-                )),
-                font.text(10.0),
-                TextColor(palette::TEXT_DIM),
-            ));
             parent.spawn((
                 Text::new("ENTER back to menu"),
                 font.text(10.0),
@@ -138,6 +99,148 @@ fn spawn_results(
                 },
             ));
         });
+}
+
+fn spawn_solo(
+    parent: &mut ChildSpawnerCommands,
+    results: &LastResults,
+    new_record: bool,
+    font: &UiFont,
+) {
+    let perf = &results.players[0].performance;
+    let counts = perf.counts();
+    let accuracy = perf.accuracy() * 100.0;
+    let grade = grade_for(accuracy, counts.miss);
+
+    parent.spawn((
+        GradeSlam { age: 0.0 },
+        Text::new(grade),
+        font.text(20.0),
+        TextColor(palette::BRAND.with_alpha(0.0)),
+    ));
+    if new_record {
+        parent.spawn((
+            Text::new("NEW RECORD!"),
+            font.text(14.0),
+            TextColor(palette::PERFECT),
+        ));
+    }
+    parent.spawn((
+        Text::new(format!("\"{}\" on {}", results.title, results.difficulty)),
+        font.text(12.0),
+        TextColor(palette::TEXT_DIM),
+    ));
+    parent.spawn((
+        ScoreCountUp {
+            target: perf.score(),
+            age: 0.0,
+        },
+        Text::new("0"),
+        font.text(30.0),
+        TextColor(palette::TEXT),
+    ));
+    parent.spawn((
+        Text::new(format!(
+            "accuracy {accuracy:.1}%  |  best streak {}",
+            perf.best_streak()
+        )),
+        font.text(12.0),
+        TextColor(palette::TEXT_DIM),
+    ));
+    parent.spawn((
+        Text::new(format!(
+            "perfect {}   great {}   good {}   miss {}   overstrums {}",
+            counts.perfect,
+            counts.great,
+            counts.good,
+            counts.miss,
+            perf.overstrums()
+        )),
+        font.text(10.0),
+        TextColor(palette::TEXT_DIM),
+    ));
+}
+
+fn spawn_multi(parent: &mut ChildSpawnerCommands, results: &LastResults, font: &UiFont) {
+    parent.spawn((
+        Text::new(match results.mode {
+            MultiplayerMode::Versus => "VERSUS RESULTS",
+            MultiplayerMode::Coop => "BAND RESULTS",
+        }),
+        font.text(22.0),
+        TextColor(palette::BRAND),
+    ));
+    parent.spawn((
+        Text::new(format!("\"{}\" on {}", results.title, results.difficulty)),
+        font.text(11.0),
+        TextColor(palette::TEXT_DIM),
+        Node {
+            margin: UiRect::bottom(px(14)),
+            ..default()
+        },
+    ));
+
+    match results.mode {
+        MultiplayerMode::Coop => {
+            let total: u64 = results
+                .players
+                .iter()
+                .map(|player| player.performance.score())
+                .sum();
+            parent.spawn((
+                ScoreCountUp {
+                    target: total,
+                    age: 0.0,
+                },
+                Text::new("0"),
+                font.text(30.0),
+                TextColor(palette::TEXT),
+            ));
+            parent.spawn((
+                Text::new("band total"),
+                font.text(10.0),
+                TextColor(palette::TEXT_DIM),
+                Node {
+                    margin: UiRect::bottom(px(12)),
+                    ..default()
+                },
+            ));
+            for player in &results.players {
+                parent.spawn(player_row(player, font));
+            }
+        }
+        MultiplayerMode::Versus => {
+            // Ranked: the winner tops the list.
+            let mut ranked: Vec<_> = results.players.iter().collect();
+            ranked.sort_by_key(|player| core::cmp::Reverse(player.performance.score()));
+            for (place, player) in ranked.into_iter().enumerate() {
+                let mut row = player_row(player, font);
+                if place == 0 {
+                    row.1 = font.text(15.0);
+                }
+                parent.spawn(row);
+            }
+        }
+    }
+}
+
+/// A compact per-player result line.
+fn player_row(
+    player: &crate::gameplay::PlayerResult,
+    font: &UiFont,
+) -> (Text, TextFont, TextColor) {
+    let perf = &player.performance;
+    (
+        Text::new(format!(
+            "P{}   {}   {:.1}%   streak {}",
+            player.index + 1,
+            perf.score(),
+            perf.accuracy() * 100.0,
+            perf.best_streak()
+        )),
+        font.text(12.0),
+        TextColor(player_color(player.index)),
+    )
 }
 
 /// A simple letter grade from accuracy and misses.
@@ -175,7 +278,6 @@ fn count_up_score(time: Res<Time>, mut scores: Query<(&mut ScoreCountUp, &mut Te
         }
         count.age += time.delta_secs();
         let t = (count.age / 0.9).min(1.0);
-        // Ease-out: fast start, settling landing.
         let eased = 1.0 - (1.0 - t).powi(3);
         let value = (count.target as f64 * f64::from(eased)) as u64;
         let shown = value.to_string();

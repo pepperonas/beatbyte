@@ -14,6 +14,7 @@ pub mod controls_ui;
 pub mod gameplay;
 pub mod library;
 pub mod menu;
+pub mod multiplayer;
 pub mod palette;
 pub mod results;
 pub mod scores;
@@ -61,6 +62,7 @@ pub fn run() -> AppExit {
         scores::ScoresPlugin,
         boot::BootPlugin,
         menu::MenuPlugin,
+        multiplayer::MultiplayerPlugin,
         song_select::SongSelectPlugin,
         settings_ui::SettingsUiPlugin,
         controls_ui::ControlsUiPlugin,

@@ -1,20 +1,22 @@
-//! Game feel: particles, screen shake, beat pulse, Hype ambience.
+//! Game feel: particles, screen shake, beat pulse, Hype ambience —
+//! per-player where it matters.
 //!
 //! Priorities, in order: readability > timing clarity > feedback >
 //! spectacle. Everything here is decoration around the judgment
 //! stream — none of it touches gameplay state. All effects respect
-//! [`EffectSettings`] so the accessibility milestone only has to flip
-//! flags.
+//! [`EffectSettings`] so the accessibility settings only flip flags.
 
 use beatbyte_core::{Judgment, SessionEvent};
 use bevy::prelude::*;
 
-use super::{GameplayScreen, PlayerSession, RECEPTOR_Y, SessionFeedback, lane_x};
+use super::{
+    GameplayScreen, HighwayLayout, PlayerIndex, PlayerSession, RECEPTOR_Y, SessionFeedback,
+};
 use crate::audio_sys::GameClock;
 use crate::palette;
 use crate::states::{AppState, GamePhase};
 
-/// Effect toggles (surfaced in settings at the UI milestone).
+/// Effect toggles (surfaced in the settings screen).
 #[derive(Resource, Debug, Clone, Copy)]
 pub struct EffectSettings {
     /// Particle bursts on hits and sustains.
@@ -60,13 +62,14 @@ impl Shake {
     }
 }
 
-/// Marker: the highway bed sprite (beat pulse target).
+/// Marker: a highway bed sprite (beat pulse target).
 #[derive(Component)]
 pub struct HighwayBed;
 
-/// Marker: the translucent overlay that breathes while Hype runs.
+/// Marker: the translucent overlay that breathes while a player's
+/// Hype runs.
 #[derive(Component)]
-struct HypeOverlay;
+struct HypeOverlay(usize);
 
 /// Marker: full-screen flash on combo break.
 #[derive(Component)]
@@ -81,7 +84,6 @@ impl Plugin for FxPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<EffectSettings>()
             .init_resource::<Shake>()
-            .add_systems(OnEnter(AppState::Gameplay), spawn_fx_scenery)
             .add_systems(
                 Update,
                 (react_to_feedback, sustain_sparks, beat_pulse, hype_ambience)
@@ -96,34 +98,40 @@ impl Plugin for FxPlugin {
     }
 }
 
-/// Fx-owned scenery: the Hype overlay above the highway bed.
-fn spawn_fx_scenery(mut commands: Commands) {
-    commands.spawn((
-        GameplayScreen,
-        HypeOverlay,
-        Sprite::from_color(
-            palette::HYPE.with_alpha(0.0),
-            Vec2::new(super::LANE_STEP * 5.0 + 24.0, 900.0),
-        ),
-        Transform::from_xyz(0.0, 0.0, -8.0),
-    ));
+/// Fx-owned scenery: one Hype overlay per player (spawned by the
+/// highway builder's chain, reading the layout).
+pub fn spawn_fx_scenery(
+    mut commands: Commands,
+    layout: Res<HighwayLayout>,
+    players: Query<&PlayerIndex, With<PlayerSession>>,
+) {
+    for index in players.iter() {
+        commands.spawn((
+            GameplayScreen,
+            HypeOverlay(index.0),
+            Sprite::from_color(
+                palette::HYPE.with_alpha(0.0),
+                Vec2::new(layout.bed_width(), 900.0),
+            ),
+            Transform::from_xyz(layout.origin(index.0), 0.0, -8.0),
+        ));
+    }
 }
 
 /// Turn judgment events into bursts, shake and flashes.
 fn react_to_feedback(
     mut commands: Commands,
+    layout: Res<HighwayLayout>,
     mut feedback: MessageReader<SessionFeedback>,
-    players: Query<&PlayerSession>,
+    players: Query<(&PlayerIndex, &PlayerSession)>,
     settings: Res<EffectSettings>,
     mut shake: ResMut<Shake>,
     particles: Query<(), With<Particle>>,
 ) {
-    let Ok(player) = players.single() else {
-        return;
-    };
     let mut live_particles = particles.iter().count();
 
     for message in feedback.read() {
+        let player = message.player_index;
         match message.event {
             SessionEvent::NoteHit {
                 event_index,
@@ -133,7 +141,10 @@ fn react_to_feedback(
                 if !settings.particles {
                     continue;
                 }
-                let event = player.session.track().events()[event_index];
+                let Some((_, session)) = players.iter().find(|(index, _)| index.0 == player) else {
+                    continue;
+                };
+                let event = session.session.track().events()[event_index];
                 let (count, speed, spice) = match judgment {
                     Judgment::Perfect => (18, 300.0, true),
                     Judgment::Great => (12, 240.0, false),
@@ -141,7 +152,7 @@ fn react_to_feedback(
                 };
                 for lane in event.lanes.iter() {
                     let color = palette::lane_color(lane);
-                    let x = lane_x(lane);
+                    let x = layout.lane_x(player, lane);
                     spawn_burst(
                         &mut commands,
                         &mut live_particles,
@@ -167,7 +178,7 @@ fn react_to_feedback(
             }
             SessionEvent::NoteMissed { .. } => {
                 if settings.screen_shake {
-                    shake.add(0.35);
+                    shake.add(0.30);
                 }
                 commands.spawn((
                     GameplayScreen,
@@ -177,23 +188,23 @@ fn react_to_feedback(
                 ));
             }
             SessionEvent::Overstrum if settings.screen_shake => {
-                shake.add(0.22);
+                shake.add(0.20);
             }
             SessionEvent::HypeActivated => {
                 if settings.screen_shake {
                     shake.add(0.30);
                 }
-                // A celebratory ring of sparks across all lanes.
+                // A celebratory salvo across the player's lanes.
                 if settings.particles {
                     for lane in beatbyte_core::Lane::ALL {
                         spawn_burst(
                             &mut commands,
                             &mut live_particles,
-                            Vec2::new(lane_x(lane), RECEPTOR_Y),
+                            Vec2::new(layout.lane_x(player, lane), RECEPTOR_Y),
                             palette::HYPE,
                             10,
                             340.0,
-                            lane.index() * 13,
+                            lane.index() * 13 + player * 101,
                         );
                     }
                 }
@@ -248,7 +259,7 @@ fn hash01(seed: usize) -> f32 {
     ((x >> 40) as f32) / 16_777_216.0
 }
 
-/// Integrate particles: gravity, fade, shrink, despawn.
+/// Integrate particles: gravity, fade, despawn.
 fn simulate_particles(
     mut commands: Commands,
     time: Res<Time>,
@@ -270,10 +281,11 @@ fn simulate_particles(
     }
 }
 
-/// While a sustain is held, the receptor sprays little sparks.
+/// While a sustain is held, its receptor sprays little sparks.
 fn sustain_sparks(
     mut commands: Commands,
-    players: Query<&PlayerSession>,
+    layout: Res<HighwayLayout>,
+    players: Query<(&PlayerIndex, &PlayerSession)>,
     settings: Res<EffectSettings>,
     time: Res<Time>,
     particles: Query<(), With<Particle>>,
@@ -282,66 +294,67 @@ fn sustain_sparks(
     if !settings.particles {
         return;
     }
-    let Ok(player) = players.single() else {
-        return;
-    };
-    let Some(index) = player.session.active_sustain() else {
-        *accumulator = 0.0;
-        return;
-    };
-    // ~24 sparks per second while holding.
+    // Shared spark budget across players.
     *accumulator += time.delta_secs() * 24.0;
     if *accumulator < 1.0 {
         return;
     }
-    let mut live = particles.iter().count();
-    let event = player.session.track().events()[index];
-    let ticks = *accumulator as usize;
+    let ticks = (*accumulator as usize).min(3);
     *accumulator -= ticks as f32;
-    for (i, lane) in event.lanes.iter().enumerate() {
-        spawn_burst(
-            &mut commands,
-            &mut live,
-            Vec2::new(lane_x(lane), RECEPTOR_Y + 10.0),
-            palette::lane_color(lane),
-            ticks.min(2),
-            130.0,
-            index * 101 + i + (time.elapsed_secs() * 60.0) as usize,
-        );
+
+    let mut live = particles.iter().count();
+    for (index, player) in &players {
+        let Some(sustain_index) = player.session.active_sustain() else {
+            continue;
+        };
+        let event = player.session.track().events()[sustain_index];
+        for (i, lane) in event.lanes.iter().enumerate() {
+            spawn_burst(
+                &mut commands,
+                &mut live,
+                Vec2::new(layout.lane_x(index.0, lane), RECEPTOR_Y + 10.0),
+                palette::lane_color(lane),
+                ticks.min(2),
+                130.0,
+                sustain_index * 101 + i + (time.elapsed_secs() * 60.0) as usize,
+            );
+        }
     }
 }
 
-/// The stage breathes with the music: highway bed and receptor ring
-/// brightness follow the beat grid.
+/// The stage breathes with the music: every highway bed pulses on the
+/// beat grid (harder when anyone is in Hype).
 fn beat_pulse(
     players: Query<&PlayerSession>,
     settings: Res<EffectSettings>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
-    mut bed: Query<&mut Sprite, With<HighwayBed>>,
+    mut beds: Query<&mut Sprite, With<HighwayBed>>,
 ) {
     if !settings.beat_pulse {
         return;
     }
-    let Ok(player) = players.single() else {
+    let Some(reference) = players.iter().next() else {
         return;
     };
     let Some(now) = game_clock.song_time(&time) else {
         return;
     };
-    let beats = player.session.track().tempo.beats_at(now);
+    let beats = reference.session.track().tempo.beats_at(now);
     if beats < 0.0 {
         return;
     }
-    // Sharp attack on the beat, exponential decay across it.
     let phase = beats.fract() as f32;
     let pulse = (-phase * 6.0).exp();
-    let boost = if player.session.performance().hype_active() {
+    let boost = if players
+        .iter()
+        .any(|player| player.session.performance().hype_active())
+    {
         1.8
     } else {
         1.0
     };
-    if let Ok(mut sprite) = bed.single_mut() {
+    for mut sprite in &mut beds {
         let base = palette::SURFACE.to_linear();
         let lift = 1.0 + 0.55 * pulse * boost;
         sprite.color = Color::LinearRgba(LinearRgba {
@@ -353,33 +366,32 @@ fn beat_pulse(
     }
 }
 
-/// The Hype overlay breathes while Hype is active and hints at a full
-/// meter before activation.
+/// Each player's Hype overlay breathes with their own meter.
 fn hype_ambience(
-    players: Query<&PlayerSession>,
+    players: Query<(&PlayerIndex, &PlayerSession)>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
-    mut overlay: Query<&mut Sprite, With<HypeOverlay>>,
+    mut overlays: Query<(&HypeOverlay, &mut Sprite)>,
 ) {
-    let Ok(player) = players.single() else {
-        return;
-    };
-    let Ok(mut sprite) = overlay.single_mut() else {
-        return;
-    };
-    let perf = player.session.performance();
-    let alpha = if perf.hype_active() {
-        let beats = game_clock
-            .song_time(&time)
-            .map(|now| player.session.track().tempo.beats_at(now))
-            .unwrap_or(0.0);
-        0.10 + 0.05 * ((beats * core::f64::consts::PI).sin().abs() as f32)
-    } else if perf.hype_meter() >= perf.config().hype_activation_threshold {
-        0.045
-    } else {
-        0.0
-    };
-    sprite.color = palette::HYPE.with_alpha(alpha);
+    for (index, player) in &players {
+        let perf = player.session.performance();
+        let alpha = if perf.hype_active() {
+            let beats = game_clock
+                .song_time(&time)
+                .map(|now| player.session.track().tempo.beats_at(now))
+                .unwrap_or(0.0);
+            0.10 + 0.05 * ((beats * core::f64::consts::PI).sin().abs() as f32)
+        } else if perf.hype_meter() >= perf.config().hype_activation_threshold {
+            0.045
+        } else {
+            0.0
+        };
+        for (overlay, mut sprite) in &mut overlays {
+            if overlay.0 == index.0 {
+                sprite.color = palette::HYPE.with_alpha(alpha);
+            }
+        }
+    }
 }
 
 /// Fade the combo-break flash.

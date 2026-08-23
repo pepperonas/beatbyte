@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-23
+
+**The multiplayer milestone** (Milestone 9): 2–4 players, one machine.
+
+### Added
+
+- **Join screen** (main menu → Multiplayer): the keyboard and every
+  connected gamepad claim player slots by pressing fret 1; mode
+  toggle between **Versus** and **Co-op**; player accent colors.
+- **Split highways**: the layout scales for 1–4 players (lane
+  spacing, note sizes and receptor sizes shrink as highways
+  multiply); every player gets their own receptors, notes, sustain
+  tails and lane guides.
+- **Per-device input routing**: a keyboard player only hears the
+  keyboard, a pad player only their own pad — through the same
+  bindings table.
+- **Per-player everything**: world-space HUD blocks (score, combo,
+  multiplier, Hype bar) above each highway, judgment popups, hit
+  particles, Hype overlays and sustain sparks all follow their
+  player. The stage pulse hardens when *anyone* is in Hype.
+- **Multiplayer results**: ranked list for Versus, band total plus
+  breakdown for Co-op; solo results (grade slam, count-up,
+  NEW RECORD) unchanged. High scores stay solo-only by design.
+- Autopilot can now simulate N players
+  (`BEATBYTE_AUTOPILOT_PLAYERS=2..4`) and requires a flawless run
+  from every one of them.
+
+### Changed
+
+- Sessions, spawn cursors and feedback messages are fully per-player;
+  the gameplay systems iterate players instead of assuming one
+  (ADR-0002's "players are data" delivered end to end).
+
 ## [0.4.0] - 2026-08-23
 
 **The controllers milestone** (Milestone 8).
@@ -209,7 +242,8 @@ a tech demo.
   Records (Rust + Bevy, workspace layout).
 - README, MIT license, contributing guide, code of conduct, security policy.
 
-[Unreleased]: https://github.com/pepperonas/beatbyte/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/pepperonas/beatbyte/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/pepperonas/beatbyte/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/pepperonas/beatbyte/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/pepperonas/beatbyte/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/pepperonas/beatbyte/compare/v0.1.0...v0.2.0
