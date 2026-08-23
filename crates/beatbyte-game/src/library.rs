@@ -136,6 +136,38 @@ fn find_chart_files(dir: &std::path::Path) -> Vec<PathBuf> {
     found
 }
 
+/// Load and validate one chart into a library entry.
+/// `Ok(None)` = not a chart file at all (ignored silently).
+fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String> {
+    let chart = match load_chart_file(chart_path) {
+        Ok(chart) => chart,
+        Err(beatbyte_chart::ChartIoError::Parse { .. }) => return Ok(None),
+        Err(error) => return Err(error.to_string()),
+    };
+    let issues = chart.validate();
+    if let Some(worst) = issues.iter().find(|i| i.severity == Severity::Error) {
+        return Err(format!("invalid chart: {worst}"));
+    }
+    let chart_dir = chart_path
+        .parent()
+        .ok_or_else(|| "chart has no parent directory".to_owned())?;
+    let audio_path = resolve_audio_path(chart_dir, &chart.song.audio).map_err(|e| e.to_string())?;
+    if !audio_path.exists() {
+        return Err(format!("audio file `{}` not found", audio_path.display()));
+    }
+    Ok(Some(SongEntry {
+        title: chart.song.title.clone(),
+        artist: chart.song.artist.clone(),
+        bpm: chart.song.bpm,
+        duration_s: chart.song.duration_s,
+        difficulties: chart.charts.iter().map(|c| c.difficulty).collect(),
+        source: SongSource::File {
+            chart_path: chart_path.to_path_buf(),
+            audio_path,
+        },
+    }))
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -172,36 +204,4 @@ mod tests {
         assert_eq!(found.len(), 3, "symlink must not add duplicates: {names:?}");
         let _ = std::fs::remove_dir_all(&root);
     }
-}
-
-/// Load and validate one chart into a library entry.
-/// `Ok(None)` = not a chart file at all (ignored silently).
-fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String> {
-    let chart = match load_chart_file(chart_path) {
-        Ok(chart) => chart,
-        Err(beatbyte_chart::ChartIoError::Parse { .. }) => return Ok(None),
-        Err(error) => return Err(error.to_string()),
-    };
-    let issues = chart.validate();
-    if let Some(worst) = issues.iter().find(|i| i.severity == Severity::Error) {
-        return Err(format!("invalid chart: {worst}"));
-    }
-    let chart_dir = chart_path
-        .parent()
-        .ok_or_else(|| "chart has no parent directory".to_owned())?;
-    let audio_path = resolve_audio_path(chart_dir, &chart.song.audio).map_err(|e| e.to_string())?;
-    if !audio_path.exists() {
-        return Err(format!("audio file `{}` not found", audio_path.display()));
-    }
-    Ok(Some(SongEntry {
-        title: chart.song.title.clone(),
-        artist: chart.song.artist.clone(),
-        bpm: chart.song.bpm,
-        duration_s: chart.song.duration_s,
-        difficulties: chart.charts.iter().map(|c| c.difficulty).collect(),
-        source: SongSource::File {
-            chart_path: chart_path.to_path_buf(),
-            audio_path,
-        },
-    }))
 }
