@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Forward-compatibility pins: settings and chart files with unknown
+  (newer-version) fields load cleanly; missing settings fields fall
+  back to defaults. This was already true — now tests keep it true.
+
 - `docs/importing-songs.md`: a verified end-to-end guide for importing
   your own music (analyze → generate → play → correct in the editor).
 

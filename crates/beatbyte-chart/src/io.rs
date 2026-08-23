@@ -129,6 +129,44 @@ pub fn resolve_audio_path(chart_dir: &Path, audio: &str) -> Result<PathBuf, Char
 mod tests {
     use super::*;
 
+    /// Forward compatibility: charts written by a NEWER BeatByte may
+    /// carry fields this build does not know. They must parse AND
+    /// validate — unknown fields are ignored, never errors. (Additions
+    /// old readers can safely ignore do not bump the format version;
+    /// see the chart-format spec.)
+    #[test]
+    fn charts_tolerate_unknown_fields_at_every_level() {
+        let json = r#"{
+            "format_version": 1,
+            "future_top_level": true,
+            "song": {
+                "title": "Tomorrow",
+                "artist": "The Null Pointers",
+                "audio": "tomorrow.ogg",
+                "bpm": 120.0,
+                "mood_lighting": "violet"
+            },
+            "charts": [{
+                "difficulty": "medium",
+                "lanes": 5,
+                "shine": 0.7,
+                "notes": [
+                    {"time": 1.0, "lane": 2, "sparkle": true}
+                ],
+                "phrases": []
+            }]
+        }"#;
+        let chart: ChartFile = serde_json::from_str(json).expect("unknown fields must be ignored");
+        assert_eq!(chart.charts[0].notes.len(), 1);
+        assert!(
+            !chart
+                .validate()
+                .iter()
+                .any(|i| i.severity == crate::Severity::Error),
+            "a chart with unknown extras must stay valid"
+        );
+    }
+
     fn scratch_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("beatbyte-chart-test-{name}"));
         let _ = fs::remove_dir_all(&dir);

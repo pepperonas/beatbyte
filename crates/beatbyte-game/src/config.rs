@@ -181,3 +181,35 @@ fn apply_settings(
         }
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::Settings;
+
+    /// Forward compatibility: a settings file written by a NEWER
+    /// BeatByte (extra fields) or an OLDER one (missing fields) must
+    /// load — extra ignored, missing defaulted. Losing someone's
+    /// calibration on upgrade is not acceptable.
+    #[test]
+    fn settings_tolerate_unknown_and_missing_fields() {
+        let json = r#"{
+            "music_volume": 0.25,
+            "latency_offset_ms": 42.0,
+            "some_future_option": {"nested": [1, 2, 3]}
+        }"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert!((settings.music_volume - 0.25).abs() < 1e-6);
+        assert!((settings.latency_offset_ms - 42.0).abs() < 1e-6);
+        // Missing fields fall back to defaults.
+        assert_eq!(settings.theme, Settings::default().theme);
+        assert_eq!(settings.fullscreen, Settings::default().fullscreen);
+    }
+
+    /// Truly malformed JSON must error (the caller falls back to
+    /// defaults with a warning) — never panic.
+    #[test]
+    fn malformed_settings_error_cleanly() {
+        assert!(serde_json::from_str::<Settings>("{not json").is_err());
+    }
+}

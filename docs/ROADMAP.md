@@ -146,7 +146,7 @@ chart format v1 can be frozen as a promise.
 - [ ] C2 **Windows artifact validated.** Smoke-test the Windows zip on real Windows (or a CI windows job running the smoke harness). *Verify: run log/screenshot noted in release notes of the next release.*
 - [~] C3 **CI actions off deprecated Node runtimes.** checkout v4→v5, upload-artifact v4→v5, download-artifact v4→v5. *CI verified: run green, zero deprecation annotations. Remaining: the upload/download pair only executes on a tag — confirm zero annotations on the next release run, then flip to done.*
 - [ ] C4 **Gamepad hot-plug.** Define + implement behavior for pad disconnect mid-song (pause + reconnect prompt is the target); reconnection resumes the same `PlayerDevice`. *Verify: manual unplug test 1P and 2P; no panic, session intact.*
-- [ ] C5 **Settings/chart forward-compat reads.** Unknown fields in settings and chart JSON are tolerated (serde defaults / deny-unknown only where security demands). *Verify: fixture with extra fields loads; test pins it.*
+- [x] C5 **Settings/chart forward-compat reads.** Both were already tolerant (`#[serde(default)]` on Settings, selective defaults on chart schema; corrupt settings fall back to defaults with a warning) — now PINNED: settings load with unknown+missing fields, malformed JSON errors cleanly, charts with unknown fields at file/song/chart/note level parse and stay valid. *Verified: 3 tests; deny_unknown_fields mutation makes them fail.*
 
 ### D — Accessibility & options
 
