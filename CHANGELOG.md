@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-08-23
+
+### Added
+
+- **Audio infrastructure** (`beatbyte-audio`):
+  - Decoding of OGG/WAV/FLAC/MP3 into analyzable mono buffers with
+    untrusted-input caps, plus a half-band FIR downsampler.
+  - The `SongClock`: an anchored, monotonic, fully unit-testable song
+    timeline with snap/slew reconciliation against the audio device
+    (ADR-0005).
+  - Music playback on a dedicated thread (rodio) behind a `Send`
+    handle: play file/buffer, pause, seek, volume, atomic position;
+    the game runs silently instead of crashing when no output exists.
+  - The analysis pipeline: spectral-flux onset detection (with
+    per-onset strength and brightness), autocorrelation tempo
+    estimation with octave prior and sub-BPM interpolation, beat-grid
+    phase fitting, RMS energy envelope — all pure and tested against
+    synthesized ground truth.
+  - Deterministic signal synthesis (`synth`) and the original bundled
+    demo track "Circuit Breaker" by The Null Pointers, rendered
+    entirely by code (ADR-0006) — no audio binaries in the repository.
+- **Automatic chart generation** (`beatbyte-chart::generate`):
+  difficulty-profile-driven and deterministic — grid quantization with
+  raw-onset fallback, strength filtering, density limits,
+  brightness-driven lane assignment with jump limiting, chords on
+  strong hits, auto-HOPO for fast runs, energy-aware sustains, phrase
+  placement, loudest-window preview selection.
+- **Real CLI** (`beatbyte-cli`): `analyze`, `generate`, `validate`,
+  `inspect` now do real work, plus `demo` (renders the demo song and
+  charts it through the actual pipeline). Proper exit codes.
+- Analysis types (`SongAnalysis`, `Onset`) in `beatbyte-core::music`
+  as the shared vocabulary between analysis and generation.
+- Documentation: ADR-0005 (audio architecture), ADR-0006 (synthesized
+  demo content), `docs/audio/analysis.md` including honest known
+  limitations.
+
 ## [0.0.2] - 2026-08-23
 
 ### Added
@@ -48,6 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Records (Rust + Bevy, workspace layout).
 - README, MIT license, contributing guide, code of conduct, security policy.
 
-[Unreleased]: https://github.com/pepperonas/beatbyte/compare/v0.0.2...HEAD
+[Unreleased]: https://github.com/pepperonas/beatbyte/compare/v0.0.3...HEAD
+[0.0.3]: https://github.com/pepperonas/beatbyte/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/pepperonas/beatbyte/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/pepperonas/beatbyte/releases/tag/v0.0.1

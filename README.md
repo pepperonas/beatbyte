@@ -136,6 +136,7 @@ beatbyte-cli analyze song.ogg      # BPM, beats, onsets
 beatbyte-cli generate song.ogg     # produce a BeatByte chart
 beatbyte-cli validate chart.json   # validate a chart file
 beatbyte-cli inspect chart.json    # summarize a chart
+beatbyte-cli demo                  # render the built-in demo song + chart
 ```
 
 ## Testing
@@ -165,8 +166,8 @@ and the [Code of Conduct](CODE_OF_CONDUCT.md) first. Security issues: see
 
 - [x] **M1 — Foundation**: workspace, CI, docs, minimal Bevy app
 - [x] **M2 — Core domain**: chart model, timing, scoring, validation
-- [ ] **M3 — Audio**: decoding, playback, song clock, BPM/onset analysis
-- [ ] **M4 — Chart generation**: audio → analysis → playable chart
+- [x] **M3 — Audio**: decoding, playback, song clock, BPM/onset analysis
+- [x] **M4 — Chart generation**: audio → analysis → playable chart
 - [ ] **M5 — First playable**: five lanes, hits, scoring, combos
 - [ ] **M6 — Game feel**: particles, shake, lighting, feedback
 - [ ] **M7 — UI**: menus, song browser, settings, calibration, results

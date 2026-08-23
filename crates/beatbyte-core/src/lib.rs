@@ -16,6 +16,8 @@
 //! - [`note`] — note events, phrases, playable tracks
 //! - [`score`] — scoring rules and per-player performance
 //! - [`session`] — the deterministic gameplay session (judgment engine)
+//! - [`music`] — analysis results (beats, onsets) shared with the
+//!   audio pipeline and chart generator
 //!
 //! ## Time convention
 //!
@@ -24,6 +26,7 @@
 
 pub mod difficulty;
 pub mod lane;
+pub mod music;
 pub mod note;
 pub mod score;
 pub mod session;
@@ -31,6 +34,7 @@ pub mod timing;
 
 pub use difficulty::Difficulty;
 pub use lane::{Lane, LaneSet};
+pub use music::{Onset, SongAnalysis};
 pub use note::{NoteEvent, NoteKind, Phrase, Track};
 pub use score::{PlayerPerformance, ScoreConfig};
 pub use session::{GameInput, InputKind, SessionEvent, TrackSession};

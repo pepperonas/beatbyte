@@ -11,6 +11,11 @@ rust-version.workspace = true
 [dependencies]
 beatbyte-core = { workspace = true }
 thiserror = { workspace = true }
+rodio = { workspace = true }
+realfft = { workspace = true }
+
+[dev-dependencies]
+hound = { workspace = true }
 
 [lints]
 workspace = true
