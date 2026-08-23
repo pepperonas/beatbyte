@@ -12,13 +12,29 @@ pub struct ResultsPlugin;
 impl Plugin for ResultsPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(AppState::Results), spawn_results)
-            .add_systems(Update, results_input.run_if(in_state(AppState::Results)))
+            .add_systems(
+                Update,
+                (results_input, animate_grade, count_up_score).run_if(in_state(AppState::Results)),
+            )
             .add_systems(OnExit(AppState::Results), despawn_results);
     }
 }
 
 #[derive(Component)]
 struct ResultsScreen;
+
+/// The grade letter slams in over the first third of a second.
+#[derive(Component)]
+struct GradeSlam {
+    age: f32,
+}
+
+/// The score ticks up from zero.
+#[derive(Component)]
+struct ScoreCountUp {
+    target: u64,
+    age: f32,
+}
 
 fn spawn_results(mut commands: Commands, results: Option<Res<LastResults>>) {
     let Some(results) = results else {
@@ -44,12 +60,13 @@ fn spawn_results(mut commands: Commands, results: Option<Res<LastResults>>) {
         ))
         .with_children(|parent| {
             parent.spawn((
+                GradeSlam { age: 0.0 },
                 Text::new(grade),
                 TextFont {
-                    font_size: FontSize::Px(110.0),
+                    font_size: FontSize::Px(30.0),
                     ..default()
                 },
-                TextColor(palette::BRAND),
+                TextColor(palette::BRAND.with_alpha(0.0)),
             ));
             parent.spawn((
                 Text::new(format!("\"{}\" on {}", results.title, results.difficulty)),
@@ -60,7 +77,11 @@ fn spawn_results(mut commands: Commands, results: Option<Res<LastResults>>) {
                 TextColor(palette::TEXT_DIM),
             ));
             parent.spawn((
-                Text::new(format!("{}", perf.score())),
+                ScoreCountUp {
+                    target: perf.score(),
+                    age: 0.0,
+                },
+                Text::new("0"),
                 TextFont {
                     font_size: FontSize::Px(52.0),
                     ..default()
@@ -117,6 +138,39 @@ fn grade_for(accuracy_percent: f64, misses: u32) -> &'static str {
         a if a >= 70.0 => "C",
         a if a >= 55.0 => "D",
         _ => "E",
+    }
+}
+
+/// Overshooting scale-in for the grade letter.
+fn animate_grade(
+    time: Res<Time>,
+    mut grades: Query<(&mut GradeSlam, &mut TextFont, &mut TextColor)>,
+) {
+    for (mut slam, mut font, mut color) in &mut grades {
+        slam.age += time.delta_secs();
+        let t = (slam.age / 0.35).min(1.0);
+        // Ease-out-back: overshoot to ~1.1× then settle.
+        let eased = 1.0 + 2.7 * (t - 1.0).powi(3) + 1.7 * (t - 1.0).powi(2);
+        font.font_size = FontSize::Px(30.0 + 80.0 * eased);
+        color.0 = palette::BRAND.with_alpha(t.min(1.0));
+    }
+}
+
+/// The score earns itself back over a moment.
+fn count_up_score(time: Res<Time>, mut scores: Query<(&mut ScoreCountUp, &mut Text)>) {
+    for (mut count, mut text) in &mut scores {
+        if count.age >= 0.9 {
+            continue;
+        }
+        count.age += time.delta_secs();
+        let t = (count.age / 0.9).min(1.0);
+        // Ease-out: fast start, settling landing.
+        let eased = 1.0 - (1.0 - t).powi(3);
+        let value = (count.target as f64 * f64::from(eased)) as u64;
+        let shown = value.to_string();
+        if text.0 != shown {
+            text.0 = shown;
+        }
     }
 }
 

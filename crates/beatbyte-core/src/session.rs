@@ -230,6 +230,13 @@ impl TrackSession {
         self.clock_s
     }
 
+    /// The event index of the currently running sustain, if any
+    /// (presentation uses this for hold feedback).
+    #[must_use]
+    pub fn active_sustain(&self) -> Option<usize> {
+        self.sustain.map(|s| s.event_index)
+    }
+
     /// Whether all events are resolved (hit or missed) and no sustain is
     /// running — the track is finished.
     #[must_use]

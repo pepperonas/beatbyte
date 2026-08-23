@@ -11,6 +11,7 @@ pub mod gameplay;
 pub mod menu;
 pub mod palette;
 pub mod results;
+pub mod sfx;
 pub mod states;
 
 use bevy::prelude::*;
@@ -50,6 +51,7 @@ pub fn run() -> AppExit {
         menu::MenuPlugin,
         gameplay::GameplayPlugin,
         results::ResultsPlugin,
+        sfx::SfxPlugin,
         autopilot::AutopilotPlugin,
     ));
 

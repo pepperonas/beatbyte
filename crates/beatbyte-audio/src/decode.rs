@@ -145,9 +145,11 @@ fn half_band_taps<const N: usize>() -> [f32; N] {
     taps
 }
 
-/// Write mono audio as a 16-bit PCM WAV file (used for synthesized
-/// demo material; the header is trivial and saves a dependency).
-pub fn write_wav_mono16(path: &Path, audio: &AudioData) -> std::io::Result<()> {
+/// Encode mono audio as a 16-bit PCM WAV in memory (the header is
+/// trivial and saves a dependency). Used for demo material on disk and
+/// for procedurally generated SFX handed to the engine's audio assets.
+#[must_use]
+pub fn wav_bytes_mono16(audio: &AudioData) -> Vec<u8> {
     let data_len = (audio.samples().len() * 2) as u32;
     let rate = audio.sample_rate();
     let byte_rate = rate * 2;
@@ -169,7 +171,12 @@ pub fn write_wav_mono16(path: &Path, audio: &AudioData) -> std::io::Result<()> {
         let value = (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16;
         bytes.extend_from_slice(&value.to_le_bytes());
     }
-    fs::write(path, bytes)
+    bytes
+}
+
+/// Write mono audio as a 16-bit PCM WAV file.
+pub fn write_wav_mono16(path: &Path, audio: &AudioData) -> std::io::Result<()> {
+    fs::write(path, wav_bytes_mono16(audio))
 }
 
 /// Decode an audio file to mono for analysis. Multi-channel input is

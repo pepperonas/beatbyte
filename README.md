@@ -29,13 +29,9 @@ one machine.
 <p align="center">
   <img src="docs/media/beatbyte-gameplay.png" alt="BeatByte gameplay: five-lane highway with falling notes, score, combo and Hype meter" width="800"/>
 </p>
-<p align="center">
-  <img src="docs/media/beatbyte-menu.png" alt="Main menu with difficulty selection" width="399"/>
-  <img src="docs/media/beatbyte-results.png" alt="Results screen with grade and judgment breakdown" width="399"/>
-</p>
 
-*Milestone 5 visuals — deliberately minimal placeholders. The pixel-art
-identity pass (custom font, sprites, themes, effects) is Milestones 6–10.*
+*Early-milestone visuals — functional placeholders. The pixel-art
+identity pass (custom font, sprites, themes) lands with Milestones 7–10.*
 
 ## Features
 
@@ -180,7 +176,7 @@ and the [Code of Conduct](CODE_OF_CONDUCT.md) first. Security issues: see
 - [x] **M3 — Audio**: decoding, playback, song clock, BPM/onset analysis
 - [x] **M4 — Chart generation**: audio → analysis → playable chart
 - [x] **M5 — First playable**: five lanes, hits, scoring, combos
-- [ ] **M6 — Game feel**: particles, shake, lighting, feedback
+- [x] **M6 — Game feel**: particles, shake, lighting, feedback
 - [ ] **M7 — UI**: menus, song browser, settings, calibration, results
 - [ ] **M8 — Controllers**: gamepads, guitar controllers, remapping
 - [ ] **M9 — Local multiplayer**: 2–4 players, versus & co-op

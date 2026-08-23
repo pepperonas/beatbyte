@@ -8,8 +8,8 @@ use beatbyte_core::{Lane, NoteKind, SessionEvent};
 use bevy::prelude::*;
 
 use super::{
-    GameplayScreen, LANE_STEP, PlayerSession, RECEPTOR_Y, SCROLL_SPEED, SPAWN_LOOKAHEAD_S, lane_x,
-    note_y,
+    GameplayScreen, LANE_STEP, PlayerSession, RECEPTOR_Y, SCROLL_SPEED, SPAWN_LOOKAHEAD_S,
+    SessionFeedback, lane_x, note_y,
 };
 use crate::audio_sys::GameClock;
 use crate::palette;
@@ -33,9 +33,10 @@ pub struct SpawnCursor(pub usize);
 
 /// Build the static highway: bed, receptor row, lane guides.
 pub fn spawn_highway(mut commands: Commands) {
-    // Highway bed.
+    // Highway bed (tagged: the beat pulse modulates its brightness).
     commands.spawn((
         GameplayScreen,
+        super::fx::HighwayBed,
         Sprite::from_color(palette::SURFACE, Vec2::new(LANE_STEP * 5.0 + 24.0, 900.0)),
         Transform::from_xyz(0.0, 0.0, -10.0),
     ));
@@ -185,6 +186,7 @@ pub fn apply_note_events(
     mut commands: Commands,
     mut notes: Query<(Entity, &mut NoteSprite, &mut Sprite)>,
     players: Query<&PlayerSession>,
+    mut feedback: MessageReader<SessionFeedback>,
 ) {
     let Ok(player) = players.single() else {
         return;
@@ -192,10 +194,10 @@ pub fn apply_note_events(
     // Collect the events that resolve notes this frame.
     let mut hit_events: Vec<usize> = Vec::new();
     let mut missed_events: Vec<usize> = Vec::new();
-    for event in &player.frame_events {
-        match event {
-            SessionEvent::NoteHit { event_index, .. } => hit_events.push(*event_index),
-            SessionEvent::NoteMissed { event_index } => missed_events.push(*event_index),
+    for message in feedback.read() {
+        match message.event {
+            SessionEvent::NoteHit { event_index, .. } => hit_events.push(event_index),
+            SessionEvent::NoteMissed { event_index } => missed_events.push(event_index),
             _ => {}
         }
     }

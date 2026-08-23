@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-23
+
+**The game feel milestone** (Milestone 6): BeatByte stops feeling like
+a tech demo.
+
+### Added
+
+- **Session feedback bus**: judgment events are broadcast as engine
+  messages once per frame; note visuals, particles, sounds and popups
+  are independent subscribers (multiplayer-ready fan-out).
+- **Pixel-confetti hit particles**: bursts sized by judgment (Perfect
+  adds white sparks), sustain hold sparks at the receptor, a Hype
+  activation salvo across all lanes — deterministic seeding, hard
+  particle cap, zero allocations in steady state beyond spawns.
+- **Trauma-based screen shake** on misses, overstrums and Hype
+  activation (decaying, squared response — subtle by design).
+- **The stage breathes**: highway brightness pulses on the beat grid
+  (stronger under Hype), and a translucent Hype overlay glows when the
+  meter is ready and breathes while it burns.
+- **Combo-break flash**: a brief red wash so a dropped streak is felt
+  without reading the HUD.
+- **Procedural sound effects** — synthesized at startup, no audio
+  binaries: menu move/confirm blips, a dry miss thud (rate-limited),
+  a rising Hype sweep. Note hits stay deliberately silent: the music
+  is the hit sound.
+- **Menu & results juice**: the title breathes, the grade letter
+  slams in with overshoot, the score counts itself up.
+- `EffectSettings` resource (particles / shake / beat pulse toggles)
+  ready for the accessibility settings screen.
+
 ## [0.1.0] - 2026-08-23
 
 **BeatByte is playable.** First playable prototype (Milestone 5).
@@ -116,7 +146,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Records (Rust + Bevy, workspace layout).
 - README, MIT license, contributing guide, code of conduct, security policy.
 
-[Unreleased]: https://github.com/pepperonas/beatbyte/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/pepperonas/beatbyte/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/pepperonas/beatbyte/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/pepperonas/beatbyte/compare/v0.0.3...v0.1.0
 [0.0.3]: https://github.com/pepperonas/beatbyte/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/pepperonas/beatbyte/compare/v0.0.1...v0.0.2

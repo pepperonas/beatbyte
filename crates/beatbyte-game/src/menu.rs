@@ -29,7 +29,8 @@ impl Plugin for MenuPlugin {
             .add_systems(OnEnter(AppState::MainMenu), spawn_menu)
             .add_systems(
                 Update,
-                (menu_input, update_difficulty_row).run_if(in_state(AppState::MainMenu)),
+                (menu_input, update_difficulty_row, pulse_title)
+                    .run_if(in_state(AppState::MainMenu)),
             )
             .add_systems(OnExit(AppState::MainMenu), despawn_menu);
     }
@@ -41,6 +42,10 @@ struct MenuScreen;
 /// Marker for the difficulty labels, carrying their difficulty.
 #[derive(Component)]
 struct DifficultyLabel(Difficulty);
+
+/// Marker for the pulsing title.
+#[derive(Component)]
+struct MenuTitle;
 
 fn spawn_menu(mut commands: Commands, song: Res<LoadedSong>) {
     commands
@@ -58,6 +63,7 @@ fn spawn_menu(mut commands: Commands, song: Res<LoadedSong>) {
         ))
         .with_children(|parent| {
             parent.spawn((
+                MenuTitle,
                 Text::new("BEATBYTE"),
                 TextFont {
                     font_size: FontSize::Px(84.0),
@@ -159,6 +165,20 @@ fn update_difficulty_row(
         } else {
             palette::TEXT_DIM
         };
+    }
+}
+
+/// The title breathes gently — a static menu reads as a frozen app.
+fn pulse_title(time: Res<Time>, mut title: Query<&mut TextColor, With<MenuTitle>>) {
+    if let Ok(mut color) = title.single_mut() {
+        let pulse = 0.88 + 0.12 * (time.elapsed_secs() * 2.1).sin();
+        let base = palette::BRAND.to_linear();
+        color.0 = Color::LinearRgba(bevy::color::LinearRgba {
+            red: base.red * pulse,
+            green: base.green * pulse,
+            blue: base.blue * pulse,
+            alpha: 1.0,
+        });
     }
 }
 

@@ -11,6 +11,7 @@
 //! spawns more without touching these systems' logic.
 
 pub mod feedback;
+pub mod fx;
 pub mod hud;
 pub mod input;
 pub mod notes;
@@ -54,8 +55,35 @@ pub fn note_y(event_time_s: f64, song_time_s: f64) -> f32 {
 pub struct PlayerSession {
     /// The deterministic judgment engine.
     pub session: TrackSession,
-    /// Session events produced this frame (input + time advance).
+    /// Session events produced this frame (input + time advance);
+    /// drained into [`SessionFeedback`] messages once per frame.
     pub frame_events: Vec<SessionEvent>,
+}
+
+/// A session event broadcast to every presentation consumer (note
+/// visuals, particles, sounds, popups) — written once per frame by
+/// [`drain_feedback`], read via `MessageReader<SessionFeedback>`.
+#[derive(Message, Debug, Clone, Copy)]
+pub struct SessionFeedback {
+    /// The player entity the event belongs to.
+    pub player: Entity,
+    /// What happened.
+    pub event: SessionEvent,
+}
+
+/// Publish each player's buffered session events as messages.
+fn drain_feedback(
+    mut players: Query<(Entity, &mut PlayerSession)>,
+    mut writer: MessageWriter<SessionFeedback>,
+) {
+    for (entity, mut player) in &mut players {
+        for event in player.frame_events.drain(..) {
+            writer.write(SessionFeedback {
+                player: entity,
+                event,
+            });
+        }
+    }
 }
 
 /// The last finished run, for the results screen.
@@ -78,37 +106,40 @@ pub struct GameplayPlugin;
 
 impl Plugin for GameplayPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            OnEnter(AppState::Gameplay),
-            (setup_gameplay, notes::spawn_highway, hud::spawn_hud),
-        )
-        .add_systems(
-            Update,
-            (
-                input::gameplay_input,
-                advance_sessions,
-                notes::spawn_due_notes,
-                notes::move_notes,
-                notes::update_receptors,
-                notes::apply_note_events,
-                feedback::spawn_feedback,
-                feedback::animate_feedback,
-                hud::update_hud,
-                check_song_end,
+        app.add_message::<SessionFeedback>()
+            .add_plugins(fx::FxPlugin)
+            .add_systems(
+                OnEnter(AppState::Gameplay),
+                (setup_gameplay, notes::spawn_highway, hud::spawn_hud),
             )
-                .chain()
-                .run_if(in_state(GamePhase::Playing)),
-        )
-        .add_systems(Update, pause_input.run_if(in_state(AppState::Gameplay)))
-        .add_systems(
-            OnEnter(GamePhase::Paused),
-            (pause_audio, spawn_pause_overlay),
-        )
-        .add_systems(
-            OnExit(GamePhase::Paused),
-            (resume_audio, despawn_pause_overlay),
-        )
-        .add_systems(OnExit(AppState::Gameplay), teardown_gameplay);
+            .add_systems(
+                Update,
+                (
+                    input::gameplay_input,
+                    advance_sessions,
+                    drain_feedback,
+                    notes::spawn_due_notes,
+                    notes::move_notes,
+                    notes::update_receptors,
+                    notes::apply_note_events,
+                    feedback::spawn_feedback,
+                    feedback::animate_feedback,
+                    hud::update_hud,
+                    check_song_end,
+                )
+                    .chain()
+                    .run_if(in_state(GamePhase::Playing)),
+            )
+            .add_systems(Update, pause_input.run_if(in_state(AppState::Gameplay)))
+            .add_systems(
+                OnEnter(GamePhase::Paused),
+                (pause_audio, spawn_pause_overlay),
+            )
+            .add_systems(
+                OnExit(GamePhase::Paused),
+                (resume_audio, despawn_pause_overlay),
+            )
+            .add_systems(OnExit(AppState::Gameplay), teardown_gameplay);
     }
 }
 

@@ -6,7 +6,7 @@
 use beatbyte_core::{Judgment, SessionEvent};
 use bevy::prelude::*;
 
-use super::{GameplayScreen, PlayerSession, RECEPTOR_Y, lane_x};
+use super::{GameplayScreen, PlayerSession, RECEPTOR_Y, SessionFeedback, lane_x};
 use crate::palette;
 
 /// A short-lived visual effect.
@@ -30,23 +30,22 @@ pub struct JudgmentPopup {
 /// Turn this frame's session events into visual effects.
 pub fn spawn_feedback(
     mut commands: Commands,
-    mut players: Query<&mut PlayerSession>,
+    players: Query<&PlayerSession>,
+    mut feedback: MessageReader<SessionFeedback>,
     mut popup: Query<(&mut Text, &mut TextColor, &mut JudgmentPopup)>,
 ) {
-    let Ok(mut player) = players.single_mut() else {
+    let Ok(player) = players.single() else {
         return;
     };
-    // Drain — feedback is the last consumer of the frame's events.
-    let events = core::mem::take(&mut player.frame_events);
-    for event in &events {
-        match event {
+    for message in feedback.read() {
+        match message.event {
             SessionEvent::NoteHit {
                 event_index,
                 judgment,
                 ..
             } => {
-                let lanes = player.session.track().events()[*event_index].lanes;
-                let (label, color) = judgment_style(*judgment);
+                let lanes = player.session.track().events()[event_index].lanes;
+                let (label, color) = judgment_style(judgment);
                 for lane in lanes.iter() {
                     commands.spawn((
                         GameplayScreen,
