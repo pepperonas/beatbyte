@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-23
+
+**The polish milestone** (Milestone 13).
+
+### Added
+
+- **Screen-transition fades**: every state change fades in over a
+  quarter second instead of cutting.
+- **Count-in**: songs start with a two-second pre-roll — the first
+  notes scroll in over a 3-2-1 banner and the music starts exactly at
+  zero. No song opens with a wall anymore.
+
+### Changed
+
+- README and docs brought up to the finished-milestone state.
+
 ## [0.7.0] - 2026-08-23
 
 **The editor and packaging milestones** (Milestones 11 + 12).
@@ -288,7 +304,8 @@ a tech demo.
   Records (Rust + Bevy, workspace layout).
 - README, MIT license, contributing guide, code of conduct, security policy.
 
-[Unreleased]: https://github.com/pepperonas/beatbyte/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/pepperonas/beatbyte/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/pepperonas/beatbyte/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/pepperonas/beatbyte/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/pepperonas/beatbyte/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/pepperonas/beatbyte/compare/v0.4.0...v0.5.0

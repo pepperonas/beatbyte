@@ -35,6 +35,10 @@ pub const RECEPTOR_Y: f32 = -240.0;
 /// Notes spawn when they are this many seconds away.
 pub const SPAWN_LOOKAHEAD_S: f64 = 2.6;
 
+/// Count-in before the music starts: the clock runs negative while
+/// the first notes scroll in, so songs never open with a wall.
+pub const PREROLL_S: f64 = 2.0;
+
 /// Where each player's highway sits and how big everything is.
 #[derive(Resource, Debug, Clone)]
 pub struct HighwayLayout {
@@ -170,6 +174,14 @@ pub struct LastResults {
 #[derive(Component)]
 pub struct GameplayScreen;
 
+/// The song audio waiting for the count-in to elapse.
+#[derive(Resource)]
+struct PendingMusic(SongAudio);
+
+/// Marker for the count-in banner.
+#[derive(Component)]
+struct CountIn;
+
 /// The gameplay plugin.
 pub struct GameplayPlugin;
 
@@ -191,6 +203,7 @@ impl Plugin for GameplayPlugin {
             .add_systems(
                 Update,
                 (
+                    run_count_in,
                     input::gameplay_input,
                     advance_sessions,
                     drain_feedback,
@@ -225,7 +238,6 @@ fn setup_gameplay(
     song: Res<LoadedSong>,
     selected: Res<SelectedDifficulty>,
     roster: Res<PlayerRoster>,
-    music: Res<Music>,
     mut game_clock: ResMut<GameClock>,
     time: Res<Time>,
     settings: Res<crate::config::Settings>,
@@ -275,11 +287,53 @@ fn setup_gameplay(
         ));
     }
 
-    match &song.audio {
-        SongAudio::Memory(audio) => music.0.play_buffer(audio.clone()),
-        SongAudio::File(path) => music.0.play_file(path.clone()),
+    // Count-in: the clock starts negative; music starts at zero.
+    commands.insert_resource(PendingMusic(song.audio.clone()));
+    game_clock.clock.start(time.elapsed_secs_f64(), -PREROLL_S);
+}
+
+/// Start the music the moment the count-in ends; run the banner.
+fn run_count_in(
+    mut commands: Commands,
+    pending: Option<Res<PendingMusic>>,
+    music: Res<Music>,
+    game_clock: Res<GameClock>,
+    time: Res<Time>,
+    font: Res<crate::ui::UiFont>,
+    mut banner: Query<(Entity, &mut Text2d), With<CountIn>>,
+) {
+    let Some(now) = game_clock.song_time(&time) else {
+        return;
+    };
+    if pending.is_some() && banner.is_empty() {
+        commands.spawn((
+            GameplayScreen,
+            CountIn,
+            Text2d::new(""),
+            font.text(26.0),
+            TextColor(palette::BRAND),
+            Transform::from_xyz(0.0, 60.0, 30.0),
+        ));
     }
-    game_clock.clock.start(time.elapsed_secs_f64(), 0.0);
+    if let Ok((entity, mut text)) = banner.single_mut() {
+        if now < 0.0 {
+            let count = format!("{}", (-now).ceil() as i64);
+            if text.0 != count {
+                text.0 = count;
+            }
+        } else {
+            commands.entity(entity).despawn();
+        }
+    }
+    if now >= 0.0
+        && let Some(pending) = pending
+    {
+        match &pending.0 {
+            SongAudio::Memory(audio) => music.0.play_buffer(audio.clone()),
+            SongAudio::File(path) => music.0.play_file(path.clone()),
+        }
+        commands.remove_resource::<PendingMusic>();
+    }
 }
 
 /// Advance every player's judgment engine to the current song time.
@@ -428,6 +482,7 @@ fn teardown_gameplay(
     for entity in &entities {
         commands.entity(entity).despawn();
     }
+    commands.remove_resource::<PendingMusic>();
     music.0.stop();
     game_clock.clock.stop();
 }

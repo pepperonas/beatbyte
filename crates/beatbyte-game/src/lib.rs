@@ -24,6 +24,7 @@ pub mod sfx;
 pub mod song_select;
 pub mod states;
 pub mod theme;
+pub mod transition;
 pub mod ui;
 
 use bevy::prelude::*;
@@ -100,6 +101,7 @@ pub fn run() -> AppExit {
         gameplay::GameplayPlugin,
         results::ResultsPlugin,
         sfx::SfxPlugin,
+        transition::TransitionPlugin,
         autopilot::AutopilotPlugin,
     ));
 

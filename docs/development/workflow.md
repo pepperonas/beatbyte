@@ -47,6 +47,14 @@ independent; run it before every release.
 Add `BEATBYTE_SHOT_DIR=<dir>` to also capture menu/gameplay/results
 screenshots along the way (used for README/docs media).
 
+## Toolchain
+
+`rust-toolchain.toml` tracks **stable**, and CI installs the latest
+stable — so keep your local toolchain current (`rustup update stable`).
+A stale local stable can pass the gate locally and still fail CI when
+a newer clippy ships additional lints; this has happened. When CI's
+clippy flags something your local one doesn't, update first, then fix.
+
 ## Compile times
 
 The workspace uses the standard Bevy profile split (`opt-level = 1` for

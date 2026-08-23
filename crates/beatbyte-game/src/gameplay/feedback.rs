@@ -29,11 +29,7 @@ pub fn spawn_feedback(
     for message in feedback.read() {
         let player = message.player_index;
         match message.event {
-            SessionEvent::NoteHit {
-                judgment,
-                event_index: _,
-                ..
-            } => {
+            SessionEvent::NoteHit { judgment, .. } => {
                 let (label, color) = judgment_style(judgment);
                 show_popup(
                     &mut popups,

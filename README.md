@@ -22,34 +22,40 @@ pixel-art identity of its own. Drop in your own music, let BeatByte analyze it
 and generate a playable chart, then shred it solo or with up to four players on
 one machine.
 
-> 🚧 **Status: early development — but already playable!** Clone, run,
-> and shred the bundled demo track "Circuit Breaker" on four
-> difficulties. See the [roadmap](#roadmap) for what's next.
+> **Status: all thirteen build milestones complete** — playable solo or
+> with friends, themed, packaged for all three platforms. 0.x versions
+> until the tuning settles; see the [roadmap](#roadmap).
 
 <p align="center">
   <img src="docs/media/beatbyte-gameplay.png" alt="BeatByte gameplay: five-lane highway with falling notes, score, combo and Hype meter" width="800"/>
 </p>
 
-*Early-milestone visuals — functional placeholders. The pixel-art
-identity pass (custom font, sprites, themes) lands with Milestones 7–10.*
+*An early gameplay build (Milestone 5). Later builds add the pixel font,
+six stage themes with animated backdrops, and split-screen multiplayer.*
 
 ## Features
 
-*Planned feature set — see the [roadmap](#roadmap) for current status.*
-
 - 🎸 **Classic five-lane gameplay** — single notes, chords, sustains,
-  hammer-on/pull-off mechanics, combos, multipliers and a special meter
-- 🎵 **Bring your own music** — import OGG / WAV / FLAC / MP3
+  hammer-ons/pull-offs, combos, multipliers and the Hype meter
+- 🎵 **Bring your own music** — OGG / WAV / FLAC / MP3; drop generated
+  charts into `songs/` and they appear in the browser
 - 🤖 **Automatic chart generation** — BPM & onset analysis turns any song
-  into a playable chart across four difficulties
-- 👾 **8-bit pixel-art identity** — a modern take on retro arcade energy,
-  with themed stages, palettes and reactive lighting
-- 🕹️ **Controller support** — keyboard, gamepads and guitar-style
-  controllers, all remappable
-- 👥 **Local multiplayer** — 2–4 players, versus and co-op, one machine
-- ⏱️ **Serious timing** — deterministic song clock, configurable hit
-  windows, full latency calibration
-- 🖥️ **Cross-platform** — macOS, Windows, Linux (WebAssembly on the horizon)
+  into a playable chart across four difficulties (playable, not perfect —
+  the built-in editor is the correction pass)
+- ✏️ **Chart editor** — beat grid, note placement, HOPOs, audio preview,
+  undo/redo, validated saves
+- 👾 **8-bit identity** — pixel font, six themed stages with procedural,
+  beat-reactive backdrops; every asset generated or openly licensed
+- 🕹️ **Controllers** — keyboard, gamepads and guitar-style controllers,
+  fully remappable in-game
+- 👥 **Local multiplayer** — 2–4 players, versus and co-op, split highways
+- ⏱️ **Serious timing** — deterministic judgment engine, reconciled song
+  clock, configurable hit windows, in-game latency calibration
+- 🏆 **High scores**, persistent settings, procedural SFX, an original
+  synthesized demo track — and an autopilot that must play every build
+  flawlessly before release
+- 🖥️ **Cross-platform** — macOS (.dmg), Windows (portable), Linux
+  (AppImage); WebAssembly on the horizon
 
 ## Supported Platforms
 
@@ -196,7 +202,7 @@ and the [Code of Conduct](CODE_OF_CONDUCT.md) first. Security issues: see
 - [x] **M10 — Themes**: Garage, Punk, Metal, Stadium, Psychedelic, Cyber
 - [x] **M11 — Chart editor**
 - [x] **M12 — Packaging**: .dmg, portable builds, AppImage
-- [ ] **M13 — Polish pass**
+- [x] **M13 — Polish pass**
 
 ## Legal
 
