@@ -89,7 +89,8 @@ impl Plugin for AutopilotPlugin {
 #[derive(Resource)]
 struct ShotDir(std::path::PathBuf);
 
-/// Take one screenshot per named moment of the run.
+/// Take one screenshot per named moment of the run (state screens
+/// wait out the transition fade first).
 fn autopilot_screenshots(
     mut commands: Commands,
     dir: Res<ShotDir>,
@@ -97,7 +98,17 @@ fn autopilot_screenshots(
     game_clock: Res<GameClock>,
     time: Res<Time>,
     mut taken: Local<std::collections::HashSet<&'static str>>,
+    mut in_state_for: Local<(Option<AppState>, f32)>,
 ) {
+    // Track how long the current state has been active.
+    if in_state_for.0 != Some(*state.get()) {
+        *in_state_for = (Some(*state.get()), 0.0);
+    } else {
+        in_state_for.1 += time.delta_secs();
+    }
+    if in_state_for.1 < 0.6 {
+        return;
+    }
     let moment = match state.get() {
         AppState::MainMenu => Some("menu"),
         AppState::SongSelect => Some("songselect"),

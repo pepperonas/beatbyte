@@ -35,27 +35,54 @@ use states::{AppState, GamePhase};
 /// The crate version, kept in sync with the workspace version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Point the engine at the bundled assets when running from an
-/// installed layout (macOS .app: `Contents/Resources/assets` next to
-/// `Contents/MacOS/<exe>`). Portable layouts (assets next to the
-/// executable) and dev runs already resolve correctly.
+/// Point the engine at the right `assets/` directory for every layout
+/// we ship or develop in. Bevy's default resolution is exe-relative,
+/// which silently misses the workspace assets when running
+/// `target/debug/beatbyte` directly — and a failed font load is
+/// permanent, taking all text with it. Resolution order:
+///
+/// 1. `BEVY_ASSET_ROOT` already set — respect it.
+/// 2. `assets/` next to the executable (portable archives).
+/// 3. `../Resources/assets` (macOS .app bundle).
+/// 4. `assets/` in the current directory (development).
+/// 5. `assets/` in an ancestor of the executable (target/debug under
+///    the workspace).
 #[allow(unsafe_code)] // set_var before any threads exist (documented below)
 fn configure_asset_root() {
     if std::env::var_os("BEVY_ASSET_ROOT").is_some() {
         return;
     }
-    let Some(exe_dir) = std::env::current_exe()
+    let exe_dir = std::env::current_exe()
         .ok()
-        .and_then(|exe| exe.parent().map(std::path::Path::to_path_buf))
-    else {
-        return;
-    };
-    let resources = exe_dir.join("../Resources");
-    if resources.join("assets").is_dir() {
-        // Safety: called before the app (and its task pools) start;
-        // no other threads are reading the environment yet.
-        unsafe { std::env::set_var("BEVY_ASSET_ROOT", &resources) };
+        .and_then(|exe| exe.parent().map(std::path::Path::to_path_buf));
+
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+    if let Some(dir) = &exe_dir {
+        candidates.push(dir.clone());
+        candidates.push(dir.join("../Resources"));
     }
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd);
+    }
+    if let Some(dir) = &exe_dir {
+        candidates.extend(
+            dir.ancestors()
+                .skip(1)
+                .take(4)
+                .map(std::path::Path::to_path_buf),
+        );
+    }
+
+    for root in candidates {
+        if root.join("assets").is_dir() {
+            info!("asset root: {}", root.display());
+            // Safety: called before the app (and its task pools)
+            // start; no other threads read the environment yet.
+            unsafe { std::env::set_var("BEVY_ASSET_ROOT", &root) };
+            return;
+        }
+    }
+    warn!("no assets directory found near the executable or CWD");
 }
 
 /// Build and run the BeatByte application.

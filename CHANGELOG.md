@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-08-23
+
+### Fixed
+
+- **All text was invisible when the game was launched directly from
+  `target/` or any layout Bevy's default asset resolution misses**: the
+  pixel font failed to load (a failed asset never retries in Bevy), so
+  HUD, judgment popups, count-in, menus and results rendered no glyphs.
+  The game now resolves its asset root explicitly across every
+  supported layout — portable (assets next to the executable), macOS
+  .app bundle (`../Resources`), development (current directory), and
+  the workspace `target/` tree.
+- Autopilot screenshots taken on state entry no longer capture the
+  transition fade (short settle delay before each capture).
+
+### Changed
+
+- README media refreshed: gameplay and results screenshots with the
+  full HUD/text actually visible.
+
 ## [0.8.0] - 2026-08-23
 
 **The polish milestone** (Milestone 13).

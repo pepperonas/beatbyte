@@ -27,11 +27,16 @@ one machine.
 > until the tuning settles; see the [roadmap](#roadmap).
 
 <p align="center">
-  <img src="docs/media/beatbyte-gameplay.png" alt="BeatByte gameplay: five-lane highway with falling notes, score, combo and Hype meter" width="800"/>
+  <img src="docs/media/beatbyte-gameplay.png" alt="BeatByte gameplay: five-lane highway with falling notes, score, combo, multiplier and judgment popup" width="800"/>
 </p>
 
-*An early gameplay build (Milestone 5). Later builds add the pixel font,
-six stage themes with animated backdrops, and split-screen multiplayer.*
+*A flawless run in progress: x4 multiplier, 75-note combo, PERFECT
+popup, hit particles on the blue receptor — with the Metal theme's
+ember backdrop.*
+
+<p align="center">
+  <img src="docs/media/beatbyte-results.png" alt="BeatByte results screen: S rank, 100% accuracy, 117 perfect notes" width="800"/>
+</p>
 
 ## Features
 
