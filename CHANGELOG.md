@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-lane gem shapes** (square, circle, diamond, triangle, cross)
+  on notes and receptors — color is never the only lane signal
+  (colorblind accessibility, always on). Generated pixel-art masks,
+  no assets; geometry unit-tested.
+- **HOPOs are finally visible**: smaller gem with a bright core
+  (they rendered identically to strum notes before).
+
 - **Stage Motion setting** (reduced-motion accessibility): turning it
   off leaves the themed backdrop as a still image; particles, screen
   shake and beat pulse already had their own toggles.

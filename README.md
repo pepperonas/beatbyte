@@ -31,8 +31,9 @@ one machine.
 </p>
 
 *A flawless run in progress: x4 multiplier, 75-note combo, PERFECT
-popup, hit particles on the blue receptor — with the Metal theme's
-ember backdrop.*
+popup, hit particles on the triangle receptor — with the Metal theme's
+ember backdrop. Every lane has its own shape (square, circle, diamond,
+triangle, cross), so color is never the only signal.*
 
 <p align="center">
   <img src="docs/media/beatbyte-results.png" alt="BeatByte results screen: S rank, 100% accuracy, 117 perfect notes" width="800"/>
@@ -42,6 +43,9 @@ ember backdrop.*
 
 - 🎸 **Classic five-lane gameplay** — single notes, chords, sustains,
   hammer-ons/pull-offs, combos, multipliers and the Hype meter
+- ♿ **Colorblind-safe by default** — every lane has a distinct gem
+  shape on notes and receptors; a Stage Motion setting stills the
+  backdrop for reduced motion
 - 🎵 **Bring your own music** — WAV / OGG / FLAC / MP3 / M4A; drop generated
   charts into `songs/` and they appear in the browser
 - 🤖 **Automatic chart generation** — BPM & onset analysis turns any song

@@ -21,9 +21,10 @@ pub mod results;
 pub mod scores;
 pub mod settings_ui;
 pub mod sfx;
+pub mod shapes;
 pub mod song_select;
 pub mod states;
-pub mod theme;
+mod theme;
 pub mod transition;
 pub mod ui;
 
@@ -122,6 +123,7 @@ pub fn run() -> AppExit {
     .add_sub_state::<GamePhase>()
     .add_systems(Startup, spawn_camera)
     .add_plugins((
+        shapes::ShapesPlugin,
         ui::UiPlugin,
         audio_sys::AudioBridgePlugin,
         config::ConfigPlugin,

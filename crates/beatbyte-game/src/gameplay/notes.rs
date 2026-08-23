@@ -40,9 +40,11 @@ pub fn spawn_highways(
     mut commands: Commands,
     layout: Res<HighwayLayout>,
     theme: Res<crate::theme::ActiveTheme>,
+    shapes: Res<crate::shapes::LaneShapes>,
     players: Query<&PlayerIndex, With<PlayerSession>>,
 ) {
     let theme = theme.0;
+    let shapes = &*shapes;
     for index in players.iter() {
         let player = index.0;
         let origin = layout.origin(player);
@@ -64,22 +66,26 @@ pub fn spawn_highways(
                 Transform::from_xyz(layout.lane_x(player, lane), 0.0, -9.0),
             ));
         }
-        // Receptor row: ring look = colored square under a bg square.
+        // Receptor row: ring look = the lane's shape under a smaller
+        // background copy of the same shape. Shapes, not just colors,
+        // identify lanes (colorblind accessibility).
         let receptor = layout.receptor_size();
         for lane in Lane::ALL {
             let x = layout.lane_x(player, lane);
             commands.spawn((
                 GameplayScreen,
                 Receptor { player, lane },
-                Sprite::from_color(
+                shape_sprite(
+                    shapes,
+                    lane,
                     palette::dimmed(theme.lane_color(lane), 0.35),
-                    Vec2::splat(receptor),
+                    receptor,
                 ),
                 Transform::from_xyz(x, RECEPTOR_Y, -5.0),
             ));
             commands.spawn((
                 GameplayScreen,
-                Sprite::from_color(theme.background, Vec2::splat(receptor * 0.75)),
+                shape_sprite(shapes, lane, theme.background, receptor * 0.72),
                 Transform::from_xyz(x, RECEPTOR_Y, -4.0),
             ));
         }
@@ -87,6 +93,7 @@ pub fn spawn_highways(
 }
 
 /// Spawn note entities as their time approaches.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 pub fn spawn_due_notes(
     mut commands: Commands,
     mut players: Query<(&PlayerIndex, &mut PlayerSession)>,
@@ -95,6 +102,7 @@ pub fn spawn_due_notes(
     game_clock: Res<GameClock>,
     time: Res<Time>,
     settings: Res<Settings>,
+    shapes: Res<crate::shapes::LaneShapes>,
 ) {
     let Some(now) = game_clock.song_time(&time) else {
         return;
@@ -112,6 +120,7 @@ pub fn spawn_due_notes(
                 &mut commands,
                 &layout,
                 &theme.0,
+                &shapes,
                 index.0,
                 cursor,
                 &event,
@@ -127,14 +136,19 @@ fn spawn_event_sprites(
     commands: &mut Commands,
     layout: &HighwayLayout,
     theme: &crate::theme::Theme,
+    shapes: &crate::shapes::LaneShapes,
     player: usize,
     event_index: usize,
     event: &beatbyte_core::NoteEvent,
     scroll_speed: f32,
 ) {
     let size = layout.note_size();
+    let hopo = matches!(event.kind, beatbyte_core::NoteKind::Hopo);
     for lane in event.lanes.iter() {
         let color = theme.lane_color(lane);
+        // HOPOs render smaller with a bright core — until now they
+        // looked identical to strums, which hid the mechanic.
+        let gem = if hopo { size * 0.78 } else { size };
         let entity = commands
             .spawn((
                 GameplayScreen,
@@ -143,10 +157,18 @@ fn spawn_event_sprites(
                     event_index,
                     resolved: false,
                 },
-                Sprite::from_color(color, Vec2::splat(size)),
+                shape_sprite(shapes, lane, color, gem),
                 Transform::from_xyz(layout.lane_x(player, lane), 2000.0, 0.0),
             ))
             .id();
+        if hopo {
+            commands.entity(entity).with_children(|parent| {
+                parent.spawn((
+                    shape_sprite(shapes, lane, Color::WHITE.with_alpha(0.85), gem * 0.42),
+                    Transform::from_xyz(0.0, 0.0, 0.5),
+                ));
+            });
+        }
 
         // Sustain tail: extends upward (later in time).
         if event.is_sustain() {
@@ -277,5 +299,15 @@ pub fn apply_note_events(
             note.resolved = true;
             sprite.color = palette::dimmed(sprite.color, 0.25);
         }
+    }
+}
+
+/// A lane-shaped sprite: the generated mask image tinted by `color`.
+fn shape_sprite(shapes: &crate::shapes::LaneShapes, lane: Lane, color: Color, size: f32) -> Sprite {
+    Sprite {
+        image: shapes.image(lane),
+        color,
+        custom_size: Some(Vec2::splat(size)),
+        ..Default::default()
     }
 }

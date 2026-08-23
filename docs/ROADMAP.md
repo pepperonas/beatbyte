@@ -150,10 +150,10 @@ chart format v1 can be frozen as a promise.
 
 ### D — Accessibility & options
 
-- [ ] D1 **Colorblind-safe lane identity.** Per-lane shapes/symbols on notes + receptors (color no longer the only channel), always on or as an option. *Verify: screenshot; deuteranopia simulation check.*
+- [x] D1 **Colorblind-safe lane identity.** Always-on per-lane shapes (square/circle/diamond/triangle/X) as generated 16×16 pixel masks (`shapes.rs`, pure + 3 geometry tests) on gems AND receptors (shaped rings). Bonus catch: HOPOs had NO visual distinction — now smaller gem + bright core. *Verified: flawless autopilot; screenshot; grayscale (total color removal) keeps all five receptors trivially distinct; README media updated.*
 - [x] D2 **Reduced-motion option.** New `backdrop_motion` setting ("STAGE MOTION" row) wired Settings → EffectSettings → `animate_backdrop` early-out; particles/shake/beat-pulse toggles already existed. *Verified by transform probe: ON = bit drifts continuously, OFF = position bit-identical over 25 s; both runs flawless. Side catch: the verification exposed that a window-closed autopilot run faked exit 0 — harness hardened (DontExit + fail-on-vanished-window).*
 - [x] D3 **Audio mix options.** Already fully implemented (M7-era): `music_volume`/`sfx_volume` settings rows, persisted, music applied centrally in `apply_settings` on any change, SFX per-play. Closed by code-trace audit during C5/D2 work; no change needed.
-- [ ] D4 **Scroll-speed option.** Per-player highway scroll speed independent of difficulty. *Verify: setting persists; autopilot still flawless at extremes (judgment must be unaffected).*
+- [x] D4 **Scroll-speed option.** Global setting existed (240–900 px/s row, persisted); scroll speed touches only note Y/tail height, never judgment. *Verified: identical flawless score (23399) at 240 solo and 900 2P.* Scope amended: per-player speed deferred until a playtest (A1) actually asks for it — speculative multiplayer-UI complexity otherwise.
 
 ### E — Editor v2 (quality-of-life)
 
