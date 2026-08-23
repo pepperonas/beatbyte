@@ -218,6 +218,11 @@ artifact, smoke-test it (neutral CWD!), then
 - **Release asset upload**: `download-artifact` with `merge-multiple`
   preserves subpaths — the publish glob must recurse
   (`artifacts/**`); a flat `artifacts/*` silently drops DMG/AppImage.
+- **A printed gate is not an enforced gate.** Counting clippy errors
+  and then committing on an unrelated `&&` chain shipped a lint to
+  main (caught post-push). Run the gate so a failure *stops* the
+  commit: chain the commit off the gate commands themselves, or check
+  the count before staging.
 - **Never `git checkout -- <file>` to undo a test mutation** — it
   reverts ALL uncommitted work in that file, including the feature the
   test pins (happened; the work had to be redone from context). Back
