@@ -142,7 +142,7 @@ chart format v1 can be frozen as a promise.
 
 ### C — Robustness & platform coverage
 
-- [ ] C1 **Linux smoke in CI.** Run `BEATBYTE_SMOKE_TEST=1` under xvfb (or headless winit) in the CI matrix. *Verify: CI job green on PR and main.*
+- [x] C1 **Linux smoke in CI.** `linux-smoke` job: the real game boots to the menu under Xvfb + mesa software Vulkan (lavapipe) on a GPU-less, audio-less runner — also validating the music thread's graceful no-device degradation. Two iterations to green: `libxkbcommon-x11-0` missing at runtime (winit dlopens it). *Verified: job green in 16m28s on main.*
 - [ ] C2 **Windows artifact validated.** Smoke-test the Windows zip on real Windows (or a CI windows job running the smoke harness). *Verify: run log/screenshot noted in release notes of the next release.*
 - [~] C3 **CI actions off deprecated Node runtimes.** checkout v4→v5, upload-artifact v4→v5, download-artifact v4→v5. *CI verified: run green, zero deprecation annotations. Remaining: the upload/download pair only executes on a tag — confirm zero annotations on the next release run, then flip to done.*
 - [ ] C4 **Gamepad hot-plug.** Define + implement behavior for pad disconnect mid-song (pause + reconnect prompt is the target); reconnection resumes the same `PlayerDevice`. *Verify: manual unplug test 1P and 2P; no panic, session intact.*
