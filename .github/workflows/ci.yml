@@ -62,3 +62,31 @@ jobs:
 
       - name: Build
         run: cargo check --workspace
+
+  linux-smoke:
+    name: Boot smoke (headless Linux)
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Bevy system dependencies + Xvfb + software Vulkan
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev \
+            xvfb mesa-vulkan-drivers libvulkan1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Boots the real game (window, renderer via lavapipe, plugins,
+      # built-in song build) to the main menu and exits. No audio
+      # device exists here — the music thread must degrade gracefully,
+      # which is part of what this validates.
+      - name: Boot to menu under Xvfb
+        run: |
+          BEATBYTE_SMOKE_TEST=1 xvfb-run -a -s "-screen 0 1280x720x24" \
+            cargo run -p beatbyte
