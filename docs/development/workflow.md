@@ -21,14 +21,31 @@ cargo check --workspace
 ## Smoke test
 
 The game supports a self-exiting smoke-test mode used to verify that the
-full app (window, renderer, plugins) actually boots:
+full app (window, renderer, plugins, demo-song build) actually boots:
 
 ```bash
 BEATBYTE_SMOKE_TEST=1 cargo run -p beatbyte
 ```
 
-The app exits with a success code after ~2 seconds if everything
-initialized correctly.
+The app exits with a success code once it reaches the main menu.
+
+## Autopilot (end-to-end gameplay validation)
+
+The game can play itself, perfectly, through the real screens and the
+real judgment engine:
+
+```bash
+BEATBYTE_AUTOPILOT=1 cargo run -p beatbyte
+```
+
+Autopilot starts the bundled demo song, feeds exact-time inputs into
+the session, and exits at the results screen — success **only** on a
+flawless run (any miss or overstrum in autopilot is a gameplay bug).
+Because judgment is input-stamp-driven, autopilot is frame-rate
+independent; run it before every release.
+
+Add `BEATBYTE_SHOT_DIR=<dir>` to also capture menu/gameplay/results
+screenshots along the way (used for README/docs media).
 
 ## Compile times
 

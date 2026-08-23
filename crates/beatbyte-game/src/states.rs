@@ -1,18 +1,33 @@
 //! Top-level application states.
 //!
-//! BeatByte uses explicit state management — no scattered booleans. The
-//! set below will grow toward the full flow (song select, gameplay,
-//! results, …) as milestones land; states are added when the screens
-//! they gate actually exist.
+//! BeatByte uses explicit state management — no scattered booleans.
+//! `AppState` is the screen flow; `GamePhase` is a sub-state that only
+//! exists while in gameplay.
 
 use bevy::prelude::*;
 
 /// The top-level state machine of the application.
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum AppState {
-    /// Initial boot screen shown while core assets load.
+    /// Initial boot screen while the demo song renders/analyzes.
     #[default]
     Boot,
-    /// The main menu (placeholder until Milestone 7).
+    /// The main menu: difficulty selection, start.
     MainMenu,
+    /// Playing a song.
+    Gameplay,
+    /// Post-song results.
+    Results,
+}
+
+/// Gameplay sub-state: exists only while [`AppState::Gameplay`] is
+/// active.
+#[derive(SubStates, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[source(AppState = AppState::Gameplay)]
+pub enum GamePhase {
+    /// The song is running.
+    #[default]
+    Playing,
+    /// Paused by the player.
+    Paused,
 }

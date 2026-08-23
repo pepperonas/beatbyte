@@ -11,7 +11,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.0.3"
+version = "0.1.0"
 edition = "2024"
 license = "MIT"
 authors = ["Martin Pfeffer"]
@@ -23,12 +23,12 @@ categories = ["games"]
 
 [workspace.dependencies]
 # Internal crates
-beatbyte-core = { path = "crates/beatbyte-core", version = "0.0.3" }
-beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.0.3" }
-beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.0.3" }
-beatbyte-game = { path = "crates/beatbyte-game", version = "0.0.3" }
-beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.0.3" }
-beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.0.3" }
+beatbyte-core = { path = "crates/beatbyte-core", version = "0.1.0" }
+beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.1.0" }
+beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.1.0" }
+beatbyte-game = { path = "crates/beatbyte-game", version = "0.1.0" }
+beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.1.0" }
+beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.1.0" }
 
 # Engine
 bevy = "0.19"
@@ -65,6 +65,11 @@ todo = "warn"
 opt-level = 1
 
 [profile.dev.package."*"]
+opt-level = 3
+
+# DSP is hot even in dev: demo synthesis + FFT analysis take ~30 s at
+# opt-level 1 and ~3 s at 3. Measured, not speculative.
+[profile.dev.package.beatbyte-audio]
 opt-level = 3
 
 [profile.release]

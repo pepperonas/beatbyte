@@ -22,9 +22,20 @@ pixel-art identity of its own. Drop in your own music, let BeatByte analyze it
 and generate a playable chart, then shred it solo or with up to four players on
 one machine.
 
-> 🚧 **Status: early development.** BeatByte is being built milestone by
-> milestone. See the [roadmap](#roadmap) for where things stand. Screenshots
-> and gameplay GIFs will land here as soon as the first playable build exists.
+> 🚧 **Status: early development — but already playable!** Clone, run,
+> and shred the bundled demo track "Circuit Breaker" on four
+> difficulties. See the [roadmap](#roadmap) for what's next.
+
+<p align="center">
+  <img src="docs/media/beatbyte-gameplay.png" alt="BeatByte gameplay: five-lane highway with falling notes, score, combo and Hype meter" width="800"/>
+</p>
+<p align="center">
+  <img src="docs/media/beatbyte-menu.png" alt="Main menu with difficulty selection" width="399"/>
+  <img src="docs/media/beatbyte-results.png" alt="Results screen with grade and judgment breakdown" width="399"/>
+</p>
+
+*Milestone 5 visuals — deliberately minimal placeholders. The pixel-art
+identity pass (custom font, sprites, themes, effects) is Milestones 6–10.*
 
 ## Features
 
@@ -168,7 +179,7 @@ and the [Code of Conduct](CODE_OF_CONDUCT.md) first. Security issues: see
 - [x] **M2 — Core domain**: chart model, timing, scoring, validation
 - [x] **M3 — Audio**: decoding, playback, song clock, BPM/onset analysis
 - [x] **M4 — Chart generation**: audio → analysis → playable chart
-- [ ] **M5 — First playable**: five lanes, hits, scoring, combos
+- [x] **M5 — First playable**: five lanes, hits, scoring, combos
 - [ ] **M6 — Game feel**: particles, shake, lighting, feedback
 - [ ] **M7 — UI**: menus, song browser, settings, calibration, results
 - [ ] **M8 — Controllers**: gamepads, guitar controllers, remapping

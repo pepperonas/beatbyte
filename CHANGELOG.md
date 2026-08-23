@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-08-23
+
+**BeatByte is playable.** First playable prototype (Milestone 5).
+
+### Added
+
+- **The gameplay screen**: five-lane highway with receptors, falling
+  notes (chords, HOPO markers, sustain tails), all note positions
+  derived from the song clock every frame — never from frame counts.
+- **Keyboard play**: frets `A S D F G`, strum `↑`/`↓`, Hype `Space`,
+  pause `Esc`. Inputs are timestamped with song time and fed to the
+  deterministic judgment engine from Milestone 2.
+- **Live HUD**: score, combo, multiplier (with Hype state), accuracy,
+  Hype meter with activation hint; judgment popups and receptor
+  flashes on every hit.
+- **Screen flow** as explicit states: boot (background demo build) →
+  main menu (difficulty select) → gameplay (with pause sub-state) →
+  results (grade, score, judgment breakdown).
+- **Players are entities**: each carries its own session component —
+  the multiplayer-ready shape from day one.
+- **Autopilot mode** (`BEATBYTE_AUTOPILOT=1`): the game plays itself
+  perfectly through the real screens and input path, then exits with
+  success only on a flawless run — the end-to-end validation harness
+  used before every release.
+- The music thread bridge: song clock reconciliation against the
+  audio device every frame; missing audio devices degrade gracefully.
+
+### Changed
+
+- Dev profile builds `beatbyte-audio` at full optimization (demo
+  synthesis + analysis: ~30 s → ~3 s at boot).
+
 ## [0.0.3] - 2026-08-23
 
 ### Added
@@ -84,7 +116,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Records (Rust + Bevy, workspace layout).
 - README, MIT license, contributing guide, code of conduct, security policy.
 
-[Unreleased]: https://github.com/pepperonas/beatbyte/compare/v0.0.3...HEAD
+[Unreleased]: https://github.com/pepperonas/beatbyte/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/pepperonas/beatbyte/compare/v0.0.3...v0.1.0
 [0.0.3]: https://github.com/pepperonas/beatbyte/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/pepperonas/beatbyte/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/pepperonas/beatbyte/releases/tag/v0.0.1
