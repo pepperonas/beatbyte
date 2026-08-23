@@ -7,10 +7,34 @@
 //! or any I/O. Every gameplay rule defined here is unit-testable with
 //! plain values, which is what makes deterministic rhythm-game timing
 //! possible (see ADR-0002).
+//!
+//! ## Module map
+//!
+//! - [`lane`] — the five fret lanes and lane sets (chords, held frets)
+//! - [`difficulty`] — the four difficulty levels
+//! - [`timing`] — tempo maps, hit windows, judgment
+//! - [`note`] — note events, phrases, playable tracks
+//! - [`score`] — scoring rules and per-player performance
+//! - [`session`] — the deterministic gameplay session (judgment engine)
+//!
+//! ## Time convention
+//!
+//! All times are `f64` **seconds on the song timeline** (`0.0` = start
+//! of the audio). Milliseconds appear only at configuration boundaries.
 
+pub mod difficulty;
 pub mod lane;
+pub mod note;
+pub mod score;
+pub mod session;
+pub mod timing;
 
-pub use lane::Lane;
+pub use difficulty::Difficulty;
+pub use lane::{Lane, LaneSet};
+pub use note::{NoteEvent, NoteKind, Phrase, Track};
+pub use score::{PlayerPerformance, ScoreConfig};
+pub use session::{GameInput, InputKind, SessionEvent, TrackSession};
+pub use timing::{Judgment, TempoMap, TimingWindows};
 
 /// The crate version, kept in sync with the workspace version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

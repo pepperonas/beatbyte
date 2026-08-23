@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-1.95%2B-orange?logo=rust)](https://www.rust-lang.org/)
 [![Bevy](https://img.shields.io/badge/Bevy-0.19-blueviolet)](https://bevy.org/)
-[![SemVer](https://img.shields.io/badge/SemVer-0.0.1-blue)](CHANGELOG.md)
+[![SemVer](https://img.shields.io/badge/versioning-SemVer-blue)](CHANGELOG.md)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)](#supported-platforms)
 
 </div>
@@ -164,7 +164,7 @@ and the [Code of Conduct](CODE_OF_CONDUCT.md) first. Security issues: see
 ## Roadmap
 
 - [x] **M1 — Foundation**: workspace, CI, docs, minimal Bevy app
-- [ ] **M2 — Core domain**: chart model, timing, scoring, validation
+- [x] **M2 — Core domain**: chart model, timing, scoring, validation
 - [ ] **M3 — Audio**: decoding, playback, song clock, BPM/onset analysis
 - [ ] **M4 — Chart generation**: audio → analysis → playable chart
 - [ ] **M5 — First playable**: five lanes, hits, scoring, combos
