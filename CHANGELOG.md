@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `docs/importing-songs.md`: a verified end-to-end guide for importing
+  your own music (analyze → generate → play → correct in the editor).
+
 - Supported import formats are now verified by decode tests against
   committed synthesized fixtures (WAV, Ogg Vorbis, FLAC, MP3 — and
   M4A/AAC, which turned out to work and is now documented) and listed
@@ -23,6 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selects by index or case-insensitive title substring; a selector
   that matches nothing fails the run instead of silently playing the
   wrong song.
+
+### Fixed
+
+- The song library now finds charts up to two folder levels below
+  `songs/` — the documented `songs/imported/<song>/` layout was
+  silently ignored by the one-level scan (found while validating the
+  import walkthrough). Symlinked directories are not followed.
 
 ## [0.8.1] - 2026-08-23
 

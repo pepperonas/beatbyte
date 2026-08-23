@@ -156,7 +156,9 @@ song.mp3 → analyze → generate → preview → play
 
 Automatic charts are meant to be **playable, not perfect** — the toolchain is
 designed for a `generated chart → human correction → final chart` workflow.
-See [`docs/audio/`](docs/audio/) for analysis quality notes.
+**[docs/importing-songs.md](docs/importing-songs.md)** walks through the whole
+flow (every command in it verified end-to-end); see
+[`docs/audio/`](docs/audio/) for analysis quality notes.
 
 ## CLI
 

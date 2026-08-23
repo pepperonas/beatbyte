@@ -105,29 +105,73 @@ pub fn scan_library(builtins: &[ChartFile]) -> SongLibrary {
     SongLibrary { entries }
 }
 
-/// All `*.json` files in `dir` and its immediate subdirectories.
+/// All `*.json` files under `dir`, up to two directory levels below
+/// it — `songs/imported/<song>/chart.json` is the deepest documented
+/// layout, and the one-level scan this replaces silently ignored it
+/// (found during the import-walkthrough validation). Symlinked
+/// directories are not followed: a song tree is untrusted input and
+/// must not walk out of its root or cycle.
 fn find_chart_files(dir: &std::path::Path) -> Vec<PathBuf> {
-    let mut found = Vec::new();
-    let Ok(top) = std::fs::read_dir(dir) else {
-        return found;
-    };
-    for entry in top.flatten() {
-        let path = entry.path();
-        if path.extension().is_some_and(|e| e == "json") {
-            found.push(path);
-        } else if path.is_dir()
-            && let Ok(sub) = std::fs::read_dir(&path)
-        {
-            for file in sub.flatten() {
-                let path = file.path();
-                if path.extension().is_some_and(|e| e == "json") {
-                    found.push(path);
-                }
+    fn walk(dir: &std::path::Path, depth_left: u8, found: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            let path = entry.path();
+            // `DirEntry::file_type` does not follow symlinks, so a
+            // symlinked directory reports as symlink and is skipped.
+            if file_type.is_file() && path.extension().is_some_and(|e| e == "json") {
+                found.push(path);
+            } else if file_type.is_dir() && depth_left > 0 {
+                walk(&path, depth_left - 1, found);
             }
         }
     }
+    let mut found = Vec::new();
+    walk(dir, 2, &mut found);
     found.sort();
     found
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::find_chart_files;
+
+    #[test]
+    fn scan_reaches_two_levels_and_skips_symlinks_and_deeper() {
+        let root = std::env::temp_dir().join(format!("beatbyte-scan-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("imported/my-song")).unwrap();
+        std::fs::create_dir_all(root.join("a/b/c")).unwrap();
+        std::fs::write(root.join("top.json"), "{}").unwrap();
+        std::fs::write(root.join("a/one-deep.json"), "{}").unwrap();
+        std::fs::write(root.join("imported/my-song/two-deep.json"), "{}").unwrap();
+        std::fs::write(root.join("a/b/c/three-deep.json"), "{}").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&root, root.join("loop")).unwrap();
+
+        let found = find_chart_files(&root);
+        let names: Vec<_> = found
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert!(names.contains(&"top.json".to_owned()));
+        assert!(names.contains(&"one-deep.json".to_owned()));
+        assert!(
+            names.contains(&"two-deep.json".to_owned()),
+            "songs/imported/<song>/ layout must be found, got {names:?}"
+        );
+        assert!(
+            !names.contains(&"three-deep.json".to_owned()),
+            "the walk must stay bounded"
+        );
+        assert_eq!(found.len(), 3, "symlink must not add duplicates: {names:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 
 /// Load and validate one chart into a library entry.

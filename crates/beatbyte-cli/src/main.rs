@@ -27,12 +27,12 @@ struct Cli {
 enum Command {
     /// Analyze a song: BPM, beat grid, onsets, energy.
     Analyze {
-        /// Path to the audio file (ogg/wav/flac/mp3).
+        /// Path to the audio file (wav/ogg/flac/mp3/m4a).
         song: PathBuf,
     },
     /// Generate a BeatByte chart (all four difficulties) from a song.
     Generate {
-        /// Path to the audio file (ogg/wav/flac/mp3).
+        /// Path to the audio file (wav/ogg/flac/mp3/m4a).
         song: PathBuf,
         /// Song title (defaults to the file name).
         #[arg(long)]
