@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Editor: range selection and bulk edits** — `V` anchors a
+  selection at the cursor, `X` deletes every note in the range (all
+  lanes), `H` toggles HOPO on the whole selection; each bulk edit is
+  ONE atomic undo step.
+
 - **Editor: move a note** with `M` (grab, navigate, place; `ESC`
   cancels) — an invertible `MoveNote` op that keeps sustain and HOPO
   flags, so undo/redo stays exact.

@@ -244,6 +244,36 @@ fn autopilot_edit(
     ok &= note_at(&state, 0.321, 3);
     // Put it back so the on-disk count/undo checks stay meaningful.
     ok &= state.session.undo();
+    // Batch: two adds as ONE undo step (E2 — bulk ops compose
+    // primitives and undo exactly once).
+    let depth_before = state.session.undo_depth();
+    ok &= state
+        .session
+        .edit_batch(vec![
+            EditOp::AddNote {
+                difficulty,
+                note: beatbyte_chart::ChartNote {
+                    time: 0.777,
+                    lane: 1,
+                    len: 0.0,
+                    hopo: false,
+                },
+            },
+            EditOp::AddNote {
+                difficulty,
+                note: beatbyte_chart::ChartNote {
+                    time: 0.888,
+                    lane: 2,
+                    len: 0.0,
+                    hopo: false,
+                },
+            },
+        ])
+        .is_ok();
+    ok &= state.session.undo_depth() == depth_before + 1;
+    ok &= note_at(&state, 0.777, 1) && note_at(&state, 0.888, 2);
+    ok &= state.session.undo();
+    ok &= !note_at(&state, 0.777, 1) && !note_at(&state, 0.888, 2);
     ok &= state.session.is_valid();
     ok &= beatbyte_chart::save_chart_file(&state.chart_path, state.session.chart()).is_ok();
     state.session.mark_saved();

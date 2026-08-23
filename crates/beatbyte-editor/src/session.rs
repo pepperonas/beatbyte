@@ -11,8 +11,10 @@ pub struct EditorSession {
     chart: ChartFile,
     /// The difficulty currently being edited.
     pub difficulty: Difficulty,
-    undo: Vec<EditOp>,
-    redo: Vec<EditOp>,
+    /// Undo steps; each entry is a GROUP of inverses (a single edit is
+    /// a group of one, a bulk edit one group) applied in reverse.
+    undo: Vec<Vec<EditOp>>,
+    redo: Vec<Vec<EditOp>>,
     dirty: bool,
 }
 
@@ -50,43 +52,81 @@ impl EditorSession {
 
     /// Apply an edit (clears the redo stack).
     pub fn edit(&mut self, op: EditOp) -> Result<(), EditError> {
-        let inverse = apply(&mut self.chart, op)?;
-        self.undo.push(inverse);
+        self.edit_batch(vec![op])
+    }
+
+    /// Apply several edits as ONE undo step — atomically: if any op
+    /// fails, everything already applied is rolled back and the chart
+    /// is untouched. Bulk operations (delete range, toggle HOPO on a
+    /// selection) compose primitives through this, so undo stays
+    /// exact.
+    pub fn edit_batch(&mut self, ops: Vec<EditOp>) -> Result<(), EditError> {
+        if ops.is_empty() {
+            return Ok(());
+        }
+        let mut inverses = Vec::with_capacity(ops.len());
+        for op in ops {
+            match apply(&mut self.chart, op) {
+                Ok(inverse) => inverses.push(inverse),
+                Err(error) => {
+                    // Roll back what already applied, newest first.
+                    for inverse in inverses.into_iter().rev() {
+                        // An inverse of a just-applied op re-applies
+                        // cleanly by construction.
+                        let _ = apply(&mut self.chart, inverse);
+                    }
+                    return Err(error);
+                }
+            }
+        }
+        self.undo.push(inverses);
         self.redo.clear();
         self.dirty = true;
         Ok(())
     }
 
-    /// Undo the last edit. Returns whether anything happened.
+    /// Undo the last edit step. Returns whether anything happened.
     pub fn undo(&mut self) -> bool {
-        let Some(inverse) = self.undo.pop() else {
+        let Some(group) = self.undo.pop() else {
             return false;
         };
-        match apply(&mut self.chart, inverse) {
-            Ok(redo_op) => {
-                self.redo.push(redo_op);
+        match Self::apply_group(&mut self.chart, group) {
+            Ok(redo_group) => {
+                self.redo.push(redo_group);
                 self.dirty = true;
                 true
             }
-            // An inverse failing means the stacks desynchronized — a
+            // A group failing means the stacks desynchronized — a
             // bug worth surfacing loudly in tests, but never a crash.
             Err(_) => false,
         }
     }
 
-    /// Redo the last undone edit. Returns whether anything happened.
+    /// Redo the last undone edit step. Returns whether anything
+    /// happened.
     pub fn redo(&mut self) -> bool {
-        let Some(op) = self.redo.pop() else {
+        let Some(group) = self.redo.pop() else {
             return false;
         };
-        match apply(&mut self.chart, op) {
-            Ok(inverse) => {
-                self.undo.push(inverse);
+        match Self::apply_group(&mut self.chart, group) {
+            Ok(undo_group) => {
+                self.undo.push(undo_group);
                 self.dirty = true;
                 true
             }
             Err(_) => false,
         }
+    }
+
+    /// Apply a stored group newest-first; the produced ops form the
+    /// opposite-direction group. Applying THAT reversed again yields
+    /// the original order, so undo and redo stay symmetric.
+    fn apply_group(chart: &mut ChartFile, group: Vec<EditOp>) -> Result<Vec<EditOp>, EditError> {
+        let mut produced = Vec::with_capacity(group.len());
+        for op in group.into_iter().rev() {
+            produced.push(apply(chart, op)?);
+        }
+        Ok(produced)
     }
 
     /// Depth of the undo stack.
@@ -195,6 +235,39 @@ mod tests {
         assert!(!session.dirty());
         session.undo();
         assert!(session.dirty());
+    }
+
+    #[test]
+    fn batch_is_one_undo_step_and_atomic() {
+        let mut session = EditorSession::new(chart(), Difficulty::Expert).unwrap();
+        session
+            .edit_batch(vec![add(1.0, 0), add(2.0, 1), add(3.0, 2)])
+            .unwrap();
+        assert_eq!(session.chart().charts[0].notes.len(), 3);
+        assert_eq!(session.undo_depth(), 1, "a batch is ONE step");
+        assert!(session.undo());
+        assert_eq!(session.chart().charts[0].notes.len(), 0);
+        assert!(session.redo());
+        assert_eq!(session.chart().charts[0].notes.len(), 3);
+
+        // Atomicity: a failing op in the middle leaves NOTHING behind.
+        let before = session.chart().clone();
+        let result = session.edit_batch(vec![
+            add(5.0, 0),
+            add(1.0, 0), // occupied — the batch must fail
+            add(6.0, 0),
+        ]);
+        assert!(result.is_err());
+        assert_eq!(session.chart(), &before, "failed batch left residue");
+        assert_eq!(session.undo_depth(), 1, "failed batch pushed a step");
+    }
+
+    #[test]
+    fn empty_batch_is_a_no_op() {
+        let mut session = EditorSession::new(chart(), Difficulty::Expert).unwrap();
+        session.edit_batch(vec![]).unwrap();
+        assert_eq!(session.undo_depth(), 0);
+        assert!(!session.dirty());
     }
 
     #[test]

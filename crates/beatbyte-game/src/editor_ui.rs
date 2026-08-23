@@ -45,6 +45,9 @@ pub struct EditorState {
     pub status: String,
     /// A note picked up with M, waiting to be placed (time, lane).
     pub grabbed: Option<(f64, u8)>,
+    /// Time-range selection anchor set with V (cursor is the other
+    /// end); bulk ops act on every note between them, all lanes.
+    pub select_anchor: Option<f64>,
     /// The view needs a rebuild.
     pub dirty_view: bool,
 }
@@ -94,6 +97,7 @@ pub fn open_editor(
         exit_armed: 0.0,
         status: String::new(),
         grabbed: None,
+        select_anchor: None,
         dirty_view: true,
     });
     Ok(())
@@ -279,6 +283,35 @@ fn editor_input(
         };
         state.dirty_view = true;
     }
+    // V: set/clear the selection anchor at the cursor.
+    if keys.just_pressed(KeyCode::KeyV) {
+        state.status = if state.select_anchor.take().is_some() {
+            "selection cleared".to_owned()
+        } else {
+            state.select_anchor = Some(state.snap(state.cursor_s));
+            "selecting - move, then X deletes / H toggles hopo".to_owned()
+        };
+    }
+    // X: delete every note in the selected range (all lanes), as one
+    // undo step.
+    if keys.just_pressed(KeyCode::KeyX)
+        && let Some(anchor) = state.select_anchor
+    {
+        let difficulty = state.session.difficulty;
+        let ops = selection_ops(&state, anchor, |note| EditOp::RemoveNote {
+            difficulty,
+            note,
+        });
+        let count = ops.len();
+        state.status = match state.session.edit_batch(ops) {
+            Ok(()) if count == 0 => "selection is empty".to_owned(),
+            Ok(()) => format!("{count} note(s) deleted"),
+            Err(error) => error.to_string(),
+        };
+        state.select_anchor = None;
+        state.dirty_view = true;
+    }
+
     // M: grab the note under the cursor, or place a grabbed one.
     if keys.just_pressed(KeyCode::KeyM) {
         let time_s = state.snap(state.cursor_s);
@@ -318,15 +351,31 @@ fn editor_input(
     }
 
     if keys.just_pressed(KeyCode::KeyH) {
-        let op = EditOp::ToggleHopo {
-            difficulty: state.session.difficulty,
-            time: state.snap(state.cursor_s),
-            lane: state.lane.index() as u8,
-        };
-        state.status = match state.session.edit(op) {
-            Ok(()) => "hopo toggled".to_owned(),
-            Err(error) => error.to_string(),
-        };
+        let difficulty = state.session.difficulty;
+        if let Some(anchor) = state.select_anchor {
+            let ops = selection_ops(&state, anchor, |note| EditOp::ToggleHopo {
+                difficulty,
+                time: note.time,
+                lane: note.lane,
+            });
+            let count = ops.len();
+            state.status = match state.session.edit_batch(ops) {
+                Ok(()) if count == 0 => "selection is empty".to_owned(),
+                Ok(()) => format!("hopo toggled on {count} note(s)"),
+                Err(error) => error.to_string(),
+            };
+            state.select_anchor = None;
+        } else {
+            let op = EditOp::ToggleHopo {
+                difficulty,
+                time: state.snap(state.cursor_s),
+                lane: state.lane.index() as u8,
+            };
+            state.status = match state.session.edit(op) {
+                Ok(()) => "hopo toggled".to_owned(),
+                Err(error) => error.to_string(),
+            };
+        }
         state.dirty_view = true;
     }
     if keys.just_pressed(KeyCode::KeyU) {
@@ -383,6 +432,8 @@ fn editor_input(
     if keys.just_pressed(KeyCode::Escape) {
         if state.grabbed.take().is_some() {
             state.status = "move cancelled".to_owned();
+        } else if state.select_anchor.take().is_some() {
+            state.status = "selection cleared".to_owned();
         } else if state.session.dirty() && state.exit_armed <= 0.0 {
             state.exit_armed = 2.0;
             state.status = "unsaved changes! ESC again to discard".to_owned();
@@ -478,7 +529,8 @@ fn refresh_hud(state: Option<Res<EditorState>>, mut hud: Query<&mut Text2d, With
         .chart_for(state.session.difficulty)
         .map_or(0, |def| def.notes.len());
     let line = format!(
-        "EDIT  {} [{}]\nbar {bar} beat {beat_in_bar:.2}  grid 1/{}\nnotes {notes}  undo {}  {}{}\n\nUP/DOWN step  PGUP/PGDN bar\nLEFT/RIGHT lane  SPACE note\nH hopo  M move  TAB grid  P preview\nU undo  R redo  S save  ESC exit\n\n{}",
+        "EDIT  {} [{}]\nbar {bar} beat {beat_in_bar:.2}  grid 1/{}\nnotes {notes}  undo {}  {}{}\n\nUP/DOWN step  PGUP/PGDN bar\nLEFT/RIGHT lane  SPACE note\nH hopo  M move  V sel  X del-sel
+TAB grid  P preview\nU undo  R redo  S save  ESC exit\n\n{}",
         state.session.chart().song.title,
         state.session.difficulty,
         state.division,
@@ -511,4 +563,33 @@ fn teardown_editor(
     }
     music.0.stop();
     game_clock.clock.stop();
+}
+
+/// The notes between the anchor and the cursor (inclusive, all
+/// lanes), mapped to ops — the shared plumbing of every bulk edit.
+fn selection_ops(
+    state: &EditorState,
+    anchor: f64,
+    to_op: impl Fn(beatbyte_chart::ChartNote) -> EditOp,
+) -> Vec<EditOp> {
+    let cursor = state.snap(state.cursor_s);
+    let (lo, hi) = if anchor <= cursor {
+        (anchor, cursor)
+    } else {
+        (cursor, anchor)
+    };
+    let epsilon = beatbyte_editor::EDIT_EPSILON_S;
+    state
+        .session
+        .chart()
+        .chart_for(state.session.difficulty)
+        .map(|def| {
+            def.notes
+                .iter()
+                .copied()
+                .filter(|note| note.time >= lo - epsilon && note.time <= hi + epsilon)
+                .map(to_op)
+                .collect()
+        })
+        .unwrap_or_default()
 }
