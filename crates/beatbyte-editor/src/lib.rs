@@ -1,13 +1,17 @@
 //! # beatbyte-editor
 //!
-//! The BeatByte chart editor. This crate reserves the architectural slot
-//! for the editor (Milestone 11): waveform view, beat grid, note
-//! placement/editing, playback scrubbing and validation.
-//!
-//! It is intentionally empty until the chart model (`beatbyte-chart`) has
-//! stabilized through real gameplay use — building an editor on a moving
-//! format would be wasted work. The chart data model is designed with the
-//! editor in mind (see ADR-0002 and `docs/chart-format/`).
+//! The engine-free heart of the chart editor: invertible edit
+//! operations and an [`EditorSession`] with undo/redo and dirtiness
+//! tracking. The in-game editor screen (in `beatbyte-game`) is a thin
+//! presentation over this crate — every editing rule here is
+//! unit-tested without an engine, mirroring the core/session split
+//! (ADR-0002).
+
+pub mod ops;
+pub mod session;
+
+pub use ops::{EDIT_EPSILON_S, EditError, EditOp};
+pub use session::EditorSession;
 
 /// The crate version, kept in sync with the workspace version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

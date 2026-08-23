@@ -13,6 +13,8 @@ TARGET="${1:?target triple}"
 VERSION="${2:?version}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN="$ROOT/target/$TARGET/release/beatbyte"
+# Local builds without --target land in target/release.
+[ -f "$BIN" ] || BIN="$ROOT/target/release/beatbyte"
 OUT="$ROOT/dist"
 APPDIR="$OUT/BeatByte.AppDir"
 

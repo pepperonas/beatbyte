@@ -57,6 +57,7 @@ impl Plugin for AutopilotPlugin {
                 (
                     autopilot_menu.run_if(in_state(AppState::MainMenu)),
                     autopilot_song_select.run_if(in_state(AppState::SongSelect)),
+                    autopilot_edit.run_if(in_state(AppState::Editor)),
                     // Judgment is input-stamp-driven, so playing *before*
                     // the session advances makes the autopilot exact and
                     // frame-rate independent (hitches cannot cause
@@ -143,6 +144,64 @@ fn autopilot_menu(
     }
 }
 
+/// In editor-validation mode (`BEATBYTE_AUTOPILOT_EDIT=1`), drive the
+/// real editor: add a note, undo, redo, save, verify, exit.
+fn autopilot_edit(
+    time: Res<Time>,
+    mut delay: Local<f32>,
+    state: Option<ResMut<crate::editor_ui::EditorState>>,
+    mut app_exit: MessageWriter<AppExit>,
+) {
+    let Some(mut state) = state else {
+        return;
+    };
+    *delay += time.delta_secs();
+    if *delay < 1.0 {
+        return;
+    }
+    use beatbyte_editor::EditOp;
+    let difficulty = state.session.difficulty;
+    let note = beatbyte_chart::ChartNote {
+        time: 0.123,
+        lane: 0,
+        len: 0.0,
+        hopo: false,
+    };
+    let mut ok = true;
+    ok &= state
+        .session
+        .edit(EditOp::AddNote { difficulty, note })
+        .is_ok();
+    let after_add = state
+        .session
+        .chart()
+        .chart_for(difficulty)
+        .map(|d| d.notes.len());
+    ok &= state.session.undo();
+    ok &= state.session.redo();
+    let after_redo = state
+        .session
+        .chart()
+        .chart_for(difficulty)
+        .map(|d| d.notes.len());
+    ok &= after_add == after_redo;
+    ok &= state.session.is_valid();
+    ok &= beatbyte_chart::save_chart_file(&state.chart_path, state.session.chart()).is_ok();
+    state.session.mark_saved();
+    // Verify on disk.
+    ok &= beatbyte_chart::load_chart_file(&state.chart_path)
+        .ok()
+        .and_then(|chart| chart.chart_for(difficulty).map(|d| d.notes.len()))
+        == after_redo;
+    if ok {
+        info!("autopilot: editor validation PASSED");
+        app_exit.write(AppExit::Success);
+    } else {
+        error!("autopilot: editor validation FAILED");
+        app_exit.write(AppExit::error());
+    }
+}
+
 /// Pick the demo song and start it (optionally with simulated
 /// multiplayer via `BEATBYTE_AUTOPILOT_PLAYERS=N`).
 fn autopilot_song_select(
@@ -157,6 +216,41 @@ fn autopilot_song_select(
     *delay += time.delta_secs();
     if *delay > 0.6 {
         *delay = 0.0;
+        // Editor mode: open the first file-based song instead.
+        if std::env::var_os("BEATBYTE_AUTOPILOT_EDIT").is_some() {
+            let file_entry = library.entries.iter().find_map(|entry| {
+                if let crate::library::SongSource::File {
+                    chart_path,
+                    audio_path,
+                } = &entry.source
+                {
+                    Some((entry, chart_path.clone(), audio_path.clone()))
+                } else {
+                    None
+                }
+            });
+            let Some((entry, chart_path, audio_path)) = file_entry else {
+                error!("autopilot: no file-based song to edit");
+                std::process::exit(1);
+            };
+            let difficulty = entry
+                .difficulties
+                .first()
+                .copied()
+                .unwrap_or(beatbyte_core::Difficulty::Medium);
+            match crate::editor_ui::open_editor(&mut commands, &chart_path, &audio_path, difficulty)
+            {
+                Ok(()) => {
+                    info!("autopilot: editing \"{}\"", entry.title);
+                    next_state.set(AppState::Editor);
+                }
+                Err(reason) => {
+                    error!("autopilot: cannot open editor: {reason}");
+                    std::process::exit(1);
+                }
+            }
+            return;
+        }
         let Some(entry) = library.entries.first() else {
             error!("autopilot: empty song library");
             return;

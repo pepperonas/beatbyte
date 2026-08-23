@@ -61,6 +61,18 @@ jobs:
           cp README.md LICENSE CHANGELOG.md dist/beatbyte-${{ matrix.target }}/
           tar -czf beatbyte-${{ github.ref_name }}-${{ matrix.target }}.tar.gz -C dist beatbyte-${{ matrix.target }}
 
+      - name: Bundle .app + DMG (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          VERSION="${{ github.ref_name }}"
+          bash packaging/macos.sh "${{ matrix.target }}" "${VERSION#v}"
+
+      - name: Bundle AppImage (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          VERSION="${{ github.ref_name }}"
+          bash packaging/appimage.sh "${{ matrix.target }}" "${VERSION#v}"
+
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -76,7 +88,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: beatbyte-${{ matrix.target }}
-          path: beatbyte-${{ github.ref_name }}-${{ matrix.target }}.*
+          path: |
+            beatbyte-${{ github.ref_name }}-${{ matrix.target }}.*
+            dist/*.dmg
+            dist/*.AppImage
 
   release:
     name: Publish GitHub Release

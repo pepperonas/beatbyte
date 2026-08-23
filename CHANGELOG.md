@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-23
+
+**The editor and packaging milestones** (Milestones 11 + 12).
+
+### Added
+
+- **Chart editor** — engine-free core in `beatbyte-editor`
+  (invertible edit operations, an `EditorSession` with undo/redo and
+  dirtiness tracking, all unit-tested) plus an in-game screen: open
+  any file-based song from the browser with `E`, step the beat grid
+  (1/1 · 1/2 · 1/4), place/remove notes per lane, toggle HOPOs,
+  preview the audio from the cursor, undo/redo, and save — saving is
+  gated on chart validation. Leaving with unsaved changes asks twice.
+- **macOS .app + DMG**: proper bundle with a procedurally generated
+  pixel icon (hand-rolled PNG encoder, stdlib only), Info.plist,
+  ad-hoc signature; assets resolve from `Contents/Resources`.
+- **Linux AppImage** with desktop entry and icon.
+- Release CI now attaches DMG and AppImage next to the portable
+  tar.gz/zip archives.
+- Songs are also scanned from the user data directory
+  (`…/beatbyte/songs`), so installed builds have a place for music.
+- Autopilot editor mode (`BEATBYTE_AUTOPILOT_EDIT=1`): opens the
+  editor on a real file, edits, undoes, redoes, saves and verifies
+  the file on disk.
+
 ## [0.6.0] - 2026-08-23
 
 **The themes milestone** (Milestone 10): six original stages, all
@@ -263,7 +288,8 @@ a tech demo.
   Records (Rust + Bevy, workspace layout).
 - README, MIT license, contributing guide, code of conduct, security policy.
 
-[Unreleased]: https://github.com/pepperonas/beatbyte/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/pepperonas/beatbyte/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/pepperonas/beatbyte/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/pepperonas/beatbyte/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/pepperonas/beatbyte/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/pepperonas/beatbyte/compare/v0.3.0...v0.4.0

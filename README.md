@@ -62,9 +62,16 @@ identity pass (custom font, sprites, themes) lands with Milestones 7–10.*
 
 ## Installation
 
-Prebuilt downloads for macOS, Windows and Linux will be published on the
-[Releases](https://github.com/pepperonas/beatbyte/releases) page once the
-first playable version ships. Until then, build from source (below).
+Grab a build from the
+[Releases](https://github.com/pepperonas/beatbyte/releases) page:
+
+- **macOS**: `BeatByte-<version>-<arch>.dmg` (or the portable tar.gz).
+  The binaries are unsigned — right-click → Open on first launch.
+- **Windows**: portable zip — unzip, run `beatbyte.exe`.
+- **Linux**: `BeatByte-<version>-x86_64.AppImage` (`chmod +x`, run) or
+  the portable tar.gz.
+
+Or build from source (below).
 
 ## Building from Source
 
@@ -187,8 +194,8 @@ and the [Code of Conduct](CODE_OF_CONDUCT.md) first. Security issues: see
 - [x] **M8 — Controllers**: gamepads, guitar controllers, remapping
 - [x] **M9 — Local multiplayer**: 2–4 players, versus & co-op
 - [x] **M10 — Themes**: Garage, Punk, Metal, Stadium, Psychedelic, Cyber
-- [ ] **M11 — Chart editor**
-- [ ] **M12 — Packaging**: .dmg, installer, AppImage
+- [x] **M11 — Chart editor**
+- [x] **M12 — Packaging**: .dmg, portable builds, AppImage
 - [ ] **M13 — Polish pass**
 
 ## Legal

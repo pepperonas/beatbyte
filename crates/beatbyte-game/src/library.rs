@@ -49,11 +49,19 @@ pub struct SongLibrary {
     pub entries: Vec<SongEntry>,
 }
 
-/// Directories scanned for charts, relative to the working directory.
+/// Directory scanned for charts, relative to the working directory
+/// (development / portable layouts).
 pub const SONGS_DIR: &str = "songs";
 
+/// The user-level songs directory (installed layouts).
+#[must_use]
+pub fn user_songs_dir() -> Option<PathBuf> {
+    dirs::data_dir().map(|dir| dir.join("beatbyte").join("songs"))
+}
+
 /// Build the library: demo first, then every valid chart under
-/// [`SONGS_DIR`] (one level of subdirectories, plus loose files).
+/// [`SONGS_DIR`] and the user songs directory (one level of
+/// subdirectories, plus loose files).
 #[must_use]
 pub fn scan_library(demo_chart: &ChartFile) -> SongLibrary {
     let mut entries = vec![SongEntry {
@@ -65,7 +73,11 @@ pub fn scan_library(demo_chart: &ChartFile) -> SongLibrary {
         source: SongSource::BuiltinDemo,
     }];
 
-    for chart_path in find_chart_files(SONGS_DIR) {
+    let mut roots = vec![PathBuf::from(SONGS_DIR)];
+    if let Some(user_dir) = user_songs_dir() {
+        roots.push(user_dir);
+    }
+    for chart_path in roots.iter().flat_map(|root| find_chart_files(root)) {
         match load_entry(&chart_path) {
             Ok(Some(entry)) => {
                 // The CLI `demo` command writes the demo song to disk;
@@ -85,7 +97,7 @@ pub fn scan_library(demo_chart: &ChartFile) -> SongLibrary {
 }
 
 /// All `*.json` files in `dir` and its immediate subdirectories.
-fn find_chart_files(dir: &str) -> Vec<PathBuf> {
+fn find_chart_files(dir: &std::path::Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
     let Ok(top) = std::fs::read_dir(dir) else {
         return found;

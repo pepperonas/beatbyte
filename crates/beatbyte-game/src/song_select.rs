@@ -112,7 +112,7 @@ fn spawn_browser(
                 },
             ));
             parent.spawn((
-                Text::new("UP/DOWN song   LEFT/RIGHT difficulty   ENTER rock   ESC back"),
+                Text::new("UP/DOWN song  LEFT/RIGHT difficulty  ENTER rock  E edit  ESC back"),
                 font.text(9.0),
                 TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
                 Node {
@@ -172,6 +172,19 @@ fn browser_input(
                 next_state.set(AppState::Gameplay);
             }
             Err(reason) => error!("cannot load \"{}\": {reason}", entry.title),
+        }
+    }
+    // E opens the chart editor (file-based songs only — the demo is
+    // generated, editing it would be lost on the next boot).
+    if keys.just_pressed(KeyCode::KeyE)
+        && let crate::library::SongSource::File {
+            chart_path,
+            audio_path,
+        } = &entry.source
+    {
+        match crate::editor_ui::open_editor(&mut commands, chart_path, audio_path, selected.0) {
+            Ok(()) => next_state.set(AppState::Editor),
+            Err(reason) => error!("cannot edit \"{}\": {reason}", entry.title),
         }
     }
     if nav.back {

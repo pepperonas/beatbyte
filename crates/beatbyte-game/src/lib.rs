@@ -11,6 +11,7 @@ pub mod calibration;
 pub mod config;
 pub mod controls;
 pub mod controls_ui;
+pub mod editor_ui;
 pub mod gameplay;
 pub mod library;
 pub mod menu;
@@ -33,10 +34,34 @@ use states::{AppState, GamePhase};
 /// The crate version, kept in sync with the workspace version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Point the engine at the bundled assets when running from an
+/// installed layout (macOS .app: `Contents/Resources/assets` next to
+/// `Contents/MacOS/<exe>`). Portable layouts (assets next to the
+/// executable) and dev runs already resolve correctly.
+#[allow(unsafe_code)] // set_var before any threads exist (documented below)
+fn configure_asset_root() {
+    if std::env::var_os("BEVY_ASSET_ROOT").is_some() {
+        return;
+    }
+    let Some(exe_dir) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(std::path::Path::to_path_buf))
+    else {
+        return;
+    };
+    let resources = exe_dir.join("../Resources");
+    if resources.join("assets").is_dir() {
+        // Safety: called before the app (and its task pools) start;
+        // no other threads are reading the environment yet.
+        unsafe { std::env::set_var("BEVY_ASSET_ROOT", &resources) };
+    }
+}
+
 /// Build and run the BeatByte application.
 ///
 /// This is the single entry point used by the `beatbyte` binary.
 pub fn run() -> AppExit {
+    configure_asset_root();
     let mut app = App::new();
     app.add_plugins(
         DefaultPlugins
@@ -70,6 +95,7 @@ pub fn run() -> AppExit {
         settings_ui::SettingsUiPlugin,
         controls_ui::ControlsUiPlugin,
         calibration::CalibrationPlugin,
+        editor_ui::EditorUiPlugin,
         theme::ThemePlugin,
         gameplay::GameplayPlugin,
         results::ResultsPlugin,

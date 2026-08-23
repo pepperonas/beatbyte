@@ -24,6 +24,8 @@ pub enum AppState {
     Controls,
     /// The latency calibration screen.
     Calibration,
+    /// The chart editor.
+    Editor,
     /// Playing a song.
     Gameplay,
     /// Post-song results.
