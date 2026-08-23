@@ -136,7 +136,7 @@ chart format v1 can be frozen as a promise.
 ### B — Content & chart workflow
 
 - [ ] B1 **Second synthesized demo song** (different genre/tempo, e.g. ~90 BPM) exercising sustains and chords differently. *Verify: appears in library; autopilot passes on it (parameterize autopilot song selection).*
-- [ ] B2 **Autopilot over any library song.** `BEATBYTE_AUTOPILOT_SONG=<id>` to validate every bundled chart, not just the first. dep: B1 useful, not required. *Verify: harness run on both songs, exit 0.*
+- [x] B2 **Autopilot over any library song.** `BEATBYTE_AUTOPILOT_SONG=<index|title-substring>` (bad selector = loud failure). *Verified: 4 unit tests (one mutation-checked); live run with `=circuit` flawless, `=nonexistent` exits 1. Second-song run covered under B1.*
 - [ ] B3 **Import walkthrough verified end-to-end.** Follow `docs/` chart workflow with a real (user-supplied, uncommitted) audio file: analyze → generate → correct in editor → play. Fix doc drift found on the way. *Verify: walkthrough completes; doc updated with actual commands.*
 - [ ] B4 **Supported-audio-formats truth.** Establish and document exactly which import formats the build decodes (wav/ogg/flac/mp3?); add a decode test per supported format with a tiny generated fixture. *Verify: table in chart-format doc + passing tests.*
 

@@ -262,9 +262,13 @@ fn autopilot_song_select(
             }
             return;
         }
-        let Some(entry) = library.entries.first() else {
-            error!("autopilot: empty song library");
-            return;
+        let selector = std::env::var("BEATBYTE_AUTOPILOT_SONG").ok();
+        let entry = match select_song(&library.entries, selector.as_deref()) {
+            Ok(entry) => entry,
+            Err(reason) => {
+                error!("autopilot: {reason}");
+                std::process::exit(1);
+            }
         };
         let players: usize = std::env::var("BEATBYTE_AUTOPILOT_PLAYERS")
             .ok()
@@ -284,6 +288,41 @@ fn autopilot_song_select(
             Err(reason) => error!("autopilot: cannot start song: {reason}"),
         }
     }
+}
+
+/// Resolve which library song the autopilot plays.
+///
+/// `BEATBYTE_AUTOPILOT_SONG` selects it: a number is an index into the
+/// library, anything else a case-insensitive substring of the title
+/// (first match in library order). Unset picks the first entry. A
+/// selector that matches nothing is an error — a harness that silently
+/// plays the wrong song validates nothing.
+fn select_song<'a>(
+    entries: &'a [crate::library::SongEntry],
+    selector: Option<&str>,
+) -> Result<&'a crate::library::SongEntry, String> {
+    if entries.is_empty() {
+        return Err("empty song library".to_owned());
+    }
+    let Some(selector) = selector else {
+        return Ok(&entries[0]);
+    };
+    if let Ok(index) = selector.parse::<usize>() {
+        return entries.get(index).ok_or_else(|| {
+            format!(
+                "song index {index} out of range (library has {} entr(ies))",
+                entries.len()
+            )
+        });
+    }
+    let needle = selector.to_lowercase();
+    entries
+        .iter()
+        .find(|entry| entry.title.to_lowercase().contains(&needle))
+        .ok_or_else(|| {
+            let titles: Vec<&str> = entries.iter().map(|e| e.title.as_str()).collect();
+            format!("no song title contains \"{selector}\" (library: {titles:?})")
+        })
 }
 
 fn autopilot_reset(mut hands: ResMut<AutopilotHands>) {
@@ -422,5 +461,57 @@ fn autopilot_results(
     } else {
         error!("autopilot: run FAILED — misses or overstrums in a perfect run");
         app_exit.write(AppExit::error());
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::select_song;
+    use crate::library::{SongEntry, SongSource};
+
+    fn entry(title: &str) -> SongEntry {
+        SongEntry {
+            title: title.to_owned(),
+            artist: "Tests".to_owned(),
+            bpm: 120.0,
+            duration_s: None,
+            difficulties: vec![],
+            source: SongSource::BuiltinDemo,
+        }
+    }
+
+    #[test]
+    fn no_selector_picks_the_first_entry() {
+        let entries = vec![entry("Circuit Breaker"), entry("Solder Groove")];
+        assert_eq!(
+            select_song(&entries, None).unwrap().title,
+            "Circuit Breaker"
+        );
+    }
+
+    #[test]
+    fn numeric_selector_is_an_index() {
+        let entries = vec![entry("Circuit Breaker"), entry("Solder Groove")];
+        assert_eq!(
+            select_song(&entries, Some("1")).unwrap().title,
+            "Solder Groove"
+        );
+        assert!(select_song(&entries, Some("7")).is_err());
+    }
+
+    #[test]
+    fn text_selector_matches_title_substring_case_insensitively() {
+        let entries = vec![entry("Circuit Breaker"), entry("Solder Groove")];
+        assert_eq!(
+            select_song(&entries, Some("GROOVE")).unwrap().title,
+            "Solder Groove"
+        );
+        assert!(select_song(&entries, Some("free bird")).is_err());
+    }
+
+    #[test]
+    fn empty_library_is_an_error_even_without_selector() {
+        assert!(select_song(&[], None).is_err());
     }
 }

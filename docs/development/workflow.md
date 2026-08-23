@@ -44,8 +44,16 @@ flawless run (any miss or overstrum in autopilot is a gameplay bug).
 Because judgment is input-stamp-driven, autopilot is frame-rate
 independent; run it before every release.
 
-Add `BEATBYTE_SHOT_DIR=<dir>` to also capture menu/gameplay/results
-screenshots along the way (used for README/docs media).
+Variants:
+
+- `BEATBYTE_AUTOPILOT_PLAYERS=N` — simulated local multiplayer (1–4).
+- `BEATBYTE_AUTOPILOT_SONG=<index|title-substring>` — validate a
+  specific library song instead of the first (case-insensitive
+  substring or numeric index; a selector that matches nothing fails
+  the run).
+- `BEATBYTE_AUTOPILOT_EDIT=1` — drive the editor (add/undo/redo/save).
+- `BEATBYTE_SHOT_DIR=<dir>` — also capture menu/gameplay/results
+  screenshots along the way (used for README/docs media).
 
 ## Toolchain
 

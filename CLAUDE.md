@@ -87,7 +87,8 @@ tech writer, release manager. Operate accordingly:
 ```bash
 BEATBYTE_SMOKE_TEST=1 cargo run -p beatbyte     # boots to menu, exits 0
 BEATBYTE_AUTOPILOT=1 cargo run -p beatbyte      # plays the demo song PERFECTLY
-BEATBYTE_AUTOPILOT=1 BEATBYTE_PLAYERS=2 ...     # multiplayer variant
+BEATBYTE_AUTOPILOT=1 BEATBYTE_AUTOPILOT_PLAYERS=2   # multiplayer variant
+BEATBYTE_AUTOPILOT=1 BEATBYTE_AUTOPILOT_SONG=<sel>  # index or title substring
 BEATBYTE_AUTOPILOT=1 BEATBYTE_AUTOPILOT_EDIT=1  # editor add/undo/redo/save cycle
 BEATBYTE_SHOT_DIR=<dir>                          # + screenshots along the way
 ```
@@ -217,6 +218,10 @@ artifact, smoke-test it (neutral CWD!), then
 - **Release asset upload**: `download-artifact` with `merge-multiple`
   preserves subpaths — the publish glob must recurse
   (`artifacts/**`); a flat `artifacts/*` silently drops DMG/AppImage.
+- **Never `git checkout -- <file>` to undo a test mutation** — it
+  reverts ALL uncommitted work in that file, including the feature the
+  test pins (happened; the work had to be redone from context). Back
+  the file up to the scratchpad, mutate, restore from the copy.
 - **`dist/` is a build product.** It was once committed (118 MB, and
   CI shipped the stale DMG inside every artifact); it is gitignored —
   keep it that way.

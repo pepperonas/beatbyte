@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Autopilot can validate any library song: `BEATBYTE_AUTOPILOT_SONG`
+  selects by index or case-insensitive title substring; a selector
+  that matches nothing fails the run instead of silently playing the
+  wrong song.
+
 ## [0.8.1] - 2026-08-23
 
 ### Fixed
