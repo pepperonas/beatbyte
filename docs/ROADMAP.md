@@ -128,7 +128,7 @@ chart format v1 can be frozen as a promise.
 
 ### A — Feel & tuning
 
-- [ ] A1 **Human playtest protocol + first pass.** Write `docs/playtest.md` (what to test: timing windows, HOPO feel, sustain scoring, Hype pacing, calibration flow; how to record findings), then run it on the demo song at all difficulties. *Verify: findings recorded in `docs/playtest.md` with date + build.*
+- [~] A1 **Human playtest protocol + first pass.** Protocol written (`docs/playtest.md`: session script over both songs × four difficulties, feel questions mapped to A2/A3/A4, findings-log format). **Blocked on human hands for the first pass** — the harness proves correctness, not feel. *Verify: findings recorded in `docs/playtest.md` with date + build.*
 - [ ] A2 **Tuning adjustments from findings.** Apply window/scoring/HOPO changes A1 demands, or record explicitly that none were needed. dep: A1. *Verify: updated tests pin new values; autopilot flawless; CHANGELOG entry.*
 - [ ] A3 **Calibration validated against real latency.** Play through a deliberately delayed audio path (e.g. Bluetooth) and confirm the calibrated offset lands within one timing window of measured latency. *Verify: measured vs calibrated numbers noted in `docs/playtest.md`.*
 - [ ] A4 **Difficulty curve review.** Check Easy→Expert of both built-in charts reads as a curve (density, chords, HOPO runs); adjust `DifficultyProfile` if not. Known input: Hard/Expert barely generate sustains even over held pad bars (B1 measurement: 1–2 vs Medium's 6) — likely their low strength floors pick up spurious onsets inside held chords, breaking the gaps. dep: A1. *Verify: note-count/density table in findings; generation tests updated.*
