@@ -104,7 +104,7 @@ jobs:
           merge-multiple: true
 
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           # merge-multiple keeps the dist/ subpath from the upload glob,
           # so this must recurse — a flat artifacts/* silently drops the
