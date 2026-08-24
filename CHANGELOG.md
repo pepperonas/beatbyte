@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **The content, accessibility and editor-v2 release.**
 
+### Fixed (release engineering)
+
+- macOS DMG creation retries through the runners' spurious
+  "No space left on device" hdiutil flake (95 GiB were free when it
+  struck); artifact actions moved to their actual Node 24 majors
+  (upload v7, download v8).
+
 ### Added
 
 - **Editor: metronome overlay during audition** — `P` already played

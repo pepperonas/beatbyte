@@ -218,9 +218,16 @@ artifact, smoke-test it (neutral CWD!), then
   fails loudly on a vanished window). For visual checks prefer
   ECS-level probes over screenshots: an occluded window renders black
   and md5-identical "evidence".
-- **Release CI disk**: the arm64 macOS runner ran out of space during
-  `hdiutil` — `packaging/macos.sh` reclaims `target/` first (CI-only,
-  gated on `CI=true`; never on a developer machine).
+- **hdiutil "No space left on device" on macOS runners is usually a
+  LIE** — v0.9.0's failure showed 95 GiB free at that moment (known
+  runner flake). `packaging/macos.sh` retries up to 6×; it also
+  reclaims `target/` first (CI-only, gated on `CI=true`) from the
+  v0.8.1 episode. Verify the free-space claim in the log before
+  believing the error.
+- **Verify an action's major exists before pinning it** — fetch its
+  `action.yml` from raw.githubusercontent (`using: 'node24'`, inputs)
+  instead of guessing; the v5 "fix" for upload-artifact was still
+  Node 20.
 - **Release asset upload**: `download-artifact` with `merge-multiple`
   preserves subpaths — the publish glob must recurse
   (`artifacts/**`); a flat `artifacts/*` silently drops DMG/AppImage.

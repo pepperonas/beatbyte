@@ -75,5 +75,18 @@ fi
 
 DMG="$OUT/BeatByte-${VERSION}-${TARGET}.dmg"
 rm -f "$DMG"
-hdiutil create -volname "BeatByte" -srcfolder "$APP" -ov -format UDZO "$DMG" >/dev/null
+# GitHub's macOS runners intermittently fail hdiutil with a SPURIOUS
+# "No space left on device" (df showed 95 GiB free at the moment of
+# failure — a known diskimages-helper flake, not actual disk
+# pressure). Retrying is the community-standard mitigation.
+attempts=0
+until hdiutil create -volname "BeatByte" -srcfolder "$APP" -ov -format UDZO "$DMG" >/dev/null; do
+  attempts=$((attempts + 1))
+  if [ "$attempts" -ge 6 ]; then
+    echo "hdiutil failed $attempts times, giving up" >&2
+    exit 1
+  fi
+  echo "hdiutil attempt $attempts failed; retrying in 5s" >&2
+  sleep 5
+done
 echo "built $DMG"
