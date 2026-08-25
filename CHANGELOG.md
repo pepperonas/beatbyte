@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **App icon shows the game now**: the yellow "B" sits above the
+  five round receptor gems (green/red/yellow/blue/orange, white core
+  + dark ring) with faint lane guides — still fully generated, no
+  binary assets.
+
 - **Tap mode is now the default** — the first real playtest showed
   keyboard players press frets while notes die (the strum requirement
   is invisible); strumming remains as the opt-in setting, and tap
