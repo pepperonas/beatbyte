@@ -105,6 +105,25 @@ pub fn scan_library(builtins: &[ChartFile]) -> SongLibrary {
     SongLibrary { entries }
 }
 
+/// Delete a file-based song's files. An entry whose chart lives in a
+/// folder under an `imported/` directory owns that folder (the import
+/// created it) — the whole folder goes, audio included. Anything else
+/// is hand-managed: only the chart file is removed, the audio stays.
+pub fn remove_song_files(chart_path: &std::path::Path) -> Result<(), String> {
+    let parent = chart_path
+        .parent()
+        .ok_or_else(|| "chart has no parent directory".to_owned())?;
+    let parent_is_import_child = parent
+        .parent()
+        .and_then(|grand| grand.file_name())
+        .is_some_and(|name| name == "imported");
+    if parent_is_import_child {
+        std::fs::remove_dir_all(parent).map_err(|e| format!("cannot remove folder: {e}"))
+    } else {
+        std::fs::remove_file(chart_path).map_err(|e| format!("cannot remove chart: {e}"))
+    }
+}
+
 /// All `*.json` files under `dir`, up to two directory levels below
 /// it — `songs/imported/<song>/chart.json` is the deepest documented
 /// layout, and the one-level scan this replaces silently ignored it
@@ -203,5 +222,50 @@ mod tests {
         );
         assert_eq!(found.len(), 3, "symlink must not add duplicates: {names:?}");
         let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod remove_tests {
+    use super::remove_song_files;
+
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("beatbyte-rm-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir
+    }
+
+    #[test]
+    fn imported_songs_lose_their_whole_folder() {
+        let root = scratch("imported");
+        let folder = root.join("songs/imported/my-song");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("chart.json"), "{}").unwrap();
+        std::fs::write(folder.join("my-song.mp3"), "x").unwrap();
+        remove_song_files(&folder.join("chart.json")).unwrap();
+        assert!(!folder.exists(), "the import's folder must be gone");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn hand_managed_charts_lose_only_the_chart() {
+        let root = scratch("manual");
+        let folder = root.join("songs/my-collection");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("song.chart.json"), "{}").unwrap();
+        std::fs::write(folder.join("song.ogg"), "x").unwrap();
+        remove_song_files(&folder.join("song.chart.json")).unwrap();
+        assert!(!folder.join("song.chart.json").exists());
+        assert!(
+            folder.join("song.ogg").exists(),
+            "hand-managed audio must survive"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn missing_files_error_cleanly() {
+        assert!(remove_song_files(std::path::Path::new("/nonexistent/chart.json")).is_err());
     }
 }

@@ -121,7 +121,9 @@ fn spawn_browser_impl(
                 },
             ));
             parent.spawn((
-                Text::new("UP/DOWN song  LEFT/RIGHT difficulty  ENTER rock  E edit  ESC back"),
+                Text::new(
+                    "UP/DOWN song  LEFT/RIGHT difficulty  ENTER rock\nE edit  DEL delete  ESC back",
+                ),
                 font.text(9.0),
                 TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
                 Node {
@@ -137,11 +139,14 @@ fn browser_input(
     mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<&Gamepad>,
-    library: Res<SongLibrary>,
+    mut library: ResMut<SongLibrary>,
     mut cursor: ResMut<BrowserCursor>,
     mut selected: ResMut<SelectedDifficulty>,
     builtins: Res<BuiltinSongs>,
     mut next_state: ResMut<NextState<AppState>>,
+    time: Res<Time>,
+    mut status: ResMut<crate::import::ImportStatus>,
+    mut delete_armed: Local<(Option<usize>, f32)>,
 ) {
     let nav = MenuNav::read(&keys, pads.iter());
     let count = library.entries.len();
@@ -194,6 +199,40 @@ fn browser_input(
         match crate::editor_ui::open_editor(&mut commands, chart_path, audio_path, selected.0) {
             Ok(()) => next_state.set(AppState::Editor),
             Err(reason) => error!("cannot edit \"{}\": {reason}", entry.title),
+        }
+    }
+    // BACKSPACE/DEL removes the highlighted song from disk — twice,
+    // because it deletes files. Built-ins cannot be removed.
+    delete_armed.1 = (delete_armed.1 - time.delta_secs()).max(0.0);
+    if delete_armed.1 <= 0.0 {
+        delete_armed.0 = None;
+    }
+    if keys.just_pressed(KeyCode::Backspace) || keys.just_pressed(KeyCode::Delete) {
+        match &entry.source {
+            crate::library::SongSource::Builtin(_) => {
+                status.0 = "built-in songs cannot be deleted".to_owned();
+            }
+            crate::library::SongSource::File { chart_path, .. } => {
+                if delete_armed.0 == Some(cursor.0) {
+                    let title = entry.title.clone();
+                    match crate::library::remove_song_files(chart_path) {
+                        Ok(()) => {
+                            status.0 = format!("\"{title}\" deleted");
+                            let charts: Vec<_> =
+                                builtins.0.iter().map(|song| song.chart.clone()).collect();
+                            *library = crate::library::scan_library(&charts);
+                        }
+                        Err(reason) => status.0 = format!("cannot delete: {reason}"),
+                    }
+                    *delete_armed = (None, 0.0);
+                } else {
+                    *delete_armed = (Some(cursor.0), 3.0);
+                    status.0 = format!(
+                        "delete \"{}\" and its files? press again to confirm",
+                        entry.title
+                    );
+                }
+            }
         }
     }
     if nav.back {

@@ -88,6 +88,16 @@ impl Plugin for AutopilotPlugin {
                 ),
             )
             .add_systems(OnEnter(AppState::Gameplay), autopilot_reset);
+            if std::env::var_os("BEATBYTE_AUTOPILOT_DELETE").is_some() {
+                // Deletion validation drives the browser with REAL
+                // arrow/backspace keys; song selection stays passive.
+                app.add_systems(
+                    PreUpdate,
+                    autopilot_delete
+                        .after(bevy::input::InputSystems)
+                        .run_if(in_state(AppState::SongSelect)),
+                );
+            }
             if std::env::var_os("BEATBYTE_AUTOPILOT_KEYS").is_some() {
                 // Keyboard-path validation: press REAL KeyCodes on
                 // ButtonInput, so InputMap resolution, gameplay_input
@@ -417,6 +427,10 @@ fn autopilot_song_select(
             }
             return;
         }
+        // Deletion mode owns the browser — never start a song.
+        if std::env::var_os("BEATBYTE_AUTOPILOT_DELETE").is_some() {
+            return;
+        }
         let selector = std::env::var("BEATBYTE_AUTOPILOT_SONG").ok();
         let entry = match select_song(&library.entries, selector.as_deref()) {
             Ok(entry) => entry,
@@ -533,6 +547,63 @@ fn autopilot_drop(
         window,
         path_buf: std::path::PathBuf::from(path),
     });
+}
+
+/// `BEATBYTE_AUTOPILOT_DELETE=<title-substring>`: arrow down to the
+/// matching entry with real key presses, hit Backspace twice through
+/// the real confirm flow, and succeed once the song left the library.
+fn autopilot_delete(
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    library: Res<crate::library::SongLibrary>,
+    time: Res<Time>,
+    mut frame: Local<u32>,
+    mut waited: Local<f32>,
+    mut app_exit: MessageWriter<AppExit>,
+) {
+    let Some(target) = std::env::var("BEATBYTE_AUTOPILOT_DELETE").ok() else {
+        return;
+    };
+    let needle = target.to_lowercase();
+    let index = library
+        .entries
+        .iter()
+        .position(|e| e.title.to_lowercase().contains(&needle));
+    *waited += time.delta_secs();
+    if *waited > 30.0 {
+        error!(
+            "autopilot: delete timed out (target still present: {:?})",
+            index
+        );
+        deliver(&mut app_exit, AppExit::error());
+        return;
+    }
+    let Some(index) = index else {
+        // Gone — deletion done (only counts after we actually acted).
+        if *frame > 0 {
+            info!("autopilot: delete validation PASSED");
+            deliver(&mut app_exit, AppExit::Success);
+        }
+        return;
+    };
+    // Alternate press/release frames: downs to reach the entry, then
+    // Backspace, a pause across the confirm window, Backspace again.
+    let downs = index as u32;
+    let step = *frame / 2;
+    let pressing = (*frame).is_multiple_of(2);
+    if step < downs {
+        if pressing {
+            keys.press(KeyCode::ArrowDown);
+        } else {
+            keys.release(KeyCode::ArrowDown);
+        }
+    } else if step == downs || step == downs + 8 {
+        if pressing {
+            keys.press(KeyCode::Backspace);
+        } else {
+            keys.release(KeyCode::Backspace);
+        }
+    }
+    *frame += 1;
 }
 
 fn autopilot_reset(mut hands: ResMut<AutopilotHands>) {

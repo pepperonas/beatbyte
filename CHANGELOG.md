@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Delete songs from the browser**: `Backspace`/`Del` on a
+  highlighted song (press twice to confirm). Imported songs lose
+  their whole folder, hand-managed charts only the chart file (the
+  audio stays); built-ins cannot be deleted.
+
 - **Drag-and-drop song import**: drop an audio file onto the window
   (menu or browser) — it is copied to `songs/imported/`, analyzed and
   charted in the background, and appears in the browser with a status

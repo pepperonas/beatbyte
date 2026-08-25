@@ -16,7 +16,10 @@ browser). The song is analyzed and charted in the background and
 appears in the browser when done — file names like
 `Artist - Title (Official Video) [id].m4a` become a clean
 title/artist automatically. Everything below is the manual route with
-full control over naming and output.
+full control over naming and output. To remove a song, highlight it
+in the browser and press `Backspace`/`Del` twice — an imported song's
+folder is deleted entirely; for hand-managed charts only the chart
+file goes and your audio stays.
 
 ## 1. Put the audio where BeatByte looks
 
