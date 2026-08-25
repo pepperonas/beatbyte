@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Tap mode is now the default** — the first real playtest showed
+  keyboard players press frets while notes die (the strum requirement
+  is invisible); strumming remains as the opt-in setting, and tap
+  runs now record to the scoreboard. The autopilot's direct feed only
+  strums when the note is still pending, so it plays correctly in
+  both modes.
+- **Round style is now a full look**: smooth font instead of the
+  pixel face, bar ("fret") lines scrolling on the highway, and
+  soft-disc particles and backdrop dots. 8-bit remains the default
+  style and is pixel-for-pixel unchanged.
+
 - **Note Style setting**: the 8-bit per-lane shapes can be switched
   to a classic round-gem look (colored disc, white center, dark ring
   on strum notes — HOPOs carry no ring). Round gems render from

@@ -50,10 +50,10 @@ fn spawn_results(
     };
 
     // Record solo runs only — multiplayer scoreboards would mix
-    // devices and players into one book. Tap-mode runs (no-strum
-    // assist) stay out too: they play easier, and a best list that
-    // mixes assisted and unassisted runs means nothing.
-    let solo = results.players.len() == 1 && !results.tap_mode;
+    // devices and players into one book. Tap mode records normally
+    // since it became the default way to play; `tap_mode` on the
+    // results stays available for display.
+    let solo = results.players.len() == 1;
     let mut new_record = false;
     if solo && let Some(player) = results.players.first() {
         let perf = &player.performance;

@@ -72,4 +72,14 @@ actionable; adjectives alone are not.
 
 ## Findings log
 
-*(no entries yet — first pass pending)*
+**2026-08-25 · post-v0.9.0 dev build · keyboard**
+- "Töne werden nicht erkannt/zerstört wenn ich Taste drücke, aber
+  (Receptors) leuchten auf" — fret presses registered, notes died:
+  the strum requirement is invisible and unintuitive on keyboard.
+  **Action taken: tap mode is now the DEFAULT** (strumming stays as
+  the opt-in purist setting); tap runs record to the scoreboard.
+- Round note style alone read as insufficient — "ohne 8-Bit-Modus
+  soll das GESAMTE Spiel nicht mehr 8-bit erscheinen." **Action
+  taken:** round style now also swaps the pixel font for the smooth
+  built-in face, draws bar ("fret") lines on the highway, and renders
+  particles/backdrop dots as soft discs.

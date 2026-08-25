@@ -204,7 +204,13 @@ impl Plugin for ThemePlugin {
 }
 
 /// Spawned from the gameplay setup chain (needs the layout + theme).
-pub fn spawn_backdrop(mut commands: Commands, theme: Res<ActiveTheme>, layout: Res<HighwayLayout>) {
+pub fn spawn_backdrop(
+    mut commands: Commands,
+    theme: Res<ActiveTheme>,
+    layout: Res<HighwayLayout>,
+    settings: Res<crate::config::Settings>,
+    shapes: Res<crate::shapes::LaneShapes>,
+) {
     let theme = theme.0;
     let accent = theme.accent;
     // Bits spread across the whole screen behind the highways.
@@ -235,6 +241,15 @@ pub fn spawn_backdrop(mut commands: Commands, theme: Res<ActiveTheme>, layout: R
         } else {
             base
         };
+        // Round style: roughly square bits become soft discs — pixel
+        // squares would betray "not 8-bit". Long strips (grid lines,
+        // spotlight cones) keep their rectangle.
+        let squarish = size.x / size.y < 2.0 && size.y / size.x < 2.0;
+        let image = if settings.round_gems && squarish {
+            shapes.round_body()
+        } else {
+            Handle::default()
+        };
         commands.spawn((
             GameplayScreen,
             BackdropBit {
@@ -242,7 +257,12 @@ pub fn spawn_backdrop(mut commands: Commands, theme: Res<ActiveTheme>, layout: R
                 seed: seed * core::f32::consts::TAU,
                 base,
             },
-            Sprite::from_color(accent.with_alpha(alpha), size),
+            Sprite {
+                image,
+                color: accent.with_alpha(alpha),
+                custom_size: Some(size),
+                ..Default::default()
+            },
             Transform::from_xyz(base.x, base.y, -25.0),
         ));
     }

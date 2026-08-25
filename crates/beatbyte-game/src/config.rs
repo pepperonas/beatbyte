@@ -35,8 +35,10 @@ pub struct Settings {
     /// Backdrop animation (turn off for a still stage —
     /// reduced-motion accessibility).
     pub backdrop_motion: bool,
-    /// Tap mode: notes hit on fret press alone, no strum required —
-    /// keyboard-friendly assist. Such runs skip the scoreboard.
+    /// Tap mode: notes hit on fret press alone, no strum required.
+    /// ON by default — the first real playtest showed keyboard
+    /// players press frets and nothing happens (receptors light up,
+    /// notes die); strumming is the opt-in purist mode.
     pub tap_mode: bool,
     /// Round gems instead of the 8-bit per-lane shapes. Off by
     /// default: the shapes are the colorblind-safe look — turning
@@ -61,7 +63,7 @@ impl Default for Settings {
             screen_shake: true,
             beat_pulse: true,
             backdrop_motion: true,
-            tap_mode: false,
+            tap_mode: true,
             round_gems: false,
             fullscreen: false,
             input_map: InputMap::default(),
@@ -184,6 +186,7 @@ fn apply_settings(
     effects.screen_shake = settings.screen_shake;
     effects.beat_pulse = settings.beat_pulse;
     effects.backdrop_motion = settings.backdrop_motion;
+    effects.round_particles = settings.round_gems;
     if let Ok(mut window) = windows.single_mut() {
         let wanted = if settings.fullscreen {
             bevy::window::WindowMode::BorderlessFullscreen(MonitorSelection::Current)

@@ -27,6 +27,8 @@ pub struct EffectSettings {
     pub beat_pulse: bool,
     /// Backdrop animation (off = a still stage, reduced motion).
     pub backdrop_motion: bool,
+    /// Round style: particles render as soft discs, not pixels.
+    pub round_particles: bool,
 }
 
 impl Default for EffectSettings {
@@ -36,6 +38,7 @@ impl Default for EffectSettings {
             screen_shake: true,
             beat_pulse: true,
             backdrop_motion: true,
+            round_particles: false,
         }
     }
 }
@@ -130,10 +133,12 @@ fn react_to_feedback(
     mut feedback: MessageReader<SessionFeedback>,
     players: Query<(&PlayerIndex, &PlayerSession)>,
     settings: Res<EffectSettings>,
+    shapes: Res<crate::shapes::LaneShapes>,
     mut shake: ResMut<Shake>,
     particles: Query<(), With<Particle>>,
 ) {
     let mut live_particles = particles.iter().count();
+    let soft = settings.round_particles.then(|| shapes.round_body());
 
     for message in feedback.read() {
         let player = message.player_index;
@@ -161,6 +166,7 @@ fn react_to_feedback(
                     spawn_burst(
                         &mut commands,
                         &mut live_particles,
+                        soft.clone(),
                         Vec2::new(x, RECEPTOR_Y),
                         color,
                         count,
@@ -172,6 +178,7 @@ fn react_to_feedback(
                         spawn_burst(
                             &mut commands,
                             &mut live_particles,
+                            soft.clone(),
                             Vec2::new(x, RECEPTOR_Y),
                             Color::WHITE,
                             5,
@@ -205,6 +212,7 @@ fn react_to_feedback(
                         spawn_burst(
                             &mut commands,
                             &mut live_particles,
+                            soft.clone(),
                             Vec2::new(layout.lane_x(player, lane), RECEPTOR_Y),
                             palette::HYPE,
                             10,
@@ -221,9 +229,11 @@ fn react_to_feedback(
 
 /// Deterministic-ish particle burst (seeded by note index — no RNG
 /// dependency, no frame-order sensitivity).
+#[allow(clippy::too_many_arguments)] // internal helper mirroring the systems' DI
 fn spawn_burst(
     commands: &mut Commands,
     live: &mut usize,
+    soft: Option<Handle<Image>>,
     origin: Vec2,
     color: Color,
     count: usize,
@@ -249,7 +259,12 @@ fn spawn_burst(
                 ttl: 0.35 + 0.3 * h,
                 gravity: 700.0,
             },
-            Sprite::from_color(color, Vec2::splat(size)),
+            Sprite {
+                image: soft.clone().unwrap_or_default(),
+                color,
+                custom_size: Some(Vec2::splat(size)),
+                ..Default::default()
+            },
             Transform::from_xyz(origin.x, origin.y, 6.0),
         ));
     }
@@ -290,6 +305,7 @@ fn simulate_particles(
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn sustain_sparks(
     mut commands: Commands,
+    shapes: Res<crate::shapes::LaneShapes>,
     layout: Res<HighwayLayout>,
     theme: Res<crate::theme::ActiveTheme>,
     players: Query<(&PlayerIndex, &PlayerSession)>,
@@ -301,6 +317,7 @@ fn sustain_sparks(
     if !settings.particles {
         return;
     }
+    let soft = settings.round_particles.then(|| shapes.round_body());
     // Shared spark budget across players.
     *accumulator += time.delta_secs() * 24.0;
     if *accumulator < 1.0 {
@@ -319,6 +336,7 @@ fn sustain_sparks(
             spawn_burst(
                 &mut commands,
                 &mut live,
+                soft.clone(),
                 Vec2::new(layout.lane_x(index.0, lane), RECEPTOR_Y + 10.0),
                 theme.0.lane_color(lane),
                 ticks.min(2),

@@ -6,16 +6,26 @@
 
 use bevy::prelude::*;
 
-/// The one UI font, loaded at startup.
+/// The UI font, loaded at startup. In the round (non-8-bit) note
+/// style the whole game drops the pixel font for the engine's smooth
+/// built-in face — "not 8-bit" has to include the type.
 #[derive(Resource)]
-pub struct UiFont(pub Handle<Font>);
+pub struct UiFont {
+    pixel: Handle<Font>,
+    /// Mirrors `Settings::round_gems`; synced every frame.
+    pub smooth: bool,
+}
 
 impl UiFont {
-    /// A [`TextFont`] in the pixel font at the given size.
+    /// A [`TextFont`] in the active style at the given size.
     #[must_use]
     pub fn text(&self, size: f32) -> TextFont {
         TextFont {
-            font: self.0.clone().into(),
+            font: if self.smooth {
+                Handle::default().into()
+            } else {
+                self.pixel.clone().into()
+            },
             font_size: FontSize::Px(size),
             ..default()
         }
@@ -34,6 +44,19 @@ impl Plugin for UiPlugin {
             .world()
             .resource::<AssetServer>()
             .load("fonts/PressStart2P-Regular.ttf");
-        app.insert_resource(UiFont(handle));
+        app.insert_resource(UiFont {
+            pixel: handle,
+            smooth: false,
+        })
+        .add_systems(Update, sync_font_style);
+    }
+}
+
+/// Keep the font choice in step with the note-style setting. Screens
+/// rebuild on state changes, so newly spawned text picks it up; text
+/// already on screen keeps its face until its screen rebuilds.
+fn sync_font_style(settings: Res<crate::config::Settings>, mut font: ResMut<UiFont>) {
+    if font.smooth != settings.round_gems {
+        font.smooth = settings.round_gems;
     }
 }

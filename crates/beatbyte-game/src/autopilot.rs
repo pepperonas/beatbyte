@@ -772,13 +772,22 @@ fn autopilot_play(
                 }
             }
             hands.held[slot] = event.lanes;
-            player.session.handle(
-                GameInput {
-                    time_s: stamp,
-                    kind: InputKind::Strum,
-                },
-                &mut player.frame_events,
-            );
+            // In tap mode the fret presses above already hit the
+            // note — strumming on top would be an overstrum. Only
+            // strum while the event is still pending (which also
+            // stays correct for HOPOs in classic mode).
+            if matches!(
+                player.session.note_state(event_index),
+                Some(NoteState::Pending)
+            ) {
+                player.session.handle(
+                    GameInput {
+                        time_s: stamp,
+                        kind: InputKind::Strum,
+                    },
+                    &mut player.frame_events,
+                );
+            }
             // Fire Hype the moment it becomes available.
             if player.session.performance().hype_meter()
                 >= player

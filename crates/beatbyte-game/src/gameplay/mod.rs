@@ -197,6 +197,7 @@ impl Plugin for GameplayPlugin {
                 (
                     setup_gameplay,
                     notes::spawn_highways,
+                    notes::spawn_fret_lines,
                     hud::spawn_huds,
                     fx::spawn_fx_scenery,
                     crate::theme::spawn_backdrop,
@@ -212,6 +213,7 @@ impl Plugin for GameplayPlugin {
                     drain_feedback,
                     notes::spawn_due_notes,
                     notes::move_notes,
+                    notes::move_fret_lines,
                     notes::animate_sustains,
                     notes::update_receptors,
                     notes::apply_note_events,

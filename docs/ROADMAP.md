@@ -170,6 +170,7 @@ chart format v1 can be frozen as a promise.
 
 - [x] G5 **Delete library entries in-game.** Backspace/Del with a 3-s double-press confirm; imported folders removed whole, hand-managed charts chart-only, built-ins refused. *Verified: 3 fs tests + real-key E2E (arrow-navigate, double Backspace, folder physically gone).*
 
+- [x] G7 **Round style = whole-game look; tap mode default.** Playtest findings (first real hands-on): smooth font (UiFont style switch), scrolling fret lines from the chart's tempo, soft-disc particles + backdrop dots; tap default ON (scoreboard gate removed), autopilot direct feed made tap-aware (strum only while pending — it double-hit into 107 overstrums otherwise). *Verified: real-key no-strum run flawless on a FRESH profile (proves the default); round + 8-bit direct-feed runs flawless; screenshots.*
 - [x] G6 **Note Style: round gems (8-bit off).** `round_gems` setting + "NOTE STYLE" row; round = disc/white-core/dark-ring (strum) vs no ring (HOPO), 128-px AA textures with linear sampling. D1 amendment: colorblind shapes go from "always on" to DEFAULT on — an explicit player choice may prefer color-only. *Verified: 7 mask/coverage tests; screenshots of both styles; flawless autopilot in both.*
 
 ### F — Release engineering to 1.0

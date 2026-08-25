@@ -44,6 +44,12 @@ impl LaneShapes {
         }
     }
 
+    /// The plain disc texture (soft particles, backdrop dots).
+    #[must_use]
+    pub fn round_body(&self) -> Handle<Image> {
+        self.round_body.clone()
+    }
+
     /// The round gem's center dot.
     #[must_use]
     pub fn round_core(&self) -> Handle<Image> {

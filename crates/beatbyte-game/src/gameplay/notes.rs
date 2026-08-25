@@ -254,6 +254,64 @@ pub fn move_notes(
     }
 }
 
+/// A bar line ("fret") across the highway — round style only, the
+/// classic look's fretboard feel. Spawned once per bar, scrolled by
+/// [`move_fret_lines`].
+#[derive(Component)]
+pub struct FretLine {
+    /// Song time this line sits on.
+    pub time_s: f64,
+}
+
+/// Spawn one line per bar over the whole song (a few dozen thin
+/// sprites — cheap, and most sit far off screen).
+pub fn spawn_fret_lines(
+    mut commands: Commands,
+    layout: Res<HighwayLayout>,
+    settings: Res<Settings>,
+    song: Res<crate::boot::LoadedSong>,
+    players: Query<&PlayerIndex, With<PlayerSession>>,
+) {
+    if !settings.round_gems {
+        return;
+    }
+    let bpm = song.chart.song.bpm.clamp(20.0, 400.0);
+    let bar_s = 240.0 / bpm;
+    let start = song.chart.song.offset_s;
+    let end = song.chart.song.duration_s.unwrap_or(start + 240.0);
+    for index in players.iter() {
+        let origin = layout.origin(index.0);
+        let mut t = start;
+        while t < end {
+            commands.spawn((
+                GameplayScreen,
+                FretLine { time_s: t },
+                Sprite::from_color(
+                    Color::srgba(1.0, 1.0, 1.0, 0.07),
+                    Vec2::new(layout.bed_width(), 2.0),
+                ),
+                Transform::from_xyz(origin, 2000.0, -8.0),
+            ));
+            t += bar_s;
+        }
+    }
+}
+
+/// Scroll the bar lines with the song, like notes.
+pub fn move_fret_lines(
+    mut lines: Query<(&FretLine, &mut Transform)>,
+    game_clock: Res<GameClock>,
+    time: Res<Time>,
+    settings: Res<Settings>,
+) {
+    let Some(now) = game_clock.song_time(&time) else {
+        return;
+    };
+    for (line, mut transform) in &mut lines {
+        transform.translation.y = RECEPTOR_Y + ((line.time_s - now) as f32) * settings.scroll_speed;
+    }
+}
+
 /// While a sustain is HELD, its visuals come alive: the gem pins to
 /// the receptor line, the tail is consumed from the bottom (remaining
 /// hold time = remaining length) and both pulse. Released or ended,
