@@ -50,21 +50,38 @@ pub fn spawn_highways(
     for index in players.iter() {
         let player = index.0;
         let origin = layout.origin(player);
-        // Highway bed (tagged: the beat pulse modulates its brightness).
+        // Highway bed (tagged: the beat pulse modulates its
+        // brightness). Round style: a vertical depth gradient reads
+        // as distance instead of a flat plate.
         commands.spawn((
             GameplayScreen,
             super::fx::HighwayBed,
-            Sprite::from_color(theme.surface, Vec2::new(layout.bed_width(), 900.0)),
+            Sprite {
+                image: if round {
+                    shapes.bed_gradient()
+                } else {
+                    Handle::default()
+                },
+                color: theme.surface,
+                custom_size: Some(Vec2::new(layout.bed_width(), 900.0)),
+                ..Default::default()
+            },
             Transform::from_xyz(origin, 0.0, -10.0),
         ));
-        // Lane guide lines.
+        // Lane guide lines — soft glow strips in the round style.
         for lane in Lane::ALL {
             commands.spawn((
                 GameplayScreen,
-                Sprite::from_color(
-                    palette::dimmed(theme.lane_color(lane), 0.06),
-                    Vec2::new(2.0, 900.0),
-                ),
+                Sprite {
+                    image: if round {
+                        shapes.glow_strip()
+                    } else {
+                        Handle::default()
+                    },
+                    color: palette::dimmed(theme.lane_color(lane), if round { 0.16 } else { 0.06 }),
+                    custom_size: Some(Vec2::new(if round { 10.0 } else { 2.0 }, 900.0)),
+                    ..Default::default()
+                },
                 Transform::from_xyz(layout.lane_x(player, lane), 0.0, -9.0),
             ));
         }
@@ -155,6 +172,9 @@ fn spawn_event_sprites(
         // gems the same size, white center on every note, dark ring
         // ONLY on strum notes — the documented classic distinction.
         let gem = if hopo && !round { size * 0.78 } else { size };
+        // Round gems run slightly emissive so the HDR bloom makes
+        // them glow.
+        let body_color = if round { emissive(color, 1.35) } else { color };
         let entity = commands
             .spawn((
                 GameplayScreen,
@@ -163,12 +183,21 @@ fn spawn_event_sprites(
                     event_index,
                     resolved: false,
                 },
-                gem_sprite(shapes, lane, round, color, gem),
+                gem_sprite(shapes, lane, round, body_color, gem),
                 Transform::from_xyz(layout.lane_x(player, lane), 2000.0, 0.0),
             ))
             .id();
         if round {
             commands.entity(entity).with_children(|parent| {
+                parent.spawn((
+                    Sprite {
+                        image: shapes.sphere_gloss(),
+                        color: Color::WHITE,
+                        custom_size: Some(Vec2::splat(gem)),
+                        ..Default::default()
+                    },
+                    Transform::from_xyz(0.0, 0.0, 0.6),
+                ));
                 parent.spawn((
                     Sprite {
                         image: shapes.round_core(),
@@ -199,16 +228,27 @@ fn spawn_event_sprites(
             });
         }
 
-        // Sustain tail: extends upward (later in time).
+        // Sustain tail: extends upward (later in time). Round style:
+        // a soft glowing tube instead of a hard rectangle.
         if event.is_sustain() {
             let tail_height = (event.sustain_s as f32) * scroll_speed;
+            let tail_width = if round { size * 0.55 } else { size * 0.35 };
             commands.entity(entity).with_children(|parent| {
                 parent.spawn((
                     SustainTail {
                         full_height: tail_height,
-                        width: size * 0.35,
+                        width: tail_width,
                     },
-                    Sprite::from_color(color.with_alpha(0.35), Vec2::new(size * 0.35, tail_height)),
+                    Sprite {
+                        image: if round {
+                            shapes.tube()
+                        } else {
+                            Handle::default()
+                        },
+                        color: color.with_alpha(0.35),
+                        custom_size: Some(Vec2::new(tail_width, tail_height)),
+                        ..Default::default()
+                    },
                     Transform::from_xyz(0.0, tail_height / 2.0, -1.0),
                 ));
             });
@@ -269,6 +309,7 @@ pub fn spawn_fret_lines(
     mut commands: Commands,
     layout: Res<HighwayLayout>,
     settings: Res<Settings>,
+    shapes: Res<crate::shapes::LaneShapes>,
     song: Res<crate::boot::LoadedSong>,
     players: Query<&PlayerIndex, With<PlayerSession>>,
 ) {
@@ -286,10 +327,12 @@ pub fn spawn_fret_lines(
             commands.spawn((
                 GameplayScreen,
                 FretLine { time_s: t },
-                Sprite::from_color(
-                    Color::srgba(1.0, 1.0, 1.0, 0.07),
-                    Vec2::new(layout.bed_width(), 2.0),
-                ),
+                Sprite {
+                    image: shapes.glow_strip(),
+                    color: Color::srgba(1.0, 1.0, 1.0, 0.10),
+                    custom_size: Some(Vec2::new(layout.bed_width(), 6.0)),
+                    ..Default::default()
+                },
                 Transform::from_xyz(origin, 2000.0, -8.0),
             ));
             t += bar_s;
@@ -473,6 +516,18 @@ fn shape_sprite(shapes: &crate::shapes::LaneShapes, lane: Lane, color: Color, si
         custom_size: Some(Vec2::splat(size)),
         ..Default::default()
     }
+}
+
+/// A color pushed past 1.0 in linear space — under the HDR camera the
+/// bloom pass turns the excess into glow. Alpha stays untouched.
+fn emissive(color: Color, factor: f32) -> Color {
+    let linear = color.to_linear();
+    Color::LinearRgba(bevy::color::LinearRgba {
+        red: linear.red * factor,
+        green: linear.green * factor,
+        blue: linear.blue * factor,
+        alpha: linear.alpha,
+    })
 }
 
 /// The gem body in the active note style (8-bit lane shape or disc).

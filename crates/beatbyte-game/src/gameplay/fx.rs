@@ -138,7 +138,7 @@ fn react_to_feedback(
     particles: Query<(), With<Particle>>,
 ) {
     let mut live_particles = particles.iter().count();
-    let soft = settings.round_particles.then(|| shapes.round_body());
+    let soft = settings.round_particles.then(|| shapes.soft_dot());
 
     for message in feedback.read() {
         let player = message.player_index;
@@ -317,7 +317,7 @@ fn sustain_sparks(
     if !settings.particles {
         return;
     }
-    let soft = settings.round_particles.then(|| shapes.round_body());
+    let soft = settings.round_particles.then(|| shapes.soft_dot());
     // Shared spark budget across players.
     *accumulator += time.delta_secs() * 24.0;
     if *accumulator < 1.0 {

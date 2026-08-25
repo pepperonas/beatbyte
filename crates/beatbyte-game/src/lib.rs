@@ -140,6 +140,7 @@ pub fn run() -> AppExit {
     .init_state::<AppState>()
     .add_sub_state::<GamePhase>()
     .add_systems(Startup, spawn_camera)
+    .add_systems(Update, sync_bloom)
     .add_plugins((
         import::ImportPlugin,
         shapes::ShapesPlugin,
@@ -191,6 +192,31 @@ pub fn run() -> AppExit {
 /// The one persistent 2D camera.
 fn spawn_camera(mut commands: Commands) {
     commands.spawn(Camera2d);
+}
+
+/// HDR bloom rides with the round style: emissive gems and glow
+/// strips actually GLOW. The pixel style stays bloom-free — crisp
+/// squares are its identity.
+fn sync_bloom(
+    mut commands: Commands,
+    settings: Res<config::Settings>,
+    cameras: Query<(Entity, Has<bevy::post_process::bloom::Bloom>), With<Camera2d>>,
+) {
+    for (camera, has_bloom) in &cameras {
+        if settings.round_gems && !has_bloom {
+            commands
+                .entity(camera)
+                .insert(bevy::post_process::bloom::Bloom {
+                    intensity: 0.22,
+                    ..bevy::post_process::bloom::Bloom::NATURAL
+                });
+        } else if !settings.round_gems && has_bloom {
+            commands
+                .entity(camera)
+                .remove::<bevy::post_process::bloom::Bloom>()
+                .remove::<bevy::camera::Hdr>();
+        }
+    }
 }
 
 /// Exit the app automatically shortly after startup (smoke-test mode

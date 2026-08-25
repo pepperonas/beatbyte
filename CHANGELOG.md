@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The round style went AAA**: real HDR bloom on the camera (round
+  style only — pixel art stays crisp), gems as lit glossy spheres
+  (grayscale-shaded body × lane tint + untinted specular overlay,
+  slightly emissive so they glow), lane guides and fret lines as soft
+  glow strips, a depth-gradient highway bed, soft gaussian particles
+  and backdrop dots, and sustain tails as glowing tubes. All textures
+  generated and unit-tested; the 8-bit style is pixel-for-pixel
+  untouched.
+
 ## [0.10.0] - 2026-08-25
 
 **The first-playtest release** — everything in it traces back to the

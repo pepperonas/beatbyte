@@ -36,6 +36,14 @@ ember backdrop. Every lane has its own shape (square, circle, diamond,
 triangle, cross), so color is never the only signal.*
 
 <p align="center">
+  <img src="docs/media/beatbyte-round-style.png" alt="BeatByte round note style: glowing lanes with bloom, lit glossy gem spheres, shaded receptor rings" width="800"/>
+</p>
+
+*The same engine with the 8-bit mode switched off ("Note Style:
+Round"): HDR bloom, lit glossy gems, glowing lanes — smooth
+everything.*
+
+<p align="center">
   <img src="docs/media/beatbyte-results.png" alt="BeatByte results screen: S rank, 100% accuracy, 117 perfect notes" width="800"/>
 </p>
 

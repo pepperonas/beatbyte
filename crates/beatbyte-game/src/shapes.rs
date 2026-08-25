@@ -25,6 +25,12 @@ pub struct LaneShapes {
     round_body: Handle<Image>,
     round_core: Handle<Image>,
     round_ring: Handle<Image>,
+    sphere_body: Handle<Image>,
+    sphere_gloss: Handle<Image>,
+    soft_dot: Handle<Image>,
+    tube: Handle<Image>,
+    glow_strip: Handle<Image>,
+    bed_gradient: Handle<Image>,
 }
 
 impl LaneShapes {
@@ -34,11 +40,12 @@ impl LaneShapes {
         self.per_lane[lane as usize].clone()
     }
 
-    /// The gem body for a lane in the chosen style.
+    /// The gem body for a lane in the chosen style. Round bodies are
+    /// LIT spheres (grayscale shading × the sprite tint).
     #[must_use]
     pub fn body(&self, lane: Lane, round: bool) -> Handle<Image> {
         if round {
-            self.round_body.clone()
+            self.sphere_body.clone()
         } else {
             self.image(lane)
         }
@@ -60,6 +67,42 @@ impl LaneShapes {
     #[must_use]
     pub fn round_ring(&self) -> Handle<Image> {
         self.round_ring.clone()
+    }
+
+    /// A lit sphere in grayscale (tinted by the lane color).
+    #[must_use]
+    pub fn sphere_body(&self) -> Handle<Image> {
+        self.sphere_body.clone()
+    }
+
+    /// The sphere's untinted specular highlight overlay.
+    #[must_use]
+    pub fn sphere_gloss(&self) -> Handle<Image> {
+        self.sphere_gloss.clone()
+    }
+
+    /// A gaussian soft dot (particles, backdrop glows).
+    #[must_use]
+    pub fn soft_dot(&self) -> Handle<Image> {
+        self.soft_dot.clone()
+    }
+
+    /// A soft-edged tube cross-section (sustain tails).
+    #[must_use]
+    pub fn tube(&self) -> Handle<Image> {
+        self.tube.clone()
+    }
+
+    /// A thin soft glow strip (lane guides, fret lines).
+    #[must_use]
+    pub fn glow_strip(&self) -> Handle<Image> {
+        self.glow_strip.clone()
+    }
+
+    /// A vertical depth gradient (highway bed).
+    #[must_use]
+    pub fn bed_gradient(&self) -> Handle<Image> {
+        self.bed_gradient.clone()
     }
 }
 
@@ -85,7 +128,116 @@ fn build_shapes(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         round_body: images.add(round_image(RoundPart::Body)),
         round_core: images.add(round_image(RoundPart::Core)),
         round_ring: images.add(round_image(RoundPart::Ring)),
+        sphere_body: images.add(shaded_image(sphere_shading)),
+        sphere_gloss: images.add(shaded_image(gloss_shading)),
+        soft_dot: images.add(shaded_image(soft_dot_shading)),
+        tube: images.add(shaded_image(tube_shading)),
+        glow_strip: images.add(shaded_image(glow_strip_shading)),
+        bed_gradient: images.add(shaded_image(bed_shading)),
     });
+}
+
+/// A (value, alpha) shading sample; value is grayscale 0..1 so the
+/// sprite tint supplies the hue.
+pub type Shade = (f32, f32);
+
+/// Lit-sphere shading: Lambert diffuse from an upper-left light over
+/// a hemisphere normal, ambient floor, darkened contact rim. Pure —
+/// tested.
+#[must_use]
+pub fn sphere_shading(u: f32, v: f32) -> Shade {
+    let (dx, dy) = (u * 2.0 - 1.0, v * 2.0 - 1.0);
+    let r2 = dx * dx + dy * dy;
+    let alpha = ((1.0 - r2.sqrt()) / 0.02 + 0.5).clamp(0.0, 1.0);
+    if alpha <= 0.0 {
+        return (0.0, 0.0);
+    }
+    let nz = (1.0 - r2).max(0.0).sqrt();
+    // Light from upper-left, toward the viewer.
+    let (lx, ly, lz) = (-0.42, -0.5, 0.76);
+    let lambert = (dx * lx + dy * ly + nz * lz).max(0.0);
+    let value = (0.32 + 0.68 * lambert) * (1.0 - 0.25 * r2 * r2);
+    (value.clamp(0.0, 1.0), alpha)
+}
+
+/// The sphere's white gloss: a tight specular spot plus a soft upper
+/// sheen — kept as a SEPARATE untinted layer, because a tinted white
+/// highlight multiplies into the lane color and vanishes.
+#[must_use]
+pub fn gloss_shading(u: f32, v: f32) -> Shade {
+    let (dx, dy) = (u * 2.0 - 1.0, v * 2.0 - 1.0);
+    let r2 = dx * dx + dy * dy;
+    if r2 > 1.0 {
+        return (0.0, 0.0);
+    }
+    let sx = dx + 0.38;
+    let sy = dy + 0.42;
+    let spec = (1.0 - (sx * sx + sy * sy) * 6.0).max(0.0).powi(3);
+    let sheen = ((-dy - 0.1).max(0.0) * 0.30) * (1.0 - r2);
+    (
+        (spec * 0.95 + sheen).min(1.0),
+        (spec * 0.95 + sheen).min(1.0),
+    )
+}
+
+/// Gaussian soft dot: bright core melting into nothing.
+#[must_use]
+pub fn soft_dot_shading(u: f32, v: f32) -> Shade {
+    let (dx, dy) = (u * 2.0 - 1.0, v * 2.0 - 1.0);
+    let a = (-(dx * dx + dy * dy) * 4.5).exp();
+    (1.0, a)
+}
+
+/// Tube cross-section: solid glowing core, soft edges; vertically
+/// uniform so the sprite can stretch to any sustain length.
+#[must_use]
+pub fn tube_shading(u: f32, _v: f32) -> Shade {
+    let d = (u * 2.0 - 1.0).abs();
+    let alpha = ((1.0 - d) / 0.35).clamp(0.0, 1.0);
+    let core = ((0.45 - d) / 0.45).clamp(0.0, 1.0);
+    ((0.7 + 0.3 * core).min(1.0), alpha * 0.9)
+}
+
+/// A narrow glow strip for guides and fret lines.
+#[must_use]
+pub fn glow_strip_shading(u: f32, _v: f32) -> Shade {
+    let d = (u * 2.0 - 1.0).abs();
+    (1.0, (-d * d * 5.0).exp() * 0.9)
+}
+
+/// Highway-bed depth gradient: darker far (top), lighter near.
+#[must_use]
+pub fn bed_shading(_u: f32, v: f32) -> Shade {
+    (0.55 + 0.45 * v, 1.0)
+}
+
+/// Bake a shading function into a 256-px linearly sampled texture.
+fn shaded_image(shade: fn(f32, f32) -> Shade) -> Image {
+    const SIZE: usize = 256;
+    let mut data = Vec::with_capacity(SIZE * SIZE * 4);
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let (value, alpha) = shade(
+                (x as f32 + 0.5) / SIZE as f32,
+                (y as f32 + 0.5) / SIZE as f32,
+            );
+            let v = (value.clamp(0.0, 1.0) * 255.0) as u8;
+            data.extend_from_slice(&[v, v, v, (alpha.clamp(0.0, 1.0) * 255.0) as u8]);
+        }
+    }
+    let mut image = Image::new(
+        Extent3d {
+            width: SIZE as u32,
+            height: SIZE as u32,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD,
+    );
+    image.sampler = bevy::image::ImageSampler::linear();
+    image
 }
 
 /// The three layers of a round gem.
@@ -334,5 +486,53 @@ mod round_tests {
             })
             .count();
         assert!(partial >= 2, "no soft edge pixels found: {partial}");
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod shading_tests {
+    use super::*;
+
+    #[test]
+    fn sphere_is_lit_from_the_upper_left() {
+        let (bright, _) = sphere_shading(0.32, 0.30);
+        let (dark, _) = sphere_shading(0.75, 0.78);
+        assert!(
+            bright > dark + 0.2,
+            "upper-left {bright} must clearly outshine lower-right {dark}"
+        );
+        assert!(sphere_shading(0.99, 0.99).1 < 0.05, "corner must be clear");
+    }
+
+    #[test]
+    fn gloss_peaks_near_the_light_and_stays_inside() {
+        let (peak, _) = gloss_shading(0.31, 0.29);
+        assert!(peak > 0.5, "specular spot missing: {peak}");
+        assert_eq!(gloss_shading(0.99, 0.99).1, 0.0, "gloss outside sphere");
+    }
+
+    #[test]
+    fn soft_dot_and_strip_fade_to_nothing() {
+        assert!(soft_dot_shading(0.5, 0.5).1 > 0.9);
+        assert!(soft_dot_shading(0.02, 0.5).1 < 0.05);
+        assert!(glow_strip_shading(0.5, 0.0).1 > 0.8);
+        assert!(glow_strip_shading(0.02, 0.0).1 < 0.05);
+    }
+
+    #[test]
+    fn tube_is_symmetric_with_a_bright_core() {
+        let (core, core_a) = tube_shading(0.5, 0.1);
+        let (edge, _) = tube_shading(0.85, 0.9);
+        assert!(core > edge, "core {core} must outshine edge {edge}");
+        assert!(core_a > 0.8);
+        let left = tube_shading(0.3, 0.5);
+        let right = tube_shading(0.7, 0.5);
+        assert!((left.0 - right.0).abs() < 1e-6 && (left.1 - right.1).abs() < 1e-6);
+    }
+
+    #[test]
+    fn bed_darkens_with_distance() {
+        assert!(bed_shading(0.5, 0.05).0 < bed_shading(0.5, 0.95).0 - 0.3);
     }
 }

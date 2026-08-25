@@ -246,7 +246,7 @@ pub fn spawn_backdrop(
         // spotlight cones) keep their rectangle.
         let squarish = size.x / size.y < 2.0 && size.y / size.x < 2.0;
         let image = if settings.round_gems && squarish {
-            shapes.round_body()
+            shapes.soft_dot()
         } else {
             Handle::default()
         };
