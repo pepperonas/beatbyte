@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Sustain generation listens to the music now**: a note holds while
+  its energy keeps ringing and no absolutely-strong new onset strikes
+  — the gap to the next note only bounds the length. The old rule
+  required near-silence after the note, so dense live recordings got
+  almost none (a 7-minute live track: 3 sustains on medium — now 51;
+  the sparser studio track went 53 -> 92, and Hard/Expert finally get
+  sustains at all).
+
 - **App icon shows the game now**: the yellow "B" sits above the
   five round receptor gems (green/red/yellow/blue/orange, white core
   + dark ring) with faint lane guides — still fully generated, no

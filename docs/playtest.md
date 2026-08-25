@@ -72,6 +72,12 @@ actionable; adjectives alone are not.
 
 ## Findings log
 
+**2026-08-25 · zweiter Befund · imported tracks**
+- Sustains on the Rick Astley import "hat mir gut gefallen" — but the
+  live Cyndi Lauper track got none. **Action taken:** sustain
+  generation rewritten energy-first (see CHANGELOG); live track
+  medium 3 → 51 sustains, both tracks verified flawless.
+
 **2026-08-25 · post-v0.9.0 dev build · keyboard**
 - "Töne werden nicht erkannt/zerstört wenn ich Taste drücke, aber
   (Receptors) leuchten auf" — fret presses registered, notes died:

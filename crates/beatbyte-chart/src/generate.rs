@@ -64,7 +64,7 @@ impl DifficultyProfile {
                 hopos: false,
                 hopo_max_gap_s: 0.0,
                 sustains: true,
-                sustain_min_gap_s: 1.2,
+                sustain_min_gap_s: 0.9,
             },
             Difficulty::Medium => DifficultyProfile {
                 difficulty,
@@ -77,7 +77,7 @@ impl DifficultyProfile {
                 hopos: false,
                 hopo_max_gap_s: 0.0,
                 sustains: true,
-                sustain_min_gap_s: 1.0,
+                sustain_min_gap_s: 0.6,
             },
             Difficulty::Hard => DifficultyProfile {
                 difficulty,
@@ -90,7 +90,7 @@ impl DifficultyProfile {
                 hopos: true,
                 hopo_max_gap_s: 0.20,
                 sustains: true,
-                sustain_min_gap_s: 0.9,
+                sustain_min_gap_s: 0.5,
             },
             Difficulty::Expert => DifficultyProfile {
                 difficulty,
@@ -103,7 +103,7 @@ impl DifficultyProfile {
                 hopos: true,
                 hopo_max_gap_s: 0.22,
                 sustains: true,
-                sustain_min_gap_s: 0.8,
+                sustain_min_gap_s: 0.45,
             },
         }
     }
@@ -259,12 +259,34 @@ fn place_notes(
             }
         }
 
-        // Sustain: enough room to the next note and the energy carries.
+        // Sustain: the ENERGY decides (a held tone keeps ringing and
+        // nothing new strikes); the gap to the next note only bounds
+        // the length. The old rule required near-silence after the
+        // note (gap >= 0.8-1.2 s) — dense live mixes never have that,
+        // and a 428-second live track came out with 3 sustains.
         let next_time = kept.get(i + 1).map_or(analysis.duration_s, |n| n.time_s);
         let gap_to_next = next_time - selected.time_s;
         let mut len = 0.0;
         if profile.sustains && gap_to_next >= profile.sustain_min_gap_s {
-            let candidate = (gap_to_next - 0.25).min(analysis.beat_interval_s() * 4.0);
+            let mut candidate = (gap_to_next - 0.25).min(analysis.beat_interval_s() * 4.0);
+            // A strong fresh onset inside the window ends the held
+            // tone — cut the sustain just before it. "Strong" is an
+            // ABSOLUTE bar: measured relative to the held note, a
+            // live mix's reverb/crowd rumble cut almost everything
+            // (Rick's medium chart dropped 53 -> 37 sustains).
+            let cutoff = 0.5;
+            for onset in &analysis.onsets {
+                if onset.time_s <= selected.time_s + 0.05 {
+                    continue;
+                }
+                if onset.time_s >= selected.time_s + candidate {
+                    break;
+                }
+                if onset.strength >= cutoff {
+                    candidate = onset.time_s - selected.time_s - 0.1;
+                    break;
+                }
+            }
             if candidate > 0.3 && energy_carries(analysis, selected.time_s, candidate) {
                 len = candidate;
             }
