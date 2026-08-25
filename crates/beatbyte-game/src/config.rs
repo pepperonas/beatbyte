@@ -40,6 +40,10 @@ pub struct Settings {
     /// players press frets and nothing happens (receptors light up,
     /// notes die); strumming is the opt-in purist mode.
     pub tap_mode: bool,
+    /// Depth view: the highway runs toward a vanishing point and
+    /// notes approach from the distance. Presentation only — judgment
+    /// timing is identical to the flat view.
+    pub perspective: bool,
     /// Round gems instead of the 8-bit per-lane shapes. Off by
     /// default: the shapes are the colorblind-safe look — turning
     /// them off makes color the only lane signal.
@@ -64,6 +68,7 @@ impl Default for Settings {
             beat_pulse: true,
             backdrop_motion: true,
             tap_mode: true,
+            perspective: false,
             round_gems: false,
             fullscreen: false,
             input_map: InputMap::default(),

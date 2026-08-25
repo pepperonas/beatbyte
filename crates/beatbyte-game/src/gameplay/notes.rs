@@ -24,6 +24,8 @@ pub struct NoteSprite {
     pub event_index: usize,
     /// Whether this event was already resolved visually.
     pub resolved: bool,
+    /// The lane's flat-view x (the depth view converges it).
+    pub flat_x: f32,
 }
 
 /// A receptor (hit-line target) for one lane of one player.
@@ -36,40 +38,85 @@ pub struct Receptor {
 }
 
 /// Build every player's highway: bed, receptor row, lane guides.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 pub fn spawn_highways(
     mut commands: Commands,
     layout: Res<HighwayLayout>,
     theme: Res<crate::theme::ActiveTheme>,
     shapes: Res<crate::shapes::LaneShapes>,
     settings: Res<Settings>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<bevy::sprite_render::ColorMaterial>>,
     players: Query<&PlayerIndex, With<PlayerSession>>,
 ) {
     let theme = theme.0;
     let shapes = &*shapes;
     let round = settings.round_gems;
+    let perspective = settings.perspective;
     for index in players.iter() {
         let player = index.0;
         let origin = layout.origin(player);
         // Highway bed (tagged: the beat pulse modulates its
         // brightness). Round style: a vertical depth gradient reads
-        // as distance instead of a flat plate.
-        commands.spawn((
-            GameplayScreen,
-            super::fx::HighwayBed,
-            Sprite {
-                image: if round {
-                    shapes.bed_gradient()
-                } else {
-                    Handle::default()
+        // as distance instead of a flat plate. Depth view: a real
+        // trapezoid mesh converging on the vanishing point — a
+        // rectangle sprite cannot do that.
+        if perspective {
+            let half = layout.bed_width() / 2.0;
+            let far_scale = depth::project(f32::MAX).1.max(0.02);
+            let near_y = RECEPTOR_Y - 200.0;
+            let mesh = trapezoid_mesh(half, half * far_scale, near_y, depth::HORIZON_Y);
+            commands.spawn((
+                GameplayScreen,
+                Mesh2d(meshes.add(mesh)),
+                MeshMaterial2d(materials.add(bevy::sprite_render::ColorMaterial {
+                    color: theme.surface,
+                    texture: if round {
+                        Some(shapes.bed_gradient())
+                    } else {
+                        None
+                    },
+                    ..Default::default()
+                })),
+                Transform::from_xyz(origin, 0.0, -10.0),
+            ));
+        } else {
+            commands.spawn((
+                GameplayScreen,
+                super::fx::HighwayBed,
+                Sprite {
+                    image: if round {
+                        shapes.bed_gradient()
+                    } else {
+                        Handle::default()
+                    },
+                    color: theme.surface,
+                    custom_size: Some(Vec2::new(layout.bed_width(), 900.0)),
+                    ..Default::default()
                 },
-                color: theme.surface,
-                custom_size: Some(Vec2::new(layout.bed_width(), 900.0)),
-                ..Default::default()
-            },
-            Transform::from_xyz(origin, 0.0, -10.0),
-        ));
-        // Lane guide lines — soft glow strips in the round style.
+                Transform::from_xyz(origin, 0.0, -10.0),
+            ));
+        }
+        // Lane guide lines — soft glow strips in the round style; in
+        // the depth view they lean toward the vanishing point.
         for lane in Lane::ALL {
+            let lane_x = layout.lane_x(player, lane);
+            let transform = if perspective {
+                let top = Vec2::new(origin, depth::HORIZON_Y);
+                let bottom = Vec2::new(lane_x, RECEPTOR_Y - 200.0);
+                let delta = top - bottom;
+                let mid = (top + bottom) / 2.0;
+                Transform::from_xyz(mid.x, mid.y, -9.0)
+                    .with_rotation(Quat::from_rotation_z(-delta.x.atan2(delta.y)))
+            } else {
+                Transform::from_xyz(lane_x, 0.0, -9.0)
+            };
+            let length = if perspective {
+                (Vec2::new(origin, depth::HORIZON_Y) - Vec2::new(lane_x, RECEPTOR_Y - 200.0))
+                    .length()
+            } else {
+                900.0
+            };
             commands.spawn((
                 GameplayScreen,
                 Sprite {
@@ -79,10 +126,10 @@ pub fn spawn_highways(
                         Handle::default()
                     },
                     color: palette::dimmed(theme.lane_color(lane), if round { 0.16 } else { 0.06 }),
-                    custom_size: Some(Vec2::new(if round { 10.0 } else { 2.0 }, 900.0)),
+                    custom_size: Some(Vec2::new(if round { 10.0 } else { 2.0 }, length)),
                     ..Default::default()
                 },
-                Transform::from_xyz(layout.lane_x(player, lane), 0.0, -9.0),
+                transform,
             ));
         }
         // Receptor row: ring look = the gem body under a smaller
@@ -182,6 +229,7 @@ fn spawn_event_sprites(
                     player,
                     event_index,
                     resolved: false,
+                    flat_x: layout.lane_x(player, lane),
                 },
                 gem_sprite(shapes, lane, round, body_color, gem),
                 Transform::from_xyz(layout.lane_x(player, lane), 2000.0, 0.0),
@@ -270,6 +318,7 @@ pub fn move_notes(
     mut commands: Commands,
     mut notes: Query<(Entity, &NoteSprite, &mut Transform)>,
     players: Query<(&PlayerIndex, &PlayerSession)>,
+    layout: Res<HighwayLayout>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
     settings: Res<Settings>,
@@ -286,11 +335,51 @@ pub fn move_notes(
         let Some(event) = events.get(note.event_index) else {
             continue;
         };
-        transform.translation.y =
-            RECEPTOR_Y + ((event.time_s - now) as f32) * settings.scroll_speed;
+        let z = ((event.time_s - now) as f32) * settings.scroll_speed;
+        if settings.perspective {
+            let center = layout.origin(note.player);
+            let (y, scale) = depth::project(z);
+            transform.translation.y = if z >= 0.0 { y } else { RECEPTOR_Y + z };
+            transform.translation.x = depth::lane_x(center, note.flat_x, scale.min(1.0));
+            transform.scale = Vec3::splat(scale.clamp(0.35, 1.0));
+        } else {
+            transform.translation.y = RECEPTOR_Y + z;
+        }
         if transform.translation.y < RECEPTOR_Y - 260.0 {
             commands.entity(entity).despawn();
         }
+    }
+}
+
+/// The perspective ("depth") view: a vanishing-point projection of
+/// the note timeline. PRESENTATION ONLY — judgment is input-stamp
+/// driven and never sees these numbers (proven by identical autopilot
+/// scores in both views).
+pub mod depth {
+    use super::RECEPTOR_Y;
+
+    /// Screen y the highway converges toward.
+    pub const HORIZON_Y: f32 = 430.0;
+    /// Perspective strength: world-pixels of travel that halve the
+    /// scale. Smaller = more dramatic foreshortening.
+    pub const FOCAL: f32 = 620.0;
+    /// Scale at the horizon (nothing shrinks to literal zero).
+    pub const MIN_SCALE: f32 = 0.02;
+
+    /// Project a world distance ahead of the hit line (px, as the
+    /// flat view would scroll it) to (screen_y, scale).
+    #[must_use]
+    pub fn project(z_px: f32) -> (f32, f32) {
+        let z = z_px.max(0.0);
+        let scale = (FOCAL / (FOCAL + z)).max(MIN_SCALE);
+        let y = HORIZON_Y - (HORIZON_Y - RECEPTOR_Y) * scale;
+        (y, scale)
+    }
+
+    /// Horizontal position: lane offsets converge toward the center.
+    #[must_use]
+    pub fn lane_x(center: f32, flat_x: f32, scale: f32) -> f32 {
+        center + (flat_x - center) * scale
     }
 }
 
@@ -351,7 +440,14 @@ pub fn move_fret_lines(
         return;
     };
     for (line, mut transform) in &mut lines {
-        transform.translation.y = RECEPTOR_Y + ((line.time_s - now) as f32) * settings.scroll_speed;
+        let z = ((line.time_s - now) as f32) * settings.scroll_speed;
+        if settings.perspective {
+            let (y, scale) = depth::project(z);
+            transform.translation.y = if z >= 0.0 { y } else { RECEPTOR_Y + z };
+            transform.scale = Vec3::new(scale.min(1.0), 1.0, 1.0);
+        } else {
+            transform.translation.y = RECEPTOR_Y + z;
+        }
     }
 }
 
@@ -364,6 +460,7 @@ pub fn animate_sustains(
     players: Query<(&PlayerIndex, &PlayerSession)>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
+    settings: Res<Settings>,
     theme: Res<crate::theme::ActiveTheme>,
     mut notes: Query<(&NoteSprite, &mut Transform, &mut Sprite, &Children)>,
     mut tails: Query<(&SustainTail, &mut Transform, &mut Sprite), Without<NoteSprite>>,
@@ -371,6 +468,7 @@ pub fn animate_sustains(
     let Some(now) = game_clock.song_time(&time) else {
         return;
     };
+    let perspective = settings.perspective;
     let active: Vec<(usize, usize)> = players
         .iter()
         .filter_map(|(index, player)| player.session.active_sustain().map(|e| (index.0, e)))
@@ -393,15 +491,24 @@ pub fn animate_sustains(
         if held {
             // Pin the gem to the hit line; pulse it toward white.
             transform.translation.y = RECEPTOR_Y;
+            transform.translation.x = note.flat_x;
+            transform.scale = Vec3::ONE;
             let pulse = 0.5 + 0.5 * (time.elapsed_secs() * 9.0).sin();
             sprite.color = color.mix(&Color::WHITE, 0.25 + 0.35 * pulse);
             let remaining =
                 (((event.time_s + event.sustain_s - now).max(0.0)) as f32).min(f32::MAX);
             for child in children {
                 if let Ok((tail, mut tail_transform, mut tail_sprite)) = tails.get_mut(*child) {
-                    let height = (remaining * tail.full_height
+                    let flat_height = (remaining * tail.full_height
                         / (event.sustain_s as f32).max(f32::EPSILON))
                     .clamp(0.0, tail.full_height);
+                    // Depth view: the tail's far end sits where the
+                    // projection puts that moment, not linearly above.
+                    let height = if perspective {
+                        depth::project(flat_height).0 - RECEPTOR_Y
+                    } else {
+                        flat_height
+                    };
                     tail_sprite.custom_size = Some(Vec2::new(tail.width, height));
                     tail_transform.translation.y = height / 2.0;
                     tail_sprite.color = color.with_alpha(0.55 + 0.3 * pulse);
@@ -518,6 +625,32 @@ fn shape_sprite(shapes: &crate::shapes::LaneShapes, lane: Lane, color: Color, si
     }
 }
 
+/// A trapezoid running from a wide near edge to a narrow far edge —
+/// the depth view's highway bed. UV v=1 at the near edge matches the
+/// bed gradient's "lighter near" orientation.
+fn trapezoid_mesh(near_half: f32, far_half: f32, near_y: f32, far_y: f32) -> Mesh {
+    use bevy::mesh::{Indices, PrimitiveTopology};
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        bevy::asset::RenderAssetUsages::RENDER_WORLD | bevy::asset::RenderAssetUsages::MAIN_WORLD,
+    );
+    mesh.insert_attribute(
+        Mesh::ATTRIBUTE_POSITION,
+        vec![
+            [-near_half, near_y, 0.0],
+            [near_half, near_y, 0.0],
+            [far_half, far_y, 0.0],
+            [-far_half, far_y, 0.0],
+        ],
+    );
+    mesh.insert_attribute(
+        Mesh::ATTRIBUTE_UV_0,
+        vec![[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+    );
+    mesh.insert_indices(Indices::U32(vec![0, 1, 2, 2, 3, 0]));
+    mesh
+}
+
 /// A color pushed past 1.0 in linear space — under the HDR camera the
 /// bloom pass turns the excess into glow. Alpha stays untouched.
 fn emissive(color: Color, factor: f32) -> Color {
@@ -543,5 +676,41 @@ fn gem_sprite(
         color,
         custom_size: Some(Vec2::splat(size)),
         ..Default::default()
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod depth_tests {
+    use super::RECEPTOR_Y;
+    use super::depth;
+
+    #[test]
+    fn the_hit_line_is_the_identity_point() {
+        let (y, scale) = depth::project(0.0);
+        assert!((y - RECEPTOR_Y).abs() < 1e-4);
+        assert!((scale - 1.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn distance_climbs_toward_the_horizon_and_shrinks() {
+        let mut last_y = RECEPTOR_Y - 1.0;
+        let mut last_scale = 1.1;
+        for step in 0..40 {
+            let (y, scale) = depth::project(step as f32 * 200.0);
+            assert!(y > last_y, "y must climb monotonically");
+            assert!(scale < last_scale, "scale must shrink monotonically");
+            assert!(y < depth::HORIZON_Y + 1e-3, "never past the horizon");
+            last_y = y;
+            last_scale = scale;
+        }
+    }
+
+    #[test]
+    fn lanes_converge_on_the_center() {
+        let near = depth::lane_x(0.0, 300.0, 1.0);
+        let far = depth::lane_x(0.0, 300.0, depth::project(4000.0).1);
+        assert!((near - 300.0).abs() < 1e-4);
+        assert!(far.abs() < 60.0, "far lanes must pull toward center: {far}");
     }
 }

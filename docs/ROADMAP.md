@@ -177,6 +177,8 @@ chart format v1 can be frozen as a promise.
 
 - [x] G9 **AAA polish for the round style.** HDR Bloom component synced to the style at runtime; shading-function texture suite (lit sphere, gloss, gaussian dot, tube, glow strip, bed gradient — 5 geometry/lighting tests); emissive gem tint feeds the bloom. Honest scope note: this is 2D done well, not photorealism — a 3D/PBR look would be a renderer rewrite. *Verified: flawless runs both styles; screenshots; 8-bit unchanged.*
 
+- [x] G10 **Depth view (vanishing-point highway).** `depth::project` (pure, 3 tests: identity at the hit line, monotonic climb/shrink, lane convergence), per-frame projected notes/fret lines/sustains, leaning lane guides, trapezoid bed as a real 2D mesh. Both views coexist as a settings row. *Verified: IDENTICAL autopilot score flat vs depth (23640) — presentation only; screenshots; 8-bit untouched.*
+
 ### F — Release engineering to 1.0
 
 - [x] F0 **v0.9.0 — content, accessibility, editor v2.** Amendment (2026-08-24): every unblocked B/C/D/E task landed while the A tasks wait on human playtesting — that body of work (second song, song-selector harness, import guide + scan fix, format truth, forward-compat pins, Linux/Windows CI smokes, Stage Motion, colorblind lane shapes, HOPO visibility, editor move/bulk/audition, harness integrity) ships now instead of idling behind A2. *SHIPPED 2026-08-24: all 7 assets auto-attached via the recursive glob; aarch64 tarball smoke + flawless artifact autopilot from neutral CWD + DMG .app smoke; two release-run attempts (spurious hdiutil ENOSPC → retry mitigation).*
@@ -185,6 +187,17 @@ chart format v1 can be frozen as a promise.
 - [ ] F3 **v1.0.0.** Tag, release, drop `--prerelease`. dep: F2. *Verify: published, artifacts tested, CHANGELOG sectioned.*
 
 ---
+
+### H — True 3D renderer (planned follow-up, user-approved direction)
+
+The depth view is a projection inside the 2D pipeline. A real 3D
+renderer (meshes, PBR materials, lights, camera tilt) is a separate
+project. Milestones when picked up:
+
+- [ ] H1 3D/2D camera stack (Camera3d for the stage, Camera2d overlay for HUD/text) coexisting with both current views.
+- [ ] H2 Highway as a lit 3D plane + gem spheres as meshes with emissive PBR materials; judgment stays input-stamp-driven (identical-score proof again).
+- [ ] H3 Sustains as tube meshes, 3D particles, depth-of-field/bloom tuning.
+- [ ] H4 Performance pass (low-end GPUs) + packaging size check.
 
 ## Backlog (explicitly out of scope until after 1.0)
 

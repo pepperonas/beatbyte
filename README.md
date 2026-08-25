@@ -39,9 +39,11 @@ triangle, cross), so color is never the only signal.*
   <img src="docs/media/beatbyte-round-style.png" alt="BeatByte round note style: glowing lanes with bloom, lit glossy gem spheres, shaded receptor rings" width="800"/>
 </p>
 
-*The same engine with the 8-bit mode switched off ("Note Style:
-Round"): HDR bloom, lit glossy gems, glowing lanes — smooth
-everything.*
+*The same engine with the 8-bit mode switched off and the depth view
+on: a vanishing-point highway, HDR bloom, lit glossy gems growing out
+of the distance. Both views and both styles are switchable in the
+settings — and the projection is presentation only (identical
+autopilot scores prove it).*
 
 <p align="center">
   <img src="docs/media/beatbyte-results.png" alt="BeatByte results screen: S rank, 100% accuracy, 117 perfect notes" width="800"/>

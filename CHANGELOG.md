@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Depth view** ("View: Depth" in settings, next to the flat
+  classic): the highway becomes a real trapezoid running into a
+  vanishing point, lanes lean toward it, notes approach from the
+  distance and grow, fret lines and sustain tails follow the
+  projection. Purely presentational — the autopilot scores identically
+  in both views (23640 == 23640), because judgment never sees pixels.
+
+### Added
+
 - **The round style went AAA**: real HDR bloom on the camera (round
   style only — pixel art stays crisp), gems as lit glossy spheres
   (grayscale-shaded body × lane tint + untinted specular overlay,
