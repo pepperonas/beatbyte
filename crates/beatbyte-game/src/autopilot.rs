@@ -19,6 +19,18 @@ use crate::audio_sys::GameClock;
 use crate::gameplay::{LastResults, PlayerSession};
 use crate::states::AppState;
 
+/// Set the moment any autopilot verdict (pass OR fail) is written.
+/// `run()` refuses a clean exit without one: every silent way the
+/// event loop can die (window closed, loop torn down, invisible-
+/// window quirks) has at some point produced a fake exit-0 "pass".
+pub static VERDICT_DELIVERED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+fn deliver(app_exit: &mut MessageWriter<AppExit>, exit: AppExit) {
+    VERDICT_DELIVERED.store(true, std::sync::atomic::Ordering::Relaxed);
+    app_exit.write(exit);
+}
+
 /// Whether autopilot is enabled (checked once at startup).
 #[derive(Resource, Clone, Copy)]
 pub struct Autopilot {
@@ -52,24 +64,50 @@ impl Plugin for AutopilotPlugin {
         app.insert_resource(Autopilot { enabled })
             .init_resource::<AutopilotHands>();
         if enabled {
+            // Unattended runs are SILENT. "I keep closing the app
+            // because the music gets on my nerves" — the human quit
+            // (Cmd+Q, a hard exit-0 the harness cannot see) every
+            // time a run started playing audio on their machine.
+            app.insert_resource(bevy::audio::GlobalVolume::new(bevy::audio::Volume::Linear(
+                0.0,
+            )));
+        }
+        if enabled {
             app.add_systems(
                 Update,
                 (
                     autopilot_menu.run_if(in_state(AppState::MainMenu)),
                     autopilot_song_select.run_if(in_state(AppState::SongSelect)),
                     autopilot_edit.run_if(in_state(AppState::Editor)),
-                    // Judgment is input-stamp-driven, so playing *before*
-                    // the session advances makes the autopilot exact and
-                    // frame-rate independent (hitches cannot cause
-                    // misses — the stamps carry the truth).
-                    autopilot_play
-                        .before(crate::gameplay::advance_sessions)
-                        .run_if(in_state(crate::states::GamePhase::Playing)),
                     autopilot_results.run_if(in_state(AppState::Results)),
                     fail_if_window_vanishes,
                 ),
             )
             .add_systems(OnEnter(AppState::Gameplay), autopilot_reset);
+            if std::env::var_os("BEATBYTE_AUTOPILOT_KEYS").is_some() {
+                // Keyboard-path validation: press REAL KeyCodes on
+                // ButtonInput, so InputMap resolution, gameplay_input
+                // routing and judgment run exactly as for a human.
+                // Frame-quantized, so Greats are legitimate — misses
+                // and overstrums are not.
+                app.add_systems(
+                    PreUpdate,
+                    autopilot_key_play
+                        .after(bevy::input::InputSystems)
+                        .run_if(in_state(crate::states::GamePhase::Playing)),
+                );
+            } else {
+                // Judgment is input-stamp-driven, so playing *before*
+                // the session advances makes the autopilot exact and
+                // frame-rate independent (hitches cannot cause
+                // misses — the stamps carry the truth).
+                app.add_systems(
+                    Update,
+                    autopilot_play
+                        .before(crate::gameplay::advance_sessions)
+                        .run_if(in_state(crate::states::GamePhase::Playing)),
+                );
+            }
 
             // Optional: capture screenshots at interesting moments
             // (`BEATBYTE_SHOT_DIR=<dir>`), for README/docs material.
@@ -149,9 +187,9 @@ fn autopilot_menu(
     *delay += time.delta_secs();
     if *delay > 0.8 {
         *delay = 0.0;
-        // Unattended runs should not blast anyone's speakers.
-        music.0.set_volume(0.05);
-        info!("autopilot: opening song select (volume lowered)");
+        // Unattended runs are silent (see plugin build).
+        music.0.set_volume(0.0);
+        info!("autopilot: opening song select (muted)");
         next_state.set(AppState::SongSelect);
     }
 }
@@ -186,13 +224,13 @@ fn autopilot_edit(
         game_clock.clock.stop();
         if clicks.0 >= 3 {
             info!("autopilot: editor validation PASSED ({} clicks)", clicks.0);
-            app_exit.write(AppExit::Success);
+            deliver(&mut app_exit, AppExit::Success);
         } else {
             error!(
                 "autopilot: editor validation FAILED — audition ticked {} times (need >= 3)",
                 clicks.0
             );
-            app_exit.write(AppExit::error());
+            deliver(&mut app_exit, AppExit::error());
         }
         return;
     }
@@ -309,8 +347,9 @@ fn autopilot_edit(
         == after_redo;
     if ok {
         // Edits verified; start the audition (preview from cursor)
-        // and let phase 2 assert the metronome overlay.
-        music.0.set_volume(0.05);
+        // and let phase 2 assert the metronome overlay. Muted: the
+        // click COUNT is the assertion, nobody needs to hear it.
+        music.0.set_volume(0.0);
         music.0.play_file(state.audio_path.clone());
         music.0.seek_s(state.cursor_s);
         game_clock
@@ -320,7 +359,7 @@ fn autopilot_edit(
         *edits_done = true;
     } else {
         error!("autopilot: editor validation FAILED");
-        app_exit.write(AppExit::error());
+        deliver(&mut app_exit, AppExit::error());
     }
 }
 
@@ -415,7 +454,7 @@ fn fail_if_window_vanishes(
     let present = !windows.is_empty();
     if *seen && !present {
         error!("autopilot: window vanished before a verdict — failing the run");
-        app_exit.write(AppExit::error());
+        deliver(&mut app_exit, AppExit::error());
     }
     *seen |= present;
 }
@@ -457,6 +496,114 @@ fn select_song<'a>(
 
 fn autopilot_reset(mut hands: ResMut<AutopilotHands>) {
     *hands = AutopilotHands::default();
+}
+
+/// Play through the real keyboard: the default bindings (A S D F G +
+/// arrow-down strum, Space for Hype) are pressed and released on
+/// `ButtonInput<KeyCode>` at the notes' times. One event per frame —
+/// a lag spike shifts a stamp into Great territory, never into a
+/// phantom input.
+fn autopilot_key_play(
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    players: Query<&PlayerSession>,
+    game_clock: Res<GameClock>,
+    time: Res<Time>,
+    mut cursor: Local<usize>,
+    mut strum_hot: Local<bool>,
+    mut started: Local<bool>,
+) {
+    const FRETS: [KeyCode; 5] = [
+        KeyCode::KeyA,
+        KeyCode::KeyS,
+        KeyCode::KeyD,
+        KeyCode::KeyF,
+        KeyCode::KeyG,
+    ];
+    let Some(now) = game_clock.song_time(&time) else {
+        return;
+    };
+    let Some(player) = players.iter().next() else {
+        return;
+    };
+    // `BEATBYTE_AUTOPILOT_NO_STRUM=1`: fret presses only — proves tap
+    // mode end to end (and, without tap mode, that strums are truly
+    // required).
+    let strum = std::env::var_os("BEATBYTE_AUTOPILOT_NO_STRUM").is_none();
+    if !*started {
+        *cursor = 0;
+        *started = true;
+        info!(
+            "autopilot: key-play active (strum={strum}, tap_mode={})",
+            player.session.tap_mode()
+        );
+    }
+    // Strum released the frame after it was pressed, so the next
+    // press registers as a fresh just_pressed.
+    if *strum_hot {
+        keys.release(KeyCode::ArrowDown);
+        *strum_hot = false;
+    }
+    if keys.pressed(KeyCode::Space) {
+        keys.release(KeyCode::Space);
+    }
+
+    // Press slightly EARLY: the stamp lands a frame-quantum before
+    // the note, comfortably inside Perfect, and a scheduler hitch has
+    // that much more slack before the hit slides out of the window.
+    const PRESS_LEAD_S: f64 = 0.02;
+    let events = player.session.track().events();
+    if *cursor >= events.len() {
+        return;
+    }
+    let event = events[*cursor];
+    if event.time_s - PRESS_LEAD_S > now {
+        return;
+    }
+    // Skip events the session already resolved, and events a hitch
+    // pushed out of the hit window — WITHOUT strumming, or the miss
+    // (honest) gains a phantom overstrum (an injector artifact).
+    let window = player.session.windows().good_s;
+    if !matches!(player.session.note_state(*cursor), Some(NoteState::Pending))
+        || now - event.time_s > window
+    {
+        *cursor += 1;
+        return;
+    }
+    for (index, key) in FRETS.iter().enumerate() {
+        let lane = beatbyte_core::Lane::from_index(index).map(|l| event.lanes.contains(l));
+        match lane {
+            Some(true) => {
+                // Tap mode hits on the press EDGE — a still-held key
+                // from the previous note has no edge left, so re-tap
+                // (release + press in one frame = a fresh press).
+                // With a strum that edge is irrelevant, and releasing
+                // would cut a running sustain.
+                if !strum && keys.pressed(*key) {
+                    keys.release(*key);
+                }
+                keys.press(*key);
+            }
+            _ => {
+                if keys.pressed(*key) {
+                    keys.release(*key);
+                }
+            }
+        }
+    }
+    if strum {
+        keys.press(KeyCode::ArrowDown);
+        *strum_hot = true;
+    }
+    if player.session.performance().hype_meter()
+        >= player
+            .session
+            .performance()
+            .config()
+            .hype_activation_threshold
+    {
+        keys.press(KeyCode::Space);
+    }
+    *cursor += 1;
 }
 
 /// Play every note event exactly on time through the real session
@@ -554,12 +701,12 @@ fn autopilot_results(
     }
     let Some(results) = results else {
         error!("autopilot: reached results without a LastResults resource");
-        app_exit.write(AppExit::error());
+        deliver(&mut app_exit, AppExit::error());
         return;
     };
     if results.players.is_empty() {
         error!("autopilot: results carry no players");
-        app_exit.write(AppExit::error());
+        deliver(&mut app_exit, AppExit::error());
         return;
     }
     let mut all_ok = true;
@@ -587,10 +734,10 @@ fn autopilot_results(
     }
     if all_ok {
         info!("autopilot: run PASSED");
-        app_exit.write(AppExit::Success);
+        deliver(&mut app_exit, AppExit::Success);
     } else {
         error!("autopilot: run FAILED — misses or overstrums in a perfect run");
-        app_exit.write(AppExit::error());
+        deliver(&mut app_exit, AppExit::error());
     }
 }
 

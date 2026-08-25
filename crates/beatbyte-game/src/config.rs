@@ -35,6 +35,9 @@ pub struct Settings {
     /// Backdrop animation (turn off for a still stage —
     /// reduced-motion accessibility).
     pub backdrop_motion: bool,
+    /// Tap mode: notes hit on fret press alone, no strum required —
+    /// keyboard-friendly assist. Such runs skip the scoreboard.
+    pub tap_mode: bool,
     /// Fullscreen window mode.
     pub fullscreen: bool,
     /// The bindings table (see [`crate::controls`]).
@@ -54,6 +57,7 @@ impl Default for Settings {
             screen_shake: true,
             beat_pulse: true,
             backdrop_motion: true,
+            tap_mode: false,
             fullscreen: false,
             input_map: InputMap::default(),
             theme: "auto".to_owned(),

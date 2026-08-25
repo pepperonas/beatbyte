@@ -161,6 +161,13 @@ chart format v1 can be frozen as a promise.
 - [x] E2 **Selection + bulk ops.** `EditorSession::edit_batch` (grouped undo stacks, atomic — a failing op rolls back the whole batch) + V/X/H-selection UI, ESC clears. *Verified: 2 session tests (one-step undo, atomicity incl. no-residue on failure, empty batch no-op); editor autopilot extended (batch add ×2 = exactly one undo step, both notes appear and vanish together); cycle PASSED.*
 - [x] E3 **Audition playback in editor.** Play-from-cursor already existed (M11); added the beat-click overlay (`preview_clicks` + synthesized tick in SfxLib) and an audition phase in the editor harness that counts real ticks via `AuditionClicks`. *Verified: 7 clicks in ~4 s at 92 BPM (exactly one per beat); mutation (counter disabled) fails the harness; gameplay autopilot still flawless.*
 
+### G — User-requested (2026-08-25, from first hands-on session)
+
+- [x] G1 **Tap mode (keyboard-friendly, no strum).** Core: `tap_mode` generalizes the HOPO rule to every note; settings row; tap runs skip the scoreboard. *Verified: 4 core tests; key-harness proof both directions (tap+no-strum flawless, no-tap+no-strum = all misses).*
+- [x] G2 **Real-keyboard harness.** `BEATBYTE_AUTOPILOT_KEYS` presses actual KeyCodes (press-lead, re-tap on held keys in tap mode, missed events skip without phantom strums). Found: the first registration silently no-opped (replace-anchor drift) — every earlier "keyboard proof" had been the direct feed; asserts on anchors now. *Verified: classic PASS / tap PASS / neither FAIL.*
+- [ ] G3 **Drag-and-drop song import.** Drop an audio file onto the window → analyze → chart → in the library. *Verify: injected drop event end-to-end + real chart on disk.*
+- [ ] G4 **Sustain-note animation.** Active sustains: gem pinned at the receptor, tail consuming, pulse/glow, hold particles. *Verify: probe (tail shrinks while held) + screenshot.*
+
 ### F — Release engineering to 1.0
 
 - [x] F0 **v0.9.0 — content, accessibility, editor v2.** Amendment (2026-08-24): every unblocked B/C/D/E task landed while the A tasks wait on human playtesting — that body of work (second song, song-selector harness, import guide + scan fix, format truth, forward-compat pins, Linux/Windows CI smokes, Stage Motion, colorblind lane shapes, HOPO visibility, editor move/bulk/audition, harness integrity) ships now instead of idling behind A2. *SHIPPED 2026-08-24: all 7 assets auto-attached via the recursive glob; aarch64 tarball smoke + flawless artifact autopilot from neutral CWD + DMG .app smoke; two release-run attempts (spurious hdiutil ENOSPC → retry mitigation).*

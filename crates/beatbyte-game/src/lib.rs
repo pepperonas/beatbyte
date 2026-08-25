@@ -91,13 +91,30 @@ fn configure_asset_root() {
 /// This is the single entry point used by the `beatbyte` binary.
 pub fn run() -> AppExit {
     configure_asset_root();
+    let autopilot = std::env::var_os("BEATBYTE_AUTOPILOT").is_some();
+    let harness = autopilot || std::env::var_os("BEATBYTE_SMOKE_TEST").is_some();
     let mut app = App::new();
     app.add_plugins(
         DefaultPlugins
             .set(WindowPlugin {
                 primary_window: Some(Window {
                     title: format!("BeatByte v{VERSION}"),
-                    resolution: (1280, 720).into(),
+                    // Harness runs happen on machines people are
+                    // USING — a full-size window pops over their work
+                    // and gets closed (which rightly fails the run).
+                    // A small window is the ONLY safe softening: an
+                    // invisible window or AlwaysOnBottom/At-position
+                    // kills the macOS event loop silently right after
+                    // gameplay starts (observed; exit 0, no verdict —
+                    // which the run()-guard would catch only on
+                    // platforms where winit returns at all). With
+                    // BEATBYTE_SHOT_DIR set, full size wins because
+                    // the screenshots are the point.
+                    resolution: if harness && std::env::var_os("BEATBYTE_SHOT_DIR").is_none() {
+                        (320, 180).into()
+                    } else {
+                        (1280, 720).into()
+                    },
                     present_mode: PresentMode::AutoVsync,
                     ..default()
                 }),
@@ -155,7 +172,18 @@ pub fn run() -> AppExit {
         app.add_systems(Update, smoke_test_exit);
     }
 
-    app.run()
+    let exit = app.run();
+    // Autopilot: a clean exit is only real if a verdict was actually
+    // delivered — every silent way the event loop can die has at some
+    // point produced a fake exit-0 "pass".
+    if autopilot
+        && exit == AppExit::Success
+        && !autopilot::VERDICT_DELIVERED.load(std::sync::atomic::Ordering::Relaxed)
+    {
+        eprintln!("autopilot: the app exited without a verdict — failing the run");
+        return AppExit::error();
+    }
+    exit
 }
 
 /// The one persistent 2D camera.

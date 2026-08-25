@@ -150,6 +150,9 @@ pub struct TrackSession {
     scan_from: usize,
     /// Whether the HOPO chain is alive (previous event hit, no break).
     hopo_chain: bool,
+    /// Tap mode: every note is hittable on fret press alone (no strum
+    /// required) — keyboard-friendly play. Strums still work.
+    tap_mode: bool,
     /// The active sustain, if any.
     sustain: Option<ActiveSustain>,
     /// Phrase index per event (`usize::MAX` = not in a phrase).
@@ -194,10 +197,30 @@ impl TrackSession {
             states,
             scan_from: 0,
             hopo_chain: false,
+            tap_mode: false,
             sustain: None,
             event_phrase,
             phrases,
         }
+    }
+
+    /// Enable/disable tap mode (hit on fret press, no strum needed).
+    /// Meant to be set before play starts; flipping it mid-song is
+    /// harmless but confusing.
+    pub fn set_tap_mode(&mut self, on: bool) {
+        self.tap_mode = on;
+    }
+
+    /// The timing windows this session judges with.
+    #[must_use]
+    pub fn windows(&self) -> TimingWindows {
+        self.windows
+    }
+
+    /// Whether tap mode is active.
+    #[must_use]
+    pub fn tap_mode(&self) -> bool {
+        self.tap_mode
     }
 
     /// The track being played.
@@ -339,12 +362,14 @@ impl TrackSession {
     }
 
     fn try_hopo_hit(&mut self, pressed: Lane, time_s: f64, events: &mut Vec<SessionEvent>) {
-        if !self.hopo_chain {
+        // Tap mode generalizes the HOPO rule to every note: a fret
+        // press may hit regardless of chain state or note kind.
+        if !self.tap_mode && !self.hopo_chain {
             return;
         }
         let candidate = self.pending_in_window(time_s).find(|&index| {
             let event = self.track.events()[index];
-            event.kind == NoteKind::Hopo
+            (self.tap_mode || event.kind == NoteKind::Hopo)
                 && event.lanes.contains(pressed)
                 && self.frets_match(event.lanes)
         });
@@ -1094,5 +1119,83 @@ mod tests {
         // and the strum is an overstrum.
         assert!(events.contains(&SessionEvent::NoteMissed { event_index: 0 }));
         assert!(events.contains(&SessionEvent::Overstrum));
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tap_mode_tests {
+    use super::*;
+    use crate::timing::TempoMap;
+    use crate::{
+        Difficulty, GameInput, InputKind, Lane, LaneSet, NoteEvent, ScoreConfig, TimingWindows,
+        Track,
+    };
+
+    fn session(events: Vec<NoteEvent>) -> TrackSession {
+        let track = Track::new(
+            Difficulty::Medium,
+            TempoMap::constant(120.0, 0.0),
+            events,
+            vec![],
+        )
+        .unwrap();
+        TrackSession::new(track, TimingWindows::default(), ScoreConfig::default())
+    }
+
+    fn press(session: &mut TrackSession, lane: Lane, t: f64) -> Vec<SessionEvent> {
+        let mut out = Vec::new();
+        session.handle(
+            GameInput {
+                time_s: t,
+                kind: InputKind::FretDown(lane),
+            },
+            &mut out,
+        );
+        out
+    }
+
+    #[test]
+    fn tap_mode_hits_a_strum_note_on_fret_press_alone() {
+        let mut s = session(vec![NoteEvent::tap(1.0, LaneSet::single(Lane::Two))]);
+        s.set_tap_mode(true);
+        press(&mut s, Lane::Two, 1.0);
+        assert_eq!(s.performance().counts().perfect, 1);
+        assert_eq!(s.performance().counts().miss, 0);
+    }
+
+    #[test]
+    fn without_tap_mode_the_same_press_hits_nothing() {
+        let mut s = session(vec![NoteEvent::tap(1.0, LaneSet::single(Lane::Two))]);
+        press(&mut s, Lane::Two, 1.0);
+        assert_eq!(s.performance().counts().total(), 0, "no strum, no hit");
+    }
+
+    #[test]
+    fn tap_mode_hits_a_chord_when_the_last_fret_arrives() {
+        let mut lanes = LaneSet::EMPTY;
+        lanes.insert(Lane::One);
+        lanes.insert(Lane::Three);
+        let mut s = session(vec![NoteEvent::tap(1.0, lanes)]);
+        s.set_tap_mode(true);
+        press(&mut s, Lane::One, 0.99);
+        assert_eq!(s.performance().counts().total(), 0, "chord incomplete");
+        press(&mut s, Lane::Three, 1.0);
+        assert_eq!(s.performance().counts().perfect, 1);
+    }
+
+    #[test]
+    fn tap_mode_still_counts_overstrums() {
+        let mut s = session(vec![NoteEvent::tap(5.0, LaneSet::single(Lane::One))]);
+        s.set_tap_mode(true);
+        let mut out = Vec::new();
+        s.handle(
+            GameInput {
+                time_s: 1.0,
+                kind: InputKind::Strum,
+            },
+            &mut out,
+        );
+        assert_eq!(s.performance().overstrums(), 1);
     }
 }

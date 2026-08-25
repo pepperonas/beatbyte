@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Tap mode** ("TAP MODE (NO STRUM)" in settings): notes hit on the
+  fret press alone — keyboard-friendly assist. Strums still work on
+  top; tap-mode runs stay out of the scoreboard.
+- **Real-keyboard autopilot** (`BEATBYTE_AUTOPILOT_KEYS=1`, plus
+  `BEATBYTE_AUTOPILOT_NO_STRUM=1`): presses actual KeyCodes through
+  the full input chain. Proved three ways: classic keyboard play
+  flawless, tap mode without strums flawless, no-tap without strums
+  = 117 misses.
+- Autopilot runs are now **silent** (music and SFX muted) and use a
+  small window — they were driving the human at the machine to quit
+  them mid-run.
+
+### Fixed
+
+- A second fake-pass hole: the harness exiting without any verdict
+  now fails on platforms where the event loop returns (Cmd+Q remains
+  invisible to the process — silent runs remove the reason to Cmd+Q).
+
 ## [0.9.0] - 2026-08-24
 
 **The content, accessibility and editor-v2 release.**

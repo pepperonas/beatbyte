@@ -22,13 +22,14 @@ enum Row {
     ScreenShake,
     BeatPulse,
     BackdropMotion,
+    TapMode,
     Fullscreen,
     Theme,
     Controls,
 }
 
 impl Row {
-    const ALL: [Row; 11] = [
+    const ALL: [Row; 12] = [
         Row::MusicVolume,
         Row::SfxVolume,
         Row::ScrollSpeed,
@@ -37,6 +38,7 @@ impl Row {
         Row::ScreenShake,
         Row::BeatPulse,
         Row::BackdropMotion,
+        Row::TapMode,
         Row::Fullscreen,
         Row::Theme,
         Row::Controls,
@@ -52,6 +54,7 @@ impl Row {
             Row::ScreenShake => "SCREEN SHAKE",
             Row::BeatPulse => "BEAT PULSE",
             Row::BackdropMotion => "STAGE MOTION",
+            Row::TapMode => "TAP MODE (NO STRUM)",
             Row::Fullscreen => "FULLSCREEN",
             Row::Theme => "STAGE THEME",
             Row::Controls => "CONTROLS",
@@ -68,6 +71,7 @@ impl Row {
             Row::ScreenShake => on_off(settings.screen_shake),
             Row::BeatPulse => on_off(settings.beat_pulse),
             Row::BackdropMotion => on_off(settings.backdrop_motion),
+            Row::TapMode => on_off(settings.tap_mode),
             Row::Fullscreen => on_off(settings.fullscreen),
             Row::Theme => settings.theme.to_uppercase(),
             Row::Controls => "...".to_owned(),
@@ -95,6 +99,7 @@ impl Row {
             Row::ScreenShake => settings.screen_shake = !settings.screen_shake,
             Row::BeatPulse => settings.beat_pulse = !settings.beat_pulse,
             Row::BackdropMotion => settings.backdrop_motion = !settings.backdrop_motion,
+            Row::TapMode => settings.tap_mode = !settings.tap_mode,
             Row::Fullscreen => settings.fullscreen = !settings.fullscreen,
             Row::Theme => {
                 // Cycle auto → themes → auto.

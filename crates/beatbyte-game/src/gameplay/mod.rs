@@ -168,6 +168,9 @@ pub struct LastResults {
     pub mode: MultiplayerMode,
     /// Every player's outcome, in player order.
     pub players: Vec<PlayerResult>,
+    /// Whether tap mode (no-strum assist) was active — such runs stay
+    /// out of the scoreboard.
+    pub tap_mode: bool,
 }
 
 /// Marker for everything belonging to the gameplay screen.
@@ -271,16 +274,18 @@ fn setup_gameplay(
     );
     commands.insert_resource(HighwayLayout::for_players(devices.len()));
     for (index, device) in devices.into_iter().enumerate() {
+        let mut session = TrackSession::new(
+            track.clone(),
+            TimingWindows::default(),
+            ScoreConfig::default(),
+        );
+        session.set_tap_mode(settings.tap_mode);
         commands.spawn((
             GameplayScreen,
             PlayerIndex(index),
             PlayerDevice(device),
             PlayerSession {
-                session: TrackSession::new(
-                    track.clone(),
-                    TimingWindows::default(),
-                    ScoreConfig::default(),
-                ),
+                session,
                 frame_events: Vec::new(),
                 spawn_cursor: 0,
             },
@@ -387,6 +392,7 @@ fn check_song_end(
             difficulty: selected.0,
             mode: roster.mode,
             players: results,
+            tap_mode: players.iter().any(|(_, p)| p.session.tap_mode()),
         });
         next_state.set(AppState::Results);
     }
