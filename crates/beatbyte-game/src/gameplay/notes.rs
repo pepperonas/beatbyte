@@ -175,6 +175,10 @@ fn spawn_event_sprites(
             let tail_height = (event.sustain_s as f32) * scroll_speed;
             commands.entity(entity).with_children(|parent| {
                 parent.spawn((
+                    SustainTail {
+                        full_height: tail_height,
+                        width: size * 0.35,
+                    },
                     Sprite::from_color(color.with_alpha(0.35), Vec2::new(size * 0.35, tail_height)),
                     Transform::from_xyz(0.0, tail_height / 2.0, -1.0),
                 ));
@@ -219,6 +223,78 @@ pub fn move_notes(
             commands.entity(entity).despawn();
         }
     }
+}
+
+/// While a sustain is HELD, its visuals come alive: the gem pins to
+/// the receptor line, the tail is consumed from the bottom (remaining
+/// hold time = remaining length) and both pulse. Released or ended,
+/// everything falls back to the plain scrolling look. Runs after
+/// [`move_notes`], which positions everything by chart time first.
+pub fn animate_sustains(
+    players: Query<(&PlayerIndex, &PlayerSession)>,
+    game_clock: Res<GameClock>,
+    time: Res<Time>,
+    theme: Res<crate::theme::ActiveTheme>,
+    mut notes: Query<(&NoteSprite, &mut Transform, &mut Sprite, &Children)>,
+    mut tails: Query<(&SustainTail, &mut Transform, &mut Sprite), Without<NoteSprite>>,
+) {
+    let Some(now) = game_clock.song_time(&time) else {
+        return;
+    };
+    let active: Vec<(usize, usize)> = players
+        .iter()
+        .filter_map(|(index, player)| player.session.active_sustain().map(|e| (index.0, e)))
+        .collect();
+    let Some((_, reference)) = players.iter().next() else {
+        return;
+    };
+    let events = reference.session.track().events();
+
+    for (note, mut transform, mut sprite, children) in &mut notes {
+        let Some(event) = events.get(note.event_index) else {
+            continue;
+        };
+        if !event.is_sustain() {
+            continue;
+        }
+        let lane = event.lanes.highest().unwrap_or(beatbyte_core::Lane::Three);
+        let color = theme.0.lane_color(lane);
+        let held = active.contains(&(note.player, note.event_index));
+        if held {
+            // Pin the gem to the hit line; pulse it toward white.
+            transform.translation.y = RECEPTOR_Y;
+            let pulse = 0.5 + 0.5 * (time.elapsed_secs() * 9.0).sin();
+            sprite.color = color.mix(&Color::WHITE, 0.25 + 0.35 * pulse);
+            let remaining =
+                (((event.time_s + event.sustain_s - now).max(0.0)) as f32).min(f32::MAX);
+            for child in children {
+                if let Ok((tail, mut tail_transform, mut tail_sprite)) = tails.get_mut(*child) {
+                    let height = (remaining * tail.full_height
+                        / (event.sustain_s as f32).max(f32::EPSILON))
+                    .clamp(0.0, tail.full_height);
+                    tail_sprite.custom_size = Some(Vec2::new(tail.width, height));
+                    tail_transform.translation.y = height / 2.0;
+                    tail_sprite.color = color.with_alpha(0.55 + 0.3 * pulse);
+                }
+            }
+        } else if note.resolved {
+            // Released early or finished: a spent, dim tail.
+            for child in children {
+                if let Ok((_, _, mut tail_sprite)) = tails.get_mut(*child) {
+                    tail_sprite.color = color.with_alpha(0.15);
+                }
+            }
+        }
+    }
+}
+
+/// Marker + geometry for a sustain's tail sprite.
+#[derive(Component)]
+pub struct SustainTail {
+    /// Height representing the full sustain length.
+    pub full_height: f32,
+    /// Tail width in pixels.
+    pub width: f32,
 }
 
 /// Receptors light up while their player holds the fret.

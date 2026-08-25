@@ -212,6 +212,7 @@ impl Plugin for GameplayPlugin {
                     drain_feedback,
                     notes::spawn_due_notes,
                     notes::move_notes,
+                    notes::animate_sustains,
                     notes::update_receptors,
                     notes::apply_note_events,
                     feedback::spawn_feedback,

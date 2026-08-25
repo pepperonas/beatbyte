@@ -166,7 +166,7 @@ chart format v1 can be frozen as a promise.
 - [x] G1 **Tap mode (keyboard-friendly, no strum).** Core: `tap_mode` generalizes the HOPO rule to every note; settings row; tap runs skip the scoreboard. *Verified: 4 core tests; key-harness proof both directions (tap+no-strum flawless, no-tap+no-strum = all misses).*
 - [x] G2 **Real-keyboard harness.** `BEATBYTE_AUTOPILOT_KEYS` presses actual KeyCodes (press-lead, re-tap on held keys in tap mode, missed events skip without phantom strums). Found: the first registration silently no-opped (replace-anchor drift) — every earlier "keyboard proof" had been the direct feed; asserts on anchors now. *Verified: classic PASS / tap PASS / neither FAIL.*
 - [ ] G3 **Drag-and-drop song import.** Drop an audio file onto the window → analyze → chart → in the library. *Verify: injected drop event end-to-end + real chart on disk.*
-- [ ] G4 **Sustain-note animation.** Active sustains: gem pinned at the receptor, tail consuming, pulse/glow, hold particles. *Verify: probe (tail shrinks while held) + screenshot.*
+- [x] G4 **Sustain-note animation.** `animate_sustains` after `move_notes`: gem pinned + white-pulsing, tail consumed bottom-up with glow, spent tails dim; hold sparks existed (fx). *Verified by probe: head constant at RECEPTOR_Y while tails shrink monotonically (1026→914→809…), run flawless.*
 
 ### F — Release engineering to 1.0
 

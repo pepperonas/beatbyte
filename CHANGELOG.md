@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Sustain notes are animated while held**: the gem pins to the hit
+  line and pulses toward white, the tail is consumed from the bottom
+  (remaining length = remaining hold) and glows; released early it
+  drops to a spent, dim look. Hold sparks were already there.
+
 - **Tap mode** ("TAP MODE (NO STRUM)" in settings): notes hit on the
   fret press alone — keyboard-friendly assist. Strums still work on
   top; tap-mode runs stay out of the scoreboard.
