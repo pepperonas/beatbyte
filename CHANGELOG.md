@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-25
+
+**The first-playtest release** — everything in it traces back to the
+first real hands-on sessions.
+
 ### Added
 
 - **Multi-file drag-and-drop import with a visible progress panel**:
