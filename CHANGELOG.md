@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Drag-and-drop song import**: drop an audio file onto the window
+  (menu or browser) — it is copied to `songs/imported/`, analyzed and
+  charted in the background, and appears in the browser with a status
+  line. Downloaded-style file names come out clean ("Artist - Title
+  (Official Video) [id]" → title/artist, bracket noise stripped).
+- Harness audio is a switch now: audible by default,
+  `BEATBYTE_AUTOPILOT_MUTE=1` for silence.
+
 - **Sustain notes are animated while held**: the gem pins to the hit
   line and pulses toward white, the tail is consumed from the bottom
   (remaining length = remaining hold) and glows; released early it

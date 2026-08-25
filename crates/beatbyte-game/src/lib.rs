@@ -13,6 +13,7 @@ pub mod controls;
 pub mod controls_ui;
 pub mod editor_ui;
 pub mod gameplay;
+pub mod import;
 pub mod library;
 pub mod menu;
 pub mod multiplayer;
@@ -21,7 +22,7 @@ pub mod results;
 pub mod scores;
 pub mod settings_ui;
 pub mod sfx;
-pub mod shapes;
+mod shapes;
 pub mod song_select;
 pub mod states;
 mod theme;
@@ -140,6 +141,7 @@ pub fn run() -> AppExit {
     .add_sub_state::<GamePhase>()
     .add_systems(Startup, spawn_camera)
     .add_plugins((
+        import::ImportPlugin,
         shapes::ShapesPlugin,
         ui::UiPlugin,
         audio_sys::AudioBridgePlugin,

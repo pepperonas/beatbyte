@@ -31,6 +31,13 @@ fn deliver(app_exit: &mut MessageWriter<AppExit>, exit: AppExit) {
     app_exit.write(exit);
 }
 
+/// Whether harness runs are silent (`BEATBYTE_AUTOPILOT_MUTE=1`).
+/// Audible by default — the user asked to hear the runs again after
+/// a silent phase; both wishes have now existed, so it is a switch.
+fn muted() -> bool {
+    std::env::var_os("BEATBYTE_AUTOPILOT_MUTE").is_some()
+}
+
 /// Whether autopilot is enabled (checked once at startup).
 #[derive(Resource, Clone, Copy)]
 pub struct Autopilot {
@@ -63,11 +70,7 @@ impl Plugin for AutopilotPlugin {
         let enabled = std::env::var_os("BEATBYTE_AUTOPILOT").is_some();
         app.insert_resource(Autopilot { enabled })
             .init_resource::<AutopilotHands>();
-        if enabled {
-            // Unattended runs are SILENT. "I keep closing the app
-            // because the music gets on my nerves" — the human quit
-            // (Cmd+Q, a hard exit-0 the harness cannot see) every
-            // time a run started playing audio on their machine.
+        if enabled && muted() {
             app.insert_resource(bevy::audio::GlobalVolume::new(bevy::audio::Volume::Linear(
                 0.0,
             )));
@@ -80,6 +83,7 @@ impl Plugin for AutopilotPlugin {
                     autopilot_song_select.run_if(in_state(AppState::SongSelect)),
                     autopilot_edit.run_if(in_state(AppState::Editor)),
                     autopilot_results.run_if(in_state(AppState::Results)),
+                    autopilot_drop.run_if(in_state(AppState::SongSelect)),
                     fail_if_window_vanishes,
                 ),
             )
@@ -188,8 +192,8 @@ fn autopilot_menu(
     if *delay > 0.8 {
         *delay = 0.0;
         // Unattended runs are silent (see plugin build).
-        music.0.set_volume(0.0);
-        info!("autopilot: opening song select (muted)");
+        music.0.set_volume(if muted() { 0.0 } else { 0.5 });
+        info!("autopilot: opening song select");
         next_state.set(AppState::SongSelect);
     }
 }
@@ -347,9 +351,8 @@ fn autopilot_edit(
         == after_redo;
     if ok {
         // Edits verified; start the audition (preview from cursor)
-        // and let phase 2 assert the metronome overlay. Muted: the
-        // click COUNT is the assertion, nobody needs to hear it.
-        music.0.set_volume(0.0);
+        // and let phase 2 assert the metronome overlay.
+        music.0.set_volume(if muted() { 0.0 } else { 0.3 });
         music.0.play_file(state.audio_path.clone());
         music.0.seek_s(state.cursor_s);
         game_clock
@@ -365,10 +368,12 @@ fn autopilot_edit(
 
 /// Pick the demo song and start it (optionally with simulated
 /// multiplayer via `BEATBYTE_AUTOPILOT_PLAYERS=N`).
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn autopilot_song_select(
     mut commands: Commands,
     time: Res<Time>,
     mut delay: Local<f32>,
+    mut waited: Local<f32>,
     library: Res<crate::library::SongLibrary>,
     builtins: Res<crate::boot::BuiltinSongs>,
     mut roster: ResMut<crate::multiplayer::PlayerRoster>,
@@ -416,6 +421,16 @@ fn autopilot_song_select(
         let entry = match select_song(&library.entries, selector.as_deref()) {
             Ok(entry) => entry,
             Err(reason) => {
+                // A pending drop-import legitimately needs time to
+                // appear in the library — keep polling for a while.
+                if std::env::var_os("BEATBYTE_AUTOPILOT_DROP").is_some() {
+                    *waited += time.delta_secs() + 0.6;
+                    if *waited > 60.0 {
+                        error!("autopilot: import never appeared: {reason}");
+                        std::process::exit(1);
+                    }
+                    return;
+                }
                 error!("autopilot: {reason}");
                 std::process::exit(1);
             }
@@ -492,6 +507,32 @@ fn select_song<'a>(
             let titles: Vec<&str> = entries.iter().map(|e| e.title.as_str()).collect();
             format!("no song title contains \"{selector}\" (library: {titles:?})")
         })
+}
+
+/// `BEATBYTE_AUTOPILOT_DROP=<path>`: simulate dropping that file onto
+/// the window once the browser is up — the import pipeline (copy,
+/// analyze, chart, rescan) runs exactly as for a human gesture.
+fn autopilot_drop(
+    mut sent: Local<bool>,
+    mut drops: MessageWriter<bevy::window::FileDragAndDrop>,
+    window: Query<Entity, With<bevy::window::PrimaryWindow>>,
+) {
+    if *sent {
+        return;
+    }
+    let Some(path) = std::env::var_os("BEATBYTE_AUTOPILOT_DROP") else {
+        *sent = true;
+        return;
+    };
+    let Ok(window) = window.single() else {
+        return;
+    };
+    *sent = true;
+    info!("autopilot: dropping {:?} onto the window", path);
+    drops.write(bevy::window::FileDragAndDrop::DroppedFile {
+        window,
+        path_buf: std::path::PathBuf::from(path),
+    });
 }
 
 fn autopilot_reset(mut hands: ResMut<AutopilotHands>) {

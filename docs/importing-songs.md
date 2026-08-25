@@ -9,6 +9,15 @@ Supported audio: **WAV, Ogg Vorbis, FLAC, MP3, M4A/AAC** — the
 verified list lives in
 [the chart-format spec](chart-format/chart-format-v1.md#supported-audio-formats).
 
+## The fast path: drag and drop
+
+Drop the audio file onto the BeatByte window (main menu or song
+browser). The song is analyzed and charted in the background and
+appears in the browser when done — file names like
+`Artist - Title (Official Video) [id].m4a` become a clean
+title/artist automatically. Everything below is the manual route with
+full control over naming and output.
+
 ## 1. Put the audio where BeatByte looks
 
 Create a folder per song under `songs/` (in development / portable

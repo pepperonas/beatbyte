@@ -37,7 +37,8 @@ impl Plugin for SongSelectPlugin {
             .add_systems(OnEnter(AppState::SongSelect), spawn_browser)
             .add_systems(
                 Update,
-                (browser_input, refresh_browser).run_if(in_state(AppState::SongSelect)),
+                (browser_input, refresh_browser, rebuild_after_import)
+                    .run_if(in_state(AppState::SongSelect)),
             )
             .add_systems(OnExit(AppState::SongSelect), despawn_browser);
     }
@@ -59,6 +60,15 @@ fn spawn_browser(
     font: Res<UiFont>,
     library: Res<SongLibrary>,
     mut cursor: ResMut<BrowserCursor>,
+) {
+    spawn_browser_impl(&mut commands, &font, &library, &mut cursor);
+}
+
+fn spawn_browser_impl(
+    commands: &mut Commands,
+    font: &UiFont,
+    library: &SongLibrary,
+    cursor: &mut BrowserCursor,
 ) {
     if cursor.0 >= library.entries.len() {
         cursor.0 = 0;
@@ -94,13 +104,12 @@ fn spawn_browser(
                     TextColor(palette::TEXT_DIM),
                 ));
             }
-            if library.entries.len() == 1 {
-                parent.spawn((
-                    Text::new("drop charts into songs/ to add your music"),
-                    font.text(9.0),
-                    TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
-                ));
-            }
+            parent.spawn((
+                ImportNote,
+                Text::new("drag an audio file onto the window to import it"),
+                font.text(9.0),
+                TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
+            ));
             parent.spawn((
                 DetailText,
                 Text::new(""),
@@ -259,6 +268,37 @@ fn refresh_browser(
         if text.0 != line {
             text.0 = line;
         }
+    }
+}
+
+/// The import hint / status line.
+#[derive(Component)]
+struct ImportNote;
+
+/// A finished import replaces the [`SongLibrary`] resource — rebuild
+/// the list so the new song is visible, and keep the note line
+/// showing the import's progress.
+fn rebuild_after_import(
+    mut commands: Commands,
+    font: Res<UiFont>,
+    library: Res<SongLibrary>,
+    mut cursor: ResMut<BrowserCursor>,
+    status: Res<crate::import::ImportStatus>,
+    screens: Query<Entity, With<BrowserScreen>>,
+    mut notes: Query<&mut Text, With<ImportNote>>,
+) {
+    if library.is_changed() && !library.is_added() {
+        for entity in &screens {
+            commands.entity(entity).despawn();
+        }
+        spawn_browser_impl(&mut commands, &font, &library, &mut cursor);
+        return;
+    }
+    if status.is_changed()
+        && !status.0.is_empty()
+        && let Ok(mut text) = notes.single_mut()
+    {
+        text.0.clone_from(&status.0);
     }
 }
 
