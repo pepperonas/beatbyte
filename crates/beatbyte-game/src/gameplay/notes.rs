@@ -97,13 +97,30 @@ pub fn spawn_highways(
                 Transform::from_xyz(origin, 0.0, -10.0),
             ));
         }
+        // Stage vignette (round style): darkened corners focus the
+        // lit highway. Sits above backdrop/bed/guides, below notes.
+        if round {
+            commands.spawn((
+                GameplayScreen,
+                Sprite {
+                    image: shapes.vignette(),
+                    color: Color::BLACK,
+                    custom_size: Some(Vec2::new(4200.0, 2400.0)),
+                    ..Default::default()
+                },
+                Transform::from_xyz(0.0, 0.0, -3.0),
+            ));
+        }
         // Lane guide lines — soft glow strips in the round style; in
         // the depth view they lean toward the vanishing point.
         for lane in Lane::ALL {
             let lane_x = layout.lane_x(player, lane);
             let transform = if perspective {
                 let top = Vec2::new(origin, depth::HORIZON_Y);
-                let bottom = Vec2::new(lane_x, RECEPTOR_Y - 200.0);
+                let bottom = Vec2::new(
+                    depth::extend_below(origin, lane_x, 200.0),
+                    RECEPTOR_Y - 200.0,
+                );
                 let delta = top - bottom;
                 let mid = (top + bottom) / 2.0;
                 Transform::from_xyz(mid.x, mid.y, -9.0)
@@ -112,8 +129,12 @@ pub fn spawn_highways(
                 Transform::from_xyz(lane_x, 0.0, -9.0)
             };
             let length = if perspective {
-                (Vec2::new(origin, depth::HORIZON_Y) - Vec2::new(lane_x, RECEPTOR_Y - 200.0))
-                    .length()
+                (Vec2::new(origin, depth::HORIZON_Y)
+                    - Vec2::new(
+                        depth::extend_below(origin, lane_x, 200.0),
+                        RECEPTOR_Y - 200.0,
+                    ))
+                .length()
             } else {
                 900.0
             };
@@ -136,6 +157,27 @@ pub fn spawn_highways(
         // background copy. 8-bit style keeps the per-lane shapes
         // (colorblind-safe default); round style uses discs.
         let receptor = layout.receptor_size();
+        // Depth view: receptors LIE on the board — a flattened ring
+        // sells the perspective; and a glowing hit line spans the
+        // highway where notes are judged.
+        let squash = if perspective { 0.62 } else { 1.0 };
+        if perspective {
+            commands.spawn((
+                GameplayScreen,
+                Sprite {
+                    image: if round {
+                        shapes.glow_strip()
+                    } else {
+                        Handle::default()
+                    },
+                    color: Color::srgba(1.0, 1.0, 1.0, 0.16),
+                    custom_size: Some(Vec2::new(layout.bed_width() * 1.02, 5.0)),
+                    ..Default::default()
+                },
+                Transform::from_xyz(origin, RECEPTOR_Y, -6.0)
+                    .with_rotation(Quat::from_rotation_z(core::f32::consts::FRAC_PI_2)),
+            ));
+        }
         for lane in Lane::ALL {
             let x = layout.lane_x(player, lane);
             commands.spawn((
@@ -148,12 +190,12 @@ pub fn spawn_highways(
                     palette::dimmed(theme.lane_color(lane), 0.35),
                     receptor,
                 ),
-                Transform::from_xyz(x, RECEPTOR_Y, -5.0),
+                Transform::from_xyz(x, RECEPTOR_Y, -5.0).with_scale(Vec3::new(1.0, squash, 1.0)),
             ));
             commands.spawn((
                 GameplayScreen,
                 gem_sprite(shapes, lane, round, theme.background, receptor * 0.72),
-                Transform::from_xyz(x, RECEPTOR_Y, -4.0),
+                Transform::from_xyz(x, RECEPTOR_Y, -4.0).with_scale(Vec3::new(1.0, squash, 1.0)),
             ));
         }
     }
@@ -237,6 +279,15 @@ fn spawn_event_sprites(
             .id();
         if round {
             commands.entity(entity).with_children(|parent| {
+                parent.spawn((
+                    Sprite {
+                        image: shapes.soft_dot(),
+                        color: color.with_alpha(0.4),
+                        custom_size: Some(Vec2::splat(gem * 2.4)),
+                        ..Default::default()
+                    },
+                    Transform::from_xyz(0.0, 0.0, -0.5),
+                ));
                 parent.spawn((
                     Sprite {
                         image: shapes.sphere_gloss(),
@@ -381,6 +432,16 @@ pub mod depth {
     pub fn lane_x(center: f32, flat_x: f32, scale: f32) -> f32 {
         center + (flat_x - center) * scale
     }
+
+    /// Where the lane's vanishing line sits `dy_below` px BELOW the
+    /// hit line — the same straight line notes travel, extended past
+    /// the receptors. The first guides used a different line (full
+    /// lane width at receptor−200 aimed at the vanishing point) and
+    /// every note visibly missed its string.
+    #[must_use]
+    pub fn extend_below(center: f32, flat_x: f32, dy_below: f32) -> f32 {
+        flat_x + (flat_x - center) * dy_below / (HORIZON_Y - RECEPTOR_Y)
+    }
 }
 
 /// A bar line ("fret") across the highway — round style only, the
@@ -431,7 +492,7 @@ pub fn spawn_fret_lines(
 
 /// Scroll the bar lines with the song, like notes.
 pub fn move_fret_lines(
-    mut lines: Query<(&FretLine, &mut Transform)>,
+    mut lines: Query<(&FretLine, &mut Transform, &mut Sprite)>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
     settings: Res<Settings>,
@@ -439,12 +500,15 @@ pub fn move_fret_lines(
     let Some(now) = game_clock.song_time(&time) else {
         return;
     };
-    for (line, mut transform) in &mut lines {
+    for (line, mut transform, mut sprite) in &mut lines {
         let z = ((line.time_s - now) as f32) * settings.scroll_speed;
         if settings.perspective {
             let (y, scale) = depth::project(z);
             transform.translation.y = if z >= 0.0 { y } else { RECEPTOR_Y + z };
             transform.scale = Vec3::new(scale.min(1.0), 1.0, 1.0);
+            // Fade with distance — a wall of equal-strength lines
+            // near the horizon reads as clutter, not depth.
+            sprite.color = sprite.color.with_alpha(0.02 + 0.10 * scale.min(1.0));
         } else {
             transform.translation.y = RECEPTOR_Y + z;
         }
@@ -704,6 +768,19 @@ mod depth_tests {
             last_y = y;
             last_scale = scale;
         }
+    }
+
+    #[test]
+    fn guide_extension_is_collinear_with_the_note_path() {
+        // The line notes travel: (flat_x, RECEPTOR_Y) -> (center, HORIZON_Y).
+        let (center, flat_x, dy) = (100.0_f32, 400.0_f32, 200.0_f32);
+        let below_x = depth::extend_below(center, flat_x, dy);
+        let slope_path = (center - flat_x) / (depth::HORIZON_Y - RECEPTOR_Y);
+        let slope_ext = (flat_x - below_x) / dy;
+        assert!(
+            (slope_path - slope_ext).abs() < 1e-4,
+            "guide extension bends off the note path: {slope_path} vs {slope_ext}"
+        );
     }
 
     #[test]

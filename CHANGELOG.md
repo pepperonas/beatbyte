@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Depth view: notes now sit exactly ON their lane lines.** The
+  guides were drawn on a different straight line than the note path
+  (full lane width 200 px below the receptors, aimed at the vanishing
+  point) — everything visibly missed its string. The guides are now
+  the extension of the exact line notes travel (pinned by a
+  collinearity test).
+
 ### Added
+
+- **Stage polish for the depth view**: receptors lie flat on the
+  board (perspective-squashed rings), a glowing hit line spans the
+  highway, every gem carries a colored halo, a stage vignette darkens
+  the corners, and fret lines fade with distance.
 
 - **Depth view** ("View: Depth" in settings, next to the flat
   classic): the highway becomes a real trapezoid running into a

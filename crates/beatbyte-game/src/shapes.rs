@@ -31,6 +31,7 @@ pub struct LaneShapes {
     tube: Handle<Image>,
     glow_strip: Handle<Image>,
     bed_gradient: Handle<Image>,
+    vignette: Handle<Image>,
 }
 
 impl LaneShapes {
@@ -104,6 +105,12 @@ impl LaneShapes {
     pub fn bed_gradient(&self) -> Handle<Image> {
         self.bed_gradient.clone()
     }
+
+    /// The stage vignette overlay.
+    #[must_use]
+    pub fn vignette(&self) -> Handle<Image> {
+        self.vignette.clone()
+    }
 }
 
 /// Builds the shape images at startup.
@@ -134,6 +141,7 @@ fn build_shapes(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         tube: images.add(shaded_image(tube_shading)),
         glow_strip: images.add(shaded_image(glow_strip_shading)),
         bed_gradient: images.add(shaded_image(bed_shading)),
+        vignette: images.add(shaded_image(vignette_shading)),
     });
 }
 
@@ -203,6 +211,15 @@ pub fn tube_shading(u: f32, _v: f32) -> Shade {
 pub fn glow_strip_shading(u: f32, _v: f32) -> Shade {
     let d = (u * 2.0 - 1.0).abs();
     (1.0, (-d * d * 5.0).exp() * 0.9)
+}
+
+/// Stage vignette: clear center, darkened corners — pulls the eye to
+/// the highway like a lit stage in a dark venue.
+#[must_use]
+pub fn vignette_shading(u: f32, v: f32) -> Shade {
+    let (dx, dy) = (u * 2.0 - 1.0, v * 2.0 - 1.0);
+    let r = (dx * dx + dy * dy).sqrt();
+    (0.0, ((r - 0.55) / 0.6).clamp(0.0, 1.0).powi(2) * 0.6)
 }
 
 /// Highway-bed depth gradient: darker far (top), lighter near.
