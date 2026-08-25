@@ -384,6 +384,7 @@ fn autopilot_song_select(
     time: Res<Time>,
     mut delay: Local<f32>,
     mut waited: Local<f32>,
+    queue: Option<Res<crate::import::ImportQueue>>,
     library: Res<crate::library::SongLibrary>,
     builtins: Res<crate::boot::BuiltinSongs>,
     mut roster: ResMut<crate::multiplayer::PlayerRoster>,
@@ -431,6 +432,18 @@ fn autopilot_song_select(
         if std::env::var_os("BEATBYTE_AUTOPILOT_DELETE").is_some() {
             return;
         }
+        // In drop mode, let the WHOLE batch finish before starting a
+        // song — the batch summary is part of what is being proven.
+        if std::env::var_os("BEATBYTE_AUTOPILOT_DROP").is_some()
+            && queue.as_ref().is_none_or(|q| q.total == 0 || q.active())
+        {
+            *waited += time.delta_secs() + 0.6;
+            if *waited > 300.0 {
+                error!("autopilot: import batch never finished");
+                std::process::exit(1);
+            }
+            return;
+        }
         let selector = std::env::var("BEATBYTE_AUTOPILOT_SONG").ok();
         let entry = match select_song(&library.entries, selector.as_deref()) {
             Ok(entry) => entry,
@@ -439,7 +452,7 @@ fn autopilot_song_select(
                 // appear in the library — keep polling for a while.
                 if std::env::var_os("BEATBYTE_AUTOPILOT_DROP").is_some() {
                     *waited += time.delta_secs() + 0.6;
-                    if *waited > 60.0 {
+                    if *waited > 300.0 {
                         error!("autopilot: import never appeared: {reason}");
                         std::process::exit(1);
                     }
@@ -542,11 +555,19 @@ fn autopilot_drop(
         return;
     };
     *sent = true;
-    info!("autopilot: dropping {:?} onto the window", path);
-    drops.write(bevy::window::FileDragAndDrop::DroppedFile {
-        window,
-        path_buf: std::path::PathBuf::from(path),
-    });
+    // Newline-separated: a multi-file gesture arrives as several
+    // events in ONE frame, exactly like a real drop of many files.
+    for entry in path.to_string_lossy().split('\n') {
+        let entry = entry.trim();
+        if entry.is_empty() {
+            continue;
+        }
+        info!("autopilot: dropping {entry:?} onto the window");
+        drops.write(bevy::window::FileDragAndDrop::DroppedFile {
+            window,
+            path_buf: std::path::PathBuf::from(entry),
+        });
+    }
 }
 
 /// `BEATBYTE_AUTOPILOT_DELETE=<title-substring>`: arrow down to the

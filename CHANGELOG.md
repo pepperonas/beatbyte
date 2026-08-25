@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Multi-file drag-and-drop import with a visible progress panel**:
+  drop any number of files in one gesture — they queue up, an
+  animated overlay (pulsing frame, easing progress bar, flash per
+  finished song, batch summary) shows the whole batch, in the menu
+  and the browser alike. Unsupported files and duplicates are counted
+  and reported, never silently discarded — the first version imported
+  ONE file per gesture and dropped the rest without a word ("it
+  looked like songs were lost").
+
+### Fixed
+
+- The library deduplicates identical songs across its scan roots
+  (repo `songs/` vs the user songs directory) — the same import in
+  both places showed up twice in the browser.
+
+### Added
+
 - **Sustain generation listens to the music now**: a note holds while
   its energy keeps ringing and no absolutely-strong new onset strikes
   — the gap to the next note only bounds the length. The old rule

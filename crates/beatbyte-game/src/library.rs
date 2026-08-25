@@ -83,15 +83,19 @@ pub fn scan_library(builtins: &[ChartFile]) -> SongLibrary {
     if let Some(user_dir) = user_songs_dir() {
         roots.push(user_dir);
     }
+    // Title+artist dedupe across ALL scan roots: the same song can
+    // legitimately exist twice on disk (imported in the repo folder
+    // AND in the user songs dir — exactly what put "Girls Just Want
+    // to Have Fun" twice into the browser). First find wins.
+    let mut seen: std::collections::HashSet<(String, String)> = builtins
+        .iter()
+        .map(|b| (b.song.title.to_lowercase(), b.song.artist.to_lowercase()))
+        .collect();
     for chart_path in roots.iter().flat_map(|root| find_chart_files(root)) {
         match load_entry(&chart_path) {
             Ok(Some(entry)) => {
-                // The CLI `demo` command writes built-in songs to
-                // disk; don't list one twice.
-                if builtins
-                    .iter()
-                    .any(|b| entry.title == b.song.title && entry.artist == b.song.artist)
-                {
+                let key = (entry.title.to_lowercase(), entry.artist.to_lowercase());
+                if !seen.insert(key) {
                     continue;
                 }
                 entries.push(entry);

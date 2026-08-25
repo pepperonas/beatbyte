@@ -25,6 +25,49 @@ const AUDIO_EXTENSIONS: [&str; 5] = ["wav", "ogg", "flac", "mp3", "m4a"];
 #[derive(Resource, Default)]
 pub struct ImportStatus(pub String);
 
+/// The batch queue: every dropped file lands here; one import task
+/// runs at a time. The first version imported ONE file per gesture
+/// and silently dropped the rest — "it looked like songs were lost."
+#[derive(Resource, Default)]
+pub struct ImportQueue {
+    pending: std::collections::VecDeque<PathBuf>,
+    /// Files in the current batch (incl. skipped/failed).
+    pub total: usize,
+    /// Finished files (ok + failed + skipped).
+    pub done: usize,
+    /// Successfully imported.
+    pub ok: usize,
+    /// Failed to import.
+    pub failed: usize,
+    /// Skipped (unsupported extension, duplicate).
+    pub skipped: usize,
+    /// Title currently being imported.
+    pub current: Option<String>,
+    /// Seconds since the batch finished (drives the summary fade).
+    pub since_finished: f32,
+}
+
+impl ImportQueue {
+    /// Whether a batch is running.
+    #[must_use]
+    pub fn active(&self) -> bool {
+        self.done < self.total
+    }
+}
+
+/// One line summing up a finished batch. Pure — tested.
+#[must_use]
+pub fn summary_line(ok: usize, failed: usize, skipped: usize) -> String {
+    let mut parts = vec![format!("{ok} imported")];
+    if skipped > 0 {
+        parts.push(format!("{skipped} skipped"));
+    }
+    if failed > 0 {
+        parts.push(format!("{failed} failed"));
+    }
+    parts.join(" - ")
+}
+
 /// The in-flight import task.
 #[derive(Resource)]
 struct ImportTask(Task<Result<String, String>>);
@@ -34,58 +77,90 @@ pub struct ImportPlugin;
 
 impl Plugin for ImportPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<ImportStatus>().add_systems(
-            Update,
-            (
-                handle_drops
-                    .run_if(in_state(AppState::SongSelect).or_else(in_state(AppState::MainMenu))),
-                poll_import,
-            ),
-        );
+        app.init_resource::<ImportStatus>()
+            .init_resource::<ImportQueue>()
+            .add_systems(Startup, spawn_import_panel)
+            .add_systems(
+                Update,
+                (
+                    handle_drops.run_if(
+                        in_state(AppState::SongSelect).or_else(in_state(AppState::MainMenu)),
+                    ),
+                    start_next_import,
+                    poll_import,
+                    update_import_panel,
+                )
+                    .chain(),
+            );
     }
 }
 
-/// React to files dropped onto the window.
+/// Enqueue every dropped file. Unsupported extensions and duplicates
+/// are counted as skipped RIGHT HERE so the batch summary is honest.
 fn handle_drops(
-    mut commands: Commands,
     mut drops: MessageReader<bevy::window::FileDragAndDrop>,
     mut status: ResMut<ImportStatus>,
-    running: Option<Res<ImportTask>>,
+    mut queue: ResMut<ImportQueue>,
 ) {
     for drop in drops.read() {
         let bevy::window::FileDragAndDrop::DroppedFile { path_buf, .. } = drop else {
             continue;
         };
-        if running.is_some() {
-            status.0 = "an import is already running".to_owned();
-            continue;
+        // A fresh gesture after a finished batch starts new counters.
+        if !queue.active() {
+            *queue = ImportQueue::default();
         }
+        queue.total += 1;
         let extension = path_buf
             .extension()
             .map(|e| e.to_string_lossy().to_lowercase())
             .unwrap_or_default();
         if !AUDIO_EXTENSIONS.contains(&extension.as_str()) {
-            status.0 = format!(
-                "cannot import `.{extension}` - supported: {}",
-                AUDIO_EXTENSIONS.join("/")
-            );
+            queue.skipped += 1;
+            queue.done += 1;
+            status.0 = format!("skipped `.{extension}` (not audio)");
             continue;
         }
-        let source = path_buf.clone();
-        let (title, artist) = song_name_from_stem(
-            &source
-                .file_stem()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "imported song".to_owned()),
-        );
-        status.0 = format!("importing \"{title}\"...");
-        info!("import: \"{title}\" by {artist} from {}", source.display());
-        let task = AsyncComputeTaskPool::get()
-            .spawn(async move { import_song(&source, &title, &artist).map(|()| title) });
-        commands.insert_resource(ImportTask(task));
-        // One file per gesture; extra dropped files are ignored.
-        break;
+        let duplicate = path_buf
+            .file_name()
+            .map(|name| sanitize_folder_name(&name.to_string_lossy()))
+            .and_then(|folder| import_dir().ok().map(|dir| dir.join(folder)))
+            .is_some_and(|dir| dir.exists());
+        if duplicate {
+            queue.skipped += 1;
+            queue.done += 1;
+            status.0 = "already imported - skipped".to_owned();
+            continue;
+        }
+        queue.pending.push_back(path_buf.clone());
     }
+}
+
+/// Start the next queued import when nothing is running.
+fn start_next_import(
+    mut commands: Commands,
+    mut queue: ResMut<ImportQueue>,
+    mut status: ResMut<ImportStatus>,
+    running: Option<Res<ImportTask>>,
+) {
+    if running.is_some() {
+        return;
+    }
+    let Some(source) = queue.pending.pop_front() else {
+        return;
+    };
+    let (title, artist) = song_name_from_stem(
+        &source
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "imported song".to_owned()),
+    );
+    status.0 = format!("importing \"{title}\"...");
+    info!("import: \"{title}\" by {artist} from {}", source.display());
+    queue.current = Some(title.clone());
+    let task = AsyncComputeTaskPool::get()
+        .spawn(async move { import_song(&source, &title, &artist).map(|()| title) });
+    commands.insert_resource(ImportTask(task));
 }
 
 /// When the import finishes: rescan the library so the browser
@@ -94,6 +169,7 @@ fn poll_import(
     mut commands: Commands,
     task: Option<ResMut<ImportTask>>,
     mut status: ResMut<ImportStatus>,
+    mut queue: ResMut<ImportQueue>,
     builtins: Option<Res<crate::boot::BuiltinSongs>>,
     library: Option<ResMut<crate::library::SongLibrary>>,
 ) {
@@ -104,18 +180,193 @@ fn poll_import(
         return;
     };
     commands.remove_resource::<ImportTask>();
+    queue.done += 1;
+    queue.current = None;
     match result {
         Ok(title) => {
-            status.0 = format!("\"{title}\" imported - have fun!");
+            queue.ok += 1;
+            status.0 = format!("\"{title}\" imported");
             if let (Some(builtins), Some(mut library)) = (builtins, library) {
                 let charts: Vec<_> = builtins.0.iter().map(|song| song.chart.clone()).collect();
                 *library = scan_library(&charts);
             }
         }
         Err(reason) => {
+            queue.failed += 1;
             warn!("import failed: {reason}");
             status.0 = format!("import failed: {reason}");
         }
+    }
+    if !queue.active() {
+        queue.since_finished = 0.0;
+        status.0 = summary_line(queue.ok, queue.failed, queue.skipped);
+    }
+}
+
+/// Root of the import overlay (visible while a batch runs).
+#[derive(Component)]
+struct ImportPanelRoot;
+
+/// The panel box (its border pulses).
+#[derive(Component)]
+struct ImportPanelBox;
+
+/// The panel's text line.
+#[derive(Component)]
+struct ImportPanelText;
+
+/// The progress-bar fill.
+#[derive(Component)]
+struct ImportBarFill;
+
+/// Build the (hidden) import overlay once. It lives outside any
+/// screen so a drop is NEVER invisible, whichever state is active.
+fn spawn_import_panel(mut commands: Commands, font: Res<crate::ui::UiFont>) {
+    commands
+        .spawn((
+            ImportPanelRoot,
+            Node {
+                position_type: PositionType::Absolute,
+                width: percent(100),
+                height: percent(100),
+                align_items: AlignItems::FlexEnd,
+                justify_content: JustifyContent::Center,
+                padding: UiRect::bottom(px(30)),
+                ..default()
+            },
+            Pickable::IGNORE,
+            GlobalZIndex(50),
+            Visibility::Hidden,
+        ))
+        .with_children(|parent| {
+            parent
+                .spawn((
+                    ImportPanelBox,
+                    Node {
+                        flex_direction: FlexDirection::Column,
+                        row_gap: px(10),
+                        padding: UiRect::all(px(14)),
+                        width: px(440),
+                        border: UiRect::all(px(2)),
+                        border_radius: BorderRadius::all(px(10)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.05, 0.05, 0.11, 0.94)),
+                    BorderColor::all(crate::palette::BRAND.with_alpha(0.6)),
+                ))
+                .with_children(|panel| {
+                    panel.spawn((
+                        ImportPanelText,
+                        Text::new(""),
+                        font.text(11.0),
+                        TextColor(crate::palette::TEXT),
+                    ));
+                    panel
+                        .spawn((
+                            Node {
+                                width: percent(100),
+                                height: px(10),
+                                border_radius: BorderRadius::all(px(5)),
+                                ..default()
+                            },
+                            BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.08)),
+                        ))
+                        .with_children(|bar| {
+                            bar.spawn((
+                                ImportBarFill,
+                                Node {
+                                    width: percent(0),
+                                    height: percent(100),
+                                    border_radius: BorderRadius::all(px(5)),
+                                    ..default()
+                                },
+                                BackgroundColor(crate::palette::BRAND),
+                            ));
+                        });
+                });
+        });
+}
+
+/// Drive the overlay: show while a batch runs (plus a 4-second
+/// summary), pulse the border, ease the bar toward the batch
+/// progress, and flash the fill whenever a file finishes.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)] // Bevy system: params are DI
+fn update_import_panel(
+    time: Res<Time>,
+    mut queue: ResMut<ImportQueue>,
+    mut root: Query<&mut Visibility, With<ImportPanelRoot>>,
+    mut boxes: Query<&mut BorderColor, With<ImportPanelBox>>,
+    mut texts: Query<&mut Text, With<ImportPanelText>>,
+    mut fills: Query<(&mut Node, &mut BackgroundColor), With<ImportBarFill>>,
+    mut last_done: Local<usize>,
+    mut flash: Local<f32>,
+) {
+    let Ok(mut visibility) = root.single_mut() else {
+        return;
+    };
+    if queue.total == 0 {
+        *visibility = Visibility::Hidden;
+        return;
+    }
+    if !queue.active() {
+        queue.since_finished += time.delta_secs();
+    }
+    let show = queue.active() || queue.since_finished < 4.0;
+    *visibility = if show {
+        Visibility::Visible
+    } else {
+        Visibility::Hidden
+    };
+    if !show {
+        return;
+    }
+
+    if queue.done != *last_done {
+        *last_done = queue.done;
+        *flash = 1.0;
+    }
+    *flash = (*flash - time.delta_secs() * 2.5).max(0.0);
+
+    if let Ok(mut text) = texts.single_mut() {
+        let line = if queue.active() {
+            let name = queue.current.as_deref().unwrap_or("...");
+            format!(
+                "importing \"{name}\"  ({}/{})",
+                (queue.done + 1).min(queue.total),
+                queue.total
+            )
+        } else {
+            summary_line(queue.ok, queue.failed, queue.skipped)
+        };
+        if text.0 != line {
+            text.0 = line;
+        }
+    }
+
+    // Border pulse while working; steady when done.
+    if let Ok(mut border) = boxes.single_mut() {
+        let alpha = if queue.active() {
+            0.45 + 0.35 * (time.elapsed_secs() * 6.0).sin()
+        } else {
+            0.8
+        };
+        *border = BorderColor::all(crate::palette::BRAND.with_alpha(alpha));
+    }
+
+    if let Ok((mut node, mut color)) = fills.single_mut() {
+        let target = queue.done as f32 / queue.total.max(1) as f32 * 100.0;
+        let current = match node.width {
+            Val::Percent(value) => value,
+            _ => 0.0,
+        };
+        // Ease toward the target; snap when close.
+        let eased = current + (target - current) * (time.delta_secs() * 8.0).min(1.0);
+        node.width = percent(if (eased - target).abs() < 0.5 {
+            target
+        } else {
+            eased
+        });
+        color.0 = crate::palette::BRAND.mix(&Color::WHITE, *flash * 0.7);
     }
 }
 
@@ -248,5 +499,17 @@ mod tests {
             "never-gonna--4k---id--m4a"
         );
         assert_eq!(sanitize_folder_name("///"), "imported-song");
+    }
+}
+
+#[cfg(test)]
+mod summary_tests {
+    use super::summary_line;
+
+    #[test]
+    fn summary_mentions_only_nonzero_buckets() {
+        assert_eq!(summary_line(3, 0, 0), "3 imported");
+        assert_eq!(summary_line(2, 0, 1), "2 imported - 1 skipped");
+        assert_eq!(summary_line(0, 2, 1), "0 imported - 1 skipped - 2 failed");
     }
 }
