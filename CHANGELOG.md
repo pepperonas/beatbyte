@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Note Style setting**: the 8-bit per-lane shapes can be switched
+  to a classic round-gem look (colored disc, white center, dark ring
+  on strum notes — HOPOs carry no ring). Round gems render from
+  128-px anti-aliased, linearly sampled textures, deliberately
+  smooth against the pixel-art default. The 8-bit shapes remain the
+  default (they are the colorblind-safe look).
+
+### Added
+
 - **Delete songs from the browser**: `Backspace`/`Del` on a
   highlighted song (press twice to confirm). Imported songs lose
   their whole folder, hand-managed charts only the chart file (the

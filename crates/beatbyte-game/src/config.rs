@@ -38,6 +38,10 @@ pub struct Settings {
     /// Tap mode: notes hit on fret press alone, no strum required —
     /// keyboard-friendly assist. Such runs skip the scoreboard.
     pub tap_mode: bool,
+    /// Round gems instead of the 8-bit per-lane shapes. Off by
+    /// default: the shapes are the colorblind-safe look — turning
+    /// them off makes color the only lane signal.
+    pub round_gems: bool,
     /// Fullscreen window mode.
     pub fullscreen: bool,
     /// The bindings table (see [`crate::controls`]).
@@ -58,6 +62,7 @@ impl Default for Settings {
             beat_pulse: true,
             backdrop_motion: true,
             tap_mode: false,
+            round_gems: false,
             fullscreen: false,
             input_map: InputMap::default(),
             theme: "auto".to_owned(),

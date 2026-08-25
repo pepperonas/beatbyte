@@ -23,13 +23,14 @@ enum Row {
     BeatPulse,
     BackdropMotion,
     TapMode,
+    NoteStyle,
     Fullscreen,
     Theme,
     Controls,
 }
 
 impl Row {
-    const ALL: [Row; 12] = [
+    const ALL: [Row; 13] = [
         Row::MusicVolume,
         Row::SfxVolume,
         Row::ScrollSpeed,
@@ -39,6 +40,7 @@ impl Row {
         Row::BeatPulse,
         Row::BackdropMotion,
         Row::TapMode,
+        Row::NoteStyle,
         Row::Fullscreen,
         Row::Theme,
         Row::Controls,
@@ -55,6 +57,7 @@ impl Row {
             Row::BeatPulse => "BEAT PULSE",
             Row::BackdropMotion => "STAGE MOTION",
             Row::TapMode => "TAP MODE (NO STRUM)",
+            Row::NoteStyle => "NOTE STYLE",
             Row::Fullscreen => "FULLSCREEN",
             Row::Theme => "STAGE THEME",
             Row::Controls => "CONTROLS",
@@ -72,6 +75,12 @@ impl Row {
             Row::BeatPulse => on_off(settings.beat_pulse),
             Row::BackdropMotion => on_off(settings.backdrop_motion),
             Row::TapMode => on_off(settings.tap_mode),
+            Row::NoteStyle => if settings.round_gems {
+                "ROUND"
+            } else {
+                "8-BIT SHAPES"
+            }
+            .to_owned(),
             Row::Fullscreen => on_off(settings.fullscreen),
             Row::Theme => settings.theme.to_uppercase(),
             Row::Controls => "...".to_owned(),
@@ -100,6 +109,7 @@ impl Row {
             Row::BeatPulse => settings.beat_pulse = !settings.beat_pulse,
             Row::BackdropMotion => settings.backdrop_motion = !settings.backdrop_motion,
             Row::TapMode => settings.tap_mode = !settings.tap_mode,
+            Row::NoteStyle => settings.round_gems = !settings.round_gems,
             Row::Fullscreen => settings.fullscreen = !settings.fullscreen,
             Row::Theme => {
                 // Cycle auto → themes → auto.

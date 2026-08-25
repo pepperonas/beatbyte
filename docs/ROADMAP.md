@@ -170,6 +170,8 @@ chart format v1 can be frozen as a promise.
 
 - [x] G5 **Delete library entries in-game.** Backspace/Del with a 3-s double-press confirm; imported folders removed whole, hand-managed charts chart-only, built-ins refused. *Verified: 3 fs tests + real-key E2E (arrow-navigate, double Backspace, folder physically gone).*
 
+- [x] G6 **Note Style: round gems (8-bit off).** `round_gems` setting + "NOTE STYLE" row; round = disc/white-core/dark-ring (strum) vs no ring (HOPO), 128-px AA textures with linear sampling. D1 amendment: colorblind shapes go from "always on" to DEFAULT on — an explicit player choice may prefer color-only. *Verified: 7 mask/coverage tests; screenshots of both styles; flawless autopilot in both.*
+
 ### F — Release engineering to 1.0
 
 - [x] F0 **v0.9.0 — content, accessibility, editor v2.** Amendment (2026-08-24): every unblocked B/C/D/E task landed while the A tasks wait on human playtesting — that body of work (second song, song-selector harness, import guide + scan fix, format truth, forward-compat pins, Linux/Windows CI smokes, Stage Motion, colorblind lane shapes, HOPO visibility, editor move/bulk/audition, harness integrity) ships now instead of idling behind A2. *SHIPPED 2026-08-24: all 7 assets auto-attached via the recursive glob; aarch64 tarball smoke + flawless artifact autopilot from neutral CWD + DMG .app smoke; two release-run attempts (spurious hdiutil ENOSPC → retry mitigation).*

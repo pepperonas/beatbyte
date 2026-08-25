@@ -41,10 +41,12 @@ pub fn spawn_highways(
     layout: Res<HighwayLayout>,
     theme: Res<crate::theme::ActiveTheme>,
     shapes: Res<crate::shapes::LaneShapes>,
+    settings: Res<Settings>,
     players: Query<&PlayerIndex, With<PlayerSession>>,
 ) {
     let theme = theme.0;
     let shapes = &*shapes;
+    let round = settings.round_gems;
     for index in players.iter() {
         let player = index.0;
         let origin = layout.origin(player);
@@ -66,18 +68,19 @@ pub fn spawn_highways(
                 Transform::from_xyz(layout.lane_x(player, lane), 0.0, -9.0),
             ));
         }
-        // Receptor row: ring look = the lane's shape under a smaller
-        // background copy of the same shape. Shapes, not just colors,
-        // identify lanes (colorblind accessibility).
+        // Receptor row: ring look = the gem body under a smaller
+        // background copy. 8-bit style keeps the per-lane shapes
+        // (colorblind-safe default); round style uses discs.
         let receptor = layout.receptor_size();
         for lane in Lane::ALL {
             let x = layout.lane_x(player, lane);
             commands.spawn((
                 GameplayScreen,
                 Receptor { player, lane },
-                shape_sprite(
+                gem_sprite(
                     shapes,
                     lane,
+                    round,
                     palette::dimmed(theme.lane_color(lane), 0.35),
                     receptor,
                 ),
@@ -85,7 +88,7 @@ pub fn spawn_highways(
             ));
             commands.spawn((
                 GameplayScreen,
-                shape_sprite(shapes, lane, theme.background, receptor * 0.72),
+                gem_sprite(shapes, lane, round, theme.background, receptor * 0.72),
                 Transform::from_xyz(x, RECEPTOR_Y, -4.0),
             ));
         }
@@ -121,6 +124,7 @@ pub fn spawn_due_notes(
                 &layout,
                 &theme.0,
                 &shapes,
+                settings.round_gems,
                 index.0,
                 cursor,
                 &event,
@@ -131,12 +135,13 @@ pub fn spawn_due_notes(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)] // internal helper mirroring the system's DI
 fn spawn_event_sprites(
     commands: &mut Commands,
     layout: &HighwayLayout,
     theme: &crate::theme::Theme,
     shapes: &crate::shapes::LaneShapes,
+    round: bool,
     player: usize,
     event_index: usize,
     event: &beatbyte_core::NoteEvent,
@@ -146,9 +151,10 @@ fn spawn_event_sprites(
     let hopo = matches!(event.kind, beatbyte_core::NoteKind::Hopo);
     for lane in event.lanes.iter() {
         let color = theme.lane_color(lane);
-        // HOPOs render smaller with a bright core — until now they
-        // looked identical to strums, which hid the mechanic.
-        let gem = if hopo { size * 0.78 } else { size };
+        // 8-bit: HOPOs render smaller with a bright core. Round: all
+        // gems the same size, white center on every note, dark ring
+        // ONLY on strum notes — the documented classic distinction.
+        let gem = if hopo && !round { size * 0.78 } else { size };
         let entity = commands
             .spawn((
                 GameplayScreen,
@@ -157,11 +163,34 @@ fn spawn_event_sprites(
                     event_index,
                     resolved: false,
                 },
-                shape_sprite(shapes, lane, color, gem),
+                gem_sprite(shapes, lane, round, color, gem),
                 Transform::from_xyz(layout.lane_x(player, lane), 2000.0, 0.0),
             ))
             .id();
-        if hopo {
+        if round {
+            commands.entity(entity).with_children(|parent| {
+                parent.spawn((
+                    Sprite {
+                        image: shapes.round_core(),
+                        color: Color::WHITE.with_alpha(0.9),
+                        custom_size: Some(Vec2::splat(gem)),
+                        ..Default::default()
+                    },
+                    Transform::from_xyz(0.0, 0.0, 0.5),
+                ));
+                if !hopo {
+                    parent.spawn((
+                        Sprite {
+                            image: shapes.round_ring(),
+                            color: Color::BLACK.with_alpha(0.8),
+                            custom_size: Some(Vec2::splat(gem)),
+                            ..Default::default()
+                        },
+                        Transform::from_xyz(0.0, 0.0, 0.4),
+                    ));
+                }
+            });
+        } else if hopo {
             commands.entity(entity).with_children(|parent| {
                 parent.spawn((
                     shape_sprite(shapes, lane, Color::WHITE.with_alpha(0.85), gem * 0.42),
@@ -382,6 +411,22 @@ pub fn apply_note_events(
 fn shape_sprite(shapes: &crate::shapes::LaneShapes, lane: Lane, color: Color, size: f32) -> Sprite {
     Sprite {
         image: shapes.image(lane),
+        color,
+        custom_size: Some(Vec2::splat(size)),
+        ..Default::default()
+    }
+}
+
+/// The gem body in the active note style (8-bit lane shape or disc).
+fn gem_sprite(
+    shapes: &crate::shapes::LaneShapes,
+    lane: Lane,
+    round: bool,
+    color: Color,
+    size: f32,
+) -> Sprite {
+    Sprite {
+        image: shapes.body(lane, round),
         color,
         custom_size: Some(Vec2::splat(size)),
         ..Default::default()
