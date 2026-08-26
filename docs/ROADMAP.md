@@ -182,7 +182,7 @@ chart format v1 can be frozen as a promise.
 
 - [x] G12 **Window-independent scaling.** Ortho projection `AutoMin{1280,720}` + `UiScale` synced to window height (0.6..2.5) + `BEATBYTE_WINDOW=WxH` for pinned sizes. *Verified: flawless runs with full stage/HUD at 800x500 and 1920x1200 (screenshots).*
 
-- [~] G13 **Guitar Hero X-plorer support + controller tester.** gilrs cannot see the guitar (Xbox-360 vendor protocol, no macOS driver — verified empirically); own libusb reader thread (rusb vendored) decodes the documented 20-byte reports and injects RawGamepad events, making it a first-class Bevy gamepad matching the default bindings exactly. Controls screen: connected-device line + five live fret lamps through the real InputMap. *Verified so far: real guitar detected and claimed ("x-plorer: guitar connected"), 2 decode tests. Remaining: the USER pressing frets (lamps + a played song) — hardware hands needed, then C4's unplug test rides along.*
+- [x] G13 **Guitar Hero X-plorer support + controller tester.** gilrs cannot see the guitar (Xbox-360 vendor protocol, no macOS driver — verified empirically); own libusb reader thread (rusb vendored) decodes the documented 20-byte reports and injects RawGamepad events, making it a first-class Bevy gamepad matching the default bindings exactly. Controls screen: connected-device line + five live fret lamps through the real InputMap. *Verified: real guitar detected and claimed; USER pressed frets and the lamps lit (screenshot: red+yellow held, both lamps on — "perfekt!!! das funktioniert schon mal!!!"); 2 decode tests. Still open informally: a full song played on the guitar + C4's mid-song unplug.*
 
 ### F — Release engineering to 1.0
 

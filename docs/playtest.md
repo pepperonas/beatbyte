@@ -72,6 +72,11 @@ actionable; adjectives alone are not.
 
 ## Findings log
 
+**2026-08-26 · Guitar Hero X-plorer**
+- Real hardware connected through the app's own libusb reader;
+  user-confirmed with the Controls-screen fret lamps (red + yellow
+  held, both lit). Default bindings matched the guitar exactly.
+
 **2026-08-25 · zweiter Befund · imported tracks**
 - Sustains on the Rick Astley import "hat mir gut gefallen" — but the
   live Cyndi Lauper track got none. **Action taken:** sustain
