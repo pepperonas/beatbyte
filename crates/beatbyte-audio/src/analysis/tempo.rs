@@ -43,6 +43,40 @@ pub struct TempoEstimate {
     pub alt_bpm: Option<f64>,
 }
 
+/// The listener's preference for tempi near the centre of the
+/// perceptual range. Used only to break ties between grids that
+/// explain the onsets equally well.
+fn perceptual_prior(bpm: f64, config: &TempoConfig) -> f64 {
+    let octaves = (bpm / config.prior_center_bpm).log2();
+    (-0.5 * (octaves / config.prior_width_octaves).powi(2)).exp()
+}
+
+/// Width of the support band inside which the octave is decided by
+/// preference rather than by evidence.
+///
+/// It has to be wide enough to hold octave-related grids together:
+/// weighting a beat hit above an eighth hit means a faster grid
+/// scores systematically higher on identical music — by up to 1/0.8 —
+/// so a tight band silently excluded the correct slower octave before
+/// the prior ever got to vote.
+const OCTAVE_BAND: f64 = 0.85;
+
+/// Whether two periods are the same grid seen at a different octave.
+///
+/// Only this relationship may be settled by preference. Support is
+/// mathematically unable to separate a grid from its double (the
+/// faster grid contains the slower one), which is exactly why the
+/// prior exists — but it must never choose between UNRELATED tempi.
+/// Letting it do so put a voice-and-guitar scene at 138 BPM instead
+/// of 110, purely because 138 sits closer to the perceptual centre.
+fn is_octave_of(period: f64, reference: f64) -> bool {
+    if period <= 0.0 || reference <= 0.0 {
+        return false;
+    }
+    let octaves = (period / reference).log2();
+    octaves.abs() <= 2.5 && (octaves - octaves.round()).abs() <= 0.045
+}
+
 /// How close an onset must sit to a grid point to count as "on it".
 /// 45 ms is the outer edge of BeatByte's Great window: a listener
 /// would still hear such an onset as being on the beat.
@@ -140,9 +174,13 @@ fn meter_plausibility(onsets: &[Onset], period_s: f64) -> f64 {
     // Distance to the nearest power of two, in octaves.
     let octaves = beats.log2();
     let error = (octaves - octaves.round()).abs();
-    // 1.0 on a power of two, falling to ~0.6 at the worst case
-    // (a tritone away, i.e. a 1.5x or 3x relationship).
-    (-0.5 * (error / 0.42).powi(2)).exp().mul_add(0.4, 0.6)
+    // 1.0 on a power of two, falling to ~0.35 at the worst case (a
+    // 1.5x or 3x relationship). The range has to be wide: on sparse
+    // material this term is often the only thing separating a duple
+    // reading from a triple one, and the perceptual prior actively
+    // pulls the wrong way there (it prefers whatever sits closest to
+    // 120 BPM regardless of how the music divides).
+    (-0.5 * (error / 0.42).powi(2)).exp().mul_add(0.65, 0.35)
 }
 
 /// Candidate periods taken straight from the spacing between onsets.
@@ -201,6 +239,65 @@ fn ioi_periods(onsets: &[Onset], min_period: f64, max_period: f64) -> Vec<f64> {
     periods
 }
 
+/// One tempo candidate with the evidence behind it — the answer to
+/// "why did it pick that BPM?".
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TempoCandidate {
+    /// Candidate tempo.
+    pub bpm: f64,
+    /// Share of onset strength its sixteenth grid explains.
+    pub support: f64,
+    /// Perceptual preference for this tempo.
+    pub prior: f64,
+    /// Duple-metre plausibility of the repeat interval.
+    pub meter: f64,
+    /// Whether it survived the support band and could be chosen.
+    pub in_band: bool,
+}
+
+/// Every candidate the estimator considered, best support first.
+/// Exposed for debugging and for the CLI's analysis report: a tempo
+/// decision that cannot be inspected cannot be trusted.
+#[must_use]
+pub fn tempo_candidates(
+    flux: &[f32],
+    hop_s: f64,
+    onsets: &[Onset],
+    config: &TempoConfig,
+) -> Vec<TempoCandidate> {
+    let mut periods = candidate_periods(flux, hop_s, onsets, config);
+    periods.retain(|p| *p >= 60.0 / config.max_bpm && *p <= 60.0 / config.min_bpm);
+    let mut scored: Vec<TempoCandidate> = periods
+        .iter()
+        .map(|period| TempoCandidate {
+            bpm: 60.0 / period,
+            support: grid_support(onsets, *period),
+            prior: perceptual_prior(60.0 / period, config),
+            meter: meter_plausibility(onsets, *period),
+            in_band: false,
+        })
+        .collect();
+    let best = scored.iter().map(|c| c.support).fold(0.0f64, f64::max);
+    let best_grid = scored
+        .iter()
+        .max_by(|a, b| {
+            a.support
+                .total_cmp(&b.support)
+                .then(b.bpm.total_cmp(&a.bpm))
+        })
+        .map_or(config.prior_center_bpm, |c| c.bpm);
+    for candidate in &mut scored {
+        candidate.in_band = candidate.support >= best * OCTAVE_BAND
+            && is_octave_of(60.0 / candidate.bpm, 60.0 / best_grid);
+    }
+    scored.sort_by(|a, b| {
+        b.support
+            .total_cmp(&a.support)
+            .then(a.bpm.total_cmp(&b.bpm))
+    });
+    scored
+}
+
 /// Estimate the tempo from the flux envelope and the onsets it
 /// produced. Returns `None` when there is too little to go on.
 ///
@@ -226,69 +323,14 @@ pub fn estimate_tempo(
         return None;
     }
 
-    // Mean-subtracted autocorrelation, normalized by lag 0.
+    // Silence carries no tempo; the autocorrelation inside
+    // `candidate_periods` makes the same check for its own reasons.
     let mean = flux.iter().copied().sum::<f32>() / flux.len() as f32;
-    let centered: Vec<f64> = flux.iter().map(|&v| f64::from(v - mean)).collect();
-    let energy: f64 = centered.iter().map(|v| v * v).sum();
-    if energy < 1e-12 {
+    if flux.iter().map(|v| (v - mean).powi(2)).sum::<f32>() < 1e-12 && onsets.is_empty() {
         return None;
     }
 
-    let ac = |lag: usize| -> f64 {
-        let mut sum = 0.0;
-        for t in 0..centered.len() - lag {
-            sum += centered[t] * centered[t + lag];
-        }
-        (sum / energy).max(0.0)
-    };
-
-    let prior = |bpm: f64| -> f64 {
-        let octaves = (bpm / config.prior_center_bpm).log2();
-        (-0.5 * (octaves / config.prior_width_octaves).powi(2)).exp()
-    };
-
-    let mut correlations = vec![0.0f64; lag_max + 2];
-    for (lag, slot) in correlations
-        .iter_mut()
-        .enumerate()
-        .take(lag_max + 1)
-        .skip(lag_min)
-    {
-        *slot = ac(lag);
-    }
-
-    // Candidates: local maxima of the autocorrelation, pre-ranked by
-    // correlation and prior so the (expensive) grid test only runs on
-    // plausible periods.
-    let mut candidates: Vec<(usize, f64)> = (lag_min + 1..lag_max)
-        .filter(|&lag| {
-            correlations[lag] >= correlations[lag - 1] && correlations[lag] > correlations[lag + 1]
-        })
-        .map(|lag| {
-            let bpm = 60.0 / (lag as f64 * hop_s);
-            (lag, correlations[lag] * prior(bpm))
-        })
-        .filter(|(_, score)| *score > 0.0)
-        .collect();
-    candidates.sort_by(|a, b| {
-        b.1.partial_cmp(&a.1)
-            .unwrap_or(core::cmp::Ordering::Equal)
-            .then(a.0.cmp(&b.0))
-    });
-    candidates.truncate(8);
-
-    // Periods to test: the autocorrelation's peaks, refined to
-    // sub-frame resolution, plus whatever the raw onset spacing
-    // suggests. Both are just proposals — the onsets decide.
-    let mut periods: Vec<f64> = candidates
-        .iter()
-        .map(|(lag, _)| refine_lag(&correlations, *lag, lag_min, lag_max) * hop_s)
-        .collect();
-    periods.extend(ioi_periods(
-        onsets,
-        60.0 / config.max_bpm,
-        60.0 / config.min_bpm,
-    ));
+    let mut periods = candidate_periods(flux, hop_s, onsets, config);
     periods.retain(|p| *p >= 60.0 / config.max_bpm && *p <= 60.0 / config.min_bpm);
     if periods.is_empty() {
         return None;
@@ -317,13 +359,19 @@ pub fn estimate_tempo(
     // ambiguous scenes right at once (90 not 180, 96 not 192,
     // 150 not 75) — earlier attempts that tried to decide the octave
     // from the onsets alone fixed one scene and broke another.
-    let mut best_period = 60.0 / config.prior_center_bpm;
+    // The grid with the most support is the reference; only its own
+    // octaves may then be re-ranked by preference.
+    let best_grid = scored
+        .iter()
+        .max_by(|a, b| a.1.total_cmp(&b.1).then(b.0.total_cmp(&a.0)))
+        .map_or(60.0 / config.prior_center_bpm, |(period, _)| *period);
+    let mut best_period = best_grid;
     let mut best_prior = f64::NEG_INFINITY;
     for (period, support) in &scored {
-        if *support < best_support * 0.95 {
+        if *support < best_support * OCTAVE_BAND || !is_octave_of(*period, best_grid) {
             continue;
         }
-        let value = prior(60.0 / period) * meter_plausibility(onsets, *period);
+        let value = perceptual_prior(60.0 / period, config) * meter_plausibility(onsets, *period);
         if value > best_prior {
             best_prior = value;
             best_period = *period;
@@ -347,6 +395,54 @@ pub fn estimate_tempo(
         confidence,
         alt_bpm,
     })
+}
+
+/// Every period worth testing: autocorrelation peaks (refined to
+/// sub-frame resolution) plus the raw onset spacing. Both are only
+/// proposals — the onsets decide between them.
+fn candidate_periods(flux: &[f32], hop_s: f64, onsets: &[Onset], config: &TempoConfig) -> Vec<f64> {
+    let mut periods = Vec::new();
+    let lag_min = ((60.0 / config.max_bpm) / hop_s).round() as usize;
+    let lag_max = ((60.0 / config.min_bpm) / hop_s).ceil() as usize;
+    if hop_s > 0.0 && lag_min >= 1 && lag_max + 8 < flux.len() {
+        let mean = flux.iter().copied().sum::<f32>() / flux.len() as f32;
+        let centered: Vec<f64> = flux.iter().map(|&v| f64::from(v - mean)).collect();
+        let energy: f64 = centered.iter().map(|v| v * v).sum();
+        if energy >= 1e-12 {
+            let mut correlations = vec![0.0f64; lag_max + 2];
+            for lag in lag_min..=lag_max {
+                let mut sum = 0.0;
+                for t in 0..centered.len() - lag {
+                    sum += centered[t] * centered[t + lag];
+                }
+                correlations[lag] = (sum / energy).max(0.0);
+            }
+            let mut peaks: Vec<(usize, f64)> = (lag_min + 1..lag_max)
+                .filter(|&lag| {
+                    correlations[lag] >= correlations[lag - 1]
+                        && correlations[lag] > correlations[lag + 1]
+                })
+                .map(|lag| {
+                    let bpm = 60.0 / (lag as f64 * hop_s);
+                    (lag, correlations[lag] * perceptual_prior(bpm, config))
+                })
+                .filter(|(_, score)| *score > 0.0)
+                .collect();
+            peaks.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+            peaks.truncate(8);
+            periods.extend(
+                peaks
+                    .iter()
+                    .map(|(lag, _)| refine_lag(&correlations, *lag, lag_min, lag_max) * hop_s),
+            );
+        }
+    }
+    periods.extend(ioi_periods(
+        onsets,
+        60.0 / config.max_bpm,
+        60.0 / config.min_bpm,
+    ));
+    periods
 }
 
 /// Parabolic interpolation around an autocorrelation peak, for

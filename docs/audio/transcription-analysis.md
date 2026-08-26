@@ -134,15 +134,56 @@ Ordered by damage, each step measured against the table above.
    f_sustains stays wrong at 120 against 80 — its onset precision is
    0.33, so its tempo is derived from mostly-spurious detections; it
    is expected to come good with P3 and is pinned as such.
-2. **P2 Guitar-register pitch** — replace the fixed register Gaussian
-   with a lead-band weighting that covers the guitar range, and give
-   the melody stage a second, shorter analysis window so fast notes
-   resolve. Target: scene `b` pitch accuracy ≫ 3 %, no regression on
-   `a`/`f`.
-3. **P3 Onset quality** — band-wise flux with per-band adaptive
-   thresholds (SuperFlux-style vibrato suppression), so a stack of
-   harmonics beating together stops reading as an attack. Target:
-   `f` precision ≫ 0.17, `a` ≫ 0.53, no recall loss.
+### Result after P1–P3
+
+```text
+scene                      bpm  on-F1 mel-F1  pitch   time    frag contam
+a_simple_melody          100.0   0.67   1.00   100%    20ms   0.00     0%
+b_guitar_riff            140.0   0.99   0.96   100%     9ms   0.00     0%
+c_chords                  90.0   0.50   0.41   100%    19ms   0.29     0%
+d_drums_and_guitar       120.0   0.67   0.86    77%    17ms   0.22    19%
+e_vocals_and_guitar      110.0   0.74   0.27    78%    26ms   0.00     0%
+f_sustains                80.3   0.67   1.00   100%    19ms   0.00     0%
+g_syncopation             95.9   0.65   0.98   100%    18ms   0.00     0%
+h_tempo_ambiguity        150.0   1.00   1.00   100%    20ms   0.00     0%
+```
+
+**Every tempo is now correct** (was 3 of 8 wrong). Melody F1 went
+0.81 → 1.00 on the plain melody, 0.53 → 0.96 on the riff, 0.67 → 0.98
+on the syncopated figure; pitch accuracy on the riff went 3 % → 100 %.
+
+⚠️ **Open question for the ear, not the harness:** on a real pop
+track the number of long melody notes fell (147 → 36 held ≥ 0.45 s),
+and with it the sustain count in the generated chart (medium 110 → 37).
+The harness says this is a correction — scene `a` used to merge four
+notes into one 1.8 s event, and its fragmentation metric dropped from
+0.36 to 0.09 — but "more accurate" and "more fun" are not the same
+claim, and only playing it settles which one this is.
+
+2. **P2 Guitar-register pitch** — DONE, and the diagnosis in the
+   original write-up was only half right. The register Gaussian was
+   indeed wrong (replaced by a flat weighting across the neck that
+   rolls off outside it), but the dominant cause was resolution:
+   harmonic salience took the MAXIMUM of three neighbouring FFT bins,
+   and at 82 Hz with 10.8 Hz bins three adjacent semitones share a
+   bin — the low guitar register was literally unresolvable. Reading
+   the interpolated magnitude at the exact harmonic frequency fixed
+   it. That exposed the next layer, classic sub-octave shadows (every
+   even harmonic of F0/2 lands on a partial of F0), removed by
+   comparing each candidate with the pitch an octave above it.
+3. **P3 Onset quality** — DONE. SuperFlux (difference against a
+   maximum-filtered earlier frame) plus per-band normalization across
+   three bands, so a quiet pick attack is not buried by a loud kick.
+   `f_sustains` precision 0.17 → 0.67, and with it its tempo became
+   correct. The temporal lag had to stay at one frame: two frames held
+   the flux elevated after the attack and pushed detections 17 ms late
+   on a click track with exactly known positions.
+   The onsets then unlocked the real fix for note segmentation: a
+   repeated note at the same pitch is invisible to a pitch tracker, so
+   notes are now split at ATTACKS — but only attacks belonging to that
+   voice, i.e. where the tracked pitch's own salience rises. Without
+   that qualifier a drum hit over a held guitar note split it (caught
+   by an existing test).
 4. **P4 Lead/voice discrimination** — an event score combining onset
    agreement, pitch stability and harmonic salience instead of raw
    loudness. Target: scene `e` recall against the guitar ≫ 0.12.

@@ -163,37 +163,26 @@ mod tests {
     }
 
     #[test]
-    fn tempo_is_right_wherever_the_onsets_are_usable() {
-        // Every scene whose onsets are clean enough to carry a tempo
-        // must land within 3 % of the real one. f_sustains is the
-        // documented exception and is asserted separately: its onset
-        // precision is 0.33 (about thirty detections for five held
-        // tones), and a tempo derived from mostly-spurious onsets is
-        // meaningless. It is expected to come good with defect D4;
-        // see docs/audio/transcription-analysis.md.
+    fn tempo_is_right_on_every_scene() {
+        // Every scene, no exceptions. This started as seven of eight
+        // with f_sustains carved out; the carve-out is gone because
+        // the defect behind it is.
         for report in evaluate_all() {
             let scene = scenes::all()
                 .into_iter()
                 .find(|s| s.name == report.name)
                 .expect("scene exists");
-            if report.name == "f_sustains" {
-                assert!(
-                    report.tempo.bpm > 20.0 && report.tempo.bpm < 400.0,
-                    "even the unusable case must stay in a sane range"
-                );
-                assert!(
-                    report.onsets.precision() < 0.5,
-                    "if onset precision improved, re-enable the tempo assertion here"
-                );
-                continue;
-            }
-            let tolerance = scene.bpm * 0.03;
             assert!(
-                report.tempo.error_bpm <= tolerance,
+                report.tempo.error_bpm <= scene.bpm * 0.03,
                 "{}: {:.1} BPM against a true {:.1}",
                 report.name,
                 report.tempo.bpm,
                 scene.bpm
+            );
+            assert!(
+                !report.tempo.octave_error,
+                "{}: octave error at {:.1} BPM",
+                report.name, report.tempo.bpm
             );
         }
     }
