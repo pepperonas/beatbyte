@@ -99,7 +99,7 @@ fn spawn_menu(mut commands: Commands, font: Res<UiFont>) {
                 TextColor(palette::BRAND),
             ));
             parent.spawn((
-                Text::new("an 8-bit rhythm game"),
+                Text::new("five lanes. your music."),
                 font.text(11.0),
                 TextColor(palette::TEXT_DIM),
                 Node {
@@ -110,13 +110,14 @@ fn spawn_menu(mut commands: Commands, font: Res<UiFont>) {
             for (index, action) in MenuAction::ALL.iter().enumerate() {
                 parent.spawn((
                     MenuRow(index),
+                    Button,
                     Text::new(action.label()),
                     font.text(18.0),
                     TextColor(palette::TEXT_DIM),
                 ));
             }
             parent.spawn((
-                Text::new("UP/DOWN choose    ENTER confirm"),
+                Text::new("UP/DOWN or MOUSE    ENTER / CLICK confirm"),
                 font.text(10.0),
                 TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
                 Node {
@@ -130,6 +131,7 @@ fn spawn_menu(mut commands: Commands, font: Res<UiFont>) {
 fn menu_input(
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<&Gamepad>,
+    rows: Query<(&MenuRow, &Interaction), Changed<Interaction>>,
     mut cursor: ResMut<MenuCursor>,
     mut roster: ResMut<crate::multiplayer::PlayerRoster>,
     mut next_state: ResMut<NextState<AppState>>,
@@ -143,7 +145,19 @@ fn menu_input(
     if nav.down {
         cursor.0 = (cursor.0 + 1) % count;
     }
-    if nav.confirm {
+    // Mouse: hovering selects, clicking activates.
+    let mut clicked = false;
+    for (row, interaction) in &rows {
+        match interaction {
+            Interaction::Hovered => cursor.0 = row.0,
+            Interaction::Pressed => {
+                cursor.0 = row.0;
+                clicked = true;
+            }
+            Interaction::None => {}
+        }
+    }
+    if nav.confirm || clicked {
         match MenuAction::ALL[cursor.0] {
             MenuAction::Play => {
                 // Solo: one keyboard player.

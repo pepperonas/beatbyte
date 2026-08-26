@@ -163,6 +163,7 @@ fn spawn_join_screen(mut commands: Commands, font: Res<UiFont>, mut roster: ResM
 fn join_input(
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<(Entity, &Gamepad)>,
+    mouse: Res<ButtonInput<MouseButton>>,
     mut roster: ResMut<PlayerRoster>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
@@ -192,7 +193,7 @@ fn join_input(
     if nav.confirm && !roster.devices.is_empty() {
         next_state.set(AppState::SongSelect);
     }
-    if nav.back {
+    if nav.back || mouse.just_pressed(MouseButton::Right) {
         next_state.set(AppState::MainMenu);
     }
 }

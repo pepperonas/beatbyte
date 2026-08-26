@@ -194,13 +194,14 @@ fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
             for (index, _) in Row::ALL.iter().enumerate() {
                 parent.spawn((
                     RowText(index),
+                    Button,
                     Text::new(""),
                     font.text(13.0),
                     TextColor(palette::TEXT_DIM),
                 ));
             }
             parent.spawn((
-                Text::new("UP/DOWN choose   LEFT/RIGHT adjust   ESC back"),
+                Text::new("UP/DOWN choose   LEFT/RIGHT / CLICK adjust   ESC / R-CLICK back"),
                 font.text(9.0),
                 TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
                 Node {
@@ -211,9 +212,13 @@ fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
         });
 }
 
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI
 fn settings_input(
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<&Gamepad>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
+    rows: Query<(&RowText, &Interaction), Changed<Interaction>>,
     mut cursor: ResMut<SettingsCursor>,
     mut settings: ResMut<Settings>,
     mut next_state: ResMut<NextState<AppState>>,
@@ -226,18 +231,35 @@ fn settings_input(
     if nav.down {
         cursor.0 = (cursor.0 + 1) % count;
     }
+    // Mouse: hover selects; click on the selected row steps it (like
+    // RIGHT); the wheel steps the hovered value either way.
+    let mut clicked = false;
+    for (row, interaction) in &rows {
+        match interaction {
+            Interaction::Hovered => cursor.0 = row.0,
+            Interaction::Pressed => {
+                cursor.0 = row.0;
+                clicked = true;
+            }
+            Interaction::None => {}
+        }
+    }
+    let mut wheel_step = 0.0;
+    for event in wheel.read() {
+        wheel_step += event.y.signum();
+    }
     let row = Row::ALL[cursor.0];
-    if row == Row::Controls && (nav.confirm || nav.right) {
+    if row == Row::Controls && (nav.confirm || nav.right || clicked) {
         next_state.set(AppState::Controls);
         return;
     }
-    if nav.left {
+    if nav.left || wheel_step < 0.0 {
         row.adjust(&mut settings, -1.0);
     }
-    if nav.right || nav.confirm {
+    if nav.right || nav.confirm || clicked || wheel_step > 0.0 {
         row.adjust(&mut settings, 1.0);
     }
-    if nav.back {
+    if nav.back || mouse.just_pressed(MouseButton::Right) {
         next_state.set(AppState::MainMenu);
     }
 }

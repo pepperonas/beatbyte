@@ -188,6 +188,7 @@ fn run_tester(
     time: Res<Time>,
     mut timers: ResMut<FlashTimers>,
     mut next_state: ResMut<NextState<AppState>>,
+    mouse: Res<ButtonInput<MouseButton>>,
     mut lamps: Query<(&Lamp, &mut BackgroundColor)>,
     mut texts: ParamSet<(
         Query<&mut Text, With<DeviceLine>>,
@@ -289,7 +290,7 @@ fn run_tester(
     let pad_start = pads
         .iter()
         .any(|(_, pad)| pad.just_pressed(GamepadButton::Start));
-    if keys.just_pressed(KeyCode::Escape) || pad_start {
+    if keys.just_pressed(KeyCode::Escape) || pad_start || mouse.just_pressed(MouseButton::Right) {
         crate::config::save_settings(&settings);
         next_state.set(AppState::MainMenu);
     }

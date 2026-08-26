@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Mouse support across the menus.** Main menu rows hover-select and
+  click-activate; song select scrolls with the wheel, click selects,
+  a second click starts (right-click = back); settings rows
+  hover-select, click steps a value (or opens Controls), the wheel
+  steps too; multiplayer join, key-capture, the input tester and the
+  results screen all honor right-click as back. Gameplay itself
+  stays keyboard/guitar — the mouse is a menu device.
+- **INPUT TEST menu entry**: the free-play device tester now sits in
+  the main menu (it existed but a stale running instance hid it —
+  `open` only foregrounds an already-running app).
+
+### Changed
+
+- **Tagline no longer claims "8-bit game"**: the menu subtitle reads
+  "five lanes. your music." and the README describes both looks —
+  the game has shipped a smooth high-res style for a while.
+
 ### Fixed
 
 - **Solo play now hears every input device.** The single player was

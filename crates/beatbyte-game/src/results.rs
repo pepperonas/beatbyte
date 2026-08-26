@@ -289,8 +289,16 @@ fn count_up_score(time: Res<Time>, mut scores: Query<(&mut ScoreCountUp, &mut Te
     }
 }
 
-fn results_input(keys: Res<ButtonInput<KeyCode>>, mut next_state: ResMut<NextState<AppState>>) {
-    if keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::Escape) {
+fn results_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut next_state: ResMut<NextState<AppState>>,
+) {
+    if keys.just_pressed(KeyCode::Enter)
+        || keys.just_pressed(KeyCode::Escape)
+        || mouse.just_pressed(MouseButton::Left)
+        || mouse.just_pressed(MouseButton::Right)
+    {
         next_state.set(AppState::MainMenu);
     }
 }

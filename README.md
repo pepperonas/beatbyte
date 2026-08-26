@@ -2,7 +2,7 @@
 
 # 🎸 BeatByte
 
-**An original 8-bit rhythm game. Five lanes. Your music. Pure pixels.**
+**An original five-lane rhythm game. Your music. Pixel-art or polished — your call.**
 
 [![CI](https://github.com/pepperonas/beatbyte/actions/workflows/ci.yml/badge.svg)](https://github.com/pepperonas/beatbyte/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/pepperonas/beatbyte?include_prereleases&sort=semver)](https://github.com/pepperonas/beatbyte/releases)
@@ -17,8 +17,9 @@
 ---
 
 BeatByte is an original, open-source rhythm game in the classic five-lane guitar
-tradition — rebuilt from scratch in **Rust** and **Bevy** with an 8-bit /
-pixel-art identity of its own. Drop in your own music, let BeatByte analyze it
+tradition — rebuilt from scratch in **Rust** and **Bevy**. It ships two
+looks: a crisp 8-bit / pixel-art identity, and a smooth high-res style
+with round gems, a depth-view highway and bloom — switchable in-game. Drop in your own music, let BeatByte analyze it
 and generate a playable chart, then shred it solo or with up to four players on
 one machine.
 
@@ -63,8 +64,10 @@ autopilot scores prove it).*
   the built-in editor is the correction pass)
 - ✏️ **Chart editor** — beat grid, note placement, HOPOs, audio preview,
   undo/redo, validated saves
-- 👾 **8-bit identity** — pixel font, six themed stages with procedural,
-  beat-reactive backdrops; every asset generated or openly licensed
+- 👾 **Two looks** — an 8-bit pixel identity (pixel font, six themed
+  stages, procedural beat-reactive backdrops) and a smooth high-res
+  style (round gems, perspective highway, bloom); every asset
+  generated or openly licensed
 - 🕹️ **Controllers** — keyboard, gamepads and guitar-style controllers,
   fully remappable in-game
 - 👥 **Local multiplayer** — 2–4 players, versus and co-op, split highways

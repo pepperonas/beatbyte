@@ -183,14 +183,17 @@ fn refresh_pad_tester(
 fn controls_input(
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<&Gamepad>,
+    mouse: Res<ButtonInput<MouseButton>>,
     mut state: ResMut<ControlsState>,
     mut map: ResMut<InputMap>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     let count = GameAction::ALL.len();
     if state.capturing {
-        // Escape cancels the capture; anything else binds.
-        if keys.just_pressed(KeyCode::Escape) {
+        // Escape (or right-click) cancels the capture; anything
+        // else binds. Mouse buttons are not bindable, so a click can
+        // never BE the captured input.
+        if keys.just_pressed(KeyCode::Escape) || mouse.just_pressed(MouseButton::Right) {
             state.capturing = false;
             return;
         }
@@ -223,7 +226,7 @@ fn controls_input(
     if keys.just_pressed(KeyCode::Backspace) {
         map.reset_action(GameAction::ALL[state.cursor]);
     }
-    if keys.just_pressed(KeyCode::Escape) {
+    if keys.just_pressed(KeyCode::Escape) || mouse.just_pressed(MouseButton::Right) {
         next_state.set(AppState::Settings);
     }
 }

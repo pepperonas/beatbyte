@@ -99,6 +99,7 @@ fn spawn_browser_impl(
             for (index, entry) in library.entries.iter().enumerate() {
                 parent.spawn((
                     SongRow(index),
+                    Button,
                     Text::new(format!("{} - {}", entry.title, entry.artist)),
                     font.text(14.0),
                     TextColor(palette::TEXT_DIM),
@@ -144,14 +145,18 @@ fn browser_input(
     mut selected: ResMut<SelectedDifficulty>,
     builtins: Res<BuiltinSongs>,
     mut next_state: ResMut<NextState<AppState>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
+    rows: Query<(&SongRow, &Interaction), Changed<Interaction>>,
     time: Res<Time>,
     mut status: ResMut<crate::import::ImportStatus>,
     mut delete_armed: Local<(Option<usize>, f32)>,
 ) {
     let nav = MenuNav::read(&keys, pads.iter());
+    let back = nav.back || mouse.just_pressed(MouseButton::Right);
     let count = library.entries.len();
     if count == 0 {
-        if nav.back {
+        if back {
             next_state.set(AppState::MainMenu);
         }
         return;
@@ -161,6 +166,25 @@ fn browser_input(
     }
     if nav.down {
         cursor.0 = (cursor.0 + 1) % count;
+    }
+    // Mouse: wheel scrolls the list; clicking a row selects it, and
+    // clicking the already-selected row starts it.
+    for event in wheel.read() {
+        if event.y > 0.0 {
+            cursor.0 = (cursor.0 + count - 1) % count;
+        } else if event.y < 0.0 {
+            cursor.0 = (cursor.0 + 1) % count;
+        }
+    }
+    let mut clicked_selected = false;
+    for (row, interaction) in &rows {
+        if *interaction == Interaction::Pressed {
+            if cursor.0 == row.0 {
+                clicked_selected = true;
+            } else {
+                cursor.0 = row.0;
+            }
+        }
     }
     let entry = &library.entries[cursor.0];
 
@@ -179,7 +203,7 @@ fn browser_input(
         selected.0 = offered[position + 1];
     }
 
-    if nav.confirm {
+    if nav.confirm || clicked_selected {
         match prepare_song(entry, &builtins) {
             Ok(song) => {
                 commands.insert_resource(song);
@@ -235,7 +259,7 @@ fn browser_input(
             }
         }
     }
-    if nav.back {
+    if back {
         next_state.set(AppState::MainMenu);
     }
 }
