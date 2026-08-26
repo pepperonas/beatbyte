@@ -26,6 +26,34 @@ pub struct HypeFill(pub usize);
 /// Vertical anchor of the HUD block above each highway.
 const HUD_TOP: f32 = 330.0;
 
+// ── Solo corner panels ──────────────────────────────────────────────
+//
+// Solo play puts the readouts in framed plates in the bottom corners,
+// the way the arcade-era games did: score and multiplier bottom-left,
+// the meter bottom-right, the highway left alone in between.
+//
+// The old layout stacked everything above the highway, which the depth
+// view could carry but the 3D stage could not: there the neck runs to
+// a vanishing point, so "above the highway" is the middle of the
+// screen, and the numbers floated in empty space over the horizon.
+//
+// The ortho projection is `AutoMin{1280, 720}`, so world coordinates
+// within ±640 × ±360 are on screen at every window size — the corners
+// are reachable in world space and need no screen-space layer.
+//
+// Multiplayer keeps the per-highway blocks: with two to four necks
+// side by side there are no free corners, and a score has to sit above
+// the highway it belongs to.
+
+/// Half-width of a corner plate.
+const PLATE_W: f32 = 268.0;
+/// Half-height of a corner plate.
+const PLATE_H: f32 = 122.0;
+/// Distance from the viewport edge to a plate.
+const PLATE_INSET: f32 = 18.0;
+/// Thickness of a plate's border.
+const PLATE_BORDER: f32 = 2.0;
+
 /// Spawn one HUD block per player.
 pub fn spawn_huds(
     mut commands: Commands,
@@ -47,9 +75,16 @@ pub fn spawn_huds(
         Text2d::new(badge),
         font.text(9.0),
         TextColor(color),
-        Anchor::BOTTOM_LEFT,
-        Transform::from_xyz(-620.0, -340.0, 5.0),
+        Anchor::TOP_LEFT,
+        // Top-left: the bottom-left corner now belongs to the score
+        // plate, and two readouts in one corner read as one crowded
+        // block rather than two facts.
+        Transform::from_xyz(-624.0, 348.0, 5.0),
     ));
+    if layout.players() == 1 {
+        spawn_solo_panels(&mut commands, &font);
+        return;
+    }
     let compact = layout.players() > 2;
     let score_size = if compact { 14.0 } else { 22.0 };
     let line_size = if compact { 9.0 } else { 12.0 };
@@ -103,6 +138,116 @@ pub fn spawn_huds(
                 .with_scale(Vec3::new(0.0, 1.0, 1.0)),
         ));
     }
+}
+
+/// A framed plate: a border rectangle with a darker fill on top.
+///
+/// Bevy sprites have no border, so a plate is two rectangles. The fill
+/// is drawn slightly in front of the border so the border shows as a
+/// hairline edge rather than being covered.
+fn plate(commands: &mut Commands, center: Vec2, size: Vec2, accent: Color) {
+    commands.spawn((
+        GameplayScreen,
+        Sprite::from_color(palette::dimmed(accent, 0.55), size),
+        Transform::from_xyz(center.x, center.y, 3.0),
+    ));
+    commands.spawn((
+        GameplayScreen,
+        Sprite::from_color(
+            palette::BACKGROUND.with_alpha(0.88),
+            size - Vec2::splat(PLATE_BORDER * 2.0),
+        ),
+        Transform::from_xyz(center.x, center.y, 3.1),
+    ));
+}
+
+/// A small caption above a readout.
+fn caption(commands: &mut Commands, font: &UiFont, text: &str, at: Vec2) {
+    commands.spawn((
+        GameplayScreen,
+        Text2d::new(text.to_owned()),
+        font.text(8.0),
+        TextColor(palette::dimmed(palette::TEXT_DIM, 0.85)),
+        Anchor::TOP_CENTER,
+        Transform::from_xyz(at.x, at.y, 5.0),
+    ));
+}
+
+/// The solo layout: score and multiplier bottom-left, meter
+/// bottom-right, nothing over the highway.
+fn spawn_solo_panels(commands: &mut Commands, font: &UiFont) {
+    let accent = player_color(0);
+    let left = Vec2::new(
+        -640.0 + PLATE_INSET + PLATE_W / 2.0,
+        -360.0 + PLATE_INSET + PLATE_H / 2.0,
+    );
+    let right = Vec2::new(-left.x, left.y);
+    let size = Vec2::new(PLATE_W, PLATE_H);
+
+    // ── Left: score, multiplier, combo ──────────────────────────────
+    plate(commands, left, size, accent);
+    caption(
+        commands,
+        font,
+        "SCORE",
+        left + Vec2::new(0.0, PLATE_H / 2.0 - 12.0),
+    );
+    commands.spawn((
+        GameplayScreen,
+        ScoreText(0),
+        Text2d::new("0"),
+        font.text(26.0),
+        TextColor(accent),
+        Anchor::TOP_CENTER,
+        Transform::from_xyz(left.x, left.y + PLATE_H / 2.0 - 30.0, 5.0),
+    ));
+    commands.spawn((
+        GameplayScreen,
+        MultiplierText(0),
+        Text2d::new("x1"),
+        font.text(16.0),
+        TextColor(palette::TEXT),
+        Anchor::TOP_CENTER,
+        Transform::from_xyz(left.x, left.y - PLATE_H / 2.0 + 46.0, 5.0),
+    ));
+    commands.spawn((
+        GameplayScreen,
+        ComboText(0),
+        Text2d::new(""),
+        font.text(9.0),
+        TextColor(palette::TEXT_DIM),
+        Anchor::TOP_CENTER,
+        Transform::from_xyz(left.x, left.y - PLATE_H / 2.0 + 22.0, 5.0),
+    ));
+
+    // ── Right: the hype meter ───────────────────────────────────────
+    plate(commands, right, size, palette::HYPE);
+    caption(
+        commands,
+        font,
+        "HYPE",
+        right + Vec2::new(0.0, PLATE_H / 2.0 - 12.0),
+    );
+    let bar = Vec2::new(PLATE_W - 56.0, 22.0);
+    let bar_y = right.y + 4.0;
+    commands.spawn((
+        GameplayScreen,
+        Sprite::from_color(palette::dimmed(palette::HYPE, 0.22), bar),
+        Transform::from_xyz(right.x, bar_y, 4.0),
+    ));
+    commands.spawn((
+        GameplayScreen,
+        HypeFill(0),
+        Sprite::from_color(palette::HYPE, bar),
+        Anchor::CENTER_LEFT,
+        Transform::from_xyz(right.x - bar.x / 2.0, bar_y, 5.0).with_scale(Vec3::new(0.0, 1.0, 1.0)),
+    ));
+    caption(
+        commands,
+        font,
+        "FILL IT, THEN HIT HYPE",
+        right + Vec2::new(0.0, -PLATE_H / 2.0 + 28.0),
+    );
 }
 
 /// Push session numbers into every player's HUD.

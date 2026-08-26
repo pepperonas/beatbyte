@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A venue behind the 3D stage.** The fretboard used to run through a
+  void: outside the bed the screen was black. There is now a room — a
+  rear wall, side walls, a lighting truss with sweeping beams, speaker
+  stacks flanking the near end, and ranks of crowd silhouettes behind
+  barriers — built as real geometry on the stage layer and tinted from
+  the active theme. The beams honour the Stage Motion setting like
+  every other ambient movement, and the whole venue is kept outside the
+  bed so it can never occlude an approaching note.
+
+- **Solo readouts sit in framed corner plates** — score, multiplier and
+  combo bottom-left, the hype meter bottom-right — the way the
+  arcade-era games laid them out. The old HUD stacked everything above
+  the highway, which the depth view could carry but the 3D stage could
+  not: there the neck runs to a vanishing point, so "above the highway"
+  is the middle of the screen and the numbers floated over the horizon.
+  Multiplayer keeps its per-highway blocks: with two to four necks side
+  by side there are no free corners, and a score has to sit above the
+  highway it belongs to.
+
 - **Documentation for the UI design system** — `docs/ui/design-system.md`
   (tokens, row states, the pointer rule, how to add a screen without
   breaking the set) and [ADR-0010](docs/decisions/ADR-0010-ui-design-system.md),
@@ -206,6 +225,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the game has shipped a smooth high-res style for a while.
 
 ### Fixed
+
+- **The 2D sprite backdrop no longer speckles the 3D fretboard.** The
+  stage camera draws at order −1, so those sprites render in FRONT of
+  the 3D stage rather than behind it — in that view they were confetti
+  over the board, not a backdrop. They are skipped when the 3D stage is
+  active, which now supplies its own.
 
 - **Hovering selects a song.** The song browser handled only
   `Interaction::Pressed` — there was no hover branch at all, so the

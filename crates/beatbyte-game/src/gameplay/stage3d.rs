@@ -150,7 +150,243 @@ pub fn note_z(seconds: f64, scroll_speed: f32) -> f32 {
     -(seconds as f32) * scroll_speed * Z_PER_PIXEL
 }
 
-/// Set up camera, lights and highway geometry.
+/// A piece of the venue behind the neck.
+#[derive(Component)]
+struct Venue;
+
+/// A moving spotlight beam, with its own phase so the rig does not
+/// sweep in lockstep.
+#[derive(Component)]
+struct SpotBeam {
+    /// The beam's resting tilt. Kept, because the sweep is a swing
+    /// AROUND it — the first version assigned the swing straight to
+    /// the rotation and threw the rig's fan-out away on frame one.
+    base: f32,
+    phase: f32,
+    speed: f32,
+}
+
+/// How far back the rear wall stands. Beyond the neck's far end, so
+/// it can never occlude an approaching note.
+const VENUE_BACK: f32 = -40.0;
+/// Half the distance between the side walls.
+const VENUE_SIDE: f32 = 9.0;
+
+/// Build the room the neck sits in.
+///
+/// Before this, the 3D stage was a fretboard in a void: outside the
+/// bed the screen was black, and the only thing in it was the 2D
+/// sprite backdrop, which the stage camera renders BEHIND rather than
+/// in front of — so it read as specks over the board.
+///
+/// This is deliberately simple geometry — walls, a truss, cones,
+/// boxes — tinted from the active theme. There is no band and no
+/// venue art, because every asset in this repository has to be
+/// original or CC0, and a stage that reads as "a room with lights" is
+/// what the space actually needs.
+fn spawn_venue(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    stage: crate::theme::Theme,
+    motion: bool,
+) {
+    let dark = stage.background.mix(&Color::BLACK, 0.35);
+    // Deep, not grey. The first attempt lit the rear wall to roughly
+    // the brightness of the fretboard, so it read as a blank screen
+    // hung behind the vanishing point and flattened the contrast of
+    // the notes furthest away.
+    let wall_material = materials.add(StandardMaterial {
+        base_color: dark.mix(&Color::BLACK, 0.55).mix(&stage.accent, 0.07),
+        perceptual_roughness: 1.0,
+        ..default()
+    });
+    let trim_material = materials.add(StandardMaterial {
+        base_color: stage.accent,
+        emissive: stage.accent.to_linear() * 0.55,
+        ..default()
+    });
+    let box_material = materials.add(StandardMaterial {
+        base_color: dark.mix(&Color::WHITE, 0.06),
+        perceptual_roughness: 0.9,
+        ..default()
+    });
+
+    // Rear wall. Wide and tall enough to fill the frame at this
+    // distance: at 45 units out with a 50° field of view the visible
+    // height is roughly 42 units, so anything smaller shows its edges.
+    let wall = meshes.add(Cuboid::new(90.0, 46.0, 0.6));
+    commands.spawn((
+        GameplayScreen,
+        Stage3d,
+        Venue,
+        Mesh3d(wall),
+        MeshMaterial3d(wall_material.clone()),
+        Transform::from_xyz(0.0, 12.0, VENUE_BACK),
+        RenderLayers::layer(STAGE_LAYER),
+    ));
+
+    // A lit band across the wall, level with the horizon — it gives
+    // the room a floor line and stops the wall reading as fog.
+    let band = meshes.add(Cuboid::new(90.0, 0.28, 0.2));
+    commands.spawn((
+        GameplayScreen,
+        Stage3d,
+        Venue,
+        Mesh3d(band),
+        MeshMaterial3d(trim_material.clone()),
+        Transform::from_xyz(0.0, 0.12, VENUE_BACK + 0.5),
+        RenderLayers::layer(STAGE_LAYER),
+    ));
+
+    // Side walls, well outside the bed so they frame without crowding.
+    let side = meshes.add(Cuboid::new(0.6, 30.0, 46.0));
+    for sign in [-1.0f32, 1.0] {
+        commands.spawn((
+            GameplayScreen,
+            Stage3d,
+            Venue,
+            Mesh3d(side.clone()),
+            MeshMaterial3d(wall_material.clone()),
+            Transform::from_xyz(sign * VENUE_SIDE, 6.0, VENUE_BACK / 2.0 + 4.0),
+            RenderLayers::layer(STAGE_LAYER),
+        ));
+    }
+
+    // Lighting truss overhead, with a rig of beams hanging from it.
+    let truss = meshes.add(Cuboid::new(VENUE_SIDE * 1.7, 0.18, 0.18));
+    commands.spawn((
+        GameplayScreen,
+        Stage3d,
+        Venue,
+        Mesh3d(truss),
+        MeshMaterial3d(box_material.clone()),
+        Transform::from_xyz(0.0, 9.0, -13.0),
+        RenderLayers::layer(STAGE_LAYER),
+    ));
+
+    // Cones stand in for beams. Tall, narrow, unlit-bright and
+    // alpha-blended, which is what a light shaft looks like without a
+    // volumetric pass.
+    // Narrow, and deliberately kept outside the bed: the first
+    // attempt used radius 1.5 cones starting at the centre, which
+    // washed a red haze straight across the fretboard.
+    let beam = meshes.add(Cone {
+        radius: 0.7,
+        height: 7.0,
+    });
+    let beam_material = materials.add(StandardMaterial {
+        base_color: stage.accent.with_alpha(0.045),
+        emissive: stage.accent.to_linear() * 0.5,
+        alpha_mode: AlphaMode::Blend,
+        unlit: true,
+        double_sided: true,
+        cull_mode: None,
+        ..default()
+    });
+    // Three a side, none closer to the centre than the speaker
+    // stacks — the neck keeps a clear corridor.
+    for index in 0..6 {
+        let side = if index % 2 == 0 { -1.0 } else { 1.0 };
+        let x = side * (3.4 + 1.7 * (index / 2) as f32);
+        let entity = commands
+            .spawn((
+                GameplayScreen,
+                Stage3d,
+                Venue,
+                Mesh3d(beam.clone()),
+                MeshMaterial3d(beam_material.clone()),
+                // Point down and slightly away from the neck, so the
+                // shafts never wash over the notes.
+                Transform::from_xyz(x, 6.4, -13.0).with_rotation(Quat::from_rotation_z(x * 0.05)),
+                RenderLayers::layer(STAGE_LAYER),
+            ))
+            .id();
+        if motion {
+            commands.entity(entity).insert(SpotBeam {
+                base: x * 0.05,
+                phase: index as f32 * 1.1,
+                speed: 0.35 + 0.05 * index as f32,
+            });
+        }
+    }
+
+    // Speaker stacks flanking the near end: they give the neck a sense
+    // of scale, which a bare board in a room does not have.
+    let cab = meshes.add(Cuboid::new(1.3, 0.9, 1.1));
+    for sign in [-1.0f32, 1.0] {
+        for level in 0..3 {
+            commands.spawn((
+                GameplayScreen,
+                Stage3d,
+                Venue,
+                Mesh3d(cab.clone()),
+                MeshMaterial3d(box_material.clone()),
+                Transform::from_xyz(sign * 4.4, 0.42 + 0.95 * level as f32, -7.0),
+                RenderLayers::layer(STAGE_LAYER),
+            ));
+        }
+    }
+
+    // Crowd. The first attempt was loose spheres at varying heights,
+    // which read as scattered rubble rather than people: a head needs
+    // something to stand behind. Each side gets a dark barrier, and
+    // the heads sit in a line just above its top edge.
+    let barrier = meshes.add(Cuboid::new(0.5, 1.1, 22.0));
+    let barrier_material = materials.add(StandardMaterial {
+        base_color: dark.mix(&Color::BLACK, 0.7),
+        perceptual_roughness: 1.0,
+        ..default()
+    });
+    for sign in [-1.0f32, 1.0] {
+        commands.spawn((
+            GameplayScreen,
+            Stage3d,
+            Venue,
+            Mesh3d(barrier.clone()),
+            MeshMaterial3d(barrier_material.clone()),
+            Transform::from_xyz(sign * 2.9, -0.5, -22.0),
+            RenderLayers::layer(STAGE_LAYER),
+        ));
+    }
+    let head = meshes.add(Sphere::new(0.36).mesh().uv(8, 6));
+    let head_material = materials.add(StandardMaterial {
+        base_color: dark.mix(&Color::BLACK, 0.55),
+        perceptual_roughness: 1.0,
+        ..default()
+    });
+    for index in 0..48 {
+        let row = index % 3;
+        let seat = index / 6;
+        let sign = if index % 2 == 0 { -1.0 } else { 1.0 };
+        // Three ranks deep on each side, the back ranks a little
+        // higher, as a floor sloping away from the stage would put
+        // them.
+        let x = sign * (3.2 + 0.85 * row as f32);
+        let z = -13.5 - 2.4 * seat as f32 + 0.6 * row as f32;
+        commands.spawn((
+            GameplayScreen,
+            Stage3d,
+            Venue,
+            Mesh3d(head.clone()),
+            MeshMaterial3d(head_material.clone()),
+            Transform::from_xyz(x, 0.12 + 0.16 * row as f32, z),
+            RenderLayers::layer(STAGE_LAYER),
+        ));
+    }
+}
+
+/// Sweep the light beams. Gated on the Stage Motion setting, like
+/// every other ambient movement in the game.
+fn sweep_beams(time: Res<Time>, mut beams: Query<(&SpotBeam, &mut Transform)>) {
+    let now = time.elapsed_secs();
+    for (beam, mut transform) in &mut beams {
+        let swing = (now * beam.speed + beam.phase).sin();
+        transform.rotation = Quat::from_rotation_z(beam.base + swing * 0.30);
+    }
+}
+
+/// Set up camera, lights, the venue and the highway geometry.
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI
 pub fn setup_stage(
     mut commands: Commands,
@@ -219,6 +455,14 @@ pub fn setup_stage(
         },
         RenderLayers::layer(STAGE_LAYER),
     ));
+
+    spawn_venue(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        stage,
+        settings.backdrop_motion,
+    );
 
     let bed = meshes.add(Cuboid::new(1.0, 0.06, HIGHWAY_LENGTH + HIGHWAY_BEHIND));
     let rail = meshes.add(Cuboid::new(0.035, 0.05, HIGHWAY_LENGTH + HIGHWAY_BEHIND));
@@ -873,6 +1117,7 @@ impl Plugin for Stage3dPlugin {
                 move_fret_bars,
                 update_receptors,
                 apply_note_events,
+                sweep_beams,
             )
                 .chain()
                 .run_if(in_state(crate::states::GamePhase::Playing)),

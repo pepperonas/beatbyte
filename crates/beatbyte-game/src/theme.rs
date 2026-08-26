@@ -211,6 +211,13 @@ pub fn spawn_backdrop(
     settings: Res<crate::config::Settings>,
     shapes: Res<crate::shapes::LaneShapes>,
 ) {
+    // The 3D stage builds its own venue as real geometry behind the
+    // neck. These sprites are drawn by the 2D camera, which sits IN
+    // FRONT of the stage camera (order -1), so in 3D they are not a
+    // backdrop at all — they are confetti over the fretboard.
+    if crate::gameplay::stage3d::active(&settings) {
+        return;
+    }
     let theme = theme.0;
     let accent = theme.accent;
     // Bits spread across the whole screen behind the highways.
