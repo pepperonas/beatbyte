@@ -14,6 +14,7 @@ pub mod controls_ui;
 pub mod editor_ui;
 pub mod gameplay;
 pub mod import;
+mod input_test;
 pub mod library;
 pub mod menu;
 pub mod multiplayer;
@@ -154,6 +155,7 @@ pub fn run() -> AppExit {
     .add_systems(Update, (sync_bloom, sync_ui_scale))
     .add_plugins((
         import::ImportPlugin,
+        input_test::InputTestPlugin,
         xplorer::XplorerPlugin,
         shapes::ShapesPlugin,
         ui::UiPlugin,

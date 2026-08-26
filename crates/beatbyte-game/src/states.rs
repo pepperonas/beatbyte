@@ -22,6 +22,8 @@ pub enum AppState {
     Settings,
     /// The controls remapping screen.
     Controls,
+    /// Free-play input tester (no song, no judgment stakes).
+    InputTest,
     /// The latency calibration screen.
     Calibration,
     /// The chart editor.

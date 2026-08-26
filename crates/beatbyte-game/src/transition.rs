@@ -37,6 +37,7 @@ impl Plugin for TransitionPlugin {
             AppState::Settings,
             AppState::Controls,
             AppState::Calibration,
+            AppState::InputTest,
             AppState::Editor,
             AppState::Gameplay,
             AppState::Results,
