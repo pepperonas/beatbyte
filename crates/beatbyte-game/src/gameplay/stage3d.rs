@@ -42,6 +42,12 @@ const HIGHWAY_LENGTH: f32 = 26.0;
 /// edge is never visible as a cut-off.
 const HIGHWAY_BEHIND: f32 = 2.5;
 
+/// Radius of a note's coloured face, in world units. Large relative
+/// to the lane spacing, as in the games this borrows from — a gem
+/// nearly fills its lane, which is what makes a chord read as one
+/// shape rather than three dots.
+const GEM_RADIUS: f32 = 0.17;
+
 /// Render layer for the 3D stage. The HUD camera renders layer 0 and
 /// the stage camera renders this one, so neither draws the other's
 /// entities — without it the 2D backdrop appears inside the 3D scene.
@@ -60,6 +66,17 @@ pub struct Note3d {
     pub event_index: usize,
     /// Lane, which fixes the x position.
     pub lane: Lane,
+}
+
+/// A bar line across the neck, scrolling with the song.
+///
+/// The fretboard's cross-bars are not decoration: they are the only
+/// thing that tells a player how far away a note is in BEATS rather
+/// than in pixels, which is what makes a gap readable at speed.
+#[derive(Component)]
+pub struct FretBar {
+    /// Song time this bar sits on.
+    pub time_s: f64,
 }
 
 /// A receptor rendered as 3D geometry.
@@ -160,8 +177,11 @@ pub fn setup_stage(
     ));
 
     let bed = meshes.add(Cuboid::new(1.0, 0.06, HIGHWAY_LENGTH + HIGHWAY_BEHIND));
+    let rail = meshes.add(Cuboid::new(0.035, 0.05, HIGHWAY_LENGTH + HIGHWAY_BEHIND));
     let lane_strip = meshes.add(Cuboid::new(0.018, 0.012, HIGHWAY_LENGTH + HIGHWAY_BEHIND));
-    let receptor_mesh = meshes.add(Cylinder::new(0.165, 0.045));
+    // A ring, not a disc: with both drawn as discs a resting receptor
+    // and an approaching note were the same shape.
+    let receptor_mesh = meshes.add(Torus::new(GEM_RADIUS * 0.82, GEM_RADIUS * 1.12));
     let hit_bar = meshes.add(Cuboid::new(1.0, 0.02, 0.06));
 
     for index in &players {
@@ -179,14 +199,35 @@ pub fn setup_stage(
             Stage3d,
             Mesh3d(bed.clone()),
             MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: stage.background.mix(&Color::WHITE, 0.06),
-                perceptual_roughness: 0.55,
-                metallic: 0.1,
+                // Light enough to read AS a fretboard: against a
+                // black bed the gems floated in a void and the neck
+                // had no surface for the lights to land on.
+                base_color: stage.background.mix(&Color::WHITE, 0.16),
+                perceptual_roughness: 0.42,
+                metallic: 0.2,
                 ..default()
             })),
             Transform::from_xyz(origin, -0.03, centre).with_scale(Vec3::new(width, 1.0, 1.0)),
             RenderLayers::layer(STAGE_LAYER),
         ));
+
+        // Bright rails down both edges. They frame the neck and, more
+        // usefully, give the eye a fixed reference for how wide the
+        // playfield is as it recedes.
+        for side in [-1.0f32, 1.0] {
+            commands.spawn((
+                GameplayScreen,
+                Stage3d,
+                Mesh3d(rail.clone()),
+                MeshMaterial3d(materials.add(StandardMaterial {
+                    base_color: stage.accent,
+                    emissive: stage.accent.to_linear() * 2.6,
+                    ..default()
+                })),
+                Transform::from_xyz(origin + side * width / 2.0, 0.015, centre),
+                RenderLayers::layer(STAGE_LAYER),
+            ));
+        }
 
         // One glowing strip per lane, which is what gives the neck its
         // sense of depth as it recedes.
@@ -334,12 +375,108 @@ pub fn update_receptors(
     }
 }
 
+/// Lay bar lines across the neck, one per bar of the song.
+pub fn spawn_fret_bars(
+    mut commands: Commands,
+    settings: Res<Settings>,
+    layout: Res<HighwayLayout>,
+    song: Res<crate::boot::LoadedSong>,
+    players: Query<&PlayerIndex, With<PlayerSession>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    if !active(&settings) {
+        return;
+    }
+    let bpm = song.chart.song.bpm.clamp(20.0, 400.0);
+    let bar_s = 240.0 / bpm;
+    let start = song.chart.song.offset_s;
+    let end = song.chart.song.duration_s.unwrap_or(start + 240.0);
+    let mesh = meshes.add(Cuboid::new(1.0, 0.012, 0.045));
+    for index in &players {
+        let origin = layout.origin(index.0) * WORLD_PER_PIXEL;
+        let width = layout.bed_width() * WORLD_PER_PIXEL * 1.18;
+        let mut t = start;
+        while t < end {
+            // Its own material, because each bar fades by its own
+            // distance — sharing one handle made every bar in the song
+            // pile into a solid white wedge at the horizon.
+            let material = materials.add(StandardMaterial {
+                base_color: Color::srgba(0.75, 0.78, 0.85, 1.0),
+                emissive: LinearRgba::rgb(0.35, 0.36, 0.42),
+                alpha_mode: AlphaMode::Blend,
+                ..default()
+            });
+            commands.spawn((
+                GameplayScreen,
+                Stage3d,
+                FretBar { time_s: t },
+                Mesh3d(mesh.clone()),
+                MeshMaterial3d(material),
+                // Parked off-screen until the scroll system places it.
+                Transform::from_xyz(origin, 0.012, -900.0).with_scale(Vec3::new(width, 1.0, 1.0)),
+                RenderLayers::layer(STAGE_LAYER),
+            ));
+            t += bar_s;
+        }
+    }
+}
+
+/// Scroll the bar lines with the song, and fade them with distance so
+/// a wall of equal-strength lines near the horizon does not read as
+/// clutter.
+pub fn move_fret_bars(
+    settings: Res<Settings>,
+    game_clock: Res<GameClock>,
+    time: Res<Time>,
+    mut bars: Query<(
+        &FretBar,
+        &mut Transform,
+        &MeshMaterial3d<StandardMaterial>,
+        &mut Visibility,
+    )>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    if !active(&settings) {
+        return;
+    }
+    let Some(now) = game_clock.song_time(&time) else {
+        return;
+    };
+    for (bar, mut transform, material, mut visibility) in &mut bars {
+        let z = note_z(bar.time_s - now, settings.scroll_speed);
+        transform.translation.z = z;
+        // Beyond the drawn highway there is nothing to see, and a
+        // hundred bars stacked at the vanishing point read as a solid
+        // wedge rather than as depth.
+        let distance = -z;
+        let visible = (-1.0..HIGHWAY_LENGTH).contains(&distance);
+        *visibility = if visible {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if !visible {
+            continue;
+        }
+        if let Some(mut surface) = materials.get_mut(&material.0) {
+            // Full strength close by, gone by the far end.
+            let fade = (1.0 - (distance / HIGHWAY_LENGTH).clamp(0.0, 1.0)).powf(1.6);
+            surface.base_color = Color::srgba(0.75, 0.78, 0.85, fade * 0.85);
+            surface.emissive = LinearRgba::rgb(0.35, 0.36, 0.42) * fade;
+        }
+    }
+}
+
 /// Reusable geometry and materials for the 3D notes, built once.
 #[derive(Resource)]
 pub struct NoteAssets {
     gem: Handle<Mesh>,
+    rim: Handle<Mesh>,
     hopo: Handle<Mesh>,
+    hopo_rim: Handle<Mesh>,
     sustain: Handle<Mesh>,
+    rim_material: Handle<StandardMaterial>,
     lane_material: Vec<Handle<StandardMaterial>>,
 }
 
@@ -354,12 +491,23 @@ pub fn setup_note_assets(
     if !active(&settings) {
         return;
     }
+    // The genre's gem is a flat BUTTON lying on the fretboard — a
+    // coloured disc inside a dark rim — not a floating sphere. Seen
+    // from the player's angle it reads as an ellipse, which is what
+    // makes a five-lane row scannable at speed.
     commands.insert_resource(NoteAssets {
-        gem: meshes.add(Sphere::new(0.155).mesh().uv(24, 12)),
+        gem: meshes.add(Cylinder::new(GEM_RADIUS, 0.055)),
+        rim: meshes.add(Cylinder::new(GEM_RADIUS * 1.28, 0.042)),
         // A HOPO is smaller and reads as a different object, the way
         // the 2D views distinguish it.
-        hopo: meshes.add(Sphere::new(0.105).mesh().uv(18, 9)),
-        sustain: meshes.add(Cylinder::new(0.055, 1.0)),
+        hopo: meshes.add(Cylinder::new(GEM_RADIUS * 0.62, 0.05)),
+        hopo_rim: meshes.add(Cylinder::new(GEM_RADIUS * 0.86, 0.04)),
+        sustain: meshes.add(Cylinder::new(0.05, 1.0)),
+        rim_material: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.05, 0.05, 0.07),
+            perceptual_roughness: 0.6,
+            ..default()
+        }),
         lane_material: Lane::ALL
             .iter()
             .map(|lane| {
@@ -420,7 +568,25 @@ pub fn spawn_due_notes(
                         assets.gem.clone()
                     }),
                     MeshMaterial3d(material.clone()),
-                    Transform::from_xyz(lane_x(&layout, index.0, lane), 0.17, z),
+                    Transform::from_xyz(lane_x(&layout, index.0, lane), 0.075, z),
+                    RenderLayers::layer(STAGE_LAYER),
+                ));
+                // The dark rim the coloured face sits in.
+                commands.spawn((
+                    GameplayScreen,
+                    Stage3d,
+                    Note3d {
+                        player: index.0,
+                        event_index: cursor,
+                        lane,
+                    },
+                    Mesh3d(if hopo {
+                        assets.hopo_rim.clone()
+                    } else {
+                        assets.rim.clone()
+                    }),
+                    MeshMaterial3d(assets.rim_material.clone()),
+                    Transform::from_xyz(lane_x(&layout, index.0, lane), 0.06, z),
                     RenderLayers::layer(STAGE_LAYER),
                 ));
                 // A sustain is a tube running back up the neck from
@@ -440,7 +606,7 @@ pub fn spawn_due_notes(
                         // The cylinder is built along Y, so it is
                         // rotated onto the neck's Z axis and pushed
                         // back by half its length.
-                        Transform::from_xyz(lane_x(&layout, index.0, lane), 0.14, z - length / 2.0)
+                        Transform::from_xyz(lane_x(&layout, index.0, lane), 0.05, z - length / 2.0)
                             .with_rotation(Quat::from_rotation_x(core::f32::consts::FRAC_PI_2))
                             .with_scale(Vec3::new(1.0, length, 1.0)),
                         RenderLayers::layer(STAGE_LAYER),
@@ -501,13 +667,18 @@ impl Plugin for Stage3dPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             OnEnter(AppState::Gameplay),
-            (setup_stage, setup_note_assets)
+            (setup_stage, setup_note_assets, spawn_fret_bars)
                 .chain()
                 .after(super::setup_gameplay),
         )
         .add_systems(
             Update,
-            (spawn_due_notes, move_notes, update_receptors)
+            (
+                spawn_due_notes,
+                move_notes,
+                move_fret_bars,
+                update_receptors,
+            )
                 .chain()
                 .run_if(in_state(crate::states::GamePhase::Playing)),
         );

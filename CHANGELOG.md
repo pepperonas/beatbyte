@@ -11,10 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A solid 3D stage.** A third view alongside FLAT and DEPTH,
   reached by cycling the VIEW setting: a perspective camera looking
-  down a lit highway, gems as emissive spheres, sustains as tubes,
-  receptors as discs that sink into the neck when held and flare
-  through the bloom pass when struck. Judgment is untouched —
-  the same run scores the same in all three views.
+  down a real fretboard — bar lines crossing the neck at every bar
+  and fading with distance, bright rails down both edges, coloured
+  lane lines running to the vanishing point. Notes are flat buttons
+  lying on the board (a coloured face inside a dark rim), sustains
+  are tubes of the note's real held length, and receptors are rings
+  that sink into the neck when held and flare through the bloom pass
+  when struck. Judgment is untouched — the same run scores the same
+  in all three views (624 perfect / 0 miss, verified).
 
 - **`BEATBYTE_FPS=1`** reports median and 99th-percentile frame times
   every five seconds. The percentile rather than an average, because
