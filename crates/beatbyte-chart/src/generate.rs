@@ -201,10 +201,11 @@ struct MasterNote {
     pitched: bool,
 }
 
-/// Master selection parameters: the finest musical grid the game
-/// charts (sixteenths, expert-tight spacing, near-open floor).
-/// Difficulties THIN this — they never re-select.
-const MASTER_GRID_DIVISION: u32 = 4;
+/// Master selection parameters: expert-tight spacing and a
+/// near-open strength floor. Difficulties THIN this — they never
+/// re-select. (The grid division that used to live here is gone: the
+/// quantizer now picks the subdivision per hit, see
+/// [`quantize_musical`].)
 const MASTER_MIN_SPACING_S: f64 = 0.10;
 const MASTER_STRENGTH_FLOOR: f32 = 0.07;
 
@@ -575,10 +576,6 @@ fn melody_range(analysis: &SongAnalysis) -> (f32, f32) {
 /// Quantize, filter and thin the candidate stream at MASTER density.
 fn select_candidates(analysis: &SongAnalysis, grid_origin_s: f64) -> Vec<Selected> {
     let beat = analysis.beat_interval_s();
-    let step = beat / f64::from(MASTER_GRID_DIVISION);
-    // Snap to the grid only when close; otherwise trust the onset (the
-    // grid may be imperfect, the music never is).
-    let snap_window = (step * 0.3).min(0.07);
 
     let mut kept: Vec<Selected> = Vec::new();
     // While a strong melody note is HELD, the lead owns the highway:
@@ -600,7 +597,7 @@ fn select_candidates(analysis: &SongAnalysis, grid_origin_s: f64) -> Vec<Selecte
                     - trailing_gap_s(analysis.bpm);
             }
         }
-        let time_s = quantize(candidate.time_s, grid_origin_s, step, snap_window);
+        let time_s = quantize_musical(candidate.time_s, grid_origin_s, beat, SNAP_TOLERANCE_S);
         if time_s < 0.0 || time_s > analysis.duration_s {
             continue;
         }
@@ -630,7 +627,67 @@ fn select_candidates(analysis: &SongAnalysis, grid_origin_s: f64) -> Vec<Selecte
     kept
 }
 
+/// How far a hit may sit from a subdivision and still be the same
+/// musical event.
+///
+/// An absolute time, deliberately NOT a fraction of the beat. Human
+/// micro-timing and onset-detector scatter are both well under 60 ms
+/// regardless of tempo; a hit further than that from every
+/// subdivision is a different note, not a mistimed one. Expressing it
+/// as a fraction of the beat is a trap: a quarter of a beat at 120
+/// BPM is a whole sixteenth, so adjacent sixteenths collapse onto the
+/// beat and a sixteenth-note run disappears (measured).
+const SNAP_TOLERANCE_S: f64 = 0.055;
+
+/// Subdivisions a hit may be snapped to, coarsest first.
+///
+/// Coarsest-first is the point: a hit that fits both an eighth and a
+/// sixteenth belongs on the eighth, because that is what a listener
+/// feels.
+///
+/// **Binary only, deliberately.** A triplet level was tried and
+/// removed: at 120 BPM a triplet-eighth grid passes within 42 ms of a
+/// genuine sixteenth, so with any tolerance wide enough to be useful
+/// it steals straight notes and turns a sixteenth run into a shuffle.
+/// The two cannot be told apart one note at a time — that needs a
+/// song-level decision about whether the piece swings at all, which
+/// is a separate feature and not this function's job.
+const SNAP_LEVELS: [f64; 4] = [1.0, 2.0, 4.0, 8.0];
+
+/// Snap a time to the simplest musical subdivision close enough to it.
+///
+/// The single-level quantizer had a cliff: with a window of 30 % of a
+/// sixteenth, every hit between 36 ms and 60 ms off kept its raw time.
+/// Measured on two real tracks that was a THIRD of all notes, landing
+/// nowhere musical while the other two thirds sat exactly on the grid.
+/// A chart split between "on the pulse" and "scattered" is what reads
+/// as the beat not being detected, even when the tempo is within
+/// 1.5 % of the truth.
+fn quantize_musical(time_s: f64, origin_s: f64, beat_s: f64, tolerance: f64) -> f64 {
+    if beat_s <= 0.0 {
+        return time_s;
+    }
+    for division in SNAP_LEVELS {
+        let step = beat_s / division;
+        let position = (time_s - origin_s) / step;
+        let snapped = origin_s + position.round() * step;
+        // Never wider than half a step, or a level would claim
+        // positions belonging to its own neighbours.
+        if (snapped - time_s).abs() <= tolerance.min(step * 0.5) {
+            return snapped;
+        }
+    }
+    time_s
+}
+
 /// Snap a time to the nearest grid point when within the snap window.
+///
+/// Superseded by [`quantize_musical`] in the pipeline; kept because a
+/// single fixed grid is still the right primitive when one is wanted.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "single-level primitive, kept for reuse")
+)]
 fn quantize(time_s: f64, origin_s: f64, step: f64, snap_window: f64) -> f64 {
     if step <= 0.0 {
         return time_s;
@@ -968,58 +1025,49 @@ mod tests {
 
     #[test]
     fn a_strong_fresh_onset_truncates_the_sustain() {
-        // A held tone ends when something new strikes: an onset at or
-        // above the ABSOLUTE 0.5 bar inside the sustain window cuts
-        // the tail just before it (weaker ones — reverb, crowd — do
-        // not; that relative-measure bug once cost a live track most
-        // of its sustains).
-        let mk = |breaker_strength: f32| {
-            let onsets = vec![
-                Onset {
-                    time_s: 1.0,
-                    strength: 0.9,
-                    brightness: 0.2,
-                },
-                Onset {
-                    time_s: 1.8,
-                    strength: breaker_strength,
-                    brightness: 0.5,
-                },
-                Onset {
-                    time_s: 4.5,
-                    strength: 0.9,
-                    brightness: 0.2,
-                },
-            ];
-            let a = SongAnalysis {
+        // Tests the RULE directly rather than through a whole chart:
+        // end to end BOTH cases are capped by the gap to the next
+        // note, so a chart-level fixture cannot tell them apart.
+        //
+        // A held tone ends when something new strikes, and "strong"
+        // is an ABSOLUTE bar — measured relative to the held note, a
+        // live mix's reverb and crowd cut almost every sustain.
+        let tail = |breaker_strength: f32| {
+            let analysis = SongAnalysis {
                 bpm: 120.0,
                 bpm_confidence: 0.8,
                 alt_bpm: None,
                 beats: (0..20).map(|i| f64::from(i) * 0.5).collect(),
-                onsets,
+                onsets: vec![
+                    Onset {
+                        time_s: 1.0,
+                        strength: 0.9,
+                        brightness: 0.2,
+                    },
+                    Onset {
+                        time_s: 2.5,
+                        strength: breaker_strength,
+                        brightness: 0.5,
+                    },
+                ],
                 energy: vec![0.8; 200],
                 energy_hop_s: 0.05,
                 duration_s: 10.0,
                 melody: vec![],
             };
-            let file = generate_chart(&a, &meta());
-            let medium = file
-                .charts
-                .iter()
-                .find(|c| c.difficulty == Difficulty::Medium)
-                .unwrap();
-            medium
-                .notes
-                .iter()
-                .find(|n| (n.time - 1.0).abs() < 0.1)
-                .map(|n| n.len)
-                .unwrap_or(0.0)
+            let held = Selected {
+                time_s: 1.0,
+                strength: 0.9,
+                brightness: 0.2,
+                pitch: None,
+            };
+            natural_tail(&analysis, &held, 0.5)
         };
-        let cut = mk(0.6);
-        let uncut = mk(0.2);
+        let cut = tail(0.6);
+        let uncut = tail(0.2);
         assert!(
-            cut > 0.0 && cut <= 0.75,
-            "strong onset at +0.8s must cap the sustain near 0.7s: {cut}"
+            (cut - 1.4).abs() < 1e-9,
+            "a strong onset at +1.5 s must cut the tail just before it: {cut}"
         );
         assert!(
             uncut > cut,
@@ -1412,6 +1460,69 @@ mod tests {
             .filter(|i| i.severity == Severity::Error)
             .collect();
         assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn musical_snapping_prefers_the_simplest_subdivision() {
+        let beat = 0.5; // 120 BPM
+        // Dead on a beat: stays.
+        assert!((quantize_musical(1.0, 0.0, beat, 0.055) - 1.0).abs() < 1e-9);
+        // 30 ms late off a beat: pulled to the beat, not to an eighth.
+        assert!((quantize_musical(1.03, 0.0, beat, 0.055) - 1.0).abs() < 1e-9);
+        // A real eighth stays an eighth — it must NOT be swallowed by
+        // the beat above it.
+        assert!((quantize_musical(1.25, 0.0, beat, 0.055) - 1.25).abs() < 1e-9);
+        // A real sixteenth likewise.
+        assert!((quantize_musical(1.125, 0.0, beat, 0.055) - 1.125).abs() < 1e-9);
+        // Documented limitation: the grid is binary, so a triplet is
+        // pulled onto the nearest binary subdivision. Detecting swing
+        // needs a song-level decision, not a per-note one.
+        let triplet = 1.0 + beat / 3.0;
+        let snapped = quantize_musical(triplet, 0.0, beat, 0.055);
+        assert!(
+            (snapped - triplet).abs() > 1e-9,
+            "the binary grid is expected to move a triplet; if this \
+             ever passes, swing handling was added and this test \
+             should describe the new behaviour"
+        );
+    }
+
+    #[test]
+    fn musical_snapping_closes_the_gap_the_old_quantizer_left() {
+        // The exact case measured on real tracks: a hit 45 ms off a
+        // sixteenth. The single-level quantizer left it where it was
+        // (its window was 36 ms); this one puts it on the grid.
+        let beat = 0.48; // 125 BPM
+        let sixteenth = beat / 4.0;
+        let target = 2.0 + sixteenth * 5.0;
+        let hit = target + 0.045;
+        assert!(
+            (quantize(hit, 2.0, sixteenth, (sixteenth * 0.3).min(0.07)) - hit).abs() < 1e-9,
+            "the old quantizer is supposed to leave this alone"
+        );
+        assert!(
+            (quantize_musical(hit, 2.0, beat, 0.055) - target).abs() < 1e-9,
+            "the musical quantizer must land it on the sixteenth"
+        );
+    }
+
+    #[test]
+    fn a_run_of_sixteenths_survives_snapping() {
+        // Adjacent sixteenths must not collapse onto the beat between
+        // them — the failure a beat-relative tolerance caused.
+        let beat = 0.5;
+        let run: Vec<f64> = (0..8).map(|k| 1.0 + f64::from(k) * beat / 4.0).collect();
+        let snapped: Vec<f64> = run
+            .iter()
+            .map(|t| quantize_musical(*t, 0.0, beat, 0.055))
+            .collect();
+        // f64 is not Ord; compare adjacent pairs instead.
+        for pair in snapped.windows(2) {
+            assert!(
+                pair[1] - pair[0] > 1e-9,
+                "snapping merged two sixteenths: {snapped:?}"
+            );
+        }
     }
 
     #[test]
