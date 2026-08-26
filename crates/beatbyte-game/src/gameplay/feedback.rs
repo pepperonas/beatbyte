@@ -9,6 +9,79 @@ use super::{GameplayScreen, HighwayLayout, RECEPTOR_Y, SessionFeedback};
 use crate::palette;
 use crate::ui::UiFont;
 
+/// The "you must strum!" coach line: appears when tap mode is OFF
+/// and a note dies while its fret is correctly HELD — the exact
+/// moment a player who does not know about strumming sits confused
+/// (field find: "Töne werden nicht erkannt"). Fades after a moment;
+/// rate-limited so it teaches instead of nagging.
+#[derive(Component)]
+pub struct StrumCoach {
+    /// Seconds left visible.
+    pub ttl: f32,
+}
+
+/// Show the coach when a held-fret note is missed without tap mode.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
+pub fn coach_strum(
+    mut commands: Commands,
+    settings: Res<crate::config::Settings>,
+    mut feedback: MessageReader<SessionFeedback>,
+    players: Query<(&super::PlayerIndex, &super::PlayerSession)>,
+    mut coaches: Query<(&mut StrumCoach, &mut TextColor)>,
+    layout: Res<HighwayLayout>,
+    font: Res<UiFont>,
+    time: Res<Time>,
+    mut cooldown: Local<f32>,
+) {
+    *cooldown = (*cooldown - time.delta_secs()).max(0.0);
+    // Fade running coaches.
+    for (mut coach, mut color) in &mut coaches {
+        coach.ttl -= time.delta_secs();
+        color.0 = color.0.with_alpha(coach.ttl.clamp(0.0, 1.0));
+    }
+    if settings.tap_mode {
+        return;
+    }
+    for message in feedback.read() {
+        let SessionEvent::NoteMissed { event_index } = message.event else {
+            continue;
+        };
+        if *cooldown > 0.0 {
+            continue;
+        }
+        let Some((index, player)) = players
+            .iter()
+            .find(|(index, _)| index.0 == message.player_index)
+        else {
+            continue;
+        };
+        let Some(event) = player.session.track().events().get(event_index).copied() else {
+            continue;
+        };
+        // Only coach when the fret WAS held — that is the "why did
+        // it not count" moment; a plain miss needs no lecture.
+        let held = player.session.held();
+        if !event.lanes.iter().any(|lane| held.contains(lane)) {
+            continue;
+        }
+        *cooldown = 6.0;
+        if let Some((mut coach, mut color)) = coaches.iter_mut().next() {
+            coach.ttl = 2.5;
+            color.0 = color.0.with_alpha(1.0);
+        } else {
+            commands.spawn((
+                GameplayScreen,
+                StrumCoach { ttl: 2.5 },
+                Text2d::new("STRUM! (SPACE or strum bar)"),
+                font.text(15.0),
+                TextColor(palette::MISS),
+                bevy::sprite::Anchor::CENTER,
+                Transform::from_xyz(layout.origin(index.0), RECEPTOR_Y + 150.0, 8.0),
+            ));
+        }
+    }
+}
+
 /// A player's floating judgment popup (one reused entity each).
 #[derive(Component)]
 pub struct JudgmentPopup {

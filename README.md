@@ -148,8 +148,8 @@ Architecture decisions are documented as ADRs in
 | Action | Keyboard |
 |--------|----------|
 | Frets 1–5 | `A` `S` `D` `F` `G` |
-| Strum | `↑` / `↓` |
-| Hype (special) | `Space` |
+| Strum | `Space` (or `↑`/`↓`) |
+| Hype (special) | `Enter` |
 | Pause | `Esc` |
 | Menus | arrows + `Enter` / `Esc` |
 

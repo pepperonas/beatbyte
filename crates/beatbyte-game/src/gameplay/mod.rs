@@ -218,6 +218,7 @@ impl Plugin for GameplayPlugin {
                     notes::update_receptors,
                     notes::apply_note_events,
                     feedback::spawn_feedback,
+                    feedback::coach_strum,
                     feedback::animate_feedback,
                     hud::update_huds,
                     check_song_end,

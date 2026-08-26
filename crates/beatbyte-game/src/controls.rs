@@ -114,11 +114,13 @@ impl Default for InputMap {
                 (GameAction::StrumUp, vec![Key(K::ArrowUp), Pad(B::DPadUp)]),
                 (
                     GameAction::StrumDown,
-                    vec![Key(K::ArrowDown), Pad(B::DPadDown)],
+                    // Space strums too: with tap mode off, ASDFG +
+                    // Space is the natural two-hand keyboard split.
+                    vec![Key(K::ArrowDown), Key(K::Space), Pad(B::DPadDown)],
                 ),
                 (
                     GameAction::Hype,
-                    vec![Key(K::Space), Pad(B::Select), Pad(B::RightTrigger)],
+                    vec![Key(K::Enter), Pad(B::Select), Pad(B::RightTrigger)],
                 ),
                 (GameAction::Pause, vec![Key(K::Escape), Pad(B::Start)]),
             ],

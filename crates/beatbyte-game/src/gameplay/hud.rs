@@ -32,7 +32,24 @@ pub fn spawn_huds(
     layout: Res<HighwayLayout>,
     players: Query<&PlayerIndex, With<PlayerSession>>,
     font: Res<UiFont>,
+    settings: Res<crate::config::Settings>,
 ) {
+    // Quiet corner badge: which input mode this song runs in — one
+    // glance answers "why did/didn't that hit?" while testing tap
+    // vs. strum on keyboard or guitar (user request).
+    let (badge, color) = if settings.tap_mode {
+        ("< TAP >", palette::dimmed(palette::TEXT_DIM, 0.8))
+    } else {
+        ("< STRUM >", palette::dimmed(palette::HYPE, 0.8))
+    };
+    commands.spawn((
+        GameplayScreen,
+        Text2d::new(badge),
+        font.text(9.0),
+        TextColor(color),
+        Anchor::BOTTOM_LEFT,
+        Transform::from_xyz(-620.0, -340.0, 5.0),
+    ));
     let compact = layout.players() > 2;
     let score_size = if compact { 14.0 } else { 22.0 };
     let line_size = if compact { 9.0 } else { 12.0 };

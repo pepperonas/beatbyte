@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Solo play now hears every input device.** The single player was
+  hard-routed to the keyboard, so a connected guitar lit menus but
+  played into the void during gameplay (no receptor highlights, no
+  hits). With one player, keyboard and all pads feed the same
+  session; strict per-device routing still applies in multiplayer.
+
+### Added
+
+- **Input-mode badge**: a quiet corner tag in gameplay shows
+  `< TAP >` or `< STRUM >` — one glance answers "why did that (not)
+  hit" while testing keyboard and guitar in either mode.
+
+- **Space is the keyboard strum** (arrows still work); Hype moved to
+  Enter. With tap mode off, ASDFG + Space is the natural two-hand
+  split.
+- **"STRUM!" coach**: with tap mode off, when a note dies while its
+  fret is correctly held, a short on-stage hint explains the strum —
+  exactly the confusing moment, rate-limited so it teaches instead
+  of nagging.
+
 ### Added
 
 - **Native Guitar Hero X-plorer support.** The guitar is an

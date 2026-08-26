@@ -35,11 +35,20 @@ pub fn gameplay_input(
     // An empty keyboard stand-in so pad players never hear key events.
     let silent_keys = ButtonInput::<KeyCode>::default();
 
+    // Solo: the one player owns EVERY device — keyboard and any
+    // guitar/pad alike. Strict per-device routing only matters once
+    // a second player exists. (Field find: a guitar played into the
+    // void because solo always routed as Keyboard.)
+    let solo = players.iter().count() == 1;
     for (device, mut player) in &mut players {
         let sources = match device.0 {
             DeviceId::Keyboard => InputSources {
                 keys: &keys,
-                pads: Vec::new(),
+                pads: if solo {
+                    pads.iter().map(|(_, pad)| pad).collect()
+                } else {
+                    Vec::new()
+                },
             },
             DeviceId::Pad(pad_entity) => InputSources {
                 keys: &silent_keys,

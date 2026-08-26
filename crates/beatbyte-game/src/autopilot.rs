@@ -660,8 +660,11 @@ fn autopilot_key_play(
     };
     // `BEATBYTE_AUTOPILOT_NO_STRUM=1`: fret presses only — proves tap
     // mode end to end (and, without tap mode, that strums are truly
-    // required).
-    let strum = std::env::var_os("BEATBYTE_AUTOPILOT_NO_STRUM").is_none();
+    // required). With tap mode ACTIVE the injector never strums on
+    // its own either: the fret press already hits, and the strum on
+    // top would be a phantom overstrum (seen: 106 of them).
+    let strum =
+        std::env::var_os("BEATBYTE_AUTOPILOT_NO_STRUM").is_none() && !player.session.tap_mode();
     if !*started {
         *cursor = 0;
         *started = true;
@@ -671,13 +674,14 @@ fn autopilot_key_play(
         );
     }
     // Strum released the frame after it was pressed, so the next
-    // press registers as a fresh just_pressed.
+    // press registers as a fresh just_pressed. Space IS the strum
+    // key now (two-hand keyboard split); Hype moved to Enter.
     if *strum_hot {
-        keys.release(KeyCode::ArrowDown);
+        keys.release(KeyCode::Space);
         *strum_hot = false;
     }
-    if keys.pressed(KeyCode::Space) {
-        keys.release(KeyCode::Space);
+    if keys.pressed(KeyCode::Enter) {
+        keys.release(KeyCode::Enter);
     }
 
     // Press slightly EARLY: the stamp lands a frame-quantum before
@@ -724,7 +728,7 @@ fn autopilot_key_play(
         }
     }
     if strum {
-        keys.press(KeyCode::ArrowDown);
+        keys.press(KeyCode::Space);
         *strum_hot = true;
     }
     if player.session.performance().hype_meter()
@@ -734,7 +738,7 @@ fn autopilot_key_play(
             .config()
             .hype_activation_threshold
     {
-        keys.press(KeyCode::Space);
+        keys.press(KeyCode::Enter);
     }
     *cursor += 1;
 }
