@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The stage now fits every window.** The camera used raw window
+  pixels, so a small window cropped receptors and HUD while a big one
+  shrank the stage into a corner. The world renders through a
+  guaranteed-minimum 1280x720 view that scales with the window (extra
+  aspect shows more backdrop, never cropping), and the screen-space
+  UI scales with window height so menus stay proportional. A
+  `BEATBYTE_WINDOW=WxH` variable pins the size for tests or taste.
+
+### Fixed
+
 - **Depth view: notes now sit exactly ON their lane lines.** The
   guides were drawn on a different straight line than the note path
   (full lane width 200 px below the receptors, aimed at the vanishing

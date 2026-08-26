@@ -37,6 +37,14 @@ use states::{AppState, GamePhase};
 /// The crate version, kept in sync with the workspace version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// `BEATBYTE_WINDOW=WxH`: explicit window size (verification of the
+/// scale-independent layout, or personal preference).
+fn parse_window_env() -> Option<(u32, u32)> {
+    let value = std::env::var("BEATBYTE_WINDOW").ok()?;
+    let (w, h) = value.split_once('x')?;
+    Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
+}
+
 /// Point the engine at the right `assets/` directory for every layout
 /// we ship or develop in. Bevy's default resolution is exe-relative,
 /// which silently misses the workspace assets when running
@@ -111,7 +119,9 @@ pub fn run() -> AppExit {
                     // platforms where winit returns at all). With
                     // BEATBYTE_SHOT_DIR set, full size wins because
                     // the screenshots are the point.
-                    resolution: if harness && std::env::var_os("BEATBYTE_SHOT_DIR").is_none() {
+                    resolution: if let Some((w, h)) = parse_window_env() {
+                        (w, h).into()
+                    } else if harness && std::env::var_os("BEATBYTE_SHOT_DIR").is_none() {
                         (320, 180).into()
                     } else {
                         (1280, 720).into()
@@ -140,7 +150,7 @@ pub fn run() -> AppExit {
     .init_state::<AppState>()
     .add_sub_state::<GamePhase>()
     .add_systems(Startup, spawn_camera)
-    .add_systems(Update, sync_bloom)
+    .add_systems(Update, (sync_bloom, sync_ui_scale))
     .add_plugins((
         import::ImportPlugin,
         shapes::ShapesPlugin,
@@ -191,7 +201,34 @@ pub fn run() -> AppExit {
 
 /// The one persistent 2D camera.
 fn spawn_camera(mut commands: Commands) {
-    commands.spawn(Camera2d);
+    commands.spawn((
+        Camera2d,
+        // The whole game is laid out in a 1280x720 world. AutoMin
+        // guarantees at least that much is ALWAYS visible and scales
+        // it with the window — resize, fullscreen, ultrawide: the
+        // stage fits, extra space shows more backdrop instead of
+        // cropping receptors or HUD.
+        Projection::Orthographic(OrthographicProjection {
+            scaling_mode: bevy::camera::ScalingMode::AutoMin {
+                min_width: 1280.0,
+                min_height: 720.0,
+            },
+            ..OrthographicProjection::default_2d()
+        }),
+    ));
+}
+
+/// Scale the (screen-space) UI with the window so menus stay
+/// proportional — without this a 4K window renders tiny menus while
+/// the world scales correctly.
+fn sync_ui_scale(windows: Query<&Window>, mut scale: ResMut<bevy::ui::UiScale>) {
+    let Ok(window) = windows.single() else {
+        return;
+    };
+    let target = (window.height() / 720.0).clamp(0.6, 2.5);
+    if (scale.0 - target).abs() > 0.01 {
+        scale.0 = target;
+    }
 }
 
 /// HDR bloom rides with the round style: emissive gems and glow
