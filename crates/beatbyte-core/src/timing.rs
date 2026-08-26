@@ -340,6 +340,32 @@ mod tests {
     }
 
     #[test]
+    fn window_boundaries_are_inclusive() {
+        // A hit EXACTLY on a window edge takes the better tier —
+        // `<=`, not `<`. The difference is one representable float,
+        // but it is the documented contract (30/60/100 ms).
+        let w = TimingWindows::default();
+        assert_eq!(w.judge(w.perfect_s), Some(Judgment::Perfect));
+        assert_eq!(w.judge(-w.perfect_s), Some(Judgment::Perfect));
+        assert_eq!(w.judge(w.perfect_s + 1e-9), Some(Judgment::Great));
+        assert_eq!(w.judge(w.great_s), Some(Judgment::Great));
+        assert_eq!(w.judge(w.good_s), Some(Judgment::Good));
+        assert_eq!(w.judge(-w.good_s), Some(Judgment::Good));
+        assert_eq!(w.judge(w.good_s + 1e-9), None);
+    }
+
+    #[test]
+    fn accuracy_weights_rank_with_quality() {
+        let p = Judgment::Perfect.accuracy_weight();
+        let g = Judgment::Great.accuracy_weight();
+        let o = Judgment::Good.accuracy_weight();
+        let m = Judgment::Miss.accuracy_weight();
+        assert!(p > g && g > o && o > m, "{p} {g} {o} {m}");
+        assert!((p - 1.0).abs() < f64::EPSILON, "perfect must weigh 1.0");
+        assert!(m.abs() < f64::EPSILON, "a miss must weigh nothing");
+    }
+
+    #[test]
     fn judgment_tiers() {
         let w = TimingWindows::default();
         assert_eq!(w.judge(0.0), Some(Judgment::Perfect));

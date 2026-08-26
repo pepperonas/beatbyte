@@ -394,6 +394,45 @@ mod tests {
     }
 
     #[test]
+    fn hype_doubles_the_full_multiplier() {
+        let mut p = perf();
+        let per_level = p.config().streak_per_level;
+        for _ in 0..per_level {
+            p.register_judgment(Judgment::Perfect, 1);
+        }
+        let base = p.multiplier();
+        assert!(base > 1, "a full streak level must raise the multiplier");
+        p.complete_phrase();
+        p.complete_phrase();
+        assert!(p.try_activate_hype());
+        assert_eq!(
+            p.multiplier(),
+            base * p.config().hype_multiplier,
+            "hype multiplies the streak multiplier, not replaces it"
+        );
+    }
+
+    #[test]
+    fn untouched_performance_reads_as_perfect() {
+        // Accuracy over zero notes is 1.0 by definition — a fresh
+        // results screen must never show 0% before the first note.
+        let p = perf();
+        assert!((p.accuracy() - 1.0).abs() < f64::EPSILON);
+        assert_eq!(p.score(), 0);
+        assert_eq!(p.streak(), 0);
+    }
+
+    #[test]
+    fn hit_rate_counts_all_tiers_but_not_misses() {
+        let mut p = perf();
+        p.register_judgment(Judgment::Perfect, 1);
+        p.register_judgment(Judgment::Great, 1);
+        p.register_judgment(Judgment::Good, 1);
+        p.register_judgment(Judgment::Miss, 1);
+        assert!((p.hit_rate() - 0.75).abs() < 1e-9);
+    }
+
+    #[test]
     fn hype_lifecycle() {
         let mut p = perf();
         assert!(!p.try_activate_hype(), "empty meter cannot activate");

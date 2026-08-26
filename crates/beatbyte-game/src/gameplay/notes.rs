@@ -433,6 +433,20 @@ pub mod depth {
         center + (flat_x - center) * scale
     }
 
+    /// World-space point of a lane position `z` px ahead of the hit
+    /// line — the SAME rule [`super::move_notes`] applies to gems
+    /// (projected above the line, straight fall below). Anything
+    /// drawn between two such points stays on the lane line.
+    #[must_use]
+    pub fn point(center: f32, flat_x: f32, z: f32) -> (f32, f32) {
+        if z >= 0.0 {
+            let (y, scale) = project(z);
+            (lane_x(center, flat_x, scale.min(1.0)), y)
+        } else {
+            (flat_x, RECEPTOR_Y + z)
+        }
+    }
+
     /// Where the lane's vanishing line sits `dy_below` px BELOW the
     /// hit line — the same straight line notes travel, extended past
     /// the receptors. The first guides used a different line (full
@@ -520,11 +534,13 @@ pub fn move_fret_lines(
 /// hold time = remaining length) and both pulse. Released or ended,
 /// everything falls back to the plain scrolling look. Runs after
 /// [`move_notes`], which positions everything by chart time first.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI
 pub fn animate_sustains(
     players: Query<(&PlayerIndex, &PlayerSession)>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
     settings: Res<Settings>,
+    layout: Res<HighwayLayout>,
     theme: Res<crate::theme::ActiveTheme>,
     mut notes: Query<(&NoteSprite, &mut Transform, &mut Sprite, &Children)>,
     mut tails: Query<(&SustainTail, &mut Transform, &mut Sprite), Without<NoteSprite>>,
@@ -552,6 +568,7 @@ pub fn animate_sustains(
         let lane = event.lanes.highest().unwrap_or(beatbyte_core::Lane::Three);
         let color = theme.0.lane_color(lane);
         let held = active.contains(&(note.player, note.event_index));
+        let center = layout.origin(note.player);
         if held {
             // Pin the gem to the hit line; pulse it toward white.
             transform.translation.y = RECEPTOR_Y;
@@ -566,23 +583,55 @@ pub fn animate_sustains(
                     let flat_height = (remaining * tail.full_height
                         / (event.sustain_s as f32).max(f32::EPSILON))
                     .clamp(0.0, tail.full_height);
-                    // Depth view: the tail's far end sits where the
-                    // projection puts that moment, not linearly above.
-                    let height = if perspective {
-                        depth::project(flat_height).0 - RECEPTOR_Y
+                    // Depth view: the far end sits where the
+                    // projection puts that moment ON THE LANE LINE —
+                    // both climbing and leaning, so the tail hugs its
+                    // string instead of standing vertical.
+                    if perspective {
+                        let (fx, fy) = depth::point(center, note.flat_x, flat_height);
+                        align_tail(
+                            &mut tail_transform,
+                            &mut tail_sprite,
+                            tail.width,
+                            fx - note.flat_x,
+                            fy - RECEPTOR_Y,
+                            1.0,
+                        );
                     } else {
-                        flat_height
-                    };
-                    tail_sprite.custom_size = Some(Vec2::new(tail.width, height));
-                    tail_transform.translation.y = height / 2.0;
+                        tail_sprite.custom_size = Some(Vec2::new(tail.width, flat_height));
+                        tail_transform.translation.y = flat_height / 2.0;
+                    }
                     tail_sprite.color = color.with_alpha(0.55 + 0.3 * pulse);
                 }
             }
-        } else if note.resolved {
-            // Released early or finished: a spent, dim tail.
-            for child in children {
-                if let Ok((_, _, mut tail_sprite)) = tails.get_mut(*child) {
-                    tail_sprite.color = color.with_alpha(0.15);
+        } else {
+            if note.resolved {
+                // Released early or finished: a spent, dim tail.
+                for child in children {
+                    if let Ok((_, _, mut tail_sprite)) = tails.get_mut(*child) {
+                        tail_sprite.color = color.with_alpha(0.15);
+                    }
+                }
+            }
+            // Approaching (or sliding past): in the depth view the
+            // tail must follow the leaning, foreshortened lane line
+            // from the gem to the projected point of its far end.
+            if perspective {
+                let z0 = ((event.time_s - now) as f32) * settings.scroll_speed;
+                let head = (transform.translation.x, transform.translation.y);
+                let parent_scale = transform.scale.x;
+                for child in children {
+                    if let Ok((tail, mut tail_transform, mut tail_sprite)) = tails.get_mut(*child) {
+                        let (fx, fy) = depth::point(center, note.flat_x, z0 + tail.full_height);
+                        align_tail(
+                            &mut tail_transform,
+                            &mut tail_sprite,
+                            tail.width,
+                            fx - head.0,
+                            fy - head.1,
+                            parent_scale,
+                        );
+                    }
                 }
             }
         }
@@ -743,6 +792,28 @@ fn gem_sprite(
     }
 }
 
+/// Point a tail sprite from its parent (the gem) to a world-space
+/// offset `(dx, dy)`: length, midpoint and rotation in the parent's
+/// LOCAL space (the parent carries a uniform `parent_scale`). The
+/// depth view leans lanes toward the vanishing point — a tail left
+/// vertical visibly detaches from its string (user screenshot).
+fn align_tail(
+    transform: &mut Transform,
+    sprite: &mut Sprite,
+    width: f32,
+    dx: f32,
+    dy: f32,
+    parent_scale: f32,
+) {
+    let s = parent_scale.max(f32::EPSILON);
+    let (lx, ly) = (dx / s, dy / s);
+    sprite.custom_size = Some(Vec2::new(width, lx.hypot(ly)));
+    transform.translation.x = lx / 2.0;
+    transform.translation.y = ly / 2.0;
+    // Rotation that maps the sprite's +Y axis onto (lx, ly).
+    transform.rotation = Quat::from_rotation_z((-lx).atan2(ly));
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod depth_tests {
@@ -780,6 +851,68 @@ mod depth_tests {
         assert!(
             (slope_path - slope_ext).abs() < 1e-4,
             "guide extension bends off the note path: {slope_path} vs {slope_ext}"
+        );
+    }
+
+    #[test]
+    fn lane_points_are_collinear_with_the_string() {
+        // Every projected point must sit on the straight screen line
+        // (flat_x, RECEPTOR_Y) -> (center, HORIZON_Y): that line IS
+        // the drawn string. A sustain tail drawn between two such
+        // points therefore hugs it.
+        let (center, flat_x) = (640.0_f32, 210.0_f32);
+        for z in [0.0_f32, 150.0, 400.0, 900.0, 2500.0] {
+            let (x, y) = depth::point(center, flat_x, z);
+            // f64 cross product: the operands are ~3e5, where f32's
+            // own rounding already costs ~0.04 — 0.5 is still five
+            // orders of magnitude below a visible bend (the original
+            // guide bug measured in the thousands).
+            let cross = (f64::from(x) - f64::from(flat_x))
+                * f64::from(depth::HORIZON_Y - RECEPTOR_Y)
+                - (f64::from(y) - f64::from(RECEPTOR_Y)) * f64::from(center - flat_x);
+            assert!(
+                cross.abs() < 0.5,
+                "point at z={z} leaves the string: cross={cross}"
+            );
+        }
+        // Below the hit line the note falls straight down.
+        let (x, y) = depth::point(center, flat_x, -120.0);
+        assert!((x - flat_x).abs() < 1e-4);
+        assert!((y - (RECEPTOR_Y - 120.0)).abs() < 1e-4);
+    }
+
+    #[test]
+    fn tails_rotate_onto_their_string() {
+        use bevy::prelude::{Sprite, Transform, Vec3};
+        let mut transform = Transform::default();
+        let mut sprite = Sprite::default();
+        // Straight up: no rotation, full length, midpoint at half.
+        super::align_tail(&mut transform, &mut sprite, 10.0, 0.0, 200.0, 1.0);
+        assert!(
+            transform
+                .rotation
+                .to_euler(bevy::math::EulerRot::ZYX)
+                .0
+                .abs()
+                < 1e-5
+        );
+        assert!((sprite.custom_size.unwrap().y - 200.0).abs() < 1e-3);
+        assert!((transform.translation.y - 100.0).abs() < 1e-3);
+        // Leaning left and up: positive Z rotation (counterclockwise),
+        // length is the hypotenuse, all divided by the parent scale.
+        super::align_tail(&mut transform, &mut sprite, 10.0, -60.0, 80.0, 0.5);
+        let angle = transform.rotation.to_euler(bevy::math::EulerRot::ZYX).0;
+        assert!(
+            angle > 0.0,
+            "left lean must rotate counterclockwise: {angle}"
+        );
+        assert!(
+            (sprite.custom_size.unwrap().y - 200.0).abs() < 1e-3,
+            "hypot(120,160)=200"
+        );
+        assert!(
+            (transform.translation - Vec3::new(-60.0, 80.0, 0.0)).length() < 1e-3,
+            "midpoint in parent-local units"
         );
     }
 

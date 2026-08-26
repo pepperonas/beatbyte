@@ -308,3 +308,25 @@ fn despawn_results(mut commands: Commands, entities: Query<Entity, With<ResultsS
         commands.entity(entity).despawn();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::grade_for;
+
+    #[test]
+    fn grade_thresholds_are_exact() {
+        // S is accuracy AND perfection: 97%+ with zero misses.
+        assert_eq!(grade_for(97.0, 0), "S");
+        assert_eq!(grade_for(100.0, 0), "S");
+        // One miss demotes even a 100% weighted accuracy to A.
+        assert_eq!(grade_for(100.0, 1), "A");
+        assert_eq!(grade_for(96.9, 0), "A");
+        assert_eq!(grade_for(92.0, 5), "A");
+        assert_eq!(grade_for(91.9, 0), "B");
+        assert_eq!(grade_for(82.0, 0), "B");
+        assert_eq!(grade_for(81.9, 0), "C");
+        assert_eq!(grade_for(70.0, 0), "C");
+        assert_eq!(grade_for(55.0, 0), "D");
+        assert_eq!(grade_for(54.9, 0), "E");
+    }
+}

@@ -7,7 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Depth-view sustain tails hug their string.** The tail sprite
+  extended straight up while the lane leaned toward the vanishing
+  point — the far end visibly detached from the line (user
+  screenshot). Tails now connect the gem to the projected position of
+  their far end along the exact note path (both while approaching and
+  while held), with foreshortened length and matching rotation.
+
 ### Added
+
+- **Test expansion**: exact hit-window boundary pins, Hype
+  multiplier math, BPM validation bounds, sustain truncation by
+  strong onsets, the default-binding user contract (ASDFG / Space /
+  Enter), grade thresholds, X-plorer chord+strum decode, settings
+  round-trip, depth-projection collinearity.
+- **README overhaul**: 60+ factual badges, a researched guitar/
+  controller support matrix, a step-by-step "how your music becomes a
+  playable track" pipeline section, expanded testing docs, and a
+  support section (PayPal donations, Google review link).
 
 - **Mouse support across the menus.** Main menu rows hover-select and
   click-activate; song select scrolls with the wheel, click selects,

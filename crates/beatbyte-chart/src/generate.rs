@@ -593,6 +593,66 @@ mod tests {
     }
 
     #[test]
+    fn a_strong_fresh_onset_truncates_the_sustain() {
+        // A held tone ends when something new strikes: an onset at or
+        // above the ABSOLUTE 0.5 bar inside the sustain window cuts
+        // the tail just before it (weaker ones — reverb, crowd — do
+        // not; that relative-measure bug once cost a live track most
+        // of its sustains).
+        let mk = |breaker_strength: f32| {
+            let onsets = vec![
+                Onset {
+                    time_s: 1.0,
+                    strength: 0.9,
+                    brightness: 0.2,
+                },
+                Onset {
+                    time_s: 1.8,
+                    strength: breaker_strength,
+                    brightness: 0.5,
+                },
+                Onset {
+                    time_s: 4.5,
+                    strength: 0.9,
+                    brightness: 0.2,
+                },
+            ];
+            let a = SongAnalysis {
+                bpm: 120.0,
+                bpm_confidence: 0.8,
+                alt_bpm: None,
+                beats: (0..20).map(|i| f64::from(i) * 0.5).collect(),
+                onsets,
+                energy: vec![0.8; 200],
+                energy_hop_s: 0.05,
+                duration_s: 10.0,
+            };
+            let file = generate_chart(&a, &meta());
+            let medium = file
+                .charts
+                .iter()
+                .find(|c| c.difficulty == Difficulty::Medium)
+                .unwrap();
+            medium
+                .notes
+                .iter()
+                .find(|n| (n.time - 1.0).abs() < 0.1)
+                .map(|n| n.len)
+                .unwrap_or(0.0)
+        };
+        let cut = mk(0.6);
+        let uncut = mk(0.2);
+        assert!(
+            cut > 0.0 && cut <= 0.75,
+            "strong onset at +0.8s must cap the sustain near 0.7s: {cut}"
+        );
+        assert!(
+            uncut > cut,
+            "a weak onset must NOT truncate: {uncut} vs {cut}"
+        );
+    }
+
+    #[test]
     fn sustains_appear_where_energy_carries() {
         // Sparse strong onsets with big gaps and constant energy.
         let onsets: Vec<Onset> = (0..20)

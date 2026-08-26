@@ -242,6 +242,30 @@ mod tests {
     }
 
     #[test]
+    fn untranslated_bits_stay_untranslated() {
+        // D-pad left/right and the Guide button exist in the report
+        // but mean nothing on a guitar — they must not map to any
+        // game input, or phantom presses would leak through.
+        for bit in [1u16 << 2, 1 << 3, 1 << 10] {
+            assert!(
+                BUTTON_BITS.iter().all(|(b, _)| b & bit == 0),
+                "bit {bit:#06x} must not be translated"
+            );
+        }
+    }
+
+    #[test]
+    fn chord_and_strum_decode_simultaneously() {
+        // Real play: two frets held while the strum bar flicks —
+        // one report carries all three, nothing masks anything.
+        let state = decode_report(0b0000_0010, 0b0011_0000);
+        assert_ne!(state & (1 << 1), 0, "strum down");
+        assert_ne!(state & (1 << 12), 0, "green fret");
+        assert_ne!(state & (1 << 13), 0, "red fret");
+        assert_eq!(state & (1 << 8), 0, "orange must stay released");
+    }
+
+    #[test]
     fn every_translated_bit_is_unique() {
         for (i, (a, _)) in BUTTON_BITS.iter().enumerate() {
             for (b, _) in BUTTON_BITS.iter().skip(i + 1) {

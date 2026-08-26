@@ -214,6 +214,21 @@ mod tests {
     /// load — extra ignored, missing defaulted. Losing someone's
     /// calibration on upgrade is not acceptable.
     #[test]
+    fn settings_round_trip_preserves_the_look_and_mode() {
+        let mut settings = Settings::default();
+        settings.tap_mode = !settings.tap_mode;
+        settings.round_gems = !settings.round_gems;
+        settings.perspective = !settings.perspective;
+        settings.latency_offset_ms = 23.5;
+        let json = serde_json::to_string(&settings).unwrap();
+        let back: Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.tap_mode, settings.tap_mode);
+        assert_eq!(back.round_gems, settings.round_gems);
+        assert_eq!(back.perspective, settings.perspective);
+        assert!((back.latency_offset_ms - 23.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
     fn settings_tolerate_unknown_and_missing_fields() {
         let json = r#"{
             "music_volume": 0.25,

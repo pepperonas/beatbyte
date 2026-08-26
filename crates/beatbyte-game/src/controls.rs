@@ -214,6 +214,41 @@ mod tests {
     use super::*;
 
     #[test]
+    fn default_bindings_pin_the_user_contract() {
+        // These exact defaults were settled in live playtests:
+        // ASDFG frets, Space strums (two-hand split with tap off),
+        // Enter is Hype, guitar face buttons match the X-plorer.
+        use Binding::{Key, Pad};
+        let map = InputMap::default();
+        let fret_keys = [
+            KeyCode::KeyA,
+            KeyCode::KeyS,
+            KeyCode::KeyD,
+            KeyCode::KeyF,
+            KeyCode::KeyG,
+        ];
+        for (fret, key) in fret_keys.iter().enumerate() {
+            assert!(
+                map.of(GameAction::Fret(fret as u8)).contains(&Key(*key)),
+                "fret {fret} lost its home-row key"
+            );
+        }
+        let strum = map.of(GameAction::StrumDown);
+        assert!(strum.contains(&Key(KeyCode::Space)), "Space must strum");
+        assert!(strum.contains(&Key(KeyCode::ArrowDown)));
+        assert!(strum.contains(&Pad(GamepadButton::DPadDown)));
+        assert!(
+            map.of(GameAction::Hype).contains(&Key(KeyCode::Enter)),
+            "Enter must trigger Hype"
+        );
+        assert!(map.of(GameAction::Pause).contains(&Key(KeyCode::Escape)));
+        assert!(
+            map.of(GameAction::Pause)
+                .contains(&Pad(GamepadButton::Start))
+        );
+    }
+
+    #[test]
     fn defaults_cover_every_action() {
         let map = InputMap::default();
         for action in GameAction::ALL {

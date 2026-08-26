@@ -72,6 +72,13 @@ actionable; adjectives alone are not.
 
 ## Findings log
 
+**2026-08-26 · depth view · sustain tails**
+- User screenshot: "die langgezogenen töne sind noch verschoben (die
+  linie)" — sustain tails stood vertical while the lane leaned toward
+  the vanishing point. **Action taken:** tails now connect the gem to
+  the projected far-end point on the exact note path (approaching AND
+  held); verified by screenshot + collinearity tests.
+
 **2026-08-26 · Guitar Hero X-plorer**
 - Real hardware connected through the app's own libusb reader;
   user-confirmed with the Controls-screen fret lamps (red + yellow

@@ -338,6 +338,27 @@ mod tests {
     }
 
     #[test]
+    fn bpm_bounds_are_exact() {
+        // The caps are a security boundary for untrusted charts:
+        // 20 and 400 are valid, one hair outside is not.
+        for (bpm, ok) in [
+            (20.0, true),
+            (400.0, true),
+            (19.999, false),
+            (400.001, false),
+        ] {
+            let mut chart = valid_chart();
+            chart.song.bpm = bpm;
+            let report = errors(&chart);
+            assert_eq!(
+                report.is_empty(),
+                ok,
+                "bpm {bpm} should be valid={ok}: {report:?}"
+            );
+        }
+    }
+
+    #[test]
     fn bad_bpm_is_rejected() {
         for bpm in [0.0, -10.0, 1000.0, f64::NAN, f64::INFINITY] {
             let mut chart = valid_chart();

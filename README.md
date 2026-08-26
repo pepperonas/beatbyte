@@ -4,13 +4,84 @@
 
 **An original five-lane rhythm game. Your music. Pixel-art or polished — your call.**
 
+### Status
+
 [![CI](https://github.com/pepperonas/beatbyte/actions/workflows/ci.yml/badge.svg)](https://github.com/pepperonas/beatbyte/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/pepperonas/beatbyte?include_prereleases&sort=semver)](https://github.com/pepperonas/beatbyte/releases)
+[![Release Build](https://github.com/pepperonas/beatbyte/actions/workflows/release.yml/badge.svg)](https://github.com/pepperonas/beatbyte/actions/workflows/release.yml)
+[![Latest Release](https://img.shields.io/github/v/release/pepperonas/beatbyte?include_prereleases&sort=semver)](https://github.com/pepperonas/beatbyte/releases)
+[![Release Date](https://img.shields.io/github/release-date-pre/pepperonas/beatbyte)](https://github.com/pepperonas/beatbyte/releases)
+[![Downloads](https://img.shields.io/github/downloads/pepperonas/beatbyte/total)](https://github.com/pepperonas/beatbyte/releases)
+[![Last Commit](https://img.shields.io/github/last-commit/pepperonas/beatbyte)](https://github.com/pepperonas/beatbyte/commits/main)
+[![Commit Activity](https://img.shields.io/github/commit-activity/m/pepperonas/beatbyte)](https://github.com/pepperonas/beatbyte/commits/main)
+[![Issues](https://img.shields.io/github/issues/pepperonas/beatbyte)](https://github.com/pepperonas/beatbyte/issues)
+[![Closed Issues](https://img.shields.io/github/issues-closed/pepperonas/beatbyte?color=blue)](https://github.com/pepperonas/beatbyte/issues?q=is%3Aissue+is%3Aclosed)
+[![Pull Requests](https://img.shields.io/github/issues-pr/pepperonas/beatbyte)](https://github.com/pepperonas/beatbyte/pulls)
+[![Stars](https://img.shields.io/github/stars/pepperonas/beatbyte?style=flat)](https://github.com/pepperonas/beatbyte/stargazers)
+[![Forks](https://img.shields.io/github/forks/pepperonas/beatbyte?style=flat)](https://github.com/pepperonas/beatbyte/network/members)
+[![Watchers](https://img.shields.io/github/watchers/pepperonas/beatbyte?style=flat)](https://github.com/pepperonas/beatbyte/watchers)
+[![Contributors](https://img.shields.io/github/contributors/pepperonas/beatbyte)](https://github.com/pepperonas/beatbyte/graphs/contributors)
+[![Repo Size](https://img.shields.io/github/repo-size/pepperonas/beatbyte)](https://github.com/pepperonas/beatbyte)
+[![Code Size](https://img.shields.io/github/languages/code-size/pepperonas/beatbyte)](https://github.com/pepperonas/beatbyte)
+[![Top Language](https://img.shields.io/github/languages/top/pepperonas/beatbyte)](https://github.com/pepperonas/beatbyte)
+[![Maintained](https://img.shields.io/badge/maintained-yes-brightgreen)](https://github.com/pepperonas/beatbyte/commits/main)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
+
+### Quality
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/Rust-1.95%2B-orange?logo=rust)](https://www.rust-lang.org/)
-[![Bevy](https://img.shields.io/badge/Bevy-0.19-blueviolet)](https://bevy.org/)
 [![SemVer](https://img.shields.io/badge/versioning-SemVer-blue)](CHANGELOG.md)
-[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)](#supported-platforms)
+[![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735)](CHANGELOG.md)
+[![Conventional Commits](https://img.shields.io/badge/commits-Conventional-FE5196)](https://www.conventionalcommits.org/)
+[![Tests](https://img.shields.io/badge/tests-217%20passing-brightgreen)](#testing)
+[![Clippy](https://img.shields.io/badge/clippy-%E2%80%91D%20warnings-brightgreen?logo=rust)](Cargo.toml)
+[![rustfmt](https://img.shields.io/badge/style-rustfmt-orange?logo=rust)](Cargo.toml)
+[![Rustdoc](https://img.shields.io/badge/public%20API-documented-blue)](Cargo.toml)
+[![Unsafe](https://img.shields.io/badge/unsafe-1%20audited%20block-yellow)](crates/beatbyte-game/src/lib.rs)
+[![Deterministic](https://img.shields.io/badge/engine-deterministic-blueviolet)](#how-your-music-becomes-a-playable-track)
+[![Autopilot](https://img.shields.io/badge/releases-autopilot%20verified-success)](#testing)
+[![ADRs](https://img.shields.io/badge/decisions-ADRs-lightgrey)](docs/decisions/)
+
+### Tech
+
+[![Rust](https://img.shields.io/badge/Rust-1.95%2B-orange?logo=rust)](https://www.rust-lang.org/)
+[![Edition](https://img.shields.io/badge/edition-2024-orange?logo=rust)](Cargo.toml)
+[![Bevy](https://img.shields.io/badge/Bevy-0.19-blueviolet)](https://bevy.org/)
+[![Audio](https://img.shields.io/badge/audio-rodio%20%2B%20Symphonia-9cf)](crates/beatbyte-audio)
+[![USB](https://img.shields.io/badge/guitar%20driver-libusb%20(rusb)-9cf)](crates/beatbyte-game/src/xplorer.rs)
+[![Workspace](https://img.shields.io/badge/workspace-7%20crates-informational)](#development)
+[![Toolchain](https://img.shields.io/badge/build%20deps-Rust%20only-informational)](#building-from-source)
+[![Made with Rust](https://img.shields.io/badge/made%20with-%F0%9F%A6%80%20Rust-red)](https://www.rust-lang.org/)
+
+### Platforms
+
+[![macOS](https://img.shields.io/badge/macOS-DMG%20%2B%20portable-black?logo=apple)](https://github.com/pepperonas/beatbyte/releases)
+[![Windows](https://img.shields.io/badge/Windows-portable%20zip-0078D6)](https://github.com/pepperonas/beatbyte/releases)
+[![Linux](https://img.shields.io/badge/Linux-AppImage%20%2B%20portable-FCC624?logo=linux&logoColor=black)](https://github.com/pepperonas/beatbyte/releases)
+[![Apple Silicon](https://img.shields.io/badge/arch-arm64-lightgrey?logo=apple)](https://github.com/pepperonas/beatbyte/releases)
+[![Intel](https://img.shields.io/badge/arch-x86__64-lightgrey)](https://github.com/pepperonas/beatbyte/releases)
+
+### Gameplay
+
+[![Players](https://img.shields.io/badge/players-1%E2%80%934%20local-ff69b4)](#features)
+[![Lanes](https://img.shields.io/badge/lanes-5-blue)](#features)
+[![Difficulties](https://img.shields.io/badge/difficulties-4-blue)](#features)
+[![Audio Formats](https://img.shields.io/badge/your%20music-WAV%20%C2%B7%20OGG%20%C2%B7%20FLAC%20%C2%B7%20MP3%20%C2%B7%20M4A-blue)](#how-your-music-becomes-a-playable-track)
+[![Keyboard](https://img.shields.io/badge/input-keyboard-9cf)](#controls)
+[![Gamepad](https://img.shields.io/badge/input-gamepad-9cf)](#controls)
+[![Guitar](https://img.shields.io/badge/input-guitar%20controller-9cf)](#supported-guitars--controllers)
+[![X-plorer](https://img.shields.io/badge/X%E2%80%91plorer-native%20driver-success)](#supported-guitars--controllers)
+[![Calibration](https://img.shields.io/badge/latency-in%E2%80%91game%20calibration-blueviolet)](#controls)
+[![Editor](https://img.shields.io/badge/chart%20editor-built%E2%80%91in-blueviolet)](#features)
+[![Themes](https://img.shields.io/badge/stage%20themes-6-blueviolet)](#features)
+[![Colorblind](https://img.shields.io/badge/colorblind-safe%20by%20default-brightgreen)](#features)
+[![Offline](https://img.shields.io/badge/offline-no%20telemetry-brightgreen)](#legal)
+[![DRM](https://img.shields.io/badge/DRM-free-brightgreen)](#legal)
+[![Assets](https://img.shields.io/badge/assets-100%25%20original%20%2F%20CC0%20%2F%20OFL-brightgreen)](#legal)
+
+### Support
+
+[![Donate](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://www.paypal.com/donate/?business=martin.pfeffer%40celox.io)
+[![Review](https://img.shields.io/badge/Review%20celox.io-on%20Google%20Maps%20%E2%AD%90-4285F4?logo=googlemaps&logoColor=white)](https://g.page/r/CXgdRV3QysvxEBM/review)
 
 </div>
 
@@ -19,9 +90,11 @@
 BeatByte is an original, open-source rhythm game in the classic five-lane guitar
 tradition — rebuilt from scratch in **Rust** and **Bevy**. It ships two
 looks: a crisp 8-bit / pixel-art identity, and a smooth high-res style
-with round gems, a depth-view highway and bloom — switchable in-game. Drop in your own music, let BeatByte analyze it
+with round gems, a depth-view highway and bloom — switchable in-game.
+Drop in your own music, let BeatByte analyze it
 and generate a playable chart, then shred it solo or with up to four players on
 one machine.
+
 
 > **Status: all thirteen build milestones complete** — playable solo or
 > with friends, themed, packaged for all three platforms. 0.x versions
@@ -89,6 +162,31 @@ autopilot scores prove it).*
 | Linux | ✅ primary target |
 | Web (WASM) | 🔮 future |
 
+## Supported Guitars & Controllers
+
+BeatByte plays with a keyboard out of the box — but it is a guitar game
+at heart, and it ships its own native guitar driver.
+
+| Controller | Connection | Status |
+|------------|------------|--------|
+| **Guitar Hero X-plorer** (RedOctane, wired Xbox 360, USB `1430:4748`) | **built-in native driver** (userspace libusb — no kernel driver, no config) | ✅ **verified on real hardware** |
+| Any controller your OS shows as a gamepad (Xbox, PlayStation, generic HID pads) | system gamepad support | ✅ works, fully remappable in-game |
+| PS3 Guitar Hero / Rock Band guitars (USB dongle) | standard USB HID | 🟡 expected to work through the gamepad path + remapping — unverified |
+| Xbox 360 **wireless** guitars | Xbox 360 Wireless Receiver + OS driver | 🟡 Windows/Linux where the OS exposes them; ❌ macOS (no driver exists) |
+| Wii, PS4 and Xbox One (GH Live) guitars | Bluetooth / proprietary wireless | ❌ not supported |
+
+**Why the X-plorer needs (and gets) special treatment:** it speaks the
+Xbox 360 *vendor* protocol, not standard HID — macOS never shows it as
+a game controller, so generic gamepad layers are blind to it. BeatByte
+includes a userspace USB reader that claims the device, decodes its
+20-byte interrupt reports and feeds them into the engine as a
+first-class gamepad: green–orange frets, strum bar (d-pad), Start =
+pause, Back = Hype. Tilt and whammy are not game mechanics in BeatByte
+(Hype is a button), so nothing is lost. Verify any device on the
+**INPUT TEST** screen in the main menu: five fret lamps, strum flash,
+Hype lamp, and a would-hit indicator that applies the active mode's
+rule.
+
 ## Installation
 
 Grab a build from the
@@ -101,6 +199,50 @@ Grab a build from the
   the portable tar.gz.
 
 Or build from source (below).
+
+## How Your Music Becomes a Playable Track
+
+Drop audio files onto the window (or use `beatbyte-cli`) and BeatByte
+turns them into charts — locally, deterministically, no cloud. The
+pipeline, in order:
+
+1. **Import** — dropped files are checked against the supported
+   extensions (`.wav .ogg .flac .mp3 .m4a`), queued as a batch (with an
+   animated progress panel), de-duplicated, and copied into
+   `songs/imported/<sanitized-name>/`. Your files never leave your
+   machine and are never committed anywhere.
+2. **Decode** — [rodio](https://github.com/RustAudio/rodio) with
+   [Symphonia](https://github.com/pdeljanov/Symphonia) decoders opens
+   the file (for `.m4a`: the ISO-MP4 demuxer + AAC codec), downmixes to
+   mono `f32` at the file's native sample rate. Analysis decodes at most
+   20 minutes into memory (a deliberate cap — untrusted input);
+   playback later *streams* from disk instead.
+3. **Onset detection** — a from-scratch spectral-flux pipeline:
+   STFT → log-compressed magnitude spectra → half-wave-rectified flux →
+   adaptive median threshold → local-maximum peak picking. Every stage
+   is a pure function over sample buffers.
+4. **Tempo & beat grid** — BPM from the autocorrelation of the flux
+   envelope, weighted by a log-normal prior around 120 BPM (to pick the
+   right tempo octave), refined with parabolic interpolation for
+   sub-BPM resolution; the beat grid is then phase-fitted so beats land
+   on actual onsets.
+5. **Chart generation** — deterministic and data-driven: per-difficulty
+   profiles quantize onsets to the beat grid (beats → sixteenths),
+   thin them by strength and spacing, assign lanes by spectral
+   brightness with jump limiting, promote strong onsets to chords,
+   turn fast runs into HOPOs, and carve **sustains energy-first** out
+   of the gaps between strong onsets. Same audio in → bit-identical
+   charts out. There is no randomness — variety comes from a hash of
+   each note's own timestamp.
+6. **Validation** — charts are treated as untrusted input even though
+   we just generated them: BPM clamped to 20–400, size caps, path
+   traversal and Windows-drive rejection.
+7. **Play (and correct)** — the song appears in the browser with all
+   four difficulties. Generated charts are *playable, not perfect* —
+   the built-in editor is the correction pass.
+
+Full walkthrough: [docs/importing-songs.md](docs/importing-songs.md) ·
+analysis details: [`docs/audio/`](docs/audio/).
 
 ## Building from Source
 
@@ -154,7 +296,11 @@ Architecture decisions are documented as ADRs in
 | Strum | `Space` (or `↑`/`↓`) |
 | Hype (special) | `Enter` |
 | Pause | `Esc` |
-| Menus | arrows + `Enter` / `Esc` |
+| Menus | arrows + `Enter` / `Esc` — or the **mouse** (hover, click, wheel, right-click = back) |
+
+Verify any device on the **INPUT TEST** screen (main menu): fret
+lamps, strum flash, Hype lamp, and a would-hit indicator for the
+active mode (tap / strum), toggleable on the spot with `T`.
 
 Settings (volumes, scroll speed, effect toggles, fullscreen) and the
 latency calibration live in-game and persist between sessions. Put
@@ -193,12 +339,24 @@ beatbyte-cli demo                  # render the built-in songs + charts
 ## Testing
 
 ```bash
-cargo test --workspace
+cargo test --workspace          # 217 tests
 ```
 
-Core gameplay logic (timing, scoring, judgment, chart validation, analysis)
-is covered by unit tests; integration tests live next to the crates they
-exercise.
+Core gameplay logic (timing windows down to their exact boundaries,
+scoring, judgment, HOPO/tap rules, chart validation and generation,
+onset/tempo analysis, editor op inverses, the depth projection, the
+X-plorer report decoder) is covered by unit tests; integration tests
+decode real fixture files for every advertised audio format (including
+`.m4a`). On top of that sit two harnesses that run a full build:
+
+```bash
+BEATBYTE_SMOKE_TEST=1 cargo run -p beatbyte   # boots to menu, exits 0
+BEATBYTE_AUTOPILOT=1  cargo run -p beatbyte   # plays a song — must be flawless
+```
+
+The autopilot injects timestamped inputs and fails on ANY miss or
+overstrum; because judgment is input-stamp-driven, the verdict is
+frame-rate independent. Every release must pass it.
 
 ## Release Process
 
@@ -212,6 +370,17 @@ all supported platforms. See [`docs/releases/`](docs/releases/).
 Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md)
 and the [Code of Conduct](CODE_OF_CONDUCT.md) first. Security issues: see
 [SECURITY.md](SECURITY.md).
+
+## Support the Project
+
+BeatByte is free, open source and ad-free. If it made you smile:
+
+<a href="https://www.paypal.com/donate/?business=martin.pfeffer%40celox.io"><img src="https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white&style=for-the-badge" alt="Donate via PayPal"/></a>
+<a href="https://g.page/r/CXgdRV3QysvxEBM/review"><img src="https://img.shields.io/badge/Review%20celox.io-on%20Google%20Maps%20%E2%AD%90-4285F4?logo=googlemaps&logoColor=white&style=for-the-badge" alt="Review celox.io on Google Maps"/></a>
+
+- 💛 **Donate** via PayPal: [martin.pfeffer@celox.io](https://www.paypal.com/donate/?business=martin.pfeffer%40celox.io)
+- ⭐ **Rate my work** on Google Maps: [g.page/r/CXgdRV3QysvxEBM/review](https://g.page/r/CXgdRV3QysvxEBM/review)
+- 🌟 Star the repo, file issues, send PRs — all equally appreciated.
 
 ## Roadmap
 
