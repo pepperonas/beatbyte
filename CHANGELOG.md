@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A held note stays lit for as long as you hold it.** On the 3D
+  stage, striking a sustain used to make the whole note vanish — tail
+  included — leaving a single burst and then nothing, however long the
+  key stayed down. Now the gem lands and goes while the tail remains
+  and is eaten from the hit line inward, and the fret keeps burning:
+  the ring re-blooms about three times a second and the glow breathes
+  rather than sitting at a fixed brightness, because a constant
+  maximum is a state, not an animation. Letting go early greys the
+  remaining tail and slides it away, so dropping a hold looks
+  different from playing it out. Judgment is untouched — the same runs
+  score identically (98/98, 282/282 and 624/624 perfect).
+
 - **A venue behind the 3D stage.** The fretboard used to run through a
   void: outside the bed the screen was black. There is now a room — a
   rear wall, side walls, a lighting truss with sweeping beams, speaker

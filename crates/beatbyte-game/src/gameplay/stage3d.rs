@@ -150,6 +150,47 @@ pub fn note_z(seconds: f64, scroll_speed: f32) -> f32 {
     -(seconds as f32) * scroll_speed * Z_PER_PIXEL
 }
 
+/// How brightly a held sustain keeps its strike burning, before the
+/// breath is added. Below the peak of a fresh hit — holding a note is
+/// a sustained state, not a repeated impact.
+const SUSTAIN_HIT_FLOOR: f32 = 0.46;
+/// How fast that glow breathes, in radians per second.
+const SUSTAIN_PULSE_HZ: f32 = 7.5;
+/// How fast the ring fades between re-blooms while a hold runs.
+const SUSTAIN_BLOOM_RATE: f32 = 2.4;
+
+/// The tube behind a sustain's gem.
+///
+/// Marked, because a hit sustain must survive the strike: the gem
+/// lands and goes, but the tail is the part still being played.
+#[derive(Component)]
+pub struct SustainTail3d;
+
+/// Where a sustain's remaining tail sits, and how long it still is.
+///
+/// Returns `None` once nothing is left to hold. Pure, because the
+/// half-length offset is exactly the kind of arithmetic that has gone
+/// wrong here before — the depth view once drew tails that stood
+/// vertical while the lane leaned.
+#[must_use]
+pub fn sustain_tail_span(
+    time_s: f64,
+    sustain_s: f64,
+    now: f64,
+    scroll_speed: f32,
+) -> Option<(f32, f32)> {
+    let end_z = note_z(time_s + sustain_s - now, scroll_speed);
+    // The head end is pinned to the hit line once the note has been
+    // struck: the part that has already been played is gone, so the
+    // tail runs from z = 0 back up the neck.
+    let head_z = note_z(time_s - now, scroll_speed).min(0.0);
+    let length = head_z - end_z;
+    if length <= 0.0 {
+        return None;
+    }
+    Some(((head_z + end_z) / 2.0, length))
+}
+
 /// A piece of the venue behind the neck.
 #[derive(Component)]
 struct Venue;
@@ -676,7 +717,26 @@ pub fn update_receptors(
         }
     }
 
+    // Which frets are mid-sustain. A held note is not merely a
+    // pressed fret: the strike is still happening, so its feedback
+    // has to keep running for as long as the key is down.
+    let mut sustaining: Vec<(usize, Lane)> = Vec::new();
+    for (index, player) in &players {
+        let Some(event_index) = player.session.active_sustain() else {
+            continue;
+        };
+        let Some(event) = player.session.track().events().get(event_index) else {
+            continue;
+        };
+        for lane in event.lanes.iter() {
+            sustaining.push((index.0, lane));
+        }
+    }
+    let holds =
+        |player: usize, lane: Lane| sustaining.iter().any(|(p, l)| *p == player && *l == lane);
+
     let delta = time.delta_secs();
+    let now = time.elapsed_secs();
     // Press/hit per fret, collected once so the fill and the burst
     // read exactly the numbers the ring does.
     let mut remembered: Vec<(usize, Lane, f32, f32)> = Vec::new();
@@ -704,6 +764,13 @@ pub fn update_receptors(
             *hit = hit.max(*force);
         }
         *hit = (*hit - 7.5 * delta).max(0.0);
+        // While the hold runs, the strike is held ALIVE and breathing
+        // rather than pinned: a constant maximum would be a static
+        // bright ring, which is a state, not an animation.
+        if holds(receptor.player, receptor.lane) {
+            let breath = 0.22f32.mul_add((now * SUSTAIN_PULSE_HZ).sin(), SUSTAIN_HIT_FLOOR);
+            *hit = hit.max(breath);
+        }
         let (press, hit) = (*press, *hit);
 
         // Pressed frets sink into the neck; a hit makes one jump.
@@ -744,14 +811,25 @@ pub fn update_receptors(
     // the fret and gone in about a fifth of a second — the genre's
     // flame, which is what tells you the note actually landed.
     for (mut burst, mut burst_transform, burst_material) in &mut bursts {
-        if let Some((_, _, _, hit)) = remembered
-            .iter()
-            .find(|(p, l, _, _)| *p == burst.player && *l == burst.lane)
-            && *hit > burst.life
-        {
-            burst.life = *hit;
+        if holds(burst.player, burst.lane) {
+            // A sustained hold re-blooms instead of dying: the ring
+            // spreads, fades, and starts again about three times a
+            // second, so the fret reads as still burning. The one-shot
+            // path below would just decay to nothing under the key.
+            burst.life -= SUSTAIN_BLOOM_RATE * delta;
+            if burst.life <= 0.12 {
+                burst.life = 0.9;
+            }
+        } else {
+            if let Some((_, _, _, hit)) = remembered
+                .iter()
+                .find(|(p, l, _, _)| *p == burst.player && *l == burst.lane)
+                && *hit > burst.life
+            {
+                burst.life = *hit;
+            }
+            burst.life = (burst.life - 5.0 * delta).max(0.0);
         }
-        burst.life = (burst.life - 5.0 * delta).max(0.0);
         let progress = 1.0 - burst.life;
         let spread = 2.2f32.mul_add(progress, 0.35);
         burst_transform.scale = Vec3::new(spread, 1.0, spread);
@@ -773,7 +851,7 @@ pub fn apply_note_events(
     settings: Res<Settings>,
     assets: Option<Res<NoteAssets>>,
     mut feedback: MessageReader<super::SessionFeedback>,
-    notes: Query<(Entity, &Note3d)>,
+    notes: Query<(Entity, &Note3d, Has<SustainTail3d>)>,
 ) {
     if !active(&settings) {
         return;
@@ -787,11 +865,19 @@ pub fn apply_note_events(
             beatbyte_core::SessionEvent::NoteMissed { event_index } => (event_index, false),
             _ => continue,
         };
-        for (entity, note) in &notes {
+        for (entity, note, is_tail) in &notes {
             if note.player != message.player_index || note.event_index != event_index {
                 continue;
             }
             if hit {
+                // The tail stays. Despawning it here was why holding a
+                // long note looked dead in this view: the whole note
+                // vanished at the strike, including the part the
+                // player had not played yet, so there was nothing
+                // left to animate while the key was down.
+                if is_tail {
+                    continue;
+                }
                 commands.entity(entity).despawn();
             } else {
                 // Swap the HANDLE, never the material behind it.
@@ -1039,6 +1125,7 @@ pub fn spawn_due_notes(
                             event_index: cursor,
                             lane,
                         },
+                        SustainTail3d,
                         Mesh3d(assets.sustain.clone()),
                         MeshMaterial3d(material),
                         // The cylinder is built along Y, so it is
@@ -1059,7 +1146,7 @@ pub fn spawn_due_notes(
 /// Keep the 3D notes in step with the song.
 pub fn move_notes(
     mut commands: Commands,
-    mut notes: Query<(Entity, &Note3d, &mut Transform)>,
+    mut notes: Query<(Entity, &Note3d, &mut Transform, Has<SustainTail3d>)>,
     players: Query<(&PlayerIndex, &PlayerSession)>,
     layout: Res<HighwayLayout>,
     game_clock: Res<GameClock>,
@@ -1076,7 +1163,7 @@ pub fn move_notes(
         return;
     };
     let events = reference.session.track().events();
-    for (entity, note, mut transform) in &mut notes {
+    for (entity, note, mut transform, is_tail) in &mut notes {
         let Some(event) = events.get(note.event_index) else {
             continue;
         };
@@ -1084,7 +1171,13 @@ pub fn move_notes(
         // A sustain tube is offset back by half its own length; its
         // scale carries that length, so the offset is recomputed
         // rather than remembered.
-        let z = if transform.scale.y > 1.5 {
+        //
+        // Asked by component, not by guessing from the scale. The old
+        // test was `scale.y > 1.5`, which held only while a tail was
+        // at full length — a tail partly eaten by a hold falls under
+        // that threshold, and a dropped one would then have jumped
+        // half its own length up the neck.
+        let z = if is_tail {
             head - transform.scale.y / 2.0
         } else {
             head
@@ -1094,6 +1187,74 @@ pub fn move_notes(
         // Past the camera: gone.
         if z > 4.5 {
             commands.entity(entity).despawn();
+        }
+    }
+}
+
+/// Eat the tail of a sustain while it is being held, and let go of it
+/// when the hold ends.
+///
+/// The receptor keeps burning (see [`update_receptors`]); this is the
+/// other half of the same feedback — the tail visibly shortens into
+/// the fret for exactly as long as the key is down.
+pub fn consume_sustains(
+    mut commands: Commands,
+    settings: Res<Settings>,
+    time: Res<Time>,
+    game_clock: Res<GameClock>,
+    assets: Option<Res<NoteAssets>>,
+    players: Query<(&PlayerIndex, &PlayerSession)>,
+    mut tails: Query<(Entity, &Note3d, &mut Transform), With<SustainTail3d>>,
+) {
+    if !active(&settings) {
+        return;
+    }
+    let (Some(now), Some(assets)) = (game_clock.song_time(&time), assets) else {
+        return;
+    };
+    for (entity, note, mut transform) in &mut tails {
+        let Some((_, player)) = players.iter().find(|(index, _)| index.0 == note.player) else {
+            continue;
+        };
+        // Only the sustain the engine says is running. Asking the
+        // session rather than tracking a local flag keeps the picture
+        // honest: if judgment dropped the hold, so does the tail.
+        if player.session.active_sustain() != Some(note.event_index) {
+            continue;
+        }
+        let Some(event) = player.session.track().events().get(note.event_index) else {
+            continue;
+        };
+        match sustain_tail_span(event.time_s, event.sustain_s, now, settings.scroll_speed) {
+            Some((centre, length)) => {
+                transform.translation.z = centre;
+                transform.scale.y = length;
+            }
+            // Fully played: the tail has been eaten, nothing to show.
+            None => commands.entity(entity).despawn(),
+        }
+    }
+
+    // A tail whose hold has ended but which still has length left was
+    // DROPPED — it greys out and slides away, so letting go looks
+    // different from playing it out.
+    for (entity, note, transform) in &tails {
+        let held = players
+            .iter()
+            .find(|(index, _)| index.0 == note.player)
+            .and_then(|(_, player)| player.session.active_sustain());
+        if held == Some(note.event_index) || transform.scale.y <= 0.0 {
+            continue;
+        }
+        let struck = players
+            .iter()
+            .find(|(index, _)| index.0 == note.player)
+            .and_then(|(_, player)| player.session.note_state(note.event_index))
+            .is_some_and(|state| matches!(state, beatbyte_core::session::NoteState::Hit(_)));
+        if struck {
+            commands
+                .entity(entity)
+                .insert(MeshMaterial3d(assets.missed_material.clone()));
         }
     }
 }
@@ -1114,6 +1275,7 @@ impl Plugin for Stage3dPlugin {
             (
                 spawn_due_notes,
                 move_notes,
+                consume_sustains,
                 move_fret_bars,
                 update_receptors,
                 apply_note_events,
@@ -1127,6 +1289,73 @@ impl Plugin for Stage3dPlugin {
 
 #[cfg(test)]
 mod tests {
+    use super::sustain_tail_span;
+
+    /// A note at t = 10 s that is held for 2 s, at the default speed.
+    fn span(now: f64) -> Option<(f32, f32)> {
+        sustain_tail_span(10.0, 2.0, now, 420.0)
+    }
+
+    #[test]
+    fn an_untouched_tail_keeps_its_full_length() {
+        // Before the note reaches the line the tail is its whole
+        // musical length, whatever the scroll speed.
+        let (_, length) = span(9.0).expect("tail exists");
+        let expected = 2.0 * 420.0 * super::Z_PER_PIXEL;
+        assert!(
+            (length - expected).abs() < 1e-3,
+            "expected {expected}, got {length}"
+        );
+    }
+
+    #[test]
+    fn holding_eats_the_tail_from_the_hit_line() {
+        // Half a second into a two-second hold, three quarters should
+        // be left — and it must be SHORTER than a moment earlier, or
+        // the hold has no visible progress at all.
+        let (_, full) = span(10.0).expect("tail at the strike");
+        let (_, later) = span(10.5).expect("tail mid-hold");
+        assert!(later < full, "tail did not shrink: {full} -> {later}");
+        let expected = 1.5 * 420.0 * super::Z_PER_PIXEL;
+        assert!(
+            (later - expected).abs() < 1e-3,
+            "expected {expected}, got {later}"
+        );
+    }
+
+    #[test]
+    fn a_played_out_tail_reports_nothing_left() {
+        // At and past the end there is no tail. Returning a zero or
+        // negative length instead would draw an inside-out cylinder.
+        assert!(span(12.0).is_none(), "tail should be gone at the end");
+        assert!(span(12.5).is_none(), "tail should stay gone after it");
+    }
+
+    #[test]
+    fn the_tail_stays_centred_between_its_own_ends() {
+        // The cylinder is positioned by its middle, so a wrong centre
+        // makes the tail float off the fret it belongs to. Its near
+        // end must sit exactly on the hit line during a hold.
+        let (centre, length) = span(10.4).expect("tail mid-hold");
+        let near = centre + length / 2.0;
+        assert!(near.abs() < 1e-4, "near end should be at z=0, was {near}");
+    }
+
+    #[test]
+    fn the_tail_never_reaches_past_the_hit_line() {
+        // Once struck, the played part is gone: nothing may hang in
+        // front of the receptors, where it would sit under the camera.
+        for step in 0..20 {
+            let now = 10.0 + f64::from(step) * 0.1;
+            if let Some((centre, length)) = span(now) {
+                assert!(
+                    centre + length / 2.0 <= 1e-4,
+                    "tail crossed the line at t={now}"
+                );
+            }
+        }
+    }
+
     use super::*;
 
     #[test]
