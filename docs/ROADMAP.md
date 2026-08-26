@@ -182,6 +182,8 @@ chart format v1 can be frozen as a promise.
 
 - [x] G12 **Window-independent scaling.** Ortho projection `AutoMin{1280,720}` + `UiScale` synced to window height (0.6..2.5) + `BEATBYTE_WINDOW=WxH` for pinned sizes. *Verified: flawless runs with full stage/HUD at 800x500 and 1920x1200 (screenshots).*
 
+- [~] G13 **Guitar Hero X-plorer support + controller tester.** gilrs cannot see the guitar (Xbox-360 vendor protocol, no macOS driver — verified empirically); own libusb reader thread (rusb vendored) decodes the documented 20-byte reports and injects RawGamepad events, making it a first-class Bevy gamepad matching the default bindings exactly. Controls screen: connected-device line + five live fret lamps through the real InputMap. *Verified so far: real guitar detected and claimed ("x-plorer: guitar connected"), 2 decode tests. Remaining: the USER pressing frets (lamps + a played song) — hardware hands needed, then C4's unplug test rides along.*
+
 ### F — Release engineering to 1.0
 
 - [x] F0 **v0.9.0 — content, accessibility, editor v2.** Amendment (2026-08-24): every unblocked B/C/D/E task landed while the A tasks wait on human playtesting — that body of work (second song, song-selector harness, import guide + scan fix, format truth, forward-compat pins, Linux/Windows CI smokes, Stage Motion, colorblind lane shapes, HOPO visibility, editor move/bulk/audition, harness integrity) ships now instead of idling behind A2. *SHIPPED 2026-08-24: all 7 assets auto-attached via the recursive glob; aarch64 tarball smoke + flawless artifact autopilot from neutral CWD + DMG .app smoke; two release-run attempts (spurious hdiutil ENOSPC → retry mitigation).*

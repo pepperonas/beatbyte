@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Native Guitar Hero X-plorer support.** The guitar is an
+  Xbox-360-class USB device speaking a vendor protocol — macOS (and
+  thus the gamepad backend) never sees it, verified on the real
+  hardware. A built-in libusb reader now streams its reports and
+  feeds them into the engine as a genuine gamepad, so the existing
+  bindings (green..orange frets, d-pad strum, Back = Hype, Start =
+  pause), menu navigation and multiplayer join all just work.
+- **Controller tester in the Controls screen**: shows connected
+  devices by name and five live fret lamps driven through the real
+  input map — press a fret, see it light.
+
 ### Fixed
 
 - **The stage now fits every window.** The camera used raw window

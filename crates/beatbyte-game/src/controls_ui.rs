@@ -29,7 +29,8 @@ impl Plugin for ControlsUiPlugin {
             .add_systems(OnEnter(AppState::Controls), spawn_controls)
             .add_systems(
                 Update,
-                (controls_input, refresh_controls).run_if(in_state(AppState::Controls)),
+                (controls_input, refresh_controls, refresh_pad_tester)
+                    .run_if(in_state(AppState::Controls)),
             )
             .add_systems(OnExit(AppState::Controls), (persist_map, despawn_controls));
     }
@@ -89,7 +90,94 @@ fn spawn_controls(mut commands: Commands, font: Res<UiFont>, mut state: ResMut<C
                     ..default()
                 },
             ));
+            // Device diagnostics: which pads are connected, and five
+            // live fret lamps — press a fret on your controller and
+            // watch it light up. This exists because a real guitar
+            // was plugged in and there was no way to SEE it working.
+            parent.spawn((
+                PadLine,
+                Text::new(""),
+                font.text(10.0),
+                TextColor(palette::TEXT_DIM),
+                Node {
+                    margin: UiRect::top(px(14)),
+                    ..default()
+                },
+            ));
+            parent
+                .spawn(Node {
+                    column_gap: px(14),
+                    margin: UiRect::top(px(6)),
+                    ..default()
+                })
+                .with_children(|lamps| {
+                    for fret in 0..5u8 {
+                        lamps.spawn((
+                            FretLamp(fret),
+                            Node {
+                                width: px(26),
+                                height: px(26),
+                                border: UiRect::all(px(2)),
+                                border_radius: BorderRadius::all(px(13)),
+                                ..default()
+                            },
+                            BackgroundColor(Color::NONE),
+                            BorderColor::all(palette::dimmed(palette::TEXT_DIM, 0.5)),
+                        ));
+                    }
+                });
         });
+}
+
+/// The connected-devices line.
+#[derive(Component)]
+struct PadLine;
+
+/// One live fret-test lamp (0 = green .. 4 = orange).
+#[derive(Component)]
+struct FretLamp(u8);
+
+/// Fret lamp colors (the lane palette).
+const LAMP_COLORS: [Color; 5] = [
+    Color::srgb(0.24, 0.86, 0.52),
+    Color::srgb(1.0, 0.32, 0.32),
+    Color::srgb(1.0, 0.84, 0.25),
+    Color::srgb(0.25, 0.77, 1.0),
+    Color::srgb(1.0, 0.67, 0.25),
+];
+
+/// Show connected pads and light the lamps from LIVE input — through
+/// the real InputMap, so this validates the whole chain.
+fn refresh_pad_tester(
+    pads: Query<(&Name, &bevy::input::gamepad::Gamepad)>,
+    keys: Res<ButtonInput<KeyCode>>,
+    map: Res<InputMap>,
+    mut line: Query<&mut Text, With<PadLine>>,
+    mut lamps: Query<(&FretLamp, &mut BackgroundColor)>,
+) {
+    if let Ok(mut text) = line.single_mut() {
+        let names: Vec<String> = pads.iter().map(|(name, _)| name.to_string()).collect();
+        let wanted = if names.is_empty() {
+            "no controller connected - keyboard ready".to_owned()
+        } else {
+            format!("connected: {}", names.join(", "))
+        };
+        if text.0 != wanted {
+            text.0 = wanted;
+        }
+    }
+    let sources = crate::controls::InputSources {
+        keys: &keys,
+        pads: pads.iter().map(|(_, pad)| pad).collect(),
+    };
+    for (lamp, mut color) in &mut lamps {
+        let pressed = sources.pressed(&map, GameAction::Fret(lamp.0));
+        color.0 = if pressed {
+            LAMP_COLORS[lamp.0 as usize]
+        } else {
+            Color::NONE
+        };
+    }
 }
 
 fn controls_input(

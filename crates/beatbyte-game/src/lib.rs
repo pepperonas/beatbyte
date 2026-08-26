@@ -28,6 +28,7 @@ pub mod states;
 mod theme;
 pub mod transition;
 pub mod ui;
+mod xplorer;
 
 use bevy::prelude::*;
 use bevy::window::PresentMode;
@@ -153,6 +154,7 @@ pub fn run() -> AppExit {
     .add_systems(Update, (sync_bloom, sync_ui_scale))
     .add_plugins((
         import::ImportPlugin,
+        xplorer::XplorerPlugin,
         shapes::ShapesPlugin,
         ui::UiPlugin,
         audio_sys::AudioBridgePlugin,

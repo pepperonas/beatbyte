@@ -36,6 +36,7 @@ bevy = { version = "0.19", features = ["wav", "serialize"] }
 
 # Audio: playback/decoding and FFT for analysis
 rodio = "0.22"
+rusb = { version = "0.9", features = ["vendored"] }
 realfft = "3.5"
 # Test-only WAV writing for decode round-trips
 hound = "3.5"
