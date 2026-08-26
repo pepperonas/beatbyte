@@ -180,9 +180,32 @@ pub fn spawn_highways(
         }
         for lane in Lane::ALL {
             let x = layout.lane_x(player, lane);
+            let base_scale = Vec3::new(1.0, squash, 1.0);
+            // The halo sits behind everything and is invisible until
+            // the fret is touched.
+            commands.spawn((
+                GameplayScreen,
+                ReceptorGlow {
+                    player,
+                    lane,
+                    base_scale: base_scale * 2.1,
+                },
+                Sprite {
+                    image: shapes.soft_dot(),
+                    color: theme.lane_color(lane).with_alpha(0.0),
+                    custom_size: Some(Vec2::splat(receptor * 1.9)),
+                    ..Default::default()
+                },
+                Transform::from_xyz(x, RECEPTOR_Y, -7.0).with_scale(base_scale * 2.1),
+            ));
             commands.spawn((
                 GameplayScreen,
                 Receptor { player, lane },
+                ReceptorFx {
+                    press: 0.0,
+                    hit: 0.0,
+                    base_scale,
+                },
                 gem_sprite(
                     shapes,
                     lane,
@@ -190,7 +213,7 @@ pub fn spawn_highways(
                     palette::dimmed(theme.lane_color(lane), 0.35),
                     receptor,
                 ),
-                Transform::from_xyz(x, RECEPTOR_Y, -5.0).with_scale(Vec3::new(1.0, squash, 1.0)),
+                Transform::from_xyz(x, RECEPTOR_Y, -5.0).with_scale(base_scale),
             ));
             commands.spawn((
                 GameplayScreen,
@@ -647,25 +670,127 @@ pub struct SustainTail {
     pub width: f32,
 }
 
+/// Animation state of one receptor.
+///
+/// Kept per receptor rather than recomputed from the session each
+/// frame because both quantities are *decays*: how hard the fret is
+/// being pressed right now, and how recently a note landed on it.
+#[derive(Component)]
+pub struct ReceptorFx {
+    /// 0..1, eased toward whether the fret is held.
+    press: f32,
+    /// 1.0 at the instant of a hit, decaying to 0.
+    hit: f32,
+    /// The scale the receptor rests at (carries the depth squash).
+    base_scale: Vec3,
+}
+
+/// The halo behind a receptor, which is what makes a press read from
+/// across the room.
+#[derive(Component)]
+pub struct ReceptorGlow {
+    /// Owning player.
+    pub player: usize,
+    /// Which fret.
+    pub lane: Lane,
+    /// Resting scale, carrying the depth squash.
+    base_scale: Vec3,
+}
+
+/// How fast a press builds and releases (per second). Building is
+/// faster than releasing: a fret should feel instant to light up and
+/// linger just long enough to be seen.
+const PRESS_ATTACK: f32 = 26.0;
+/// Release rate of the press highlight.
+const PRESS_RELEASE: f32 = 13.0;
+/// How fast the hit flash decays (per second).
+const HIT_DECAY: f32 = 6.5;
+
 /// Receptors light up while their player holds the fret.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)] // Bevy system: params are DI
 pub fn update_receptors(
+    time: Res<Time>,
     players: Query<(&PlayerIndex, &PlayerSession)>,
     theme: Res<crate::theme::ActiveTheme>,
-    mut receptors: Query<(&Receptor, &mut Sprite)>,
+    mut feedback: MessageReader<SessionFeedback>,
+    mut receptors: Query<(&Receptor, &mut ReceptorFx, &mut Sprite, &mut Transform)>,
+    mut glows: Query<
+        (&ReceptorGlow, &mut Sprite, &mut Transform),
+        (Without<Receptor>, Without<NoteSprite>),
+    >,
 ) {
-    for (index, player) in &players {
-        let held = player.session.held();
-        for (receptor, mut sprite) in &mut receptors {
-            if receptor.player != index.0 {
-                continue;
-            }
-            let color = theme.0.lane_color(receptor.lane);
-            sprite.color = if held.contains(receptor.lane) {
-                color
-            } else {
-                palette::dimmed(color, 0.35)
-            };
+    // Which frets took a hit this frame, and how good it was.
+    let mut struck: Vec<(usize, Lane, f32)> = Vec::new();
+    for message in feedback.read() {
+        let SessionEvent::NoteHit {
+            event_index,
+            judgment,
+            ..
+        } = message.event
+        else {
+            continue;
+        };
+        let Some((_, player)) = players
+            .iter()
+            .find(|(index, _)| index.0 == message.player_index)
+        else {
+            continue;
+        };
+        let Some(event) = player.session.track().events().get(event_index) else {
+            continue;
+        };
+        // A Perfect should land harder than a Good.
+        let force = match judgment {
+            beatbyte_core::Judgment::Perfect => 1.0,
+            beatbyte_core::Judgment::Great => 0.8,
+            _ => 0.62,
+        };
+        for lane in event.lanes.iter() {
+            struck.push((message.player_index, lane, force));
         }
+    }
+
+    let delta = time.delta_secs();
+    for (receptor, mut fx, mut sprite, mut transform) in &mut receptors {
+        let held = players
+            .iter()
+            .find(|(index, _)| index.0 == receptor.player)
+            .is_some_and(|(_, player)| player.session.held().contains(receptor.lane));
+
+        // Press: fast toward 1 while held, slower back to 0.
+        let rate = if held { PRESS_ATTACK } else { PRESS_RELEASE };
+        let target = if held { 1.0 } else { 0.0 };
+        fx.press += (target - fx.press) * (rate * delta).min(1.0);
+
+        if let Some((_, _, force)) = struck
+            .iter()
+            .find(|(p, lane, _)| *p == receptor.player && *lane == receptor.lane)
+        {
+            fx.hit = fx.hit.max(*force);
+        }
+        fx.hit = (fx.hit - HIT_DECAY * delta).max(0.0);
+
+        let color = theme.0.lane_color(receptor.lane);
+        // Resting frets stay dim; a pressed one goes to full colour
+        // and then washes toward white, which is what separates
+        // "armed" from "played" at a glance.
+        let lit = palette::dimmed(color, 0.35).mix(&color, fx.press);
+        sprite.color = lit.mix(&Color::WHITE, 0.55 * fx.hit + 0.18 * fx.press);
+        // Squash-preserving pop: press swells it, a hit punches it.
+        let swell = 0.14f32.mul_add(fx.press, 1.0) + 0.34 * fx.hit;
+        transform.scale = fx.base_scale * swell;
+    }
+
+    for (glow, mut sprite, mut transform) in &mut glows {
+        let Some((_, fx, _, _)) = receptors.iter().find(|(receptor, _, _, _)| {
+            receptor.player == glow.player && receptor.lane == glow.lane
+        }) else {
+            continue;
+        };
+        let color = theme.0.lane_color(glow.lane);
+        let intensity = 0.55f32.mul_add(fx.press, 0.9 * fx.hit).min(1.0);
+        sprite.color = color.mix(&Color::WHITE, 0.4 * fx.hit).with_alpha(intensity);
+        transform.scale = glow.base_scale * 0.55f32.mul_add(fx.hit, 1.0);
     }
 }
 

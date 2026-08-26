@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Fret buttons hit much harder.** A held fret now swells, brightens
+  toward its full lane colour and lights a halo behind it; a landed
+  note punches the receptor with a scale kick and a white flash whose
+  strength follows the judgment (a Perfect lands harder than a Good).
+  Press and release are eased at different rates — instant to light
+  up, lingering just long enough to be seen.
+
 ### Added
 
 - **Guitar-Hero-style chart generation.** Imports now transcribe the
