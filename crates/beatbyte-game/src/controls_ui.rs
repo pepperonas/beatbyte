@@ -222,17 +222,11 @@ fn controls_input(
     if nav.down {
         state.cursor = (state.cursor + 1) % count;
     }
-    let mut clicked = false;
-    for (row, interaction) in &rows {
-        match interaction {
-            Interaction::Hovered => state.cursor = row.0,
-            Interaction::Pressed => {
-                state.cursor = row.0;
-                clicked = true;
-            }
-            Interaction::None => {}
-        }
+    let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
+    if let Some(index) = pointer.hovered {
+        state.cursor = index;
     }
+    let clicked = pointer.clicked;
     if nav.confirm || clicked {
         state.capturing = true;
     }

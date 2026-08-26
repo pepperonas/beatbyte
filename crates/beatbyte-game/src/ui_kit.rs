@@ -140,6 +140,44 @@ pub const fn state_for(selected: bool, armed: bool) -> RowState {
     }
 }
 
+// ── Pointer ─────────────────────────────────────────────────────────
+
+/// What the pointer did to a screen's rows this frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RowPointer {
+    /// The row under the pointer, if any — it becomes the cursor row.
+    pub hovered: Option<usize>,
+    /// A row was pressed, so the cursor row should be activated.
+    pub clicked: bool,
+}
+
+/// Read a screen's rows into one answer, so every menu obeys the same
+/// rule: **hovering selects, clicking activates.**
+///
+/// This exists because the song browser did not. It handled only
+/// `Interaction::Pressed` and needed two clicks — one to select a row,
+/// another to start it — while the main menu selected on hover. Two
+/// lists that look identical behaved differently, which is the kind of
+/// inconsistency a shared style guide hides rather than fixes.
+///
+/// A press implies a hover: pressing a row makes it the cursor row
+/// first, so the click always activates the row under the pointer and
+/// never whatever happened to be selected before.
+pub fn read_rows<'a>(rows: impl Iterator<Item = (usize, &'a Interaction)>) -> RowPointer {
+    let mut pointer = RowPointer::default();
+    for (index, interaction) in rows {
+        match interaction {
+            Interaction::Hovered => pointer.hovered = Some(index),
+            Interaction::Pressed => {
+                pointer.hovered = Some(index);
+                pointer.clicked = true;
+            }
+            Interaction::None => {}
+        }
+    }
+    pointer
+}
+
 // ── Scaffold ────────────────────────────────────────────────────────
 
 /// The full-screen root every menu spawns: one centred column.
@@ -298,6 +336,35 @@ pub fn footer(parent: &mut ChildSpawnerCommands, font: &UiFont, hint: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hovering_a_row_selects_it() {
+        // The song browser ignored hover entirely: the pointer could
+        // sit on a row while a different one stayed highlighted.
+        let rows = [(0, &Interaction::None), (1, &Interaction::Hovered)];
+        let pointer = read_rows(rows.into_iter());
+        assert_eq!(pointer.hovered, Some(1));
+        assert!(!pointer.clicked, "hovering must not activate");
+    }
+
+    #[test]
+    fn clicking_activates_the_row_under_the_pointer() {
+        // Not "the row that was already selected". The browser used
+        // to need two clicks — the first only moved the selection.
+        let rows = [(0, &Interaction::None), (2, &Interaction::Pressed)];
+        let pointer = read_rows(rows.into_iter());
+        assert_eq!(pointer.hovered, Some(2), "a press implies a hover");
+        assert!(pointer.clicked);
+    }
+
+    #[test]
+    fn an_untouched_list_changes_nothing() {
+        // Keyboard navigation must survive a frame in which the mouse
+        // is simply lying still somewhere off the list.
+        let rows = [(0, &Interaction::None), (1, &Interaction::None)];
+        assert_eq!(read_rows(rows.into_iter()), RowPointer::default());
+        assert_eq!(read_rows(std::iter::empty()), RowPointer::default());
+    }
 
     #[test]
     fn selection_differs_from_idle_in_every_channel() {

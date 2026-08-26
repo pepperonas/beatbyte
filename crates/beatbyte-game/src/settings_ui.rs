@@ -241,17 +241,11 @@ fn settings_input(
     }
     // Mouse: hover selects; click on the selected row steps it (like
     // RIGHT); the wheel steps the hovered value either way.
-    let mut clicked = false;
-    for (row, interaction) in &rows {
-        match interaction {
-            Interaction::Hovered => cursor.0 = row.0,
-            Interaction::Pressed => {
-                cursor.0 = row.0;
-                clicked = true;
-            }
-            Interaction::None => {}
-        }
+    let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
+    if let Some(index) = pointer.hovered {
+        cursor.0 = index;
     }
+    let clicked = pointer.clicked;
     let mut wheel_step = 0.0;
     for event in wheel.read() {
         wheel_step += event.y.signum();

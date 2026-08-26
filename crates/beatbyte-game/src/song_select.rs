@@ -181,16 +181,14 @@ fn browser_input(
             cursor.0 = (cursor.0 + 1) % count;
         }
     }
-    let mut clicked_selected = false;
-    for (row, interaction) in &rows {
-        if *interaction == Interaction::Pressed {
-            if cursor.0 == row.0 {
-                clicked_selected = true;
-            } else {
-                cursor.0 = row.0;
-            }
-        }
+    // Hover selects, click starts — the same rule as every other
+    // menu. This list used to need two clicks (one to select, one to
+    // start) and ignored hover entirely.
+    let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
+    if let Some(index) = pointer.hovered {
+        cursor.0 = index;
     }
+    let clicked_selected = pointer.clicked;
     let entry = &library.entries[cursor.0];
 
     // Difficulty stepping is constrained to what the chart offers.

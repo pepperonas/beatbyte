@@ -144,17 +144,11 @@ fn menu_input(
         cursor.0 = (cursor.0 + 1) % count;
     }
     // Mouse: hovering selects, clicking activates.
-    let mut clicked = false;
-    for (row, interaction) in &rows {
-        match interaction {
-            Interaction::Hovered => cursor.0 = row.0,
-            Interaction::Pressed => {
-                cursor.0 = row.0;
-                clicked = true;
-            }
-            Interaction::None => {}
-        }
+    let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
+    if let Some(index) = pointer.hovered {
+        cursor.0 = index;
     }
+    let clicked = pointer.clicked;
     if nav.confirm || clicked {
         match MenuAction::ALL[cursor.0] {
             MenuAction::Play => {
