@@ -24,7 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every five seconds. The percentile rather than an average, because
   an average hides exactly the stutters that make the game drop notes.
 
+- **3D hit feedback.** A struck note now VANISHES at the line instead
+  of flying past the camera, the fret it landed on fills solid and
+  flares, and a flat ring of light spreads across the board from it —
+  the genre's flame, gone in about a fifth of a second. Missed notes
+  grey out and keep travelling.
+
 ### Changed
+
+- **The flat view is gone.** VIEW now switches between DEPTH and 3D
+  STAGE. A settings file that still selected flat is corrected on
+  load, so nobody ends up on a highway with no depth and no way back.
 
 - **Fret feedback rebuilt along genre lines.** In this genre the HIT
   is the spectacle — the gem bursting into flame at the target line —

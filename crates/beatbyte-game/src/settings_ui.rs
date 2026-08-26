@@ -80,10 +80,8 @@ impl Row {
             Row::TapMode => on_off(settings.tap_mode),
             Row::View => if settings.stage_3d {
                 "3D STAGE"
-            } else if settings.perspective {
-                "DEPTH"
             } else {
-                "FLAT"
+                "DEPTH"
             }
             .to_owned(),
             Row::NoteStyle => if settings.round_gems {
@@ -121,16 +119,13 @@ impl Row {
             Row::BackdropMotion => settings.backdrop_motion = !settings.backdrop_motion,
             Row::TapMode => settings.tap_mode = !settings.tap_mode,
             Row::NoteStyle => settings.round_gems = !settings.round_gems,
-            // FLAT -> DEPTH -> 3D STAGE -> FLAT. Two booleans rather
-            // than an enum so existing settings files keep loading.
-            Row::View => match (settings.perspective, settings.stage_3d) {
-                (false, false) => settings.perspective = true,
-                (true, false) => settings.stage_3d = true,
-                _ => {
-                    settings.perspective = false;
-                    settings.stage_3d = false;
-                }
-            },
+            // DEPTH <-> 3D STAGE. The flat view is gone: it was the
+            // original 2D presentation and nothing about it was worth
+            // keeping once the highway had depth.
+            Row::View => {
+                settings.stage_3d = !settings.stage_3d;
+                settings.perspective = true;
+            }
             Row::Fullscreen => settings.fullscreen = !settings.fullscreen,
             Row::Theme => {
                 // Cycle auto → themes → auto.

@@ -79,6 +79,30 @@ pub struct FretBar {
     pub time_s: f64,
 }
 
+/// The disc inside a receptor ring.
+///
+/// The ring alone is too thin to read as "pressed" — the 2D stage
+/// learned the same lesson: a button that FILLS is unmistakable,
+/// a button that merely glows is haze.
+#[derive(Component)]
+pub struct ReceptorFill {
+    /// Owning player.
+    pub player: usize,
+    /// Which fret.
+    pub lane: Lane,
+}
+
+/// The burst that fires out of a fret when a note lands on it.
+#[derive(Component)]
+pub struct HitBurst {
+    /// Owning player.
+    pub player: usize,
+    /// Which fret.
+    pub lane: Lane,
+    /// 1.0 at the strike, decaying to 0.
+    pub life: f32,
+}
+
 /// A receptor rendered as 3D geometry.
 #[derive(Component)]
 pub struct Receptor3d {
@@ -182,6 +206,10 @@ pub fn setup_stage(
     // A ring, not a disc: with both drawn as discs a resting receptor
     // and an approaching note were the same shape.
     let receptor_mesh = meshes.add(Torus::new(GEM_RADIUS * 0.82, GEM_RADIUS * 1.12));
+    let fill_mesh = meshes.add(Cylinder::new(GEM_RADIUS * 0.88, 0.03));
+    // Flat and wide: the burst spreads ACROSS the board rather than
+    // rising off it, which is what the genre's flame does.
+    let burst_mesh = meshes.add(Cylinder::new(GEM_RADIUS * 1.9, 0.012));
     let hit_bar = meshes.add(Cuboid::new(1.0, 0.02, 0.06));
 
     for index in &players {
@@ -247,6 +275,41 @@ pub fn setup_stage(
                 RenderLayers::layer(STAGE_LAYER),
             ));
 
+            // The fill sits inside the ring and is what actually
+            // shows a press.
+            commands.spawn((
+                GameplayScreen,
+                Stage3d,
+                ReceptorFill { player, lane },
+                Mesh3d(fill_mesh.clone()),
+                MeshMaterial3d(materials.add(StandardMaterial {
+                    base_color: stage.background,
+                    ..default()
+                })),
+                Transform::from_xyz(lane_x(&layout, player, lane), 0.018, 0.0),
+                RenderLayers::layer(STAGE_LAYER),
+            ));
+            // The burst, parked invisible until a note lands.
+            commands.spawn((
+                GameplayScreen,
+                Stage3d,
+                HitBurst {
+                    player,
+                    lane,
+                    life: 0.0,
+                },
+                Mesh3d(burst_mesh.clone()),
+                MeshMaterial3d(materials.add(StandardMaterial {
+                    base_color: colour.with_alpha(0.0),
+                    emissive: colour.to_linear() * 4.0,
+                    alpha_mode: AlphaMode::Add,
+                    unlit: true,
+                    ..default()
+                })),
+                Transform::from_xyz(lane_x(&layout, player, lane), 0.035, 0.0)
+                    .with_scale(Vec3::splat(0.01)),
+                RenderLayers::layer(STAGE_LAYER),
+            ));
             commands.spawn((
                 GameplayScreen,
                 Stage3d,
@@ -292,11 +355,27 @@ pub fn update_receptors(
     theme: Res<crate::theme::ActiveTheme>,
     players: Query<(&PlayerIndex, &PlayerSession)>,
     mut feedback: MessageReader<super::SessionFeedback>,
-    mut receptors: Query<(
-        &Receptor3d,
-        &mut Transform,
-        &MeshMaterial3d<StandardMaterial>,
-    )>,
+    // Disjoint by construction: the receptor ring and the burst both
+    // want &mut Transform, and Bevy rejects overlapping mutable
+    // access rather than risking aliasing. The Without filters are
+    // what make the two provably different sets.
+    mut receptors: Query<
+        (
+            &Receptor3d,
+            &mut Transform,
+            &MeshMaterial3d<StandardMaterial>,
+        ),
+        Without<HitBurst>,
+    >,
+    mut fills: Query<(&ReceptorFill, &MeshMaterial3d<StandardMaterial>)>,
+    mut bursts: Query<
+        (
+            &mut HitBurst,
+            &mut Transform,
+            &MeshMaterial3d<StandardMaterial>,
+        ),
+        Without<Receptor3d>,
+    >,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut state: Local<Vec<(usize, Lane, f32, f32)>>,
 ) {
@@ -334,6 +413,9 @@ pub fn update_receptors(
     }
 
     let delta = time.delta_secs();
+    // Press/hit per fret, collected once so the fill and the burst
+    // read exactly the numbers the ring does.
+    let mut remembered: Vec<(usize, Lane, f32, f32)> = Vec::new();
     for (receptor, mut transform, material) in &mut receptors {
         let held = players
             .iter()
@@ -362,15 +444,97 @@ pub fn update_receptors(
 
         // Pressed frets sink into the neck; a hit makes one jump.
         transform.translation.y = 0.045f32.mul_add(-press, 0.02) + 0.06 * hit;
-        transform.scale = Vec3::splat(0.12f32.mul_add(hit, 1.0));
+        transform.scale = Vec3::splat(0.18f32.mul_add(hit, 1.0) + 0.08 * press);
 
-        // Emission is the 3D equivalent of the 2D fill: a held fret
-        // burns, a struck one flares white through the bloom pass.
         if let Some(mut surface) = materials.get_mut(&material.0) {
             let colour = theme.0.lane_color(receptor.lane);
-            let glow = 0.35f32.mul_add(1.0, 2.4 * press) + 6.0 * hit;
+            let glow = 4.5f32.mul_add(press, 0.4) + 9.0 * hit;
             surface.emissive = colour.to_linear() * glow;
             surface.base_color = colour.mix(&Color::WHITE, 0.6 * hit);
+        }
+        remembered.push((receptor.player, receptor.lane, press, hit));
+    }
+
+    // The fill is what makes a press unmistakable: the button goes
+    // SOLID, not merely brighter. The thin ring alone was the same
+    // mistake the 2D stage already made once with a soft halo.
+    for (fill, fill_material) in &mut fills {
+        let Some((_, _, press, hit)) = remembered
+            .iter()
+            .find(|(p, l, _, _)| *p == fill.player && *l == fill.lane)
+        else {
+            continue;
+        };
+        if let Some(mut surface) = materials.get_mut(&fill_material.0) {
+            let colour = theme.0.lane_color(fill.lane);
+            surface.base_color = theme
+                .0
+                .background
+                .mix(&colour, *press)
+                .mix(&Color::WHITE, *hit);
+            surface.emissive = colour.to_linear() * 3.2f32.mul_add(*press, 8.0 * hit);
+        }
+    }
+
+    // The burst: a flat ring of light spreading ACROSS the board from
+    // the fret and gone in about a fifth of a second — the genre's
+    // flame, which is what tells you the note actually landed.
+    for (mut burst, mut burst_transform, burst_material) in &mut bursts {
+        if let Some((_, _, _, hit)) = remembered
+            .iter()
+            .find(|(p, l, _, _)| *p == burst.player && *l == burst.lane)
+            && *hit > burst.life
+        {
+            burst.life = *hit;
+        }
+        burst.life = (burst.life - 5.0 * delta).max(0.0);
+        let progress = 1.0 - burst.life;
+        let spread = 2.2f32.mul_add(progress, 0.35);
+        burst_transform.scale = Vec3::new(spread, 1.0, spread);
+        if let Some(mut surface) = materials.get_mut(&burst_material.0) {
+            let colour = theme.0.lane_color(burst.lane);
+            surface.base_color = colour.with_alpha(burst.life.powf(1.3));
+            surface.emissive = colour.to_linear() * (7.0 * burst.life);
+        }
+    }
+}
+
+/// Take hit notes off the board and grey out missed ones.
+///
+/// Without this a struck note simply kept flying at the camera, which
+/// is the opposite of what a hit should look like: the note has to
+/// VANISH at the line, and the burst is what is left of it.
+pub fn apply_note_events(
+    mut commands: Commands,
+    settings: Res<Settings>,
+    mut feedback: MessageReader<super::SessionFeedback>,
+    notes: Query<(Entity, &Note3d, &MeshMaterial3d<StandardMaterial>)>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    if !active(&settings) {
+        return;
+    }
+    for message in feedback.read() {
+        match message.event {
+            beatbyte_core::SessionEvent::NoteHit { event_index, .. } => {
+                for (entity, note, _) in &notes {
+                    if note.player == message.player_index && note.event_index == event_index {
+                        commands.entity(entity).despawn();
+                    }
+                }
+            }
+            beatbyte_core::SessionEvent::NoteMissed { event_index } => {
+                for (_, note, handle) in &notes {
+                    if note.player != message.player_index || note.event_index != event_index {
+                        continue;
+                    }
+                    if let Some(mut surface) = materials.get_mut(&handle.0) {
+                        surface.base_color = Color::srgb(0.24, 0.24, 0.26);
+                        surface.emissive = LinearRgba::BLACK;
+                    }
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -678,6 +842,7 @@ impl Plugin for Stage3dPlugin {
                 move_notes,
                 move_fret_bars,
                 update_receptors,
+                apply_note_events,
             )
                 .chain()
                 .run_if(in_state(crate::states::GamePhase::Playing)),

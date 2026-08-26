@@ -217,6 +217,11 @@ artifact, smoke-test it (neutral CWD!), then
   up); `grep -c` exits 1 on zero matches and breaks `&&` chains.
 - State-entry screenshots must wait out the 0.25 s transition fade
   (autopilot uses a 0.6 s settle delay).
+- **The game rewrites `settings.json` when it exits.** Editing that
+  file to set up a test run only works if the game is not running and
+  will not run again before the measurement — otherwise the previous
+  session's values come back and the run silently tests the wrong
+  view (happened: a "3D" screenshot that was actually the 2D one).
 - **`BEATBYTE_SHOT_DIR` can make autopilot fail spuriously.** Capturing
   a screenshot stalls a frame long enough for the key injector to miss
   a note window (seen: 16 misses + 16 overstrums on a song that scores

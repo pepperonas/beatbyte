@@ -40,9 +40,11 @@ pub struct Settings {
     /// players press frets and nothing happens (receptors light up,
     /// notes die); strumming is the opt-in purist mode.
     pub tap_mode: bool,
-    /// Depth view: the highway runs toward a vanishing point and
-    /// notes approach from the distance. Presentation only — judgment
-    /// timing is identical to the flat view.
+    /// Depth view: the 2D highway runs toward a vanishing point.
+    ///
+    /// Always true now — the flat presentation it used to switch off
+    /// was removed. The field stays so old settings files keep
+    /// loading, and `sanitize` forces it back on.
     pub perspective: bool,
     /// The solid 3D stage: a lit highway with real geometry instead
     /// of the 2D projection. Presentation only — judgment is
@@ -72,7 +74,7 @@ impl Default for Settings {
             beat_pulse: true,
             backdrop_motion: true,
             tap_mode: true,
-            perspective: false,
+            perspective: true,
             stage_3d: false,
             round_gems: false,
             fullscreen: false,
@@ -91,6 +93,10 @@ impl Settings {
 
     /// Clamp all values into their valid ranges (files are input too).
     pub fn sanitize(&mut self) {
+        // The flat view was removed; a settings file that still
+        // selects it would otherwise leave the highway with no depth
+        // and no way to get it back from the VIEW row.
+        self.perspective = true;
         self.music_volume = clean(self.music_volume, 0.0, 1.0, 0.8);
         self.sfx_volume = clean(self.sfx_volume, 0.0, 1.0, 0.45);
         self.latency_offset_ms = clean(self.latency_offset_ms, -250.0, 250.0, 0.0);
