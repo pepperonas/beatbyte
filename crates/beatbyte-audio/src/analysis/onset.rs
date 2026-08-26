@@ -25,6 +25,13 @@ pub struct OnsetConfig {
     pub threshold_floor: f32,
     /// Minimum spacing between onsets in seconds.
     pub min_gap_s: f64,
+    /// Reject onsets weaker than this fraction of the LOCAL peak.
+    /// Release ramps and reverb tails are 20–40x weaker than the
+    /// attacks around them, which is what makes a relative floor work
+    /// where an absolute one cannot.
+    pub min_local_strength: f32,
+    /// Half-width of the window used to judge local loudness.
+    pub local_window_s: f64,
 }
 
 impl Default for OnsetConfig {
@@ -38,6 +45,8 @@ impl Default for OnsetConfig {
             threshold_scale: 1.3,
             threshold_floor: 0.02,
             min_gap_s: 0.05,
+            min_local_strength: 0.12,
+            local_window_s: 2.0,
         }
     }
 }
@@ -183,7 +192,8 @@ pub fn analyze_onsets(audio: &AudioData, config: &OnsetConfig) -> FluxAnalysis {
         }
     }
     normalize(&mut flux);
-    let onsets = pick_onsets(&flux, &brightness, hop_s, frame_offset_s, config);
+    let local = local_scale(&flux, hop_s, config.local_window_s);
+    let onsets = pick_onsets(&flux, &local, &brightness, hop_s, frame_offset_s, config);
 
     FluxAnalysis {
         flux,
@@ -204,9 +214,33 @@ fn normalize(signal: &mut [f32]) {
     }
 }
 
+/// The loudest flux in the neighbourhood of each frame.
+///
+/// Onset strength used to be normalized by the loudest onset in the
+/// WHOLE song, which meant a quiet intro produced onsets with a
+/// strength near zero — and the chart generator, which selects notes
+/// by strength, then skipped quiet passages wholesale. Judging each
+/// onset against its own surroundings is both what a listener does
+/// and what makes a relative rejection floor meaningful.
+fn local_scale(flux: &[f32], hop_s: f64, window_s: f64) -> Vec<f32> {
+    let half = if hop_s > 0.0 {
+        ((window_s / hop_s).round() as usize).max(1)
+    } else {
+        1
+    };
+    (0..flux.len())
+        .map(|t| {
+            let from = t.saturating_sub(half);
+            let to = (t + half + 1).min(flux.len());
+            flux[from..to].iter().copied().fold(1e-6f32, f32::max)
+        })
+        .collect()
+}
+
 /// Adaptive-threshold local-maximum peak picking.
 fn pick_onsets(
     flux: &[f32],
+    local: &[f32],
     brightness: &[f32],
     hop_s: f64,
     frame_offset_s: f64,
@@ -232,6 +266,13 @@ fn pick_onsets(
             continue;
         }
 
+        // Strength relative to the local peak, which is also what
+        // rejects release ramps: they sit 20–40x below the attacks
+        // they follow.
+        let strength = (flux[t] / local.get(t).copied().unwrap_or(1.0)).clamp(0.0, 1.0);
+        if strength < config.min_local_strength {
+            continue;
+        }
         let time_s = t as f64 * hop_s + frame_offset_s;
         if let Some(last) = onsets.last()
             && time_s - last.time_s < config.min_gap_s
@@ -240,7 +281,7 @@ fn pick_onsets(
         }
         onsets.push(Onset {
             time_s,
-            strength: flux[t],
+            strength,
             brightness: brightness.get(t).copied().unwrap_or(0.0),
         });
     }

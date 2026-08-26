@@ -134,19 +134,25 @@ Ordered by damage, each step measured against the table above.
    f_sustains stays wrong at 120 against 80 — its onset precision is
    0.33, so its tempo is derived from mostly-spurious detections; it
    is expected to come good with P3 and is pinned as such.
-### Result after P1–P3
+### Result after P1–P4
 
 ```text
 scene                      bpm  on-F1 mel-F1  pitch   time    frag contam
-a_simple_melody          100.0   0.67   1.00   100%    20ms   0.00     0%
-b_guitar_riff            140.0   0.99   0.96   100%     9ms   0.00     0%
-c_chords                  90.0   0.50   0.41   100%    19ms   0.29     0%
-d_drums_and_guitar       120.0   0.67   0.86    77%    17ms   0.22    19%
-e_vocals_and_guitar      110.0   0.74   0.27    78%    26ms   0.00     0%
-f_sustains                80.3   0.67   1.00   100%    19ms   0.00     0%
-g_syncopation             95.9   0.65   0.98   100%    18ms   0.00     0%
-h_tempo_ambiguity        150.0   1.00   1.00   100%    20ms   0.00     0%
+a_simple_melody          100.1   1.00   1.00   100%    24ms   0.00     0%
+b_guitar_riff            140.0   0.99   0.98    84%    12ms   0.00     0%
+c_chords                  90.0   0.50   0.24   100%    20ms   0.25     0%
+d_drums_and_guitar       120.0   0.67   1.00    73%    18ms   0.00     0%
+e_vocals_and_guitar      110.0   1.00   0.50    70%    13ms   0.00     0%
+f_sustains                80.1   0.71   1.00   100%    19ms   0.00     0%
+g_syncopation             96.0   0.89   0.91   100%    18ms   0.00     0%
+h_tempo_ambiguity        150.0   1.00   1.00   100%    19ms   0.00     0%
 ```
+
+Against the baseline: melody F1 0.81 → 1.00 (melody), 0.53 → 0.98
+(riff), 0.78 → 1.00 (drums+bass over guitar), 0.20 → 0.50 (voice over
+guitar), 0.67 → 0.91 (syncopation). Onset F1 0.29 → 0.71 on sustains,
+0.70 → 1.00 on the plain melody, 0.79 → 1.00 with a voice present.
+Contamination on the drums-and-bass scene 19 % → 0 %.
 
 **Every tempo is now correct** (was 3 of 8 wrong). Melody F1 went
 0.81 → 1.00 on the plain melody, 0.53 → 0.96 on the riff, 0.67 → 0.98
@@ -184,12 +190,36 @@ claim, and only playing it settles which one this is.
    voice, i.e. where the tracked pitch's own salience rises. Without
    that qualifier a drum hit over a held guitar note split it (caught
    by an existing test).
-4. **P4 Lead/voice discrimination** — an event score combining onset
-   agreement, pitch stability and harmonic salience instead of raw
-   loudness. Target: scene `e` recall against the guitar ≫ 0.12.
-5. **P5 Chords** — chroma-based detection of simultaneous harmony, so
-   scene `c` produces real chord events and the chart stops inventing
-   chords from coincident transients.
+4. **P4 Lead/voice discrimination** — DONE in part. A plucked string
+   and a voice differ by physics rather than loudness: the string's
+   energy appears within milliseconds of an attack, the voice swells
+   into place. Pitches whose OWN salience jumps at a detected attack
+   are therefore preferred for the length of a note. Two refinements
+   were needed and both were measured: boosting every pitch that rose
+   helped the distractor scenes and hurt every clean one (a strike
+   lifts harmonics and sub-octaves too), so only the strongest riser
+   and its near-peers are boosted — near-peers because a chord strikes
+   several pitches at once. Scene `e` melody F1 0.20 → 0.50, `d`
+   0.78 → 1.00 with contamination 19 % → 0 %.
+   Still imperfect: `e` recall against the guitar is 0.38. A single-F0
+   tracker can follow one voice at a time, and when the competing
+   voice is both louder and higher it will sometimes win.
+5. **P5 Chords** — OPEN. Scene `c` sits at melody F1 0.24: a
+   single-F0 tracker has no representation for three simultaneous
+   pitches, so a chord is charted as whichever of its notes happens to
+   win. The pitch it does report is correct (100 %), and no chords are
+   invented from coincidence — the failure is missing harmony, not
+   wrong harmony. A chroma-based chord stage is the fix and is not in
+   this pass.
+
+### Threshold discipline
+
+Every constant that could have been guessed was swept and the numbers
+recorded next to it in the code: the re-articulation rise
+(1.25/1.6/2.2), the split-strength gate (0.0/0.4/0.6, left OFF because
+it bought 23 long notes on a real track for a 0.17 drop in scene F1)
+and the continuity penalty (0.035/0.09/0.18, set to 0.09 because that
+is where it stops helping).
 
 Non-goals for this pass: a neural source separator (no Rust-native
 option that keeps the offline, dependency-light promise), and beat

@@ -52,7 +52,11 @@ pub struct MelodyConfig {
     pub midi_min: i32,
     /// Highest candidate pitch as a MIDI note number (88 = E6).
     pub midi_max: i32,
-    /// DP penalty per semitone of pitch jump between frames.
+    /// DP penalty per semitone of pitch jump between frames — the
+    /// temporal-continuity term. Swept (0.035 / 0.09 / 0.18): 0.09
+    /// makes the drums-and-bass scene perfect (F1 0.92 → 1.00) and
+    /// going further changes nothing, so continuity is worth exactly
+    /// this much and no more.
     pub jump_penalty: f32,
     /// DP penalty for switching voiced <-> unvoiced.
     pub switch_penalty: f32,
@@ -73,6 +77,22 @@ pub struct MelodyConfig {
     pub lonely_min_s: f64,
     /// Neighborhood used by the loneliness rule, in seconds.
     pub neighbor_window_s: f64,
+    /// Extra weight given to pitches that start on a detected attack
+    /// (0 disables the preference entirely).
+    pub struck_boost: f32,
+    /// How long that preference lasts after the attack, in seconds.
+    pub struck_hold_s: f64,
+    /// Minimum onset strength (relative to its local peak) for an
+    /// attack to be allowed to END a note.
+    ///
+    /// Left at zero after a measured sweep (0.0 / 0.4 / 0.6): raising
+    /// it was expected to protect held notes in a dense mix, and it
+    /// barely does (10 → 33 long notes on a real track) while costing
+    /// real accuracy on the voice and syncopation scenes (F1 0.50 →
+    /// 0.33 and 0.91 → 0.86). The knob stays because the hypothesis
+    /// is reasonable and someone will want to retest it on other
+    /// material — but it is off, and the numbers say why.
+    pub split_min_strength: f32,
 }
 
 impl Default for MelodyConfig {
@@ -86,13 +106,16 @@ impl Default for MelodyConfig {
             // game, and everything below is bass/kick territory.
             midi_min: 40,
             midi_max: 88,
-            jump_penalty: 0.035,
+            jump_penalty: 0.09,
             switch_penalty: 0.09,
             min_note_s: 0.09,
             bridge_gap_s: 0.12,
             sustained_ratio_floor: 0.35,
             lonely_min_s: 0.22,
             neighbor_window_s: 0.6,
+            struck_boost: 0.6,
+            struck_hold_s: 0.35,
+            split_min_strength: 0.0,
         }
     }
 }
@@ -114,14 +137,16 @@ pub fn extract_melody(
         config.hpss_time_halfwidth,
         config.hpss_freq_halfwidth,
     );
-    let salience = salience_map(&harmonic, spectrogram.bin_hz, config);
-    let track = track_contour(&salience, config);
+    let mut salience = salience_map(&harmonic, spectrogram.bin_hz, config);
     let attacks = attack_frames(
         onsets,
         spectrogram.hop_s,
         spectrogram.frame_offset_s,
-        track.len(),
+        salience.len(),
+        config.split_min_strength,
     );
+    favour_struck_voices(&mut salience, &attacks, spectrogram.hop_s, config);
+    let track = track_contour(&salience, config);
     segment_notes(
         &track,
         spectrogram.hop_s,
@@ -137,12 +162,21 @@ pub fn extract_melody(
 /// the contour simply continues — so without this a plucked scale
 /// merges into single long events. What separates them is the attack,
 /// and that is exactly what the onset stage measures.
-fn attack_frames(onsets: &[Onset], hop_s: f64, frame_offset_s: f64, frames: usize) -> Vec<bool> {
+fn attack_frames(
+    onsets: &[Onset],
+    hop_s: f64,
+    frame_offset_s: f64,
+    frames: usize,
+    min_strength: f32,
+) -> Vec<bool> {
     let mut marks = vec![false; frames];
     if hop_s <= 0.0 {
         return marks;
     }
     for onset in onsets {
+        if onset.strength < min_strength {
+            continue;
+        }
         let frame = ((onset.time_s - frame_offset_s) / hop_s).round();
         if frame >= 0.0 && (frame as usize) < frames {
             marks[frame as usize] = true;
@@ -376,6 +410,89 @@ fn register_weight(midi: i32) -> f64 {
     };
     (-0.5 * (distance / 7.0).powi(2)).exp()
 }
+
+/// Boost pitches that were STRUCK over pitches that faded in.
+///
+/// A plucked string and a voice are separated by physics, not by
+/// loudness: the string's energy at its pitch appears within a few
+/// milliseconds of an attack, while a sung note swells into place and
+/// its start rarely coincides with anything percussive. Tracking by
+/// salience alone therefore follows whichever voice is loudest — a
+/// scene with a loud voice over a quieter riff had the tracker
+/// following the singer almost exclusively.
+///
+/// For every frame the onset stage called an attack, any pitch whose
+/// own salience rises there is boosted for the length of a note. This
+/// is deliberately a preference and not a filter: a guitar line that
+/// happens to enter softly is still tracked, just not favoured.
+fn favour_struck_voices(
+    salience: &mut [Vec<f32>],
+    attacks: &[bool],
+    hop_s: f64,
+    config: &MelodyConfig,
+) {
+    if config.struck_boost <= 0.0 || hop_s <= 0.0 || salience.len() < 3 {
+        return;
+    }
+    let hold = ((config.struck_hold_s / hop_s).round() as usize).max(1);
+    let look_back = ((0.035 / hop_s).round() as usize).max(1);
+    let states = salience.first().map_or(0, Vec::len);
+    // Collect first, apply second: a boost must never feed the test
+    // for the boost of a later frame.
+    let mut boosts: Vec<(usize, usize)> = Vec::new();
+    for (t, is_attack) in attacks.iter().enumerate() {
+        if !*is_attack || t < look_back {
+            continue;
+        }
+        // Only the pitch that rose MOST at this attack. A strike
+        // lifts a whole family of candidates — harmonics, the
+        // sub-octave, near neighbours — and boosting all of them
+        // rewards the wrong one about as often as the right one
+        // (measured: it improved the two distractor scenes and hurt
+        // every clean one).
+        let rises: Vec<f32> = (0..states)
+            .map(|s| {
+                let before = salience[t - look_back][s];
+                let now = salience[t][s];
+                if now <= 0.0 || now <= before * STRUCK_RISE {
+                    0.0
+                } else {
+                    now - before
+                }
+            })
+            .collect();
+        let best = rises
+            .iter()
+            .copied()
+            .enumerate()
+            .filter(|(_, rise)| *rise > 0.0)
+            .max_by(|a, b| a.1.total_cmp(&b.1));
+        // …and anything that rose nearly as much, because a chord
+        // strikes several pitches at once and picking one of a triad
+        // arbitrarily is worse than picking none.
+        if let Some((_, top)) = best {
+            for (s, rise) in rises.iter().enumerate() {
+                if *rise >= top * STRUCK_PEERS {
+                    boosts.push((t, s));
+                }
+            }
+        }
+    }
+    for (t, s) in boosts {
+        for frame in salience.iter_mut().skip(t).take(hold) {
+            frame[s] *= 1.0 + config.struck_boost;
+        }
+    }
+}
+
+/// How sharply a pitch's salience must rise at an attack to count as
+/// having been struck rather than merely present.
+const STRUCK_RISE: f32 = 1.4;
+
+/// How close to the strongest rise at an attack another pitch must
+/// come to count as struck by the same event — the difference between
+/// a chord and a harmonic sitting on the coat-tails of one note.
+const STRUCK_PEERS: f32 = 0.7;
 
 /// One tracked frame: the chosen semitone, or unvoiced.
 #[derive(Debug, Clone, Copy, PartialEq)]

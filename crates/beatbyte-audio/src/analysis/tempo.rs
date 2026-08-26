@@ -183,6 +183,39 @@ fn meter_plausibility(onsets: &[Onset], period_s: f64) -> f64 {
     (-0.5 * (error / 0.42).powi(2)).exp().mul_add(0.65, 0.35)
 }
 
+/// Fraction of beat positions that carry an onset.
+///
+/// The beat is the level a listener taps along at, and people do not
+/// tap where nothing happens. Five held tones spread over eighteen
+/// seconds fit a 160 BPM grid as well as an 80 BPM one — but at 160,
+/// seven beats out of eight are empty, which is not a pulse anyone
+/// would feel. This is the term that separates them.
+fn beat_occupancy(onsets: &[Onset], period_s: f64) -> f64 {
+    if period_s <= 0.0 || onsets.len() < 2 {
+        return 0.0;
+    }
+    let (phase, _) = best_phase_support(onsets, period_s);
+    let first = onsets[0].time_s;
+    let last = onsets[onsets.len() - 1].time_s;
+    let slot = |time: f64| ((time - phase) / period_s).round();
+    let (from, to) = (slot(first), slot(last));
+    let beats = (to - from) as i64;
+    if beats < 2 {
+        return 0.0;
+    }
+    let mut occupied = 0i64;
+    for step in 0..=beats {
+        let centre = phase + (from + step as f64) * period_s;
+        if onsets
+            .iter()
+            .any(|o| (o.time_s - centre).abs() <= GRID_TOLERANCE_S)
+        {
+            occupied += 1;
+        }
+    }
+    occupied as f64 / (beats + 1) as f64
+}
+
 /// Candidate periods taken straight from the spacing between onsets.
 ///
 /// The autocorrelation needs a reasonably dense envelope; sparse
@@ -371,7 +404,13 @@ pub fn estimate_tempo(
         if *support < best_support * OCTAVE_BAND || !is_octave_of(*period, best_grid) {
             continue;
         }
-        let value = perceptual_prior(60.0 / period, config) * meter_plausibility(onsets, *period);
+        // Preference, metre, and how populated the beat actually is.
+        // The square root keeps occupancy from dominating: it is there
+        // to rule out a pulse nobody could tap, not to fine-tune
+        // between two plausible ones.
+        let value = perceptual_prior(60.0 / period, config)
+            * meter_plausibility(onsets, *period)
+            * beat_occupancy(onsets, *period).sqrt();
         if value > best_prior {
             best_prior = value;
             best_period = *period;
