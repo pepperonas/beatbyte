@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Live mute toggle**: `M` — or clicking the always-present corner
+  badge — silences/unsilences music AND sound effects at any moment,
+  in menus, gameplay and running autopilot sessions alike.
+  `BEATBYTE_AUTOPILOT_MUTE` now only sets the starting state instead
+  of being the unchangeable truth. (In the editor, `M` stays the
+  metronome; the badge still works there.)
 - **Test expansion**: exact hit-window boundary pins, Hype
   multiplier math, BPM validation bounds, sustain truncation by
   strong onsets, the default-binding user contract (ASDFG / Space /

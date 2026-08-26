@@ -97,7 +97,12 @@ BEATBYTE_SHOT_DIR=<dir>                          # + screenshots along the way
   input-stamp-driven, so it is frame-rate independent. Its input feed
   must stay `.before(advance_sessions)`. **Run autopilot before every
   release** and after any change to gameplay, timing, input, or state
-  flow.
+  flow. **Local verification runs play the user's imported tracks**
+  (`BEATBYTE_AUTOPILOT_SONG="Never Gonna"` etc. — user preference,
+  2026-08-26); the bundled synthesized songs stay the CI/release
+  baseline because a fresh clone has nothing else and nothing else
+  may legally be bundled. Keep local runs `BEATBYTE_AUTOPILOT_MUTE=1`
+  — and the in-app `M` toggle now flips sound live either way.
 - **Artifacts are tested, not assumed.** Before publishing a release,
   download a CI artifact and smoke-test it (portable layout from a
   *neutral* CWD — that is the layout that has actually broken).

@@ -18,6 +18,7 @@ mod input_test;
 pub mod library;
 pub mod menu;
 pub mod multiplayer;
+pub mod mute;
 pub mod palette;
 pub mod results;
 pub mod scores;
@@ -161,6 +162,7 @@ pub fn run() -> AppExit {
         ui::UiPlugin,
         audio_sys::AudioBridgePlugin,
         config::ConfigPlugin,
+        mute::MutePlugin,
         scores::ScoresPlugin,
         boot::BootPlugin,
         menu::MenuPlugin,

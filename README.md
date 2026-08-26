@@ -32,7 +32,7 @@
 [![SemVer](https://img.shields.io/badge/versioning-SemVer-blue)](CHANGELOG.md)
 [![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735)](CHANGELOG.md)
 [![Conventional Commits](https://img.shields.io/badge/commits-Conventional-FE5196)](https://www.conventionalcommits.org/)
-[![Tests](https://img.shields.io/badge/tests-217%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-219%20passing-brightgreen)](#testing)
 [![Clippy](https://img.shields.io/badge/clippy-%E2%80%91D%20warnings-brightgreen?logo=rust)](Cargo.toml)
 [![rustfmt](https://img.shields.io/badge/style-rustfmt-orange?logo=rust)](Cargo.toml)
 [![Rustdoc](https://img.shields.io/badge/public%20API-documented-blue)](Cargo.toml)
@@ -296,6 +296,7 @@ Architecture decisions are documented as ADRs in
 | Strum | `Space` (or `↑`/`↓`) |
 | Hype (special) | `Enter` |
 | Pause | `Esc` |
+| Mute / unmute all audio | `M` (or click the corner badge) |
 | Menus | arrows + `Enter` / `Esc` — or the **mouse** (hover, click, wheel, right-click = back) |
 
 Verify any device on the **INPUT TEST** screen (main menu): fret
@@ -339,7 +340,7 @@ beatbyte-cli demo                  # render the built-in songs + charts
 ## Testing
 
 ```bash
-cargo test --workspace          # 217 tests
+cargo test --workspace          # 219 tests
 ```
 
 Core gameplay logic (timing windows down to their exact boundaries,

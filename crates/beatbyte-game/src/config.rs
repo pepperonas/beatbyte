@@ -180,13 +180,14 @@ impl Plugin for ConfigPlugin {
 fn apply_settings(
     settings: Res<Settings>,
     music: Res<crate::audio_sys::Music>,
+    muted: Res<crate::mute::Muted>,
     mut effects: ResMut<EffectSettings>,
     mut windows: Query<&mut Window>,
 ) {
     if !settings.is_changed() {
         return;
     }
-    music.0.set_volume(settings.music_volume);
+    music.0.set_volume(settings.music_volume * muted.factor());
     effects.particles = settings.particles;
     effects.screen_shake = settings.screen_shake;
     effects.beat_pulse = settings.beat_pulse;
