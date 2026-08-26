@@ -54,7 +54,8 @@ impl Analyzer for SpectralAnalyzer {
         let duration_s = prepared.duration_s();
 
         let flux = onset::analyze_onsets(&prepared, &self.config.onset);
-        let estimate = tempo::estimate_tempo(&flux.flux, flux.hop_s, &self.config.tempo);
+        let estimate =
+            tempo::estimate_tempo(&flux.flux, flux.hop_s, &flux.onsets, &self.config.tempo);
 
         let (bpm, bpm_confidence, alt_bpm) = match estimate {
             Some(t) => (t.bpm, t.confidence, t.alt_bpm),

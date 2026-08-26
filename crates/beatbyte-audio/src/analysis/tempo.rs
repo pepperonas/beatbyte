@@ -43,10 +43,180 @@ pub struct TempoEstimate {
     pub alt_bpm: Option<f64>,
 }
 
-/// Estimate the tempo from the flux envelope. Returns `None` when the
-/// envelope is too short or flat to carry tempo information.
+/// How close an onset must sit to a grid point to count as "on it".
+/// 45 ms is the outer edge of BeatByte's Great window: a listener
+/// would still hear such an onset as being on the beat.
+const GRID_TOLERANCE_S: f64 = 0.045;
+
+/// Share of onset strength that a beat of `period_s` explains, once
+/// its SUBDIVISIONS are taken into account.
+///
+/// Music does not put every note on a beat, so scoring a candidate
+/// tempo by beat hits alone rewards whatever grid happens to catch
+/// the most notes — measured on a sixteenth-note riff, that was a
+/// dotted-eighth grid at 186 BPM instead of the real 140. What makes
+/// a tempo right is that the notes land on its beats, eighths and
+/// sixteenths, and the metric hierarchy is honoured by weighting a
+/// beat hit above an eighth above a sixteenth.
 #[must_use]
-pub fn estimate_tempo(flux: &[f32], hop_s: f64, config: &TempoConfig) -> Option<TempoEstimate> {
+pub fn grid_support(onsets: &[Onset], period_s: f64) -> f64 {
+    if period_s <= 0.0 || onsets.is_empty() {
+        return 0.0;
+    }
+    let total: f64 = onsets.iter().map(|o| f64::from(o.strength)).sum();
+    if total <= 0.0 {
+        return 0.0;
+    }
+    let (_, support) = best_phase_support(onsets, period_s);
+    support / total
+}
+
+/// Weight of a hit by which level of the metric hierarchy it lands
+/// on: beat, eighth, sixteenth.
+fn subdivision_weight(sixteenth_index: i64) -> f64 {
+    if sixteenth_index.rem_euclid(4) == 0 {
+        1.0
+    } else if sixteenth_index.rem_euclid(2) == 0 {
+        0.9
+    } else {
+        0.8
+    }
+}
+
+/// The best phase for a period and the (weighted) onset strength its
+/// sixteenth-note grid explains.
+fn best_phase_support(onsets: &[Onset], period_s: f64) -> (f64, f64) {
+    const CANDIDATES: usize = 48;
+    let step = period_s / 4.0;
+    // The tolerance must shrink with the grid: at 200 BPM a sixteenth
+    // is 75 ms, and a fixed 45 ms window would call more than half of
+    // all random positions "on the grid".
+    let tolerance = GRID_TOLERANCE_S.min(step * 0.3);
+    let mut best = (0.0, f64::NEG_INFINITY);
+    for i in 0..CANDIDATES {
+        let phase = period_s * i as f64 / CANDIDATES as f64;
+        let mut support = 0.0;
+        for onset in onsets {
+            let position = (onset.time_s - phase) / step;
+            let nearest = position.round();
+            if ((position - nearest) * step).abs() <= tolerance {
+                support += f64::from(onset.strength) * subdivision_weight(nearest as i64);
+            }
+        }
+        if support > best.1 {
+            best = (phase, support);
+        }
+    }
+    best
+}
+
+/// How plausible a candidate beat is as a *metre*, from the interval
+/// the music actually repeats at.
+///
+/// Sparse material leaves the octave underdetermined in a way support
+/// cannot touch: eight chords 1.33 s apart are explained equally well
+/// by 90 BPM (a chord every 2 beats), 135 (every 3) and 180 (every
+/// 4). Western music is overwhelmingly duple, so the reading where
+/// the repeat lands on a power-of-two number of beats is the one to
+/// believe — that is what tells 90 from 135 here.
+fn meter_plausibility(onsets: &[Onset], period_s: f64) -> f64 {
+    if onsets.len() < 3 || period_s <= 0.0 {
+        return 1.0;
+    }
+    let mut gaps: Vec<f64> = onsets
+        .windows(2)
+        .map(|pair| pair[1].time_s - pair[0].time_s)
+        .filter(|gap| *gap > 0.02)
+        .collect();
+    if gaps.is_empty() {
+        return 1.0;
+    }
+    gaps.sort_by(f64::total_cmp);
+    let median = gaps[gaps.len() / 2];
+    let beats = median / period_s;
+    if beats <= 0.0 {
+        return 1.0;
+    }
+    // Distance to the nearest power of two, in octaves.
+    let octaves = beats.log2();
+    let error = (octaves - octaves.round()).abs();
+    // 1.0 on a power of two, falling to ~0.6 at the worst case
+    // (a tritone away, i.e. a 1.5x or 3x relationship).
+    (-0.5 * (error / 0.42).powi(2)).exp().mul_add(0.4, 0.6)
+}
+
+/// Candidate periods taken straight from the spacing between onsets.
+///
+/// The autocorrelation needs a reasonably dense envelope; sparse
+/// material defeats it entirely (a chord progression of eight stabs
+/// produced no candidate at all, and the pipeline silently fell back
+/// to 120 BPM while a 90 BPM grid explained every single onset).
+/// Inter-onset intervals do not care about density: if the same gap
+/// keeps recurring, that gap is musical.
+fn ioi_periods(onsets: &[Onset], min_period: f64, max_period: f64) -> Vec<f64> {
+    if onsets.len() < 3 {
+        return Vec::new();
+    }
+    // First- and second-order gaps: a melody often skips a beat.
+    let mut gaps: Vec<f64> = Vec::new();
+    for order in 1..=2usize {
+        for pair in onsets.windows(order + 1) {
+            let gap = pair[order].time_s - pair[0].time_s;
+            if gap > 0.02 {
+                gaps.push(gap);
+            }
+        }
+    }
+    if gaps.is_empty() {
+        return Vec::new();
+    }
+    gaps.sort_by(|a, b| a.partial_cmp(b).unwrap_or(core::cmp::Ordering::Equal));
+    // Cluster on a log scale (5% bins): musical relationships are
+    // ratios, so equal-width linear bins would over-resolve the fast
+    // end and smear the slow end.
+    let mut clusters: Vec<(f64, usize)> = Vec::new();
+    for gap in gaps {
+        match clusters.last_mut() {
+            Some((centre, count)) if gap / *centre < 1.05 => {
+                *centre = (*centre * *count as f64 + gap) / (*count + 1) as f64;
+                *count += 1;
+            }
+            _ => clusters.push((gap, 1)),
+        }
+    }
+    clusters.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.total_cmp(&b.0)));
+    clusters.truncate(4);
+
+    let mut periods = Vec::new();
+    for (gap, _) in clusters {
+        // The gap may be one beat or several; try the small integer
+        // divisions and keep whatever lands in range.
+        for division in 1..=4u32 {
+            let period = gap / f64::from(division);
+            if period >= min_period && period <= max_period {
+                periods.push(period);
+            }
+        }
+    }
+    periods
+}
+
+/// Estimate the tempo from the flux envelope and the onsets it
+/// produced. Returns `None` when there is too little to go on.
+///
+/// The autocorrelation proposes candidates; the ONSETS decide between
+/// them. A fixed preference for 120 BPM cannot disambiguate octaves —
+/// it just picks one (measured: three of eight evaluation scenes came
+/// out at the wrong tempo, one of them not even an octave away). The
+/// tempo that wins here is the one whose beat grid actually explains
+/// where the onsets are.
+#[must_use]
+pub fn estimate_tempo(
+    flux: &[f32],
+    hop_s: f64,
+    onsets: &[Onset],
+    config: &TempoConfig,
+) -> Option<TempoEstimate> {
     if hop_s <= 0.0 || flux.len() < 8 {
         return None;
     }
@@ -77,8 +247,6 @@ pub fn estimate_tempo(flux: &[f32], hop_s: f64, config: &TempoConfig) -> Option<
         (-0.5 * (octaves / config.prior_width_octaves).powi(2)).exp()
     };
 
-    let mut best_lag = lag_min;
-    let mut best_score = f64::NEG_INFINITY;
     let mut correlations = vec![0.0f64; lag_max + 2];
     for (lag, slot) in correlations
         .iter_mut()
@@ -86,52 +254,118 @@ pub fn estimate_tempo(flux: &[f32], hop_s: f64, config: &TempoConfig) -> Option<
         .take(lag_max + 1)
         .skip(lag_min)
     {
-        let correlation = ac(lag);
-        *slot = correlation;
-        let bpm = 60.0 / (lag as f64 * hop_s);
-        let score = correlation * prior(bpm);
-        if score > best_score {
-            best_score = score;
-            best_lag = lag;
-        }
+        *slot = ac(lag);
     }
-    if best_score <= 0.0 {
+
+    // Candidates: local maxima of the autocorrelation, pre-ranked by
+    // correlation and prior so the (expensive) grid test only runs on
+    // plausible periods.
+    let mut candidates: Vec<(usize, f64)> = (lag_min + 1..lag_max)
+        .filter(|&lag| {
+            correlations[lag] >= correlations[lag - 1] && correlations[lag] > correlations[lag + 1]
+        })
+        .map(|lag| {
+            let bpm = 60.0 / (lag as f64 * hop_s);
+            (lag, correlations[lag] * prior(bpm))
+        })
+        .filter(|(_, score)| *score > 0.0)
+        .collect();
+    candidates.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(core::cmp::Ordering::Equal)
+            .then(a.0.cmp(&b.0))
+    });
+    candidates.truncate(8);
+
+    // Periods to test: the autocorrelation's peaks, refined to
+    // sub-frame resolution, plus whatever the raw onset spacing
+    // suggests. Both are just proposals — the onsets decide.
+    let mut periods: Vec<f64> = candidates
+        .iter()
+        .map(|(lag, _)| refine_lag(&correlations, *lag, lag_min, lag_max) * hop_s)
+        .collect();
+    periods.extend(ioi_periods(
+        onsets,
+        60.0 / config.max_bpm,
+        60.0 / config.min_bpm,
+    ));
+    periods.retain(|p| *p >= 60.0 / config.max_bpm && *p <= 60.0 / config.min_bpm);
+    if periods.is_empty() {
         return None;
     }
 
-    // Parabolic interpolation around the winning lag for sub-frame
-    // period resolution.
-    let refined_lag = if best_lag > lag_min && best_lag < lag_max {
-        let left = correlations[best_lag - 1];
-        let center = correlations[best_lag];
-        let right = correlations[best_lag + 1];
-        let denom = left - 2.0 * center + right;
-        if denom.abs() > 1e-12 {
-            let delta = (0.5 * (left - right) / denom).clamp(-0.5, 0.5);
-            best_lag as f64 + delta
-        } else {
-            best_lag as f64
+    // Step 1: which grid explains the onsets? That is a measurement.
+    let scored: Vec<(f64, f64)> = periods
+        .iter()
+        .map(|period| (*period, grid_support(onsets, *period)))
+        .collect();
+    let best_support = scored
+        .iter()
+        .map(|(_, support)| *support)
+        .fold(0.0f64, f64::max);
+    if best_support <= 0.0 {
+        return None;
+    }
+
+    // Step 2: which OCTAVE of that grid? That is perception, not
+    // measurement — a grid and its double explain the onsets equally
+    // well by construction (the faster grid contains the slower one),
+    // so no amount of onset evidence can separate them. The listener's
+    // preferred tactus does: among the grids that explain the music
+    // essentially as well as the best one, take the tempo closest to
+    // the perceptual centre. This is what finally got all three
+    // ambiguous scenes right at once (90 not 180, 96 not 192,
+    // 150 not 75) — earlier attempts that tried to decide the octave
+    // from the onsets alone fixed one scene and broke another.
+    let mut best_period = 60.0 / config.prior_center_bpm;
+    let mut best_prior = f64::NEG_INFINITY;
+    for (period, support) in &scored {
+        if *support < best_support * 0.95 {
+            continue;
         }
-    } else {
-        best_lag as f64
-    };
+        let value = prior(60.0 / period) * meter_plausibility(onsets, *period);
+        if value > best_prior {
+            best_prior = value;
+            best_period = *period;
+        }
+    }
 
-    let bpm = 60.0 / (refined_lag * hop_s);
-    let confidence = correlations[best_lag].clamp(0.0, 1.0);
+    let bpm = 60.0 / best_period;
+    // Confidence is how much of the music the chosen grid explains —
+    // a far more useful number downstream than a raw autocorrelation
+    // peak, which can be high on a grid that fits nothing.
+    let confidence = grid_support(onsets, best_period).clamp(0.0, 1.0);
 
-    // Report the other octave when it also correlates substantially.
-    let alt_bpm = [best_lag * 2, best_lag / 2]
+    // The honest alternative reading, when one exists in range.
+    let alt_bpm = [bpm * 2.0, bpm / 2.0]
         .into_iter()
-        .filter(|&lag| lag >= 1 && lag <= lag_max && lag >= lag_min)
-        .filter(|&lag| correlations[lag] > correlations[best_lag] * 0.5)
-        .map(|lag| 60.0 / (lag as f64 * hop_s))
-        .next();
+        .filter(|candidate| *candidate >= config.min_bpm && *candidate <= config.max_bpm)
+        .find(|candidate| grid_support(onsets, 60.0 / candidate) >= best_support * 0.95);
 
     Some(TempoEstimate {
         bpm,
         confidence,
         alt_bpm,
     })
+}
+
+/// Parabolic interpolation around an autocorrelation peak, for
+/// sub-frame period resolution (lag quantization alone is worth
+/// several BPM at fast tempi).
+fn refine_lag(correlations: &[f64], lag: usize, lag_min: usize, lag_max: usize) -> f64 {
+    if lag <= lag_min || lag >= lag_max || lag + 1 >= correlations.len() {
+        return lag as f64;
+    }
+    let (left, centre, right) = (
+        correlations[lag - 1],
+        correlations[lag],
+        correlations[lag + 1],
+    );
+    let denominator = left - 2.0 * centre + right;
+    if denominator.abs() <= 1e-12 {
+        return lag as f64;
+    }
+    lag as f64 + (0.5 * (left - right) / denominator).clamp(-0.5, 0.5)
 }
 
 /// Fit a beat grid of the given BPM to the onsets: choose the phase
@@ -209,8 +443,13 @@ mod tests {
             .collect();
         let audio = synth::click_track(&times, 21.0, 22_050);
         let flux = analyze_onsets(&audio, &OnsetConfig::default());
-        estimate_tempo(&flux.flux, flux.hop_s, &TempoConfig::default())
-            .expect("click track must yield a tempo")
+        estimate_tempo(
+            &flux.flux,
+            flux.hop_s,
+            &flux.onsets,
+            &TempoConfig::default(),
+        )
+        .expect("click track must yield a tempo")
     }
 
     #[test]
@@ -255,8 +494,8 @@ mod tests {
 
     #[test]
     fn silence_has_no_tempo() {
-        assert!(estimate_tempo(&[0.0; 2000], 0.0116, &TempoConfig::default()).is_none());
-        assert!(estimate_tempo(&[], 0.0116, &TempoConfig::default()).is_none());
+        assert!(estimate_tempo(&[0.0; 2000], 0.0116, &[], &TempoConfig::default()).is_none());
+        assert!(estimate_tempo(&[], 0.0116, &[], &TempoConfig::default()).is_none());
     }
 
     #[test]

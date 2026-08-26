@@ -13,6 +13,7 @@
 //! - [`clock`] — the authoritative, testable song timeline
 //! - [`playback`] — rodio wrapper (play/pause/seek/position)
 //! - [`synth`] — deterministic signal synthesis (tests, demo material)
+//! - [`eval`] — synthetic scenes with ground truth + quality metrics
 //! - [`demo`] — the original, fully synthesized bundled demo song
 //!
 //! Architecture: see ADR-0005 and `docs/audio/analysis.md`.
@@ -21,6 +22,7 @@ pub mod analysis;
 pub mod clock;
 pub mod decode;
 pub mod demo;
+pub mod eval;
 pub mod playback;
 pub mod synth;
 
