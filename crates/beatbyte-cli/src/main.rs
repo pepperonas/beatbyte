@@ -29,6 +29,9 @@ enum Command {
     Analyze {
         /// Path to the audio file (wav/ogg/flac/mp3/m4a).
         song: PathBuf,
+        /// Dump the full analysis as JSON to this path.
+        #[arg(long)]
+        json: Option<PathBuf>,
     },
     /// Generate a BeatByte chart (all four difficulties) from a song.
     Generate {
@@ -64,7 +67,7 @@ enum Command {
 
 fn main() -> ExitCode {
     match Cli::parse().command {
-        Command::Analyze { song } => analyze(&song),
+        Command::Analyze { song, json } => analyze(&song, json.as_deref()),
         Command::Generate {
             song,
             title,
@@ -125,11 +128,26 @@ fn demo(out_dir: &Path) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn analyze(song: &Path) -> ExitCode {
+fn analyze(song: &Path, json: Option<&Path>) -> ExitCode {
     let analysis = match run_analysis(song) {
         Ok(analysis) => analysis,
         Err(code) => return code,
     };
+    if let Some(path) = json {
+        match serde_json::to_string(&analysis) {
+            Ok(text) => {
+                if let Err(error) = std::fs::write(path, text) {
+                    eprintln!("cannot write `{}`: {error}", path.display());
+                    return ExitCode::FAILURE;
+                }
+                println!("analysis JSON written to `{}`", path.display());
+            }
+            Err(error) => {
+                eprintln!("cannot serialize analysis: {error}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
 
     println!("Analysis of `{}`", song.display());
     println!("  duration      {:>8.1} s", analysis.duration_s);
@@ -143,6 +161,16 @@ fn analyze(song: &Path) -> ExitCode {
     }
     println!("  beats         {:>8}", analysis.beats.len());
     println!("  onsets        {:>8}", analysis.onsets.len());
+    let held: Vec<f64> = analysis
+        .melody
+        .iter()
+        .map(beatbyte_core::MelodyNote::len_s)
+        .collect();
+    let long = held.iter().filter(|l| **l >= 0.45).count();
+    println!(
+        "  melody notes  {:>8}   ({long} held >=0.45 s)",
+        analysis.melody.len()
+    );
     if let Some(first) = analysis.beats.first() {
         println!("  first beat    {first:>8.3} s");
     }

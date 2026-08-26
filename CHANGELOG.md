@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Guitar-Hero-style chart generation.** Imports now transcribe the
+  LEAD of the song, not just its percussion: a new melody-extraction
+  stage (HPSS harmonic/percussive separation → register-weighted
+  pitch salience → DP contour tracking → note segmentation) delivers
+  melody notes with true start, end and pitch. The generator adapts
+  the hand-charting conventions: lanes follow the riff's pitch
+  contour (green low → orange high, relative intervals), a held tone
+  becomes a sustain of its REAL held length (trimmed by the
+  tempo-scaled trailing gap: 1/32 whole note below 100 BPM, 1/24 to
+  140, 1/16 above), soft entries without a percussive attack still
+  chart, and while a strong melody note is held the lead owns the
+  highway (no drum hits stacked on a sustain). Measured on a real
+  m4a track: melody coverage 86%, held notes 8 → 147, hard/expert
+  sustains 2 → 34/24 with genuine varied lengths.
+- **Master-derived difficulties.** All four difficulties now derive
+  from ONE master chart (the official charting workflow): lower
+  difficulties are subsets, the same musical event keeps the same
+  lane (remapped to 3/4/5 lanes) and the same tail everywhere —
+  leveling up is the same song with more notes, never a re-chart.
+  Pinned by tests: easy/medium ⊆ expert, cross-difficulty lane
+  consistency, order-preserving lane remap.
+- **`beatbyte-cli analyze --json <path>`** dumps the full analysis
+  (including the melody) for inspection; the text output now counts
+  melody notes and held tones.
+
 ### Fixed
 
 - **Depth-view sustain tails hug their string.** The tail sprite

@@ -27,7 +27,20 @@ Beat Grid
     │  phase chosen to maximize onset support, beats laid across the
     │  full duration
     ▼
-SongAnalysis { bpm, beats[], onsets[{time, strength}], duration }
+Melody Extraction (lead transcription)
+    │  STFT (Hann 2048, hop 512 — pitch needs longer windows)
+    │  HPSS: median filter across time (harmonic) vs frequency
+    │    (percussive), Wiener-style soft mask keeps the tonal layer
+    │  pitch salience per frame: harmonic summation over a semitone
+    │    grid (E2..E6, 6 harmonics, ±1-bin mistuning tolerance),
+    │    register-weighted toward the lead (the bass must not win)
+    │  contour tracking: DP over semitone states + unvoiced state
+    │    (jump penalties; flat frames fall to unvoiced)
+    │  segmentation: stable voiced runs → notes with TRUE start/end;
+    │    transient smears rejected by their decaying salience and by
+    │    the loneliness rule (riffs are runs, blips are drums)
+    ▼
+SongAnalysis { bpm, beats[], onsets[], melody[{time, end, midi}], duration }
 ```
 
 ## Design rules

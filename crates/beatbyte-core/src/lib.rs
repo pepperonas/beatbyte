@@ -34,7 +34,7 @@ pub mod timing;
 
 pub use difficulty::Difficulty;
 pub use lane::{Lane, LaneSet};
-pub use music::{Onset, SongAnalysis};
+pub use music::{MelodyNote, Onset, SongAnalysis};
 pub use note::{NoteEvent, NoteKind, Phrase, Track};
 pub use score::{PlayerPerformance, ScoreConfig};
 pub use session::{GameInput, InputKind, SessionEvent, TrackSession};

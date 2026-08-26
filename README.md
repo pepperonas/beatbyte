@@ -226,18 +226,29 @@ pipeline, in order:
    right tempo octave), refined with parabolic interpolation for
    sub-BPM resolution; the beat grid is then phase-fitted so beats land
    on actual onsets.
-5. **Chart generation** — deterministic and data-driven: per-difficulty
-   profiles quantize onsets to the beat grid (beats → sixteenths),
-   thin them by strength and spacing, assign lanes by spectral
-   brightness with jump limiting, promote strong onsets to chords,
-   turn fast runs into HOPOs, and carve **sustains energy-first** out
-   of the gaps between strong onsets. Same audio in → bit-identical
-   charts out. There is no randomness — variety comes from a hash of
-   each note's own timestamp.
-6. **Validation** — charts are treated as untrusted input even though
+5. **Melody extraction** — the Guitar-Hero-style layer: harmonic/
+   percussive separation (HPSS median filtering) isolates the tonal
+   layer, per-frame pitch salience over a semitone grid (register-
+   weighted toward the lead) is tracked into a contour by dynamic
+   programming, and stable runs become **melody notes with their true
+   start, end and pitch**.
+6. **Master chart** — one authored truth per song, the official-
+   charting workflow: melody notes drive placement (lanes follow the
+   riff's pitch contour, green low → orange high; onsets fill the
+   percussive rest), and a held tone becomes a **sustain of its real
+   held length**, trimmed by the tempo-scaled trailing gap the
+   charting community standardized. While a strong melody note is
+   held, the lead owns the highway — no drum hits stacked on top.
+7. **Difficulty derivation** — Easy/Medium/Hard/Expert are
+   *derivations of the same master* (thinning by strength and
+   spacing, lane remap onto 3/4/5 lanes, per-difficulty HOPO and
+   chord rules) — so a note you learned on Easy sits on the same
+   lane on Expert. Same audio in → bit-identical charts out; there
+   is no randomness anywhere.
+8. **Validation** — charts are treated as untrusted input even though
    we just generated them: BPM clamped to 20–400, size caps, path
    traversal and Windows-drive rejection.
-7. **Play (and correct)** — the song appears in the browser with all
+9. **Play (and correct)** — the song appears in the browser with all
    four difficulties. Generated charts are *playable, not perfect* —
    the built-in editor is the correction pass.
 

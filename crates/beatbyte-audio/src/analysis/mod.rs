@@ -2,12 +2,14 @@
 //! [`SongAnalysis`] (see `docs/audio/analysis.md`).
 
 pub mod envelope;
+pub mod melody;
 pub mod onset;
 pub mod tempo;
 
 use beatbyte_core::music::SongAnalysis;
 
 use crate::decode::AudioData;
+use melody::MelodyConfig;
 use onset::OnsetConfig;
 use tempo::TempoConfig;
 
@@ -18,6 +20,8 @@ pub struct AnalyzerConfig {
     pub onset: OnsetConfig,
     /// Tempo estimation parameters.
     pub tempo: TempoConfig,
+    /// Melody extraction parameters.
+    pub melody: MelodyConfig,
 }
 
 /// An analysis implementation. The trait keeps the pipeline
@@ -58,6 +62,8 @@ impl Analyzer for SpectralAnalyzer {
         };
         let (_, beats) = tempo::fit_beat_grid(&flux.onsets, bpm, duration_s);
 
+        let melody = melody::extract_melody(&prepared, &self.config.melody);
+
         let energy_window = prepared.sample_rate() as usize / 10; // 100 ms
         let energy_hop = energy_window / 2; // 50 ms
         let energy = envelope::rms_envelope(&prepared, energy_window.max(1), energy_hop.max(1));
@@ -72,6 +78,7 @@ impl Analyzer for SpectralAnalyzer {
             energy,
             energy_hop_s,
             duration_s,
+            melody,
         }
     }
 }

@@ -456,6 +456,7 @@ dependencies = [
  "beatbyte-chart",
  "beatbyte-core",
  "clap",
+ "serde_json",
 ]
 
 [[package]]

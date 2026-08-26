@@ -72,6 +72,13 @@ actionable; adjectives alone are not.
 
 ## Findings log
 
+**2026-08-26 · melody charting (G18)**
+- User: conversion should capture guitar tones + sustains "perfekt",
+  GH-style; difficulty policy decided: tune MEDIUM first, derive
+  easier/expert from it. Implemented as master + derivations.
+- To judge by ear: do lanes follow the vocal/riff on the imported
+  tracks? Do sustains start/end with the actually held notes?
+
 **2026-08-26 · depth view · sustain tails**
 - User screenshot: "die langgezogenen töne sind noch verschoben (die
   linie)" — sustain tails stood vertical while the lane leaned toward

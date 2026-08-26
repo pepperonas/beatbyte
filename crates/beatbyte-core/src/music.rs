@@ -20,6 +20,30 @@ pub struct Onset {
     pub brightness: f32,
 }
 
+/// A note of the extracted lead melody: a pitched tone with a real
+/// start AND end — the raw material for Guitar-Hero-style contour
+/// lanes and true-length sustains. Produced by the melody stage in
+/// `beatbyte-audio`, consumed by the generator in `beatbyte-chart`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct MelodyNote {
+    /// Song time the note starts, seconds.
+    pub time_s: f64,
+    /// Song time the note ends (the tone stops being held), seconds.
+    pub end_s: f64,
+    /// Pitch as a (possibly fractional) MIDI note number.
+    pub midi: f32,
+    /// Relative salience in 0.0–1.0 (1.0 = most salient note).
+    pub strength: f32,
+}
+
+impl MelodyNote {
+    /// How long the tone is actually held, in seconds.
+    #[must_use]
+    pub fn len_s(&self) -> f64 {
+        (self.end_s - self.time_s).max(0.0)
+    }
+}
+
 /// The result of analyzing a song.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SongAnalysis {
@@ -40,6 +64,11 @@ pub struct SongAnalysis {
     pub energy_hop_s: f64,
     /// Analyzed duration in seconds.
     pub duration_s: f64,
+    /// The extracted lead melody, ascending by start time. Empty when
+    /// no melody stage ran (older analyses) or nothing tonal was
+    /// found — consumers must treat that as "fall back to onsets".
+    #[serde(default)]
+    pub melody: Vec<MelodyNote>,
 }
 
 impl SongAnalysis {
@@ -74,7 +103,19 @@ mod tests {
             energy: vec![0.0, 0.5, 1.0],
             energy_hop_s: 0.1,
             duration_s: 1.5,
+            melody: vec![],
         }
+    }
+
+    #[test]
+    fn melody_note_length_never_negative() {
+        let note = MelodyNote {
+            time_s: 2.0,
+            end_s: 1.0,
+            midi: 69.0,
+            strength: 1.0,
+        };
+        assert!(note.len_s().abs() < f64::EPSILON);
     }
 
     #[test]

@@ -154,14 +154,19 @@ pub fn generate_chart(analysis: &SongAnalysis, meta: &GenerateMeta) -> ChartFile
 }
 
 /// Generate one difficulty's chart.
+///
+/// Every difficulty derives from ONE master (the official-charting
+/// workflow): the same musical event keeps the same lane and the
+/// same tail on every difficulty — leveling up must feel like the
+/// same song with more of it, never a different chart.
 #[must_use]
 pub fn generate_difficulty(
     analysis: &SongAnalysis,
     profile: &DifficultyProfile,
     grid_origin_s: f64,
 ) -> ChartDef {
-    let kept = select_onsets(analysis, profile, grid_origin_s);
-    let notes = place_notes(analysis, profile, &kept);
+    let master = build_master(analysis, grid_origin_s);
+    let notes = derive_notes(analysis, profile, &master);
     let phrases = place_phrases(analysis, &notes);
     ChartDef {
         difficulty: profile.difficulty,
@@ -171,44 +176,339 @@ pub fn generate_difficulty(
     }
 }
 
-/// A selected, quantized onset ready for note placement.
+/// One event of the master chart: the single authored truth every
+/// difficulty derives from. Lanes live on the full five-lane neck;
+/// `held_s` is the tail's natural length before per-difficulty
+/// capping (0 = a tap).
+#[derive(Debug, Clone, Copy)]
+struct MasterNote {
+    time_s: f64,
+    strength: f32,
+    lane: i32,
+    held_s: f64,
+    pitched: bool,
+}
+
+/// Master selection parameters: the finest musical grid the game
+/// charts (sixteenths, expert-tight spacing, near-open floor).
+/// Difficulties THIN this — they never re-select.
+const MASTER_GRID_DIVISION: u32 = 4;
+const MASTER_MIN_SPACING_S: f64 = 0.10;
+const MASTER_STRENGTH_FLOOR: f32 = 0.07;
+
+/// Build the master chart: melody-first selection, contour lanes on
+/// the full neck, true-length tails.
+fn build_master(analysis: &SongAnalysis, grid_origin_s: f64) -> Vec<MasterNote> {
+    let kept = select_candidates(analysis, grid_origin_s);
+    let beat = analysis.beat_interval_s();
+    let lanes = LANE_COUNT as i32;
+    let mut contour = ContourMapper::new(lanes);
+    let mut master: Vec<MasterNote> = Vec::new();
+    let mut previous_lane: Option<i32> = None;
+    for selected in &kept {
+        let mut lane = if let Some(pitch) = selected.pitch {
+            contour.lane(selected.time_s, pitch.midi, beat, analysis)
+        } else {
+            let base = (f64::from(selected.brightness) * f64::from(lanes)).floor() as i32;
+            let wiggle = (note_hash(selected.time_s) % 3) as i32 - 1; // −1, 0, +1
+            (base + wiggle).clamp(0, lanes - 1)
+        };
+        if let Some(prev) = previous_lane {
+            lane = lane.clamp(prev - 2, prev + 2).clamp(0, lanes - 1);
+            let gap = selected.time_s - master.last().map_or(f64::NEG_INFINITY, |n| n.time_s);
+            if selected.pitch.is_none() && lane == prev && gap < MASTER_MIN_SPACING_S * 2.0 {
+                lane = if prev + 1 < lanes { prev + 1 } else { prev - 1 }.max(0);
+            }
+        }
+        let held_s = natural_tail(analysis, selected, beat);
+        master.push(MasterNote {
+            time_s: selected.time_s,
+            strength: selected.strength,
+            lane,
+            held_s,
+            pitched: selected.pitch.is_some(),
+        });
+        previous_lane = Some(lane);
+    }
+    master
+}
+
+/// The natural tail of a master note, before difficulty capping.
+/// Pitched: the TRUE held length the melody stage measured (short
+/// tones are taps). Unpitched: the energy heuristic — the envelope
+/// keeps ringing and no strong fresh onset strikes.
+fn natural_tail(analysis: &SongAnalysis, selected: &Selected, beat: f64) -> f64 {
+    if let Some(pitch) = selected.pitch {
+        let held = pitch.end_s - selected.time_s;
+        if held >= (beat * 0.5).max(0.3) {
+            return held.min(beat * 8.0);
+        }
+        return 0.0;
+    }
+    let mut candidate = beat * 4.0;
+    // A strong fresh onset ends the ringing — absolute bar (relative
+    // measures once cut a live track's sustains to almost none).
+    let cutoff = 0.5;
+    for onset in &analysis.onsets {
+        if onset.time_s <= selected.time_s + 0.05 {
+            continue;
+        }
+        if onset.time_s >= selected.time_s + candidate {
+            break;
+        }
+        if onset.strength >= cutoff {
+            candidate = onset.time_s - selected.time_s - 0.1;
+            break;
+        }
+    }
+    if candidate > 0.3 && energy_carries(analysis, selected.time_s, candidate) {
+        candidate
+    } else {
+        0.0
+    }
+}
+
+/// Remap a full-neck master lane onto a difficulty's lane count.
+fn remap_lane(master_lane: i32, lanes_used: i32) -> i32 {
+    if lanes_used >= LANE_COUNT as i32 {
+        return master_lane;
+    }
+    let scaled =
+        f64::from(master_lane) * f64::from(lanes_used - 1) / f64::from(LANE_COUNT as i32 - 1);
+    (scaled.round() as i32).clamp(0, lanes_used - 1)
+}
+
+/// Derive one difficulty from the master: thin by strength floor and
+/// spacing, remap lanes, cap tails against the DERIVED neighbor gaps,
+/// then apply the difficulty's HOPO and chord rules.
+fn derive_notes(
+    analysis: &SongAnalysis,
+    profile: &DifficultyProfile,
+    master: &[MasterNote],
+) -> Vec<ChartNote> {
+    let lanes_used = i32::from(profile.lanes_used.clamp(1, LANE_COUNT as u8));
+    // Thin.
+    let mut kept: Vec<&MasterNote> = Vec::new();
+    for note in master {
+        if note.strength < profile.strength_floor {
+            continue;
+        }
+        if let Some(last) = kept.last()
+            && note.time_s - last.time_s < profile.min_spacing_s
+        {
+            continue;
+        }
+        kept.push(note);
+    }
+    // Place.
+    let mut notes: Vec<ChartNote> = Vec::new();
+    let mut previous_lane: Option<i32> = None;
+    for (i, note) in kept.iter().enumerate() {
+        let lane = remap_lane(note.lane, lanes_used);
+        let next_time = kept.get(i + 1).map_or(analysis.duration_s, |n| n.time_s);
+        let gap_to_next = next_time - note.time_s;
+        let mut len = 0.0;
+        if profile.sustains && note.held_s > 0.0 {
+            let min_gap_ok = note.pitched || gap_to_next >= profile.sustain_min_gap_s;
+            if min_gap_ok {
+                let candidate = note.held_s.min(gap_to_next - trailing_gap_s(analysis.bpm));
+                if candidate > 0.25 {
+                    len = candidate;
+                }
+            }
+        }
+        let gap_to_prev = notes.last().map_or(f64::INFINITY, |n| note.time_s - n.time);
+        let hopo =
+            profile.hopos && gap_to_prev <= profile.hopo_max_gap_s && previous_lane != Some(lane);
+        let chord_size = if note.strength >= profile.chord_threshold
+            && gap_to_prev >= profile.min_spacing_s * 2.0
+            && len == 0.0
+        {
+            let extra = 1 + (note_hash(note.time_s + 0.5) % 2) as u8;
+            (1 + extra).min(profile.max_chord_size)
+        } else {
+            1
+        };
+        for c in 0..i32::from(chord_size) {
+            let chord_lane = if lane + c < lanes_used {
+                lane + c
+            } else {
+                lane - c
+            };
+            notes.push(ChartNote {
+                time: note.time_s,
+                lane: chord_lane.clamp(0, lanes_used - 1) as u8,
+                len,
+                hopo: hopo && chord_size == 1,
+            });
+        }
+        previous_lane = Some(lane);
+    }
+    dedupe_same_lane(&mut notes);
+    notes
+}
+
+/// Pitch information a candidate carries when the melody stage found
+/// a tone at its position: the raw material for contour lanes and
+/// true-length sustains.
+#[derive(Debug, Clone, Copy)]
+struct Pitched {
+    /// MIDI pitch of the tone.
+    midi: f32,
+    /// Song time the tone stops being held.
+    end_s: f64,
+}
+
+/// A selected, quantized candidate ready for note placement.
 #[derive(Debug, Clone, Copy)]
 struct Selected {
     time_s: f64,
     strength: f32,
     brightness: f32,
+    pitch: Option<Pitched>,
 }
 
-/// Quantize, filter and thin the onset stream.
-fn select_onsets(
-    analysis: &SongAnalysis,
-    profile: &DifficultyProfile,
-    grid_origin_s: f64,
-) -> Vec<Selected> {
+/// An onset this close to a melody-note start is that note's attack.
+const ATTACH_S: f64 = 0.09;
+
+/// Merge the onset stream with the melody notes into one candidate
+/// stream: an onset at a melody-note start carries that note's pitch;
+/// melody notes with no percussive attack (soft guitar entries) stand
+/// alone — a hand charter would place them, so do we.
+fn merge_candidates(analysis: &SongAnalysis) -> Vec<Selected> {
+    let mut used = vec![false; analysis.melody.len()];
+    let mut out: Vec<Selected> = Vec::new();
+    for onset in &analysis.onsets {
+        let mut pitch = None;
+        let mut best = f64::INFINITY;
+        for (i, note) in analysis.melody.iter().enumerate() {
+            let distance = (note.time_s - onset.time_s).abs();
+            let at_start = distance <= ATTACH_S;
+            // Also inside the note's opening moments — an onset a
+            // hair late still belongs to the attack, not the tail.
+            let in_attack = onset.time_s >= note.time_s
+                && onset.time_s < note.end_s
+                && onset.time_s - note.time_s <= 2.0 * ATTACH_S;
+            if (at_start || in_attack) && distance < best {
+                best = distance;
+                pitch = Some((
+                    i,
+                    Pitched {
+                        midi: note.midi,
+                        end_s: note.end_s,
+                    },
+                ));
+            }
+        }
+        if let Some((i, _)) = pitch {
+            used[i] = true;
+        }
+        out.push(Selected {
+            time_s: onset.time_s,
+            strength: onset.strength,
+            brightness: onset.brightness,
+            pitch: pitch.map(|(_, p)| p),
+        });
+    }
+    for (i, note) in analysis.melody.iter().enumerate() {
+        if used[i] {
+            continue;
+        }
+        out.push(Selected {
+            time_s: note.time_s,
+            strength: note.strength,
+            brightness: pitch_position(note.midi, analysis),
+            pitch: Some(Pitched {
+                midi: note.midi,
+                end_s: note.end_s,
+            }),
+        });
+    }
+    out.sort_by(|a, b| {
+        a.time_s
+            .partial_cmp(&b.time_s)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    out
+}
+
+/// Where a pitch sits inside the song's melody range, 0.0–1.0.
+fn pitch_position(midi: f32, analysis: &SongAnalysis) -> f32 {
+    let (low, high) = melody_range(analysis);
+    if (high - low).abs() < f32::EPSILON || high < low {
+        return 0.5;
+    }
+    ((midi - low) / (high - low)).clamp(0.0, 1.0)
+}
+
+/// The song's melody pitch range (semitone-safe fallback).
+fn melody_range(analysis: &SongAnalysis) -> (f32, f32) {
+    let mut low = f32::MAX;
+    let mut high = f32::MIN;
+    for note in &analysis.melody {
+        low = low.min(note.midi);
+        high = high.max(note.midi);
+    }
+    if low > high {
+        (60.0, 72.0)
+    } else {
+        (low, high)
+    }
+}
+
+/// Quantize, filter and thin the candidate stream at MASTER density.
+fn select_candidates(analysis: &SongAnalysis, grid_origin_s: f64) -> Vec<Selected> {
     let beat = analysis.beat_interval_s();
-    let step = beat / f64::from(profile.grid_division.max(1));
+    let step = beat / f64::from(MASTER_GRID_DIVISION);
     // Snap to the grid only when close; otherwise trust the onset (the
     // grid may be imperfect, the music never is).
     let snap_window = (step * 0.3).min(0.07);
 
     let mut kept: Vec<Selected> = Vec::new();
-    for onset in &analysis.onsets {
-        if onset.strength < profile.strength_floor {
+    // While a strong melody note is HELD, the lead owns the highway:
+    // official charts do not stack drum hits on top of a sustain, so
+    // unpitched candidates inside the held span are skipped (capped
+    // at four beats — background hums must not silence a whole bar).
+    let mut hold_until = f64::NEG_INFINITY;
+    for candidate in merge_candidates(analysis) {
+        if candidate.strength < MASTER_STRENGTH_FLOOR {
             continue;
         }
-        let time_s = quantize(onset.time_s, grid_origin_s, step, snap_window);
+        if candidate.pitch.is_none() && candidate.time_s < hold_until {
+            continue;
+        }
+        if let Some(pitch) = candidate.pitch {
+            let held = pitch.end_s - candidate.time_s;
+            if held >= (beat * 0.5).max(0.3) && candidate.strength >= 0.35 {
+                hold_until = (candidate.time_s + held.min(beat * 4.0)).min(pitch.end_s)
+                    - trailing_gap_s(analysis.bpm);
+            }
+        }
+        let time_s = quantize(candidate.time_s, grid_origin_s, step, snap_window);
         if time_s < 0.0 || time_s > analysis.duration_s {
             continue;
         }
         if let Some(last) = kept.last()
-            && time_s - last.time_s < profile.min_spacing_s
+            && time_s - last.time_s < MASTER_MIN_SPACING_S
         {
+            // Too close: but a PITCHED candidate may upgrade an
+            // unpitched neighbor at the same moment — the pitch
+            // is what the lane and sustain want to know.
+            let last_index = kept.len() - 1;
+            if candidate.pitch.is_some()
+                && kept[last_index].pitch.is_none()
+                && (time_s - kept[last_index].time_s) <= ATTACH_S
+            {
+                kept[last_index].pitch = candidate.pitch;
+            }
             continue;
         }
+
         kept.push(Selected {
             time_s,
-            strength: onset.strength,
-            brightness: onset.brightness,
+            strength: candidate.strength,
+            brightness: candidate.brightness,
+            pitch: candidate.pitch,
         });
     }
     kept
@@ -228,106 +528,63 @@ fn quantize(time_s: f64, origin_s: f64, step: f64, snap_window: f64) -> f64 {
     }
 }
 
-/// Assign lanes, chords, HOPOs and sustains.
-fn place_notes(
-    analysis: &SongAnalysis,
-    profile: &DifficultyProfile,
-    kept: &[Selected],
-) -> Vec<ChartNote> {
-    let lanes_used = i32::from(profile.lanes_used.clamp(1, LANE_COUNT as u8));
-    let mut notes: Vec<ChartNote> = Vec::new();
-    let mut previous_lane: Option<i32> = None;
+/// The Guitar-Hero lane convention: lanes track the riff's RELATIVE
+/// pitch contour (green low → orange high), not absolute pitch. A
+/// phrase anchors where its pitch sits in the song's melody range;
+/// within a phrase, the interval to the previous note decides how
+/// far the lane moves (small step = 1 lane, leap = 2–3, capped at
+/// the neck's edge — official charts saturate there too).
+struct ContourMapper {
+    lanes_used: i32,
+    last: Option<(f64, f32, i32)>, // (time, midi, lane)
+}
 
-    for (i, selected) in kept.iter().enumerate() {
-        // Brightness maps to a base lane; a per-note deterministic
-        // wiggle keeps identical-brightness runs from freezing on one
-        // lane; jump limiting keeps patterns playable.
-        let base = (f64::from(selected.brightness) * f64::from(lanes_used)).floor() as i32;
-        let wiggle = (note_hash(selected.time_s) % 3) as i32 - 1; // −1, 0, +1
-        let mut lane = (base + wiggle).clamp(0, lanes_used - 1);
-        if let Some(prev) = previous_lane {
-            lane = lane.clamp(prev - 2, prev + 2).clamp(0, lanes_used - 1);
-            // Fast runs feel better when they move.
-            let gap = selected.time_s - notes.last().map_or(f64::NEG_INFINITY, |n| n.time);
-            if lane == prev && gap < profile.min_spacing_s * 2.0 {
-                lane = if prev + 1 < lanes_used {
-                    prev + 1
-                } else {
-                    prev - 1
-                }
-                .max(0);
-            }
+impl ContourMapper {
+    fn new(lanes_used: i32) -> ContourMapper {
+        ContourMapper {
+            lanes_used,
+            last: None,
         }
-
-        // Sustain: the ENERGY decides (a held tone keeps ringing and
-        // nothing new strikes); the gap to the next note only bounds
-        // the length. The old rule required near-silence after the
-        // note (gap >= 0.8-1.2 s) — dense live mixes never have that,
-        // and a 428-second live track came out with 3 sustains.
-        let next_time = kept.get(i + 1).map_or(analysis.duration_s, |n| n.time_s);
-        let gap_to_next = next_time - selected.time_s;
-        let mut len = 0.0;
-        if profile.sustains && gap_to_next >= profile.sustain_min_gap_s {
-            let mut candidate = (gap_to_next - 0.25).min(analysis.beat_interval_s() * 4.0);
-            // A strong fresh onset inside the window ends the held
-            // tone — cut the sustain just before it. "Strong" is an
-            // ABSOLUTE bar: measured relative to the held note, a
-            // live mix's reverb/crowd rumble cut almost everything
-            // (Rick's medium chart dropped 53 -> 37 sustains).
-            let cutoff = 0.5;
-            for onset in &analysis.onsets {
-                if onset.time_s <= selected.time_s + 0.05 {
-                    continue;
-                }
-                if onset.time_s >= selected.time_s + candidate {
-                    break;
-                }
-                if onset.strength >= cutoff {
-                    candidate = onset.time_s - selected.time_s - 0.1;
-                    break;
-                }
-            }
-            if candidate > 0.3 && energy_carries(analysis, selected.time_s, candidate) {
-                len = candidate;
-            }
-        }
-
-        // HOPO: fast single-note runs that change lanes.
-        let gap_to_prev = notes
-            .last()
-            .map_or(f64::INFINITY, |n| selected.time_s - n.time);
-        let hopo =
-            profile.hopos && gap_to_prev <= profile.hopo_max_gap_s && previous_lane != Some(lane);
-
-        // Chord: strong, well-spaced hits widen.
-        let chord_size = if selected.strength >= profile.chord_threshold
-            && gap_to_prev >= profile.min_spacing_s * 2.0
-            && len == 0.0
-        {
-            let extra = 1 + (note_hash(selected.time_s + 0.5) % 2) as u8;
-            (1 + extra).min(profile.max_chord_size)
-        } else {
-            1
-        };
-
-        for c in 0..i32::from(chord_size) {
-            let chord_lane = if lane + c < lanes_used {
-                lane + c
-            } else {
-                lane - c
-            };
-            notes.push(ChartNote {
-                time: selected.time_s,
-                lane: chord_lane.clamp(0, lanes_used - 1) as u8,
-                len,
-                hopo: hopo && chord_size == 1,
-            });
-        }
-        previous_lane = Some(lane);
     }
 
-    dedupe_same_lane(&mut notes);
-    notes
+    fn lane(&mut self, time_s: f64, midi: f32, beat_s: f64, analysis: &SongAnalysis) -> i32 {
+        let lane = match self.last {
+            // A rest of 4+ beats ends the phrase: re-anchor.
+            Some((last_time, last_midi, last_lane)) if time_s - last_time <= 4.0 * beat_s => {
+                let interval = midi - last_midi;
+                let step = match interval.abs() {
+                    d if d < 0.5 => 0,
+                    d if d < 2.5 => 1,
+                    d if d < 5.5 => 2,
+                    _ => 3,
+                };
+                let direction = if interval >= 0.0 { 1 } else { -1 };
+                (last_lane + direction * step).clamp(0, self.lanes_used - 1)
+            }
+            _ => {
+                let position = f64::from(pitch_position(midi, analysis));
+                ((position * f64::from(self.lanes_used)).floor() as i32)
+                    .clamp(0, self.lanes_used - 1)
+            }
+        };
+        self.last = Some((time_s, midi, lane));
+        lane
+    }
+}
+
+/// The trailing gap a sustain leaves before the next note, from the
+/// CustomSongsCentral charting convention (whole-note fractions:
+/// 1/32 below 100 BPM, 1/24 at 100–140, 1/16 above — expressed here
+/// in beats: 1/8, 1/6 and 1/4 of a beat).
+fn trailing_gap_s(bpm: f64) -> f64 {
+    let beat = 60.0 / bpm.max(f64::EPSILON);
+    if bpm < 100.0 {
+        beat / 8.0
+    } else if bpm <= 140.0 {
+        beat / 6.0
+    } else {
+        beat / 4.0
+    }
 }
 
 /// Whether the energy envelope stays alive over the sustain span.
@@ -451,6 +708,7 @@ mod tests {
             energy: vec![0.8; 1400],
             energy_hop_s: 0.05,
             duration_s: 68.0,
+            melody: vec![],
         }
     }
 
@@ -626,6 +884,7 @@ mod tests {
                 energy: vec![0.8; 200],
                 energy_hop_s: 0.05,
                 duration_s: 10.0,
+                melody: vec![],
             };
             let file = generate_chart(&a, &meta());
             let medium = file
@@ -652,6 +911,262 @@ mod tests {
         );
     }
 
+    /// A melody-driven analysis: notes with true starts/ends plus
+    /// matching onsets (the attack the flux stage would report).
+    fn melody_analysis(notes: &[(f64, f64, f32)]) -> SongAnalysis {
+        use beatbyte_core::music::MelodyNote;
+        let melody: Vec<MelodyNote> = notes
+            .iter()
+            .map(|&(time_s, end_s, midi)| MelodyNote {
+                time_s,
+                end_s,
+                midi,
+                strength: 0.9,
+            })
+            .collect();
+        let onsets: Vec<Onset> = notes
+            .iter()
+            .map(|&(time_s, _, _)| Onset {
+                time_s,
+                strength: 0.9,
+                brightness: 0.5,
+            })
+            .collect();
+        SongAnalysis {
+            bpm: 120.0,
+            bpm_confidence: 0.8,
+            alt_bpm: None,
+            beats: (0..40).map(|i| f64::from(i) * 0.5).collect(),
+            onsets,
+            energy: vec![0.8; 400],
+            energy_hop_s: 0.05,
+            duration_s: 20.0,
+            melody,
+        }
+    }
+
+    fn medium(analysis: &SongAnalysis) -> Vec<crate::schema::ChartNote> {
+        generate_chart(analysis, &meta())
+            .charts
+            .into_iter()
+            .find(|c| c.difficulty == Difficulty::Medium)
+            .unwrap()
+            .notes
+    }
+
+    /// The base (contour) lane per time position — chord widening
+    /// adds same-time notes on neighboring lanes by design.
+    fn base_lanes(notes: &[crate::schema::ChartNote]) -> Vec<u8> {
+        let mut lanes = Vec::new();
+        let mut last_time = f64::NEG_INFINITY;
+        for note in notes {
+            if (note.time - last_time).abs() > 1e-9 {
+                lanes.push(note.lane);
+                last_time = note.time;
+            }
+        }
+        lanes
+    }
+
+    #[test]
+    fn melody_lanes_follow_the_pitch_contour() {
+        // An ascending scale must climb the neck, a descending one
+        // must come back down — the Guitar-Hero convention (green
+        // low, orange high) in its relative form.
+        let up: Vec<(f64, f64, f32)> = (0..5)
+            .map(|i| {
+                (
+                    1.0 + f64::from(i) * 0.6,
+                    1.3 + f64::from(i) * 0.6,
+                    55.0 + 2.0 * i as f32,
+                )
+            })
+            .collect();
+        let notes = medium(&melody_analysis(&up));
+        assert!(notes.len() >= 4, "{notes:?}");
+        let lanes = base_lanes(&notes);
+        assert!(
+            lanes.windows(2).all(|w| w[1] >= w[0]),
+            "ascending pitch must never move left: {lanes:?}"
+        );
+        assert!(
+            lanes.last() > lanes.first(),
+            "an ascending scale must actually climb: {lanes:?}"
+        );
+
+        let down: Vec<(f64, f64, f32)> = (0..5)
+            .map(|i| {
+                (
+                    1.0 + f64::from(i) * 0.6,
+                    1.3 + f64::from(i) * 0.6,
+                    67.0 - 2.0 * i as f32,
+                )
+            })
+            .collect();
+        let notes = medium(&melody_analysis(&down));
+        let lanes = base_lanes(&notes);
+        assert!(
+            lanes.windows(2).all(|w| w[1] <= w[0]),
+            "descending pitch must never move right: {lanes:?}"
+        );
+    }
+
+    #[test]
+    fn melody_sustains_use_the_true_held_length() {
+        // One tone held 1.2 s, next note 2 s later: the sustain is
+        // the REAL held length (not the gap), and a short 0.2 s tone
+        // gets no tail at all.
+        let notes = medium(&melody_analysis(&[
+            (1.0, 2.2, 60.0),
+            (3.0, 3.2, 62.0),
+            (4.0, 4.2, 64.0),
+        ]));
+        let held = notes.iter().find(|n| (n.time - 1.0).abs() < 0.1).unwrap();
+        assert!(
+            (held.len - 1.2).abs() < 0.15,
+            "sustain must be the true held length: {}",
+            held.len
+        );
+        let short = notes.iter().find(|n| (n.time - 3.0).abs() < 0.1).unwrap();
+        assert!(
+            short.len < 0.05,
+            "a 0.2 s tone is a tap, not a sustain: {}",
+            short.len
+        );
+    }
+
+    #[test]
+    fn melody_sustain_leaves_the_trailing_gap() {
+        // A tone held right up to the next note must be trimmed by
+        // the tempo-scaled trailing gap (the CSC charting
+        // convention) so the player can lift and re-fret.
+        let notes = medium(&melody_analysis(&[(1.0, 3.0, 60.0), (3.0, 3.4, 62.0)]));
+        let held = notes.iter().find(|n| (n.time - 1.0).abs() < 0.1).unwrap();
+        let gap = 2.0 - held.len;
+        let expected = trailing_gap_s(120.0);
+        assert!(
+            (gap - expected).abs() < 0.05,
+            "trailing gap {gap} should be ~{expected}"
+        );
+    }
+
+    #[test]
+    fn soft_melody_entries_without_onsets_still_chart() {
+        // A tone the flux stage never saw (soft entry) must still
+        // become a note — hand charters chart what they HEAR.
+        let mut analysis = melody_analysis(&[(1.0, 1.8, 60.0), (3.0, 3.8, 64.0)]);
+        analysis.onsets.clear();
+        let notes = medium(&analysis);
+        assert!(
+            notes.iter().any(|n| (n.time - 3.0).abs() < 0.1),
+            "the onset-less melody note is missing: {notes:?}"
+        );
+    }
+
+    #[test]
+    fn every_easy_note_also_exists_on_expert() {
+        // The derivation contract: lower difficulties are SUBSETS of
+        // the master — a note you learned on Easy is still there on
+        // Expert, never replaced by a different chart.
+        let a = analysis();
+        let chart = generate_chart(&a, &meta());
+        let times = |d: Difficulty| -> Vec<i64> {
+            chart
+                .charts
+                .iter()
+                .find(|c| c.difficulty == d)
+                .unwrap()
+                .notes
+                .iter()
+                .map(|n| (n.time * 1000.0).round() as i64)
+                .collect()
+        };
+        let expert = times(Difficulty::Expert);
+        for time in times(Difficulty::Easy) {
+            assert!(
+                expert.contains(&time),
+                "easy note at {time} ms missing on expert"
+            );
+        }
+        for time in times(Difficulty::Medium) {
+            assert!(
+                expert.contains(&time),
+                "medium note at {time} ms missing on expert"
+            );
+        }
+    }
+
+    #[test]
+    fn shared_notes_keep_their_lane_across_difficulties() {
+        // The same musical event must sit on the "same" lane on every
+        // difficulty (modulo the lane-count remap) — leveling up is
+        // the same song with more notes, not a re-chart.
+        let a = melody_analysis(&[
+            (1.0, 1.3, 55.0),
+            (2.0, 2.3, 59.0),
+            (3.0, 3.3, 63.0),
+            (4.0, 4.3, 67.0),
+            (5.0, 5.3, 71.0),
+        ]);
+        let chart = generate_chart(&a, &meta());
+        let base = |d: Difficulty| -> Vec<(i64, u8)> {
+            let notes = &chart
+                .charts
+                .iter()
+                .find(|c| c.difficulty == d)
+                .unwrap()
+                .notes;
+            let mut out = Vec::new();
+            let mut last = i64::MIN;
+            for n in notes.iter() {
+                let t = (n.time * 1000.0).round() as i64;
+                if t != last {
+                    out.push((t, n.lane));
+                    last = t;
+                }
+            }
+            out
+        };
+        let expert: std::collections::HashMap<i64, u8> =
+            base(Difficulty::Expert).into_iter().collect();
+        for (time, lane) in base(Difficulty::Medium) {
+            let Some(&expert_lane) = expert.get(&time) else {
+                continue;
+            };
+            assert_eq!(
+                i32::from(lane),
+                remap_lane(i32::from(expert_lane), 4),
+                "lane mismatch at {time} ms"
+            );
+        }
+    }
+
+    #[test]
+    fn lane_remap_preserves_contour_order() {
+        for lanes in [3, 4] {
+            let mapped: Vec<i32> = (0..5).map(|l| remap_lane(l, lanes)).collect();
+            assert!(
+                mapped.windows(2).all(|w| w[1] >= w[0]),
+                "remap to {lanes} lanes must not reorder: {mapped:?}"
+            );
+            assert_eq!(mapped[0], 0);
+            assert_eq!(mapped[4], lanes - 1, "the top lane must map to the top");
+        }
+        // PROPORTIONAL, not clamped-identity: the middle of the neck
+        // maps to the middle (a clamp-only "remap" satisfied every
+        // assertion above — found by mutation testing).
+        assert_eq!(remap_lane(2, 3), 1, "neck middle -> 3-lane middle");
+        {}
+    }
+
+    #[test]
+    fn trailing_gap_scales_with_tempo() {
+        // 1/32 whole note below 100 BPM, 1/24 to 140, 1/16 above.
+        assert!((trailing_gap_s(90.0) - (60.0 / 90.0) / 8.0).abs() < 1e-9);
+        assert!((trailing_gap_s(120.0) - (60.0 / 120.0) / 6.0).abs() < 1e-9);
+        assert!((trailing_gap_s(160.0) - (60.0 / 160.0) / 4.0).abs() < 1e-9);
+    }
+
     #[test]
     fn sustains_appear_where_energy_carries() {
         // Sparse strong onsets with big gaps and constant energy.
@@ -671,6 +1186,7 @@ mod tests {
             energy: vec![0.8; 900],
             energy_hop_s: 0.05,
             duration_s: 45.0,
+            melody: vec![],
         };
         let chart = generate_chart(&a, &meta());
         let sustained = chart
@@ -704,6 +1220,7 @@ mod tests {
             energy: vec![],
             energy_hop_s: 0.05,
             duration_s: 30.0,
+            melody: vec![],
         };
         let chart = generate_chart(&a, &meta());
         let errors: Vec<_> = chart
