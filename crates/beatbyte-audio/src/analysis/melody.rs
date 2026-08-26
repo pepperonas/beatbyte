@@ -29,7 +29,7 @@
 //! Everything is pure functions over buffers — same audio in, same
 //! melody out.
 
-use beatbyte_core::music::{MelodyNote, Onset};
+use beatbyte_core::music::MelodyNote;
 use realfft::RealFftPlanner;
 
 use crate::decode::AudioData;
@@ -52,11 +52,7 @@ pub struct MelodyConfig {
     pub midi_min: i32,
     /// Highest candidate pitch as a MIDI note number (88 = E6).
     pub midi_max: i32,
-    /// DP penalty per semitone of pitch jump between frames — the
-    /// temporal-continuity term. Swept (0.035 / 0.09 / 0.18): 0.09
-    /// makes the drums-and-bass scene perfect (F1 0.92 → 1.00) and
-    /// going further changes nothing, so continuity is worth exactly
-    /// this much and no more.
+    /// DP penalty per semitone of pitch jump between frames.
     pub jump_penalty: f32,
     /// DP penalty for switching voiced <-> unvoiced.
     pub switch_penalty: f32,
@@ -77,22 +73,6 @@ pub struct MelodyConfig {
     pub lonely_min_s: f64,
     /// Neighborhood used by the loneliness rule, in seconds.
     pub neighbor_window_s: f64,
-    /// Extra weight given to pitches that start on a detected attack
-    /// (0 disables the preference entirely).
-    pub struck_boost: f32,
-    /// How long that preference lasts after the attack, in seconds.
-    pub struck_hold_s: f64,
-    /// Minimum onset strength (relative to its local peak) for an
-    /// attack to be allowed to END a note.
-    ///
-    /// Left at zero after a measured sweep (0.0 / 0.4 / 0.6): raising
-    /// it was expected to protect held notes in a dense mix, and it
-    /// barely does (10 → 33 long notes on a real track) while costing
-    /// real accuracy on the voice and syncopation scenes (F1 0.50 →
-    /// 0.33 and 0.91 → 0.86). The knob stays because the hypothesis
-    /// is reasonable and someone will want to retest it on other
-    /// material — but it is off, and the numbers say why.
-    pub split_min_strength: f32,
 }
 
 impl Default for MelodyConfig {
@@ -106,16 +86,13 @@ impl Default for MelodyConfig {
             // game, and everything below is bass/kick territory.
             midi_min: 40,
             midi_max: 88,
-            jump_penalty: 0.09,
+            jump_penalty: 0.035,
             switch_penalty: 0.09,
             min_note_s: 0.09,
             bridge_gap_s: 0.12,
             sustained_ratio_floor: 0.35,
             lonely_min_s: 0.22,
             neighbor_window_s: 0.6,
-            struck_boost: 0.6,
-            struck_hold_s: 0.35,
-            split_min_strength: 0.0,
         }
     }
 }
@@ -123,11 +100,7 @@ impl Default for MelodyConfig {
 /// Extract the lead melody from decoded audio. Returns notes
 /// ascending by start time; empty when nothing tonal stands out.
 #[must_use]
-pub fn extract_melody(
-    audio: &AudioData,
-    config: &MelodyConfig,
-    onsets: &[Onset],
-) -> Vec<MelodyNote> {
+pub fn extract_melody(audio: &AudioData, config: &MelodyConfig) -> Vec<MelodyNote> {
     let spectrogram = stft(audio, config.window, config.hop);
     if spectrogram.frames.is_empty() {
         return Vec::new();
@@ -137,52 +110,14 @@ pub fn extract_melody(
         config.hpss_time_halfwidth,
         config.hpss_freq_halfwidth,
     );
-    let mut salience = salience_map(&harmonic, spectrogram.bin_hz, config);
-    let attacks = attack_frames(
-        onsets,
-        spectrogram.hop_s,
-        spectrogram.frame_offset_s,
-        salience.len(),
-        config.split_min_strength,
-    );
-    favour_struck_voices(&mut salience, &attacks, spectrogram.hop_s, config);
+    let salience = salience_map(&harmonic, spectrogram.bin_hz, config);
     let track = track_contour(&salience, config);
     segment_notes(
         &track,
         spectrogram.hop_s,
         spectrogram.frame_offset_s,
-        &attacks,
         config,
     )
-}
-
-/// Frames at which something was struck, as a lookup by frame index.
-///
-/// A repeated note at the same pitch is invisible to a pitch tracker —
-/// the contour simply continues — so without this a plucked scale
-/// merges into single long events. What separates them is the attack,
-/// and that is exactly what the onset stage measures.
-fn attack_frames(
-    onsets: &[Onset],
-    hop_s: f64,
-    frame_offset_s: f64,
-    frames: usize,
-    min_strength: f32,
-) -> Vec<bool> {
-    let mut marks = vec![false; frames];
-    if hop_s <= 0.0 {
-        return marks;
-    }
-    for onset in onsets {
-        if onset.strength < min_strength {
-            continue;
-        }
-        let frame = ((onset.time_s - frame_offset_s) / hop_s).round();
-        if frame >= 0.0 && (frame as usize) < frames {
-            marks[frame as usize] = true;
-        }
-    }
-    marks
 }
 
 /// Magnitude spectrogram: `frames[t][bin]`.
@@ -294,21 +229,22 @@ fn salience_map(harmonic: &[Vec<f32>], bin_hz: f64, config: &MelodyConfig) -> Ve
             let f0 = 440.0 * 2f64.powf((f64::from(midi) - 69.0) / 12.0);
             let mut sum = 0.0f32;
             let mut weight = 1.0f32;
-            for h in 1..=8u32 {
-                let exact = f64::from(h) * f0 / bin_hz;
-                // Interpolate at the EXACT bin. Taking the maximum of
-                // three neighbouring bins destroys resolution exactly
-                // where a guitar lives: at 82 Hz with 10.8 Hz bins,
-                // three adjacent semitones share a bin, so a ±1-bin
-                // maximum makes them literally indistinguishable
-                // (measured: 3 % pitch accuracy on a low riff).
-                let Some(magnitude) = interpolate(frame, exact) else {
+            for h in 1..=6u32 {
+                let bin = (f64::from(h) * f0 / bin_hz).round() as usize;
+                if bin + 1 >= frame.len() {
                     break;
-                };
-                sum += weight * magnitude;
+                }
+                let peak = frame[bin - 1].max(frame[bin]).max(frame[bin + 1]);
+                sum += weight * peak;
                 weight *= 0.85;
             }
-            *slot = sum * register_weight(midi) as f32;
+            // Register weighting (the Melodia idea): the LEAD lives
+            // in the mid register; without this the bassline — loud,
+            // long, stable — wins the tracker on every dense mix
+            // (measured on a real track: pitch histogram peaked at
+            // E2–G#2, the bass, not the vocal).
+            let register = (-(f64::from(midi) - 66.0).powi(2) / (2.0 * 16.0 * 16.0)).exp();
+            *slot = sum * register as f32;
             global_max = global_max.max(sum);
         }
     }
@@ -319,180 +255,8 @@ fn salience_map(harmonic: &[Vec<f32>], bin_hz: f64, config: &MelodyConfig) -> Ve
             }
         }
     }
-    suppress_sub_octaves(&mut map);
     map
 }
-
-/// How much of a candidate's salience survives when the octave above
-/// it is nearly as salient. See [`suppress_sub_octaves`].
-const SUB_OCTAVE_KEEP: f32 = 0.35;
-
-/// Threshold at which the octave above is considered "just as
-/// salient", meaning the lower candidate is its shadow.
-const SUB_OCTAVE_RATIO: f32 = 0.75;
-
-/// Remove sub-octave shadows from the salience map.
-///
-/// Harmonic summation cannot tell a note from the pitch an octave
-/// below it: every even harmonic of the lower candidate lands exactly
-/// on a partial of the real note, so F0/2 collects roughly half the
-/// evidence for free. The signature that distinguishes them is
-/// asymmetric — a real note's octave-up candidate only catches the
-/// weaker even partials (~30 %), while a shadow's octave-up candidate
-/// catches everything (~100 %). Comparing each candidate with the one
-/// twelve semitones above it therefore separates them cleanly.
-///
-/// Comparisons read from a snapshot so the suppression cannot
-/// cascade down an octave chain.
-fn suppress_sub_octaves(map: &mut [Vec<f32>]) {
-    for frame in map.iter_mut() {
-        let original = frame.clone();
-        for (s, value) in frame.iter_mut().enumerate() {
-            let Some(&above) = original.get(s + 12) else {
-                continue;
-            };
-            if *value > 0.0 && above > SUB_OCTAVE_RATIO * original[s] {
-                *value *= SUB_OCTAVE_KEEP;
-            }
-        }
-    }
-}
-
-/// How far a segment's pitch may wander from the note it started on
-/// before it counts as a different note. One semitone would break on
-/// vibrato that crosses a semitone boundary; three would merge a
-/// stepwise melody.
-const ANCHOR_DRIFT: i32 = 3;
-
-/// How much the tracked pitch's own salience must rise at an onset
-/// for that onset to count as a re-articulation of this voice rather
-/// than something else being struck nearby.
-///
-/// Measured sweep (1.25 / 1.6 / 2.2): raising it buys very few extra
-/// long notes on a real pop track (36 → 47 held tones) and costs real
-/// transcription accuracy on the riff and syncopation scenes
-/// (F1 0.96 → 0.81 and 0.98 → 0.86). Accuracy wins.
-const REARTICULATION_RISE: f32 = 1.25;
-
-/// Magnitude at a fractional bin, linearly interpolated. `None` once
-/// the harmonic runs past the spectrum.
-fn interpolate(frame: &[f32], bin: f64) -> Option<f32> {
-    if bin < 0.0 {
-        return None;
-    }
-    let low = bin.floor();
-    let index = low as usize;
-    let upper = frame.get(index + 1)?;
-    let lower = *frame.get(index)?;
-    let fraction = (bin - low) as f32;
-    Some(lower.mul_add(1.0 - fraction, upper * fraction))
-}
-
-/// Preference for the register a guitar chart lives in.
-///
-/// A narrow Gaussian centred on MIDI 66 was fitted to one pop song to
-/// stop its bassline winning the tracker — and it then penalised the
-/// guitar's own low E (MIDI 40) by a factor of four, which is the
-/// opposite of what a guitar game needs. The honest shape is flat
-/// across the neck and rolls off outside it: the bass guitar's range
-/// below the low E stays suppressed, everything on the fretboard is
-/// treated equally.
-fn register_weight(midi: i32) -> f64 {
-    const LOW: f64 = 40.0; // E2, the guitar's low E
-    const HIGH: f64 = 84.0; // C6, past the top of most necks
-    let midi = f64::from(midi);
-    let distance = if midi < LOW {
-        LOW - midi
-    } else if midi > HIGH {
-        midi - HIGH
-    } else {
-        return 1.0;
-    };
-    (-0.5 * (distance / 7.0).powi(2)).exp()
-}
-
-/// Boost pitches that were STRUCK over pitches that faded in.
-///
-/// A plucked string and a voice are separated by physics, not by
-/// loudness: the string's energy at its pitch appears within a few
-/// milliseconds of an attack, while a sung note swells into place and
-/// its start rarely coincides with anything percussive. Tracking by
-/// salience alone therefore follows whichever voice is loudest — a
-/// scene with a loud voice over a quieter riff had the tracker
-/// following the singer almost exclusively.
-///
-/// For every frame the onset stage called an attack, any pitch whose
-/// own salience rises there is boosted for the length of a note. This
-/// is deliberately a preference and not a filter: a guitar line that
-/// happens to enter softly is still tracked, just not favoured.
-fn favour_struck_voices(
-    salience: &mut [Vec<f32>],
-    attacks: &[bool],
-    hop_s: f64,
-    config: &MelodyConfig,
-) {
-    if config.struck_boost <= 0.0 || hop_s <= 0.0 || salience.len() < 3 {
-        return;
-    }
-    let hold = ((config.struck_hold_s / hop_s).round() as usize).max(1);
-    let look_back = ((0.035 / hop_s).round() as usize).max(1);
-    let states = salience.first().map_or(0, Vec::len);
-    // Collect first, apply second: a boost must never feed the test
-    // for the boost of a later frame.
-    let mut boosts: Vec<(usize, usize)> = Vec::new();
-    for (t, is_attack) in attacks.iter().enumerate() {
-        if !*is_attack || t < look_back {
-            continue;
-        }
-        // Only the pitch that rose MOST at this attack. A strike
-        // lifts a whole family of candidates — harmonics, the
-        // sub-octave, near neighbours — and boosting all of them
-        // rewards the wrong one about as often as the right one
-        // (measured: it improved the two distractor scenes and hurt
-        // every clean one).
-        let rises: Vec<f32> = (0..states)
-            .map(|s| {
-                let before = salience[t - look_back][s];
-                let now = salience[t][s];
-                if now <= 0.0 || now <= before * STRUCK_RISE {
-                    0.0
-                } else {
-                    now - before
-                }
-            })
-            .collect();
-        let best = rises
-            .iter()
-            .copied()
-            .enumerate()
-            .filter(|(_, rise)| *rise > 0.0)
-            .max_by(|a, b| a.1.total_cmp(&b.1));
-        // …and anything that rose nearly as much, because a chord
-        // strikes several pitches at once and picking one of a triad
-        // arbitrarily is worse than picking none.
-        if let Some((_, top)) = best {
-            for (s, rise) in rises.iter().enumerate() {
-                if *rise >= top * STRUCK_PEERS {
-                    boosts.push((t, s));
-                }
-            }
-        }
-    }
-    for (t, s) in boosts {
-        for frame in salience.iter_mut().skip(t).take(hold) {
-            frame[s] *= 1.0 + config.struck_boost;
-        }
-    }
-}
-
-/// How sharply a pitch's salience must rise at an attack to count as
-/// having been struck rather than merely present.
-const STRUCK_RISE: f32 = 1.4;
-
-/// How close to the strongest rise at an attack another pitch must
-/// come to count as struck by the same event — the difference between
-/// a chord and a harmonic sitting on the coat-tails of one note.
-const STRUCK_PEERS: f32 = 0.7;
 
 /// One tracked frame: the chosen semitone, or unvoiced.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -598,15 +362,12 @@ fn segment_notes(
     track: &[Tracked],
     hop_s: f64,
     frame_offset_s: f64,
-    attacks: &[bool],
     config: &MelodyConfig,
 ) -> Vec<MelodyNote> {
     let bridge_frames = (config.bridge_gap_s / hop_s).round() as usize;
     let mut notes: Vec<MelodyNote> = Vec::new();
     let mut start: Option<usize> = None;
     let mut pitch = 0i32;
-    let mut anchor = 0i32;
-    let mut previous_salience = 0.0f32;
     let mut midis: Vec<i32> = Vec::new();
     let mut saliences: Vec<f32> = Vec::new();
     let mut gap = 0usize;
@@ -652,29 +413,11 @@ fn segment_notes(
         match *tracked {
             Tracked::Voiced { midi, salience } => {
                 match start {
-                    // Two bounds, because either alone is wrong.
-                    // Against the RUNNING pitch, so a scoop or
-                    // vibrato does not chop a held tone into
-                    // fragments; and against the segment's ANCHOR, so
-                    // a stepwise line cannot drift a semitone at a
-                    // time into one long smear (measured on a plain
-                    // scale: four notes merged into a single 1.8 s
-                    // event).
-                    // An attack ends the previous note even when the
-                    // pitch does not move — but only if it belongs to
-                    // THIS voice. A drum hit over a held guitar note
-                    // is an onset and must not split it; a genuine
-                    // re-articulation makes the tracked pitch's own
-                    // salience jump. And a note's own attack cannot
-                    // split it, hence the minimum length.
-                    Some(begin)
-                        if (midi - pitch).abs() <= 1
-                            && (midi - anchor).abs() <= ANCHOR_DRIFT
-                            && !(attacks.get(t).copied().unwrap_or(false)
-                                && (t - begin) as f64 * hop_s >= config.min_note_s
-                                && salience > previous_salience * REARTICULATION_RISE) =>
-                    {
-                        previous_salience = salience;
+                    // Compare against the RUNNING pitch (previous
+                    // frame), not the segment's first frame: vocals
+                    // scoop and wobble, and the anchored comparison
+                    // chopped real held notes into fragments.
+                    Some(_) if (midi - pitch).abs() <= 1 => {
                         pitch = midi;
                         midis.push(midi);
                         saliences.push(salience);
@@ -691,8 +434,6 @@ fn segment_notes(
                         );
                         start = Some(t);
                         pitch = midi;
-                        anchor = midi;
-                        previous_salience = salience;
                         midis.push(midi);
                         saliences.push(salience);
                         gap = 0;
@@ -700,8 +441,6 @@ fn segment_notes(
                     None => {
                         start = Some(t);
                         pitch = midi;
-                        anchor = midi;
-                        previous_salience = salience;
                         midis.push(midi);
                         saliences.push(salience);
                         gap = 0;
@@ -767,15 +506,7 @@ fn segment_notes(
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::analysis::onset::{OnsetConfig, analyze_onsets};
     use crate::synth;
-
-    /// The onsets the melody stage is given in the real pipeline.
-    /// Segmentation depends on them, so the tests must exercise the
-    /// same path rather than a convenient empty slice.
-    fn onsets_of(audio: &AudioData) -> Vec<Onset> {
-        analyze_onsets(audio, &OnsetConfig::default()).onsets
-    }
 
     const RATE: u32 = 22_050;
 
@@ -802,7 +533,7 @@ mod tests {
     #[test]
     fn a_held_tone_becomes_one_note_with_its_true_length() {
         let audio = held_tone(&[(0.5, 0.8, 440.0)], 2.0);
-        let notes = extract_melody(&audio, &MelodyConfig::default(), &onsets_of(&audio));
+        let notes = extract_melody(&audio, &MelodyConfig::default());
         assert_eq!(notes.len(), 1, "{notes:?}");
         let note = notes[0];
         assert!(
@@ -822,7 +553,7 @@ mod tests {
     fn two_pitches_become_two_notes_with_the_right_interval() {
         // A4 then E5 (+7 semitones) back to back.
         let audio = held_tone(&[(0.4, 0.5, 440.0), (0.9, 0.5, 659.26)], 2.0);
-        let notes = extract_melody(&audio, &MelodyConfig::default(), &onsets_of(&audio));
+        let notes = extract_melody(&audio, &MelodyConfig::default());
         assert_eq!(notes.len(), 2, "{notes:?}");
         let interval = notes[1].midi - notes[0].midi;
         assert!(
@@ -836,7 +567,7 @@ mod tests {
     fn clicks_alone_yield_no_melody() {
         let times: Vec<f64> = (0..8).map(|i| 0.25 + f64::from(i) * 0.25).collect();
         let audio = synth::click_track(&times, 2.5, RATE);
-        let notes = extract_melody(&audio, &MelodyConfig::default(), &onsets_of(&audio));
+        let notes = extract_melody(&audio, &MelodyConfig::default());
         assert!(
             notes.is_empty(),
             "percussion must not fake a melody: {notes:?}"
@@ -853,7 +584,7 @@ mod tests {
             synth::add_burst(&mut samples, RATE, click, 180.0, 0.02, 0.9);
         }
         audio = AudioData::from_mono(samples, RATE);
-        let notes = extract_melody(&audio, &MelodyConfig::default(), &onsets_of(&audio));
+        let notes = extract_melody(&audio, &MelodyConfig::default());
         assert_eq!(notes.len(), 1, "{notes:?}");
         assert!((notes[0].midi - 69.0).abs() <= 1.0);
         assert!(
@@ -866,8 +597,8 @@ mod tests {
     #[test]
     fn extraction_is_deterministic() {
         let audio = held_tone(&[(0.3, 0.6, 523.25)], 1.5);
-        let a = extract_melody(&audio, &MelodyConfig::default(), &onsets_of(&audio));
-        let b = extract_melody(&audio, &MelodyConfig::default(), &onsets_of(&audio));
+        let a = extract_melody(&audio, &MelodyConfig::default());
+        let b = extract_melody(&audio, &MelodyConfig::default());
         assert_eq!(a, b);
     }
 }

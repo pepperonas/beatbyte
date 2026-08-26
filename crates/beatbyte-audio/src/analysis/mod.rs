@@ -54,8 +54,7 @@ impl Analyzer for SpectralAnalyzer {
         let duration_s = prepared.duration_s();
 
         let flux = onset::analyze_onsets(&prepared, &self.config.onset);
-        let estimate =
-            tempo::estimate_tempo(&flux.flux, flux.hop_s, &flux.onsets, &self.config.tempo);
+        let estimate = tempo::estimate_tempo(&flux.flux, flux.hop_s, &self.config.tempo);
 
         let (bpm, bpm_confidence, alt_bpm) = match estimate {
             Some(t) => (t.bpm, t.confidence, t.alt_bpm),
@@ -63,7 +62,7 @@ impl Analyzer for SpectralAnalyzer {
         };
         let (_, beats) = tempo::fit_beat_grid(&flux.onsets, bpm, duration_s);
 
-        let melody = melody::extract_melody(&prepared, &self.config.melody, &flux.onsets);
+        let melody = melody::extract_melody(&prepared, &self.config.melody);
 
         let energy_window = prepared.sample_rate() as usize / 10; // 100 ms
         let energy_hop = energy_window / 2; // 50 ms
