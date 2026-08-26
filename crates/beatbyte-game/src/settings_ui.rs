@@ -299,3 +299,134 @@ fn despawn_settings(mut commands: Commands, entities: Query<Entity, With<Setting
         commands.entity(entity).despawn();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Step a row `count` times in one direction.
+    fn step(row: Row, settings: &mut Settings, direction: f32, count: usize) {
+        for _ in 0..count {
+            row.adjust(settings, direction);
+        }
+    }
+
+    #[test]
+    fn volumes_stay_inside_their_range() {
+        // Held LEFT must not drive the volume negative, which would
+        // silence the game with no way back through the same key.
+        let mut settings = Settings::default();
+        step(Row::MusicVolume, &mut settings, -1.0, 50);
+        assert!((0.0..=1.0).contains(&settings.music_volume));
+        step(Row::MusicVolume, &mut settings, 1.0, 50);
+        assert!((0.0..=1.0).contains(&settings.music_volume));
+        step(Row::SfxVolume, &mut settings, -1.0, 50);
+        assert!((0.0..=1.0).contains(&settings.sfx_volume));
+    }
+
+    #[test]
+    fn scroll_speed_and_latency_stay_playable() {
+        let mut settings = Settings::default();
+        step(Row::ScrollSpeed, &mut settings, -1.0, 100);
+        assert!((240.0..=900.0).contains(&settings.scroll_speed));
+        step(Row::ScrollSpeed, &mut settings, 1.0, 100);
+        assert!((240.0..=900.0).contains(&settings.scroll_speed));
+        step(Row::LatencyOffset, &mut settings, 1.0, 200);
+        assert!((-250.0..=250.0).contains(&settings.latency_offset_ms));
+        step(Row::LatencyOffset, &mut settings, -1.0, 200);
+        assert!((-250.0..=250.0).contains(&settings.latency_offset_ms));
+    }
+
+    #[test]
+    fn the_theme_cycle_only_ever_produces_a_real_setting() {
+        // Cycling past either end must wrap onto a known id. An
+        // unknown id would silently fall back to auto forever.
+        let known: Vec<String> = std::iter::once("auto".to_owned())
+            .chain(crate::theme::THEMES.iter().map(|t| t.id.to_owned()))
+            .collect();
+        let mut settings = Settings::default();
+        for direction in [1.0, -1.0] {
+            for _ in 0..(known.len() * 2 + 1) {
+                Row::Theme.adjust(&mut settings, direction);
+                assert!(
+                    known.contains(&settings.theme),
+                    "cycled onto unknown theme `{}`",
+                    settings.theme
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_theme_cycle_visits_every_stage_and_returns() {
+        let known_count = crate::theme::THEMES.len() + 1; // + "auto"
+        let mut settings = Settings::default();
+        let start = settings.theme.clone();
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..known_count {
+            seen.insert(settings.theme.clone());
+            Row::Theme.adjust(&mut settings, 1.0);
+        }
+        assert_eq!(seen.len(), known_count, "cycle skipped a stage");
+        assert_eq!(settings.theme, start, "cycle did not come back around");
+    }
+
+    #[test]
+    fn switching_the_view_can_never_land_on_the_removed_flat_highway() {
+        // The flat view was removed; `perspective` must stay true
+        // whichever way VIEW is stepped, or a stale settings file
+        // could strand a player on a highway with no depth.
+        let mut settings = Settings::default();
+        for direction in [1.0, -1.0, 1.0, 1.0, -1.0] {
+            Row::View.adjust(&mut settings, direction);
+            assert!(settings.perspective, "flat highway reachable again");
+        }
+    }
+
+    #[test]
+    fn toggles_flip_and_report_themselves() {
+        let mut settings = Settings::default();
+        for row in [
+            Row::Particles,
+            Row::ScreenShake,
+            Row::BeatPulse,
+            Row::BackdropMotion,
+            Row::TapMode,
+            Row::Fullscreen,
+        ] {
+            let before = row.value(&settings);
+            row.adjust(&mut settings, 1.0);
+            let after = row.value(&settings);
+            assert_ne!(before, after, "{} did not change", row.label());
+            assert!(matches!(after.as_str(), "ON" | "OFF"));
+        }
+    }
+
+    #[test]
+    fn the_controls_row_is_a_door_and_holds_no_value() {
+        // It navigates; stepping it must not mutate anything.
+        let mut settings = Settings::default();
+        let before = settings.clone();
+        Row::Controls.adjust(&mut settings, 1.0);
+        Row::Controls.adjust(&mut settings, -1.0);
+        assert_eq!(
+            format!("{before:?}"),
+            format!("{settings:?}"),
+            "the CONTROLS row changed a setting"
+        );
+    }
+
+    #[test]
+    fn every_row_renders_a_value() {
+        // A blank right-hand column reads as a broken row.
+        let settings = Settings::default();
+        for row in Row::ALL {
+            assert!(
+                !row.value(&settings).is_empty(),
+                "{} has no value",
+                row.label()
+            );
+            assert!(!row.label().is_empty());
+        }
+    }
+}

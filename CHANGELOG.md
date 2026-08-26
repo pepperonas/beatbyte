@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Documentation for the UI design system** — `docs/ui/design-system.md`
+  (tokens, row states, the pointer rule, how to add a screen without
+  breaking the set) and [ADR-0010](docs/decisions/ADR-0010-ui-design-system.md),
+  which records the alternatives that were rejected and why.
+
+- **A harness reference** — `docs/development/harness.md` documents all
+  14 `BEATBYTE_*` variables. Twelve of them existed only in the source.
+
+- **An ADR index** — `docs/decisions/README.md`, which also explains the
+  gap at 0009 (parked on a branch) instead of leaving it a mystery.
+
+- **19 new unit tests** covering pure logic that had none: the
+  scoreboard's record rule, theme selection and cycling, and the
+  settings clamps.
+
 - **One design for every menu.** A shared UI kit (`ui_kit`) now owns
   the type scale, the spacing rhythm and the row states, and the main
   menu, settings, controls, song browser, multiplayer join,
@@ -191,6 +206,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the game has shipped a smooth high-res style for a while.
 
 ### Fixed
+
+- **Hovering selects a song.** The song browser handled only
+  `Interaction::Pressed` — there was no hover branch at all, so the
+  pointer could sit on one row while another stayed highlighted, and
+  starting a song took two clicks. All four row screens now read the
+  pointer through one shared rule: hovering selects, clicking activates
+  the row under the pointer.
+
+- **A wrong cross-reference in the architecture overview** pointed at
+  ADR-0005 for gameplay timing; that is ADR-0004.
+
+- **Stale counts in the README** — the test badge and the testing
+  section were 37 tests behind.
 
 - **Long bindings no longer collide with their label.** "Enter / PAD
   Select / PAD RightTrigger" ran into the word HYPE; values are now

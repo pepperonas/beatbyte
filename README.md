@@ -32,14 +32,19 @@
 [![SemVer](https://img.shields.io/badge/versioning-SemVer-blue)](CHANGELOG.md)
 [![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735)](CHANGELOG.md)
 [![Conventional Commits](https://img.shields.io/badge/commits-Conventional-FE5196)](https://www.conventionalcommits.org/)
-[![Tests](https://img.shields.io/badge/tests-234%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-271%20passing-brightgreen)](#testing)
 [![Clippy](https://img.shields.io/badge/clippy-%E2%80%91D%20warnings-brightgreen?logo=rust)](Cargo.toml)
 [![rustfmt](https://img.shields.io/badge/style-rustfmt-orange?logo=rust)](Cargo.toml)
 [![Rustdoc](https://img.shields.io/badge/public%20API-documented-blue)](Cargo.toml)
 [![Unsafe](https://img.shields.io/badge/unsafe-1%20audited%20block-yellow)](crates/beatbyte-game/src/lib.rs)
 [![Deterministic](https://img.shields.io/badge/engine-deterministic-blueviolet)](#how-your-music-becomes-a-playable-track)
 [![Autopilot](https://img.shields.io/badge/releases-autopilot%20verified-success)](#testing)
-[![ADRs](https://img.shields.io/badge/decisions-ADRs-lightgrey)](docs/decisions/)
+[![ADRs](https://img.shields.io/badge/decisions-9%20ADRs-lightgrey)](docs/decisions/README.md)
+[![MSRV](https://img.shields.io/badge/MSRV-1.95-orange?logo=rust)](Cargo.toml)
+[![Harnesses](https://img.shields.io/badge/harness%20modes-14-success)](docs/development/harness.md)
+[![Docs](https://img.shields.io/badge/docs-architecture%20%C2%B7%20ADRs%20%C2%B7%20specs-blue)](docs/)
+[![Design System](https://img.shields.io/badge/UI-one%20design%20kit-blueviolet)](docs/ui/design-system.md)
+[![Chart Format](https://img.shields.io/badge/chart%20format-v1%20documented-blue)](docs/chart-format/chart-format-v1.md)
 
 ### Tech
 
@@ -74,6 +79,14 @@
 [![Editor](https://img.shields.io/badge/chart%20editor-built%E2%80%91in-blueviolet)](#features)
 [![Themes](https://img.shields.io/badge/stage%20themes-6-blueviolet)](#features)
 [![Colorblind](https://img.shields.io/badge/colorblind-safe%20by%20default-brightgreen)](#features)
+[![Views](https://img.shields.io/badge/views-depth%20%C2%B7%203D%20stage-blueviolet)](#features)
+[![Demo Songs](https://img.shields.io/badge/bundled%20songs-2%20synthesized-blue)](docs/decisions/ADR-0006-synthesized-demo-content.md)
+[![Import](https://img.shields.io/badge/import-drag%20%26%20drop-blue)](#how-your-music-becomes-a-playable-track)
+[![Mouse](https://img.shields.io/badge/menus-mouse%20%C2%B7%20keys%20%C2%B7%20pad-9cf)](#controls)
+[![Rebindable](https://img.shields.io/badge/bindings-fully%20rebindable-9cf)](#controls)
+[![Motion](https://img.shields.io/badge/stage%20motion-reducible-brightgreen)](#features)
+[![Saves](https://img.shields.io/badge/saves-local%20JSON-brightgreen)](#legal)
+[![Accounts](https://img.shields.io/badge/accounts-none%20required-brightgreen)](#legal)
 [![Offline](https://img.shields.io/badge/offline-no%20telemetry-brightgreen)](#legal)
 [![DRM](https://img.shields.io/badge/DRM-free-brightgreen)](#legal)
 [![Assets](https://img.shields.io/badge/assets-100%25%20original%20%2F%20CC0%20%2F%20OFL-brightgreen)](#legal)
@@ -351,24 +364,49 @@ beatbyte-cli demo                  # render the built-in songs + charts
 ## Testing
 
 ```bash
-cargo test --workspace          # 219 tests
+cargo test --workspace          # 271 tests
 ```
 
-Core gameplay logic (timing windows down to their exact boundaries,
-scoring, judgment, HOPO/tap rules, chart validation and generation,
-onset/tempo analysis, editor op inverses, the depth projection, the
-X-plorer report decoder) is covered by unit tests; integration tests
-decode real fixture files for every advertised audio format (including
-`.m4a`). On top of that sit two harnesses that run a full build:
+| Crate | Tests | Covers |
+|---|---:|---|
+| `beatbyte-core` | 70 | Timing windows to their exact boundaries, judgment, scoring, combos, HOPO and tap rules, the hype meter |
+| `beatbyte-chart` | 55 | Format validation, untrusted-input limits, chart generation, difficulty derivation, musical quantisation |
+| `beatbyte-game` | 77 | UI kit contracts, settings persistence, library scanning, import naming, the X-plorer report decoder, texture geometry |
+| `beatbyte-audio` | 46 | Onset detection, tempo estimation, melody contours, the song clock, real-file decoding for every advertised format |
+| `beatbyte-editor` | 19 | Every edit operation round-trips through its own inverse |
+
+Integration tests decode real fixture files for each supported format,
+including `.m4a`, so "we support AAC" is a passing test rather than a
+claim.
+
+### Harnesses
+
+On top of the unit tests sit harnesses that run a **real build** —
+window, renderer, audio thread and input pipeline included:
 
 ```bash
 BEATBYTE_SMOKE_TEST=1 cargo run -p beatbyte   # boots to menu, exits 0
 BEATBYTE_AUTOPILOT=1  cargo run -p beatbyte   # plays a song — must be flawless
 ```
 
-The autopilot injects timestamped inputs and fails on ANY miss or
-overstrum; because judgment is input-stamp-driven, the verdict is
-frame-rate independent. Every release must pass it.
+The autopilot injects timestamped inputs and **fails on any miss or
+overstrum**. Because judgment is input-stamp-driven, that verdict is
+frame-rate independent — a hitch cannot cause a miss, so the result does
+not depend on the machine. Every release must pass it.
+
+Further modes cover multiplayer, real key presses, tap mode, the editor,
+drag-and-drop import, deletion and per-screen screenshots. Full
+reference, including the traps that have cost time before:
+**[docs/development/harness.md](docs/development/harness.md)**.
+
+### What is deliberately not automated
+
+Chart *quality* is judged by ear, not by the harness. A transcription
+rework once measured better on eight synthetic scenes and played
+noticeably worse; it was reverted. Any change to charting is A/B'd
+against the tag `chart-feel-good-20260826` on real music before it
+touches a chart on disk. The harness is a regression guard, not a
+verdict on how a song feels to play.
 
 ## Release Process
 

@@ -358,3 +358,93 @@ fn hash01(seed: usize) -> f32 {
     x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
     ((x >> 40) as f32) / 16_777_216.0
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_theme_has_a_unique_id() {
+        // `by_id` returns the FIRST match, so a duplicate id would
+        // make one theme permanently unreachable from settings.
+        let mut ids: Vec<&str> = THEMES.iter().map(|theme| theme.id).collect();
+        ids.sort_unstable();
+        let count = ids.len();
+        ids.dedup();
+        assert_eq!(ids.len(), count, "duplicate theme id");
+    }
+
+    #[test]
+    fn a_named_theme_is_honoured_exactly() {
+        for theme in THEMES {
+            assert_eq!(
+                choose_theme(theme.id, "any title").id,
+                theme.id,
+                "setting `{}` must select its own theme",
+                theme.id
+            );
+        }
+    }
+
+    #[test]
+    fn auto_is_stable_for_a_title() {
+        // The stage must not change between two runs of the same
+        // song, or a player's memory of "the red one" is worthless.
+        let first = choose_theme("auto", "Circuit Breaker").id;
+        let second = choose_theme("auto", "Circuit Breaker").id;
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn auto_spreads_titles_across_stages() {
+        // A hash that collapsed onto one stage would still be
+        // "stable" and would look like the feature does nothing.
+        let titles = [
+            "Circuit Breaker",
+            "Solder Groove",
+            "Girls Just Want to Have Fun",
+            "The Passenger",
+            "Never Gonna Give You Up",
+            "Two of Hearts",
+            "Delilah",
+            "Some Other Song",
+        ];
+        let mut seen: Vec<&str> = titles
+            .iter()
+            .map(|title| choose_theme("auto", title).id)
+            .collect();
+        seen.sort_unstable();
+        seen.dedup();
+        assert!(
+            seen.len() >= 3,
+            "8 titles landed on only {} stage(s): {seen:?}",
+            seen.len()
+        );
+    }
+
+    #[test]
+    fn an_unknown_setting_falls_back_to_auto_not_to_a_panic() {
+        // Settings files are edited by hand and survive across
+        // versions; a removed theme id must not take the game down.
+        let theme = choose_theme("this-theme-does-not-exist", "Song");
+        assert!(THEMES.iter().any(|known| known.id == theme.id));
+    }
+
+    #[test]
+    fn every_stage_lights_all_five_lanes() {
+        // A theme that left a lane fully black would make its notes
+        // invisible on the highway.
+        for theme in THEMES {
+            for index in 0..5 {
+                let lane = Lane::from_index(index).expect("five lanes");
+                let color = theme.lane_color(lane).to_linear();
+                let brightness = color.red.max(color.green).max(color.blue);
+                assert!(
+                    brightness > 0.15,
+                    "theme `{}` lane {index} is nearly black ({brightness})",
+                    theme.id
+                );
+            }
+        }
+    }
+}

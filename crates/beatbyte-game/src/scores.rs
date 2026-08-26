@@ -108,3 +108,94 @@ impl Plugin for ScoresPlugin {
         app.insert_resource(load_scores());
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn score(value: u64) -> BestScore {
+        BestScore {
+            score: value,
+            accuracy: 1.0,
+            best_streak: 10,
+        }
+    }
+
+    #[test]
+    fn a_first_result_is_always_a_record() {
+        let mut board = ScoreBoard::default();
+        assert!(board.record("Song", "Artist", Difficulty::Medium, score(100)));
+        assert_eq!(
+            board
+                .best("Song", "Artist", Difficulty::Medium)
+                .map(|b| b.score),
+            Some(100)
+        );
+    }
+
+    #[test]
+    fn only_a_higher_score_replaces_the_record() {
+        let mut board = ScoreBoard::default();
+        board.record("Song", "Artist", Difficulty::Medium, score(100));
+        assert!(!board.record("Song", "Artist", Difficulty::Medium, score(80)));
+        assert!(
+            !board.record("Song", "Artist", Difficulty::Medium, score(100)),
+            "matching the record is not beating it"
+        );
+        assert!(board.record("Song", "Artist", Difficulty::Medium, score(101)));
+        assert_eq!(
+            board
+                .best("Song", "Artist", Difficulty::Medium)
+                .map(|b| b.score),
+            Some(101)
+        );
+    }
+
+    #[test]
+    fn difficulties_keep_separate_records() {
+        // Playing Easy well must never overwrite an Expert record.
+        let mut board = ScoreBoard::default();
+        board.record("Song", "Artist", Difficulty::Easy, score(500));
+        board.record("Song", "Artist", Difficulty::Expert, score(200));
+        assert_eq!(
+            board
+                .best("Song", "Artist", Difficulty::Expert)
+                .map(|b| b.score),
+            Some(200)
+        );
+        assert!(board.best("Song", "Artist", Difficulty::Hard).is_none());
+    }
+
+    #[test]
+    fn songs_are_told_apart_by_title_and_artist() {
+        let mut board = ScoreBoard::default();
+        board.record("Song", "One", Difficulty::Medium, score(100));
+        board.record("Song", "Two", Difficulty::Medium, score(200));
+        assert_eq!(
+            board
+                .best("Song", "One", Difficulty::Medium)
+                .map(|b| b.score),
+            Some(100)
+        );
+    }
+
+    #[test]
+    fn known_limitation_a_pipe_in_a_title_can_collide() {
+        // KNOWN DEFECT, pinned so it is not forgotten: the key is
+        // `title|artist|difficulty` with no escaping, so a title
+        // containing "|" can produce the same key as a different
+        // song. Titles come from file names, and "|" is a legal file
+        // name character on macOS and Linux.
+        //
+        // Not fixed here because the repair changes the key format,
+        // which would orphan every record already on disk; that needs
+        // a migration and the player's say-so. See ROADMAP C5.
+        let mut board = ScoreBoard::default();
+        board.record("A|B", "C", Difficulty::Medium, score(100));
+        assert_eq!(
+            board.best("A", "B|C", Difficulty::Medium).map(|b| b.score),
+            Some(100),
+            "documents the collision; when it is fixed this must become None"
+        );
+    }
+}
