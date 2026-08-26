@@ -35,6 +35,26 @@ use crate::states::AppState;
 /// view and keeps the numbers readable while tuning.
 pub const WORLD_PER_PIXEL: f32 = 1.0 / 220.0;
 
+/// World units per pixel ALONG THE NECK.
+///
+/// Deliberately not [`WORLD_PER_PIXEL`]: the two axes answer
+/// different questions. Across the neck, the scale sets how wide five
+/// lanes look. Along it, the scale sets how long a note is on screen
+/// before it must be played, and that has to match the 2D views or
+/// the game feels like a different game. Sharing one scale made notes
+/// take 13.7 s to cross a highway they should cross in
+/// [`super::SPAWN_LOOKAHEAD_S`] — they crawled.
+///
+/// Chosen so that a note covers [`HIGHWAY_LENGTH`] in exactly the
+/// spawn lookahead at the default scroll speed.
+pub const Z_PER_PIXEL: f32 = HIGHWAY_LENGTH / (2.6 * 420.0);
+
+/// The two scales answer different questions and must stay separate.
+/// A compile-time check rather than a test, because collapsing them
+/// again should not build at all — the last time they were shared,
+/// notes crawled and it took a screenshot to notice.
+const _: () = assert!(Z_PER_PIXEL > WORLD_PER_PIXEL * 3.0);
+
 /// How far ahead the highway is drawn, in world units.
 const HIGHWAY_LENGTH: f32 = 26.0;
 
@@ -127,7 +147,7 @@ pub fn lane_x(layout: &HighwayLayout, player: usize, lane: Lane) -> f32 {
 /// Distance ahead of the hit line for a note `seconds` away.
 #[must_use]
 pub fn note_z(seconds: f64, scroll_speed: f32) -> f32 {
-    -(seconds as f32) * scroll_speed * WORLD_PER_PIXEL
+    -(seconds as f32) * scroll_speed * Z_PER_PIXEL
 }
 
 /// Set up camera, lights and highway geometry.
@@ -507,34 +527,34 @@ pub fn update_receptors(
 pub fn apply_note_events(
     mut commands: Commands,
     settings: Res<Settings>,
+    assets: Option<Res<NoteAssets>>,
     mut feedback: MessageReader<super::SessionFeedback>,
-    notes: Query<(Entity, &Note3d, &MeshMaterial3d<StandardMaterial>)>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    notes: Query<(Entity, &Note3d)>,
 ) {
     if !active(&settings) {
         return;
     }
+    let Some(assets) = assets else {
+        return;
+    };
     for message in feedback.read() {
-        match message.event {
-            beatbyte_core::SessionEvent::NoteHit { event_index, .. } => {
-                for (entity, note, _) in &notes {
-                    if note.player == message.player_index && note.event_index == event_index {
-                        commands.entity(entity).despawn();
-                    }
-                }
+        let (event_index, hit) = match message.event {
+            beatbyte_core::SessionEvent::NoteHit { event_index, .. } => (event_index, true),
+            beatbyte_core::SessionEvent::NoteMissed { event_index } => (event_index, false),
+            _ => continue,
+        };
+        for (entity, note) in &notes {
+            if note.player != message.player_index || note.event_index != event_index {
+                continue;
             }
-            beatbyte_core::SessionEvent::NoteMissed { event_index } => {
-                for (_, note, handle) in &notes {
-                    if note.player != message.player_index || note.event_index != event_index {
-                        continue;
-                    }
-                    if let Some(mut surface) = materials.get_mut(&handle.0) {
-                        surface.base_color = Color::srgb(0.24, 0.24, 0.26);
-                        surface.emissive = LinearRgba::BLACK;
-                    }
-                }
+            if hit {
+                commands.entity(entity).despawn();
+            } else {
+                // Swap the HANDLE, never the material behind it.
+                commands
+                    .entity(entity)
+                    .insert(MeshMaterial3d(assets.missed_material.clone()));
             }
-            _ => {}
         }
     }
 }
@@ -640,6 +660,7 @@ pub struct NoteAssets {
     hopo: Handle<Mesh>,
     hopo_rim: Handle<Mesh>,
     sustain: Handle<Mesh>,
+    missed_material: Handle<StandardMaterial>,
     rim_material: Handle<StandardMaterial>,
     lane_material: Vec<Handle<StandardMaterial>>,
 }
@@ -667,6 +688,15 @@ pub fn setup_note_assets(
         hopo: meshes.add(Cylinder::new(GEM_RADIUS * 0.62, 0.05)),
         hopo_rim: meshes.add(Cylinder::new(GEM_RADIUS * 0.86, 0.04)),
         sustain: meshes.add(Cylinder::new(0.05, 1.0)),
+        // ONE grey material that missed notes switch TO. Repainting
+        // the lane's own material instead turned every note in that
+        // lane black for the rest of the song, because they all share
+        // the handle — which is exactly what happened.
+        missed_material: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.26, 0.26, 0.29),
+            perceptual_roughness: 0.8,
+            ..default()
+        }),
         rim_material: materials.add(StandardMaterial {
             base_color: Color::srgb(0.05, 0.05, 0.07),
             perceptual_roughness: 0.6,
@@ -756,7 +786,7 @@ pub fn spawn_due_notes(
                 // A sustain is a tube running back up the neck from
                 // the gem — length is the note's own held time.
                 if event.is_sustain() {
-                    let length = (event.sustain_s as f32) * settings.scroll_speed * WORLD_PER_PIXEL;
+                    let length = (event.sustain_s as f32) * settings.scroll_speed * Z_PER_PIXEL;
                     commands.spawn((
                         GameplayScreen,
                         Stage3d,
@@ -871,14 +901,17 @@ mod tests {
     }
 
     #[test]
-    fn a_second_of_lead_time_fits_on_the_drawn_highway() {
-        // At the default scroll speed the player must be able to SEE
-        // roughly a second and a half ahead, or notes appear from
-        // nowhere.
-        let distance = note_z(1.5, 420.0).abs();
+    fn the_drawn_highway_is_exactly_the_spawn_lookahead() {
+        // The neck must show precisely the notes that exist: shorter
+        // and they pop in mid-flight, longer and they crawl toward a
+        // hit line that never arrives. Sharing the width scale for
+        // depth once made a note take 13.7 s to cross a highway it
+        // should cross in 2.6 s.
+        let travelled = note_z(crate::gameplay::SPAWN_LOOKAHEAD_S, 420.0).abs();
         assert!(
-            distance < HIGHWAY_LENGTH,
-            "1.5 s of lead time ({distance}) runs off a {HIGHWAY_LENGTH}-unit highway"
+            (travelled - HIGHWAY_LENGTH).abs() < 0.01,
+            "a note covers {travelled} units in the lookahead, \
+             but the highway is {HIGHWAY_LENGTH}"
         );
     }
 }

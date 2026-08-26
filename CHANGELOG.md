@@ -30,6 +30,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the genre's flame, gone in about a fifth of a second. Missed notes
   grey out and keep travelling.
 
+### Fixed
+
+- **Notes in the 3D stage turned black.** All notes of a lane shared
+  one material, so greying out a single missed note repainted every
+  note in that lane for the rest of the song. Missed notes now switch
+  to a separate grey material instead of repainting the shared one.
+- **Notes in the 3D stage crawled.** Depth was using the same scale
+  as width, so a note took 13.7 s to cross a highway it should cross
+  in the 2.6 s of spawn lookahead. The two scales are now separate —
+  and a compile-time assertion stops them being merged again.
+
 ### Changed
 
 - **The flat view is gone.** VIEW now switches between DEPTH and 3D
