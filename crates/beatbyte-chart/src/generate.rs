@@ -30,8 +30,16 @@ pub struct DifficultyProfile {
     pub grid_division: u32,
     /// Minimum spacing between kept notes in seconds.
     pub min_spacing_s: f64,
-    /// Onsets weaker than this (0–1, relative) are ignored.
+    /// Onsets weaker than this (0–1, relative) are ignored. A hard
+    /// floor only — the actual thinning is driven by
+    /// [`DifficultyProfile::target_notes_per_beat`].
     pub strength_floor: f32,
+    /// Target note density in notes per beat. The derivation picks
+    /// the strength floor that lands on this number, so the SAME
+    /// difficulty feels the same across songs. Absolute floors made
+    /// the curve song-dependent: measured on five real imports, the
+    /// easy→medium jump ranged from 1.4x to 3.6x.
+    pub target_notes_per_beat: f64,
     /// Number of lanes used, anchored at lane 0 (3 = lanes 0–2).
     pub lanes_used: u8,
     /// Onset strength at which a note becomes a chord (>1.0 = never).
@@ -57,7 +65,8 @@ impl DifficultyProfile {
                 difficulty,
                 grid_division: 1,
                 min_spacing_s: 0.45,
-                strength_floor: 0.35,
+                strength_floor: 0.20,
+                target_notes_per_beat: 0.35,
                 lanes_used: 3,
                 chord_threshold: 2.0,
                 max_chord_size: 1,
@@ -70,7 +79,8 @@ impl DifficultyProfile {
                 difficulty,
                 grid_division: 2,
                 min_spacing_s: 0.28,
-                strength_floor: 0.22,
+                strength_floor: 0.12,
+                target_notes_per_beat: 0.70,
                 lanes_used: 4,
                 chord_threshold: 0.85,
                 max_chord_size: 2,
@@ -83,7 +93,8 @@ impl DifficultyProfile {
                 difficulty,
                 grid_division: 4,
                 min_spacing_s: 0.16,
-                strength_floor: 0.14,
+                strength_floor: 0.08,
+                target_notes_per_beat: 1.30,
                 lanes_used: 5,
                 chord_threshold: 0.75,
                 max_chord_size: 2,
@@ -96,7 +107,8 @@ impl DifficultyProfile {
                 difficulty,
                 grid_division: 4,
                 min_spacing_s: 0.10,
-                strength_floor: 0.07,
+                strength_floor: 0.05,
+                target_notes_per_beat: 2.20,
                 lanes_used: 5,
                 chord_threshold: 0.62,
                 max_chord_size: 3,
@@ -278,6 +290,122 @@ fn remap_lane(master_lane: i32, lanes_used: i32) -> i32 {
     (scaled.round() as i32).clamp(0, lanes_used - 1)
 }
 
+/// Keep the master notes at or above `floor` that also clear the
+/// minimum spacing. Pure and monotonic in `floor` — which is what
+/// makes the search below well defined.
+fn thin<'a>(master: &[&'a MasterNote], floor: f32, min_spacing_s: f64) -> Vec<&'a MasterNote> {
+    let mut kept: Vec<&'a MasterNote> = Vec::new();
+    for note in master.iter().copied() {
+        if note.strength < floor {
+            continue;
+        }
+        if let Some(last) = kept.last()
+            && note.time_s - last.time_s < min_spacing_s
+        {
+            continue;
+        }
+        kept.push(note);
+    }
+    kept
+}
+
+/// Reduce the master down to a difficulty by thinning ONCE PER STEP,
+/// hardest first — the official workflow (lower difficulties are
+/// reductions of the expert chart, not independent charts).
+///
+/// The chain is what makes "every easy note also exists on expert" a
+/// structural guarantee instead of a lucky coincidence: thinning a
+/// set can only remove from it. Deriving each difficulty straight
+/// from the master does NOT guarantee it — a note easy keeps can be
+/// crowded out on medium by a neighbor easy's wider spacing had
+/// rejected (constructed case: notes at 0.00/0.30/0.50 with easy
+/// spacing 0.45 and medium 0.28).
+fn reduction_chain<'a>(
+    master: &'a [MasterNote],
+    difficulty: Difficulty,
+    analysis: &SongAnalysis,
+) -> Vec<&'a MasterNote> {
+    let mut current: Vec<&MasterNote> = master.iter().collect();
+    // Difficulty::ALL is easy..expert; walk it hardest first.
+    for &step in Difficulty::ALL.iter().rev() {
+        let profile = DifficultyProfile::for_difficulty(step);
+        current = thin_to_target(&current, &profile, analysis);
+        if step == difficulty {
+            break;
+        }
+    }
+    current
+}
+
+/// Thin the master to the difficulty's target density: keep the
+/// STRONGEST notes that still respect the minimum spacing, then put
+/// them back in time order.
+///
+/// A strength-threshold search cannot do this reliably — note
+/// strengths are a step function, so for many songs NO threshold
+/// lands near the target (a bisection then converges on the one that
+/// empties the chart; that bug is why this is rank-based). Ranking is
+/// also what a human charter does: chart the most important hits
+/// first, add smaller ones as the difficulty rises.
+fn thin_to_target<'a>(
+    master: &[&'a MasterNote],
+    profile: &DifficultyProfile,
+    analysis: &SongAnalysis,
+) -> Vec<&'a MasterNote> {
+    let beat = analysis.beat_interval_s();
+    let candidates: Vec<&'a MasterNote> = master
+        .iter()
+        .copied()
+        .filter(|note| note.strength >= profile.strength_floor)
+        .collect();
+    if beat <= 0.0 || candidates.is_empty() {
+        return thin(master, profile.strength_floor, profile.min_spacing_s);
+    }
+    let beats = analysis.duration_s / beat;
+    let target = (profile.target_notes_per_beat * beats).round().max(1.0) as usize;
+
+    // Strongest first; ties by time so the order never depends on the
+    // input's incidental ordering (determinism is a hard rule here).
+    let mut ranked: Vec<&'a MasterNote> = candidates;
+    ranked.sort_by(|a, b| {
+        b.strength
+            .partial_cmp(&a.strength)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(
+                a.time_s
+                    .partial_cmp(&b.time_s)
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            )
+    });
+
+    let mut accepted_times: Vec<f64> = Vec::with_capacity(target);
+    let mut kept: Vec<&'a MasterNote> = Vec::with_capacity(target);
+    for note in ranked {
+        if kept.len() >= target {
+            break;
+        }
+        // Spacing check against the nearest accepted neighbors.
+        let position = accepted_times.partition_point(|t| *t < note.time_s);
+        let too_close_left = position
+            .checked_sub(1)
+            .is_some_and(|i| note.time_s - accepted_times[i] < profile.min_spacing_s);
+        let too_close_right = accepted_times
+            .get(position)
+            .is_some_and(|t| t - note.time_s < profile.min_spacing_s);
+        if too_close_left || too_close_right {
+            continue;
+        }
+        accepted_times.insert(position, note.time_s);
+        kept.push(note);
+    }
+    kept.sort_by(|a, b| {
+        a.time_s
+            .partial_cmp(&b.time_s)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    kept
+}
+
 /// Derive one difficulty from the master: thin by strength floor and
 /// spacing, remap lanes, cap tails against the DERIVED neighbor gaps,
 /// then apply the difficulty's HOPO and chord rules.
@@ -287,19 +415,7 @@ fn derive_notes(
     master: &[MasterNote],
 ) -> Vec<ChartNote> {
     let lanes_used = i32::from(profile.lanes_used.clamp(1, LANE_COUNT as u8));
-    // Thin.
-    let mut kept: Vec<&MasterNote> = Vec::new();
-    for note in master {
-        if note.strength < profile.strength_floor {
-            continue;
-        }
-        if let Some(last) = kept.last()
-            && note.time_s - last.time_s < profile.min_spacing_s
-        {
-            continue;
-        }
-        kept.push(note);
-    }
+    let kept = reduction_chain(master, profile.difficulty, analysis);
     // Place.
     let mut notes: Vec<ChartNote> = Vec::new();
     let mut previous_lane: Option<i32> = None;
@@ -1061,6 +1177,73 @@ mod tests {
             notes.iter().any(|n| (n.time - 3.0).abs() < 0.1),
             "the onset-less melody note is missing: {notes:?}"
         );
+    }
+
+    #[test]
+    fn the_reduction_chain_nests_where_one_shot_thinning_would_not() {
+        // The constructed break: with a one-shot derivation from the
+        // master, medium accepts the middle note (0.30 clears its
+        // 0.28 spacing) which then crowds out the note at 0.50 that
+        // easy DID keep (0.50 cleared easy's 0.45 spacing from 0.00).
+        let master: Vec<MasterNote> = [(0.00, 1.00), (0.30, 0.95), (0.50, 0.90)]
+            .iter()
+            .map(|&(time_s, strength)| MasterNote {
+                time_s,
+                strength,
+                lane: 0,
+                held_s: 0.0,
+                pitched: false,
+            })
+            .collect();
+        let analysis = SongAnalysis {
+            bpm: 120.0,
+            bpm_confidence: 0.9,
+            alt_bpm: None,
+            // 3 s at 120 BPM = 6 beats, so the density targets are
+            // easy 2 notes and medium 4 — big enough for easy to
+            // reach the third note, which is the whole point.
+            beats: (0..6).map(|i| f64::from(i) * 0.5).collect(),
+            onsets: vec![],
+            energy: vec![0.8; 80],
+            energy_hop_s: 0.05,
+            duration_s: 3.0,
+            melody: vec![],
+        };
+        let refs: Vec<&MasterNote> = master.iter().collect();
+        // One-shot: easy keeps a note medium drops — nesting broken.
+        let one_shot = |d: Difficulty| -> Vec<f64> {
+            thin_to_target(&refs, &DifficultyProfile::for_difficulty(d), &analysis)
+                .iter()
+                .map(|n| n.time_s)
+                .collect()
+        };
+        let broken = one_shot(Difficulty::Easy)
+            .iter()
+            .any(|t| !one_shot(Difficulty::Medium).contains(t));
+        assert!(
+            broken,
+            "this fixture is supposed to break one-shot thinning;              if it no longer does, the chain test below proves nothing"
+        );
+        // The chain cannot break it: thinning only ever removes.
+        let chained = |d: Difficulty| -> Vec<f64> {
+            reduction_chain(&master, d, &analysis)
+                .iter()
+                .map(|n| n.time_s)
+                .collect()
+        };
+        for (lower, higher) in [
+            (Difficulty::Easy, Difficulty::Medium),
+            (Difficulty::Medium, Difficulty::Hard),
+            (Difficulty::Hard, Difficulty::Expert),
+        ] {
+            let up = chained(higher);
+            for time in chained(lower) {
+                assert!(
+                    up.contains(&time),
+                    "{lower:?} note at {time} is missing on {higher:?}"
+                );
+            }
+        }
     }
 
     #[test]

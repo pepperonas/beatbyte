@@ -23,6 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   highway (no drum hits stacked on a sustain). Measured on a real
   m4a track: melody coverage 86%, held notes 8 → 147, hard/expert
   sustains 2 → 34/24 with genuine varied lengths.
+- **Consistent difficulty curve.** Difficulties are now thinned to a
+  target note DENSITY (notes per beat) instead of absolute strength
+  thresholds, and each difficulty is a reduction of the next harder
+  one — the official workflow. Measured across five real imports, the
+  easy→medium jump was 1.4x on one song and 3.6x on another (easy
+  ranged from 0.42 to 1.40 notes/s); it is now exactly 2.0x on every
+  song with easy at 0.66–0.79 notes/s. The reduction chain also makes
+  "every easy note exists on expert" structural rather than lucky: a
+  one-shot derivation can drop a note the easier chart kept (pinned
+  with the fixture that breaks it).
 - **Master-derived difficulties.** All four difficulties now derive
   from ONE master chart (the official charting workflow): lower
   difficulties are subsets, the same musical event keeps the same
