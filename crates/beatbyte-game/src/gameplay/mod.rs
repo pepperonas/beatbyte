@@ -16,6 +16,7 @@ pub mod fx;
 pub mod hud;
 pub mod input;
 pub mod notes;
+pub mod stage3d;
 
 use beatbyte_core::{
     Lane, PlayerPerformance, ScoreConfig, SessionEvent, TimingWindows, TrackSession,
@@ -235,7 +236,8 @@ impl Plugin for GameplayPlugin {
                 OnExit(GamePhase::Paused),
                 (resume_audio, despawn_pause_overlay),
             )
-            .add_systems(OnExit(AppState::Gameplay), teardown_gameplay);
+            .add_systems(OnExit(AppState::Gameplay), teardown_gameplay)
+            .add_plugins(stage3d::Stage3dPlugin);
     }
 }
 

@@ -208,8 +208,9 @@ The depth view is a projection inside the 2D pipeline. A real 3D
 renderer (meshes, PBR materials, lights, camera tilt) is a separate
 project. Milestones when picked up:
 
-- [ ] H1 3D/2D camera stack (Camera3d for the stage, Camera2d overlay for HUD/text) coexisting with both current views.
-- [ ] H2 Highway as a lit 3D plane + gem spheres as meshes with emissive PBR materials; judgment stays input-stamp-driven (identical-score proof again).
+- [x] H1 3D/2D camera stack (Camera3d for the stage, Camera2d overlay for HUD/text) coexisting with both current views.
+- [x] H2 Highway as a lit 3D plane + gem spheres as meshes with emissive PBR materials; judgment stays input-stamp-driven (identical-score proof again).
+- [x] H2b Sustains as tube meshes + 3D receptor feedback (press sinks the fret into the neck, a hit makes it flare through the bloom pass). *Verified: identical judgment to 2D (624 perfect / 0 miss / 0 overstrum on the same chart).*
 - [ ] H3 Sustains as tube meshes, 3D particles, depth-of-field/bloom tuning.
 - [ ] H4 Performance pass (low-end GPUs) + packaging size check.
 

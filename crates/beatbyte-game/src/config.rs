@@ -44,6 +44,10 @@ pub struct Settings {
     /// notes approach from the distance. Presentation only — judgment
     /// timing is identical to the flat view.
     pub perspective: bool,
+    /// The solid 3D stage: a lit highway with real geometry instead
+    /// of the 2D projection. Presentation only — judgment is
+    /// input-stamp driven and identical across all three views.
+    pub stage_3d: bool,
     /// Round gems instead of the 8-bit per-lane shapes. Off by
     /// default: the shapes are the colorblind-safe look — turning
     /// them off makes color the only lane signal.
@@ -69,6 +73,7 @@ impl Default for Settings {
             backdrop_motion: true,
             tap_mode: true,
             perspective: false,
+            stage_3d: false,
             round_gems: false,
             fullscreen: false,
             input_map: InputMap::default(),

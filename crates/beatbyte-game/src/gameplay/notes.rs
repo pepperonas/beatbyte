@@ -49,6 +49,9 @@ pub fn spawn_highways(
     mut materials: ResMut<Assets<bevy::sprite_render::ColorMaterial>>,
     players: Query<&PlayerIndex, With<PlayerSession>>,
 ) {
+    if super::stage3d::active(&settings) {
+        return;
+    }
     let theme = theme.0;
     let shapes = &*shapes;
     let round = settings.round_gems;
@@ -237,6 +240,11 @@ pub fn spawn_due_notes(
     settings: Res<Settings>,
     shapes: Res<crate::shapes::LaneShapes>,
 ) {
+    if super::stage3d::active(&settings) {
+        // The 3D stage owns spawning in that view — including the
+        // spawn cursor, which is why this must not also advance it.
+        return;
+    }
     let Some(now) = game_clock.song_time(&time) else {
         return;
     };
@@ -501,7 +509,7 @@ pub fn spawn_fret_lines(
     song: Res<crate::boot::LoadedSong>,
     players: Query<&PlayerIndex, With<PlayerSession>>,
 ) {
-    if !settings.round_gems {
+    if !settings.round_gems || super::stage3d::active(&settings) {
         return;
     }
     let bpm = song.chart.song.bpm.clamp(20.0, 400.0);

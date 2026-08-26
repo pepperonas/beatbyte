@@ -78,7 +78,9 @@ impl Row {
             Row::BeatPulse => on_off(settings.beat_pulse),
             Row::BackdropMotion => on_off(settings.backdrop_motion),
             Row::TapMode => on_off(settings.tap_mode),
-            Row::View => if settings.perspective {
+            Row::View => if settings.stage_3d {
+                "3D STAGE"
+            } else if settings.perspective {
                 "DEPTH"
             } else {
                 "FLAT"
@@ -119,7 +121,16 @@ impl Row {
             Row::BackdropMotion => settings.backdrop_motion = !settings.backdrop_motion,
             Row::TapMode => settings.tap_mode = !settings.tap_mode,
             Row::NoteStyle => settings.round_gems = !settings.round_gems,
-            Row::View => settings.perspective = !settings.perspective,
+            // FLAT -> DEPTH -> 3D STAGE -> FLAT. Two booleans rather
+            // than an enum so existing settings files keep loading.
+            Row::View => match (settings.perspective, settings.stage_3d) {
+                (false, false) => settings.perspective = true,
+                (true, false) => settings.stage_3d = true,
+                _ => {
+                    settings.perspective = false;
+                    settings.stage_3d = false;
+                }
+            },
             Row::Fullscreen => settings.fullscreen = !settings.fullscreen,
             Row::Theme => {
                 // Cycle auto → themes → auto.

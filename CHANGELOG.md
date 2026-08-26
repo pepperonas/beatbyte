@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A solid 3D stage.** A third view alongside FLAT and DEPTH,
+  reached by cycling the VIEW setting: a perspective camera looking
+  down a lit highway, gems as emissive spheres, sustains as tubes,
+  receptors as discs that sink into the neck when held and flare
+  through the bloom pass when struck. Judgment is untouched —
+  the same run scores the same in all three views.
+
 ### Changed
 
 - **Fret feedback rebuilt along genre lines.** In this genre the HIT
