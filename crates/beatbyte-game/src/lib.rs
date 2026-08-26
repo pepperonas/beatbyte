@@ -153,7 +153,7 @@ pub fn run() -> AppExit {
     .init_state::<AppState>()
     .add_sub_state::<GamePhase>()
     .add_systems(Startup, spawn_camera)
-    .add_systems(Update, (sync_bloom, sync_ui_scale))
+    .add_systems(Update, (sync_bloom, sync_ui_scale, report_frame_times))
     .add_plugins((
         import::ImportPlugin,
         input_test::InputTestPlugin,
@@ -181,6 +181,13 @@ pub fn run() -> AppExit {
         transition::TransitionPlugin,
         autopilot::AutopilotPlugin,
     ));
+
+    // `BEATBYTE_FPS=1` turns on periodic frame-time reporting. Off by
+    // default so the resource does not exist and the system returns
+    // immediately.
+    if std::env::var_os("BEATBYTE_FPS").is_some() {
+        app.init_resource::<FrameLog>();
+    }
 
     // Headless-ish smoke testing: `BEATBYTE_SMOKE_TEST=1 beatbyte` exits
     // cleanly after a few seconds. Used to verify the full app boots.
@@ -222,6 +229,44 @@ fn spawn_camera(mut commands: Commands) {
             ..OrthographicProjection::default_2d()
         }),
     ));
+}
+
+/// Frame-time accounting for `BEATBYTE_FPS=1`.
+///
+/// A view that looks better and drops frames is not an improvement:
+/// the key injector and the player both lose notes when a frame
+/// stalls. This reports the numbers that decide it — the median frame
+/// and the worst 1 % — rather than an average, because an average
+/// hides exactly the stutters that cost notes.
+#[derive(Resource, Default)]
+struct FrameLog {
+    samples: Vec<f32>,
+    next_report_s: f32,
+}
+
+/// Log frame timings periodically when asked to.
+fn report_frame_times(time: Res<Time>, mut log: Option<ResMut<FrameLog>>) {
+    let Some(log) = log.as_mut() else {
+        return;
+    };
+    let delta = time.delta_secs();
+    if delta > 0.0 {
+        log.samples.push(delta * 1000.0);
+    }
+    let elapsed = time.elapsed_secs();
+    if elapsed < log.next_report_s || log.samples.len() < 30 {
+        return;
+    }
+    log.next_report_s = elapsed + 5.0;
+    let mut sorted = core::mem::take(&mut log.samples);
+    sorted.sort_by(f32::total_cmp);
+    let median = sorted[sorted.len() / 2];
+    let worst = sorted[sorted.len() * 99 / 100];
+    info!(
+        "frames: median {median:.2} ms ({:.0} fps), 99th percentile {worst:.2} ms, samples {}",
+        1000.0 / median.max(0.001),
+        sorted.len()
+    );
 }
 
 /// Scale the (screen-space) UI with the window so menus stay

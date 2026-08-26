@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through the bloom pass when struck. Judgment is untouched —
   the same run scores the same in all three views.
 
+- **`BEATBYTE_FPS=1`** reports median and 99th-percentile frame times
+  every five seconds. The percentile rather than an average, because
+  an average hides exactly the stutters that make the game drop notes.
+
 ### Changed
 
 - **Fret feedback rebuilt along genre lines.** In this genre the HIT

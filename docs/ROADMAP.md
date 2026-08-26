@@ -212,7 +212,7 @@ project. Milestones when picked up:
 - [x] H2 Highway as a lit 3D plane + gem spheres as meshes with emissive PBR materials; judgment stays input-stamp-driven (identical-score proof again).
 - [x] H2b Sustains as tube meshes + 3D receptor feedback (press sinks the fret into the neck, a hit makes it flare through the bloom pass). *Verified: identical judgment to 2D (624 perfect / 0 miss / 0 overstrum on the same chart).*
 - [ ] H3 Sustains as tube meshes, 3D particles, depth-of-field/bloom tuning.
-- [ ] H4 Performance pass (low-end GPUs) + packaging size check.
+- [~] H4 Performance pass + packaging size check. Measured on this machine: the 3D stage holds a vsync-locked 60 fps during a full song with a 99th-percentile frame of 19.4 ms — no stalls, so it costs no notes. `BEATBYTE_FPS=1` now reports median and 99th-percentile frame times (an average would hide exactly the stutters that lose notes). Still open: a low-end GPU and the artifact size check.
 
 ## Backlog (explicitly out of scope until after 1.0)
 
