@@ -149,32 +149,106 @@ fn analyze(song: &Path, json: Option<&Path>) -> ExitCode {
         }
     }
 
+    print_analysis(song, &analysis);
+    ExitCode::SUCCESS
+}
+
+/// Report what the analyzer heard, in enough detail to explain any
+/// note the generator later produces. A transcription decision that
+/// cannot be inspected cannot be trusted.
+fn print_analysis(song: &Path, analysis: &beatbyte_core::SongAnalysis) {
     println!("Analysis of `{}`", song.display());
-    println!("  duration      {:>8.1} s", analysis.duration_s);
+    println!();
+    println!("Input");
+    println!("  duration        {}", clock(analysis.duration_s));
+
+    println!();
+    println!("Tempo");
     println!(
-        "  bpm           {:>8.1}   (confidence {:.0}%)",
+        "  bpm             {:>8.2}   (grid explains {:.0}% of onset strength)",
         analysis.bpm,
         analysis.bpm_confidence * 100.0
     );
     if let Some(alt) = analysis.alt_bpm {
-        println!("  alt bpm       {alt:>8.1}   (the other plausible octave)");
+        println!("  alternative     {alt:>8.2}   (the other reading in range)");
     }
-    println!("  beats         {:>8}", analysis.beats.len());
-    println!("  onsets        {:>8}", analysis.onsets.len());
-    let held: Vec<f64> = analysis
-        .melody
-        .iter()
-        .map(beatbyte_core::MelodyNote::len_s)
-        .collect();
-    let long = held.iter().filter(|l| **l >= 0.45).count();
-    println!(
-        "  melody notes  {:>8}   ({long} held >=0.45 s)",
-        analysis.melody.len()
-    );
+    println!("  beats           {:>8}", analysis.beats.len());
     if let Some(first) = analysis.beats.first() {
-        println!("  first beat    {first:>8.3} s");
+        println!("  first beat      {first:>8.3} s");
     }
-    ExitCode::SUCCESS
+
+    println!();
+    println!("Onsets");
+    println!("  detected        {:>8}", analysis.onsets.len());
+    if !analysis.onsets.is_empty() {
+        let rate = analysis.onsets.len() as f64 / analysis.duration_s.max(1e-9);
+        let strong = analysis.onsets.iter().filter(|o| o.strength >= 0.6).count();
+        println!("  rate            {rate:>8.2} /s");
+        println!("  strong (>=0.6)  {strong:>8}");
+    }
+
+    println!();
+    println!("Melody");
+    println!("  events          {:>8}", analysis.melody.len());
+    if !analysis.melody.is_empty() {
+        let mut lengths: Vec<f64> = analysis
+            .melody
+            .iter()
+            .map(beatbyte_core::MelodyNote::len_s)
+            .collect();
+        lengths.sort_by(f64::total_cmp);
+        let voiced: f64 = lengths.iter().sum();
+        let low = analysis
+            .melody
+            .iter()
+            .map(|n| n.midi)
+            .fold(f32::INFINITY, f32::min);
+        let high = analysis
+            .melody
+            .iter()
+            .map(|n| n.midi)
+            .fold(f32::NEG_INFINITY, f32::max);
+        println!(
+            "  length p50/p90  {:>8.2} / {:.2} s",
+            lengths[lengths.len() / 2],
+            lengths[lengths.len() * 9 / 10]
+        );
+        println!(
+            "  held >= 0.45 s  {:>8}",
+            lengths.iter().filter(|l| **l >= 0.45).count()
+        );
+        println!(
+            "  pitch range     {:>8}   ({} .. {})",
+            format!("{:.0}", high - low),
+            note_name(low),
+            note_name(high)
+        );
+        println!(
+            "  voiced          {:>7.0}%   of the song",
+            100.0 * voiced / analysis.duration_s.max(1e-9)
+        );
+    }
+}
+
+/// `mm:ss.mmm`.
+fn clock(seconds: f64) -> String {
+    let total = seconds.max(0.0);
+    let minutes = (total / 60.0).floor();
+    format!("{minutes:02.0}:{:06.3}", total - minutes * 60.0)
+}
+
+/// A MIDI number as a note name, for reading pitch ranges at a glance.
+fn note_name(midi: f32) -> String {
+    const NAMES: [&str; 12] = [
+        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+    ];
+    if !midi.is_finite() {
+        return "-".to_owned();
+    }
+    let rounded = midi.round() as i32;
+    let octave = rounded / 12 - 1;
+    let name = NAMES[(rounded.rem_euclid(12)) as usize];
+    format!("{name}{octave}")
 }
 
 fn generate(song: &Path, title: Option<String>, artist: &str, out: Option<PathBuf>) -> ExitCode {
@@ -221,14 +295,30 @@ fn generate(song: &Path, title: Option<String>, artist: &str, out: Option<PathBu
         chart.song.bpm,
         analysis.duration_s
     );
+    println!();
+    println!(
+        "{:<8} {:>6} {:>7} {:>7} {:>6} {:>7} {:>6} {:>6}",
+        "", "notes", "n/s", "peak/s", "jump", "chords", "sus", "play"
+    );
     for def in &chart.charts {
+        let report =
+            beatbyte_chart::playability::evaluate(&def.notes, def.difficulty, analysis.duration_s);
         println!(
-            "  {:<8} {:>5} notes, {:>2} phrases",
+            "  {:<6} {:>6} {:>7.2} {:>7} {:>6.2} {:>6.0}% {:>5.0}% {:>6.2}",
             def.difficulty.id(),
             def.notes.len(),
-            def.phrases.len()
+            report.density,
+            report.peak_burst,
+            report.lane_motion,
+            report.chord_share * 100.0,
+            report.sustain_share * 100.0,
+            report.score,
         );
     }
+    println!();
+    println!("  jump = mean lane distance between note positions");
+    println!("  play = playability, 1.00 comfortable (half the mean of the");
+    println!("         five terms, half the worst of them)");
     ExitCode::SUCCESS
 }
 

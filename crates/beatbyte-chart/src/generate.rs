@@ -178,7 +178,7 @@ pub fn generate_difficulty(
     grid_origin_s: f64,
 ) -> ChartDef {
     let master = build_master(analysis, grid_origin_s);
-    let notes = derive_notes(analysis, profile, &master);
+    let notes = derive_notes(analysis, profile, &master, grid_origin_s);
     let phrases = place_phrases(analysis, &notes);
     ChartDef {
         difficulty: profile.difficulty,
@@ -324,17 +324,48 @@ fn reduction_chain<'a>(
     master: &'a [MasterNote],
     difficulty: Difficulty,
     analysis: &SongAnalysis,
+    grid_origin_s: f64,
 ) -> Vec<&'a MasterNote> {
     let mut current: Vec<&MasterNote> = master.iter().collect();
     // Difficulty::ALL is easy..expert; walk it hardest first.
     for &step in Difficulty::ALL.iter().rev() {
         let profile = DifficultyProfile::for_difficulty(step);
-        current = thin_to_target(&current, &profile, analysis);
+        current = thin_to_target(&current, &profile, analysis, grid_origin_s);
         if step == difficulty {
             break;
         }
     }
     current
+}
+
+/// How much a position matters metrically: downbeat, beat, eighth,
+/// sixteenth, or off the grid entirely.
+///
+/// These are the weights a charter works with rather than measured
+/// quantities — the point is only their ORDER, which is what stops a
+/// loud off-beat from displacing the downbeat it sits next to.
+fn metric_weight(time_s: f64, origin_s: f64, beat_s: f64) -> f64 {
+    if beat_s <= 0.0 {
+        return 1.0;
+    }
+    let sixteenth = beat_s / 4.0;
+    let position = (time_s - origin_s) / sixteenth;
+    let nearest = position.round();
+    // Off the grid entirely: syncopation is real music, but it is not
+    // what a chart should be built around.
+    if ((position - nearest) * sixteenth).abs() > (sixteenth * 0.3).min(0.045) {
+        return 0.55;
+    }
+    let index = nearest as i64;
+    if index.rem_euclid(16) == 0 {
+        1.6 // downbeat of the bar
+    } else if index.rem_euclid(4) == 0 {
+        1.35 // beat
+    } else if index.rem_euclid(2) == 0 {
+        1.1 // eighth
+    } else {
+        0.9 // sixteenth
+    }
 }
 
 /// Thin the master to the difficulty's target density: keep the
@@ -351,6 +382,7 @@ fn thin_to_target<'a>(
     master: &[&'a MasterNote],
     profile: &DifficultyProfile,
     analysis: &SongAnalysis,
+    grid_origin_s: f64,
 ) -> Vec<&'a MasterNote> {
     let beat = analysis.beat_interval_s();
     let candidates: Vec<&'a MasterNote> = master
@@ -364,18 +396,22 @@ fn thin_to_target<'a>(
     let beats = analysis.duration_s / beat;
     let target = (profile.target_notes_per_beat * beats).round().max(1.0) as usize;
 
-    // Strongest first; ties by time so the order never depends on the
-    // input's incidental ordering (determinism is a hard rule here).
+    // Rank by musical importance, not by loudness alone.
+    //
+    // Selecting the N loudest events produces a chart that reacts to
+    // the song without following it: a slightly louder off-sixteenth
+    // outranks the downbeat, and the result feels arbitrary to play
+    // even when every note sits on a real onset. A hand charter picks
+    // the beat structure first and fills in around it, which is what
+    // the metric weight below encodes.
+    let importance = |note: &MasterNote| -> f64 {
+        f64::from(note.strength) * metric_weight(note.time_s, grid_origin_s, beat)
+    };
     let mut ranked: Vec<&'a MasterNote> = candidates;
     ranked.sort_by(|a, b| {
-        b.strength
-            .partial_cmp(&a.strength)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then(
-                a.time_s
-                    .partial_cmp(&b.time_s)
-                    .unwrap_or(std::cmp::Ordering::Equal),
-            )
+        importance(b)
+            .total_cmp(&importance(a))
+            .then(a.time_s.total_cmp(&b.time_s))
     });
 
     let mut accepted_times: Vec<f64> = Vec::with_capacity(target);
@@ -413,9 +449,10 @@ fn derive_notes(
     analysis: &SongAnalysis,
     profile: &DifficultyProfile,
     master: &[MasterNote],
+    grid_origin_s: f64,
 ) -> Vec<ChartNote> {
     let lanes_used = i32::from(profile.lanes_used.clamp(1, LANE_COUNT as u8));
-    let kept = reduction_chain(master, profile.difficulty, analysis);
+    let kept = reduction_chain(master, profile.difficulty, analysis, grid_origin_s);
     // Place.
     let mut notes: Vec<ChartNote> = Vec::new();
     let mut previous_lane: Option<i32> = None;
@@ -461,7 +498,43 @@ fn derive_notes(
         previous_lane = Some(lane);
     }
     dedupe_same_lane(&mut notes);
+    let strengths = strengths_of(&notes, &kept);
+    limit_bursts(&mut notes, &strengths, profile.difficulty);
     notes
+}
+
+/// The master strength behind each placed note, for the burst limiter.
+/// Chord members inherit their position's strength.
+fn strengths_of(notes: &[ChartNote], kept: &[&MasterNote]) -> Vec<f32> {
+    notes
+        .iter()
+        .map(|note| {
+            kept.iter()
+                .find(|master| (master.time_s - note.time).abs() < 1e-6)
+                .map_or(0.0, |master| master.strength)
+        })
+        .collect()
+}
+
+/// Enforce the difficulty's burst limit: a transcription can be
+/// locally denser than hands allow (a drum fill, a tremolo, a chord
+/// shredded into single notes), and a chart nobody can play is not a
+/// better chart for being accurate.
+fn limit_bursts(notes: &mut Vec<ChartNote>, strengths: &[f32], difficulty: Difficulty) {
+    let dropped = crate::playability::burst_overflow(
+        notes,
+        strengths,
+        crate::playability::burst_limit(difficulty),
+    );
+    if dropped.is_empty() {
+        return;
+    }
+    let mut index = 0;
+    notes.retain(|_| {
+        let keep = !dropped.contains(&index);
+        index += 1;
+        keep
+    });
 }
 
 /// Pitch information a candidate carries when the melody stage found
@@ -486,6 +559,17 @@ struct Selected {
 
 /// An onset this close to a melody-note start is that note's attack.
 const ATTACH_S: f64 = 0.09;
+
+/// A melody note with NO percussive attack of its own only becomes a
+/// chart note if it is this long and this salient.
+///
+/// Without a bar here, every fragment of a wandering pitch track
+/// becomes a note the player is asked to hit while hearing nothing
+/// struck. On a dense mix the tracker hops between instruments and
+/// produces hundreds of such fragments.
+const MELODY_ONLY_MIN_S: f64 = 0.20;
+/// Salience a melody-only note needs, relative to the strongest.
+const MELODY_ONLY_MIN_STRENGTH: f32 = 0.35;
 
 /// Merge the onset stream with the melody notes into one candidate
 /// stream: an onset at a melody-note start carries that note's pitch;
@@ -527,7 +611,7 @@ fn merge_candidates(analysis: &SongAnalysis) -> Vec<Selected> {
         });
     }
     for (i, note) in analysis.melody.iter().enumerate() {
-        if used[i] {
+        if used[i] || note.len_s() < MELODY_ONLY_MIN_S || note.strength < MELODY_ONLY_MIN_STRENGTH {
             continue;
         }
         out.push(Selected {

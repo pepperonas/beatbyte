@@ -32,6 +32,11 @@ pub struct OnsetConfig {
     pub min_local_strength: f32,
     /// Half-width of the window used to judge local loudness.
     pub local_window_s: f64,
+    /// How much of the reported strength comes from the LOCAL
+    /// reading versus the song-wide one. 1.0 spreads a chart evenly
+    /// over the song and loses its dynamics; 0.0 skips quiet
+    /// passages entirely.
+    pub local_weight: f32,
 }
 
 impl Default for OnsetConfig {
@@ -47,6 +52,7 @@ impl Default for OnsetConfig {
             min_gap_s: 0.05,
             min_local_strength: 0.12,
             local_window_s: 2.0,
+            local_weight: 0.5,
         }
     }
 }
@@ -266,13 +272,27 @@ fn pick_onsets(
             continue;
         }
 
-        // Strength relative to the local peak, which is also what
-        // rejects release ramps: they sit 20–40x below the attacks
-        // they follow.
-        let strength = (flux[t] / local.get(t).copied().unwrap_or(1.0)).clamp(0.0, 1.0);
-        if strength < config.min_local_strength {
+        // Two readings of the same event, and the chart needs both.
+        //
+        // LOCAL (against the surrounding seconds) is what rejects
+        // release ramps and what stops a quiet passage from being
+        // skipped wholesale. GLOBAL (against the whole song) is what
+        // makes a chorus hit outrank a verse tick — the song's own
+        // dynamics.
+        //
+        // Using local alone was a measured mistake: the generator
+        // ranks notes by strength, and a purely local ranking spread
+        // the chart evenly over the song. It moved 59 % of the note
+        // positions on a real track, and it was immediately audible
+        // as "the notes do not fit the music".
+        let local_strength = (flux[t] / local.get(t).copied().unwrap_or(1.0)).clamp(0.0, 1.0);
+        if local_strength < config.min_local_strength {
             continue;
         }
+        let strength = config
+            .local_weight
+            .mul_add(local_strength, (1.0 - config.local_weight) * flux[t])
+            .clamp(0.0, 1.0);
         let time_s = t as f64 * hop_s + frame_offset_s;
         if let Some(last) = onsets.last()
             && time_s - last.time_s < config.min_gap_s

@@ -38,12 +38,14 @@
 pub mod convert;
 pub mod generate;
 pub mod io;
+pub mod playability;
 pub mod schema;
 pub mod validate;
 
 pub use convert::ConvertError;
 pub use generate::{DifficultyProfile, GenerateMeta, generate_chart};
 pub use io::{ChartIoError, load_chart_file, resolve_audio_path, save_chart_file};
+pub use playability::{Playability, burst_limit, comfortable_density};
 pub use schema::{ChartDef, ChartFile, ChartNote, ChartPhrase, SongMeta};
 pub use validate::{Issue, Severity};
 
