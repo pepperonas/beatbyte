@@ -14,6 +14,7 @@ use crate::config::{Settings, save_settings};
 use crate::palette;
 use crate::states::AppState;
 use crate::ui::UiFont;
+use crate::ui_kit;
 
 /// Calibration click tempo.
 const CLICK_BPM: f64 = 120.0;
@@ -102,54 +103,29 @@ fn start_calibration(
     game_clock.clock.start(time.elapsed_secs_f64(), 0.0);
 
     commands
-        .spawn((
-            CalibrationScreen,
-            Node {
-                width: percent(100),
-                height: percent(100),
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                row_gap: px(20),
-                ..default()
-            },
-        ))
+        .spawn((CalibrationScreen, ui_kit::screen_root()))
         .with_children(|parent| {
-            parent.spawn((
-                Text::new("CALIBRATION"),
-                font.text(26.0),
-                TextColor(palette::BRAND),
-            ));
-            parent.spawn((
-                Text::new("tap SPACE on every click"),
-                font.text(13.0),
-                TextColor(palette::TEXT),
-            ));
-            parent.spawn((
-                BeatDot,
-                Node {
-                    width: px(26),
-                    height: px(26),
-                    margin: UiRect::vertical(px(16)),
-                    ..default()
-                },
-                BackgroundColor(palette::dimmed(palette::BRAND, 0.3)),
-            ));
-            parent.spawn((
-                Readout,
-                Text::new(""),
-                font.text(12.0),
-                TextColor(palette::TEXT),
-            ));
-            parent.spawn((
-                Text::new("ENTER save    ESC cancel"),
-                font.text(9.0),
-                TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
-                Node {
-                    margin: UiRect::top(px(22)),
-                    ..default()
-                },
-            ));
+            ui_kit::header(parent, &font, "CALIBRATION", "tap SPACE on every click");
+            parent
+                .spawn(ui_kit::panel_centered())
+                .with_children(|panel| {
+                    panel.spawn((
+                        BeatDot,
+                        Node {
+                            width: px(26),
+                            height: px(26),
+                            ..default()
+                        },
+                        BackgroundColor(palette::dimmed(palette::BRAND, 0.3)),
+                    ));
+                    panel.spawn((
+                        Readout,
+                        Text::new(""),
+                        font.text(ui_kit::ROW),
+                        TextColor(palette::TEXT),
+                    ));
+                });
+            ui_kit::footer(parent, &font, "ENTER save  ESC cancel");
         });
 }
 

@@ -17,6 +17,7 @@ use crate::controls::{GameAction, InputMap, InputSources};
 use crate::palette;
 use crate::states::AppState;
 use crate::ui::UiFont;
+use crate::ui_kit;
 
 /// Marker for the screen's entities.
 #[derive(Component)]
@@ -53,15 +54,6 @@ struct FlashTimers {
     hit: f32,
 }
 
-/// Lane lamp colors.
-const LAMP_COLORS: [Color; 5] = [
-    Color::srgb(0.24, 0.86, 0.52),
-    Color::srgb(1.0, 0.32, 0.32),
-    Color::srgb(1.0, 0.84, 0.25),
-    Color::srgb(0.25, 0.77, 1.0),
-    Color::srgb(1.0, 0.67, 0.25),
-];
-
 /// The tester plugin.
 pub struct InputTestPlugin;
 
@@ -90,90 +82,84 @@ fn spawn_screen(mut commands: Commands, font: Res<UiFont>, mut timers: ResMut<Fl
             },
         ))
         .with_children(|parent| {
-            parent.spawn((
-                Text::new("INPUT TEST"),
-                font.text(26.0),
-                TextColor(palette::BRAND),
-            ));
+            ui_kit::header(
+                parent,
+                &font,
+                "INPUT TEST",
+                "press anything and watch it light up",
+            );
             parent.spawn((
                 DeviceLine,
                 Text::new(""),
-                font.text(10.0),
+                font.text(ui_kit::SMALL),
                 TextColor(palette::TEXT_DIM),
             ));
             parent.spawn((
                 ModeLine,
                 Text::new(""),
-                font.text(12.0),
+                font.text(ui_kit::ROW),
                 TextColor(palette::TEXT),
                 Node {
                     margin: UiRect::top(px(10)),
                     ..default()
                 },
             ));
-            // Fret lamps.
             parent
-                .spawn(Node {
-                    column_gap: px(18),
-                    margin: UiRect::top(px(14)),
-                    ..default()
-                })
-                .with_children(|lamps| {
-                    for fret in 0..5u8 {
-                        lamps.spawn((
-                            Lamp(fret),
-                            Node {
-                                width: px(40),
-                                height: px(40),
-                                border: UiRect::all(px(3)),
-                                border_radius: BorderRadius::all(px(20)),
-                                ..default()
-                            },
-                            BackgroundColor(Color::NONE),
-                            BorderColor::all(palette::dimmed(LAMP_COLORS[fret as usize], 0.5)),
-                        ));
-                    }
-                });
-            // Strum + Hype row.
-            parent
-                .spawn(Node {
-                    column_gap: px(24),
-                    margin: UiRect::top(px(10)),
-                    ..default()
-                })
-                .with_children(|row| {
-                    row.spawn((
-                        StrumLamp,
-                        Text::new("STRUM"),
-                        font.text(14.0),
-                        TextColor(palette::dimmed(palette::TEXT_DIM, 0.5)),
-                    ));
-                    row.spawn((
-                        HypeLamp,
-                        Text::new("HYPE"),
-                        font.text(14.0),
-                        TextColor(palette::dimmed(palette::TEXT_DIM, 0.5)),
-                    ));
+                .spawn(ui_kit::panel_centered())
+                .with_children(|panel| {
+                    // Fret lamps.
+                    panel
+                        .spawn(Node {
+                            column_gap: px(18),
+                            ..default()
+                        })
+                        .with_children(|lamps| {
+                            for fret in 0..5u8 {
+                                lamps.spawn((
+                                    Lamp(fret),
+                                    Node {
+                                        width: px(40),
+                                        height: px(40),
+                                        border: UiRect::all(px(3)),
+                                        border_radius: BorderRadius::all(px(20)),
+                                        ..default()
+                                    },
+                                    BackgroundColor(Color::NONE),
+                                    BorderColor::all(palette::dimmed(
+                                        palette::LANES[fret as usize],
+                                        0.5,
+                                    )),
+                                ));
+                            }
+                        });
+                    // Strum + Hype row.
+                    panel
+                        .spawn(Node {
+                            column_gap: px(24),
+                            ..default()
+                        })
+                        .with_children(|row| {
+                            row.spawn((
+                                StrumLamp,
+                                Text::new("STRUM"),
+                                font.text(ui_kit::ROW),
+                                TextColor(palette::dimmed(palette::TEXT_DIM, 0.5)),
+                            ));
+                            row.spawn((
+                                HypeLamp,
+                                Text::new("HYPE"),
+                                font.text(ui_kit::ROW),
+                                TextColor(palette::dimmed(palette::TEXT_DIM, 0.5)),
+                            ));
+                        });
                 });
             parent.spawn((
                 HitFlash,
                 Text::new("HIT!"),
-                font.text(22.0),
+                font.text(ui_kit::TITLE),
                 TextColor(Color::NONE),
-                Node {
-                    margin: UiRect::top(px(12)),
-                    ..default()
-                },
             ));
-            parent.spawn((
-                Text::new("T toggle tap  ESC / pad START back"),
-                font.text(9.0),
-                TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
-                Node {
-                    margin: UiRect::top(px(18)),
-                    ..default()
-                },
-            ));
+            ui_kit::footer(parent, &font, "T toggle tap  ESC / pad START back");
         });
 }
 
@@ -240,7 +226,7 @@ fn run_tester(
         for (lamp, mut color) in &mut lamps {
             if lamp.0 == fret {
                 color.0 = if held {
-                    LAMP_COLORS[fret as usize]
+                    palette::LANES[fret as usize]
                 } else {
                     Color::NONE
                 };

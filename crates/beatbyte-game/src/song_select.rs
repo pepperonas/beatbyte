@@ -12,6 +12,7 @@ use crate::palette;
 use crate::scores::ScoreBoard;
 use crate::states::AppState;
 use crate::ui::UiFont;
+use crate::ui_kit;
 
 /// The difficulty the player will play.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,9 +48,17 @@ impl Plugin for SongSelectPlugin {
 #[derive(Component)]
 struct BrowserScreen;
 
-/// A song row (index into the library).
+/// A song row (index into the library). Carries `Button`.
 #[derive(Component)]
 struct SongRow(usize);
+
+/// A row's title text.
+#[derive(Component)]
+struct SongTitle(usize);
+
+/// A row's artist text, in the right-hand column.
+#[derive(Component)]
+struct SongArtist(usize);
 
 /// The details block under the list.
 #[derive(Component)]
@@ -74,64 +83,60 @@ fn spawn_browser_impl(
         cursor.0 = 0;
     }
     commands
-        .spawn((
-            BrowserScreen,
-            Node {
-                width: percent(100),
-                height: percent(100),
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                row_gap: px(14),
-                ..default()
-            },
-        ))
+        .spawn((BrowserScreen, ui_kit::screen_root()))
         .with_children(|parent| {
-            parent.spawn((
-                Text::new("SONG SELECT"),
-                font.text(26.0),
-                TextColor(palette::BRAND),
-                Node {
-                    margin: UiRect::bottom(px(18)),
-                    ..default()
-                },
-            ));
-            for (index, entry) in library.entries.iter().enumerate() {
-                parent.spawn((
-                    SongRow(index),
-                    Button,
-                    Text::new(format!("{} - {}", entry.title, entry.artist)),
-                    font.text(14.0),
-                    TextColor(palette::TEXT_DIM),
-                ));
-            }
-            parent.spawn((
-                ImportNote,
-                Text::new("drag an audio file onto the window to import it"),
-                font.text(9.0),
-                TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
-            ));
+            ui_kit::header(parent, font, "SONG SELECT", "pick a track and a difficulty");
+            parent.spawn(ui_kit::panel()).with_children(|panel| {
+                for (index, entry) in library.entries.iter().enumerate() {
+                    panel
+                        .spawn((SongRow(index), Button, ui_kit::row()))
+                        .with_children(|row| {
+                            // Title and artist were one string joined
+                            // by " - "; as two columns the list scans
+                            // by title, which is how anyone looks for
+                            // a song.
+                            row.spawn((
+                                SongTitle(index),
+                                Text::new(entry.title.clone()),
+                                font.text(ui_kit::ROW),
+                                TextColor(palette::TEXT_DIM),
+                                ui_kit::label_node(),
+                            ));
+                            row.spawn((
+                                SongArtist(index),
+                                Text::new(entry.artist.clone()),
+                                font.text(ui_kit::ROW),
+                                TextColor(palette::TEXT_DIM),
+                                ui_kit::value_node(),
+                            ));
+                        });
+                }
+            });
             parent.spawn((
                 DetailText,
                 Text::new(""),
-                font.text(11.0),
+                font.text(ui_kit::ROW),
                 TextColor(palette::TEXT),
                 Node {
-                    margin: UiRect::top(px(22)),
+                    margin: UiRect::top(px(ui_kit::FOOTER_GAP)),
                     ..default()
                 },
             ));
             parent.spawn((
-                Text::new(
-                    "UP/DOWN song  LEFT/RIGHT difficulty  ENTER rock\nE edit  DEL delete  ESC back",
-                ),
-                font.text(9.0),
-                TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
+                ImportNote,
+                Text::new("drag an audio file onto the window to import it"),
+                font.text(ui_kit::SMALL),
+                TextColor(palette::dimmed(palette::TEXT_DIM, 0.75)),
                 Node {
-                    margin: UiRect::top(px(20)),
+                    margin: UiRect::top(px(10)),
                     ..default()
                 },
             ));
+            ui_kit::footer(
+                parent,
+                font,
+                "UP/DOWN song  LEFT/RIGHT difficulty  ENTER rock  E edit  DEL delete  ESC back",
+            );
         });
 }
 
@@ -295,20 +300,27 @@ pub fn prepare_song(entry: &SongEntry, builtins: &BuiltinSongs) -> Result<Loaded
 }
 
 /// Keep rows and the detail block in sync with the cursor.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn refresh_browser(
     library: Res<SongLibrary>,
     cursor: Res<BrowserCursor>,
     selected: Res<SelectedDifficulty>,
     scores: Res<ScoreBoard>,
-    mut rows: Query<(&SongRow, &mut TextColor)>,
+    mut rows: Query<(&SongRow, &mut BackgroundColor, &mut BorderColor)>,
+    mut titles: Query<(&SongTitle, &mut TextColor), Without<SongArtist>>,
+    mut artists: Query<(&SongArtist, &mut TextColor), Without<SongTitle>>,
     mut detail: Query<&mut Text, With<DetailText>>,
 ) {
-    for (row, mut color) in &mut rows {
-        color.0 = if row.0 == cursor.0 {
-            palette::BRAND
-        } else {
-            palette::TEXT_DIM
-        };
+    for (row, mut background, mut border) in &mut rows {
+        let style = ui_kit::row_style(ui_kit::state_for(row.0 == cursor.0, false));
+        background.0 = style.background;
+        *border = BorderColor::all(style.accent);
+    }
+    for (title, mut color) in &mut titles {
+        color.0 = ui_kit::row_style(ui_kit::state_for(title.0 == cursor.0, false)).label;
+    }
+    for (artist, mut color) in &mut artists {
+        color.0 = ui_kit::row_style(ui_kit::state_for(artist.0 == cursor.0, false)).value;
     }
     let Some(entry) = library.entries.get(cursor.0) else {
         return;

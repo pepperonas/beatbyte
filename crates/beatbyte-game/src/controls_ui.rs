@@ -8,10 +8,11 @@ use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
 
 use crate::config::Settings;
-use crate::controls::{Binding, GameAction, InputMap};
+use crate::controls::{Binding, GameAction, InputMap, MenuNav};
 use crate::palette;
 use crate::states::AppState;
 use crate::ui::UiFont;
+use crate::ui_kit;
 
 /// Cursor + capture state.
 #[derive(Resource, Default)]
@@ -39,9 +40,18 @@ impl Plugin for ControlsUiPlugin {
 #[derive(Component)]
 struct ControlsScreen;
 
-/// One action row's text (index into [`GameAction::ALL`]).
+/// One action row (index into [`GameAction::ALL`]). Carries `Button`,
+/// so this screen finally answers the mouse like every other one.
 #[derive(Component)]
 struct ActionRow(usize);
+
+/// A row's action name.
+#[derive(Component)]
+struct ActionLabel(usize);
+
+/// A row's current bindings.
+#[derive(Component)]
+struct ActionBindings(usize);
 
 /// The status/hint line.
 #[derive(Component)]
@@ -50,46 +60,31 @@ struct HintLine;
 fn spawn_controls(mut commands: Commands, font: Res<UiFont>, mut state: ResMut<ControlsState>) {
     state.capturing = false;
     commands
-        .spawn((
-            ControlsScreen,
-            Node {
-                width: percent(100),
-                height: percent(100),
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                row_gap: px(12),
-                ..default()
-            },
-        ))
+        .spawn((ControlsScreen, ui_kit::screen_root()))
         .with_children(|parent| {
-            parent.spawn((
-                Text::new("CONTROLS"),
-                font.text(26.0),
-                TextColor(palette::BRAND),
-                Node {
-                    margin: UiRect::bottom(px(18)),
-                    ..default()
-                },
-            ));
-            for (index, _) in GameAction::ALL.iter().enumerate() {
-                parent.spawn((
-                    ActionRow(index),
-                    Text::new(""),
-                    font.text(12.0),
-                    TextColor(palette::TEXT_DIM),
-                ));
-            }
-            parent.spawn((
-                HintLine,
-                Text::new(""),
-                font.text(9.0),
-                TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
-                Node {
-                    margin: UiRect::top(px(22)),
-                    ..default()
-                },
-            ));
+            ui_kit::header(parent, &font, "CONTROLS", "every action, on any device");
+            parent.spawn(ui_kit::panel()).with_children(|panel| {
+                for (index, action) in GameAction::ALL.iter().enumerate() {
+                    panel
+                        .spawn((ActionRow(index), Button, ui_kit::row()))
+                        .with_children(|row| {
+                            row.spawn((
+                                ActionLabel(index),
+                                Text::new(action.label()),
+                                font.text(ui_kit::ROW),
+                                TextColor(palette::TEXT_DIM),
+                                ui_kit::label_node(),
+                            ));
+                            row.spawn((
+                                ActionBindings(index),
+                                Text::new(""),
+                                font.text(ui_kit::ROW),
+                                TextColor(palette::TEXT_DIM),
+                                ui_kit::value_node(),
+                            ));
+                        });
+                }
+            });
             // Device diagnostics: which pads are connected, and five
             // live fret lamps — press a fret on your controller and
             // watch it light up. This exists because a real guitar
@@ -97,17 +92,17 @@ fn spawn_controls(mut commands: Commands, font: Res<UiFont>, mut state: ResMut<C
             parent.spawn((
                 PadLine,
                 Text::new(""),
-                font.text(10.0),
+                font.text(ui_kit::SMALL),
                 TextColor(palette::TEXT_DIM),
                 Node {
-                    margin: UiRect::top(px(14)),
+                    margin: UiRect::top(px(16)),
                     ..default()
                 },
             ));
             parent
                 .spawn(Node {
                     column_gap: px(14),
-                    margin: UiRect::top(px(6)),
+                    margin: UiRect::top(px(8)),
                     ..default()
                 })
                 .with_children(|lamps| {
@@ -126,6 +121,16 @@ fn spawn_controls(mut commands: Commands, font: Res<UiFont>, mut state: ResMut<C
                         ));
                     }
                 });
+            parent.spawn((
+                HintLine,
+                Text::new(""),
+                font.text(ui_kit::SMALL),
+                TextColor(palette::dimmed(palette::TEXT_DIM, 0.75)),
+                Node {
+                    margin: UiRect::top(px(ui_kit::FOOTER_GAP)),
+                    ..default()
+                },
+            ));
         });
 }
 
@@ -136,15 +141,6 @@ struct PadLine;
 /// One live fret-test lamp (0 = green .. 4 = orange).
 #[derive(Component)]
 struct FretLamp(u8);
-
-/// Fret lamp colors (the lane palette).
-const LAMP_COLORS: [Color; 5] = [
-    Color::srgb(0.24, 0.86, 0.52),
-    Color::srgb(1.0, 0.32, 0.32),
-    Color::srgb(1.0, 0.84, 0.25),
-    Color::srgb(0.25, 0.77, 1.0),
-    Color::srgb(1.0, 0.67, 0.25),
-];
 
 /// Show connected pads and light the lamps from LIVE input — through
 /// the real InputMap, so this validates the whole chain.
@@ -173,17 +169,19 @@ fn refresh_pad_tester(
     for (lamp, mut color) in &mut lamps {
         let pressed = sources.pressed(&map, GameAction::Fret(lamp.0));
         color.0 = if pressed {
-            LAMP_COLORS[lamp.0 as usize]
+            palette::LANES[lamp.0 as usize]
         } else {
             Color::NONE
         };
     }
 }
 
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI
 fn controls_input(
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<&Gamepad>,
     mouse: Res<ButtonInput<MouseButton>>,
+    rows: Query<(&ActionRow, &Interaction), Changed<Interaction>>,
     mut state: ResMut<ControlsState>,
     mut map: ResMut<InputMap>,
     mut next_state: ResMut<NextState<AppState>>,
@@ -214,58 +212,81 @@ fn controls_input(
         return;
     }
 
-    if keys.just_pressed(KeyCode::ArrowUp) {
+    // Navigation goes through MenuNav like every other screen. Reading
+    // the arrow keys directly, as this screen used to, meant a player
+    // holding a guitar could not reach the screen that rebinds it.
+    let nav = MenuNav::read(&keys, pads.iter());
+    if nav.up {
         state.cursor = (state.cursor + count - 1) % count;
     }
-    if keys.just_pressed(KeyCode::ArrowDown) {
+    if nav.down {
         state.cursor = (state.cursor + 1) % count;
     }
-    if keys.just_pressed(KeyCode::Enter) {
+    let mut clicked = false;
+    for (row, interaction) in &rows {
+        match interaction {
+            Interaction::Hovered => state.cursor = row.0,
+            Interaction::Pressed => {
+                state.cursor = row.0;
+                clicked = true;
+            }
+            Interaction::None => {}
+        }
+    }
+    if nav.confirm || clicked {
         state.capturing = true;
     }
     if keys.just_pressed(KeyCode::Backspace) {
         map.reset_action(GameAction::ALL[state.cursor]);
     }
-    if keys.just_pressed(KeyCode::Escape) || mouse.just_pressed(MouseButton::Right) {
+    if nav.back || mouse.just_pressed(MouseButton::Right) {
         next_state.set(AppState::Settings);
     }
 }
 
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI
 fn refresh_controls(
     map: Res<InputMap>,
     state: Res<ControlsState>,
-    mut rows: Query<(&ActionRow, &mut Text, &mut TextColor)>,
-    mut hint: Query<&mut Text, (With<HintLine>, Without<ActionRow>)>,
+    mut rows: Query<(&ActionRow, &mut BackgroundColor, &mut BorderColor)>,
+    mut labels: Query<(&ActionLabel, &mut TextColor), Without<ActionBindings>>,
+    mut bindings: Query<(&ActionBindings, &mut Text, &mut TextColor), Without<ActionLabel>>,
+    mut hint: Query<&mut Text, (With<HintLine>, Without<ActionBindings>)>,
 ) {
-    for (row, mut text, mut color) in &mut rows {
-        let action = GameAction::ALL[row.0];
-        let selected = row.0 == state.cursor;
-        let marker = if selected { ">" } else { " " };
-        let bindings = map
-            .of(action)
-            .iter()
-            .map(|b| b.label())
-            .collect::<Vec<_>>()
-            .join(" / ");
-        let line = if selected && state.capturing {
-            format!("{marker} {:<12} press a key or button...", action.label())
+    let style_of = |index: usize| {
+        ui_kit::row_style(ui_kit::state_for(
+            index == state.cursor,
+            state.capturing && index == state.cursor,
+        ))
+    };
+    for (row, mut background, mut border) in &mut rows {
+        let style = style_of(row.0);
+        background.0 = style.background;
+        *border = BorderColor::all(style.accent);
+    }
+    for (label, mut color) in &mut labels {
+        color.0 = style_of(label.0).label;
+    }
+    for (row, mut text, mut color) in &mut bindings {
+        let wanted = if state.capturing && row.0 == state.cursor {
+            "press a key or button...".to_owned()
         } else {
-            format!("{marker} {:<12} {bindings}", action.label())
+            map.of(GameAction::ALL[row.0])
+                .iter()
+                .map(|b| b.label())
+                .collect::<Vec<_>>()
+                .join(" / ")
         };
-        if text.0 != line {
-            text.0 = line;
+        if text.0 != wanted {
+            text.0 = wanted;
         }
-        color.0 = if selected {
-            palette::BRAND
-        } else {
-            palette::TEXT_DIM
-        };
+        color.0 = style_of(row.0).value;
     }
     if let Ok(mut text) = hint.single_mut() {
         let line = if state.capturing {
-            "press the new key/button   ESC cancel".to_owned()
+            "press the new key or button  ESC cancel".to_owned()
         } else {
-            "ENTER rebind   BACKSPACE reset row   ESC back".to_owned()
+            "UP/DOWN choose  ENTER rebind  BACKSPACE reset  ESC back".to_owned()
         };
         if text.0 != line {
             text.0 = line;

@@ -63,6 +63,26 @@ impl Plugin for AutopilotPlugin {
         let enabled = std::env::var_os("BEATBYTE_AUTOPILOT").is_some();
         app.insert_resource(Autopilot { enabled })
             .init_resource::<AutopilotHands>();
+
+        // Screen photography works without the autopilot: the screens
+        // it cannot reach are exactly the ones that need it.
+        if let Ok(raw) = std::env::var("BEATBYTE_SHOT_STATE") {
+            match shot_state(&raw) {
+                Some(target) => {
+                    app.insert_resource(ShotState(target))
+                        .add_systems(Startup, enter_shot_state)
+                        .add_systems(Update, quit_after_shot);
+                    if let Some(dir) = std::env::var_os("BEATBYTE_SHOT_DIR") {
+                        let dir = std::path::PathBuf::from(dir);
+                        if std::fs::create_dir_all(&dir).is_ok() {
+                            app.insert_resource(ShotDir(dir))
+                                .add_systems(Update, autopilot_screenshots);
+                        }
+                    }
+                }
+                None => error!("unknown BEATBYTE_SHOT_STATE `{raw}`"),
+            }
+        }
         if enabled {
             app.add_systems(
                 Update,
@@ -126,6 +146,60 @@ impl Plugin for AutopilotPlugin {
     }
 }
 
+/// Boot straight into one screen, photograph it and quit.
+///
+/// The autopilot walks menu → song select → gameplay → results, so
+/// those screens photograph themselves. Settings, controls,
+/// calibration and the input tester are reachable only by hand —
+/// which made them the screens least likely to be checked after a
+/// change, exactly backwards. `BEATBYTE_SHOT_STATE=settings` together
+/// with `BEATBYTE_SHOT_DIR` opens one, shoots it and exits.
+#[must_use]
+pub fn shot_state(raw: &str) -> Option<AppState> {
+    match raw
+        .to_ascii_lowercase()
+        .replace(['-', '_', ' '], "")
+        .as_str()
+    {
+        "menu" | "mainmenu" => Some(AppState::MainMenu),
+        "songselect" | "browser" => Some(AppState::SongSelect),
+        "settings" => Some(AppState::Settings),
+        "controls" => Some(AppState::Controls),
+        "calibration" => Some(AppState::Calibration),
+        "inputtest" => Some(AppState::InputTest),
+        "join" | "multiplayer" | "multiplayersetup" => Some(AppState::MultiplayerSetup),
+        _ => None,
+    }
+}
+
+/// The screen [`shot_state`] resolved from the environment.
+#[derive(Resource)]
+struct ShotState(AppState);
+
+/// Enter the requested screen once the app is up.
+fn enter_shot_state(target: Res<ShotState>, mut next: ResMut<NextState<AppState>>) {
+    next.set(target.0);
+}
+
+/// Leave once the screen has been on display long enough to be
+/// photographed (the shot itself waits out the 0.25 s transition
+/// fade, so this has to outlast that plus the save).
+fn quit_after_shot(
+    target: Res<ShotState>,
+    state: Res<State<AppState>>,
+    time: Res<Time>,
+    mut elapsed: Local<f32>,
+    mut app_exit: MessageWriter<AppExit>,
+) {
+    if *state.get() != target.0 {
+        return;
+    }
+    *elapsed += time.delta_secs();
+    if *elapsed > 2.0 {
+        app_exit.write(AppExit::Success);
+    }
+}
+
 /// Where autopilot screenshots go.
 #[derive(Resource)]
 struct ShotDir(std::path::PathBuf);
@@ -165,6 +239,10 @@ fn autopilot_screenshots(
             }
         }
         AppState::Results => Some("results"),
+        AppState::Settings => Some("settings"),
+        AppState::Controls => Some("controls"),
+        AppState::Calibration => Some("calibration"),
+        AppState::InputTest => Some("inputtest"),
         _ => None,
     };
     if let Some(name) = moment
@@ -881,6 +959,38 @@ fn autopilot_results(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+    use super::shot_state;
+    use crate::states::AppState;
+
+    #[test]
+    fn shot_state_reaches_every_screen_the_autopilot_cannot() {
+        // These four are the reason the hook exists: no automated run
+        // visits them, so nothing would notice them breaking.
+        assert_eq!(shot_state("settings"), Some(AppState::Settings));
+        assert_eq!(shot_state("controls"), Some(AppState::Controls));
+        assert_eq!(shot_state("calibration"), Some(AppState::Calibration));
+        assert_eq!(shot_state("inputtest"), Some(AppState::InputTest));
+    }
+
+    #[test]
+    fn shot_state_is_forgiving_about_spelling() {
+        for spelling in ["INPUT-TEST", "input_test", "Input Test", "inputtest"] {
+            assert_eq!(
+                shot_state(spelling),
+                Some(AppState::InputTest),
+                "`{spelling}` should resolve"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unknown_screen_is_rejected_rather_than_guessed() {
+        // Silently falling back to the main menu would photograph the
+        // wrong screen and look like a pass.
+        assert_eq!(shot_state("gameplay"), None);
+        assert_eq!(shot_state(""), None);
+    }
+
     use super::select_song;
     use crate::library::{SongEntry, SongSource};
 

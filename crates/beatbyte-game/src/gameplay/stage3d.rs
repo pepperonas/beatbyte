@@ -45,7 +45,7 @@ pub const WORLD_PER_PIXEL: f32 = 1.0 / 220.0;
 /// take 13.7 s to cross a highway they should cross in
 /// [`super::SPAWN_LOOKAHEAD_S`] — they crawled.
 ///
-/// Chosen so that a note covers [`HIGHWAY_LENGTH`] in exactly the
+/// Chosen so that a note covers the highway's full length in exactly the
 /// spawn lookahead at the default scroll speed.
 pub const Z_PER_PIXEL: f32 = HIGHWAY_LENGTH / (2.6 * 420.0);
 

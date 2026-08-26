@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **One design for every menu.** A shared UI kit (`ui_kit`) now owns
+  the type scale, the spacing rhythm and the row states, and the main
+  menu, settings, controls, song browser, multiplayer join,
+  calibration and input tester all draw from it. Screens sit inside a
+  framed panel; a selected row is marked by an accent bar, a tint and
+  a bright label together, rather than by the colour of its letters
+  alone. Every screen now carries a subtitle saying what it is for,
+  and one footer style states its keys as `KEY action` pairs.
+
+- **`BEATBYTE_SHOT_STATE=<screen>`** boots straight into one screen
+  and, with `BEATBYTE_SHOT_DIR`, photographs it and quits. The
+  autopilot only ever reaches the menu, the browser and the results
+  screen, which left settings, controls, calibration and the input
+  tester as the screens least likely to be checked after a change —
+  exactly backwards.
+
 - **A solid 3D stage.** A third view alongside FLAT and DEPTH,
   reached by cycling the VIEW setting: a perspective camera looking
   down a real fretboard — bar lines crossing the neck at every bar
@@ -29,35 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   flares, and a flat ring of light spreads across the board from it —
   the genre's flame, gone in about a fifth of a second. Missed notes
   grey out and keep travelling.
-
-### Fixed
-
-- **Notes in the 3D stage turned black.** All notes of a lane shared
-  one material, so greying out a single missed note repainted every
-  note in that lane for the rest of the song. Missed notes now switch
-  to a separate grey material instead of repainting the shared one.
-- **Notes in the 3D stage crawled.** Depth was using the same scale
-  as width, so a note took 13.7 s to cross a highway it should cross
-  in the 2.6 s of spawn lookahead. The two scales are now separate —
-  and a compile-time assertion stops them being merged again.
-
-### Changed
-
-- **The flat view is gone.** VIEW now switches between DEPTH and 3D
-  STAGE. A settings file that still selected flat is corrected on
-  load, so nobody ends up on a highway with no depth and no way back.
-
-- **Fret feedback rebuilt along genre lines.** In this genre the HIT
-  is the spectacle — the gem bursting into flame at the target line —
-  while holding a fret is a quiet readiness cue. So: a held fret
-  **fills** with its lane colour (crisp edge, no haze) and presses
-  slightly down, and a landed note fires a burst that starts tight and
-  bright at the strike and expands outward as it fades, with its force
-  taken from the judgment (a Perfect lands harder than a Good). The
-  first attempt had this backwards and haloed every press, which read
-  as constant noise.
-
-### Added
 
 - **Guitar-Hero-style chart generation.** Imports now transcribe the
   LEAD of the song, not just its percussion: a new melody-extraction
@@ -94,17 +81,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (including the melody) for inspection; the text output now counts
   melody notes and held tones.
 
-### Fixed
-
-- **Depth-view sustain tails hug their string.** The tail sprite
-  extended straight up while the lane leaned toward the vanishing
-  point — the far end visibly detached from the line (user
-  screenshot). Tails now connect the gem to the projected position of
-  their far end along the exact note path (both while approaching and
-  while held), with foreshortened length and matching rotation.
-
-### Added
-
 - **Live mute toggle**: `M` — or clicking the always-present corner
   badge — silences/unsilences music AND sound effects at any moment,
   in menus, gameplay and running autopilot sessions alike.
@@ -132,22 +108,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the main menu (it existed but a stale running instance hid it —
   `open` only foregrounds an already-running app).
 
-### Changed
-
-- **Tagline no longer claims "8-bit game"**: the menu subtitle reads
-  "five lanes. your music." and the README describes both looks —
-  the game has shipped a smooth high-res style for a while.
-
-### Fixed
-
-- **Solo play now hears every input device.** The single player was
-  hard-routed to the keyboard, so a connected guitar lit menus but
-  played into the void during gameplay (no receptor highlights, no
-  hits). With one player, keyboard and all pads feed the same
-  session; strict per-device routing still applies in multiplayer.
-
-### Added
-
 - **Input-mode badge**: a quiet corner tag in gameplay shows
   `< TAP >` or `< STRUM >` — one glance answers "why did that (not)
   hit" while testing keyboard and guitar in either mode.
@@ -160,8 +120,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exactly the confusing moment, rate-limited so it teaches instead
   of nagging.
 
-### Added
-
 - **Native Guitar Hero X-plorer support.** The guitar is an
   Xbox-360-class USB device speaking a vendor protocol — macOS (and
   thus the gamepad backend) never sees it, verified on the real
@@ -172,27 +130,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Controller tester in the Controls screen**: shows connected
   devices by name and five live fret lamps driven through the real
   input map — press a fret, see it light.
-
-### Fixed
-
-- **The stage now fits every window.** The camera used raw window
-  pixels, so a small window cropped receptors and HUD while a big one
-  shrank the stage into a corner. The world renders through a
-  guaranteed-minimum 1280x720 view that scales with the window (extra
-  aspect shows more backdrop, never cropping), and the screen-space
-  UI scales with window height so menus stay proportional. A
-  `BEATBYTE_WINDOW=WxH` variable pins the size for tests or taste.
-
-### Fixed
-
-- **Depth view: notes now sit exactly ON their lane lines.** The
-  guides were drawn on a different straight line than the note path
-  (full lane width 200 px below the receptors, aimed at the vanishing
-  point) — everything visibly missed its string. The guides are now
-  the extension of the exact line notes travel (pinned by a
-  collinearity test).
-
-### Added
 
 - **Stage polish for the depth view**: receptors lie flat on the
   board (perspective-squashed rings), a glowing hit line spans the
@@ -206,8 +143,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   projection. Purely presentational — the autopilot scores identically
   in both views (23640 == 23640), because judgment never sees pixels.
 
-### Added
-
 - **The round style went AAA**: real HDR bloom on the camera (round
   style only — pixel art stays crisp), gems as lit glossy spheres
   (grayscale-shaded body × lane tint + untinted specular overlay,
@@ -216,6 +151,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and backdrop dots, and sustain tails as glowing tubes. All textures
   generated and unit-tested; the 8-bit style is pixel-for-pixel
   untouched.
+
+### Changed
+
+- **Settings rows are two real columns** instead of one string padded
+  to a fixed width. The old padding assumed labels of at most 16
+  characters, which "TAP MODE (NO STRUM)" overflows by three, so that
+  one row's value hung outside the column.
+
+- **The controls screen answers the mouse and the gamepad.** It read
+  the arrow keys directly, so a player holding a guitar could not
+  reach the screen that rebinds it, and it was the only menu whose
+  rows ignored hover and clicks. It now navigates through `MenuNav`
+  like every other screen. A row waiting for a new binding is shown
+  in its own colour rather than looking like an ordinary highlight.
+
+- **The song browser lists title and artist as separate columns**, so
+  the list scans by title.
+
+- **Multiplayer slots show their player colour** on the row itself,
+  and an empty slot reads "open" instead of `---`.
+
+- **The flat view is gone.** VIEW now switches between DEPTH and 3D
+  STAGE. A settings file that still selected flat is corrected on
+  load, so nobody ends up on a highway with no depth and no way back.
+
+- **Fret feedback rebuilt along genre lines.** In this genre the HIT
+  is the spectacle — the gem bursting into flame at the target line —
+  while holding a fret is a quiet readiness cue. So: a held fret
+  **fills** with its lane colour (crisp edge, no haze) and presses
+  slightly down, and a landed note fires a burst that starts tight and
+  bright at the strike and expands outward as it fades, with its force
+  taken from the judgment (a Perfect lands harder than a Good). The
+  first attempt had this backwards and haloed every press, which read
+  as constant noise.
+
+- **Tagline no longer claims "8-bit game"**: the menu subtitle reads
+  "five lanes. your music." and the README describes both looks —
+  the game has shipped a smooth high-res style for a while.
+
+### Fixed
+
+- **Long bindings no longer collide with their label.** "Enter / PAD
+  Select / PAD RightTrigger" ran into the word HYPE; values are now
+  bounded and wrap, right-aligned so the column keeps a clean edge.
+
+- **The settings footer no longer claims ENTER confirms.** ENTER
+  steps the value, exactly like RIGHT.
+
+- **Two copies of the lane palette are gone.** The controls screen and
+  the input tester each carried their own hard-coded copy of the five
+  lane colours, which `palette.rs` is documented as being the single
+  source of.
+
+- **Notes in the 3D stage turned black.** All notes of a lane shared
+  one material, so greying out a single missed note repainted every
+  note in that lane for the rest of the song. Missed notes now switch
+  to a separate grey material instead of repainting the shared one.
+- **Notes in the 3D stage crawled.** Depth was using the same scale
+  as width, so a note took 13.7 s to cross a highway it should cross
+  in the 2.6 s of spawn lookahead. The two scales are now separate —
+  and a compile-time assertion stops them being merged again.
+
+- **Depth-view sustain tails hug their string.** The tail sprite
+  extended straight up while the lane leaned toward the vanishing
+  point — the far end visibly detached from the line (user
+  screenshot). Tails now connect the gem to the projected position of
+  their far end along the exact note path (both while approaching and
+  while held), with foreshortened length and matching rotation.
+
+- **Solo play now hears every input device.** The single player was
+  hard-routed to the keyboard, so a connected guitar lit menus but
+  played into the void during gameplay (no receptor highlights, no
+  hits). With one player, keyboard and all pads feed the same
+  session; strict per-device routing still applies in multiplayer.
+
+- **The stage now fits every window.** The camera used raw window
+  pixels, so a small window cropped receptors and HUD while a big one
+  shrank the stage into a corner. The world renders through a
+  guaranteed-minimum 1280x720 view that scales with the window (extra
+  aspect shows more backdrop, never cropping), and the screen-space
+  UI scales with window height so menus stay proportional. A
+  `BEATBYTE_WINDOW=WxH` variable pins the size for tests or taste.
+
+- **Depth view: notes now sit exactly ON their lane lines.** The
+  guides were drawn on a different straight line than the note path
+  (full lane width 200 px below the receptors, aimed at the vanishing
+  point) — everything visibly missed its string. The guides are now
+  the extension of the exact line notes travel (pinned by a
+  collinearity test).
 
 ## [0.10.0] - 2026-08-25
 

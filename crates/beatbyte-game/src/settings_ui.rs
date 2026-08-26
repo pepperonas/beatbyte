@@ -10,6 +10,7 @@ use crate::controls::MenuNav;
 use crate::palette;
 use crate::states::AppState;
 use crate::ui::UiFont;
+use crate::ui_kit;
 
 /// The adjustable rows, in display order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,7 +93,7 @@ impl Row {
             .to_owned(),
             Row::Fullscreen => on_off(settings.fullscreen),
             Row::Theme => settings.theme.to_uppercase(),
-            Row::Controls => "...".to_owned(),
+            Row::Controls => "OPEN >".to_owned(),
         }
     }
 
@@ -169,52 +170,53 @@ impl Plugin for SettingsUiPlugin {
 #[derive(Component)]
 struct SettingsScreen;
 
-/// One row's value text (index into [`Row::ALL`]).
+/// A settings row (index into [`Row::ALL`]). Stays on the entity that
+/// carries `Button`, so the existing input handler is untouched.
 #[derive(Component)]
 struct RowText(usize);
 
+/// A row's label text — static, written once at spawn.
+#[derive(Component)]
+struct SettingLabel(usize);
+
+/// A row's value text — the only part that changes at runtime.
+#[derive(Component)]
+struct SettingValue(usize);
+
 fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
     commands
-        .spawn((
-            SettingsScreen,
-            Node {
-                width: percent(100),
-                height: percent(100),
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                row_gap: px(14),
-                ..default()
-            },
-        ))
+        .spawn((SettingsScreen, ui_kit::screen_root()))
         .with_children(|parent| {
-            parent.spawn((
-                Text::new("SETTINGS"),
-                font.text(26.0),
-                TextColor(palette::BRAND),
-                Node {
-                    margin: UiRect::bottom(px(20)),
-                    ..default()
-                },
-            ));
-            for (index, _) in Row::ALL.iter().enumerate() {
-                parent.spawn((
-                    RowText(index),
-                    Button,
-                    Text::new(""),
-                    font.text(13.0),
-                    TextColor(palette::TEXT_DIM),
-                ));
-            }
-            parent.spawn((
-                Text::new("UP/DOWN choose   LEFT/RIGHT / CLICK adjust   ESC / R-CLICK back"),
-                font.text(9.0),
-                TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
-                Node {
-                    margin: UiRect::top(px(24)),
-                    ..default()
-                },
-            ));
+            ui_kit::header(parent, &font, "SETTINGS", "sound, feel and looks");
+            parent.spawn(ui_kit::panel()).with_children(|panel| {
+                for (index, definition) in Row::ALL.iter().enumerate() {
+                    panel
+                        .spawn((RowText(index), Button, ui_kit::row()))
+                        .with_children(|row| {
+                            // Label and value are separate texts in a
+                            // space-between row. The old single-string
+                            // layout padded the label to 16 characters,
+                            // which "TAP MODE (NO STRUM)" overflows by
+                            // three — that one row's value hung out of
+                            // the column.
+                            row.spawn((
+                                SettingLabel(index),
+                                Text::new(definition.label()),
+                                font.text(ui_kit::ROW),
+                                TextColor(palette::TEXT_DIM),
+                                ui_kit::label_node(),
+                            ));
+                            row.spawn((
+                                SettingValue(index),
+                                Text::new(""),
+                                font.text(ui_kit::ROW),
+                                TextColor(palette::TEXT_DIM),
+                                ui_kit::value_node(),
+                            ));
+                        });
+                }
+            });
+            ui_kit::footer(parent, &font, "UP/DOWN choose  LEFT/RIGHT adjust  ESC back");
         });
 }
 
@@ -273,24 +275,24 @@ fn settings_input(
 fn refresh_settings(
     settings: Res<Settings>,
     cursor: Res<SettingsCursor>,
-    mut rows: Query<(&RowText, &mut Text, &mut TextColor)>,
+    mut rows: Query<(&RowText, &mut BackgroundColor, &mut BorderColor)>,
+    mut labels: Query<(&SettingLabel, &mut TextColor), Without<SettingValue>>,
+    mut values: Query<(&SettingValue, &mut Text, &mut TextColor), Without<SettingLabel>>,
 ) {
-    for (row, mut text, mut color) in &mut rows {
-        let definition = Row::ALL[row.0];
-        let marker = if row.0 == cursor.0 { ">" } else { " " };
-        let line = format!(
-            "{marker} {:<16} {:>9}",
-            definition.label(),
-            definition.value(&settings)
-        );
-        if text.0 != line {
-            text.0 = line;
+    for (row, mut background, mut border) in &mut rows {
+        let style = ui_kit::row_style(ui_kit::state_for(row.0 == cursor.0, false));
+        background.0 = style.background;
+        *border = BorderColor::all(style.accent);
+    }
+    for (label, mut color) in &mut labels {
+        color.0 = ui_kit::row_style(ui_kit::state_for(label.0 == cursor.0, false)).label;
+    }
+    for (value, mut text, mut color) in &mut values {
+        let wanted = Row::ALL[value.0].value(&settings);
+        if text.0 != wanted {
+            text.0 = wanted;
         }
-        color.0 = if row.0 == cursor.0 {
-            palette::BRAND
-        } else {
-            palette::TEXT_DIM
-        };
+        color.0 = ui_kit::row_style(ui_kit::state_for(value.0 == cursor.0, false)).value;
     }
 }
 

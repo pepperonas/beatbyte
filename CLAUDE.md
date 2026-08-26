@@ -61,6 +61,11 @@ tech writer, release manager. Operate accordingly:
 - **Players are entities** (`PlayerSession`/`PlayerIndex`/
   `PlayerDevice`); input routes by `DeviceId` (Keyboard vs Pad(Entity)).
   No player-count special cases outside `HighwayLayout`.
+- **Menus share one design, not just one font.** `ui_kit` owns the
+  type scale (three sizes plus the wordmark), the spacing rhythm and
+  the row states; every menu draws its header, panel, rows and footer
+  from it. A screen may not invent a font size, a panel frame or a
+  selection cue of its own — a test forbids near-duplicate sizes.
 - **Editor ops are invertible** (`EditOp::apply` returns the inverse) —
   undo/redo correctness depends on it. Every new op ships with an
   inverse round-trip test.
@@ -91,6 +96,8 @@ BEATBYTE_AUTOPILOT=1 BEATBYTE_AUTOPILOT_PLAYERS=2   # multiplayer variant
 BEATBYTE_AUTOPILOT=1 BEATBYTE_AUTOPILOT_SONG=<sel>  # index or title substring
 BEATBYTE_AUTOPILOT=1 BEATBYTE_AUTOPILOT_EDIT=1  # editor add/undo/redo/save cycle
 BEATBYTE_SHOT_DIR=<dir>                          # + screenshots along the way
+BEATBYTE_SHOT_STATE=settings|controls|calibration|inputtest|menu|songselect|join
+                                                # boot into one screen, shoot it, quit
 ```
 
   Autopilot exits non-zero on ANY miss/overstrum — judgment is
@@ -255,6 +262,11 @@ artifact, smoke-test it (neutral CWD!), then
   reverts ALL uncommitted work in that file, including the feature the
   test pins (happened; the work had to be redone from context). Back
   the file up to the scratchpad, mutate, restore from the copy.
+- **Bevy blends `BackgroundColor` alpha in LINEAR space**, so sRGB
+  intuition badly underestimates it: a selection fill written as
+  `BRAND.with_alpha(0.12)` rendered as sRGB (99, 84, 35) — a solid
+  olive bar, not the whisper intended. Sample the rendered pixel
+  rather than reasoning about the constant.
 - **`dist/` is a build product.** It was once committed (118 MB, and
   CI shipped the stale DMG inside every artifact); it is gitignored —
   keep it that way.

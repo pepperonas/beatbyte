@@ -30,6 +30,7 @@ pub mod states;
 mod theme;
 pub mod transition;
 pub mod ui;
+pub mod ui_kit;
 mod xplorer;
 
 use bevy::prelude::*;

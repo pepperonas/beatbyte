@@ -7,6 +7,7 @@ use crate::controls::MenuNav;
 use crate::palette;
 use crate::states::AppState;
 use crate::ui::UiFont;
+use crate::ui_kit;
 
 /// The four menu actions, in display order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,54 +78,51 @@ struct MenuTitle;
 #[derive(Component)]
 struct MenuRow(usize);
 
+/// A row's label text, carrying the same index. The label is a child
+/// of the row now that a row has chrome of its own.
+#[derive(Component)]
+struct MenuLabel(usize);
+
 fn spawn_menu(mut commands: Commands, font: Res<UiFont>) {
     commands
-        .spawn((
-            MenuScreen,
-            Node {
-                width: percent(100),
-                height: percent(100),
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                row_gap: px(22),
-                ..default()
-            },
-        ))
+        .spawn((MenuScreen, ui_kit::screen_root()))
         .with_children(|parent| {
+            // The title keeps its outsized treatment — it is the
+            // game's wordmark, not a screen heading.
             parent.spawn((
                 MenuTitle,
                 Text::new("BEATBYTE"),
-                font.text(52.0),
+                font.text(ui_kit::WORDMARK),
                 TextColor(palette::BRAND),
             ));
             parent.spawn((
                 Text::new("five lanes. your music."),
-                font.text(11.0),
-                TextColor(palette::TEXT_DIM),
+                font.text(ui_kit::SMALL),
+                TextColor(palette::dimmed(palette::TEXT_DIM, 0.8)),
                 Node {
-                    margin: UiRect::bottom(px(26)),
+                    margin: UiRect::top(px(10)).with_bottom(px(ui_kit::HEADER_GAP)),
                     ..default()
                 },
             ));
-            for (index, action) in MenuAction::ALL.iter().enumerate() {
-                parent.spawn((
-                    MenuRow(index),
-                    Button,
-                    Text::new(action.label()),
-                    font.text(18.0),
-                    TextColor(palette::TEXT_DIM),
-                ));
-            }
-            parent.spawn((
-                Text::new("UP/DOWN or MOUSE    ENTER / CLICK confirm"),
-                font.text(10.0),
-                TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
-                Node {
-                    margin: UiRect::top(px(30)),
-                    ..default()
-                },
-            ));
+            parent.spawn(ui_kit::panel()).with_children(|panel| {
+                for (index, action) in MenuAction::ALL.iter().enumerate() {
+                    panel
+                        .spawn((MenuRow(index), Button, ui_kit::row()))
+                        .with_children(|row| {
+                            row.spawn((
+                                MenuLabel(index),
+                                Text::new(action.label()),
+                                font.text(ui_kit::ROW),
+                                TextColor(palette::TEXT_DIM),
+                            ));
+                        });
+                }
+            });
+            ui_kit::footer(
+                parent,
+                &font,
+                "UP/DOWN choose  ENTER confirm  MOUSE works too",
+            );
         });
 }
 
@@ -175,14 +173,19 @@ fn menu_input(
     }
 }
 
-/// Paint the highlighted row.
-fn highlight_cursor(cursor: Res<MenuCursor>, mut rows: Query<(&MenuRow, &mut TextColor)>) {
-    for (row, mut color) in &mut rows {
-        color.0 = if row.0 == cursor.0 {
-            palette::BRAND
-        } else {
-            palette::TEXT_DIM
-        };
+/// Paint the highlighted row: accent bar, fill and label together.
+fn highlight_cursor(
+    cursor: Res<MenuCursor>,
+    mut rows: Query<(&MenuRow, &mut BackgroundColor, &mut BorderColor)>,
+    mut labels: Query<(&MenuLabel, &mut TextColor)>,
+) {
+    for (row, mut background, mut border) in &mut rows {
+        let style = ui_kit::row_style(ui_kit::state_for(row.0 == cursor.0, false));
+        background.0 = style.background;
+        *border = BorderColor::all(style.accent);
+    }
+    for (label, mut color) in &mut labels {
+        color.0 = ui_kit::row_style(ui_kit::state_for(label.0 == cursor.0, false)).label;
     }
 }
 

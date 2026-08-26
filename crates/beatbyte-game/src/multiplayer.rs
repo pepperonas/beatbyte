@@ -13,6 +13,7 @@ use crate::controls::MenuNav;
 use crate::palette;
 use crate::states::AppState;
 use crate::ui::UiFont;
+use crate::ui_kit;
 
 /// The input device driving one player.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,6 +96,14 @@ struct JoinScreen;
 #[derive(Component)]
 struct SlotRow(usize);
 
+/// A slot's "P1" label.
+#[derive(Component)]
+struct SlotLabel(usize);
+
+/// A slot's device text.
+#[derive(Component)]
+struct SlotValue(usize);
+
 /// The mode line.
 #[derive(Component)]
 struct ModeText;
@@ -103,60 +112,47 @@ fn spawn_join_screen(mut commands: Commands, font: Res<UiFont>, mut roster: ResM
     // Joining starts fresh each time the screen opens.
     roster.devices.clear();
     commands
-        .spawn((
-            JoinScreen,
-            Node {
-                width: percent(100),
-                height: percent(100),
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                row_gap: px(16),
-                ..default()
-            },
-        ))
+        .spawn((JoinScreen, ui_kit::screen_root()))
         .with_children(|parent| {
-            parent.spawn((
-                Text::new("MULTIPLAYER"),
-                font.text(26.0),
-                TextColor(palette::BRAND),
-                Node {
-                    margin: UiRect::bottom(px(14)),
-                    ..default()
-                },
-            ));
-            parent.spawn((
-                Text::new("press FRET 1 (A / pad button) to join"),
-                font.text(11.0),
-                TextColor(palette::TEXT),
-            ));
-            for index in 0..MAX_PLAYERS {
-                parent.spawn((
-                    SlotRow(index),
-                    Text::new(""),
-                    font.text(13.0),
-                    TextColor(palette::TEXT_DIM),
-                ));
-            }
+            ui_kit::header(
+                parent,
+                &font,
+                "MULTIPLAYER",
+                "press FRET 1 on a device to join",
+            );
+            parent.spawn(ui_kit::panel()).with_children(|panel| {
+                for index in 0..MAX_PLAYERS {
+                    panel
+                        .spawn((SlotRow(index), ui_kit::row()))
+                        .with_children(|row| {
+                            row.spawn((
+                                SlotLabel(index),
+                                Text::new(format!("P{}", index + 1)),
+                                font.text(ui_kit::ROW),
+                                TextColor(palette::TEXT_DIM),
+                                ui_kit::label_node(),
+                            ));
+                            row.spawn((
+                                SlotValue(index),
+                                Text::new(""),
+                                font.text(ui_kit::ROW),
+                                TextColor(palette::TEXT_DIM),
+                                ui_kit::value_node(),
+                            ));
+                        });
+                }
+            });
             parent.spawn((
                 ModeText,
                 Text::new(""),
-                font.text(13.0),
+                font.text(ui_kit::ROW),
                 TextColor(palette::TEXT),
                 Node {
-                    margin: UiRect::top(px(16)),
+                    margin: UiRect::top(px(ui_kit::FOOTER_GAP)),
                     ..default()
                 },
             ));
-            parent.spawn((
-                Text::new("LEFT/RIGHT mode   ENTER continue   ESC back"),
-                font.text(9.0),
-                TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
-                Node {
-                    margin: UiRect::top(px(18)),
-                    ..default()
-                },
-            ));
+            ui_kit::footer(parent, &font, "LEFT/RIGHT mode  ENTER continue  ESC back");
         });
 }
 
@@ -200,20 +196,44 @@ fn join_input(
 
 fn refresh_join_screen(
     roster: Res<PlayerRoster>,
-    mut rows: Query<(&SlotRow, &mut Text, &mut TextColor), Without<ModeText>>,
-    mut mode: Query<&mut Text, With<ModeText>>,
+    mut rows: Query<(&SlotRow, &mut BackgroundColor, &mut BorderColor)>,
+    mut labels: Query<(&SlotLabel, &mut TextColor), Without<SlotValue>>,
+    mut values: Query<(&SlotValue, &mut Text, &mut TextColor), Without<SlotLabel>>,
+    mut mode: Query<&mut Text, (With<ModeText>, Without<SlotValue>)>,
 ) {
-    for (row, mut text, mut color) in &mut rows {
-        let line = match roster.devices.get(row.0) {
-            Some(DeviceId::Keyboard) => format!("P{}  KEYBOARD", row.0 + 1),
-            Some(DeviceId::Pad(_)) => format!("P{}  GAMEPAD", row.0 + 1),
-            None => format!("P{}  ---", row.0 + 1),
+    // A joined slot lights its accent bar in that player's colour —
+    // the same cue the rest of the game uses for "this is you".
+    for (row, mut background, mut border) in &mut rows {
+        let joined = roster.devices.get(row.0).is_some();
+        background.0 = if joined {
+            PLAYER_COLORS[row.0].with_alpha(ui_kit::FILL_ALPHA)
+        } else {
+            Color::NONE
+        };
+        *border = BorderColor::all(if joined {
+            PLAYER_COLORS[row.0]
+        } else {
+            Color::NONE
+        });
+    }
+    for (label, mut color) in &mut labels {
+        color.0 = if roster.devices.get(label.0).is_some() {
+            PLAYER_COLORS[label.0]
+        } else {
+            palette::TEXT_DIM
+        };
+    }
+    for (slot, mut text, mut color) in &mut values {
+        let line = match roster.devices.get(slot.0) {
+            Some(DeviceId::Keyboard) => "KEYBOARD",
+            Some(DeviceId::Pad(_)) => "GAMEPAD",
+            None => "open",
         };
         if text.0 != line {
-            text.0 = line;
+            text.0 = line.to_owned();
         }
-        color.0 = if roster.devices.get(row.0).is_some() {
-            PLAYER_COLORS[row.0]
+        color.0 = if roster.devices.get(slot.0).is_some() {
+            palette::TEXT
         } else {
             palette::dimmed(palette::TEXT_DIM, 0.6)
         };

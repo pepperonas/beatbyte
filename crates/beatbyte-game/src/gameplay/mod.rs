@@ -468,12 +468,12 @@ fn spawn_pause_overlay(mut commands: Commands, font: Res<crate::ui::UiFont>) {
         .with_children(|parent| {
             parent.spawn((
                 Text::new("PAUSED"),
-                font.text(40.0),
+                font.text(crate::ui_kit::WORDMARK),
                 TextColor(palette::BRAND),
             ));
             parent.spawn((
-                Text::new("ESC/ENTER resume   |   Q quit"),
-                font.text(13.0),
+                Text::new("ESC resume  Q quit"),
+                font.text(crate::ui_kit::ROW),
                 TextColor(palette::TEXT_DIM),
             ));
         });
