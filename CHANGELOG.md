@@ -9,12 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Fret buttons hit much harder.** A held fret now swells, brightens
-  toward its full lane colour and lights a halo behind it; a landed
-  note punches the receptor with a scale kick and a white flash whose
-  strength follows the judgment (a Perfect lands harder than a Good).
-  Press and release are eased at different rates — instant to light
-  up, lingering just long enough to be seen.
+- **Fret feedback rebuilt along genre lines.** In this genre the HIT
+  is the spectacle — the gem bursting into flame at the target line —
+  while holding a fret is a quiet readiness cue. So: a held fret
+  **fills** with its lane colour (crisp edge, no haze) and presses
+  slightly down, and a landed note fires a burst that starts tight and
+  bright at the strike and expands outward as it fades, with its force
+  taken from the judgment (a Perfect lands harder than a Good). The
+  first attempt had this backwards and haloed every press, which read
+  as constant noise.
 
 ### Added
 

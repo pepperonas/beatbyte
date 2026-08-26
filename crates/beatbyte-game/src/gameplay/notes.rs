@@ -217,8 +217,9 @@ pub fn spawn_highways(
             ));
             commands.spawn((
                 GameplayScreen,
+                ReceptorCore { player, lane },
                 gem_sprite(shapes, lane, round, theme.background, receptor * 0.72),
-                Transform::from_xyz(x, RECEPTOR_Y, -4.0).with_scale(Vec3::new(1.0, squash, 1.0)),
+                Transform::from_xyz(x, RECEPTOR_Y, -4.0).with_scale(base_scale),
             ));
         }
     }
@@ -685,8 +686,26 @@ pub struct ReceptorFx {
     base_scale: Vec3,
 }
 
-/// The halo behind a receptor, which is what makes a press read from
-/// across the room.
+/// The disc inside a receptor's ring.
+///
+/// This is what makes a press unmistakable without any blur: the
+/// button FILLS with its lane colour instead of being wrapped in a
+/// halo. A crisp edge reads instantly even in a busy frame, where a
+/// soft glow just adds haze.
+#[derive(Component)]
+pub struct ReceptorCore {
+    /// Owning player.
+    pub player: usize,
+    /// Which fret.
+    pub lane: Lane,
+}
+
+/// The burst that fires out of a receptor when a note lands on it.
+///
+/// In this genre the HIT gets the spectacle — the gem bursting into
+/// flame at the target line — while merely holding a fret is a quiet
+/// readiness cue. The first version had that backwards and glowed on
+/// every press, which reads as constant noise.
 #[derive(Component)]
 pub struct ReceptorGlow {
     /// Owning player.
@@ -703,8 +722,10 @@ pub struct ReceptorGlow {
 const PRESS_ATTACK: f32 = 26.0;
 /// Release rate of the press highlight.
 const PRESS_RELEASE: f32 = 13.0;
-/// How fast the hit flash decays (per second).
-const HIT_DECAY: f32 = 6.5;
+/// How fast the hit flash decays (per second). ~130 ms: long enough
+/// to register, short enough that consecutive notes each get their
+/// own burst instead of smearing into one glow.
+const HIT_DECAY: f32 = 7.5;
 
 /// Receptors light up while their player holds the fret.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)] // Bevy system: params are DI
@@ -716,8 +737,14 @@ pub fn update_receptors(
     mut receptors: Query<(&Receptor, &mut ReceptorFx, &mut Sprite, &mut Transform)>,
     mut glows: Query<
         (&ReceptorGlow, &mut Sprite, &mut Transform),
-        (Without<Receptor>, Without<NoteSprite>),
+        (
+            Without<Receptor>,
+            Without<NoteSprite>,
+            Without<ReceptorCore>,
+        ),
     >,
+    mut cores: Query<(&ReceptorCore, &mut Sprite), (Without<Receptor>, Without<NoteSprite>)>,
+    theme_bg: Res<ClearColor>,
 ) {
     // Which frets took a hit this frame, and how good it was.
     let mut struck: Vec<(usize, Lane, f32)> = Vec::new();
@@ -771,14 +798,32 @@ pub fn update_receptors(
         fx.hit = (fx.hit - HIT_DECAY * delta).max(0.0);
 
         let color = theme.0.lane_color(receptor.lane);
-        // Resting frets stay dim; a pressed one goes to full colour
-        // and then washes toward white, which is what separates
-        // "armed" from "played" at a glance.
-        let lit = palette::dimmed(color, 0.35).mix(&color, fx.press);
-        sprite.color = lit.mix(&Color::WHITE, 0.55 * fx.hit + 0.18 * fx.press);
-        // Squash-preserving pop: press swells it, a hit punches it.
-        let swell = 0.14f32.mul_add(fx.press, 1.0) + 0.34 * fx.hit;
-        transform.scale = fx.base_scale * swell;
+        // The ring goes from clearly dim to clearly full — a wide
+        // enough swing that a held fret is obvious at a glance.
+        let lit = palette::dimmed(color, 0.3).mix(&color, fx.press);
+        sprite.color = lit.mix(&Color::WHITE, 0.7 * fx.hit + 0.12 * fx.press);
+        // Pressing pushes the button DOWN — a small squash rather than
+        // a swell, the way a real fret behaves. A hit is the only
+        // thing that makes it jump.
+        let press_squash = Vec3::new(
+            0.05f32.mul_add(fx.press, 1.0),
+            0.09f32.mul_add(-fx.press, 1.0),
+            1.0,
+        );
+        let punch = 0.38f32.mul_add(fx.hit, 1.0);
+        transform.scale = fx.base_scale * press_squash * punch;
+    }
+
+    // The inner disc: dark when idle, filled with the lane colour
+    // while held, white at the moment of a hit.
+    for (core, mut sprite) in &mut cores {
+        let Some((_, fx, _, _)) = receptors.iter().find(|(receptor, _, _, _)| {
+            receptor.player == core.player && receptor.lane == core.lane
+        }) else {
+            continue;
+        };
+        let filled = palette::dimmed(theme.0.lane_color(core.lane), 0.85);
+        sprite.color = theme_bg.0.mix(&filled, fx.press).mix(&Color::WHITE, fx.hit);
     }
 
     for (glow, mut sprite, mut transform) in &mut glows {
@@ -787,10 +832,15 @@ pub fn update_receptors(
         }) else {
             continue;
         };
+        // Fires ONLY on a hit, and behaves like a burst rather than a
+        // lamp: tight and bright at the strike, expanding outward as
+        // it fades. Holding a fret produces nothing here.
+        let progress = 1.0 - fx.hit;
         let color = theme.0.lane_color(glow.lane);
-        let intensity = 0.55f32.mul_add(fx.press, 0.9 * fx.hit).min(1.0);
-        sprite.color = color.mix(&Color::WHITE, 0.4 * fx.hit).with_alpha(intensity);
-        transform.scale = glow.base_scale * 0.55f32.mul_add(fx.hit, 1.0);
+        sprite.color = color
+            .mix(&Color::WHITE, 0.5 * fx.hit)
+            .with_alpha(fx.hit.powf(1.4));
+        transform.scale = glow.base_scale * 1.25f32.mul_add(progress, 0.7);
     }
 }
 

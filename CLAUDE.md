@@ -217,6 +217,11 @@ artifact, smoke-test it (neutral CWD!), then
   up); `grep -c` exits 1 on zero matches and breaks `&&` chains.
 - State-entry screenshots must wait out the 0.25 s transition fade
   (autopilot uses a 0.6 s settle delay).
+- **`BEATBYTE_SHOT_DIR` can make autopilot fail spuriously.** Capturing
+  a screenshot stalls a frame long enough for the key injector to miss
+  a note window (seen: 16 misses + 16 overstrums on a song that scores
+  624 perfect without capture). Take screenshots in a separate run
+  from the pass/fail verification.
 - **Wrap long local game runs in `caffeinate -dis`** — macOS display
   sleep removes the monitor, the window closes, and the run dies
   mid-song (with the old harness that even faked a PASS; autopilot now
