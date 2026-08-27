@@ -16,7 +16,65 @@ pub struct UiFont {
     pub smooth: bool,
 }
 
+/// Fold a Latin letter onto the ASCII the built-in font can draw.
+///
+/// Only used in the smooth style. Measured: Bevy's bundled face has
+/// **95 glyphs** — plain ASCII, no `å`, `ä`, `ö`, `ü`, `é`, `ß`, no
+/// en-dash and no curly quotes. Press Start 2P has 656 and draws all
+/// of them, which is why this is style-dependent rather than a blanket
+/// rule: folding "Björk" to "Bjork" when the font can render it would
+/// be damage, and leaving it when the font cannot is a box.
+fn fold_latin(c: char) -> Option<&'static str> {
+    Some(match c {
+        'á' | 'à' | 'â' | 'ä' | 'ã' | 'å' => "a",
+        'Á' | 'À' | 'Â' | 'Ä' | 'Ã' | 'Å' => "A",
+        'é' | 'è' | 'ê' | 'ë' => "e",
+        'É' | 'È' | 'Ê' | 'Ë' => "E",
+        'í' | 'ì' | 'î' | 'ï' => "i",
+        'Í' | 'Ì' | 'Î' | 'Ï' => "I",
+        'ó' | 'ò' | 'ô' | 'ö' | 'õ' | 'ø' => "o",
+        'Ó' | 'Ò' | 'Ô' | 'Ö' | 'Õ' | 'Ø' => "O",
+        'ú' | 'ù' | 'û' | 'ü' => "u",
+        'Ú' | 'Ù' | 'Û' | 'Ü' => "U",
+        'ñ' => "n",
+        'Ñ' => "N",
+        'ç' => "c",
+        'Ç' => "C",
+        'ý' | 'ÿ' => "y",
+        'ß' => "ss",
+        'æ' => "ae",
+        'Æ' => "AE",
+        'œ' => "oe",
+        'Œ' => "OE",
+        // Typographic punctuation, which the built-in face also lacks.
+        '–' | '—' | '‐' | '‑' => "-",
+        '’' | '‘' | '‚' => "'",
+        '“' | '”' | '„' => "\"",
+        '…' => "...",
+        '·' | '•' => "-",
+        '×' => "x",
+        _ => return None,
+    })
+}
+
 impl UiFont {
+    /// Text ready for the face this style actually uses.
+    ///
+    /// Always maps the look-alikes neither face carries; in the smooth
+    /// style it also folds Latin letters onto ASCII, because the
+    /// built-in face has nothing else.
+    #[must_use]
+    pub fn safe(&self, text: &str) -> String {
+        let mapped = font_safe(text);
+        if !self.smooth {
+            return mapped;
+        }
+        mapped
+            .chars()
+            .map(|c| fold_latin(c).map_or_else(|| c.to_string(), ToOwned::to_owned))
+            .collect()
+    }
+
     /// A [`TextFont`] in the active style at the given size.
     #[must_use]
     pub fn text(&self, size: f32) -> TextFont {
@@ -93,7 +151,8 @@ fn sync_font_style(settings: Res<crate::config::Settings>, mut font: ResMut<UiFo
 
 #[cfg(test)]
 mod tests {
-    use super::font_safe;
+    use super::{UiFont, font_safe};
+    use bevy::prelude::*;
 
     #[test]
     fn fullwidth_forms_become_the_characters_they_stand_for() {
@@ -124,6 +183,46 @@ mod tests {
         // A box is bad; a row of question marks is no better, and it
         // destroys information. Only look-alikes get mapped.
         assert_eq!(font_safe("初音ミク"), "初音ミク");
+    }
+
+    #[test]
+    fn the_smooth_style_folds_what_its_face_cannot_draw() {
+        // Bevy's built-in face carries 95 glyphs — measured — so in
+        // the smooth style a diacritic is a box, and a box is worse
+        // than a plain letter.
+        let smooth = UiFont {
+            pixel: Handle::default(),
+            smooth: true,
+        };
+        assert_eq!(smooth.safe("Skatebård"), "Skatebard");
+        assert_eq!(smooth.safe("Straße"), "Strasse");
+        assert_eq!(smooth.safe("Beyoncé"), "Beyonce");
+        assert_eq!(smooth.safe("Motörhead"), "Motorhead");
+    }
+
+    #[test]
+    fn the_pixel_style_keeps_letters_it_can_draw() {
+        // Press Start 2P has 656 glyphs and renders all of these.
+        // Folding them here would be damage, not safety.
+        let pixel = UiFont {
+            pixel: Handle::default(),
+            smooth: false,
+        };
+        assert_eq!(pixel.safe("Skatebård"), "Skatebård");
+        assert_eq!(pixel.safe("Straße"), "Straße");
+    }
+
+    #[test]
+    fn both_styles_map_the_look_alikes() {
+        // Neither face has the fullwidth block.
+        for smooth in [true, false] {
+            let font = UiFont {
+                pixel: Handle::default(),
+                smooth,
+            };
+            assert_eq!(font.safe("Billie ｜ Glastonbury"), "Billie | Glastonbury");
+            assert_eq!(font.safe("Delilah ⧸ Billie"), "Delilah / Billie");
+        }
     }
 
     #[test]

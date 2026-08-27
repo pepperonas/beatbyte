@@ -303,3 +303,61 @@ constraints are now tests.
 
 Judgment proven identical by the autopilot, depth view unaffected,
 multiplayer unchanged, every number measured before it is written.
+
+---
+
+# Round four (2026-08-27)
+
+## Measured
+
+The whole frame sat at 0.21 median brightness with 13 % of it very
+nearly black. But the real finding was not a number: a screenshot
+caught the exact frame in which a note landed, and **nothing
+happened**. The receptor lit, a flat ring spread across the board,
+and that was all.
+
+The comment in the source that justified the flat ring said the
+genre's flame "spreads across the board rather than rising off it".
+That is backwards. It rises. That comment was mine, from an earlier
+round, written from memory rather than from the reference.
+
+## The work
+
+### X1 — A flame off the fret *(the signature)*
+
+A cone rising from the receptor in the lane's colour, white-hot at
+the strike and cooling to the lane tint as it dies. A held sustain
+keeps a low flame burning under the fret.
+
+*Verify:* a screenshot with a flame actually in it — which took three
+shots to catch, because the effect is a third of a second long.
+
+### X2 — Latin letters the built-in face cannot draw
+
+`font_safe` fixed the fullwidth look-alikes but "Skatebård" still
+rendered with a box. The earlier measurement was of the WRONG FONT:
+Press Start 2P has 656 glyphs and does carry `å`, but the game runs
+the engine's built-in face whenever the round note style is on —
+which is the default — and that face has **95 glyphs**, plain ASCII.
+
+Folding is therefore style-dependent, not a blanket rule: turning
+"Björk" into "Bjork" when the font can draw it is damage, and leaving
+it when the font cannot is a box.
+
+### X3 — A crowd that moves
+
+Driven from the song's own tempo map, not a free timer, so the room
+is on the beat the player is playing to. Each head has its own phase
+so the ranks ripple rather than pumping as one block.
+
+## Status
+
+| Step | State | Measured |
+|---|---|---|
+| X1 hit flame | done | Caught on camera; shape retuned from 5:1 (a laser) to about 5:3 |
+| X2 font folding | done | Built-in face measured at 95 glyphs; folding gated on the active style |
+| X3 crowd bob | done | Honours Stage Motion like every other ambient movement |
+
+Frame time with flames and a moving crowd: median **10.0 ms
+(100 fps)**, 99th percentile 12.4 ms. Autopilot 98/98 perfect,
+2-player PASSED.

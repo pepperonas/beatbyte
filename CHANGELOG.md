@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A flame off the fret when a note lands.** The genre's signature
+  moment, and the one thing the stage still did not do: a hit lit the
+  receptor, spread a flat ring across the board, and that was all. The
+  flame is white-hot at the strike and cools to the lane's colour as
+  it dies; a held sustain keeps a low one burning under the fret.
+
+- **A crowd that moves on the beat**, driven from the song's own tempo
+  map rather than a free timer, each head on its own phase so the
+  ranks ripple instead of pumping as one block. Honours Stage Motion
+  like every other ambient movement.
+
 - **A stage that is lit rather than merely visible.** Measured, the
   venue sat at 0.13 brightness and 0.20 saturation — a white key light
   on grey materials returns grey however many boxes are in the room.
@@ -290,6 +301,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the game has shipped a smooth high-res style for a while.
 
 ### Fixed
+
+- **Letters with diacritics no longer render as boxes.** The earlier
+  fix measured the wrong font: Press Start 2P carries 656 glyphs and
+  does have `å`, but the game uses the engine's built-in face whenever
+  the round note style is on — the default — and that face has **95**,
+  plain ASCII. Folding is now gated on the active style, because
+  turning "Björk" into "Bjork" when the font can draw it is damage,
+  and leaving it when the font cannot is a box.
 
 - **Imported titles no longer show empty boxes.** Press Start 2P has
   656 glyphs — plenty of Latin, including `å` and `ß` — but nothing

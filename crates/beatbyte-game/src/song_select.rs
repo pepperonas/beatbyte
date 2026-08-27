@@ -97,14 +97,14 @@ fn spawn_browser_impl(
                             // a song.
                             row.spawn((
                                 SongTitle(index),
-                                Text::new(crate::ui::font_safe(&entry.title)),
+                                Text::new(font.safe(&entry.title)),
                                 font.text(ui_kit::ROW),
                                 TextColor(palette::TEXT_DIM),
                                 ui_kit::label_node(),
                             ));
                             row.spawn((
                                 SongArtist(index),
-                                Text::new(crate::ui::font_safe(&entry.artist)),
+                                Text::new(font.safe(&entry.artist)),
                                 font.text(ui_kit::ROW),
                                 TextColor(palette::TEXT_DIM),
                                 ui_kit::value_node(),

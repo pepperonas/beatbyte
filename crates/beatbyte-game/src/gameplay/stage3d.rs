@@ -113,6 +113,23 @@ pub struct ReceptorFill {
     pub lane: Lane,
 }
 
+/// The flame that leaps off a fret when a note lands on it.
+///
+/// The genre's signature moment, and the one thing the stage still
+/// did not do: a hit produced a flat ring spreading across the board
+/// and nothing else. The comment that justified that said the flame
+/// "spreads across the board rather than rising off it", which is
+/// backwards — it rises.
+#[derive(Component)]
+pub struct HitFlame {
+    /// Owning player.
+    pub player: usize,
+    /// Which fret.
+    pub lane: Lane,
+    /// 1.0 at the strike, decaying to 0.
+    pub life: f32,
+}
+
 /// The burst that fires out of a fret when a note lands on it.
 #[derive(Component)]
 pub struct HitBurst {
@@ -491,6 +508,43 @@ pub fn sustain_tail_span(
     Some(((head_z + end_z) / 2.0, length))
 }
 
+/// One head in the crowd, with its own phase so the ranks do not
+/// bounce as one block.
+#[derive(Component)]
+pub struct CrowdHead {
+    /// Radians of offset into the beat.
+    pub phase: f32,
+    /// Resting height, so the bob is an offset and not a drift.
+    pub rest: f32,
+}
+
+/// Bob the crowd on the beat.
+///
+/// The ranks were a static grey mass in a room that is otherwise
+/// moving. Driven from the song's own tempo map rather than a free
+/// timer, so the room is on the beat the player is playing to.
+pub fn bob_crowd(
+    settings: Res<Settings>,
+    game_clock: Res<GameClock>,
+    time: Res<Time>,
+    players: Query<&PlayerSession>,
+    mut heads: Query<(&CrowdHead, &mut Transform)>,
+) {
+    if !active(&settings) || !settings.backdrop_motion {
+        return;
+    }
+    let (Some(now), Some(player)) = (game_clock.song_time(&time), players.iter().next()) else {
+        return;
+    };
+    let beats = player.session.track().tempo.beats_at(now) as f32;
+    for (head, mut transform) in &mut heads {
+        // Half a beat up, half a beat down, and never below the rest
+        // height — a crowd jumps, it does not sink into the floor.
+        let swing = (beats * core::f32::consts::PI + head.phase).sin().max(0.0);
+        transform.translation.y = 0.22f32.mul_add(swing, head.rest);
+    }
+}
+
 /// A piece of the venue behind the neck.
 #[derive(Component)]
 struct Venue;
@@ -719,7 +773,13 @@ fn spawn_venue(
             Venue,
             Mesh3d(head.clone()),
             MeshMaterial3d(head_material.clone()),
-            Transform::from_xyz(x, 0.12 + 0.16 * row as f32, z),
+            CrowdHead {
+                // Spread through the beat by seat, so the ranks
+                // ripple instead of pumping as one block.
+                phase: index as f32 * 0.7,
+                rest: 0.16f32.mul_add(row as f32, 0.12),
+            },
+            Transform::from_xyz(x, 0.16f32.mul_add(row as f32, 0.12), z),
             RenderLayers::layer(STAGE_LAYER),
         ));
     }
@@ -864,9 +924,14 @@ pub fn setup_stage(
     // and an approaching note were the same shape.
     let receptor_mesh = meshes.add(Torus::new(GEM_RADIUS * 0.82, GEM_RADIUS * 1.12));
     let fill_mesh = meshes.add(Cylinder::new(GEM_RADIUS * 0.88, 0.03));
-    // Flat and wide: the burst spreads ACROSS the board rather than
-    // rising off it, which is what the genre's flame does.
+    // The ring on the board — the impact — and the flame that leaps
+    // off it. Two halves of one moment: the ring says WHERE, the
+    // flame says HOW MUCH.
     let burst_mesh = meshes.add(Cylinder::new(GEM_RADIUS * 1.9, 0.012));
+    let flame_mesh = meshes.add(Cone {
+        radius: GEM_RADIUS * 1.15 * neck_spread(&layout),
+        height: 1.0,
+    });
     let hit_bar = meshes.add(Cuboid::new(1.0, 0.02, 0.06));
 
     for index in &players {
@@ -1007,6 +1072,30 @@ pub fn setup_stage(
                     .with_scale(Vec3::splat(0.01)),
                 RenderLayers::layer(STAGE_LAYER),
             ));
+            // The flame, parked flat until a note lands on this fret.
+            commands.spawn((
+                GameplayScreen,
+                Stage3d,
+                HitFlame {
+                    player,
+                    lane,
+                    life: 0.0,
+                },
+                Mesh3d(flame_mesh.clone()),
+                MeshMaterial3d(materials.add(StandardMaterial {
+                    base_color: colour.with_alpha(0.0),
+                    emissive: colour.to_linear() * 5.0,
+                    alpha_mode: AlphaMode::Add,
+                    unlit: true,
+                    double_sided: true,
+                    cull_mode: None,
+                    ..default()
+                })),
+                // Sits ON the fret, base at the board, tip upward.
+                Transform::from_xyz(lane_x(&layout, player, lane), 0.5, 0.0)
+                    .with_scale(Vec3::splat(0.01)),
+                RenderLayers::layer(STAGE_LAYER),
+            ));
             commands.spawn((
                 GameplayScreen,
                 Stage3d,
@@ -1074,8 +1163,9 @@ pub fn update_receptors(
             &mut Transform,
             &MeshMaterial3d<StandardMaterial>,
         ),
-        Without<Receptor3d>,
+        (Without<Receptor3d>, Without<HitFlame>),
     >,
+    mut flames: FlameQuery,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut state: Local<Vec<(usize, Lane, f32, f32)>>,
 ) {
@@ -1232,6 +1322,74 @@ pub fn update_receptors(
             let colour = theme.0.lane_color(burst.lane);
             surface.base_color = colour.with_alpha(burst.life.powf(1.3));
             surface.emissive = colour.to_linear() * (7.0 * burst.life);
+        }
+    }
+
+    drive_flames(
+        delta,
+        &remembered,
+        &holds,
+        &mut flames,
+        &mut materials,
+        theme.0,
+    );
+}
+
+/// The flame query, named because clippy is right that spelling it
+/// out twice is unreadable.
+type FlameQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static mut HitFlame,
+        &'static mut Transform,
+        &'static MeshMaterial3d<StandardMaterial>,
+    ),
+    (Without<Receptor3d>, Without<HitBurst>),
+>;
+
+/// Grow, lean and die: the flame is the loudest part of a hit, so it
+/// has to be short. A quarter of a second, and gone before the next
+/// note needs the space.
+fn drive_flames(
+    delta: f32,
+    remembered: &[(usize, Lane, f32, f32)],
+    sustaining: &dyn Fn(usize, Lane) -> bool,
+    flames: &mut FlameQuery,
+    materials: &mut Assets<StandardMaterial>,
+    theme: crate::theme::Theme,
+) {
+    for (mut flame, mut transform, material) in flames {
+        if let Some((_, _, _, hit)) = remembered
+            .iter()
+            .find(|(p, l, _, _)| *p == flame.player && *l == flame.lane)
+            && *hit > flame.life
+        {
+            flame.life = *hit;
+        }
+        // A held sustain keeps a low flame alive under the fret.
+        if sustaining(flame.player, flame.lane) {
+            flame.life = flame.life.max(0.34);
+        }
+        flame.life = (flame.life - 3.0 * delta).max(0.0);
+
+        let life = flame.life;
+        // Tall and narrow at the peak, collapsing as it dies — a
+        // flame thins upward, it does not shrink uniformly.
+        // Proportions matter more than size here: at 2.6 tall and
+        // 0.9 across the first version read as a laser, not a flame.
+        // Roughly five to three is the shape of a flare.
+        let height = 1.45 * life;
+        let girth = 0.55f32.mul_add(life, 0.95) * life.max(0.001);
+        transform.scale = Vec3::new(girth, height.max(0.001), girth);
+        transform.translation.y = 0.03 + height * 0.5;
+        if let Some(mut paint) = materials.get_mut(&material.0) {
+            let colour = theme.lane_color(flame.lane);
+            // Whiter at the base of the strike, the lane's own colour
+            // as it burns down.
+            let tint = colour.mix(&Color::WHITE, 0.45 * life);
+            paint.base_color = tint.with_alpha(life * 0.75);
+            paint.emissive = tint.to_linear() * (6.5 * life);
         }
     }
 }
@@ -1722,6 +1880,7 @@ impl Plugin for Stage3dPlugin {
                 move_fret_bars,
                 move_phrase_bands,
                 tint_stage_for_hype,
+                bob_crowd,
                 update_receptors,
                 apply_note_events,
                 sweep_beams,

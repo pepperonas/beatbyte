@@ -145,12 +145,8 @@ fn spawn_solo(
     ui_kit::header(
         parent,
         font,
-        &crate::ui::font_safe(&results.title).to_uppercase(),
-        &format!(
-            "{} - {}",
-            crate::ui::font_safe(&results.artist),
-            results.difficulty
-        ),
+        &font.safe(&results.title).to_uppercase(),
+        &format!("{} - {}", font.safe(&results.artist), results.difficulty),
     );
 
     parent.spawn(ui_kit::panel()).with_children(|panel| {
@@ -298,7 +294,7 @@ fn spawn_multi(parent: &mut ChildSpawnerCommands, results: &LastResults, font: &
     parent.spawn((
         Text::new(format!(
             "\"{}\" on {}",
-            crate::ui::font_safe(&results.title),
+            font.safe(&results.title),
             results.difficulty
         )),
         font.text(11.0),
