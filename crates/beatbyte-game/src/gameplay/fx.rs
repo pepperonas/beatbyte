@@ -109,8 +109,19 @@ impl Plugin for FxPlugin {
 pub fn spawn_fx_scenery(
     mut commands: Commands,
     layout: Res<HighwayLayout>,
+    settings: Res<crate::config::Settings>,
     players: Query<&PlayerIndex, With<PlayerSession>>,
 ) {
+    // The overlay is a 900-pixel-tall vertical band the width of the
+    // bed — which is exactly the shape of a highway in the flat and
+    // depth views, and nothing like one in 3D. There the neck is a
+    // receding plane, so the band misses it entirely and instead
+    // washes the venue standing behind the vanishing point: measured,
+    // the rear wall forty units back turned violet while the rails in
+    // the foreground did not. The 3D stage tints its own surfaces.
+    if super::stage3d::active(&settings) {
+        return;
+    }
     for index in players.iter() {
         commands.spawn((
             GameplayScreen,

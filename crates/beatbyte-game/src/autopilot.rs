@@ -206,12 +206,14 @@ struct ShotDir(std::path::PathBuf);
 
 /// Take one screenshot per named moment of the run (state screens
 /// wait out the transition fade first).
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI
 fn autopilot_screenshots(
     mut commands: Commands,
     dir: Res<ShotDir>,
     state: Res<State<AppState>>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
+    players: Query<&crate::gameplay::PlayerSession>,
     mut taken: Local<std::collections::HashSet<&'static str>>,
     mut in_state_for: Local<(Option<AppState>, f32)>,
 ) {
@@ -230,7 +232,26 @@ fn autopilot_screenshots(
         AppState::MultiplayerSetup => Some("join"),
         AppState::Gameplay => {
             let now = game_clock.song_time(&time).unwrap_or(0.0);
-            if (24.0..26.0).contains(&now) {
+            // An energy phrase is worth its own frame: the fixed
+            // moments below fall between phrases on every song in the
+            // library, so nothing automated ever pictured a marked
+            // note or a phrase band.
+            let in_phrase = players.iter().any(|player| {
+                player
+                    .session
+                    .track()
+                    .phrases()
+                    .iter()
+                    .any(|phrase| phrase.contains(now))
+            });
+            let hype = players
+                .iter()
+                .any(|player| player.session.performance().hype_active());
+            if hype {
+                Some("gameplay-hype")
+            } else if in_phrase {
+                Some("gameplay-phrase")
+            } else if (24.0..26.0).contains(&now) {
                 Some("gameplay")
             } else if (44.0..46.0).contains(&now) {
                 Some("gameplay-late")

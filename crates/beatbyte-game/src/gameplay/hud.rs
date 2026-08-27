@@ -23,6 +23,37 @@ pub struct MultiplierText(pub usize);
 #[derive(Component)]
 pub struct HypeFill(pub usize);
 
+/// The dim leading zeros behind the solo score counter.
+#[derive(Component)]
+pub struct ScorePad;
+
+/// One bead of the streak row, lit as the next multiplier approaches.
+#[derive(Component)]
+pub struct StreakBead(pub u32);
+
+/// One quarter of the energy meter.
+#[derive(Component)]
+pub struct HypeSegment(pub u32);
+
+/// The frame around the multiplier, which lights while hype runs.
+#[derive(Component)]
+pub struct MultiplierBox;
+
+/// The line under the meter: what the player can do with it now.
+#[derive(Component)]
+pub struct HypeReadyText;
+
+/// Digits the counter reserves. Six is beyond any real score; the
+/// point is the fixed width — a number that shifts about as it grows
+/// reads as a sentence rather than an instrument.
+const SCORE_DIGITS: usize = 6;
+
+/// Beads in the streak row — one multiplier level's worth.
+const STREAK_BEADS: u32 = 10;
+
+/// Quarters, because a completed phrase awards exactly a quarter.
+const HYPE_SEGMENTS: u32 = 4;
+
 /// Vertical anchor of the HUD block above each highway.
 const HUD_TOP: f32 = 330.0;
 
@@ -184,7 +215,7 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont) {
     let right = Vec2::new(-left.x, left.y);
     let size = Vec2::new(PLATE_W, PLATE_H);
 
-    // ── Left: score, multiplier, combo ──────────────────────────────
+    // ── Left: the counter, the multiplier, the streak ───────────────
     plate(commands, left, size, accent);
     caption(
         commands,
@@ -192,14 +223,53 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont) {
         "SCORE",
         left + Vec2::new(0.0, PLATE_H / 2.0 - 12.0),
     );
+    // A recessed well, so the digits read as sitting IN the plate.
     commands.spawn((
         GameplayScreen,
-        ScoreText(0),
-        Text2d::new("0"),
-        font.text(26.0),
-        TextColor(accent),
-        Anchor::TOP_CENTER,
-        Transform::from_xyz(left.x, left.y + PLATE_H / 2.0 - 30.0, 5.0),
+        Sprite::from_color(
+            palette::BACKGROUND.mix(&Color::BLACK, 0.5),
+            Vec2::new(PLATE_W - 40.0, 34.0),
+        ),
+        Transform::from_xyz(left.x, left.y + PLATE_H / 2.0 - 44.0, 3.2),
+    ));
+    // Leading zeros dim, significant digits bright, as ONE line: the
+    // number keeps a fixed width without the padding shouting as
+    // loudly as the score. A counter whose digits shift about as it
+    // grows is a sentence, not an instrument.
+    commands
+        .spawn((
+            GameplayScreen,
+            ScorePad,
+            Text2d::new("00000"),
+            font.text(24.0),
+            TextColor(palette::dimmed(accent, 0.22)),
+            Anchor::CENTER,
+            Transform::from_xyz(left.x, left.y + PLATE_H / 2.0 - 44.0, 5.0),
+        ))
+        .with_child((
+            ScoreText(0),
+            TextSpan::new("0"),
+            font.text(24.0),
+            TextColor(accent),
+        ));
+
+    // The multiplier gets its own box: here it is a state, not a
+    // statistic.
+    let box_size = Vec2::new(72.0, 30.0);
+    let box_at = Vec2::new(left.x - PLATE_W / 2.0 + 50.0, left.y - PLATE_H / 2.0 + 32.0);
+    commands.spawn((
+        GameplayScreen,
+        MultiplierBox,
+        Sprite::from_color(palette::dimmed(palette::TEXT_DIM, 0.5), box_size),
+        Transform::from_xyz(box_at.x, box_at.y, 3.2),
+    ));
+    commands.spawn((
+        GameplayScreen,
+        Sprite::from_color(
+            palette::BACKGROUND.with_alpha(0.92),
+            box_size - Vec2::splat(3.0),
+        ),
+        Transform::from_xyz(box_at.x, box_at.y, 3.3),
     ));
     commands.spawn((
         GameplayScreen,
@@ -207,9 +277,22 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont) {
         Text2d::new("x1"),
         font.text(16.0),
         TextColor(palette::TEXT),
-        Anchor::TOP_CENTER,
-        Transform::from_xyz(left.x, left.y - PLATE_H / 2.0 + 46.0, 5.0),
+        Anchor::CENTER,
+        Transform::from_xyz(box_at.x, box_at.y, 5.0),
     ));
+
+    // Beads: how far the streak has come toward the next multiplier,
+    // and — the part that matters — what a miss just cost.
+    let bead_gap = 12.0f32;
+    let bead_x = box_at.x + box_size.x / 2.0 + 20.0;
+    for step in 0..STREAK_BEADS {
+        commands.spawn((
+            GameplayScreen,
+            StreakBead(step),
+            Sprite::from_color(palette::dimmed(palette::TEXT_DIM, 0.3), Vec2::splat(7.0)),
+            Transform::from_xyz(bead_gap.mul_add(step as f32, bead_x), box_at.y, 4.0),
+        ));
+    }
     commands.spawn((
         GameplayScreen,
         ComboText(0),
@@ -217,10 +300,10 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont) {
         font.text(9.0),
         TextColor(palette::TEXT_DIM),
         Anchor::TOP_CENTER,
-        Transform::from_xyz(left.x, left.y - PLATE_H / 2.0 + 22.0, 5.0),
+        Transform::from_xyz(left.x, left.y - PLATE_H / 2.0 + 14.0, 5.0),
     ));
 
-    // ── Right: the hype meter ───────────────────────────────────────
+    // ── Right: the energy meter, in the quarters it fills in ────────
     plate(commands, right, size, palette::HYPE);
     caption(
         commands,
@@ -228,47 +311,80 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont) {
         "HYPE",
         right + Vec2::new(0.0, PLATE_H / 2.0 - 12.0),
     );
-    let bar = Vec2::new(PLATE_W - 56.0, 22.0);
-    let bar_y = right.y + 4.0;
-    commands.spawn((
-        GameplayScreen,
-        Sprite::from_color(palette::dimmed(palette::HYPE, 0.22), bar),
-        Transform::from_xyz(right.x, bar_y, 4.0),
-    ));
+    let bar = Vec2::new(PLATE_W - 56.0, 24.0);
+    let bar_y = right.y + 6.0;
+    // Four wells. A completed phrase awards exactly a quarter, so a
+    // continuous bar could never show what is being collected.
+    let seg_w = 6.0f32.mul_add(-((HYPE_SEGMENTS - 1) as f32), bar.x) / HYPE_SEGMENTS as f32;
+    for step in 0..HYPE_SEGMENTS {
+        let x = (seg_w + 6.0).mul_add(step as f32, right.x - bar.x / 2.0 + seg_w / 2.0);
+        commands.spawn((
+            GameplayScreen,
+            Sprite::from_color(
+                palette::dimmed(palette::HYPE, 0.18),
+                Vec2::new(seg_w, bar.y),
+            ),
+            Transform::from_xyz(x, bar_y, 3.4),
+        ));
+        commands.spawn((
+            GameplayScreen,
+            HypeSegment(step),
+            Sprite::from_color(palette::HYPE, Vec2::new(seg_w, bar.y)),
+            Transform::from_xyz(x, bar_y, 3.5),
+        ));
+    }
+    // A hairline under the wells carrying the partial quarter, so the
+    // meter still moves between whole segments.
     commands.spawn((
         GameplayScreen,
         HypeFill(0),
-        Sprite::from_color(palette::HYPE, bar),
+        Sprite::from_color(palette::HYPE.with_alpha(0.6), Vec2::new(bar.x, 3.0)),
         Anchor::CENTER_LEFT,
-        Transform::from_xyz(right.x - bar.x / 2.0, bar_y, 5.0).with_scale(Vec3::new(0.0, 1.0, 1.0)),
+        Transform::from_xyz(right.x - bar.x / 2.0, bar_y - bar.y / 2.0 - 6.0, 5.0)
+            .with_scale(Vec3::new(0.0, 1.0, 1.0)),
     ));
-    caption(
-        commands,
-        font,
-        "FILL IT, THEN HIT HYPE",
-        right + Vec2::new(0.0, -PLATE_H / 2.0 + 28.0),
-    );
+    commands.spawn((
+        GameplayScreen,
+        HypeReadyText,
+        Text2d::new(""),
+        font.text(9.0),
+        TextColor(palette::HYPE),
+        Anchor::TOP_CENTER,
+        Transform::from_xyz(right.x, right.y - PLATE_H / 2.0 + 24.0, 5.0),
+    ));
 }
 
 /// Push session numbers into every player's HUD.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn update_huds(
     players: Query<(&PlayerIndex, &PlayerSession)>,
     mut texts: ParamSet<(
-        Query<(&ScoreText, &mut Text2d)>,
+        Query<(&ScoreText, &mut TextSpan)>,
         Query<(&ComboText, &mut Text2d)>,
         Query<(&MultiplierText, &mut Text2d, &mut TextColor)>,
+        Query<&mut Text2d, With<ScorePad>>,
+        Query<&mut Text2d, With<HypeReadyText>>,
     )>,
     mut fills: Query<(&HypeFill, &mut Transform)>,
+    mut beads: Query<(&StreakBead, &mut Sprite), Without<HypeSegment>>,
+    mut segments: Query<(&HypeSegment, &mut Sprite), Without<StreakBead>>,
+    mut boxes: Query<
+        &mut Sprite,
+        (
+            With<MultiplierBox>,
+            Without<StreakBead>,
+            Without<HypeSegment>,
+        ),
+    >,
 ) {
     for (index, player) in &players {
         let perf = player.session.performance();
 
-        for (marker, mut text) in &mut texts.p0() {
+        for (marker, mut span) in &mut texts.p0() {
             if marker.0 == index.0 {
                 let score = perf.score().to_string();
-                if text.0 != score {
-                    text.0 = score;
+                if span.0 != score {
+                    span.0 = score;
                 }
             }
         }
@@ -287,7 +403,7 @@ pub fn update_huds(
         for (marker, mut text, mut color) in &mut texts.p2() {
             if marker.0 == index.0 {
                 let hype = perf.hype_active();
-                let line = format!("x{}{}", perf.multiplier(), if hype { " HYPE" } else { "" });
+                let line = format!("x{}", perf.multiplier());
                 if text.0 != line {
                     text.0 = line;
                 }
@@ -303,6 +419,82 @@ pub fn update_huds(
         for (fill, mut transform) in &mut fills {
             if fill.0 == index.0 {
                 transform.scale.x = perf.hype_meter() as f32;
+            }
+        }
+
+        // Everything below is the solo plate, which only player one
+        // owns; in multiplayer these queries simply find nothing.
+        if index.0 != 0 {
+            continue;
+        }
+
+        // The counter's padding shrinks as the score grows, so the
+        // number stays the same width and only gains bright digits.
+        if let Ok(mut pad) = texts.p3().single_mut() {
+            let digits = perf.score().to_string().len();
+            let wanted = "0".repeat(SCORE_DIGITS.saturating_sub(digits));
+            if pad.0 != wanted {
+                pad.0 = wanted;
+            }
+        }
+
+        // Beads fill toward the next multiplier and empty on a miss,
+        // which is the part a bare "x3" never showed.
+        let per_level = player
+            .session
+            .performance()
+            .config()
+            .streak_per_level
+            .max(1);
+        let toward_next =
+            if perf.multiplier() >= player.session.performance().config().max_multiplier {
+                STREAK_BEADS
+            } else {
+                perf.streak() % per_level
+            };
+        for (bead, mut sprite) in &mut beads {
+            sprite.color = if bead.0 < toward_next {
+                palette::BRAND
+            } else {
+                palette::dimmed(palette::TEXT_DIM, 0.3)
+            };
+        }
+
+        // Whole quarters light; the hairline underneath carries the
+        // part-quarter in progress.
+        let meter = perf.hype_meter() as f32;
+        let filled = (meter * HYPE_SEGMENTS as f32).floor() as u32;
+        for (segment, mut sprite) in &mut segments {
+            let lit = segment.0 < filled;
+            sprite.color = if !lit {
+                Color::NONE
+            } else if perf.hype_active() {
+                Color::WHITE
+            } else {
+                palette::HYPE
+            };
+        }
+
+        if let Ok(mut sprite) = boxes.single_mut() {
+            sprite.color = if perf.hype_active() {
+                palette::HYPE
+            } else if perf.multiplier() >= 4 {
+                palette::BRAND
+            } else {
+                palette::dimmed(palette::TEXT_DIM, 0.5)
+            };
+        }
+
+        if let Ok(mut text) = texts.p4().single_mut() {
+            let line = if perf.hype_active() {
+                "HYPE RUNNING - DOUBLE POINTS"
+            } else if meter >= 0.5 {
+                "READY - PRESS HYPE"
+            } else {
+                "HIT MARKED NOTES TO FILL"
+            };
+            if text.0 != line {
+                text.0 = line.to_owned();
             }
         }
     }

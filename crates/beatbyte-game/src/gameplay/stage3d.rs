@@ -25,6 +25,7 @@ use beatbyte_core::Lane;
 use super::{GameplayScreen, HighwayLayout, PlayerIndex, PlayerSession};
 use crate::audio_sys::GameClock;
 use crate::config::Settings;
+use crate::palette;
 use crate::states::AppState;
 
 /// World units per pixel of the 2D layout.
@@ -158,6 +159,172 @@ const SUSTAIN_HIT_FLOOR: f32 = 0.46;
 const SUSTAIN_PULSE_HZ: f32 = 7.5;
 /// How fast the ring fades between re-blooms while a hold runs.
 const SUSTAIN_BLOOM_RATE: f32 = 2.4;
+
+/// A stage surface that takes the energy tint while hype runs.
+///
+/// It carries its own resting colours, because tinting is a MIX
+/// toward the hype tone and back — reading the current colour to
+/// restore it later would drift a little further every frame.
+#[derive(Component)]
+pub struct HypeTinted {
+    /// Owning player, so a solo hype does not light a rival's neck.
+    pub player: usize,
+    /// The surface's colour with no hype running.
+    pub base: Color,
+    /// Emissive strength at rest.
+    pub base_glow: f32,
+    /// Extra emission while hype runs.
+    ///
+    /// Zero for surfaces that are LIT rather than lighting. The first
+    /// version lifted every tinted surface, which made the fretboard
+    /// — by far the largest of them — a lamp: measured, the bloom
+    /// pass then washed the entire venue violet, including a wall
+    /// forty units behind the neck that nothing had tinted.
+    pub glow_lift: f32,
+    /// How far toward the hype tone this surface goes, 0..1.
+    pub reach: f32,
+}
+
+/// Wash the neck with the energy colour while hype is running.
+pub fn tint_stage_for_hype(
+    settings: Res<Settings>,
+    time: Res<Time>,
+    players: Query<(&PlayerIndex, &PlayerSession)>,
+    surfaces: Query<(&HypeTinted, &MeshMaterial3d<StandardMaterial>)>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut blend: Local<Vec<f32>>,
+) {
+    if !active(&settings) {
+        return;
+    }
+    let delta = time.delta_secs();
+    // The eased value is advanced ONCE per player, before any surface
+    // is painted. Advancing it inside the surface loop made the ease
+    // rate depend on how many surfaces a neck happens to have — three
+    // today, and silently faster the moment one is added.
+    for (index, player) in &players {
+        if blend.len() <= index.0 {
+            blend.resize(index.0 + 1, 0.0);
+        }
+        let target = if player.session.performance().hype_active() {
+            1.0
+        } else {
+            0.0
+        };
+        blend[index.0] += (target - blend[index.0]) * (6.0 * delta).min(1.0);
+    }
+    for (surface, material) in &surfaces {
+        let Some(&eased) = blend.get(surface.player) else {
+            continue;
+        };
+        let amount = eased * surface.reach;
+        if let Some(mut paint) = materials.get_mut(&material.0) {
+            paint.base_color = surface.base.mix(&palette::HYPE, amount);
+            let glow = surface.glow_lift.mul_add(amount, surface.base_glow);
+            paint.emissive = paint.base_color.to_linear() * glow;
+        }
+    }
+}
+
+/// A stretch of neck carrying an energy phrase.
+#[derive(Component)]
+pub struct PhraseBand {
+    /// Owning player.
+    pub player: usize,
+    /// Phrase bounds on the song timeline.
+    pub start_s: f64,
+    /// Phrase end.
+    pub end_s: f64,
+}
+
+/// Lay a tinted band over every energy phrase, so a run of marked
+/// notes can be seen coming rather than recognised as it arrives.
+///
+/// All bands are spawned once — a song has a handful — and simply
+/// move with the neck. Spawning them on approach would need a cursor
+/// per player and buys nothing at this count.
+pub fn spawn_phrase_bands(
+    mut commands: Commands,
+    settings: Res<Settings>,
+    layout: Res<HighwayLayout>,
+    players: Query<(&PlayerIndex, &PlayerSession)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    if !active(&settings) {
+        return;
+    }
+    let band = meshes.add(Cuboid::new(1.0, 0.008, 1.0));
+    let material = materials.add(StandardMaterial {
+        base_color: palette::HYPE.with_alpha(0.14),
+        emissive: palette::HYPE.to_linear() * 0.5,
+        alpha_mode: AlphaMode::Blend,
+        unlit: true,
+        ..default()
+    });
+    for (index, player) in &players {
+        let width = layout.bed_width() * WORLD_PER_PIXEL * 1.12;
+        for phrase in player.session.track().phrases() {
+            commands.spawn((
+                GameplayScreen,
+                Stage3d,
+                PhraseBand {
+                    player: index.0,
+                    start_s: phrase.start_s,
+                    end_s: phrase.end_s,
+                },
+                Mesh3d(band.clone()),
+                MeshMaterial3d(material.clone()),
+                Transform::from_xyz(layout.origin(index.0) * WORLD_PER_PIXEL, 0.012, 0.0)
+                    .with_scale(Vec3::new(width, 1.0, 0.0)),
+                Visibility::Hidden,
+                RenderLayers::layer(STAGE_LAYER),
+            ));
+        }
+    }
+}
+
+/// Slide the phrase bands with the neck and hide the ones off it.
+pub fn move_phrase_bands(
+    settings: Res<Settings>,
+    game_clock: Res<GameClock>,
+    time: Res<Time>,
+    mut bands: Query<(&PhraseBand, &mut Transform, &mut Visibility)>,
+) {
+    if !active(&settings) {
+        return;
+    }
+    let Some(now) = game_clock.song_time(&time) else {
+        return;
+    };
+    for (band, mut transform, mut visibility) in &mut bands {
+        let near = note_z(band.start_s - now, settings.scroll_speed);
+        let far = note_z(band.end_s - now, settings.scroll_speed);
+        // Clipped to the drawn highway, so a long phrase does not
+        // stretch a band past the end of the neck.
+        let near = near.min(1.0);
+        let far = far.max(-HIGHWAY_LENGTH);
+        let length = near - far;
+        if length <= 0.0 {
+            *visibility = Visibility::Hidden;
+            continue;
+        }
+        *visibility = Visibility::Inherited;
+        transform.translation.z = (near + far) / 2.0;
+        transform.scale.z = length;
+    }
+}
+
+/// Whether a note at this time belongs to an energy phrase.
+///
+/// Phrases are sorted and non-overlapping (a `Track` invariant), and
+/// their bounds are INCLUSIVE — a note exactly on the last instant of
+/// a phrase is part of it, and marking it is what makes the run of
+/// marked notes end where the meter step happens.
+#[must_use]
+pub fn in_energy_phrase(phrases: &[beatbyte_core::Phrase], time_s: f64) -> bool {
+    phrases.iter().any(|phrase| phrase.contains(time_s))
+}
 
 /// The tube behind a sustain's gem.
 ///
@@ -540,6 +707,13 @@ pub fn setup_stage(
                 metallic: 0.2,
                 ..default()
             })),
+            HypeTinted {
+                player,
+                base: stage.background.mix(&Color::WHITE, 0.16),
+                base_glow: 0.0,
+                glow_lift: 0.0,
+                reach: 0.55,
+            },
             Transform::from_xyz(origin, -0.03, centre).with_scale(Vec3::new(width, 1.0, 1.0)),
             RenderLayers::layer(STAGE_LAYER),
         ));
@@ -557,6 +731,13 @@ pub fn setup_stage(
                     emissive: stage.accent.to_linear() * 2.6,
                     ..default()
                 })),
+                HypeTinted {
+                    player,
+                    base: stage.accent,
+                    base_glow: 2.6,
+                    glow_lift: 0.8,
+                    reach: 0.9,
+                },
                 Transform::from_xyz(origin + side * width / 2.0, 0.015, centre),
                 RenderLayers::layer(STAGE_LAYER),
             ));
@@ -638,10 +819,13 @@ pub fn setup_stage(
             Mesh3d(hit_bar.clone()),
             MeshMaterial3d(materials.add(StandardMaterial {
                 base_color: Color::WHITE,
-                emissive: LinearRgba::rgb(1.6, 1.6, 1.8),
+                emissive: LinearRgba::rgb(2.4, 2.4, 2.8),
                 ..default()
             })),
-            Transform::from_xyz(origin, 0.01, 0.0).with_scale(Vec3::new(width * 1.02, 1.0, 1.0)),
+            // Wider than the bed and lifted just clear of it: the line
+            // the notes are struck ON has to be the brightest thing
+            // on the neck, not a pair of stubs beside the receptors.
+            Transform::from_xyz(origin, 0.014, 0.0).with_scale(Vec3::new(width * 1.12, 1.0, 1.6)),
             RenderLayers::layer(STAGE_LAYER),
         ));
     }
@@ -906,7 +1090,10 @@ pub fn spawn_fret_bars(
     let bar_s = 240.0 / bpm;
     let start = song.chart.song.offset_s;
     let end = song.chart.song.duration_s.unwrap_or(start + 240.0);
-    let mesh = meshes.add(Cuboid::new(1.0, 0.012, 0.045));
+    // Heavier than the first pass: a bar line is what gives the neck
+    // its ruled, instrument-like surface, and at 0.045 deep it read as
+    // a scratch rather than a fret.
+    let mesh = meshes.add(Cuboid::new(1.0, 0.014, 0.085));
     for index in &players {
         let origin = layout.origin(index.0) * WORLD_PER_PIXEL;
         let width = layout.bed_width() * WORLD_PER_PIXEL * 1.18;
@@ -916,8 +1103,8 @@ pub fn spawn_fret_bars(
             // distance — sharing one handle made every bar in the song
             // pile into a solid white wedge at the horizon.
             let material = materials.add(StandardMaterial {
-                base_color: Color::srgba(0.75, 0.78, 0.85, 1.0),
-                emissive: LinearRgba::rgb(0.35, 0.36, 0.42),
+                base_color: Color::srgba(0.80, 0.82, 0.88, 1.0),
+                emissive: LinearRgba::rgb(0.55, 0.56, 0.64),
                 alpha_mode: AlphaMode::Blend,
                 ..default()
             });
@@ -992,6 +1179,7 @@ pub struct NoteAssets {
     sustain: Handle<Mesh>,
     missed_material: Handle<StandardMaterial>,
     rim_material: Handle<StandardMaterial>,
+    hype_rim_material: Handle<StandardMaterial>,
     lane_material: Vec<Handle<StandardMaterial>>,
 }
 
@@ -1032,6 +1220,16 @@ pub fn setup_note_assets(
             perceptual_roughness: 0.6,
             ..default()
         }),
+        // A note inside an energy phrase wears a lit rim instead of a
+        // dark one. The FACE keeps its lane colour, because the fret
+        // to press is the one thing the marking must never obscure.
+        hype_rim_material: materials.add(StandardMaterial {
+            base_color: palette::HYPE,
+            emissive: palette::HYPE.to_linear() * 3.0,
+            perceptual_roughness: 0.3,
+            metallic: 0.5,
+            ..default()
+        }),
         lane_material: Lane::ALL
             .iter()
             .map(|lane| {
@@ -1041,8 +1239,13 @@ pub fn setup_note_assets(
                     // Emissive is what makes a gem glow through the
                     // bloom pass instead of merely being lit.
                     emissive: colour.to_linear() * 2.2,
-                    perceptual_roughness: 0.25,
-                    metallic: 0.35,
+                    // Polished, so the key light down the neck leaves
+                    // a highlight on the gem's face. Without it a gem
+                    // is an evenly lit disc — a sticker on the board
+                    // rather than an object on it.
+                    perceptual_roughness: 0.16,
+                    metallic: 0.55,
+                    reflectance: 0.6,
                     ..default()
                 })
             })
@@ -1075,6 +1278,12 @@ pub fn spawn_due_notes(
                 break;
             }
             let z = note_z(event.time_s - now, settings.scroll_speed);
+            // Notes inside an energy phrase are marked. The chart has
+            // carried `phrases` all along and `complete_phrase()` has
+            // been paying meter for them, but nothing on screen ever
+            // said which notes those were — the player earned energy
+            // without being told why.
+            let in_phrase = in_energy_phrase(player.session.track().phrases(), event.time_s);
             for lane in event.lanes.iter() {
                 let material = assets.lane_material[lane.index()].clone();
                 let hopo = event.kind == beatbyte_core::NoteKind::Hopo;
@@ -1109,7 +1318,11 @@ pub fn spawn_due_notes(
                     } else {
                         assets.rim.clone()
                     }),
-                    MeshMaterial3d(assets.rim_material.clone()),
+                    MeshMaterial3d(if in_phrase {
+                        assets.hype_rim_material.clone()
+                    } else {
+                        assets.rim_material.clone()
+                    }),
                     Transform::from_xyz(lane_x(&layout, index.0, lane), 0.06, z),
                     RenderLayers::layer(STAGE_LAYER),
                 ));
@@ -1266,7 +1479,12 @@ impl Plugin for Stage3dPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             OnEnter(AppState::Gameplay),
-            (setup_stage, setup_note_assets, spawn_fret_bars)
+            (
+                setup_stage,
+                setup_note_assets,
+                spawn_fret_bars,
+                spawn_phrase_bands,
+            )
                 .chain()
                 .after(super::setup_gameplay),
         )
@@ -1277,6 +1495,8 @@ impl Plugin for Stage3dPlugin {
                 move_notes,
                 consume_sustains,
                 move_fret_bars,
+                move_phrase_bands,
+                tint_stage_for_hype,
                 update_receptors,
                 apply_note_events,
                 sweep_beams,
@@ -1289,6 +1509,45 @@ impl Plugin for Stage3dPlugin {
 
 #[cfg(test)]
 mod tests {
+    use super::in_energy_phrase;
+    use beatbyte_core::Phrase;
+
+    fn phrases() -> Vec<Phrase> {
+        vec![
+            Phrase {
+                start_s: 4.0,
+                end_s: 8.0,
+            },
+            Phrase {
+                start_s: 20.0,
+                end_s: 24.0,
+            },
+        ]
+    }
+
+    #[test]
+    fn notes_inside_a_phrase_are_marked() {
+        assert!(in_energy_phrase(&phrases(), 6.0));
+        assert!(in_energy_phrase(&phrases(), 22.5));
+    }
+
+    #[test]
+    fn notes_outside_every_phrase_are_not() {
+        assert!(!in_energy_phrase(&phrases(), 3.9));
+        assert!(!in_energy_phrase(&phrases(), 12.0));
+        assert!(!in_energy_phrase(&phrases(), 24.1));
+        assert!(!in_energy_phrase(&[], 6.0), "no phrases marks nothing");
+    }
+
+    #[test]
+    fn the_bounds_themselves_count_as_inside() {
+        // Phrase bounds are inclusive in the core, and the run of
+        // marked notes has to end exactly where the meter is awarded
+        // — a note on the last instant belongs to the phrase.
+        assert!(in_energy_phrase(&phrases(), 4.0), "start is inside");
+        assert!(in_energy_phrase(&phrases(), 8.0), "end is inside");
+    }
+
     use super::sustain_tail_span;
 
     /// A note at t = 10 s that is held for 2 s, at the default speed.

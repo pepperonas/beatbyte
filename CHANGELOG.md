@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Energy phrases are finally visible.** Charts have carried
+  `phrases` all along and completing one has always paid a quarter of
+  the hype meter, but nothing on screen said which notes those were —
+  the player earned energy without being told why. Notes inside a
+  phrase now wear a lit rim (the face keeps its lane colour, because
+  the fret to press must never be obscured) and the stretch of neck
+  they sit on is tinted, so a phrase can be seen coming.
+
+- **The readouts became instruments.** The score is a fixed-width
+  counter with dim leading zeros; the multiplier has its own box; a
+  row of beads shows how far the streak has come toward the next
+  level and empties when a miss costs it. The hype meter shows the
+  four quarters it actually fills in, with a hairline for the quarter
+  in progress and a line saying whether it is ready to use.
+
+- **Activating hype transforms the stage.** The neck washes to the
+  energy colour and eases back when it ends.
+
 - **A held note stays lit for as long as you hold it.** On the 3D
   stage, striking a sustain used to make the whole note vanish — tail
   included — leaving a single burst and then nothing, however long the
@@ -237,6 +255,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the game has shipped a smooth high-res style for a while.
 
 ### Fixed
+
+- **The hype overlay was washing the venue instead of the highway.**
+  It is a 900-pixel vertical band the width of the bed — the shape of
+  a highway in the flat and depth views, and nothing like one in 3D,
+  where the neck is a receding plane. Measured, it left the rails
+  untouched and turned a wall forty units behind the vanishing point
+  violet. It is skipped in 3D now, which tints its own surfaces.
 
 - **The 2D sprite backdrop no longer speckles the 3D fretboard.** The
   stage camera draws at order −1, so those sprites render in FRONT of
