@@ -147,3 +147,83 @@ a look.
   arrangement; two to four necks have no free corners.
 - **Measure before claiming.** Screenshots for looks, the autopilot
   for behaviour, and numbers only after the measurement.
+
+---
+
+# Round two (2026-08-27)
+
+The first round fixed what the screen *said*. Comparing the result
+against the reference side by side, what is left is what the screen
+*is*: proportion and surface.
+
+## Measured, not eyeballed
+
+| | Reference | BeatByte after round one |
+|---|---|---|
+| Neck width at the hit line | ~50 % of the frame | **31 %** (rails measured at 793 px of 2560) |
+| Board surface | a patterned fretboard | flat dark fill, lane lines only |
+| Gem size | fills its lane | 72 px in a lane roughly twice that |
+
+Everything else about the frame — venue, HUD, hit line, phrases —
+now holds up. These three do not, and the first is why: a neck at
+31 % leaves the eye nothing to do with the other 69 %, and it makes
+the gems look like beads on a thread instead of buttons on a board.
+
+## The work
+
+### V1 — Widen the neck *(solo only)*
+
+One spread factor applied where the width is actually derived —
+`lane_x()` and the three `bed_width()` sites — so rails, lane strips,
+receptors, bursts, bar lines, phrase bands and notes all follow from
+one number.
+
+**Solo only.** Two to four necks side by side already use the room;
+widening them would run them into each other. The factor is taken
+from the layout's player count, so it cannot drift out of step.
+
+**Not by moving the camera**, which was the obvious alternative:
+pulling in magnifies the board but shortens how far up the neck you
+can see, and reading ahead is the game.
+
+*Verify:* rails measured again at the same height; autopilot scores
+identically, because lane geometry is presentation and judgment reads
+the chart.
+
+### V2 — The board gets a surface
+
+A generated texture — procedural, original, no asset file — with a
+lengthwise grain and faint bar shading, tiled down the neck. A
+fretboard is a *thing*; the current bed is an absence of one.
+
+*Verify:* screenshot; the bed must stay dark enough that gems and
+lane lines keep their contrast.
+
+### V3 — Gems sized to their lane
+
+The gem radius is a constant in world units, so widening the neck
+without touching it leaves the notes looking undersized. It scales
+with the same factor.
+
+*Verify:* screenshot; the row of five receptors still reads as five
+distinct buttons, not a bar.
+
+## Round two status
+
+All three landed (2026-08-27).
+
+| Step | State | Measured |
+|---|---|---|
+| V1 neck width | done | 31 % → **45 %** of the frame at the hit line |
+| V2 board surface | done | Generated grain, brightness pinned to 0.72–1.0 |
+| V3 gem size | done | Scales with the same factor, so lanes stay filled |
+
+Judgment untouched: the same song scores 98/98 perfect before and
+after. Multiplayer keeps the layout's own spacing, pinned by a test
+that reads the factor straight from a two-player layout.
+
+## Same rules as round one
+
+Judgment untouched and proven by an identical autopilot score, the
+depth view unaffected, multiplayer layout unchanged, and every number
+in this document measured before it was written down.

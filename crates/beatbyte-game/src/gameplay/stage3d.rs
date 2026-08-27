@@ -142,7 +142,27 @@ pub fn active(settings: &Settings) -> bool {
 /// Lane centre in world units for a player's highway.
 #[must_use]
 pub fn lane_x(layout: &HighwayLayout, player: usize, lane: Lane) -> f32 {
-    layout.lane_x(player, lane) * WORLD_PER_PIXEL
+    layout.lane_x(player, lane) * WORLD_PER_PIXEL * neck_spread(layout)
+}
+
+/// How much wider the 3D neck is drawn than the 2D layout implies.
+///
+/// Measured against the reference: a solo neck filled 31 % of the
+/// frame where the genre's fills about half, which left the eye
+/// nothing to do with the other two thirds and made the gems read as
+/// beads on a thread rather than buttons on a board.
+///
+/// **Solo only.** Two to four necks side by side already use the
+/// room, and widening them would run them into each other. Taking the
+/// count from the layout rather than a flag means the two can never
+/// drift apart.
+///
+/// Deliberately not done by moving the camera in: that magnifies the
+/// board but shortens how far up the neck you can see, and reading
+/// ahead is the game.
+#[must_use]
+pub fn neck_spread(layout: &HighwayLayout) -> f32 {
+    if layout.players() == 1 { 1.45 } else { 1.0 }
 }
 
 /// Distance ahead of the hit line for a note `seconds` away.
@@ -159,6 +179,68 @@ const SUSTAIN_HIT_FLOOR: f32 = 0.46;
 const SUSTAIN_PULSE_HZ: f32 = 7.5;
 /// How fast the ring fades between re-blooms while a hold runs.
 const SUSTAIN_BLOOM_RATE: f32 = 2.4;
+
+/// Brightness range the board texture is allowed to occupy.
+///
+/// A fretboard has to read as a surface without competing with what
+/// lies on it: the gems, the lane lines and the hit line all need
+/// their contrast. Pinned by a test, because "subtle" is exactly the
+/// kind of intent that erodes one tweak at a time.
+const BOARD_SHADE: (f32, f32) = (0.72, 1.0);
+
+/// How one cell of the board pattern is shaded, in 0..1.
+///
+/// Lengthwise grain plus a faint transverse band — the two things
+/// that make a plank read as a plank. Deterministic: a hash, not a
+/// random number, so the board is the same every run.
+#[must_use]
+pub fn board_shade(u: f32, v: f32) -> f32 {
+    // Grain: fine stripes along the neck, slightly wandering.
+    let wander = (v * 9.0).sin() * 0.02;
+    let grain = ((u + wander) * 46.0).sin() * 0.5 + 0.5;
+    // Bands across it, much softer, to break the stripes up.
+    let band = (v * 5.0).sin() * 0.5 + 0.5;
+    // Speckle, so neither pattern reads as a printed texture.
+    let hash = ((u * 311.7 + v * 191.3).sin() * 43_758.545).fract().abs();
+    let mixed = 0.55f32.mul_add(grain, 0.28 * band) + 0.17 * hash;
+    let (low, high) = BOARD_SHADE;
+    low + (high - low) * mixed.clamp(0.0, 1.0)
+}
+
+/// Build the board texture. Generated, never loaded: every asset in
+/// this repository has to be original, and a plank is arithmetic.
+fn board_texture() -> Image {
+    const SIZE: usize = 128;
+    let mut data = Vec::with_capacity(SIZE * SIZE * 4);
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let shade = board_shade(
+                (x as f32 + 0.5) / SIZE as f32,
+                (y as f32 + 0.5) / SIZE as f32,
+            );
+            let v = (shade * 255.0) as u8;
+            data.extend_from_slice(&[v, v, v, 255]);
+        }
+    }
+    let mut image = Image::new(
+        bevy::render::render_resource::Extent3d {
+            width: SIZE as u32,
+            height: SIZE as u32,
+            depth_or_array_layers: 1,
+        },
+        bevy::render::render_resource::TextureDimension::D2,
+        data,
+        bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+        bevy::asset::RenderAssetUsages::RENDER_WORLD | bevy::asset::RenderAssetUsages::MAIN_WORLD,
+    );
+    // Repeat, because the texture is tiled many times down the neck.
+    image.sampler = bevy::image::ImageSampler::Descriptor(bevy::image::ImageSamplerDescriptor {
+        address_mode_u: bevy::image::ImageAddressMode::Repeat,
+        address_mode_v: bevy::image::ImageAddressMode::Repeat,
+        ..bevy::image::ImageSamplerDescriptor::linear()
+    });
+    image
+}
 
 /// A stage surface that takes the energy tint while hype runs.
 ///
@@ -263,7 +345,7 @@ pub fn spawn_phrase_bands(
         ..default()
     });
     for (index, player) in &players {
-        let width = layout.bed_width() * WORLD_PER_PIXEL * 1.12;
+        let width = layout.bed_width() * WORLD_PER_PIXEL * 1.12 * neck_spread(&layout);
         for phrase in player.session.track().phrases() {
             commands.spawn((
                 GameplayScreen,
@@ -604,6 +686,7 @@ pub fn setup_stage(
     players: Query<&PlayerIndex, With<PlayerSession>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
 ) {
     if !active(&settings) {
         return;
@@ -672,6 +755,7 @@ pub fn setup_stage(
         settings.backdrop_motion,
     );
 
+    let board = images.add(board_texture());
     let bed = meshes.add(Cuboid::new(1.0, 0.06, HIGHWAY_LENGTH + HIGHWAY_BEHIND));
     let rail = meshes.add(Cuboid::new(0.035, 0.05, HIGHWAY_LENGTH + HIGHWAY_BEHIND));
     let lane_strip = meshes.add(Cuboid::new(0.018, 0.012, HIGHWAY_LENGTH + HIGHWAY_BEHIND));
@@ -689,7 +773,7 @@ pub fn setup_stage(
         let origin = layout.origin(player) * WORLD_PER_PIXEL;
         // A little wider than the lane span so the outer receptors
         // sit ON the neck rather than half off it.
-        let width = layout.bed_width() * WORLD_PER_PIXEL * 1.18;
+        let width = layout.bed_width() * WORLD_PER_PIXEL * 1.18 * neck_spread(&layout);
         let centre = -HIGHWAY_LENGTH / 2.0 + HIGHWAY_BEHIND / 2.0;
 
         // The bed. Dark and slightly reflective so the lights and the
@@ -703,6 +787,10 @@ pub fn setup_stage(
                 // black bed the gems floated in a void and the neck
                 // had no surface for the lights to land on.
                 base_color: stage.background.mix(&Color::WHITE, 0.16),
+                base_color_texture: Some(board.clone()),
+                // Tiled far more down the neck than across it, so the
+                // grain runs the way a plank's does.
+                uv_transform: bevy::math::Affine2::from_scale(Vec2::new(1.0, 26.0)),
                 perceptual_roughness: 0.42,
                 metallic: 0.2,
                 ..default()
@@ -1096,7 +1184,7 @@ pub fn spawn_fret_bars(
     let mesh = meshes.add(Cuboid::new(1.0, 0.014, 0.085));
     for index in &players {
         let origin = layout.origin(index.0) * WORLD_PER_PIXEL;
-        let width = layout.bed_width() * WORLD_PER_PIXEL * 1.18;
+        let width = layout.bed_width() * WORLD_PER_PIXEL * 1.18 * neck_spread(&layout);
         let mut t = start;
         while t < end {
             // Its own material, because each bar fades by its own
@@ -1187,6 +1275,7 @@ pub struct NoteAssets {
 pub fn setup_note_assets(
     mut commands: Commands,
     settings: Res<Settings>,
+    layout: Res<HighwayLayout>,
     theme: Res<crate::theme::ActiveTheme>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -1198,14 +1287,17 @@ pub fn setup_note_assets(
     // coloured disc inside a dark rim — not a floating sphere. Seen
     // from the player's angle it reads as an ellipse, which is what
     // makes a five-lane row scannable at speed.
+    // The gem radius is a world-unit constant, so widening the neck
+    // without it would leave the notes undersized in their own lanes.
+    let gem = GEM_RADIUS * neck_spread(&layout);
     commands.insert_resource(NoteAssets {
-        gem: meshes.add(Cylinder::new(GEM_RADIUS, 0.055)),
-        rim: meshes.add(Cylinder::new(GEM_RADIUS * 1.28, 0.042)),
+        gem: meshes.add(Cylinder::new(gem, 0.055)),
+        rim: meshes.add(Cylinder::new(gem * 1.28, 0.042)),
         // A HOPO is smaller and reads as a different object, the way
         // the 2D views distinguish it.
-        hopo: meshes.add(Cylinder::new(GEM_RADIUS * 0.62, 0.05)),
-        hopo_rim: meshes.add(Cylinder::new(GEM_RADIUS * 0.86, 0.04)),
-        sustain: meshes.add(Cylinder::new(0.05, 1.0)),
+        hopo: meshes.add(Cylinder::new(gem * 0.62, 0.05)),
+        hopo_rim: meshes.add(Cylinder::new(gem * 0.86, 0.04)),
+        sustain: meshes.add(Cylinder::new(0.05 * neck_spread(&layout), 1.0)),
         // ONE grey material that missed notes switch TO. Repainting
         // the lane's own material instead turned every note in that
         // lane black for the rest of the song, because they all share
@@ -1509,6 +1601,61 @@ impl Plugin for Stage3dPlugin {
 
 #[cfg(test)]
 mod tests {
+    use super::{BOARD_SHADE, board_shade, neck_spread};
+
+    #[test]
+    fn the_board_never_leaves_its_brightness_band() {
+        // The board must read as a surface without competing with the
+        // gems, the lane lines or the hit line that sit ON it. This is
+        // the constraint "subtle" actually means, and it is exactly
+        // the kind of intent that erodes one tweak at a time.
+        let (low, high) = BOARD_SHADE;
+        for i in 0..64 {
+            for j in 0..64 {
+                let u = f64::from(i) as f32 / 64.0;
+                let v = f64::from(j) as f32 / 64.0;
+                let shade = board_shade(u, v);
+                assert!(
+                    (low..=high).contains(&shade),
+                    "shade {shade} at ({u}, {v}) is outside {low}..={high}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_board_is_actually_patterned() {
+        // A texture that came out flat would be a wasted draw and a
+        // silently missing feature — it would still pass the band test
+        // above, which is why this one exists.
+        let samples: Vec<f32> = (0..256)
+            .map(|i| board_shade((i % 16) as f32 / 16.0, (i / 16) as f32 / 16.0))
+            .collect();
+        let min = samples.iter().copied().fold(f32::MAX, f32::min);
+        let max = samples.iter().copied().fold(f32::MIN, f32::max);
+        assert!(max - min > 0.10, "board is nearly flat: {min}..{max}");
+    }
+
+    #[test]
+    fn the_board_pattern_is_the_same_every_run() {
+        // Built from a hash, not a random number: a fretboard that
+        // reshuffled itself between runs would be a distraction.
+        assert!((board_shade(0.31, 0.62) - board_shade(0.31, 0.62)).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn only_a_solo_neck_is_widened() {
+        // Two to four necks side by side already use the room; the
+        // count comes from the layout so the two cannot drift apart.
+        let solo = crate::gameplay::HighwayLayout::for_players(1);
+        let duo = crate::gameplay::HighwayLayout::for_players(2);
+        assert!(neck_spread(&solo) > 1.0, "solo should be widened");
+        assert!(
+            (neck_spread(&duo) - 1.0).abs() < f32::EPSILON,
+            "multiplayer must keep the layout's own spacing"
+        );
+    }
+
     use super::in_energy_phrase;
     use beatbyte_core::Phrase;
 

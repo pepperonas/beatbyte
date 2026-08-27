@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A neck with the proportions of the genre, and a board with a
+  surface.** Measured against the reference rather than eyeballed: a
+  solo neck filled 31 % of the frame where the genre's fills about
+  half, which left the eye nothing to do with the rest of the screen
+  and made the gems read as beads on a thread. One spread factor,
+  applied where the width is actually derived, widens rails, lane
+  strips, receptors, bar lines, phrase bands and notes together —
+  **solo only**, because two to four necks already use the room. The
+  bed also gained a generated grain, so a fretboard reads as a thing
+  rather than the absence of one; its brightness is pinned by a test,
+  because "subtle" is the kind of intent that erodes one tweak at a
+  time.
+
 - **The results screen is a verdict, not a receipt.** It used to be
   bare text floating in a void at the one moment that is supposed to
   be the payoff. Now the song is the heading, a grade badge sits
