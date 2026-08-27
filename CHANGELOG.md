@@ -30,6 +30,13 @@ the manifest ever carries a version this file does not describe.
   reviewed, a number cannot, because nothing about a wrong one looks
   wrong.
 
+- **A guide to the 3D stage** (`docs/ui/3d-stage.md`): the coordinate
+  conventions, why the two scales must differ, what each piece of the
+  venue is for, and the traps the module has already sprung — a shared
+  material greying a whole lane, emissive bleeding through bloom, an
+  eased value advancing once per entity. It is the largest module in
+  the game and was documented only inside itself.
+
 - **A stated versioning rule.** The patch number now rises with every
   user-visible change, in the same commit, so the version a build
   reports identifies that build rather than the last release. Tags

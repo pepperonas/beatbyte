@@ -49,5 +49,5 @@ are tools built ON the domain layer and nothing depends on them:
 - `docs/audio/` — analysis pipeline, known limitations
 - `docs/chart-format/` — the versioned chart file format
 - `docs/development/` — developer workflow, asset licensing
-- `docs/ui/` — the menu and settings design system
+- `docs/ui/` — the menu and settings design system, and the 3D stage
 - `docs/releases/` — release process

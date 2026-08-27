@@ -44,6 +44,7 @@
 [![Harnesses](https://img.shields.io/badge/harness%20modes-14-success)](docs/development/harness.md)
 [![Docs](https://img.shields.io/badge/docs-architecture%20%C2%B7%20ADRs%20%C2%B7%20specs-blue)](docs/)
 [![Design System](https://img.shields.io/badge/UI-one%20design%20kit-blueviolet)](docs/ui/design-system.md)
+[![3D Stage](https://img.shields.io/badge/3D%20stage-documented-blueviolet)](docs/ui/3d-stage.md)
 [![Chart Format](https://img.shields.io/badge/chart%20format-v1%20documented-blue)](docs/chart-format/chart-format-v1.md)
 [![Docs Enforced](https://img.shields.io/badge/docs-drift%20tested-brightgreen)](apps/beatbyte/tests/docs_stay_true.rs)
 [![Doc Tests](https://img.shields.io/badge/doc%20examples-compiled%20%26%20run-blue)](crates/beatbyte-chart/src/lib.rs)
