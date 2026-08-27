@@ -32,7 +32,7 @@
 [![SemVer](https://img.shields.io/badge/versioning-SemVer-blue)](CHANGELOG.md)
 [![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735)](CHANGELOG.md)
 [![Conventional Commits](https://img.shields.io/badge/commits-Conventional-FE5196)](https://www.conventionalcommits.org/)
-[![Tests](https://img.shields.io/badge/tests-271%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-311%20passing-brightgreen)](#testing)
 [![Clippy](https://img.shields.io/badge/clippy-%E2%80%91D%20warnings-brightgreen?logo=rust)](Cargo.toml)
 [![rustfmt](https://img.shields.io/badge/style-rustfmt-orange?logo=rust)](Cargo.toml)
 [![Rustdoc](https://img.shields.io/badge/public%20API-documented-blue)](Cargo.toml)
@@ -45,6 +45,14 @@
 [![Docs](https://img.shields.io/badge/docs-architecture%20%C2%B7%20ADRs%20%C2%B7%20specs-blue)](docs/)
 [![Design System](https://img.shields.io/badge/UI-one%20design%20kit-blueviolet)](docs/ui/design-system.md)
 [![Chart Format](https://img.shields.io/badge/chart%20format-v1%20documented-blue)](docs/chart-format/chart-format-v1.md)
+[![Docs Enforced](https://img.shields.io/badge/docs-drift%20tested-brightgreen)](apps/beatbyte/tests/docs_stay_true.rs)
+[![Doc Tests](https://img.shields.io/badge/doc%20examples-compiled%20%26%20run-blue)](crates/beatbyte-chart/src/lib.rs)
+[![Versioning](https://img.shields.io/badge/version-bumped%20per%20change-blue)](CHANGELOG.md)
+[![Determinism](https://img.shields.io/badge/charts-reproducible-blueviolet)](docs/audio/analysis.md)
+[![Dependencies](https://img.shields.io/badge/runtime%20deps-Rust%20crates%20only-informational)](Cargo.toml)
+[![Telemetry](https://img.shields.io/badge/telemetry-none-brightgreen)](#legal)
+[![Network](https://img.shields.io/badge/network-never-brightgreen)](#legal)
+[![Build](https://img.shields.io/badge/build-one%20command-success)](#building-from-source)
 
 ### Tech
 
@@ -364,20 +372,30 @@ beatbyte-cli demo                  # render the built-in songs + charts
 ## Testing
 
 ```bash
-cargo test --workspace          # 271 tests
+cargo test --workspace          # 311 tests
 ```
 
 | Crate | Tests | Covers |
 |---|---:|---|
 | `beatbyte-core` | 70 | Timing windows to their exact boundaries, judgment, scoring, combos, HOPO and tap rules, the hype meter |
 | `beatbyte-chart` | 55 | Format validation, untrusted-input limits, chart generation, difficulty derivation, musical quantisation |
-| `beatbyte-game` | 77 | UI kit contracts, settings persistence, library scanning, import naming, the X-plorer report decoder, texture geometry |
+| `beatbyte-game` | 112 | UI kit contracts, settings persistence, library scanning, import naming, the X-plorer report decoder, texture geometry |
 | `beatbyte-audio` | 46 | Onset detection, tempo estimation, melody contours, the song clock, real-file decoding for every advertised format |
 | `beatbyte-editor` | 19 | Every edit operation round-trips through its own inverse |
+| `beatbyte` | 8 | Documentation consistency: the numbers below, the version, the badges, the links |
 
 Integration tests decode real fixture files for each supported format,
 including `.m4a`, so "we support AAC" is a passing test rather than a
-claim.
+claim. The total is the table's sum plus one documentation example
+that is compiled and run.
+
+**These numbers are checked, not maintained.**
+`apps/beatbyte/tests/docs_stay_true.rs` counts the test functions in
+each crate and fails if this table disagrees, and does the same for
+the version, the badges that state a fact, the ADR index, the harness
+reference and every repository link in this file. Every one of those
+numbers had already drifted at least once — the test count twice in a
+single day — because nothing about a wrong number looks wrong.
 
 ### Harnesses
 

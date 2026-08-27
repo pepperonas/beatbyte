@@ -129,6 +129,17 @@ CI (happened twice).
 
 ## Documentation rules
 
+- **Numbers in documents are enforced, not maintained.**
+  `apps/beatbyte/tests/docs_stay_true.rs` counts what is actually in
+  the repository and fails when a document disagrees: the per-crate
+  test table and its total, the version against the CHANGELOG and the
+  internal dependency pins, the badges that state a fact (workspace
+  size, MSRV, ADR count), the ADR index against the files on disk,
+  every `BEATBYTE_*` switch against the harness reference, and every
+  repository link in the README. Update the document, never the test —
+  and if a claim genuinely cannot be checked, do not write it as a
+  number.
+
 - **CHANGELOG.md** follows Keep a Changelog: every user-visible change
   lands under `[Unreleased]` in the same commit that makes it; releases
   move the block under a dated version heading.
@@ -163,6 +174,14 @@ CI (happened twice).
 
 ## Semantic versioning
 
+- **The patch number rises with every user-visible change**, in the
+  same commit that makes the change, so the version a build reports
+  identifies that build and not the last release. A `vX.Y.Z` tag is a
+  separate act — it triggers the release pipeline — and happens at
+  milestones, covering however many patch versions accumulated.
+  `apps/beatbyte/tests/docs_stay_true.rs` fails if the manifest ever
+  carries a version the CHANGELOG does not describe, and if the
+  internal dependency pins fall behind it.
 - SemVer, currently **0.x**: minor = milestone/feature releases,
   patch = fixes. 0.x lasts until the gameplay tuning settles
   (see roadmap: "Road to 1.0"); **1.0.0** additionally freezes the
@@ -187,7 +206,9 @@ A task/change is done when ALL hold:
    tree.
 5. `docs/ROADMAP.md` reflects the new state (task checked, follow-ups
    filed).
-6. Committed with a conventional message; pushed; CI green.
+6. Version bumped for any user-visible change, with its CHANGELOG
+   entry under that version's heading, in the same commit.
+7. Committed with a conventional message; **pushed**; CI green.
 
 For a **release**, additionally: version + internal deps bumped,
 CHANGELOG sectioned, annotated tag pushed, CI release artifacts

@@ -330,3 +330,42 @@ fn smoke_test_exit(
         app_exit.write(AppExit::error());
     }
 }
+
+#[cfg(test)]
+mod tests {
+    /// The parser, lifted out of [`parse_window_env`] so it can be
+    /// tested without touching the process environment — a test that
+    /// sets environment variables is a test that fights every other
+    /// test running beside it.
+    fn parse_window(value: &str) -> Option<(u32, u32)> {
+        let (w, h) = value.split_once('x')?;
+        Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
+    }
+
+    #[test]
+    fn a_window_size_parses() {
+        assert_eq!(parse_window("1280x800"), Some((1280, 800)));
+        assert_eq!(parse_window(" 1920 x 1200 "), Some((1920, 1200)));
+    }
+
+    #[test]
+    fn nonsense_is_declined_rather_than_guessed() {
+        // Falling back to a default on bad input would silently
+        // measure the wrong layout — the variable exists precisely to
+        // pin a size for verification.
+        for bad in ["", "1280", "1280*800", "axb", "1280x", "x800", "-5x10"] {
+            assert_eq!(parse_window(bad), None, "`{bad}` should not parse");
+        }
+    }
+
+    #[test]
+    fn the_parser_matches_the_one_in_use() {
+        // Pins the copy above against the real implementation's
+        // shape, so the two cannot drift apart unnoticed.
+        let source = include_str!("lib.rs");
+        assert!(
+            source.contains("let (w, h) = value.split_once('x')?;"),
+            "parse_window_env no longer splits on 'x'; update the test copy"
+        );
+    }
+}

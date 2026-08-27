@@ -217,3 +217,64 @@ fn stop_calibration(
     music.0.stop();
     game_clock.clock.stop();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Calibration, MIN_TAPS};
+
+    fn with(offsets: &[f64]) -> Calibration {
+        Calibration {
+            offsets: offsets.to_vec(),
+        }
+    }
+
+    #[test]
+    fn too_few_taps_produce_no_verdict() {
+        // Latency measured from two taps is noise wearing a number,
+        // and the number would then be written into settings and
+        // silently shift every judgment window afterwards.
+        for count in 0..MIN_TAPS {
+            let offsets = vec![0.020; count];
+            assert!(
+                with(&offsets).median_ms().is_none(),
+                "{count} taps should not yield an offset"
+            );
+        }
+        assert!(with(&[0.020; MIN_TAPS]).median_ms().is_some());
+    }
+
+    #[test]
+    fn the_offset_is_reported_in_milliseconds() {
+        // Taps are recorded in seconds and the setting is in
+        // milliseconds; a factor of a thousand in the wrong place
+        // would be invisible in the code and ruinous in play.
+        let offsets = vec![0.020; MIN_TAPS];
+        let median = with(&offsets).median_ms().expect("enough taps");
+        assert!((median - 20.0).abs() < 1e-9, "expected 20 ms, got {median}");
+    }
+
+    #[test]
+    fn one_wild_tap_does_not_move_the_result() {
+        // The median is chosen over the mean precisely for this: a
+        // player sneezes, one tap lands half a second out, and the
+        // measurement must survive it.
+        let mut offsets = vec![0.030; MIN_TAPS];
+        let clean = with(&offsets).median_ms().expect("enough taps");
+        offsets.push(0.5);
+        let with_outlier = with(&offsets).median_ms().expect("enough taps");
+        assert!(
+            (clean - with_outlier).abs() < 5.0,
+            "one outlier moved the median from {clean} to {with_outlier}"
+        );
+    }
+
+    #[test]
+    fn early_and_late_taps_keep_their_sign() {
+        // The sign is the whole meaning: it says which way the player
+        // is off, and therefore which way to correct.
+        let early = with(&[-0.035; MIN_TAPS]).median_ms().expect("taps");
+        let late = with(&[0.035; MIN_TAPS]).median_ms().expect("taps");
+        assert!(early < 0.0, "an early tap should stay negative: {early}");
+        assert!(late > 0.0, "a late tap should stay positive: {late}");
+    }
+}

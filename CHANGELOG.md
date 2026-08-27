@@ -5,9 +5,42 @@ All notable changes to BeatByte are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+**How versions move here.** The patch number rises with every
+user-visible change, so the version a build reports always identifies
+that build rather than the last release. A `vX.Y.Z` **tag** is a
+separate act: it triggers the release pipeline and publishes
+artefacts, and happens at milestones. So a version section exists as
+soon as the code carries that version; the git tags record which of
+them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
+the manifest ever carries a version this file does not describe.
+
+## [0.11.0] - 2026-08-28
 
 ### Added
+
+- **The documentation's numbers are enforced, not maintained.**
+  `apps/beatbyte/tests/docs_stay_true.rs` reads the repository as data
+  and fails when a document disagrees with it: the per-crate test
+  table and its total, the manifest version against the CHANGELOG and
+  against the internal dependency pins, the badges that state a fact,
+  the ADR index against the files on disk, every `BEATBYTE_*` switch
+  against the harness reference, and every repository link in the
+  README. Written because the test count had already been corrected
+  twice in one day and was stale again by the evening: prose can be
+  reviewed, a number cannot, because nothing about a wrong one looks
+  wrong.
+
+- **A stated versioning rule.** The patch number now rises with every
+  user-visible change, in the same commit, so the version a build
+  reports identifies that build rather than the last release. Tags
+  stay a separate act at milestones. A test fails if the manifest ever
+  carries a version the CHANGELOG does not describe.
+
+- **Tests for the latency calibration and the window-size switch** —
+  that too few taps yield no verdict at all, that the offset is
+  reported in milliseconds and keeps its sign, that one wild tap
+  cannot move the median, and that a malformed `BEATBYTE_WINDOW` is
+  declined rather than guessed.
 
 - **A flame off the fret when a note lands.** The genre's signature
   moment, and the one thing the stage still did not do: a hit lit the
