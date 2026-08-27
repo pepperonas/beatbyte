@@ -70,8 +70,7 @@ impl Plugin for AutopilotPlugin {
             match shot_state(&raw) {
                 Some(target) => {
                     app.insert_resource(ShotState(target))
-                        .add_systems(Startup, enter_shot_state)
-                        .add_systems(Update, quit_after_shot);
+                        .add_systems(Update, (enter_shot_state, quit_after_shot));
                     if let Some(dir) = std::env::var_os("BEATBYTE_SHOT_DIR") {
                         let dir = std::path::PathBuf::from(dir);
                         if std::fs::create_dir_all(&dir).is_ok() {
@@ -176,8 +175,22 @@ pub fn shot_state(raw: &str) -> Option<AppState> {
 #[derive(Resource)]
 struct ShotState(AppState);
 
-/// Enter the requested screen once the app is up.
-fn enter_shot_state(target: Res<ShotState>, mut next: ResMut<NextState<AppState>>) {
+/// Enter the requested screen once the app is genuinely up.
+///
+/// Waits for the main menu rather than switching at startup: boot
+/// inserts the song library and the built-in songs, and a screen that
+/// needs them — the browser does — panics on a missing resource if it
+/// is entered before boot has run.
+fn enter_shot_state(
+    target: Res<ShotState>,
+    state: Res<State<AppState>>,
+    mut next: ResMut<NextState<AppState>>,
+    mut done: Local<bool>,
+) {
+    if *done || *state.get() != AppState::MainMenu {
+        return;
+    }
+    *done = true;
     next.set(target.0);
 }
 

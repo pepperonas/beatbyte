@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The results screen is a verdict, not a receipt.** It used to be
+  bare text floating in a void at the one moment that is supposed to
+  be the payoff. Now the song is the heading, a grade badge sits
+  beside the score, accuracy has a bar as well as a figure, and the
+  judgment breakdown carries the same colours the popups used during
+  the song — so it reads as a summary of what was on screen.
+
 - **Energy phrases are finally visible.** Charts have carried
   `phrases` all along and completing one has always paid a quarter of
   the hype meter, but nothing on screen said which notes those were —
@@ -255,6 +262,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the game has shipped a smooth high-res style for a while.
 
 ### Fixed
+
+- **Imported titles no longer show empty boxes.** Press Start 2P has
+  656 glyphs — plenty of Latin, including `å` and `ß` — but nothing
+  from the fullwidth or mathematical blocks, which is exactly what a
+  downloader substitutes for `|` and `/` in a file name. Those
+  look-alikes are now mapped back at display time, so the chart keeps
+  its true title and a script the font cannot draw is left alone
+  rather than turned into question marks.
 
 - **The hype overlay was washing the venue instead of the highway.**
   It is a 900-pixel vertical band the width of the bed — the shape of

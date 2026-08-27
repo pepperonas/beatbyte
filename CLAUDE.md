@@ -219,6 +219,13 @@ artifact, smoke-test it (neutral CWD!), then
   needs bevy's `serialize` feature.
 - **Never edit files while a cargo build is in flight** (poisons the
   cache); don't casually flip bevy features (full rebuild, huge target/).
+- **A locked screen makes every capture solid black**, harness and
+  `screencapture` alike — and the run still passes, so it looks like a
+  code fault. Check it before diagnosing anything else:
+  `python3 -c "import Quartz; print(dict(Quartz.CGSessionCopyCurrentDictionary()).get('CGSSessionScreenIsLocked'))"`.
+  Cost an hour once: shots that had worked minutes earlier came back
+  black, and two plausible code hypotheses were built and disproven
+  before the screen was checked.
 - macOS: `timeout` doesn't exist; screenshots of an **occluded window
   are black** (first-seconds shots often black — window still coming
   up); `grep -c` exits 1 on zero matches and breaks `&&` chains.

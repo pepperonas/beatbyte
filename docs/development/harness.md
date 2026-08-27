@@ -91,6 +91,14 @@ These all cost real time at least once.
 
 - **Wrap long runs in `caffeinate -dis` on macOS.** Display sleep
   removes the monitor, the window closes and the run dies mid-song.
+- **A locked screen makes every capture solid black** — and the run
+  still reports PASS, so it reads as a rendering bug in whatever you
+  just changed. Check the screen before the code:
+
+  ```bash
+  python3 -c "import Quartz; print(dict(Quartz.CGSessionCopyCurrentDictionary()).get('CGSSessionScreenIsLocked'))"
+  ```
+
 - **An occluded window renders black.** Screenshots of a covered window
   are not evidence of anything; two black frames are md5-identical, so
   a comparison will happily "pass". Prefer ECS-level probes to pictures

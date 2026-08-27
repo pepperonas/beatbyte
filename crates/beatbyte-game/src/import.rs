@@ -155,7 +155,7 @@ fn start_next_import(
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| "imported song".to_owned()),
     );
-    status.0 = format!("importing \"{title}\"...");
+    status.0 = format!("importing \"{}\"...", crate::ui::font_safe(&title));
     info!("import: \"{title}\" by {artist} from {}", source.display());
     queue.current = Some(title.clone());
     let task = AsyncComputeTaskPool::get()
@@ -185,7 +185,7 @@ fn poll_import(
     match result {
         Ok(title) => {
             queue.ok += 1;
-            status.0 = format!("\"{title}\" imported");
+            status.0 = format!("\"{}\" imported", crate::ui::font_safe(&title));
             if let (Some(builtins), Some(mut library)) = (builtins, library) {
                 let charts: Vec<_> = builtins.0.iter().map(|song| song.chart.clone()).collect();
                 *library = scan_library(&charts);
@@ -330,6 +330,7 @@ fn update_import_panel(
     if let Ok(mut text) = texts.single_mut() {
         let line = if queue.active() {
             let name = queue.current.as_deref().unwrap_or("...");
+            let name = crate::ui::font_safe(name);
             format!(
                 "importing \"{name}\"  ({}/{})",
                 (queue.done + 1).min(queue.total),

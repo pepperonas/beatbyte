@@ -8,6 +8,7 @@ use crate::palette;
 use crate::scores::{BestScore, ScoreBoard, save_scores};
 use crate::states::AppState;
 use crate::ui::UiFont;
+use crate::ui_kit;
 
 /// Plugin for the results screen.
 pub struct ResultsPlugin;
@@ -73,34 +74,59 @@ fn spawn_results(
     }
 
     commands
-        .spawn((
-            ResultsScreen,
-            Node {
-                width: percent(100),
-                height: percent(100),
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                row_gap: px(10),
-                ..default()
-            },
-        ))
+        .spawn((ResultsScreen, ui_kit::screen_root()))
         .with_children(|parent| {
             if solo {
                 spawn_solo(parent, &results, new_record, &font);
             } else {
                 spawn_multi(parent, &results, &font);
             }
-            parent.spawn((
-                Text::new("ENTER back to menu"),
-                font.text(10.0),
-                TextColor(palette::TEXT_DIM),
+            ui_kit::footer(parent, &font, "ENTER back to menu");
+        });
+}
+
+/// One judgment row: a colour chip, its name, and how many.
+fn tally(parent: &mut ChildSpawnerCommands, font: &UiFont, label: &str, count: u32, colour: Color) {
+    parent.spawn(ui_kit::row()).with_children(|row| {
+        // ONE Node, not two: an explicit `Node` beside `label_node()`
+        // puts two of the same component in one bundle, and Bevy
+        // rejects that at spawn time rather than merging them.
+        row.spawn(Node {
+            align_items: AlignItems::Center,
+            column_gap: px(10),
+            flex_shrink: 0.0,
+            ..default()
+        })
+        .with_children(|left| {
+            // The chip is the same colour the judgment popped in
+            // during the song, so the breakdown reads as a
+            // summary of what was on screen rather than a table.
+            left.spawn((
                 Node {
-                    margin: UiRect::top(px(30)),
+                    width: px(10),
+                    height: px(10),
+                    border_radius: BorderRadius::all(px(2)),
                     ..default()
                 },
+                BackgroundColor(colour),
+            ));
+            left.spawn((
+                Text::new(label.to_owned()),
+                font.text(ui_kit::ROW),
+                TextColor(palette::TEXT_DIM),
             ));
         });
+        row.spawn((
+            Text::new(count.to_string()),
+            font.text(ui_kit::ROW),
+            TextColor(if count == 0 {
+                palette::dimmed(palette::TEXT_DIM, 0.6)
+            } else {
+                palette::TEXT
+            }),
+            ui_kit::value_node(),
+        ));
+    });
 }
 
 fn spawn_solo(
@@ -114,53 +140,150 @@ fn spawn_solo(
     let accuracy = perf.accuracy() * 100.0;
     let grade = grade_for(accuracy, counts.miss);
 
-    parent.spawn((
-        GradeSlam { age: 0.0 },
-        Text::new(grade),
-        font.text(20.0),
-        TextColor(palette::BRAND.with_alpha(0.0)),
-    ));
-    if new_record {
-        parent.spawn((
-            Text::new("NEW RECORD!"),
-            font.text(14.0),
-            TextColor(palette::PERFECT),
-        ));
-    }
-    parent.spawn((
-        Text::new(format!("\"{}\" on {}", results.title, results.difficulty)),
-        font.text(12.0),
-        TextColor(palette::TEXT_DIM),
-    ));
-    parent.spawn((
-        ScoreCountUp {
-            target: perf.score(),
-            age: 0.0,
-        },
-        Text::new("0"),
-        font.text(30.0),
-        TextColor(palette::TEXT),
-    ));
-    parent.spawn((
-        Text::new(format!(
-            "accuracy {accuracy:.1}%  |  best streak {}",
-            perf.best_streak()
-        )),
-        font.text(12.0),
-        TextColor(palette::TEXT_DIM),
-    ));
-    parent.spawn((
-        Text::new(format!(
-            "perfect {}   great {}   good {}   miss {}   overstrums {}",
-            counts.perfect,
-            counts.great,
-            counts.good,
-            counts.miss,
-            perf.overstrums()
-        )),
-        font.text(10.0),
-        TextColor(palette::TEXT_DIM),
-    ));
+    // The song is the subject of this screen, so it gets the heading
+    // rather than a dim line under the grade.
+    ui_kit::header(
+        parent,
+        font,
+        &crate::ui::font_safe(&results.title).to_uppercase(),
+        &format!(
+            "{} - {}",
+            crate::ui::font_safe(&results.artist),
+            results.difficulty
+        ),
+    );
+
+    parent.spawn(ui_kit::panel()).with_children(|panel| {
+        // ── The verdict: grade badge beside the score counter ───────
+        panel
+            .spawn(Node {
+                width: percent(100),
+                align_items: AlignItems::Center,
+                column_gap: px(22),
+                padding: UiRect::axes(px(14), px(10)),
+                ..default()
+            })
+            .with_children(|top| {
+                top.spawn((
+                    Node {
+                        width: px(96),
+                        height: px(96),
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        border: UiRect::all(px(3)),
+                        border_radius: BorderRadius::all(px(10)),
+                        flex_shrink: 0.0,
+                        ..default()
+                    },
+                    BackgroundColor(palette::BRAND.with_alpha(0.10)),
+                    BorderColor::all(palette::BRAND),
+                ))
+                .with_child((
+                    GradeSlam { age: 0.0 },
+                    Text::new(grade),
+                    font.text(20.0),
+                    TextColor(palette::BRAND.with_alpha(0.0)),
+                ));
+                top.spawn(Node {
+                    flex_direction: FlexDirection::Column,
+                    row_gap: px(6),
+                    flex_grow: 1.0,
+                    ..default()
+                })
+                .with_children(|block| {
+                    block.spawn((
+                        Text::new("SCORE"),
+                        font.text(ui_kit::SMALL),
+                        TextColor(palette::dimmed(palette::TEXT_DIM, 0.85)),
+                    ));
+                    block.spawn((
+                        ScoreCountUp {
+                            target: perf.score(),
+                            age: 0.0,
+                        },
+                        Text::new("0"),
+                        font.text(30.0),
+                        TextColor(palette::TEXT),
+                    ));
+                    if new_record {
+                        block.spawn((
+                            Text::new("NEW RECORD"),
+                            font.text(ui_kit::SMALL),
+                            TextColor(palette::PERFECT),
+                        ));
+                    }
+                });
+            });
+
+        // ── Accuracy, as a bar and a number ─────────────────────────
+        panel.spawn(ui_kit::row()).with_children(|row| {
+            row.spawn((
+                Text::new("ACCURACY"),
+                font.text(ui_kit::ROW),
+                TextColor(palette::TEXT_DIM),
+                ui_kit::label_node(),
+            ));
+            row.spawn((
+                Text::new(format!("{accuracy:.1}%")),
+                font.text(ui_kit::ROW),
+                TextColor(palette::TEXT),
+                ui_kit::value_node(),
+            ));
+        });
+        // A bar says "nearly all of it" at a glance, which a figure to
+        // one decimal place does not.
+        panel
+            .spawn((
+                Node {
+                    width: percent(100),
+                    height: px(8),
+                    margin: UiRect::axes(px(14), px(2)),
+                    border_radius: BorderRadius::all(px(4)),
+                    ..default()
+                },
+                BackgroundColor(palette::dimmed(palette::TEXT_DIM, 0.22)),
+            ))
+            .with_child((
+                Node {
+                    width: percent(accuracy),
+                    height: percent(100),
+                    border_radius: BorderRadius::all(px(4)),
+                    ..default()
+                },
+                BackgroundColor(if counts.miss == 0 {
+                    palette::PERFECT
+                } else {
+                    palette::BRAND
+                }),
+            ));
+
+        tally(panel, font, "PERFECT", counts.perfect, palette::PERFECT);
+        tally(panel, font, "GREAT", counts.great, palette::GREAT);
+        tally(panel, font, "GOOD", counts.good, palette::GOOD);
+        tally(panel, font, "MISS", counts.miss, palette::MISS);
+        tally(
+            panel,
+            font,
+            "OVERSTRUMS",
+            perf.overstrums(),
+            palette::dimmed(palette::MISS, 0.6),
+        );
+
+        panel.spawn(ui_kit::row()).with_children(|row| {
+            row.spawn((
+                Text::new("BEST STREAK"),
+                font.text(ui_kit::ROW),
+                TextColor(palette::TEXT_DIM),
+                ui_kit::label_node(),
+            ));
+            row.spawn((
+                Text::new(perf.best_streak().to_string()),
+                font.text(ui_kit::ROW),
+                TextColor(palette::TEXT),
+                ui_kit::value_node(),
+            ));
+        });
+    });
 }
 
 fn spawn_multi(parent: &mut ChildSpawnerCommands, results: &LastResults, font: &UiFont) {
@@ -173,7 +296,11 @@ fn spawn_multi(parent: &mut ChildSpawnerCommands, results: &LastResults, font: &
         TextColor(palette::BRAND),
     ));
     parent.spawn((
-        Text::new(format!("\"{}\" on {}", results.title, results.difficulty)),
+        Text::new(format!(
+            "\"{}\" on {}",
+            crate::ui::font_safe(&results.title),
+            results.difficulty
+        )),
         font.text(11.0),
         TextColor(palette::TEXT_DIM),
         Node {
@@ -267,7 +394,9 @@ fn animate_grade(
         let t = (slam.age / 0.35).min(1.0);
         // Ease-out-back: overshoot to ~1.1× then settle.
         let eased = 1.0 + 2.7 * (t - 1.0).powi(3) + 1.7 * (t - 1.0).powi(2);
-        font.font_size = FontSize::Px(20.0 + 50.0 * eased);
+        // Capped so the letter stays inside its badge: the old
+        // free-standing version could grow to any size it liked.
+        font.font_size = FontSize::Px(16.0 + 40.0 * eased);
         color.0 = palette::BRAND.with_alpha(t.min(1.0));
     }
 }
