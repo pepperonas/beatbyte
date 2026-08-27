@@ -99,6 +99,28 @@ These all cost real time at least once.
   python3 -c "import Quartz; print(dict(Quartz.CGSessionCopyCurrentDictionary()).get('CGSSessionScreenIsLocked'))"
   ```
 
+- **An occluded window renders black** — and this is the common case,
+  not an edge case: a full-screen terminal in front of the game window
+  is enough. Bevy's screenshot renders that window's surface, so it
+  comes back solid black while the run reports PASS.
+
+  Capture **by window ID** instead, which macOS honours regardless of
+  stacking:
+
+  ```bash
+  ID=$(python3 -c "
+  import Quartz
+  print(next(w['kCGWindowNumber']
+             for w in Quartz.CGWindowListCopyWindowInfo(
+                 Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID)
+             if w.get('kCGWindowOwnerName') == 'beatbyte'))")
+  screencapture -x -o -l"$ID" shot.png
+  ```
+
+  ⚠️ Match the **owning process**, never the window title: a terminal
+  sitting in the project directory is itself titled "BeatByte rhythm
+  game", and matching on the title photographs the terminal.
+
 - **An occluded window renders black.** Screenshots of a covered window
   are not evidence of anything; two black frames are md5-identical, so
   a comparison will happily "pass". Prefer ECS-level probes to pictures

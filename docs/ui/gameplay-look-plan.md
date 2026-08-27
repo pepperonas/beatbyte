@@ -227,3 +227,79 @@ that reads the factor straight from a two-player layout.
 Judgment untouched and proven by an identical autopilot score, the
 depth view unaffected, multiplayer layout unchanged, and every number
 in this document measured before it was written down.
+
+---
+
+# Round three (2026-08-27)
+
+Rounds one and two fixed what the screen says and how it is
+proportioned. Held next to the reference, what is left is **light**.
+
+## Measured
+
+Sampling the venue only — the outer thirds of the frame, above the
+neck, excluding the HUD:
+
+| | Reference | BeatByte |
+|---|---|---|
+| Brightness, median | a lit room | **0.13** |
+| Saturation, median | saturated stage light | **0.20** |
+
+That is the whole remaining difference in one pair of numbers: the
+room is dark and very nearly grey. A white key light on grey
+materials returns grey, however many boxes are in the room.
+
+## The work
+
+### W1 — Colour the stage light
+
+Two coloured lamps from opposite sides — warm one way, cool the
+other — plus a lift to the venue's own materials. Colour separation
+across the room is what makes a stage look lit rather than merely
+visible.
+
+**The neck must not brighten with it.** The lamps are placed and
+ranged so the room takes the light and the fretboard does not: notes
+have to keep their contrast against the board, and that is worth more
+than any amount of atmosphere.
+
+*Verify:* the same venue-only sample; brightness and saturation both
+up, and the *bed's* brightness unchanged within tolerance.
+
+### W2 — Lane separators
+
+Neutral dividers between lanes. The genre has them, and they do real
+work: five coloured lines say where lanes *are*, a divider says where
+one **ends**.
+
+*Verify:* screenshot; the coloured lane lines must stay the brighter
+of the two, or the board reads as a grid instead of a highway.
+
+### W3 — Gems that read as objects
+
+The gems are flat-shaded discs. A generated radial texture — bright
+centre, darker toward the rim — gives them a lit face without a
+second entity per note, which at these note counts matters.
+
+*Verify:* screenshot; and the 8-bit note style stays untouched.
+
+## Round three status
+
+| Step | State | Measured |
+|---|---|---|
+| W1 stage light | done | Venue brightness 0.13 → **0.20**, saturation 0.20 → **0.29**, board unchanged (0.250 → 0.262) |
+| W2 lane dividers | done | Four neutral dividers, kept dimmer than the lane lines |
+| W3 gem faces | done | Brightness across a gem 50 → **116**, then floored so distant notes stay legible |
+
+W3 took three attempts, and the first two are worth recording. A
+`base_color_texture` alone made the gems **flatter** — 50 → 10 —
+because a gem's look is dominated by its emissive, which that map
+does not touch. Adding `emissive_texture` gave the shape (116) but
+dimmed the far notes, so the face got a floor: shape is only worth
+having while the note stays readable at the top of the neck. Both
+constraints are now tests.
+
+## Same rules
+
+Judgment proven identical by the autopilot, depth view unaffected,
+multiplayer unchanged, every number measured before it is written.

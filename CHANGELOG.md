@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A stage that is lit rather than merely visible.** Measured, the
+  venue sat at 0.13 brightness and 0.20 saturation — a white key light
+  on grey materials returns grey however many boxes are in the room.
+  Two coloured lamps from opposite sides, a lit backdrop on the rear
+  wall, and materials that accept light bring it to 0.20 and 0.29,
+  while the fretboard's own brightness is unchanged: notes keep their
+  contrast against the board, which is worth more than atmosphere.
+
+- **Lane dividers.** Five coloured lines say where the lanes are; a
+  divider says where one ends, which is the difference between a
+  highway and five parallel wires.
+
+- **Gems with a lit face.** A generated radial highlight, rather than
+  a second mesh per note.
+
 - **A neck with the proportions of the genre, and a board with a
   surface.** Measured against the reference rather than eyeballed: a
   solo neck filled 31 % of the frame where the genre's fills about

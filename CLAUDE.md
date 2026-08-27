@@ -226,6 +226,13 @@ artifact, smoke-test it (neutral CWD!), then
   Cost an hour once: shots that had worked minutes earlier came back
   black, and two plausible code hypotheses were built and disproven
   before the screen was checked.
+- **Occlusion is the usual cause of a black capture** — a full-screen
+  terminal in front of the game window suffices, and the run still
+  says PASS. Capture by window ID (`screencapture -l<id>`), matching
+  the OWNING PROCESS and never the title: a terminal in this project
+  directory is itself titled "BeatByte rhythm game". Working script:
+  `docs/development/harness.md`. Re-run before blaming a change — I
+  attributed this to my own edits three times in one session.
 - macOS: `timeout` doesn't exist; screenshots of an **occluded window
   are black** (first-seconds shots often black — window still coming
   up); `grep -c` exits 1 on zero matches and breaks `&&` chains.

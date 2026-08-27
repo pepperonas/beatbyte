@@ -207,25 +207,40 @@ pub fn board_shade(u: f32, v: f32) -> f32 {
     low + (high - low) * mixed.clamp(0.0, 1.0)
 }
 
-/// Build the board texture. Generated, never loaded: every asset in
-/// this repository has to be original, and a plank is arithmetic.
-fn board_texture() -> Image {
-    const SIZE: usize = 128;
-    let mut data = Vec::with_capacity(SIZE * SIZE * 4);
-    for y in 0..SIZE {
-        for x in 0..SIZE {
-            let shade = board_shade(
-                (x as f32 + 0.5) / SIZE as f32,
-                (y as f32 + 0.5) / SIZE as f32,
+/// How one cell of the rear-wall backdrop is shaded, in 0..1.
+///
+/// Vertical bands with a soft vignette toward the floor — a stage
+/// backdrop, not a blank screen. The wall is the largest single
+/// surface in the frame and it was reading as an unlit slab hung
+/// behind the vanishing point.
+#[must_use]
+pub fn backdrop_shade(u: f32, v: f32) -> f32 {
+    // Bands of two widths, so the rhythm is not a picket fence.
+    let wide = (u * 11.0).sin() * 0.5 + 0.5;
+    let fine = (u * 37.0).sin() * 0.5 + 0.5;
+    // Darker toward the bottom, where the crowd and stacks sit.
+    let fall = (v * 1.4).clamp(0.0, 1.0);
+    let mixed = 0.22f32.mul_add(fine, 0.55 * wide) + 0.23 * fall;
+    0.18 + 0.62 * mixed.clamp(0.0, 1.0)
+}
+
+/// Build a greyscale tile from a shading function.
+fn shaded_tile(size: usize, shade: impl Fn(f32, f32) -> f32, repeat: bool) -> Image {
+    let mut data = Vec::with_capacity(size * size * 4);
+    for y in 0..size {
+        for x in 0..size {
+            let value = shade(
+                (x as f32 + 0.5) / size as f32,
+                (y as f32 + 0.5) / size as f32,
             );
-            let v = (shade * 255.0) as u8;
+            let v = (value.clamp(0.0, 1.0) * 255.0) as u8;
             data.extend_from_slice(&[v, v, v, 255]);
         }
     }
     let mut image = Image::new(
         bevy::render::render_resource::Extent3d {
-            width: SIZE as u32,
-            height: SIZE as u32,
+            width: size as u32,
+            height: size as u32,
             depth_or_array_layers: 1,
         },
         bevy::render::render_resource::TextureDimension::D2,
@@ -233,13 +248,49 @@ fn board_texture() -> Image {
         bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
         bevy::asset::RenderAssetUsages::RENDER_WORLD | bevy::asset::RenderAssetUsages::MAIN_WORLD,
     );
-    // Repeat, because the texture is tiled many times down the neck.
-    image.sampler = bevy::image::ImageSampler::Descriptor(bevy::image::ImageSamplerDescriptor {
-        address_mode_u: bevy::image::ImageAddressMode::Repeat,
-        address_mode_v: bevy::image::ImageAddressMode::Repeat,
-        ..bevy::image::ImageSamplerDescriptor::linear()
-    });
+    if repeat {
+        image.sampler =
+            bevy::image::ImageSampler::Descriptor(bevy::image::ImageSamplerDescriptor {
+                address_mode_u: bevy::image::ImageAddressMode::Repeat,
+                address_mode_v: bevy::image::ImageAddressMode::Repeat,
+                ..bevy::image::ImageSamplerDescriptor::linear()
+            });
+    }
     image
+}
+
+/// How one cell of a gem's face is shaded, in 0..1.
+///
+/// Bright toward the centre, falling off toward the rim, so a gem
+/// reads as a lit object rather than a flat disc. Done as a texture
+/// rather than a second mesh per note: at these note counts an extra
+/// entity each is real cost, and a face is what was missing, not
+/// geometry.
+#[must_use]
+pub fn gem_shade(u: f32, v: f32) -> f32 {
+    let (dx, dy) = (u - 0.5, v - 0.5);
+    let radius = (dx * dx + dy * dy).sqrt() * 2.0;
+    // Highlight offset up-left, where the key light comes from.
+    let hx = u - 0.36;
+    let hy = v - 0.34;
+    let highlight = (1.0 - (hx * hx + hy * hy).sqrt() * 3.4).clamp(0.0, 1.0);
+    let body = (1.0 - radius * radius * 0.55).clamp(0.0, 1.0);
+    let shaped = (0.62f32.mul_add(body, 0.38 * highlight)).clamp(0.0, 1.0);
+    // Lifted off zero. The face modulates the gem's EMISSIVE, so a
+    // dark rim dims the whole note at distance — measured, the first
+    // version shaped the near gems nicely and made the far ones hard
+    // to see, and reading ahead is the game. Shape is worth having
+    // only while the note stays legible.
+    GEM_FACE_FLOOR + (1.0 - GEM_FACE_FLOOR) * shaped
+}
+
+/// How dark a gem's face may get at the rim.
+const GEM_FACE_FLOOR: f32 = 0.62;
+
+/// Build the board texture. Generated, never loaded: every asset in
+/// this repository has to be original, and a plank is arithmetic.
+fn board_texture() -> Image {
+    shaded_tile(128, board_shade, true)
 }
 
 /// A stage surface that takes the energy tint while hype runs.
@@ -478,6 +529,7 @@ fn spawn_venue(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
+    images: &mut Assets<Image>,
     stage: crate::theme::Theme,
     motion: bool,
 ) {
@@ -486,9 +538,16 @@ fn spawn_venue(
     // the brightness of the fretboard, so it read as a blank screen
     // hung behind the vanishing point and flattened the contrast of
     // the notes furthest away.
+    let backdrop = images.add(shaded_tile(128, backdrop_shade, false));
     let wall_material = materials.add(StandardMaterial {
-        base_color: dark.mix(&Color::BLACK, 0.55).mix(&stage.accent, 0.07),
-        perceptual_roughness: 1.0,
+        base_color: dark.mix(&Color::BLACK, 0.3).mix(&stage.accent, 0.10),
+        perceptual_roughness: 0.85,
+        ..default()
+    });
+    let backdrop_material = materials.add(StandardMaterial {
+        base_color: dark.mix(&stage.accent, 0.22),
+        base_color_texture: Some(backdrop),
+        perceptual_roughness: 0.9,
         ..default()
     });
     let trim_material = materials.add(StandardMaterial {
@@ -497,8 +556,8 @@ fn spawn_venue(
         ..default()
     });
     let box_material = materials.add(StandardMaterial {
-        base_color: dark.mix(&Color::WHITE, 0.06),
-        perceptual_roughness: 0.9,
+        base_color: dark.mix(&Color::WHITE, 0.16),
+        perceptual_roughness: 0.75,
         ..default()
     });
 
@@ -511,7 +570,7 @@ fn spawn_venue(
         Stage3d,
         Venue,
         Mesh3d(wall),
-        MeshMaterial3d(wall_material.clone()),
+        MeshMaterial3d(backdrop_material),
         Transform::from_xyz(0.0, 12.0, VENUE_BACK),
         RenderLayers::layer(STAGE_LAYER),
     ));
@@ -641,8 +700,8 @@ fn spawn_venue(
     }
     let head = meshes.add(Sphere::new(0.36).mesh().uv(8, 6));
     let head_material = materials.add(StandardMaterial {
-        base_color: dark.mix(&Color::BLACK, 0.55),
-        perceptual_roughness: 1.0,
+        base_color: dark.mix(&Color::BLACK, 0.25),
+        perceptual_roughness: 0.95,
         ..default()
     });
     for index in 0..48 {
@@ -735,6 +794,47 @@ pub fn setup_stage(
         Transform::from_xyz(2.0, 6.0, 2.0).looking_at(Vec3::new(0.0, 0.0, -8.0), Vec3::Y),
         RenderLayers::layer(STAGE_LAYER),
     ));
+    // Two coloured lamps from opposite sides. A white key light on
+    // grey materials returns grey however many boxes are in the room:
+    // measured, the venue sat at 0.13 brightness and 0.20 saturation,
+    // which is "visible" rather than "lit".
+    //
+    // Both are RANGED so the room takes the light and the fretboard
+    // does not — notes keep their contrast against the board, and
+    // that is worth more than any amount of atmosphere.
+    for (side, tint, strength) in [
+        (-1.0f32, stage.accent, 1.0f32),
+        (1.0, stage.lane_color(Lane::Four), 0.85),
+    ] {
+        commands.spawn((
+            GameplayScreen,
+            Stage3d,
+            PointLight {
+                color: tint,
+                intensity: 1_500_000.0 * strength,
+                range: 34.0,
+                shadow_maps_enabled: false,
+                ..default()
+            },
+            Transform::from_xyz(side * 7.2, 6.5, -17.0),
+            RenderLayers::layer(STAGE_LAYER),
+        ));
+    }
+    // A soft fill on the crowd, so the ranks are not a black mass.
+    commands.spawn((
+        GameplayScreen,
+        Stage3d,
+        PointLight {
+            color: stage.background.mix(&Color::WHITE, 0.7),
+            intensity: 700_000.0,
+            range: 26.0,
+            shadow_maps_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 5.0, -26.0),
+        RenderLayers::layer(STAGE_LAYER),
+    ));
+
     // Ambient light is a component on the camera in this version.
     commands.spawn((
         GameplayScreen,
@@ -751,6 +851,7 @@ pub fn setup_stage(
         &mut commands,
         &mut meshes,
         &mut materials,
+        &mut images,
         stage,
         settings.backdrop_motion,
     );
@@ -827,6 +928,28 @@ pub fn setup_stage(
                     reach: 0.9,
                 },
                 Transform::from_xyz(origin + side * width / 2.0, 0.015, centre),
+                RenderLayers::layer(STAGE_LAYER),
+            ));
+        }
+
+        // Dividers BETWEEN the lanes. Five coloured lines say where
+        // the lanes are; a divider says where one ENDS, which is the
+        // difference between a highway and five parallel wires. Kept
+        // dimmer than the lane lines, or the board reads as a grid.
+        for gap in 0..4 {
+            let left = Lane::from_index(gap).expect("four gaps between five lanes");
+            let right = Lane::from_index(gap + 1).expect("four gaps between five lanes");
+            let middle = (lane_x(&layout, player, left) + lane_x(&layout, player, right)) / 2.0;
+            commands.spawn((
+                GameplayScreen,
+                Stage3d,
+                Mesh3d(lane_strip.clone()),
+                MeshMaterial3d(materials.add(StandardMaterial {
+                    base_color: stage.background.mix(&Color::WHITE, 0.30),
+                    perceptual_roughness: 0.8,
+                    ..default()
+                })),
+                Transform::from_xyz(middle, 0.004, centre).with_scale(Vec3::new(0.6, 1.0, 1.0)),
                 RenderLayers::layer(STAGE_LAYER),
             ));
         }
@@ -1279,10 +1402,12 @@ pub fn setup_note_assets(
     theme: Res<crate::theme::ActiveTheme>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
 ) {
     if !active(&settings) {
         return;
     }
+    let face = images.add(shaded_tile(64, gem_shade, false));
     // The genre's gem is a flat BUTTON lying on the fretboard — a
     // coloured disc inside a dark rim — not a floating sphere. Seen
     // from the player's angle it reads as an ellipse, which is what
@@ -1328,6 +1453,14 @@ pub fn setup_note_assets(
                 let colour = theme.0.lane_color(*lane);
                 materials.add(StandardMaterial {
                     base_color: colour,
+                    base_color_texture: Some(face.clone()),
+                    // The face has to modulate the EMISSIVE too. A
+                    // gem's look is dominated by its glow, so a
+                    // base-colour texture alone is invisible: measured,
+                    // it flattened the gem instead of shaping it —
+                    // brightness across the disc fell from a span of
+                    // 50 to 10.
+                    emissive_texture: Some(face.clone()),
                     // Emissive is what makes a gem glow through the
                     // bloom pass instead of merely being lit.
                     emissive: colour.to_linear() * 2.2,
@@ -1601,6 +1734,66 @@ impl Plugin for Stage3dPlugin {
 
 #[cfg(test)]
 mod tests {
+    use super::{backdrop_shade, gem_shade};
+
+    #[test]
+    fn a_gem_face_is_brightest_near_its_highlight() {
+        // The point of the face is that a gem reads as lit from
+        // somewhere. If the centre and the rim matched, the texture
+        // would be a wasted sampler.
+        let highlight = gem_shade(0.36, 0.34);
+        let rim = gem_shade(0.96, 0.5);
+        assert!(
+            highlight > rim + 0.12,
+            "highlight {highlight} barely beats rim {rim}"
+        );
+    }
+
+    #[test]
+    fn a_gem_face_never_dims_the_note_out_of_readability() {
+        // The face modulates emissive, so its darkest point is how
+        // dim a note gets at distance. Shape is only worth having
+        // while the note stays legible on the far end of the neck.
+        let mut darkest = f32::MAX;
+        for i in 0..40 {
+            for j in 0..40 {
+                darkest = darkest.min(gem_shade(i as f32 / 40.0, j as f32 / 40.0));
+            }
+        }
+        assert!(darkest >= 0.5, "gems can dim to {darkest} of their glow");
+    }
+
+    #[test]
+    fn a_gem_face_stays_inside_its_range() {
+        for i in 0..40 {
+            for j in 0..40 {
+                let value = gem_shade(i as f32 / 40.0, j as f32 / 40.0);
+                assert!(
+                    (0.0..=1.0).contains(&value),
+                    "gem shade {value} out of range"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_backdrop_is_banded_and_bounded() {
+        let samples: Vec<f32> = (0..128)
+            .map(|i| backdrop_shade(i as f32 / 128.0, 0.5))
+            .collect();
+        let min = samples.iter().copied().fold(f32::MAX, f32::min);
+        let max = samples.iter().copied().fold(f32::MIN, f32::max);
+        assert!(max - min > 0.15, "backdrop is nearly flat: {min}..{max}");
+        assert!(min >= 0.0 && max <= 1.0, "backdrop out of range");
+    }
+
+    #[test]
+    fn the_backdrop_is_darker_at_the_floor() {
+        // The crowd and the speaker stacks sit along the bottom of
+        // it; a wall that is brightest there fights them.
+        assert!(backdrop_shade(0.5, 0.05) < backdrop_shade(0.5, 0.95));
+    }
+
     use super::{BOARD_SHADE, board_shade, neck_spread};
 
     #[test]
