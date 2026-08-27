@@ -12,5 +12,10 @@ rust-version.workspace = true
 beatbyte-game = { workspace = true }
 bevy = { workspace = true }
 
+[dev-dependencies]
+# For the documentation-consistency tests: the gameplay rules document
+# quotes concrete numbers, and those numbers live here.
+beatbyte-core = { workspace = true }
+
 [lints]
 workspace = true

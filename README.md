@@ -32,7 +32,7 @@
 [![SemVer](https://img.shields.io/badge/versioning-SemVer-blue)](CHANGELOG.md)
 [![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735)](CHANGELOG.md)
 [![Conventional Commits](https://img.shields.io/badge/commits-Conventional-FE5196)](https://www.conventionalcommits.org/)
-[![Tests](https://img.shields.io/badge/tests-312%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-313%20passing-brightgreen)](#testing)
 [![Clippy](https://img.shields.io/badge/clippy-%E2%80%91D%20warnings-brightgreen?logo=rust)](Cargo.toml)
 [![rustfmt](https://img.shields.io/badge/style-rustfmt-orange?logo=rust)](Cargo.toml)
 [![Rustdoc](https://img.shields.io/badge/public%20API-documented-blue)](Cargo.toml)
@@ -373,7 +373,7 @@ beatbyte-cli demo                  # render the built-in songs + charts
 ## Testing
 
 ```bash
-cargo test --workspace          # 312 tests
+cargo test --workspace          # 313 tests
 ```
 
 | Crate | Tests | Covers |
@@ -383,7 +383,7 @@ cargo test --workspace          # 312 tests
 | `beatbyte-game` | 112 | UI kit contracts, settings persistence, library scanning, import naming, the X-plorer report decoder, texture geometry |
 | `beatbyte-audio` | 46 | Onset detection, tempo estimation, melody contours, the song clock, real-file decoding for every advertised format |
 | `beatbyte-editor` | 19 | Every edit operation round-trips through its own inverse |
-| `beatbyte` | 9 | Documentation consistency: the numbers below, the version, the badges, the links |
+| `beatbyte` | 10 | Documentation consistency: these numbers, the version, the badges, the links, the ADR index, the harness switches, and the figures the rules document quotes |
 
 Integration tests decode real fixture files for each supported format,
 including `.m4a`, so "we support AAC" is a passing test rather than a

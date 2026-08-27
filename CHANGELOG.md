@@ -37,6 +37,13 @@ the manifest ever carries a version this file does not describe.
   eased value advancing once per entity. It is the largest module in
   the game and was documented only inside itself.
 
+- **The gameplay rules document is bound to the code.** It quotes the
+  multiplier thresholds, the meter a phrase awards and the activation
+  threshold as figures; those live in `ScoreConfig`, and a document
+  that quotes a constant goes wrong the moment the constant moves —
+  silently, because the prose around it still reads well. A test now
+  reads the configuration and checks the document states it.
+
 - **A stated versioning rule.** The patch number now rises with every
   user-visible change, in the same commit, so the version a build
   reports identifies that build rather than the last release. Tags

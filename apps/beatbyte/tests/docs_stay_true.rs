@@ -350,3 +350,42 @@ fn no_document_still_promises_an_unreleased_section() {
         "these lines still refer to an [Unreleased] section: {offenders:?}"
     );
 }
+
+#[test]
+fn the_rules_document_quotes_the_real_numbers() {
+    // `docs/gameplay/rules.md` states the multiplier thresholds, the
+    // meter a phrase awards and the activation threshold as figures.
+    // They live in `ScoreConfig`, and a document that quotes a
+    // constant is a document that goes wrong the moment the constant
+    // moves — silently, because the prose around it still reads well.
+    let config = beatbyte_core::ScoreConfig::default();
+    let rules = read("docs/gameplay/rules.md");
+
+    let per_level = config.streak_per_level;
+    for level in 2..=config.max_multiplier {
+        let threshold = per_level * (level - 1);
+        assert!(
+            rules.contains(&format!("×{level} at {threshold}"))
+                || rules.contains(&format!("×{level} at streak {threshold}")),
+            "the rules do not state ×{level} at streak {threshold}"
+        );
+    }
+
+    let phrase_percent = (config.hype_per_phrase * 100.0).round() as u32;
+    assert!(
+        rules.contains(&format!("{phrase_percent}%")),
+        "the rules do not state that a phrase awards {phrase_percent}% meter"
+    );
+
+    let activation_percent = (config.hype_activation_threshold * 100.0).round() as u32;
+    assert!(
+        rules.contains(&format!("{activation_percent}%")),
+        "the rules do not state the {activation_percent}% activation threshold"
+    );
+
+    assert!(
+        rules.contains(&format!("×{}", config.max_multiplier)),
+        "the rules do not state the ×{} cap",
+        config.max_multiplier
+    );
+}
