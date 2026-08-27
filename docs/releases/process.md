@@ -1,8 +1,24 @@
 # Release Process
 
-BeatByte follows [Semantic Versioning](https://semver.org/). During early
-development versions are `0.0.x`; the first playable prototype family is
-`0.1.x`.
+BeatByte follows [Semantic Versioning](https://semver.org/), with one
+rule specific to this project:
+
+**The patch number rises with every user-visible change**, in the same
+commit that makes it, so the version a build reports identifies that
+build rather than the last release. A `vX.Y.Z` **tag** is a separate
+act — it is what triggers this pipeline — and happens at milestones,
+covering however many patch versions have accumulated since the last
+one.
+
+That means a release is rarely a version *bump*; it is a version being
+*published*. The manifest is usually already correct, and the work
+below is about proving the thing you are about to publish actually
+runs.
+
+`apps/beatbyte/tests/docs_stay_true.rs` enforces the parts of this a
+person would otherwise have to remember: the manifest version must
+have a CHANGELOG section and be the newest one, and the internal
+dependency pins must move with it.
 
 ## Checklist
 
@@ -10,8 +26,11 @@ development versions are `0.0.x`; the first playable prototype family is
 2. Update `workspace.package.version` in the root `Cargo.toml` **and** the
    internal `beatbyte-*` path-dependency versions in
    `[workspace.dependencies]`.
-3. Move `[Unreleased]` entries in `CHANGELOG.md` into a new dated section
-   with Added/Changed/Fixed/Removed subsections; update the compare links.
+3. Confirm the newest `CHANGELOG.md` section carries the version being
+   released and a date. Entries were written as the work happened, so
+   this is a review rather than a transcription — read it as a
+   stranger would and cut anything that only makes sense from inside
+   the commit that produced it.
 4. Run the full quality gate locally:
    ```bash
    cargo fmt --all -- --check

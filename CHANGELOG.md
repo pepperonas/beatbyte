@@ -914,7 +914,7 @@ a tech demo.
   Records (Rust + Bevy, workspace layout).
 - README, MIT license, contributing guide, code of conduct, security policy.
 
-[Unreleased]: https://github.com/pepperonas/beatbyte/compare/v0.8.0...HEAD
+[0.11.0]: https://github.com/pepperonas/beatbyte/compare/v0.10.0...v0.11.0
 [0.8.0]: https://github.com/pepperonas/beatbyte/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/pepperonas/beatbyte/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/pepperonas/beatbyte/compare/v0.5.0...v0.6.0

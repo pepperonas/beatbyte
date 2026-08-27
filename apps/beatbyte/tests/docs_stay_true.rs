@@ -319,3 +319,34 @@ fn checkable_badges_state_the_truth() {
         "the ADR badge does not say {adrs}"
     );
 }
+
+#[test]
+fn no_document_still_promises_an_unreleased_section() {
+    // The changelog once had an `[Unreleased]` heading, and three
+    // documents told the reader to file their entry there. When the
+    // versioning rule changed, all three kept saying it — which is
+    // precisely the kind of quiet contradiction this file exists to
+    // prevent, so it is now checked rather than remembered.
+    let mut offenders = Vec::new();
+    for doc in [
+        "README.md",
+        "CONTRIBUTING.md",
+        "CLAUDE.md",
+        "CHANGELOG.md",
+        "docs/releases/process.md",
+    ] {
+        let text = read(doc);
+        for (number, line) in text.lines().enumerate() {
+            // The rule is about instructions, not history: a line that
+            // explains the section is GONE is exactly what should be
+            // written.
+            if line.contains("[Unreleased]") && !line.contains("no `[Unreleased]`") {
+                offenders.push(format!("{doc}:{}", number + 1));
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "these lines still refer to an [Unreleased] section: {offenders:?}"
+    );
+}

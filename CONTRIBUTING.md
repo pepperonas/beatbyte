@@ -62,8 +62,13 @@ CI enforces all of these. Please run them locally before pushing.
   artwork.
 - **Commits**: use meaningful conventional-style messages
   (`feat: …`, `fix: …`, `docs: …`, `test: …`, `perf: …`, `chore: …`).
-- **Changelog**: user-facing changes get an entry under `[Unreleased]` in
-  `CHANGELOG.md`.
+- **Changelog and version**: a user-visible change bumps the patch
+  number in the workspace `Cargo.toml` (and the internal
+  `beatbyte-*` pins beside it) and gets its entry under that version's
+  heading in `CHANGELOG.md` — in the same commit that makes the
+  change. There is no `[Unreleased]` section: the newest heading *is*
+  the unreleased state until a tag publishes it. A test fails if the
+  manifest and the changelog disagree.
 
 ## Reporting Bugs
 

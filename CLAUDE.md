@@ -141,8 +141,9 @@ CI (happened twice).
   number.
 
 - **CHANGELOG.md** follows Keep a Changelog: every user-visible change
-  lands under `[Unreleased]` in the same commit that makes it; releases
-  move the block under a dated version heading.
+  lands under its own version's heading in the same commit that makes
+  it, together with the patch bump. There is no unreleased section:
+  the newest heading is the unreleased state until a tag publishes it.
 - **README.md** stays truthful to the shipped state — features,
   controls, screenshots. Screenshots must show the *current* build.
 - **`docs/adr/`** records architecture decisions (numbered ADRs) when a
