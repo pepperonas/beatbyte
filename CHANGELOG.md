@@ -14,6 +14,24 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.11.1] - 2026-08-28
+
+### Documentation
+
+- **A "Running the Game" section in the README.** Building from source
+  was documented; starting the thing you built was not, beyond a single
+  `cargo run` line buried in the build instructions. The section now
+  covers running the built binary directly, the `caffeinate` wrapper
+  that keeps a macOS display from closing the window mid-session, the
+  three switches worth knowing for a manual run, and where settings and
+  imported songs actually live on each platform.
+- **Where the working directory matters, and where it does not.**
+  Assets resolve from the executable's own location, so the binary
+  starts from anywhere — but the repository's `songs/` folder is read
+  relative to the working directory, so starting elsewhere silently
+  drops the charts kept there. Measured rather than assumed: nine songs
+  from the repository root, four from `/tmp`.
+
 ## [0.11.0] - 2026-08-28
 
 ### Added

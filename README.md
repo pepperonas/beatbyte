@@ -294,6 +294,70 @@ On Linux you additionally need Bevy's system dependencies:
 sudo apt-get install libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
 ```
 
+## Running the Game
+
+**The one command**, from the repository root:
+
+```bash
+cargo run --release -p beatbyte
+```
+
+That builds what has changed and starts the game. Use `--release`: the
+debug profile is playable but noticeably less smooth.
+
+### Starting it again without a rebuild
+
+Once built, launch the binary directly and skip Cargo entirely — it
+finds its assets by walking up from its own location, so it starts from
+anywhere:
+
+```bash
+cargo build --release -p beatbyte     # once, after code changes
+./target/release/beatbyte             # every time after that
+```
+
+**Start it from the repository root** even so. The repository's own
+`songs/` folder is read relative to the working directory, so launching
+from elsewhere silently drops the charts kept there — measured on this
+repository: nine songs from the root, four from `/tmp`. Songs you
+imported in-game are unaffected; they live in an absolute path (below).
+
+On macOS, wrap long sessions so the display cannot sleep out from under
+the window (a sleeping display closes it and ends the run):
+
+```bash
+caffeinate -dis ./target/release/beatbyte
+```
+
+### Useful switches for a manual run
+
+| Command | What it does |
+|---------|--------------|
+| `BEATBYTE_WINDOW=1280x800 ./target/release/beatbyte` | Pin the window size |
+| `BEATBYTE_FPS=1 ./target/release/beatbyte` | Print median and 99th-percentile frame time every five seconds |
+| `BEATBYTE_SMOKE_TEST=1 ./target/release/beatbyte` | Boot to the menu and exit 0 — a four-second check that the build is sound |
+
+The full list, including the automated harnesses, is in
+[the harness reference](docs/development/harness.md).
+
+### Once it is running
+
+Arrow keys and `Enter` move through the menus (the mouse works too);
+`A S D F G` are the frets, `Space` strums, `Esc` pauses, `M` mutes.
+[Controls in full](#controls).
+
+Your settings and imported songs live outside the repository, so they
+survive a `cargo clean` and a fresh clone:
+
+| | macOS | Linux | Windows |
+|---|---|---|---|
+| Settings | `~/Library/Application Support/beatbyte/settings.json` | `~/.config/beatbyte/settings.json` | `%APPDATA%\beatbyte\settings.json` |
+| Imported songs | `~/Library/Application Support/beatbyte/songs/` | `~/.local/share/beatbyte/songs/` | `%APPDATA%\beatbyte\songs\` |
+
+Charts in the repository's own `songs/` folder are picked up too — that
+is where `beatbyte-cli generate` writes by default — but only when the
+game is started from the repository root, as noted above.
+
 ## Development
 
 ```bash
