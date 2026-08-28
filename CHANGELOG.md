@@ -14,6 +14,46 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.11.2] - 2026-08-28
+
+### Changed
+
+- **A missed note and a stray strum now sound different.** They shared
+  one sound — a low sine plus a click of noise, which read as a bass
+  drum, so a mistake sounded musical. Both are now built from one
+  voice, a pick landing on damped strings, differing where the mistakes
+  differ: a **missed note** is dark and sags a fifth in pitch, because
+  a note that never sounded is a deflation; a **stray strum** is
+  brighter, tighter and deliberately dissonant (a tritone through a
+  thin, buzzing pulse), because it is a noise you actively made. They
+  are siblings rather than unrelated sounds, and normalised to the same
+  peak — an error that is *louder* reads as the worse error, and these
+  two weigh the same. The rate limiter still collapses a chain of
+  mistakes into one sound, since a fumble usually produces both at once.
+
+### Added
+
+- **`cargo run -p beatbyte-audio --example sfx_lab`** renders the error
+  sounds and four alternatives — a mute thunk, a fret buzz, a downward
+  bend, a pick scrape — plus the sound they replaced, as WAV files and
+  as one audition track that plays each three times in a row. A
+  seventy-millisecond sound cannot be judged by reading its constants,
+  and it has to survive firing repeatedly during a bad passage.
+- Ten tests for the voices, including the one that matters: the miss
+  must put measurably more of its energy below one kilohertz than the
+  strum, so the two cannot drift into sounding alike.
+
+### Fixed
+
+- **The pulse oscillator carried a DC offset.** At the narrow duty
+  cycles that make a buzz, `1 - 2·duty` is most of the signal: the two
+  strongest components of the finished tritone were 16 Hz and 32 Hz —
+  inaudible energy eating the headroom the audible part needed. The
+  pulse is now zero-mean.
+- **Voices ended mid-sound.** The buffer stopped while the envelope was
+  still at 5 % and the step to zero was a click. A short release ramp
+  now takes every voice to true silence.
+
 ## [0.11.1] - 2026-08-28
 
 ### Documentation

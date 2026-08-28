@@ -7,6 +7,7 @@
 //! *music* keeps its own thread and clock (ADR-0005).
 
 use beatbyte_audio::decode::AudioData;
+use beatbyte_audio::synth::{MISS_VOICE, OVERSTRUM_VOICE};
 use beatbyte_audio::wav_bytes_mono16;
 use beatbyte_core::SessionEvent;
 use bevy::audio::Volume;
@@ -23,8 +24,14 @@ pub struct SfxLib {
     pub ui_move: Handle<AudioSource>,
     /// Menu confirm / start.
     pub ui_confirm: Handle<AudioSource>,
-    /// A miss or overstrum: short, dry thud.
+    /// A missed note: dark, sagging, the note that never sounded.
     pub miss: Handle<AudioSource>,
+    /// A stray strum: brighter and dissonant, a noise that should not
+    /// exist. Deliberately a sibling of [`SfxLib::miss`] rather than an
+    /// unrelated sound — the two are the same instrument making the
+    /// same kind of unwanted noise, and telling them apart should be
+    /// possible without being distracting.
+    pub overstrum: Handle<AudioSource>,
     /// Hype activation: a rising sweep.
     pub hype: Handle<AudioSource>,
     /// Metronome tick (editor audition overlay).
@@ -62,7 +69,8 @@ fn build_sfx(mut commands: Commands, mut assets: ResMut<Assets<AudioSource>>) {
     commands.insert_resource(SfxLib {
         ui_move: register(blip(880.0, 0.045, 0.5)),
         ui_confirm: register(confirm()),
-        miss: register(thud()),
+        miss: register(MISS_VOICE.render(44_100)),
+        overstrum: register(OVERSTRUM_VOICE.render(44_100)),
         hype: register(riser()),
         click: register(blip(1760.0, 0.03, 0.6)),
     });
@@ -95,28 +103,6 @@ fn confirm() -> AudioData {
     AudioData::from_mono(samples, rate)
 }
 
-/// Dry little thud for misses: low sine + click of filtered noise.
-fn thud() -> AudioData {
-    let rate = 44_100u32;
-    let length = (0.09 * f64::from(rate)) as usize;
-    let mut samples = vec![0.0f32; length];
-    let mut noise = 0x1234_5678_9ABC_DEF0u64;
-    let mut last = 0.0f32;
-    for (i, slot) in samples.iter_mut().enumerate() {
-        let t = i as f64 / f64::from(rate);
-        let body = (2.0 * core::f64::consts::PI * 95.0 * t).sin() as f32;
-        noise ^= noise << 13;
-        noise ^= noise >> 7;
-        noise ^= noise << 17;
-        let white = (noise >> 40) as f32 / 8_388_608.0 - 1.0;
-        let hp = white - last;
-        last = white;
-        let envelope = (-t / 0.03).exp() as f32;
-        *slot = (body * 0.5 + hp * 0.18) * envelope * 0.5;
-    }
-    AudioData::from_mono(samples, rate)
-}
-
 /// Rising pulse sweep for Hype activation.
 fn riser() -> AudioData {
     let rate = 44_100u32;
@@ -142,6 +128,15 @@ fn mix(target: &mut [f32], source: &AudioData, offset: usize) {
             *slot += sample;
         }
     }
+}
+
+/// Whether this event is a stray strum rather than a missed note.
+///
+/// The two get different sounds, so which one plays comes down to this
+/// single question — worth naming, and worth pinning, because getting
+/// it backwards would be inaudible in review and obvious in play.
+fn is_stray_strum(event: &SessionEvent) -> bool {
+    matches!(event, SessionEvent::Overstrum)
 }
 
 /// Play a one-shot effect at the configured volume.
@@ -188,12 +183,20 @@ fn gameplay_sounds(
     for message in feedback.read() {
         match message.event {
             SessionEvent::NoteMissed { .. } | SessionEvent::Overstrum => {
-                // Rate-limit: a chain of misses is one bad moment, not
-                // a drum roll.
+                // Rate-limit: a chain of mistakes is one bad moment,
+                // not a drum roll. The limiter is shared across both
+                // kinds on purpose - a fumble usually produces a miss
+                // and a stray strum together, and hearing both would
+                // double the punishment for one mistake.
                 let now = time.elapsed_secs();
                 if now - *last_miss > 0.12 {
                     *last_miss = now;
-                    play(&mut commands, &sfx.miss, settings.sfx_volume);
+                    let sound = if is_stray_strum(&message.event) {
+                        &sfx.overstrum
+                    } else {
+                        &sfx.miss
+                    };
+                    play(&mut commands, sound, settings.sfx_volume);
                 }
             }
             SessionEvent::HypeActivated => {
@@ -213,5 +216,19 @@ fn results_sound(
 ) {
     if keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::Escape) {
         play(&mut commands, &sfx.ui_confirm, settings.sfx_volume);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_stray_strum;
+    use beatbyte_core::SessionEvent;
+
+    #[test]
+    fn a_stray_strum_is_told_from_a_missed_note() {
+        assert!(is_stray_strum(&SessionEvent::Overstrum));
+        assert!(!is_stray_strum(&SessionEvent::NoteMissed {
+            event_index: 0
+        }));
     }
 }
