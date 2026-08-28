@@ -15,9 +15,18 @@ change here has to say what it does there.
 
 The session decides what was hit from stamped input times against the
 song clock. This module reads that decision and draws it. The proof is
-not an argument, it is a measurement: the same song scores identically
-in both views — 624 perfect and 0 miss on a real import, run after
-every change in this file since it was written.
+not an argument, it is a measurement: the same song produces the same
+**judgment** in both views — 624 perfect and 0 miss on a real import,
+run after every change in this file since it was written.
+
+Judgment, not the score. The score itself drifts by a couple of points
+between runs of the identical build (measured: 139 968 / 139 970 /
+139 971 / 139 972 on four runs, every one of them 463 perfect and 0
+miss). Hype doubles for a fixed number of beats, and which frame it is
+activated on decides whether one more note falls inside that window.
+So compare perfect / miss / overstrum counts, never the score — a
+changed score number proves nothing, and an unchanged one would not
+have proved anything either.
 
 If a change here alters a score, the change is wrong, however good it
 looks.

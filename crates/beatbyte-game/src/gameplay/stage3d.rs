@@ -28,6 +28,15 @@ use crate::config::Settings;
 use crate::palette;
 use crate::states::AppState;
 
+/// How deep an off-beat line is drawn, against the downbeat's full
+/// depth. Thinner rather than absent: the beat should be felt, the bar
+/// should be read.
+const OFFBEAT_DEPTH: f32 = 0.55;
+
+/// How bright an off-beat line is, against the downbeat's full
+/// strength. Four equally loud lines per bar is a ladder, not a ruling.
+const OFFBEAT_WEIGHT: f32 = 0.5;
+
 /// World units per pixel of the 2D layout.
 ///
 /// The 2D stage is laid out in a 1280x720 pixel space; dividing by
@@ -98,6 +107,13 @@ pub struct Note3d {
 pub struct FretBar {
     /// Song time this bar sits on.
     pub time_s: f64,
+    /// Whether this is the first beat of a bar.
+    ///
+    /// Every beat gets a line, because a neck ruled only once per bar
+    /// gives the eye nothing to keep time against - it reads as a road.
+    /// The downbeat is drawn wider and brighter so the bar structure
+    /// still stands out of the ruling rather than being lost in it.
+    pub downbeat: bool,
 }
 
 /// The disc inside a receptor ring.
@@ -224,6 +240,68 @@ pub fn board_shade(u: f32, v: f32) -> f32 {
     low + (high - low) * mixed.clamp(0.0, 1.0)
 }
 
+/// How one cell of a neck border is shaded, in 0..1, for a theme.
+///
+/// The decorated border is the trait that most makes a fretboard look
+/// like one: in the genre, every stage announces itself along the
+/// edges of the neck rather than only behind it. These motifs are
+/// drawn for this game - a border that says "garage" has to be OUR
+/// garage, not a copy of somebody else's - and each is chosen to rhyme
+/// with the backdrop its theme already has.
+///
+/// `u` runs across the strip, `v` along the neck. The motif is carried
+/// by `v`, because at this width the strip is read as a rhythm going
+/// away from you, not as a picture.
+#[must_use]
+pub fn rail_shade(theme_id: &str, u: f32, v: f32) -> f32 {
+    // Every motif sits on the same cross-section: brighter toward the
+    // outer edge, so the strip reads as a bevelled piece of trim
+    // rather than a flat decal.
+    let bevel = 0.72 + 0.28 * (u * core::f32::consts::PI).sin();
+    let motif = match theme_id {
+        // Rivets, punched at regular intervals down a plate.
+        "garage" => {
+            let along = ((v * 22.0).fract() - 0.5).abs() * 2.0;
+            let across = ((u - 0.5).abs() * 2.4).min(1.0);
+            let head = (1.0 - (along / 0.55).min(1.0)) * (1.0 - across);
+            0.30 + 0.70 * head
+        }
+        // Sawteeth - the studded strap, abstracted to its rhythm.
+        "punk" => {
+            let saw = (v * 30.0).fract();
+            0.22 + 0.78 * (1.0 - (saw * 2.0 - 1.0).abs()).powf(0.6)
+        }
+        // Chevrons, leaning because a straight bar reads as a fret.
+        "metal" => {
+            let lean = (v * 26.0 + u * 3.0).fract();
+            0.24 + 0.76 * (1.0 - (lean * 2.0 - 1.0).abs()).powf(1.4)
+        }
+        // Broad clean bands, the way seating tiers stripe an arena.
+        "stadium" => {
+            let band = ((v * 9.0).sin() * 0.5 + 0.5).powf(1.8);
+            0.34 + 0.66 * band
+        }
+        // Two waves of incommensurable length, so the pattern never
+        // visibly repeats as it slides past.
+        "psychedelic" => {
+            let a = (v * 13.0).sin() * 0.5 + 0.5;
+            let b = (v * 20.0 + u * 2.0).sin() * 0.5 + 0.5;
+            0.26 + 0.74 * (0.6f32.mul_add(a, 0.4 * b))
+        }
+        // A measuring scale: a long tick every fourth, short between.
+        "cyber" => {
+            let cell = (v * 34.0).fract();
+            let long = ((v * 34.0) as i32).rem_euclid(4) == 0;
+            let reach = if long { 0.85 } else { 0.40 };
+            let lit = f32::from(cell < 0.30 && u < reach);
+            0.20 + 0.80 * lit
+        }
+        // An unknown theme still gets a surface, never a flat bar.
+        _ => 0.35 + 0.65 * ((v * 18.0).sin() * 0.5 + 0.5),
+    };
+    (bevel * motif).clamp(0.0, 1.0)
+}
+
 /// How one cell of the rear-wall backdrop is shaded, in 0..1.
 ///
 /// Vertical bands with a soft vignette toward the floor — a stage
@@ -308,6 +386,11 @@ const GEM_FACE_FLOOR: f32 = 0.62;
 /// this repository has to be original, and a plank is arithmetic.
 fn board_texture() -> Image {
     shaded_tile(128, board_shade, true)
+}
+
+/// The decorated border strip for a theme.
+fn rail_texture(theme_id: &'static str) -> Image {
+    shaded_tile(128, move |u, v| rail_shade(theme_id, u, v), true)
 }
 
 /// A stage surface that takes the energy tint while hype runs.
@@ -919,11 +1002,19 @@ pub fn setup_stage(
     let board = images.add(board_texture());
     let bed = meshes.add(Cuboid::new(1.0, 0.06, HIGHWAY_LENGTH + HIGHWAY_BEHIND));
     let rail = meshes.add(Cuboid::new(0.035, 0.05, HIGHWAY_LENGTH + HIGHWAY_BEHIND));
+    // The decorated border sits OUTSIDE the bright rail, so it costs
+    // no playfield: the rail still marks exactly where the neck ends.
+    let trim = meshes.add(Cuboid::new(0.17, 0.035, HIGHWAY_LENGTH + HIGHWAY_BEHIND));
+    let trim_texture = images.add(rail_texture(stage.id));
     let lane_strip = meshes.add(Cuboid::new(0.018, 0.012, HIGHWAY_LENGTH + HIGHWAY_BEHIND));
     // A ring, not a disc: with both drawn as discs a resting receptor
     // and an approaching note were the same shape.
     let receptor_mesh = meshes.add(Torus::new(GEM_RADIUS * 0.82, GEM_RADIUS * 1.12));
     let fill_mesh = meshes.add(Cylinder::new(GEM_RADIUS * 0.88, 0.03));
+    // The housing the button sits in. A coloured ring on a bare board
+    // reads as a drawn outline; a ring seated in a metal collar reads
+    // as a thing you could press.
+    let collar_mesh = meshes.add(Torus::new(GEM_RADIUS * 1.14, GEM_RADIUS * 1.46));
     // The ring on the board — the impact — and the flame that leaps
     // off it. Two halves of one moment: the ring says WHERE, the
     // flame says HOW MUCH.
@@ -995,6 +1086,35 @@ pub fn setup_stage(
                 Transform::from_xyz(origin + side * width / 2.0, 0.015, centre),
                 RenderLayers::layer(STAGE_LAYER),
             ));
+
+            // The decorated trim. Dimmer than the rail on purpose:
+            // the border should be seen, the edge should be read.
+            commands.spawn((
+                GameplayScreen,
+                Stage3d,
+                Mesh3d(trim.clone()),
+                MeshMaterial3d(materials.add(StandardMaterial {
+                    base_color: stage.accent.mix(&stage.background, 0.28),
+                    base_color_texture: Some(trim_texture.clone()),
+                    emissive: stage.accent.to_linear() * 1.05,
+                    emissive_texture: Some(trim_texture.clone()),
+                    // Repeated far more down the neck than across it:
+                    // the motif is a rhythm going away from you.
+                    uv_transform: bevy::math::Affine2::from_scale(Vec2::new(1.0, 34.0)),
+                    perceptual_roughness: 0.55,
+                    metallic: 0.35,
+                    ..default()
+                })),
+                HypeTinted {
+                    player,
+                    base: stage.accent.mix(&stage.background, 0.28),
+                    base_glow: 1.05,
+                    glow_lift: 0.5,
+                    reach: 0.9,
+                },
+                Transform::from_xyz(origin + side * (width / 2.0 + 0.115), 0.004, centre),
+                RenderLayers::layer(STAGE_LAYER),
+            ));
         }
 
         // Dividers BETWEEN the lanes. Five coloured lines say where
@@ -1039,6 +1159,23 @@ pub fn setup_stage(
 
             // The fill sits inside the ring and is what actually
             // shows a press.
+            // The collar first, so the coloured ring sits inside it.
+            // Deliberately NOT hype-tinted and NOT lane-coloured: it
+            // is hardware, and hardware does not change colour when
+            // the song does.
+            commands.spawn((
+                GameplayScreen,
+                Stage3d,
+                Mesh3d(collar_mesh.clone()),
+                MeshMaterial3d(materials.add(StandardMaterial {
+                    base_color: stage.background.mix(&Color::WHITE, 0.30),
+                    perceptual_roughness: 0.30,
+                    metallic: 0.85,
+                    ..default()
+                })),
+                Transform::from_xyz(lane_x(&layout, player, lane), 0.006, 0.0),
+                RenderLayers::layer(STAGE_LAYER),
+            ));
             commands.spawn((
                 GameplayScreen,
                 Stage3d,
@@ -1456,7 +1593,7 @@ pub fn spawn_fret_bars(
         return;
     }
     let bpm = song.chart.song.bpm.clamp(20.0, 400.0);
-    let bar_s = 240.0 / bpm;
+    let beat_s = 60.0 / bpm;
     let start = song.chart.song.offset_s;
     let end = song.chart.song.duration_s.unwrap_or(start + 240.0);
     // Heavier than the first pass: a bar line is what gives the neck
@@ -1467,7 +1604,9 @@ pub fn spawn_fret_bars(
         let origin = layout.origin(index.0) * WORLD_PER_PIXEL;
         let width = layout.bed_width() * WORLD_PER_PIXEL * 1.18 * neck_spread(&layout);
         let mut t = start;
+        let mut beat = 0usize;
         while t < end {
+            let downbeat = beat.is_multiple_of(4);
             // Its own material, because each bar fades by its own
             // distance — sharing one handle made every bar in the song
             // pile into a solid white wedge at the horizon.
@@ -1480,14 +1619,22 @@ pub fn spawn_fret_bars(
             commands.spawn((
                 GameplayScreen,
                 Stage3d,
-                FretBar { time_s: t },
+                FretBar {
+                    time_s: t,
+                    downbeat,
+                },
                 Mesh3d(mesh.clone()),
                 MeshMaterial3d(material),
                 // Parked off-screen until the scroll system places it.
-                Transform::from_xyz(origin, 0.012, -900.0).with_scale(Vec3::new(width, 1.0, 1.0)),
+                Transform::from_xyz(origin, 0.012, -900.0).with_scale(Vec3::new(
+                    width,
+                    1.0,
+                    if downbeat { 1.0 } else { OFFBEAT_DEPTH },
+                )),
                 RenderLayers::layer(STAGE_LAYER),
             ));
-            t += bar_s;
+            t += beat_s;
+            beat += 1;
         }
     }
 }
@@ -1532,8 +1679,9 @@ pub fn move_fret_bars(
         if let Some(mut surface) = materials.get_mut(&material.0) {
             // Full strength close by, gone by the far end.
             let fade = (1.0 - (distance / HIGHWAY_LENGTH).clamp(0.0, 1.0)).powf(1.6);
-            surface.base_color = Color::srgba(0.75, 0.78, 0.85, fade * 0.85);
-            surface.emissive = LinearRgba::rgb(0.35, 0.36, 0.42) * fade;
+            let weight = if bar.downbeat { 1.0 } else { OFFBEAT_WEIGHT };
+            surface.base_color = Color::srgba(0.75, 0.78, 0.85, fade * 0.85 * weight);
+            surface.emissive = LinearRgba::rgb(0.35, 0.36, 0.42) * (fade * weight);
         }
     }
 }
@@ -2145,5 +2293,84 @@ mod tests {
             "a note covers {travelled} units in the lookahead, \
              but the highway is {HIGHWAY_LENGTH}"
         );
+    }
+}
+
+#[cfg(test)]
+mod rail_tests {
+    use super::rail_shade;
+
+    /// The theme ids that ship, in the order they are declared.
+    const THEMES: [&str; 6] = ["garage", "punk", "metal", "stadium", "psychedelic", "cyber"];
+
+    /// A coarse sampling of one strip, along its length.
+    fn strip(theme: &str) -> Vec<f32> {
+        (0..192)
+            .map(|i| rail_shade(theme, 0.5, i as f32 / 192.0))
+            .collect()
+    }
+
+    #[test]
+    fn every_theme_has_its_own_border() {
+        // A decorated border only says which stage you are on if the
+        // stages do not share one. Compared as a whole strip rather
+        // than at a point, because two different motifs can of course
+        // cross at a sample.
+        for (a, first) in THEMES.iter().enumerate() {
+            for second in THEMES.iter().skip(a + 1) {
+                let (x, y) = (strip(first), strip(second));
+                let difference: f32 =
+                    x.iter().zip(&y).map(|(p, q)| (p - q).abs()).sum::<f32>() / x.len() as f32;
+                assert!(
+                    difference > 0.05,
+                    "{first} and {second} draw nearly the same border ({difference:.3})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn no_border_is_a_flat_bar() {
+        // A flat strip would satisfy "they differ" happily while being
+        // a plain painted stripe - the exact thing this replaces.
+        for theme in THEMES {
+            let values = strip(theme);
+            let low = values.iter().copied().fold(f32::MAX, f32::min);
+            let high = values.iter().copied().fold(f32::MIN, f32::max);
+            assert!(
+                high - low > 0.25,
+                "{theme}'s border spans only {:.3} - it is a painted stripe",
+                high - low
+            );
+        }
+    }
+
+    #[test]
+    fn an_unknown_theme_still_gets_a_surface() {
+        let values = strip("no-such-theme");
+        let low = values.iter().copied().fold(f32::MAX, f32::min);
+        let high = values.iter().copied().fold(f32::MIN, f32::max);
+        assert!(high - low > 0.25, "the fallback border is flat");
+    }
+
+    #[test]
+    fn shading_stays_in_range_and_repeats() {
+        for theme in THEMES {
+            for i in 0..64 {
+                for j in 0..64 {
+                    let (u, v) = (i as f32 / 64.0, j as f32 / 64.0);
+                    let shade = rail_shade(theme, u, v);
+                    assert!(
+                        (0.0..=1.0).contains(&shade),
+                        "{theme} left the range at ({u}, {v}): {shade}"
+                    );
+                }
+            }
+            // Deterministic: the texture is generated once per run and
+            // has to be the same texture every run.
+            assert!(
+                (rail_shade(theme, 0.3, 0.7) - rail_shade(theme, 0.3, 0.7)).abs() < f32::EPSILON
+            );
+        }
     }
 }

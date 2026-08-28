@@ -14,6 +14,42 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.11.4] - 2026-08-28
+
+### Changed
+
+- **The neck is ruled by the beat, not by the bar.** A line every four
+  beats gives the eye nothing to keep time against — the surface reads
+  as a road rather than an instrument. There is now a line on every
+  beat, with the downbeat drawn at full width and brightness and the
+  three between it at roughly half, so the bar structure stands out of
+  the ruling instead of being lost in it.
+- **Each theme gets a decorated border.** Researching what the genre's
+  necks actually do turned up the trait that most identifies one: the
+  stage announces itself along the *edges* of the neck, not only
+  behind it. Six motifs — garage rivets, punk sawteeth, metal
+  chevrons, stadium bands, psychedelic waves, cyber ticks — drawn for
+  this game and generated from a hash like the board texture, so they
+  ship no art asset and are identical every run. The strip sits
+  outside the rail and costs no playfield.
+- **Receptors are seated in a metal collar.** A coloured ring on a bare
+  board reads as a drawn outline; a ring in a housing reads as
+  something you could press. The collar is deliberately neither
+  lane-coloured nor hype-tinted — it is hardware, and hardware does
+  not change colour when the song does.
+
+### Documentation
+
+- **The stage guide claimed a stronger invariant than the code has.**
+  It said the same song "scores identically" in both renderers. The
+  score is not identical between runs of the same build: measured
+  139 968 / 139 970 / 139 971 / 139 972 across four runs, each with
+  463 perfect and 0 miss. Hype doubles for a fixed number of beats and
+  the activation frame decides whether one more note falls inside it.
+  The invariant is the judgment — perfect, miss and overstrum counts —
+  and the guide now says that, because the old wording invited a
+  comparison that proves nothing either way.
+
 ## [0.11.3] - 2026-08-28
 
 ### Fixed

@@ -361,3 +361,98 @@ so the ranks ripple rather than pumping as one block.
 Frame time with flames and a moving crowd: median **10.0 ms
 (100 fps)**, 99th percentile 12.4 ms. Autopilot 98/98 perfect,
 2-player PASSED.
+
+---
+
+# Round five — what Guitar Hero II actually did
+
+The brief this time named a specific game rather than a genre, so the
+work started with research instead of memory.
+
+## The line we do not cross
+
+The repository forbids trade dress that imitates another rhythm game,
+and that rule is not in tension with the brief — it sharpens it. What
+makes a fretboard read as one is **convention**: a ruled neck, strings
+between the lanes, a decorated border, physical-looking fret buttons.
+Those are the vocabulary of the genre, used by every game in it and by
+the instrument the genre is imitating. What belongs to one game is its
+*specific* artwork — a particular logo, typeface, character art, and
+the literal motifs on its necks. So: the grammar, drawn ourselves.
+
+## What the research found
+
+| Trait | Guitar Hero II | BeatByte today |
+|---|---|---|
+| Neck border | **Every highway is decorated** — the Rock neck is tan with wave patterns down its sides, Metal red with flames and chains, Goth purple with webs. The border is how a venue announces itself. | Plain bright rails, identical in all six themes |
+| Ruling | Lines mark the **beat**, dense enough to read the tempo off the neck | One line per **bar** — four times too sparse |
+| Between lanes | Thin "division lines" read as strings | Four neutral dividers, matte |
+| Multiplier | Bottom left, **ten dots** filling toward the next step | Already exactly this |
+| Star Power | Blue gauge above the rock meter | Hype panel, four segments |
+| Rock meter | Lower right, four bands green→flashing red | Deliberately absent (roadmap P3) |
+
+Two findings are worth stating plainly. The HUD **already matches** —
+the ten-dot multiplier was arrived at independently and is the genre's
+own solution. And the single biggest visual gap is the one thing no
+screenshot comparison had caught: the neck is *unruled*. A bar line
+every four beats gives the eye nothing to keep time against.
+
+## The work
+
+### Y1 — Rule the neck by the beat
+
+One line per beat, with the downbeat wider and brighter than the three
+that follow. This is what makes a neck read as an instrument rather
+than a road, and it hands the player a tempo reference that does not
+depend on hearing the track.
+
+*Measure:* lines visible in one frame, before and after; downbeat lines
+measurably wider.
+
+### Y2 — A decorated border per theme
+
+Each of the six themes gets its own rail pattern, generated the way
+`board_shade` is — from a hash, so it is identical every run and ships
+no art asset. Motifs are drawn for this game and chosen to rhyme with
+each theme's existing backdrop, not borrowed: garage rivets, punk
+sawteeth, metal chevrons, stadium bands, psychedelic waves, cyber
+ticks.
+
+*Measure:* the six patterns differ from each other; each is non-flat.
+
+### Y3 — Fret buttons, not outlines
+
+The receptors are rings. A fret button is a physical thing: a rim that
+catches light and a darker inset. Give them an inner face so a resting
+receptor reads as a button waiting to be pressed.
+
+*Measure:* brightness span across the receptor at rest.
+
+## The rule that outranks all of this
+
+Nothing here may touch judgment. Same proof as every round: the same
+song scores identically before and after.
+
+## Round five status
+
+All three shipped, and the research turned out to matter: the largest
+gap was the one no side-by-side screenshot had shown.
+
+| | Before | After |
+|---|---|---|
+| Ruling | one line per **bar** | one per **beat**, downbeat at full width and brightness, off-beats at 0.55 depth / 0.5 strength |
+| Border | plain rail, identical in six themes | rail plus a **generated decorated strip** per theme, measured at rgb(107, 49, 38) against a rgb(39, 34, 31) floor before widening, and widened again until the motif read |
+| Receptors | ring on bare board | ring seated in a metal collar |
+
+Y2 needed a second pass. The first strip was 0.10 wide and dim enough
+that the motif could not be told from a plain band in a capture; the
+pixel sample said so before the eye had to argue about it. At 0.17
+wide and roughly twice the emission, the hatching reads.
+
+**A measurement habit was corrected here too.** Verification had been
+"the score is identical". The score is *not* identical between runs of
+the same build — it moves a couple of points, because hype doubles for
+a fixed number of beats and the activation frame decides whether one
+more note lands inside. The invariant is the judgment: 463 perfect, 0
+miss, 0 overstrum, unchanged. [The stage guide](3d-stage.md) now says
+so, since the old wording invited exactly the wrong comparison.
