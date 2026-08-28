@@ -14,6 +14,18 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.11.3] - 2026-08-28
+
+### Fixed
+
+- **A successful import now says so in the log.** Only the *start* of
+  an import was logged, and only failures logged a finish — so a
+  successful import and one that silently did nothing looked identical
+  from the outside. That ambiguity is not theoretical: investigating a
+  report that importing had stopped working, the log could not settle
+  whether four imports had produced four charts, and the answer had to
+  be reconstructed from file timestamps on disk.
+
 ## [0.11.2] - 2026-08-28
 
 ### Changed

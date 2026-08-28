@@ -185,6 +185,13 @@ fn poll_import(
     match result {
         Ok(title) => {
             queue.ok += 1;
+            // Log the finish, not just the start. Until this line
+            // existed, a successful import wrote nothing at all, so a
+            // log could not tell an import that worked from one that
+            // silently did nothing - which is exactly the ambiguity
+            // that made a real report ("import stopped working") take
+            // an hour to answer.
+            info!("import: \"{title}\" done");
             status.0 = format!("\"{}\" imported", crate::ui::font_safe(&title));
             if let (Some(builtins), Some(mut library)) = (builtins, library) {
                 let charts: Vec<_> = builtins.0.iter().map(|song| song.chart.clone()).collect();
