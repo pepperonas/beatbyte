@@ -222,6 +222,7 @@ impl Plugin for GameplayPlugin {
                     feedback::coach_strum,
                     feedback::animate_feedback,
                     hud::update_huds,
+                    hud::update_song_ribbon,
                     check_song_end,
                 )
                     .chain()
@@ -262,6 +263,7 @@ fn setup_gameplay(
         Ok(track) => track,
         Err(error) => {
             error!("cannot build track for {}: {error}", selected.0);
+            info!("gameplay ended: the track could not be built");
             next_state.set(AppState::MainMenu);
             return;
         }
@@ -400,6 +402,14 @@ fn check_song_end(
             players: results,
             tap_mode: players.iter().any(|(_, p)| p.session.tap_mode()),
         });
+        // Every way out of gameplay says so, and says which way.
+        // Twice in one day a report of the game "jumping back to the
+        // menu" could not be answered, because leaving gameplay was
+        // silent: the log showed a song starting, then a song
+        // starting again, and nothing in between. A line here turns
+        // that into a fact, and its ABSENCE is a fact too - it means
+        // the window or the process went, not the state machine.
+        info!("gameplay ended: song finished at {now:.1}s (content ends {content_end:.1}s)");
         next_state.set(AppState::Results);
     }
 }
@@ -428,6 +438,7 @@ fn pause_input(
                 next_phase.set(GamePhase::Playing);
             }
             if keys.just_pressed(KeyCode::KeyQ) {
+                info!("gameplay ended: quit from the pause screen");
                 next_state.set(AppState::MainMenu);
             }
         }

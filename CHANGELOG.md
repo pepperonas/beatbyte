@@ -14,6 +14,33 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.11.5] - 2026-08-28
+
+### Added
+
+- **A song ribbon along the top of the screen** — title, artist, a
+  progress bar and `elapsed / total`. Nothing on screen had said where
+  you were in a song, and that is not decoration: hype is a resource
+  you spend, and spending it well depends on knowing whether there are
+  thirty seconds left or three minutes. It sits in the one strip of
+  the frame the neck never reaches, since the neck runs to a vanishing
+  point in the middle, so it covers nothing.
+- Six tests for the ribbon's arithmetic, two of them for edges that
+  bite: the song clock starts **negative** (there is a count-in), so an
+  unclamped bar would begin part-filled and run backwards, and a
+  chart with no declared duration would divide by zero.
+
+### Fixed
+
+- **Leaving gameplay now says why.** Twice in one day a report that the
+  game had "jumped back to the menu" could not be answered, because
+  every exit was silent: the log showed a song starting, then a song
+  starting again, and nothing in between. Each of the three ways out —
+  the song finishing, quitting from the pause screen, and a track that
+  cannot be built — now logs itself. The **absence** of that line is
+  informative too: it means the window or the process went, not the
+  state machine.
+
 ## [0.11.4] - 2026-08-28
 
 ### Changed

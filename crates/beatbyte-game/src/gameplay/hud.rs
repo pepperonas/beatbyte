@@ -85,10 +85,46 @@ const PLATE_INSET: f32 = 18.0;
 /// Thickness of a plate's border.
 const PLATE_BORDER: f32 = 2.0;
 
+/// The filling part of the song-progress bar.
+#[derive(Component)]
+pub struct SongProgressFill;
+
+/// The elapsed / total readout beside it.
+#[derive(Component)]
+pub struct SongTimeText;
+
+/// Width of the song ribbon, in world units.
+const RIBBON_W: f32 = 620.0;
+
+/// How far through the song `now` is, in 0..1.
+///
+/// Clamped at both ends because the clock starts NEGATIVE - there is a
+/// pre-roll before the first beat - and runs a little past the last
+/// note. A bar that filled backwards during the count-in, or overflowed
+/// at the end, would be worse than no bar.
+#[must_use]
+pub fn song_progress(now: f64, duration_s: f64) -> f32 {
+    if duration_s <= 0.0 {
+        return 0.0;
+    }
+    (now / duration_s).clamp(0.0, 1.0) as f32
+}
+
+/// A song position as `m:ss`, for the readout.
+///
+/// Negative times (the pre-roll) show as `0:00` rather than as a
+/// minus: the song has not started, and "-0:02" reads as a fault.
+#[must_use]
+pub fn clock_text(seconds: f64) -> String {
+    let total = seconds.max(0.0).floor() as u64;
+    format!("{}:{:02}", total / 60, total % 60)
+}
+
 /// Spawn one HUD block per player.
 pub fn spawn_huds(
     mut commands: Commands,
     layout: Res<HighwayLayout>,
+    song: Res<crate::boot::LoadedSong>,
     players: Query<&PlayerIndex, With<PlayerSession>>,
     font: Res<UiFont>,
     settings: Res<crate::config::Settings>,
@@ -112,6 +148,57 @@ pub fn spawn_huds(
         // block rather than two facts.
         Transform::from_xyz(-624.0, 348.0, 5.0),
     ));
+
+    // Where you are in the song. Not decoration: hype is spent, and
+    // spending it depends on knowing whether the song has thirty
+    // seconds left or three minutes. Nothing on screen said so.
+    //
+    // The top strip is the one part of the frame the neck never
+    // reaches - it runs to a vanishing point in the middle - so the
+    // ribbon costs no playfield and covers nothing.
+    let title = format!(
+        "{} - {}",
+        font.safe(&song.chart.song.title),
+        font.safe(&song.chart.song.artist)
+    );
+    commands.spawn((
+        GameplayScreen,
+        Text2d::new(title),
+        font.text(9.0),
+        TextColor(palette::dimmed(palette::TEXT_DIM, 0.9)),
+        Anchor::TOP_LEFT,
+        Transform::from_xyz(-RIBBON_W / 2.0, 350.0, 5.0),
+    ));
+    commands.spawn((
+        GameplayScreen,
+        SongTimeText,
+        Text2d::new("0:00"),
+        font.text(9.0),
+        TextColor(palette::dimmed(palette::TEXT_DIM, 0.9)),
+        Anchor::TOP_RIGHT,
+        Transform::from_xyz(RIBBON_W / 2.0, 350.0, 5.0),
+    ));
+    // Track, then fill. The track has to be visible on its own or an
+    // empty bar looks like a missing one.
+    commands.spawn((
+        GameplayScreen,
+        Sprite::from_color(
+            palette::dimmed(palette::TEXT_DIM, 0.22),
+            Vec2::new(RIBBON_W, 3.0),
+        ),
+        Transform::from_xyz(0.0, 336.0, 4.0),
+    ));
+    commands.spawn((
+        GameplayScreen,
+        SongProgressFill,
+        Sprite::from_color(
+            palette::dimmed(palette::HYPE, 0.85),
+            Vec2::new(RIBBON_W, 3.0),
+        ),
+        Anchor::CENTER_LEFT,
+        Transform::from_xyz(-RIBBON_W / 2.0, 336.0, 5.0).with_scale(Vec3::new(0.0, 1.0, 1.0)),
+    ));
+
     if layout.players() == 1 {
         spawn_solo_panels(&mut commands, &font);
         return;
@@ -497,5 +584,86 @@ pub fn update_huds(
                 text.0 = line.to_owned();
             }
         }
+    }
+}
+
+/// Advance the song ribbon: the bar fills, the clock counts.
+pub fn update_song_ribbon(
+    song: Res<crate::boot::LoadedSong>,
+    game_clock: Res<super::GameClock>,
+    time: Res<Time>,
+    mut fill: Query<&mut Transform, With<SongProgressFill>>,
+    mut label: Query<&mut Text2d, With<SongTimeText>>,
+) {
+    let Some(now) = game_clock.song_time(&time) else {
+        return;
+    };
+    // A chart need not declare a duration; the last note is then the
+    // best available end, and it is the end that matters to a player.
+    let duration = song.chart.song.duration_s.unwrap_or_else(|| {
+        song.chart
+            .charts
+            .iter()
+            .flat_map(|chart| chart.notes.iter())
+            .map(|note| note.time + note.len)
+            .fold(0.0, f64::max)
+    });
+    let progress = song_progress(now, duration);
+    for mut transform in &mut fill {
+        transform.scale.x = progress;
+    }
+    for mut text in &mut label {
+        text.0 = format!("{} / {}", clock_text(now), clock_text(duration));
+    }
+}
+
+#[cfg(test)]
+mod ribbon_tests {
+    use super::{clock_text, song_progress};
+
+    #[test]
+    fn the_bar_does_not_fill_backwards_during_the_count_in() {
+        // The song clock starts NEGATIVE: there is a pre-roll before
+        // the first beat. Unclamped, the bar would start somewhere in
+        // the middle and run backwards to zero.
+        assert!((song_progress(-2.0, 200.0) - 0.0).abs() < f32::EPSILON);
+        assert!((song_progress(-0.01, 200.0) - 0.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn the_bar_does_not_overflow_past_the_end() {
+        // Play runs a little past the last note before the results
+        // screen takes over.
+        assert!((song_progress(260.0, 200.0) - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn the_bar_tracks_the_song_in_between() {
+        assert!((song_progress(50.0, 200.0) - 0.25).abs() < 1e-6);
+        assert!((song_progress(100.0, 200.0) - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn a_song_of_no_length_leaves_the_bar_empty() {
+        // Rather than dividing by zero and filling with NaN, which
+        // scales a sprite to nothing visible and is unbounded.
+        assert!((song_progress(10.0, 0.0) - 0.0).abs() < f32::EPSILON);
+        assert!(song_progress(10.0, 0.0).is_finite());
+    }
+
+    #[test]
+    fn the_clock_never_shows_a_negative_time() {
+        // "-0:02" during the count-in reads as a fault, not as a wait.
+        assert_eq!(clock_text(-2.0), "0:00");
+        assert_eq!(clock_text(0.0), "0:00");
+    }
+
+    #[test]
+    fn the_clock_pads_seconds_and_rolls_minutes() {
+        assert_eq!(clock_text(9.0), "0:09");
+        assert_eq!(clock_text(59.9), "0:59");
+        assert_eq!(clock_text(60.0), "1:00");
+        assert_eq!(clock_text(125.0), "2:05");
+        assert_eq!(clock_text(3661.0), "61:01");
     }
 }
