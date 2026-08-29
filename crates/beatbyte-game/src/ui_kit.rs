@@ -57,7 +57,14 @@ const ROW_PAD_Y: f32 = 7.0;
 /// Width of the accent bar on a row's left edge.
 const ACCENT_WIDTH: f32 = 3.0;
 /// Padding inside the panel frame.
-const PANEL_PAD: f32 = 16.0;
+pub const PANEL_PAD: f32 = 16.0;
+
+/// A panel's border, on each side.
+///
+/// Named because [`whole_rows_height`] has to subtract it: Bevy sizes
+/// a node by its BORDER box, so a height that accounts only for the
+/// padding leaves the last row two pixels short of its own space.
+pub const PANEL_BORDER: f32 = 1.0;
 
 /// How strongly a selected row is filled.
 ///
@@ -223,6 +230,103 @@ fn frame() -> (BackgroundColor, BorderColor) {
     )
 }
 
+/// The tallest a list panel grows before its rows start scrolling.
+///
+/// Chosen so the header above and the details, hint and footer below
+/// all still fit at the smallest window the projection guarantees.
+/// Without a ceiling the panel simply grows: at 22 songs the title,
+/// the details line and the whole footer had been pushed off the
+/// screen, and the first and last rows were cut in half.
+pub const PANEL_MAX_H: f32 = 400.0;
+
+/// The scroll offset that brings a row into view, moving as little as
+/// it can.
+///
+/// `row_top` and `content_h` are measured from the top of the content,
+/// `current` is where the viewport is now. Returning `current`
+/// unchanged when the row is already visible is the whole point: a
+/// list that re-centred on every frame would twitch under the cursor
+/// and make the rows above and below unreadable.
+#[must_use]
+pub fn scroll_to_show(
+    row_top: f32,
+    row_h: f32,
+    viewport_h: f32,
+    content_h: f32,
+    current: f32,
+) -> f32 {
+    // Never scroll past the end - below the last row there is nothing
+    // to look at, and a list that can be scrolled into blank space
+    // feels broken.
+    let furthest = (content_h - viewport_h).max(0.0);
+    let wanted = if row_top < current {
+        // Above the fold: bring its top to the top edge.
+        row_top
+    } else if row_top + row_h > current + viewport_h {
+        // Below the fold: bring its bottom to the bottom edge.
+        row_top + row_h - viewport_h
+    } else {
+        current
+    };
+    wanted.clamp(0.0, furthest)
+}
+
+/// The viewport height that shows whole rows and no more.
+///
+/// A window whose height is not a multiple of the row pitch cuts its
+/// last row through the middle of the letters. Half a row is a fine
+/// way to say "there is more below" in a list you drag with a mouse;
+/// in one you step through with a cursor it just looks unfinished, and
+/// the position readout says the same thing in words.
+///
+/// Returns `None` when even one row will not fit, so the caller can
+/// leave the panel alone rather than collapse it to nothing.
+#[must_use]
+pub fn whole_rows_height(row_h: f32, gap: f32, rows: usize, ceiling: f32) -> Option<f32> {
+    if row_h <= 0.0 || rows == 0 {
+        return None;
+    }
+    let pitch = row_h + gap;
+    let inner = ceiling - 2.0 * (PANEL_PAD + PANEL_BORDER);
+    // The gaps sit BETWEEN rows: n rows have n-1 of them, so the
+    // naive `inner / pitch` undercounts by very nearly one row.
+    let fits = ((inner + gap) / pitch).floor().max(1.0) as usize;
+    let shown = fits.min(rows);
+    if shown >= rows {
+        // Everything fits; no ceiling needed, and forcing one would
+        // clip a list that had no reason to scroll.
+        return None;
+    }
+    let content = shown as f32 * pitch - gap;
+    Some(content + 2.0 * (PANEL_PAD + PANEL_BORDER))
+}
+
+/// A list panel that scrolls once its rows outgrow [`PANEL_MAX_H`].
+///
+/// Same frame and rhythm as [`panel`]; the only difference is the
+/// ceiling and the clipping, so a short list is indistinguishable from
+/// the unscrolled one.
+#[must_use]
+pub fn scroll_panel() -> impl Bundle {
+    let (background, border) = frame();
+    (
+        Node {
+            width: px(PANEL_WIDTH),
+            max_height: px(PANEL_MAX_H),
+            flex_direction: FlexDirection::Column,
+            row_gap: px(ROW_GAP),
+            padding: UiRect::all(px(PANEL_PAD)),
+            border: UiRect::all(px(PANEL_BORDER)),
+            border_radius: BorderRadius::all(px(6)),
+            overflow: Overflow::scroll_y(),
+            ..default()
+        },
+        ScrollPosition::default(),
+        background,
+        border,
+    )
+}
+
 /// The framed container that holds a screen's rows.
 #[must_use]
 pub fn panel() -> impl Bundle {
@@ -233,7 +337,7 @@ pub fn panel() -> impl Bundle {
             flex_direction: FlexDirection::Column,
             row_gap: px(ROW_GAP),
             padding: UiRect::all(px(PANEL_PAD)),
-            border: UiRect::all(px(1)),
+            border: UiRect::all(px(PANEL_BORDER)),
             border_radius: BorderRadius::all(px(6)),
             ..default()
         },
@@ -255,7 +359,7 @@ pub fn panel_centered() -> impl Bundle {
             align_items: AlignItems::Center,
             row_gap: px(16),
             padding: UiRect::all(px(24)),
-            border: UiRect::all(px(1)),
+            border: UiRect::all(px(PANEL_BORDER)),
             border_radius: BorderRadius::all(px(6)),
             ..default()
         },
@@ -444,5 +548,177 @@ mod tests {
                 pair[1]
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod scroll_tests {
+    use super::scroll_to_show;
+
+    /// Twenty rows of 24 px in a 120 px window: five fit, content is
+    /// 480 tall, so the furthest the view can travel is 360.
+    const ROW: f32 = 24.0;
+    const VIEW: f32 = 120.0;
+    const CONTENT: f32 = 480.0;
+
+    fn top_of(row: usize) -> f32 {
+        row as f32 * ROW
+    }
+
+    #[test]
+    fn a_visible_row_does_not_move_the_view() {
+        // The important one. A list that re-centred every frame would
+        // twitch under the cursor and make its neighbours unreadable.
+        for row in 0..5 {
+            let now = scroll_to_show(top_of(row), ROW, VIEW, CONTENT, 0.0);
+            assert!(
+                (now - 0.0).abs() < f32::EPSILON,
+                "row {row} is already visible but the view moved to {now}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_row_below_the_fold_comes_to_the_bottom_edge() {
+        // Row 5 is the first one out of sight: its bottom is 144, so
+        // the view has to travel 24 to end at 144.
+        assert!((scroll_to_show(top_of(5), ROW, VIEW, CONTENT, 0.0) - 24.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn a_row_above_the_fold_comes_to_the_top_edge() {
+        assert!((scroll_to_show(top_of(2), ROW, VIEW, CONTENT, 200.0) - 48.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn the_first_row_shows_the_top_of_the_list() {
+        assert!((scroll_to_show(top_of(0), ROW, VIEW, CONTENT, 300.0) - 0.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn the_last_row_stops_at_the_end_of_the_list() {
+        // Not past it: below the last row there is nothing to look at,
+        // and a list that scrolls into blank space reads as broken.
+        let now = scroll_to_show(top_of(19), ROW, VIEW, CONTENT, 0.0);
+        assert!((now - 360.0).abs() < 1e-4, "stopped at {now}, not 360");
+    }
+
+    #[test]
+    fn a_list_that_fits_never_scrolls() {
+        // Three rows in a window that holds five. Every row is
+        // visible, and there is nowhere to go.
+        for row in 0..3 {
+            let now = scroll_to_show(top_of(row), ROW, VIEW, 72.0, 0.0);
+            assert!(
+                (now - 0.0).abs() < f32::EPSILON,
+                "row {row} scrolled to {now}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_stale_index_cannot_scroll_into_blank_space() {
+        // The caller derives `row_top` from the cursor and `content_h`
+        // from the library, and for one frame after an import removes
+        // or reorders songs those two disagree. Without the clamp the
+        // view would jump below the last row into nothing.
+        //
+        // This is the case the clamp exists for: for a row that really
+        // IS the last one, the arithmetic already lands exactly on the
+        // limit, so a test using that row passes with the clamp
+        // deleted - which is how this one came to be written.
+        let now = scroll_to_show(top_of(40), ROW, VIEW, CONTENT, 0.0);
+        assert!(
+            (now - 360.0).abs() < 1e-4,
+            "a cursor past the end scrolled to {now}, past the limit of 360"
+        );
+    }
+
+    #[test]
+    fn a_row_taller_than_the_window_shows_its_top() {
+        // Degenerate, but it must not send the offset off to infinity:
+        // with the row taller than the view both branches want to
+        // move, and the clamp is what keeps the answer sane.
+        let now = scroll_to_show(0.0, 200.0, VIEW, CONTENT, 0.0);
+        assert!(now.is_finite() && (0.0..=360.0).contains(&now), "got {now}");
+    }
+}
+
+#[cfg(test)]
+mod whole_row_tests {
+    use super::{PANEL_BORDER, PANEL_MAX_H, PANEL_PAD, whole_rows_height};
+
+    const ROW: f32 = 24.0;
+    const GAP: f32 = 4.0;
+
+    /// How many rows a returned height actually shows.
+    fn rows_in(height: f32) -> f32 {
+        ((height - 2.0 * (PANEL_PAD + PANEL_BORDER)) + GAP) / (ROW + GAP)
+    }
+
+    #[test]
+    fn the_window_holds_a_whole_number_of_rows() {
+        // The defect this exists for: a window that is not a multiple
+        // of the pitch cuts its last row through the letters.
+        let height = whole_rows_height(ROW, GAP, 40, PANEL_MAX_H).expect("40 rows must scroll");
+        let rows = rows_in(height);
+        assert!(
+            (rows - rows.round()).abs() < 1e-3,
+            "the window shows {rows} rows, not a whole number"
+        );
+    }
+
+    #[test]
+    fn the_window_never_exceeds_the_ceiling() {
+        let height = whole_rows_height(ROW, GAP, 40, PANEL_MAX_H).expect("40 rows must scroll");
+        assert!(height <= PANEL_MAX_H, "{height} is taller than the ceiling");
+    }
+
+    #[test]
+    fn a_list_that_fits_is_left_alone() {
+        // Forcing a ceiling on a short list would clip something that
+        // had no reason to scroll.
+        assert!(whole_rows_height(ROW, GAP, 3, PANEL_MAX_H).is_none());
+    }
+
+    #[test]
+    fn the_window_is_packed_as_full_as_it_will_go() {
+        // n rows have n-1 gaps between them, so counting a gap for
+        // every row undercounts and wastes very nearly a whole row of
+        // panel. Stated as the property rather than as a comparison
+        // against the wrong formula: ONE MORE ROW MUST NOT FIT.
+        //
+        // Written that way after the first version compared the count
+        // against the naive one with `>=` and stayed green when the
+        // naive count was substituted - at these dimensions the two
+        // happen to agree, so the test could never have failed.
+        //
+        // Several ceilings, because whether the two formulas differ
+        // depends on where the ceiling falls between two rows.
+        for ceiling in [PANEL_MAX_H, 393.2, 300.0, 250.0, 187.5] {
+            let height = whole_rows_height(ROW, GAP, 40, ceiling).expect("40 rows scroll");
+            let shown = rows_in(height).round();
+            let one_more =
+                (shown + 1.0).mul_add(ROW + GAP, -GAP) + 2.0 * (PANEL_PAD + PANEL_BORDER);
+            assert!(
+                one_more > ceiling + 1e-3,
+                "at ceiling {ceiling} the window shows {shown} rows but {one_more} still fits"
+            );
+        }
+    }
+
+    #[test]
+    fn a_degenerate_row_height_changes_nothing() {
+        // Rows have no measured height on the first frame, and
+        // dividing by it would send the answer to infinity.
+        assert!(whole_rows_height(0.0, GAP, 40, PANEL_MAX_H).is_none());
+        assert!(whole_rows_height(ROW, GAP, 0, PANEL_MAX_H).is_none());
+    }
+
+    #[test]
+    fn at_least_one_row_survives_a_tiny_ceiling() {
+        // A panel showing zero rows is worse than one that overflows.
+        let height = whole_rows_height(ROW, GAP, 40, 10.0).expect("still shows something");
+        assert!(rows_in(height).round() >= 1.0);
     }
 }

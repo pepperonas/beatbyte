@@ -25,6 +25,7 @@ about them is compiled into a normal build.
 | `BEATBYTE_AUTOPILOT_DELETE` | set | Drives the browser with real arrow and backspace keys through the two-press delete confirmation. |
 | `BEATBYTE_SHOT_DIR` | directory | Screenshots at named moments of a run. |
 | `BEATBYTE_SHOT_STATE` | screen name | Boots straight into one screen, photographs it and quits. |
+| `BEATBYTE_SHOT_ROW` | row index | With `BEATBYTE_SHOT_STATE`, selects that row first. A scrolling list is indistinguishable from a short one until the selection moves past the fold. |
 | `BEATBYTE_WINDOW` | `WxH` | Pins the window size, for layout verification. |
 | `BEATBYTE_FPS` | set | Reports median and 99th-percentile frame time every five seconds. |
 

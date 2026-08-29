@@ -26,7 +26,7 @@ impl Default for SelectedDifficulty {
 
 /// The highlighted song row.
 #[derive(Resource, Default)]
-struct BrowserCursor(usize);
+pub struct BrowserCursor(pub usize);
 
 /// Plugin for the song browser.
 pub struct SongSelectPlugin;
@@ -38,7 +38,12 @@ impl Plugin for SongSelectPlugin {
             .add_systems(OnEnter(AppState::SongSelect), spawn_browser)
             .add_systems(
                 Update,
-                (browser_input, refresh_browser, rebuild_after_import)
+                (
+                    browser_input,
+                    refresh_browser,
+                    rebuild_after_import,
+                    follow_selection,
+                )
                     .run_if(in_state(AppState::SongSelect)),
             )
             .add_systems(OnExit(AppState::SongSelect), despawn_browser);
@@ -64,6 +69,10 @@ struct SongArtist(usize);
 #[derive(Component)]
 struct DetailText;
 
+/// The scrolling viewport the song rows live in.
+#[derive(Component)]
+struct SongList;
+
 fn spawn_browser(
     mut commands: Commands,
     font: Res<UiFont>,
@@ -86,32 +95,34 @@ fn spawn_browser_impl(
         .spawn((BrowserScreen, ui_kit::screen_root()))
         .with_children(|parent| {
             ui_kit::header(parent, font, "SONG SELECT", "pick a track and a difficulty");
-            parent.spawn(ui_kit::panel()).with_children(|panel| {
-                for (index, entry) in library.entries.iter().enumerate() {
-                    panel
-                        .spawn((SongRow(index), Button, ui_kit::row()))
-                        .with_children(|row| {
-                            // Title and artist were one string joined
-                            // by " - "; as two columns the list scans
-                            // by title, which is how anyone looks for
-                            // a song.
-                            row.spawn((
-                                SongTitle(index),
-                                Text::new(font.safe(&entry.title)),
-                                font.text(ui_kit::ROW),
-                                TextColor(palette::TEXT_DIM),
-                                ui_kit::label_node(),
-                            ));
-                            row.spawn((
-                                SongArtist(index),
-                                Text::new(font.safe(&entry.artist)),
-                                font.text(ui_kit::ROW),
-                                TextColor(palette::TEXT_DIM),
-                                ui_kit::value_node(),
-                            ));
-                        });
-                }
-            });
+            parent
+                .spawn((SongList, ui_kit::scroll_panel()))
+                .with_children(|panel| {
+                    for (index, entry) in library.entries.iter().enumerate() {
+                        panel
+                            .spawn((SongRow(index), Button, ui_kit::row()))
+                            .with_children(|row| {
+                                // Title and artist were one string joined
+                                // by " - "; as two columns the list scans
+                                // by title, which is how anyone looks for
+                                // a song.
+                                row.spawn((
+                                    SongTitle(index),
+                                    Text::new(font.safe(&entry.title)),
+                                    font.text(ui_kit::ROW),
+                                    TextColor(palette::TEXT_DIM),
+                                    ui_kit::label_node(),
+                                ));
+                                row.spawn((
+                                    SongArtist(index),
+                                    Text::new(font.safe(&entry.artist)),
+                                    font.text(ui_kit::ROW),
+                                    TextColor(palette::TEXT_DIM),
+                                    ui_kit::value_node(),
+                                ));
+                            });
+                    }
+                });
             parent.spawn((
                 DetailText,
                 Text::new(""),
@@ -333,8 +344,13 @@ fn refresh_browser(
                 || "no record yet".to_owned(),
                 |b| format!("best {}  ({:.1}%)", b.score, b.accuracy * 100.0),
             );
+        // Where you are in the list, and how long it is. With the
+        // rows now clipped to a window, nothing else says whether
+        // three songs follow or thirty.
         let line = format!(
-            "{:.0} BPM{duration}   <{}>   {best}",
+            "{}/{}   {:.0} BPM{duration}   <{}>   {best}",
+            cursor.0 + 1,
+            library.entries.len(),
             entry.bpm,
             selected.0.display_name().to_uppercase()
         );
@@ -378,5 +394,56 @@ fn rebuild_after_import(
 fn despawn_browser(mut commands: Commands, entities: Query<Entity, With<BrowserScreen>>) {
     for entity in &entities {
         commands.entity(entity).despawn();
+    }
+}
+
+/// Keep the selected row inside the viewport.
+///
+/// The row height is MEASURED rather than assumed: it comes from the
+/// font size and the row padding, and hard-coding it here would put
+/// this system and `ui_kit` quietly out of step the first time either
+/// changed.
+fn follow_selection(
+    cursor: Res<BrowserCursor>,
+    library: Res<SongLibrary>,
+    rows: Query<(&SongRow, &ComputedNode)>,
+    mut lists: Query<(&ComputedNode, &mut ScrollPosition, &mut Node), With<SongList>>,
+) {
+    let Ok((list, mut scroll, mut node)) = lists.single_mut() else {
+        return;
+    };
+    // Every row is the same height, so any of them answers the
+    // question - but a row may not have been laid out yet on the
+    // first frame, and a height of zero would send the offset to
+    // infinity.
+    let Some(row_h) = rows
+        .iter()
+        .map(|(_, node)| node.size().y)
+        .find(|height| *height > 0.0)
+    else {
+        return;
+    };
+    let pitch = row_h + ui_kit::ROW_GAP;
+    // Snap the window to whole rows, so the bottom one is not sliced
+    // through the middle of its letters.
+    if let Some(height) = ui_kit::whole_rows_height(
+        row_h,
+        ui_kit::ROW_GAP,
+        library.entries.len(),
+        ui_kit::PANEL_MAX_H,
+    ) {
+        let wanted = bevy::ui::px(height);
+        if node.max_height != wanted {
+            node.max_height = wanted;
+        }
+    }
+    let count = library.entries.len() as f32;
+    // The gaps sit BETWEEN rows, so there is one fewer of them.
+    let content_h = count.mul_add(row_h, (count - 1.0).max(0.0) * ui_kit::ROW_GAP);
+    let viewport_h = list.size().y - 2.0 * ui_kit::PANEL_PAD;
+    let row_top = cursor.0 as f32 * pitch;
+    let wanted = ui_kit::scroll_to_show(row_top, row_h, viewport_h, content_h, scroll.0.y);
+    if (wanted - scroll.0.y).abs() > 0.5 {
+        scroll.0.y = wanted;
     }
 }

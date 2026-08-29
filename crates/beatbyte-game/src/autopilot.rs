@@ -185,12 +185,22 @@ fn enter_shot_state(
     target: Res<ShotState>,
     state: Res<State<AppState>>,
     mut next: ResMut<NextState<AppState>>,
+    mut cursor: ResMut<crate::song_select::BrowserCursor>,
     mut done: Local<bool>,
 ) {
     if *done || *state.get() != AppState::MainMenu {
         return;
     }
     *done = true;
+    // Photograph a list at a chosen row, not only at its first one.
+    // A scrolling list looks identical to a short one until something
+    // moves the selection past the fold, so without this the scroll
+    // could only be argued about, not seen.
+    if let Ok(raw) = std::env::var("BEATBYTE_SHOT_ROW")
+        && let Ok(row) = raw.parse::<usize>()
+    {
+        cursor.0 = row;
+    }
     next.set(target.0);
 }
 

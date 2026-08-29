@@ -14,6 +14,36 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.11.6] - 2026-08-30
+
+### Fixed
+
+- **The song list scrolls, and stops pushing the screen apart.** The
+  list had no height limit, so it simply grew: at 23 songs the title,
+  the details line, the import hint and the entire footer had been
+  pushed off the screen, and the first and last rows were sliced
+  through the middle. The rows now live in a bounded viewport that
+  scrolls, and the selection is kept inside it — moving as little as
+  possible, because a list that re-centres on every frame twitches
+  under the cursor and makes its neighbours unreadable.
+- **The viewport holds a whole number of rows.** A window whose height
+  is not a multiple of the row pitch cuts its last row through the
+  letters. The height is snapped to whole rows from the row height as
+  *measured*, not assumed, so this cannot drift out of step with the
+  UI kit's type scale. It accounts for the border as well as the
+  padding: Bevy sizes a node by its border box, and ignoring that left
+  the last row two pixels short of its own space.
+
+### Added
+
+- **The details line names your place in the list** — `7/23` before the
+  BPM. With the rows clipped to a window, nothing else said whether
+  three songs followed or thirty.
+- `BEATBYTE_SHOT_ROW` selects a row before a screen is photographed. A
+  scrolling list is indistinguishable from a short one until the
+  selection moves past the fold, so without it the scroll could only be
+  argued about rather than seen.
+
 ## [0.11.5] - 2026-08-28
 
 ### Added
