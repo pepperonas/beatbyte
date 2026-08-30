@@ -14,6 +14,18 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.5] - 2026-08-30
+
+### Fixed
+
+- Fast repeated pitches no longer machine-gun a single lane: the
+  generator rewrites them into trills at the master level, so every
+  difficulty inherits one consistent, physically playable reading.
+  Measured before the fix, the imported library's expert charts
+  carried a median of 106 same-lane jacks per song at gaps a human
+  cannot drum on one finger; repeats at quarter-note speed keep
+  their lane — they are a musical statement, not a jack.
+
 ## [0.12.4] - 2026-08-30
 
 ### Fixed

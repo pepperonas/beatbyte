@@ -211,6 +211,11 @@ struct MasterNote {
 const MASTER_MIN_SPACING_S: f64 = 0.10;
 const MASTER_STRENGTH_FLOOR: f32 = 0.07;
 
+/// Below this gap, two notes on the SAME lane are a machine-gun jack
+/// — physically brutal where a trill is easy. Real charts alternate
+/// lanes for fast repeated pitches; so does the flow pass.
+const JACK_GAP_S: f64 = 0.18;
+
 /// Build the master chart: melody-first selection, contour lanes on
 /// the full neck, true-length tails.
 fn build_master(analysis: &SongAnalysis, grid_origin_s: f64) -> Vec<MasterNote> {
@@ -245,7 +250,43 @@ fn build_master(analysis: &SongAnalysis, grid_origin_s: f64) -> Vec<MasterNote> 
         });
         previous_lane = Some(lane);
     }
+    break_jacks(&mut master);
     master
+}
+
+/// Rewrite machine-gun jacks into trills, at the master level so
+/// every difficulty inherits ONE consistent reading (a note shared
+/// between difficulties keeps its lane, as the pinned invariant
+/// demands). A repeated pitch is a step-0 interval for the
+/// [`ContourMapper`] — melodically right, physically brutal under
+/// [`JACK_GAP_S`]. The walk repairs pairs in time order against the
+/// CURRENT lanes, so the no-fast-same-lane property holds
+/// inductively; the moved lane prefers the higher neighbor and
+/// dodges the next fast note's lane where it can.
+fn break_jacks(master: &mut [MasterNote]) {
+    let lanes = LANE_COUNT as i32;
+    for i in 1..master.len() {
+        if master[i].time_s - master[i - 1].time_s >= JACK_GAP_S
+            || master[i].lane != master[i - 1].lane
+        {
+            continue;
+        }
+        let here = master[i].lane;
+        let up = (here + 1 < lanes).then_some(here + 1);
+        let down = (here > 0).then_some(here - 1);
+        let next_fast_lane = master
+            .get(i + 1)
+            .and_then(|next| (next.time_s - master[i].time_s < JACK_GAP_S).then_some(next.lane));
+        let pick = [up, down]
+            .into_iter()
+            .flatten()
+            .find(|lane| Some(*lane) != next_fast_lane)
+            .or(up)
+            .or(down);
+        if let Some(lane) = pick {
+            master[i].lane = lane;
+        }
+    }
 }
 
 /// The natural tail of a master note, before difficulty capping.
@@ -917,7 +958,7 @@ fn note_hash(time_s: f64) -> u64 {
 mod tests {
     use super::*;
     use crate::validate::Severity;
-    use beatbyte_core::music::Onset;
+    use beatbyte_core::music::{MelodyNote, Onset};
 
     /// A synthetic 120 BPM analysis: onsets on every eighth note for
     /// 60 s (strength alternating strong beats / weak offbeats,
@@ -1465,6 +1506,106 @@ mod tests {
         // assertion above — found by mutation testing).
         assert_eq!(remap_lane(2, 3), 1, "neck middle -> 3-lane middle");
         {}
+    }
+
+    /// A melody hammering ONE pitch in sixteenths — the machine-gun
+    /// shape that used to map straight onto a single lane. Strength
+    /// stays below every chord threshold so the property is about
+    /// single notes, and the tones are short so nothing sustains.
+    fn repeated_pitch_analysis() -> SongAnalysis {
+        let beat = 0.5; // 120 BPM
+        let mut melody = Vec::new();
+        let mut onsets = Vec::new();
+        for k in 0..64 {
+            let time_s = 1.0 + f64::from(k) * beat / 4.0;
+            melody.push(MelodyNote {
+                time_s,
+                end_s: time_s + 0.06,
+                midi: 64.0,
+                strength: 0.5,
+            });
+            onsets.push(Onset {
+                time_s,
+                strength: 0.5,
+                brightness: 0.5,
+            });
+        }
+        let beats: Vec<f64> = (0..118).map(|i| 1.0 + f64::from(i) * beat).collect();
+        SongAnalysis {
+            bpm: 120.0,
+            bpm_confidence: 0.9,
+            alt_bpm: None,
+            beats,
+            onsets,
+            energy: vec![0.8; 1200],
+            energy_hop_s: 0.05,
+            duration_s: 60.0,
+            melody,
+        }
+    }
+
+    #[test]
+    fn fast_repeated_pitches_do_not_machine_gun_one_lane() {
+        let chart = generate_chart(&repeated_pitch_analysis(), &meta());
+        // The fixture must actually produce a fast run somewhere, or
+        // every assertion below is vacuous.
+        let expert = &chart.chart_for(Difficulty::Expert).unwrap().notes;
+        assert!(
+            expert
+                .windows(2)
+                .any(|p| p[1].time - p[0].time > 0.0 && p[1].time - p[0].time < JACK_GAP_S),
+            "fixture must keep a fast run on expert"
+        );
+        for difficulty in Difficulty::ALL {
+            let notes = &chart.chart_for(difficulty).unwrap().notes;
+            for pair in notes.windows(2) {
+                let gap = pair[1].time - pair[0].time;
+                if gap > 0.0 && gap < JACK_GAP_S {
+                    assert_ne!(
+                        pair[1].lane, pair[0].lane,
+                        "{difficulty}: same-lane pair {gap:.3}s apart at {:.2}s",
+                        pair[0].time
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn slow_repeated_pitches_keep_their_lane() {
+        // Quarter-note repeats are a musical statement, not a jack —
+        // the flow pass must not touch anything at or above the gap.
+        let mut analysis = repeated_pitch_analysis();
+        analysis.melody = (0..40)
+            .map(|k| {
+                let time_s = 1.0 + f64::from(k) * 0.5;
+                MelodyNote {
+                    time_s,
+                    end_s: time_s + 0.06,
+                    midi: 64.0,
+                    strength: 0.5,
+                }
+            })
+            .collect();
+        analysis.onsets = analysis
+            .melody
+            .iter()
+            .map(|m| Onset {
+                time_s: m.time_s,
+                strength: 0.5,
+                brightness: 0.5,
+            })
+            .collect();
+        let chart = generate_chart(&analysis, &meta());
+        let expert = &chart.chart_for(Difficulty::Expert).unwrap().notes;
+        assert!(expert.len() > 10, "fixture must keep the repeats");
+        for pair in expert.windows(2) {
+            assert_eq!(
+                pair[1].lane, pair[0].lane,
+                "a repeated pitch at quarter notes stays on its lane ({:.2}s)",
+                pair[0].time
+            );
+        }
     }
 
     #[test]
