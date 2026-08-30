@@ -108,7 +108,7 @@ impl DifficultyProfile {
                 chord_share: 0.08,
                 max_chord_size: 2,
                 hopos: true,
-                hopo_max_gap_s: 0.20,
+                hopo_max_gap_s: 0.26,
                 sustains: true,
                 sustain_min_gap_s: 0.5,
                 max_burst_events: 10,
@@ -395,9 +395,12 @@ fn reduction_chain<'a>(
     // Difficulty::ALL is easy..expert; walk it hardest first. Each
     // step escalates its hot bars toward the density of the level
     // ABOVE it — selecting more of the parent set it thins from, so
-    // "medium is a subset of hard" survives by construction. Expert
-    // has nothing above it and stays uniform.
-    let mut previous_npb: Option<f64> = None;
+    // "medium is a subset of hard" survives by construction. Expert's
+    // own level above is the MASTER: it rises toward the
+    // transcription's hot-bar density where the song rises, and
+    // keeps its anchor everywhere else.
+    let mut previous_npb: Option<f64> =
+        master_hot_npb(master, &hot_bars, grid_origin_s, analysis.beat_interval_s());
     for &step in Difficulty::ALL.iter().rev() {
         let profile = DifficultyProfile::for_difficulty(step);
         current = thin_to_target(
@@ -453,6 +456,34 @@ fn discipline_bursts(notes: Vec<&MasterNote>, max_burst_events: usize) -> Vec<&M
         .zip(keep)
         .filter_map(|(note, kept)| kept.then_some(note))
         .collect()
+}
+
+/// The master's own density inside the hot bars, in notes per beat —
+/// the ceiling expert escalates toward (`None` when the song has no
+/// high ground or no beat: nothing to escalate is a finding).
+fn master_hot_npb(
+    master: &[MasterNote],
+    hot_bars: &[bool],
+    grid_origin_s: f64,
+    beat: f64,
+) -> Option<f64> {
+    if beat <= 0.0 {
+        return None;
+    }
+    let hot_beats = 4.0 * hot_bars.iter().filter(|hot| **hot).count() as f64;
+    if hot_beats <= 0.0 {
+        return None;
+    }
+    let hot_notes = master
+        .iter()
+        .filter(|note| {
+            hot_bars
+                .get(crate::escalation::bar_of(note.time_s, grid_origin_s, beat))
+                .copied()
+                .unwrap_or(false)
+        })
+        .count();
+    (hot_notes > 0).then(|| hot_notes as f64 / hot_beats)
 }
 
 /// The escalation one thinning step runs under: which bars are hot,
@@ -1747,6 +1778,144 @@ mod tests {
         );
     }
 
+    #[test]
+    fn hard_grows_hopo_runs_at_its_own_speed() {
+        // A stepping melody in eighths — 0.25 s gaps, exactly the
+        // terrain hard actually inhabits (its median gaps measured
+        // 0.23–0.37 s on the imported library). The old 0.20 s HOPO
+        // gap sat below that floor, so 15 of 25 real songs got ZERO
+        // hopos on hard.
+        let steps = [60.0f32, 62.0, 64.0, 62.0];
+        let melody: Vec<MelodyNote> = (0..180)
+            .map(|k| {
+                let time_s = 1.0 + f64::from(k) * 0.25;
+                MelodyNote {
+                    time_s,
+                    end_s: time_s + 0.06,
+                    midi: steps[k as usize % steps.len()],
+                    strength: 0.5,
+                }
+            })
+            .collect();
+        let onsets: Vec<Onset> = melody
+            .iter()
+            .map(|m| Onset {
+                time_s: m.time_s,
+                strength: 0.5,
+                brightness: 0.5,
+            })
+            .collect();
+        let beats: Vec<f64> = (0..118).map(|i| 1.0 + f64::from(i) * 0.5).collect();
+        let analysis = SongAnalysis {
+            bpm: 120.0,
+            bpm_confidence: 0.9,
+            alt_bpm: None,
+            beats,
+            onsets,
+            energy: vec![0.8; 1200],
+            energy_hop_s: 0.05,
+            duration_s: 60.0,
+            melody,
+        };
+        let chart = generate_chart(&analysis, &meta());
+        let hard = &chart.chart_for(Difficulty::Hard).unwrap().notes;
+        let hopos = hard.iter().filter(|n| n.hopo).count();
+        assert!(
+            hopos > 0,
+            "hard must grow hopo runs from eighth-note steps (kept {} notes, 0 hopos)",
+            hard.len()
+        );
+    }
+
+    #[test]
+    fn expert_escalates_toward_the_transcription_in_hot_bars() {
+        // Cold verses in eighths, a high-energy refrain in sixteenth
+        // bursts short enough to clear the burst cap. Expert's
+        // uniform budget used to thin the refrain like the verses;
+        // its level above is the master itself.
+        let beat = 0.5;
+        let mut melody: Vec<MelodyNote> = Vec::new();
+        let hot_bars = 40..64usize; // of 64 bars — at the tail, where a
+        // uniform time-ranked budget starves first
+        for bar in 0..64usize {
+            let bar_start = 1.0 + bar as f64 * 4.0 * beat;
+            if hot_bars.contains(&bar) {
+                // Fourteen sixteenths, then air — under the burst
+                // cap, over the uniform budget.
+                for k in 0..14 {
+                    let time_s = bar_start + k as f64 * beat / 4.0;
+                    melody.push(MelodyNote {
+                        time_s,
+                        end_s: time_s + 0.06,
+                        midi: 64.0,
+                        strength: 0.5,
+                    });
+                }
+            } else {
+                for k in 0..8 {
+                    let time_s = bar_start + k as f64 * beat / 2.0;
+                    melody.push(MelodyNote {
+                        time_s,
+                        end_s: time_s + 0.06,
+                        midi: 62.0,
+                        strength: 0.5,
+                    });
+                }
+            }
+        }
+        let onsets: Vec<Onset> = melody
+            .iter()
+            .map(|m| Onset {
+                time_s: m.time_s,
+                strength: 0.5,
+                brightness: 0.5,
+            })
+            .collect();
+        let beats: Vec<f64> = (0..258).map(|i| 1.0 + f64::from(i) * beat).collect();
+        let hot_supply = melody
+            .iter()
+            .filter(|m| {
+                let bar = ((m.time_s - 1.0) / (4.0 * beat)).floor() as usize;
+                hot_bars.contains(&bar)
+            })
+            .count();
+        let mut energy = vec![0.2f32; 2640];
+        for (i, sample) in energy.iter_mut().enumerate() {
+            let time = i as f64 * 0.05;
+            let bar = ((time - 1.0) / (4.0 * beat)).floor();
+            if (40.0..64.0).contains(&bar) {
+                *sample = 0.9;
+            }
+        }
+        let analysis = SongAnalysis {
+            bpm: 120.0,
+            bpm_confidence: 0.9,
+            alt_bpm: None,
+            beats,
+            onsets,
+            energy,
+            energy_hop_s: 0.05,
+            duration_s: 132.0,
+            melody,
+        };
+        let chart = generate_chart(&analysis, &meta());
+        let expert = &chart.chart_for(Difficulty::Expert).unwrap().notes;
+        let mut hot_times = std::collections::HashSet::new();
+        for note in expert.iter() {
+            let bar = ((note.time - 1.0) / (4.0 * beat)).floor() as usize;
+            if hot_bars.contains(&bar) {
+                hot_times.insert((note.time * 1000.0).round() as i64);
+            }
+        }
+        assert!(
+            hot_times.len() * 10 >= hot_supply * 9,
+            "expert must rise toward the transcription where the song rises: \
+             kept {} of {} refrain events",
+            hot_times.len(),
+            hot_supply
+        );
+    }
+
     /// Unpitched eighth notes with every fourth hit accented, at a
     /// chosen absolute scale — the accents are unmistakable INSIDE
     /// the song, whatever the scale.
@@ -2164,10 +2333,12 @@ mod escalation_generation_tests {
     }
 
     #[test]
-    fn expert_never_escalates() {
-        // Expert is the fullest reading; there is no level above it
-        // to rise toward. Its notes must be identical whether the
-        // song has high ground or not.
+    fn expert_escalates_toward_the_master_where_the_song_rises() {
+        // Expert's level above is the MASTER itself (P4 of the
+        // difficulty redesign; before that it was the one difficulty
+        // that ignored the song's shape). With high ground it keeps
+        // more of the transcription than without — in the hot bars,
+        // and only there.
         let profile = DifficultyProfile::for_difficulty(Difficulty::Expert);
         let flat = generate_difficulty(&dense(false), &profile, 1.0);
         let hot = generate_difficulty(&dense(true), &profile, 1.0);
@@ -2178,7 +2349,12 @@ mod escalation_generation_tests {
             "the dense fixture no longer thins ({}) - the test is blind",
             flat.notes.len()
         );
-        assert_eq!(flat.notes, hot.notes, "expert must not read the energy");
+        assert!(
+            hot.notes.len() > flat.notes.len(),
+            "high ground must let expert rise ({} hot vs {} flat)",
+            hot.notes.len(),
+            flat.notes.len()
+        );
     }
 
     #[test]

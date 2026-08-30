@@ -14,6 +14,18 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.8] - 2026-08-30
+
+### Changed
+
+- Hard grows HOPO runs at its own speed: its HOPO gap rises to
+  0.26 s, matching hard's real gap distribution (0.23-0.37 s on the
+  imported library, where 15 of 25 songs previously got zero HOPOs).
+- Expert escalates toward the transcription: its level above is the
+  master itself, so it rises toward the master's density in the
+  song's own hot bars and keeps its anchor everywhere else. It was
+  the one difficulty that ignored the song's shape.
+
 ## [0.12.7] - 2026-08-30
 
 ### Changed
