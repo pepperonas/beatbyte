@@ -14,6 +14,34 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.3] - 2026-08-30
+
+### Fixed
+
+- **Search was unreachable from a German keyboard.** It was bound to
+  `KeyCode::Slash` — a *physical* key position from the US layout; on
+  QWERTZ that key is `-`, and `/` lives on Shift+7, which produces
+  `Digit7`. Search now opens on **`F`** (letter keys sit in the same
+  place on every layout) or on a *typed* `/` (the logical character,
+  layout-aware).
+
+### Changed
+
+- **The sort became visible where the data is.** The active column
+  header wears the accent colour and a direction marker (`v`/`^`);
+  the status line spells it out too. Column headers are **clickable**:
+  a click sorts by that column in its default direction, a second
+  click reverses it — the convention of every library UI. NOTES and
+  DIFF became sortable alongside the rest, and the `S` cycle covers
+  all eight modes. Reversal never applies to STANDARD (the library's
+  own order has no "reverse" a player would ask for by name), and a
+  changed direction resets when a new column is chosen.
+- The search line turns accent-bright while typing, with an explicit
+  `ESC to close`.
+- `BEATBYTE_SHOT_SORT` photographs the browser under a chosen sort —
+  the active-column marker only exists when a sort is active, so
+  without it the marker could only be argued about.
+
 ## [0.12.2] - 2026-08-30
 
 ### Added

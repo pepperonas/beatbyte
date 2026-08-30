@@ -46,6 +46,10 @@ pub enum SortMode {
     Length,
     /// Highest personal best first (no record last).
     Best,
+    /// Most notes first (of the selected difficulty).
+    Notes,
+    /// Highest challenge rating first.
+    Diff,
 }
 
 impl SortMode {
@@ -57,7 +61,9 @@ impl SortMode {
             SortMode::Title => SortMode::Artist,
             SortMode::Artist => SortMode::Genre,
             SortMode::Genre => SortMode::Length,
-            SortMode::Length => SortMode::Best,
+            SortMode::Length => SortMode::Notes,
+            SortMode::Notes => SortMode::Diff,
+            SortMode::Diff => SortMode::Best,
             SortMode::Best => SortMode::Standard,
         }
     }
@@ -72,7 +78,23 @@ impl SortMode {
             SortMode::Genre => "GENRE",
             SortMode::Length => "LENGTH",
             SortMode::Best => "BEST",
+            SortMode::Notes => "NOTES",
+            SortMode::Diff => "DIFF",
         }
+    }
+}
+
+/// What a click on a column header does: a new column sorts by it in
+/// its default direction, the ACTIVE column flips the direction —
+/// the convention of every library UI. Standard has no direction to
+/// flip; clicking its concept (there is no Standard header) cannot
+/// happen, but the function stays total.
+#[must_use]
+pub fn sort_click(current: SortMode, flipped: bool, clicked: SortMode) -> (SortMode, bool) {
+    if clicked == current && clicked != SortMode::Standard {
+        (current, !flipped)
+    } else {
+        (clicked, false)
     }
 }
 
@@ -88,6 +110,8 @@ pub struct BrowserView {
     pub filter: String,
     /// Whether typing currently goes into the filter.
     pub searching: bool,
+    /// Whether the sort runs against its default direction.
+    pub flipped: bool,
 }
 
 /// Case- and diacritic-insensitive haystack for filtering: `fold_latin`
@@ -123,6 +147,8 @@ fn matches_filter(entry: &SongEntry, folded: &str) -> bool {
 fn build_order(
     entries: &[SongEntry],
     sort: SortMode,
+    flipped: bool,
+    difficulty: Difficulty,
     filter: &str,
     best: impl Fn(&SongEntry) -> Option<u64>,
 ) -> Vec<usize> {
@@ -168,6 +194,34 @@ fn build_order(
                 )
             });
         }
+        SortMode::Notes => {
+            order.sort_by_key(|i| {
+                let notes = entries[*i].note_count(difficulty);
+                (
+                    notes.is_none(),
+                    std::cmp::Reverse(notes.unwrap_or(0)),
+                    tie(i),
+                )
+            });
+        }
+        SortMode::Diff => {
+            order.sort_by_key(|i| {
+                let rating = entries[*i].rating(difficulty);
+                (
+                    rating.is_none(),
+                    std::cmp::Reverse(rating.unwrap_or(0)),
+                    // Same rating: the denser chart is the harder one.
+                    std::cmp::Reverse(entries[*i].note_count(difficulty).unwrap_or(0)),
+                    tie(i),
+                )
+            });
+        }
+    }
+    // Against the grain: the flip reverses every mode's default
+    // direction. Standard is the library's own order and keeps it -
+    // there is no "reverse standard" a player would ask for by name.
+    if flipped && sort != SortMode::Standard {
+        order.reverse();
     }
     order
 }
@@ -213,6 +267,7 @@ impl Plugin for SongSelectPlugin {
                 Update,
                 (
                     browser_input,
+                    search_sort_input,
                     sync_view,
                     refresh_browser,
                     rebuild_after_import,
@@ -235,6 +290,10 @@ struct SongRow(usize);
 /// A row's title text.
 #[derive(Component)]
 struct SongTitle(usize);
+
+/// A clickable column caption. Carries the mode it sorts by.
+#[derive(Component)]
+struct SortHeader(SortMode);
 
 /// A row's artist text, in the right-hand column.
 #[derive(Component)]
@@ -267,11 +326,18 @@ fn spawn_browser(
     selected: Res<SelectedDifficulty>,
 ) {
     let difficulty = selected.0;
-    let order = build_order(&library.entries, view.sort, &view.filter, |entry| {
-        scores
-            .best(&entry.title, &entry.artist, difficulty)
-            .map(|b| b.score)
-    });
+    let order = build_order(
+        &library.entries,
+        view.sort,
+        view.flipped,
+        difficulty,
+        &view.filter,
+        |entry| {
+            scores
+                .best(&entry.title, &entry.artist, difficulty)
+                .map(|b| b.score)
+        },
+    );
     // Bypass change detection: this is the render of the view, not an
     // edit to it — marking it changed would retrigger sync_view.
     let raw = view.bypass_change_detection();
@@ -312,19 +378,19 @@ fn spawn_browser_impl(
         .with_children(|parent| {
             ui_kit::header(parent, font, "SONG SELECT", "pick a track and a difficulty");
             // Sort / search status line.
+            let direction = if view.flipped { " (reversed)" } else { "" };
             let status = if view.searching {
                 format!(
-                    "sort {}   search: {}_   ({} match{})",
-                    view.sort.label(),
+                    "SEARCH: {}_   ({} match{})   ESC to close",
                     view.filter,
                     view.order.len(),
                     if view.order.len() == 1 { "" } else { "es" }
                 )
             } else if view.filter.is_empty() {
-                format!("sort {}   / to search", view.sort.label())
+                format!("sort {}{direction}   F to search", view.sort.label())
             } else {
                 format!(
-                    "sort {}   filter: {} ({} match{})",
+                    "sort {}{direction}   filter: {} ({} match{})",
                     view.sort.label(),
                     view.filter,
                     view.order.len(),
@@ -334,7 +400,11 @@ fn spawn_browser_impl(
             parent.spawn((
                 Text::new(font.safe(&status)),
                 font.text(ui_kit::SMALL),
-                TextColor(palette::dimmed(palette::TEXT_DIM, 0.85)),
+                TextColor(if view.searching {
+                    palette::BRAND
+                } else {
+                    palette::dimmed(palette::TEXT_DIM, 0.85)
+                }),
                 Node {
                     margin: UiRect::bottom(px(6)),
                     ..default()
@@ -349,7 +419,15 @@ fn spawn_browser_impl(
                     ..default()
                 })
                 .with_children(|head| {
-                    let caption = |head: &mut ChildSpawnerCommands, text: &str, width: Option<f32>| {
+                    // Every caption is a BUTTON that sorts its
+                    // column; the active one shows the direction and
+                    // wears the accent - the sort must be visible
+                    // where the data is, not only in a status line.
+                    let caption = |head: &mut ChildSpawnerCommands,
+                                   text: &str,
+                                   mode: SortMode,
+                                   width: Option<f32>| {
+                        let active = view.sort == mode;
                         let mut node = Node {
                             flex_shrink: 0.0,
                             ..default()
@@ -360,20 +438,31 @@ fn spawn_browser_impl(
                             node.flex_grow = 1.0;
                             node.min_width = px(0.0);
                         }
+                        let label = if active {
+                            format!("{text} {}", if view.flipped { "^" } else { "v" })
+                        } else {
+                            text.to_owned()
+                        };
                         head.spawn((
-                            Text::new(text.to_owned()),
+                            SortHeader(mode),
+                            Button,
+                            Text::new(label),
                             font.text(ui_kit::SMALL),
-                            TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
+                            TextColor(if active {
+                                palette::BRAND
+                            } else {
+                                palette::dimmed(palette::TEXT_DIM, 0.7)
+                            }),
                             node,
                         ));
                     };
-                    caption(head, "TITLE", None);
-                    caption(head, "ARTIST", Some(COL_ARTIST));
-                    caption(head, "GENRE", Some(COL_GENRE));
-                    caption(head, "LEN", Some(COL_LEN));
-                    caption(head, "NOTES", Some(COL_NOTES));
-                    caption(head, "DIFF", Some(COL_RATING));
-                    caption(head, "BEST", Some(COL_BEST));
+                    caption(head, "TITLE", SortMode::Title, None);
+                    caption(head, "ARTIST", SortMode::Artist, Some(COL_ARTIST));
+                    caption(head, "GENRE", SortMode::Genre, Some(COL_GENRE));
+                    caption(head, "LEN", SortMode::Length, Some(COL_LEN));
+                    caption(head, "NOTES", SortMode::Notes, Some(COL_NOTES));
+                    caption(head, "DIFF", SortMode::Diff, Some(COL_RATING));
+                    caption(head, "BEST", SortMode::Best, Some(COL_BEST));
                 });
             parent
                 .spawn((SongList, ui_kit::scroll_panel(ui_kit::PANEL_WIDE)))
@@ -472,37 +561,27 @@ fn spawn_browser_impl(
             ui_kit::footer(
                 parent,
                 font,
-                "UP/DOWN song  LEFT/RIGHT difficulty  S sort  / search  ENTER rock  E edit  DEL delete  ESC back",
+                "UP/DOWN song  LEFT/RIGHT difficulty  S sort  F search  ENTER rock  E edit  DEL delete  ESC back",
             );
         });
 }
 
-#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
-fn browser_input(
-    mut commands: Commands,
+/// Sort and search input. Its own system: `browser_input` sits at
+/// Bevy's parameter limit, and the two concerns share no state
+/// beyond the view. Runs AFTER `browser_input` in the chain, so the
+/// Esc that closes the search is not also read as "back to menu" -
+/// `browser_input` still sees the searching flag of this frame.
+fn search_sort_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut typed: MessageReader<bevy::input::keyboard::KeyboardInput>,
     mut view: ResMut<BrowserView>,
-    pads: Query<&Gamepad>,
-    mut library: ResMut<SongLibrary>,
-    mut cursor: ResMut<BrowserCursor>,
-    mut selected: ResMut<SelectedDifficulty>,
-    builtins: Res<BuiltinSongs>,
-    mut next_state: ResMut<NextState<AppState>>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
-    rows: Query<(&SongRow, &Interaction), Changed<Interaction>>,
-    time: Res<Time>,
-    mut status: ResMut<crate::import::ImportStatus>,
-    mut delete_armed: Local<(Option<usize>, f32)>,
+    headers: Query<(&SortHeader, &Interaction), Changed<Interaction>>,
 ) {
-    let nav = MenuNav::read(&keys, pads.iter());
-    let searching = view.searching;
-    // ── Search mode ─────────────────────────────────────────────
-    // While it is on, printable keys EDIT THE FILTER — every letter
-    // shortcut below (E, S, DEL) is suppressed, or typing "elle"
-    // would open the editor and arm a delete on the way.
-    if searching {
+    if view.searching {
+        // Printable keys EDIT THE FILTER - every letter shortcut is
+        // suppressed while searching (in `browser_input`, off this
+        // same flag), or typing "elle" would open the editor and arm
+        // a delete on the way.
         for event in typed.read() {
             if !event.state.is_pressed() {
                 continue;
@@ -526,16 +605,62 @@ fn browser_input(
             view.searching = false;
             view.filter.clear();
         }
-    } else {
-        typed.clear();
-        if keys.just_pressed(KeyCode::Slash) {
-            view.searching = true;
-        }
-        if keys.just_pressed(KeyCode::KeyS) {
-            let next = view.sort.next();
-            view.sort = next;
+        return;
+    }
+    // Search opens on F (a letter key sits in the same place on every
+    // layout) or on a TYPED "/" - the logical character, because the
+    // physical Slash KeyCode is a US-layout position: on QWERTZ that
+    // key is "-", and "/" lives on Shift+7. The first wiring used the
+    // KeyCode and search was simply unreachable from a German
+    // keyboard.
+    let mut open_search = keys.just_pressed(KeyCode::KeyF);
+    for event in typed.read() {
+        if event.state.is_pressed()
+            && let bevy::input::keyboard::Key::Character(text) = &event.logical_key
+            && text.as_str() == "/"
+        {
+            open_search = true;
         }
     }
+    if open_search {
+        view.searching = true;
+    }
+    if keys.just_pressed(KeyCode::KeyS) {
+        let next = view.sort.next();
+        view.sort = next;
+        view.flipped = false;
+    }
+    // Column headers sort on click; clicking the active one flips
+    // the direction - the convention of every library UI.
+    for (header, interaction) in &headers {
+        if *interaction == Interaction::Pressed {
+            let (sort, flipped) = sort_click(view.sort, view.flipped, header.0);
+            view.sort = sort;
+            view.flipped = flipped;
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
+fn browser_input(
+    mut commands: Commands,
+    keys: Res<ButtonInput<KeyCode>>,
+    view: Res<BrowserView>,
+    pads: Query<&Gamepad>,
+    mut library: ResMut<SongLibrary>,
+    mut cursor: ResMut<BrowserCursor>,
+    mut selected: ResMut<SelectedDifficulty>,
+    builtins: Res<BuiltinSongs>,
+    mut next_state: ResMut<NextState<AppState>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
+    rows: Query<(&SongRow, &Interaction), Changed<Interaction>>,
+    time: Res<Time>,
+    mut status: ResMut<crate::import::ImportStatus>,
+    mut delete_armed: Local<(Option<usize>, f32)>,
+) {
+    let nav = MenuNav::read(&keys, pads.iter());
+    let searching = view.searching;
     let back = (!searching && nav.back) || mouse.just_pressed(MouseButton::Right);
     let count = view.order.len();
     if count == 0 {
@@ -792,11 +917,18 @@ fn sync_view(
         return;
     }
     let difficulty = selected.0;
-    let order = build_order(&library.entries, view.sort, &view.filter, |entry| {
-        scores
-            .best(&entry.title, &entry.artist, difficulty)
-            .map(|b| b.score)
-    });
+    let order = build_order(
+        &library.entries,
+        view.sort,
+        view.flipped,
+        difficulty,
+        &view.filter,
+        |entry| {
+            scores
+                .best(&entry.title, &entry.artist, difficulty)
+                .map(|b| b.score)
+        },
+    );
     let raw = view.bypass_change_detection();
     cursor.0 = stable_cursor(&raw.order, cursor.0, &order);
     raw.order = order;
@@ -895,22 +1027,50 @@ mod view_tests {
         // The order the browser has always shown - and what the
         // delete harness navigates by real keypresses. Changing the
         // default would silently retarget its arrows.
-        let order = build_order(&lib(), SortMode::Standard, "", |_| None);
+        let order = build_order(
+            &lib(),
+            SortMode::Standard,
+            false,
+            Difficulty::Medium,
+            "",
+            |_| None,
+        );
         assert_eq!(order, vec![0, 1, 2, 3]);
     }
 
     #[test]
     fn title_and_artist_sort_alphabetically() {
-        let order = build_order(&lib(), SortMode::Title, "", |_| None);
+        let order = build_order(
+            &lib(),
+            SortMode::Title,
+            false,
+            Difficulty::Medium,
+            "",
+            |_| None,
+        );
         assert_eq!(order, vec![1, 2, 3, 0], "Africa, Ella, Life, Maria");
-        let order = build_order(&lib(), SortMode::Artist, "", |_| None);
+        let order = build_order(
+            &lib(),
+            SortMode::Artist,
+            false,
+            Difficulty::Medium,
+            "",
+            |_| None,
+        );
         assert_eq!(order, vec![0, 3, 2, 1], "Blondie, Des'ree, France, Toto");
     }
 
     #[test]
     fn missing_genres_sort_last_not_first() {
         // An absent genre is an absence, not the alphabet's start.
-        let order = build_order(&lib(), SortMode::Genre, "", |_| None);
+        let order = build_order(
+            &lib(),
+            SortMode::Genre,
+            false,
+            Difficulty::Medium,
+            "",
+            |_| None,
+        );
         assert_eq!(
             *order.last().expect("non-empty"),
             2,
@@ -920,13 +1080,18 @@ mod view_tests {
 
     #[test]
     fn best_sorts_highest_first_and_unplayed_last() {
-        let order = build_order(&lib(), SortMode::Best, "", |entry| {
-            match entry.title.as_str() {
+        let order = build_order(
+            &lib(),
+            SortMode::Best,
+            false,
+            Difficulty::Medium,
+            "",
+            |entry| match entry.title.as_str() {
                 "Maria" => Some(139_968),
                 "Africa" => Some(87_000),
                 _ => None,
-            }
-        });
+            },
+        );
         assert_eq!(order[0], 0, "highest score first");
         assert_eq!(order[1], 1);
         assert!(
@@ -939,28 +1104,74 @@ mod view_tests {
     fn the_filter_folds_case_and_diacritics() {
         // "ella" must find "Ella, elle l'a" - and so must "élla" the
         // other way round: the fold applies to BOTH sides.
-        let order = build_order(&lib(), SortMode::Standard, "ELLA", |_| None);
+        let order = build_order(
+            &lib(),
+            SortMode::Standard,
+            false,
+            Difficulty::Medium,
+            "ELLA",
+            |_| None,
+        );
         assert_eq!(order, vec![2]);
-        let order = build_order(&lib(), SortMode::Standard, "élla", |_| None);
+        let order = build_order(
+            &lib(),
+            SortMode::Standard,
+            false,
+            Difficulty::Medium,
+            "élla",
+            |_| None,
+        );
         assert_eq!(order, vec![2]);
         // And it searches the artist and genre columns too.
-        let order = build_order(&lib(), SortMode::Standard, "toto", |_| None);
+        let order = build_order(
+            &lib(),
+            SortMode::Standard,
+            false,
+            Difficulty::Medium,
+            "toto",
+            |_| None,
+        );
         assert_eq!(order, vec![1]);
-        let order = build_order(&lib(), SortMode::Standard, "new wave", |_| None);
+        let order = build_order(
+            &lib(),
+            SortMode::Standard,
+            false,
+            Difficulty::Medium,
+            "new wave",
+            |_| None,
+        );
         assert_eq!(order, vec![0]);
     }
 
     #[test]
     fn an_empty_filter_shows_everything() {
         assert_eq!(
-            build_order(&lib(), SortMode::Standard, "", |_| None).len(),
+            build_order(
+                &lib(),
+                SortMode::Standard,
+                false,
+                Difficulty::Medium,
+                "",
+                |_| None
+            )
+            .len(),
             4
         );
     }
 
     #[test]
     fn a_hopeless_filter_yields_an_empty_view_not_a_panic() {
-        assert!(build_order(&lib(), SortMode::Standard, "zzzz", |_| None).is_empty());
+        assert!(
+            build_order(
+                &lib(),
+                SortMode::Standard,
+                false,
+                Difficulty::Medium,
+                "zzzz",
+                |_| None
+            )
+            .is_empty()
+        );
     }
 
     #[test]
@@ -969,15 +1180,43 @@ mod view_tests {
         // sorting by title, Ella sits at position 1 - and that is
         // where the cursor must be, not still at raw position 2
         // (which would now be "Life").
-        let old = build_order(&lib(), SortMode::Standard, "", |_| None);
-        let new = build_order(&lib(), SortMode::Title, "", |_| None);
+        let old = build_order(
+            &lib(),
+            SortMode::Standard,
+            false,
+            Difficulty::Medium,
+            "",
+            |_| None,
+        );
+        let new = build_order(
+            &lib(),
+            SortMode::Title,
+            false,
+            Difficulty::Medium,
+            "",
+            |_| None,
+        );
         assert_eq!(stable_cursor(&old, 2, &new), 1);
     }
 
     #[test]
     fn a_cursor_whose_song_was_filtered_away_clamps() {
-        let old = build_order(&lib(), SortMode::Standard, "", |_| None);
-        let new = build_order(&lib(), SortMode::Standard, "maria", |_| None);
+        let old = build_order(
+            &lib(),
+            SortMode::Standard,
+            false,
+            Difficulty::Medium,
+            "",
+            |_| None,
+        );
+        let new = build_order(
+            &lib(),
+            SortMode::Standard,
+            false,
+            Difficulty::Medium,
+            "maria",
+            |_| None,
+        );
         // Cursor was on "Life" (3); Maria-only view has one row.
         assert_eq!(stable_cursor(&old, 3, &new), 0);
         // And an empty view clamps to zero without panicking.
@@ -988,14 +1227,104 @@ mod view_tests {
     fn the_sort_cycle_visits_every_mode_and_returns() {
         let mut mode = SortMode::Standard;
         let mut seen = vec![mode];
-        for _ in 0..5 {
+        for _ in 0..7 {
             mode = mode.next();
             seen.push(mode);
         }
         assert_eq!(mode.next(), SortMode::Standard, "the cycle closes");
         seen.sort_by_key(|m| m.label());
         seen.dedup();
-        assert_eq!(seen.len(), 6, "every mode is reachable");
+        assert_eq!(seen.len(), 8, "every mode is reachable");
+    }
+
+    #[test]
+    fn the_flip_reverses_every_mode_but_standard() {
+        let forward = build_order(
+            &lib(),
+            SortMode::Title,
+            false,
+            Difficulty::Medium,
+            "",
+            |_| None,
+        );
+        let reversed = build_order(
+            &lib(),
+            SortMode::Title,
+            true,
+            Difficulty::Medium,
+            "",
+            |_| None,
+        );
+        let mut expected = forward.clone();
+        expected.reverse();
+        assert_eq!(reversed, expected, "flipped title = reversed title");
+        // Standard is the library's own order and has no reverse a
+        // player would ask for by name.
+        let standard = build_order(
+            &lib(),
+            SortMode::Standard,
+            true,
+            Difficulty::Medium,
+            "",
+            |_| None,
+        );
+        assert_eq!(standard, vec![0, 1, 2, 3], "standard ignores the flip");
+    }
+
+    #[test]
+    fn a_header_click_sorts_then_flips_then_a_new_column_resets() {
+        // The convention of every library UI, as one pure function.
+        assert_eq!(
+            sort_click(SortMode::Standard, false, SortMode::Artist),
+            (SortMode::Artist, false),
+            "a new column sorts in its default direction"
+        );
+        assert_eq!(
+            sort_click(SortMode::Artist, false, SortMode::Artist),
+            (SortMode::Artist, true),
+            "the active column flips"
+        );
+        assert_eq!(
+            sort_click(SortMode::Artist, true, SortMode::Artist),
+            (SortMode::Artist, false),
+            "and flips back"
+        );
+        assert_eq!(
+            sort_click(SortMode::Artist, true, SortMode::Best),
+            (SortMode::Best, false),
+            "a new column drops the old direction"
+        );
+    }
+
+    #[test]
+    fn notes_and_diff_sort_densest_first() {
+        let mut entries = lib();
+        entries[0].note_counts = vec![500];
+        entries[1].note_counts = vec![100];
+        entries[2].note_counts = vec![300];
+        entries[3].note_counts = vec![900];
+        let order = build_order(
+            &entries,
+            SortMode::Notes,
+            false,
+            Difficulty::Medium,
+            "",
+            |_| None,
+        );
+        assert_eq!(order, vec![3, 0, 2, 1], "most notes first");
+        // A song without the selected difficulty sorts last, not
+        // first with a phantom zero.
+        entries[3].difficulties = vec![];
+        entries[3].note_counts = vec![];
+        let order = build_order(
+            &entries,
+            SortMode::Notes,
+            false,
+            Difficulty::Medium,
+            "",
+            |_| None,
+        );
+        assert_eq!(*order.last().expect("non-empty"), 3);
     }
 
     #[test]

@@ -186,6 +186,7 @@ fn enter_shot_state(
     state: Res<State<AppState>>,
     mut next: ResMut<NextState<AppState>>,
     mut cursor: ResMut<crate::song_select::BrowserCursor>,
+    mut view: ResMut<crate::song_select::BrowserView>,
     mut done: Local<bool>,
 ) {
     if *done || *state.get() != AppState::MainMenu {
@@ -200,6 +201,26 @@ fn enter_shot_state(
         && let Ok(row) = raw.parse::<usize>()
     {
         cursor.0 = row;
+    }
+    // Photograph the browser under a chosen sort - the active-column
+    // marker only exists when a sort is active, so without this it
+    // could only be argued about, not seen.
+    if let Ok(raw) = std::env::var("BEATBYTE_SHOT_SORT") {
+        use crate::song_select::SortMode;
+        let mode = match raw.to_lowercase().as_str() {
+            "title" => Some(SortMode::Title),
+            "artist" => Some(SortMode::Artist),
+            "genre" => Some(SortMode::Genre),
+            "length" => Some(SortMode::Length),
+            "notes" => Some(SortMode::Notes),
+            "diff" => Some(SortMode::Diff),
+            "best" => Some(SortMode::Best),
+            _ => None,
+        };
+        match mode {
+            Some(mode) => view.sort = mode,
+            None => error!("unknown BEATBYTE_SHOT_SORT `{raw}`"),
+        }
     }
     next.set(target.0);
 }
