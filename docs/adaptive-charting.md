@@ -34,32 +34,51 @@ session. Never uploaded, never read by the runtime.
 Session header (first line):
 
 ```json
-{"schema": 1, "song": "maria|blondie", "difficulty": "medium",
- "chart_hash": "…", "generator": "0.11.8", "started": "…",
- "completed": true, "score": 139968, "notes": 463}
+{"schema": 1, "title": "Maria", "artist": "Blondie",
+ "difficulty": "medium", "chart_hash": "…", "generator": "0.11.10",
+ "started_ms": 1756500000000, "player": 0, "autopilot": false,
+ "notes_total": 463}
 ```
 
-One line per note event thereafter:
+One line per observation thereafter:
 
 ```json
 {"i": 41, "j": "perfect", "off_ms": -12.3}
 {"i": 42, "j": "miss"}
+{"s": 41, "done": false}
 {"o": 1}
 ```
 
-(`i` = event index into the chart's track, `j` = judgment, `off_ms` =
-signed offset; `o` = overstrum count at that moment.)
+(`i` = event index into the played track, `j` = judgment, `off_ms` =
+signed offset in ms; `s`/`done` = a sustain ended, played out or
+dropped; `o` = an overstrum.)
 
 Rules that are load-bearing:
 
-- **`chart_hash` is the content hash of the chart file.** Evidence
-  binds to the exact notes that were played. An edited or regenerated
-  chart starts with zero evidence — inherited statistics would judge
-  notes that no longer exist.
-- **Schema versioned from day one** (`schema: 1`); readers skip
-  records they do not understand rather than failing the run.
-- Writing must never affect gameplay: buffered, flushed at session
-  end; a write failure logs and drops, never panics.
+- **`chart_hash` is the content hash of the chart** (canonical
+  serialization, so builtin songs hash too and formatting cannot
+  matter). Evidence binds to the exact notes that were played; an
+  edited or regenerated chart starts with zero evidence.
+- **Title and artist are separate fields.** The score board's
+  `title|artist` key is a known collision (roadmap C5); a new schema
+  does not copy a known defect.
+- **Sustain endings are recorded** (`done`), because dropped holds are
+  the evidence that separates "too hard" from "too easy" — judgment
+  lines alone cannot show them. (From the gameplay mechanics
+  reference: sustain state is its own signal, not a judgment.)
+- **`autopilot` is marked.** The autopilot plays perfectly; a reader
+  that cannot exclude it concludes every chart is too easy.
+- **Completion is derived, never stored**: a session is complete when
+  judged events (hits + misses) equal `notes_total`. A stored flag
+  could disagree with the lines; a derived one cannot. The session
+  score is deliberately absent — it is derivable, and `scores.json`
+  already keeps the best.
+- **Schema versioned from day one** (`schema: 1`); readers skip lines
+  they do not understand rather than failing.
+- Writing must never affect gameplay: buffered in memory, written once
+  when gameplay is left (abandonments included — fewer judged events
+  than `notes_total` *is* the abandonment signal); a write failure
+  logs and drops, never panics.
 
 ## Layer 2 — Analytics (`beatbyte-cli review`)
 
@@ -77,7 +96,8 @@ Output: a human-readable report, and — when evidence thresholds are
 met — a **generation directive**:
 
 ```json
-{"song": "maria|blondie", "difficulty": "medium", "chart_hash": "…",
+{"title": "Maria", "artist": "Blondie", "difficulty": "medium",
+ "chart_hash": "…",
  "section": {"bars": [33, 40]},
  "problem": "miss_cluster",
  "evidence": {"sessions": 5, "accuracy": 0.62, "timing_stddev_ms": 44},

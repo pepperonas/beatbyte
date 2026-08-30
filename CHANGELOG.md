@@ -14,6 +14,30 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.11.10] - 2026-08-30
+
+### Added
+
+- **Every session is recorded** (adaptive charting phase A1,
+  ADR-0011). The engine has always produced a judgment and a signed
+  millisecond offset for every note and thrown them away when the song
+  ended; they now land in an append-only session log beside
+  `scores.json` (`telemetry/<started_ms>-p<player>.jsonl`): a header
+  binding the session to the **content hash of the exact chart
+  played**, then one line per observation — hits with their offsets,
+  misses, sustain endings (played out vs. dropped — the evidence that
+  separates "too hard" from "too easy"), overstrums. Autopilot
+  sessions are marked so evidence readers can exclude them. Completion
+  is derived (judged events vs. total), never stored, so it cannot
+  disagree with the lines. Recording is buffered in memory and written
+  once on the way out of gameplay; a write failure logs and drops,
+  never touches play.
+- The schema learned from the gameplay-mechanics reference the user
+  supplied: sustain endings are their own line kind, and title/artist
+  are separate fields rather than a joined key — the score board's
+  `title|artist` collision (roadmap C5) does not get copied into a new
+  format.
+
 ## [0.11.9] - 2026-08-30
 
 ### Documentation

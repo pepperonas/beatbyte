@@ -27,6 +27,7 @@ pub mod sfx;
 mod shapes;
 pub mod song_select;
 pub mod states;
+pub mod telemetry;
 mod theme;
 pub mod transition;
 pub mod ui;
@@ -179,6 +180,7 @@ pub fn run() -> AppExit {
         gameplay::GameplayPlugin,
         results::ResultsPlugin,
         sfx::SfxPlugin,
+        telemetry::TelemetryPlugin,
         transition::TransitionPlugin,
         autopilot::AutopilotPlugin,
     ));

@@ -240,12 +240,14 @@ the spec is [`adaptive-charting.md`](adaptive-charting.md). Tasks in
 dependency order — each is independently shippable and none may start
 before the one it depends on is checked:
 
-- [ ] **A1 — Telemetry recorder.** Per-note session log (judgment,
-  signed offset) + session header with **chart content hash**,
-  append-only JSONL beside `scores.json`, schema v1. Writing must be
-  failure-isolated from gameplay. DoD: round-trip tests, hash-binding
-  test, a full autopilot run leaves a readable log, no measurable
-  frame cost.
+- [x] **A1 — Telemetry recorder** *(v0.11.10)*. Per-note session log
+  (judgment, signed offset, sustain endings) + session header with
+  **chart content hash**, append-only JSONL beside `scores.json`,
+  schema v1, autopilot sessions marked. Verified: 7 schema tests (two
+  mutated), five autopilot runs each leaving a complete readable log
+  (463/463 judged on a real import) with judgment unchanged — and the
+  very first log already earned its keep by locating a one-off
+  injector overstrum at line 1, during the count-in.
 - [ ] **A2 — `beatbyte-cli review`** (needs A1). Per-section accuracy /
   timing-spread / miss-cluster report over all sessions of one
   (song, difficulty, chart_hash); emits a generation directive once
