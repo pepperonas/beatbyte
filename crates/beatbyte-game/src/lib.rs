@@ -223,6 +223,12 @@ pub fn run() -> AppExit {
 fn spawn_camera(mut commands: Commands) {
     commands.spawn((
         Camera2d,
+        // THE UI camera, explicitly. With a second camera on screen
+        // (the 3D stage) and no marked default, bevy_ui cannot pick
+        // a target for root nodes: they lay out to ZERO size and
+        // vanish — the pause menu shipped invisible exactly this
+        // way, while every plain menu (one camera) worked.
+        bevy::ui::IsDefaultUiCamera,
         // The whole game is laid out in a 1280x720 world. AutoMin
         // guarantees at least that much is ALWAYS visible and scales
         // it with the window — resize, fullscreen, ultrawide: the

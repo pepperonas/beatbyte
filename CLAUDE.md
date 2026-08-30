@@ -303,6 +303,17 @@ artifact, smoke-test it (neutral CWD!), then
   `BRAND.with_alpha(0.12)` rendered as sRGB (99, 84, 35) — a solid
   olive bar, not the whisper intended. Sample the rendered pixel
   rather than reasoning about the constant.
+- **A second on-screen camera makes every untargeted UI root
+  invisible.** With the 3D stage camera active alongside the 2D
+  camera and no `IsDefaultUiCamera` marked, bevy_ui cannot pick a
+  target for root nodes: they lay out to ZERO size — entities exist,
+  input works, nothing renders. The pause menu shipped invisible
+  exactly this way, and the drill that "verified" it was green
+  because it checked settings values, not pixels or layout. Twin
+  rules: the persistent `Camera2d` carries `IsDefaultUiCamera` (do
+  not remove it), and **a UI drill must assert the thing is
+  VISIBLE** — `ComputedNode::size() > 0` at minimum (the pause drill
+  now does), or an engine-side screenshot of the state.
 - **`dist/` is a build product.** It was once committed (118 MB, and
   CI shipped the stale DMG inside every artifact); it is gitignored —
   keep it that way.

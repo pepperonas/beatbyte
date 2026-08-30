@@ -269,6 +269,7 @@ fn autopilot_screenshots(
     game_clock: Res<GameClock>,
     time: Res<Time>,
     players: Query<&crate::gameplay::PlayerSession>,
+    phase: Option<Res<State<crate::states::GamePhase>>>,
     mut taken: Local<std::collections::HashSet<&'static str>>,
     mut in_state_for: Local<(Option<AppState>, f32)>,
 ) {
@@ -285,6 +286,15 @@ fn autopilot_screenshots(
         AppState::MainMenu => Some("menu"),
         AppState::SongSelect => Some("songselect"),
         AppState::MultiplayerSetup => Some("join"),
+        AppState::Gameplay
+            if phase
+                .as_deref()
+                .is_some_and(|p| *p.get() == crate::states::GamePhase::Paused) =>
+        {
+            // The pause menu is UI too — the invisible-settings bug
+            // shipped because nothing ever photographed it.
+            Some("gameplay-paused")
+        }
         AppState::Gameplay => {
             let now = game_clock.song_time(&time).unwrap_or(0.0);
             // An energy phrase is worth its own frame: the fixed
@@ -667,6 +677,7 @@ fn fail_if_window_vanishes(
 fn autopilot_pause(
     mut keys: ResMut<ButtonInput<KeyCode>>,
     phase: Res<State<crate::states::GamePhase>>,
+    overlays: Query<&bevy::ui::ComputedNode, With<crate::gameplay::PauseOverlay>>,
     settings: Res<crate::config::Settings>,
     time: Res<Time>,
     mut warmup: Local<f32>,
@@ -726,6 +737,14 @@ fn autopilot_pause(
             match action {
                 0 if *phase.get() != crate::states::GamePhase::Paused => {
                     fail("escape did not pause".to_owned());
+                }
+                // The menu must not just exist — it must LAY OUT. A
+                // second on-screen camera with no marked UI default
+                // once left every gameplay UI root at zero size:
+                // entities present, drill green, player staring at
+                // an invisible menu.
+                0 if !overlays.iter().any(|node| node.size().x > 0.0) => {
+                    fail("the pause overlay laid out to zero size — invisible menu".to_owned());
                 }
                 3 if (settings.sfx_volume - after_down).abs() > 1e-4 => fail(format!(
                     "two LEFTs on the sfx row left {:.3}, expected {after_down:.3}",

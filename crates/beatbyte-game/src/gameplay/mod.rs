@@ -464,9 +464,11 @@ fn resume_audio(music: Res<Music>, mut game_clock: ResMut<GameClock>, time: Res<
     game_clock.clock.resume(time.elapsed_secs_f64());
 }
 
-/// Marker for the pause overlay.
+/// Marker for the pause overlay (`pub(crate)`: the autopilot's pause
+/// drill checks that it actually laid out — the invisible-menu bug
+/// shipped because nothing ever asked).
 #[derive(Component)]
-struct PauseOverlay;
+pub(crate) struct PauseOverlay;
 
 /// The settings a player may change mid-song, reusing the settings
 /// screen's own rows — one definition of every step size and clamp,

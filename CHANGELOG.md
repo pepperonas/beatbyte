@@ -14,6 +14,18 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.12] - 2026-08-30
+
+### Fixed
+
+- The pause menu (and the PAUSED banner) actually renders in the 3D
+  stage view. With the stage camera active alongside the 2D camera
+  and no marked default UI camera, every gameplay UI root laid out
+  to zero size - the menu existed, reacted to input, and drew
+  nothing. The 2D camera is now the explicit UI camera, and the
+  pause drill fails loudly if the overlay ever lays out to zero
+  size again.
+
 ## [0.12.11] - 2026-08-30
 
 ### Added
