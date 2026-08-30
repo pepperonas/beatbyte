@@ -922,7 +922,7 @@ pub fn setup_stage(
     // neck. This is the framing the genre settled on: close enough
     // that the receptors are large and readable, high enough that the
     // approaching notes separate instead of overlapping.
-    commands.spawn((
+    let mut stage_camera = commands.spawn((
         GameplayScreen,
         Stage3d,
         Camera3d::default(),
@@ -930,9 +930,6 @@ pub fn setup_stage(
             order: -1,
             ..default()
         },
-        // HDR is a marker component in this Bevy version; bloom
-        // requires it.
-        bevy::camera::Hdr,
         Projection::Perspective(PerspectiveProjection {
             fov: 50.0f32.to_radians(),
             ..default()
@@ -942,11 +939,21 @@ pub fn setup_stage(
         // receptors ran off both edges of the bed.
         Transform::from_xyz(0.0, 3.1, 5.2).looking_at(Vec3::new(0.0, 0.05, -7.5), Vec3::Y),
         RenderLayers::layer(STAGE_LAYER),
-        bevy::post_process::bloom::Bloom {
-            intensity: 0.18,
-            ..bevy::post_process::bloom::Bloom::NATURAL
-        },
     ));
+    // Bloom (and the Hdr it requires) belongs to the ROUND style
+    // only, and every camera on the window must agree on HDR — an
+    // SDR 2D camera over an HDR stage camera silently drops the
+    // stage's whole pass (the invisible-stage bug). sync_bloom keeps
+    // this in step when the style is toggled at runtime.
+    if settings.round_gems {
+        stage_camera.insert((
+            bevy::camera::Hdr,
+            bevy::post_process::bloom::Bloom {
+                intensity: 0.18,
+                ..bevy::post_process::bloom::Bloom::NATURAL
+            },
+        ));
+    }
 
     // Key light down the neck plus a soft fill, so gems read as
     // spheres rather than flat discs.

@@ -314,19 +314,25 @@ artifact, smoke-test it (neutral CWD!), then
   not remove it), and **a UI drill must assert the thing is
   VISIBLE** — `ComputedNode::size() > 0` at minimum (the pause drill
   now does), or an engine-side screenshot of the state.
-- **Exactly one camera may clear the window.** The 2D camera's
-  default clear wiped the entire 3D stage — black void, HUD only —
-  but ONLY with the 8-bit note style: the round style's bloom/HDR
-  pipeline happened to dodge the wipe, so the bug hid behind one
-  settings combination for who knows how long.
-  `sync_stage_compositing` flips the 2D camera to
-  `ClearColorConfig::None` while a stage camera exists (and back —
-  menus must clear); the pause drill pins the rule. Twin lessons:
-  when a rendering bug is reported, test the settings MATRIX
-  (view × note style), not just the defaults — and **a screenshot
-  that contradicts expectations is evidence, not an artifact**: the
-  missing stage in an autopilot shot was waved off as a capture
-  quirk hours before the user reported the same black screen.
+- **Two cameras on one window carry TWO contracts, and the 8-bit
+  3D stage broke both** (black void, HUD only, hidden behind that
+  one settings combination). (1) **Cameras sharing a window must
+  agree on HDR**: `Bloom` requires `Hdr`, and a mixed pair (SDR 2D
+  over HDR stage) silently drops the HDR camera's entire pass — the
+  round style worked only because its bloom made both cameras HDR.
+  `sync_bloom` now keeps Bloom+Hdr in step on BOTH cameras per note
+  style. (2) **Exactly one camera may clear**: once the stage
+  actually renders, the 2D camera's default clear would wipe it —
+  `sync_stage_compositing` flips it to `ClearColorConfig::None`
+  while a stage camera exists (and back: menus must clear, or they
+  smear — a ghost of the song browser burned into gameplay was the
+  telltale). The pause drill pins both rules and was seen to fail
+  under each mutation. Twin lessons: when a rendering bug is
+  reported, test the settings MATRIX (view × note style), not just
+  the defaults — and **a screenshot that contradicts expectations
+  is evidence, not an artifact**: the missing stage in an autopilot
+  shot was waved off as a capture quirk hours before the user
+  reported the same black screen.
 - **`dist/` is a build product.** It was once committed (118 MB, and
   CI shipped the stale DMG inside every artifact); it is gitignored —
   keep it that way.

@@ -328,20 +328,34 @@ fn sync_stage_compositing(
     }
 }
 
+/// The cameras whose bloom/HDR state follows the note style: the 2D
+/// camera and the 3D stage camera.
+type BloomCameras = Or<(
+    With<Camera2d>,
+    (With<Camera3d>, With<gameplay::stage3d::Stage3d>),
+)>;
+
 /// HDR bloom rides with the round style: emissive gems and glow
 /// strips actually GLOW. The pixel style stays bloom-free — crisp
-/// squares are its identity.
+/// squares are its identity — and that rule now covers EVERY camera
+/// on the window, the 3D stage's included. This is load-bearing
+/// beyond looks: cameras sharing one window must agree on HDR. A
+/// mixed pair (SDR 2D over HDR stage) silently drops the HDR
+/// camera's whole pass — the stage vanished under the 8-bit style
+/// exactly so, while the round style worked only because its bloom
+/// happened to make both cameras HDR.
 fn sync_bloom(
     mut commands: Commands,
     settings: Res<config::Settings>,
-    cameras: Query<(Entity, Has<bevy::post_process::bloom::Bloom>), With<Camera2d>>,
+    cameras: Query<(Entity, Has<bevy::post_process::bloom::Bloom>, Has<Camera2d>), BloomCameras>,
 ) {
-    for (camera, has_bloom) in &cameras {
+    for (camera, has_bloom, is_2d) in &cameras {
         if settings.round_gems && !has_bloom {
+            let intensity = if is_2d { 0.22 } else { 0.18 };
             commands
                 .entity(camera)
                 .insert(bevy::post_process::bloom::Bloom {
-                    intensity: 0.22,
+                    intensity,
                     ..bevy::post_process::bloom::Bloom::NATURAL
                 });
         } else if !settings.round_gems && has_bloom {

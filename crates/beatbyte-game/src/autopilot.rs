@@ -666,6 +666,17 @@ fn fail_if_window_vanishes(
     *seen |= present;
 }
 
+/// The cameras that share the primary window: the 2D camera and the
+/// 3D stage camera (their HDR settings must agree, or the HDR
+/// camera's pass is silently dropped).
+type WindowCameras = bevy::prelude::Or<(
+    bevy::prelude::With<bevy::camera::Camera2d>,
+    (
+        bevy::prelude::With<bevy::camera::Camera3d>,
+        bevy::prelude::With<crate::gameplay::stage3d::Stage3d>,
+    ),
+)>;
+
 /// `BEATBYTE_AUTOPILOT_PAUSE`: exercise the pause menu with real
 /// keys mid-song. Escape pauses, ArrowDown reaches the SFX row, two
 /// ArrowLefts and two ArrowRights step the volume down and back up
@@ -679,6 +690,7 @@ fn autopilot_pause(
     phase: Res<State<crate::states::GamePhase>>,
     overlays: Query<&bevy::ui::ComputedNode, With<crate::gameplay::PauseOverlay>>,
     cameras_2d: Query<&bevy::camera::Camera, With<bevy::camera::Camera2d>>,
+    hdr_cameras: Query<Has<bevy::camera::Hdr>, WindowCameras>,
     stage_cameras: Query<
         (),
         (
@@ -759,6 +771,21 @@ fn autopilot_pause(
                 // frame (else it wipes the whole stage — shipped
                 // once, hidden behind the round style's HDR bloom),
                 // and without it the 2D camera must clear again.
+                // Cameras sharing one window must agree on HDR: a
+                // mixed SDR/HDR pair silently drops the HDR pass —
+                // the stage vanished under the 8-bit style exactly
+                // so, hidden behind one settings combination.
+                0 if {
+                    let mut flags = hdr_cameras.iter();
+                    let first = flags.next();
+                    flags.any(|hdr| Some(hdr) != first)
+                } =>
+                {
+                    fail(
+                        "cameras disagree on HDR — the mixed pair drops the stage's pass"
+                            .to_owned(),
+                    );
+                }
                 0 if cameras_2d.iter().any(|camera| {
                     matches!(camera.clear_color, bevy::camera::ClearColorConfig::None)
                         != !stage_cameras.is_empty()

@@ -14,6 +14,20 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.14] - 2026-08-30
+
+### Fixed
+
+- The deeper half of the vanishing stage: the stage camera's whole
+  render pass was silently dropped because the two cameras on the
+  window disagreed on HDR (bloom made the stage camera HDR while
+  the 8-bit style left the 2D camera SDR). Bloom and HDR now follow
+  the note style on BOTH cameras - the 8-bit look is bloom-free by
+  identity, on the stage too - and the pause drill fails loudly on
+  any HDR mismatch. Verified at the real window: the venue,
+  highway and notes render again in 3D with 8-bit shapes, and
+  unchanged with round gems.
+
 ## [0.12.13] - 2026-08-30
 
 ### Fixed
