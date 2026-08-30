@@ -519,6 +519,7 @@ fn autopilot_song_select(
     library: Res<crate::library::SongLibrary>,
     builtins: Res<crate::boot::BuiltinSongs>,
     mut roster: ResMut<crate::multiplayer::PlayerRoster>,
+    mut selected: ResMut<crate::song_select::SelectedDifficulty>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     *delay += time.delta_secs();
@@ -593,6 +594,15 @@ fn autopilot_song_select(
                 std::process::exit(1);
             }
         };
+        let wanted = std::env::var("BEATBYTE_AUTOPILOT_DIFFICULTY").ok();
+        match resolve_difficulty(wanted.as_deref(), &entry.difficulties) {
+            Ok(Some(difficulty)) => selected.0 = difficulty,
+            Ok(None) => {}
+            Err(reason) => {
+                error!("autopilot: {reason}");
+                std::process::exit(1);
+            }
+        }
         let players: usize = std::env::var("BEATBYTE_AUTOPILOT_PLAYERS")
             .ok()
             .and_then(|value| value.parse().ok())
@@ -602,8 +612,8 @@ fn autopilot_song_select(
         match crate::song_select::prepare_song(entry, &builtins) {
             Ok(song) => {
                 info!(
-                    "autopilot: starting \"{}\" with {players} player(s)",
-                    entry.title
+                    "autopilot: starting \"{}\" on {} with {players} player(s)",
+                    entry.title, selected.0
                 );
                 commands.insert_resource(song);
                 next_state.set(AppState::Gameplay);
@@ -630,6 +640,35 @@ fn fail_if_window_vanishes(
         deliver(&mut app_exit, AppExit::error());
     }
     *seen |= present;
+}
+
+/// Resolve the difficulty the autopilot plays.
+///
+/// `BEATBYTE_AUTOPILOT_DIFFICULTY` names it (`easy`/`medium`/`hard`/
+/// `expert`); unset keeps the default. An unknown name or one the
+/// selected song does not offer is a loud error — a harness that
+/// silently plays the wrong difficulty validates nothing.
+fn resolve_difficulty(
+    wanted: Option<&str>,
+    offered: &[beatbyte_core::Difficulty],
+) -> Result<Option<beatbyte_core::Difficulty>, String> {
+    let Some(wanted) = wanted else {
+        return Ok(None);
+    };
+    let lowered = wanted.to_lowercase();
+    let Some(difficulty) = beatbyte_core::Difficulty::ALL
+        .iter()
+        .copied()
+        .find(|d| d.id() == lowered)
+    else {
+        return Err(format!(
+            "unknown difficulty `{wanted}` (easy/medium/hard/expert)"
+        ));
+    };
+    if !offered.contains(&difficulty) {
+        return Err(format!("the selected song offers no {difficulty} chart"));
+    }
+    Ok(Some(difficulty))
 }
 
 /// Resolve which library song the autopilot plays.
@@ -1101,5 +1140,22 @@ mod tests {
     #[test]
     fn empty_library_is_an_error_even_without_selector() {
         assert!(select_song(&[], None).is_err());
+    }
+
+    #[test]
+    fn difficulty_switch_resolves_or_fails_loudly() {
+        use super::resolve_difficulty;
+        use beatbyte_core::Difficulty;
+        let offered = [Difficulty::Medium, Difficulty::Hard];
+        assert_eq!(resolve_difficulty(None, &offered), Ok(None));
+        assert_eq!(
+            resolve_difficulty(Some("HARD"), &offered),
+            Ok(Some(Difficulty::Hard))
+        );
+        // A difficulty the song does not offer, and a name that is
+        // no difficulty at all: both loud errors, never a silent
+        // fallback to the default.
+        assert!(resolve_difficulty(Some("expert"), &offered).is_err());
+        assert!(resolve_difficulty(Some("banana"), &offered).is_err());
     }
 }

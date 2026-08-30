@@ -14,6 +14,16 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.10] - 2026-08-30
+
+### Added
+
+- `BEATBYTE_AUTOPILOT_DIFFICULTY=easy|medium|hard|expert` plays the
+  autopilot on a chosen difficulty (default stays medium). Unknown
+  names and difficulties the selected song does not offer fail
+  loudly - a harness that silently plays the wrong difficulty
+  validates nothing.
+
 ## [0.12.9] - 2026-08-30
 
 ### Added

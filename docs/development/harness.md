@@ -17,6 +17,7 @@ about them is compiled into a normal build.
 | `BEATBYTE_AUTOPILOT` | set | Plays a song perfectly. **Exits non-zero on any miss or overstrum.** |
 | `BEATBYTE_AUTOPILOT_SONG` | index or title substring | Which song to play (default: the first bundled one). |
 | `BEATBYTE_AUTOPILOT_PLAYERS` | `2`…`4` | Local multiplayer run. |
+| `BEATBYTE_AUTOPILOT_DIFFICULTY` | `easy`…`expert` | Which difficulty to play (default: medium). Unknown names and difficulties the song does not offer fail loudly. |
 | `BEATBYTE_AUTOPILOT_MUTE` | set | Silences the run. Seeds the mute state only — the in-game `M` toggle still works. |
 | `BEATBYTE_AUTOPILOT_KEYS` | set | Presses real `KeyCode`s instead of feeding timestamped inputs, exercising `InputMap` resolution and gameplay routing exactly as a human would. |
 | `BEATBYTE_AUTOPILOT_NO_STRUM` | set | Fret presses only, no strum. Proves tap mode is really on (and, with tap off, that it is really off). |
