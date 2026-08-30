@@ -14,6 +14,34 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.11.8] - 2026-08-30
+
+### Fixed
+
+- **Notes sometimes never appeared, and the song ended the moment it
+  started.** A song change announced itself by bumping a generation
+  counter and then clearing the playback position — two relaxed atomic
+  stores, in that order. Between them, the game thread could see the
+  *new* song still carrying the *previous* song's position and anchor
+  its clock there. After a four-minute track that meant starting the
+  next one at 248 s: every note already in the past, so the highway
+  stayed empty, and the session judged the song finished at once and
+  returned to the menu. Only someone playing several songs in a row hit
+  it, which is why a harness that plays one song per process almost
+  never did. The position is now cleared first and the generation
+  published with `Release`, read with `Acquire`, from a single place.
+
+### Changed
+
+- **A held sustain glows while it is being played.** It used to show
+  only by getting shorter, which is the one thing a player cannot
+  watch — their eyes are at the hit line. The tail now throbs at 7 Hz
+  off the song clock, so holding a note looks like playing one. It
+  never goes dark, because a tail that blinks out reads as a *dropped*
+  hold, which already has its own picture. Each tail gets its own
+  material: the lane's is shared by every note in it, and pulsing that
+  would light the whole lane.
+
 ## [0.11.7] - 2026-08-30
 
 ### Added

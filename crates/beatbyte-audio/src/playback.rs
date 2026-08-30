@@ -181,6 +181,29 @@ struct MusicShared {
     healthy: AtomicBool,
 }
 
+impl MusicShared {
+    /// Announce that a new song has begun: position first, generation
+    /// last, and the generation with `Release`.
+    ///
+    /// The order is not cosmetic. A consumer watches the generation to
+    /// notice a song change, then reads the position to anchor its
+    /// clock. Bumping the generation FIRST leaves a window in which
+    /// that consumer sees the new song carrying the previous song's
+    /// position - and if the previous song ended at 248 s, the new
+    /// one's clock is anchored at 248 s. Every note is then already in
+    /// the past: the highway stays empty and the song counts as
+    /// finished the instant it begins.
+    ///
+    /// `Release` pairs with the `Acquire` on the generation load, so
+    /// seeing the new generation guarantees seeing the reset position.
+    /// Two relaxed stores would permit the same stale pairing even in
+    /// the right order.
+    fn begin_song(&self) {
+        self.position_us.store(0, Ordering::Relaxed);
+        self.generation.fetch_add(1, Ordering::Release);
+    }
+}
+
 /// A `Send + Sync` handle to the music thread.
 ///
 /// All methods are non-blocking; position/state reads are atomics.
@@ -249,7 +272,11 @@ impl MusicHandle {
     /// song changes without extra bookkeeping).
     #[must_use]
     pub fn generation(&self) -> u64 {
-        self.shared.generation.load(Ordering::Relaxed)
+        // Acquire, paired with the Release in `MusicShared::begin_song`:
+        // seeing a new generation must guarantee seeing its reset
+        // position, or the caller anchors the new song's clock to
+        // where the previous one stopped.
+        self.shared.generation.load(Ordering::Acquire)
     }
 
     /// Whether the audio output opened successfully. When `false`, the
@@ -346,8 +373,7 @@ fn handle_command(
     match command {
         MusicCommand::PlayFile(path) => {
             if player.play_file(&path).is_ok() {
-                shared.generation.fetch_add(1, Ordering::Relaxed);
-                shared.position_us.store(0, Ordering::Relaxed);
+                shared.begin_song();
             }
         }
         MusicCommand::PlayBuffer(audio) => {
@@ -358,8 +384,7 @@ fn handle_command(
                 player.stop();
                 player.player.append(source);
                 player.player.play();
-                shared.generation.fetch_add(1, Ordering::Relaxed);
-                shared.position_us.store(0, Ordering::Relaxed);
+                shared.begin_song();
             }
         }
         MusicCommand::Pause => player.pause(),
@@ -375,4 +400,96 @@ fn handle_command(
         MusicCommand::Shutdown => return true,
     }
     false
+}
+
+#[cfg(test)]
+mod new_song_tests {
+    use super::MusicShared;
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+    /// The two calls, spelled in pieces so this file's own test code
+    /// does not match the patterns it searches for. An earlier version
+    /// counted itself and reported two call sites where there was one.
+    const BUMP: &str = concat!("generation", ".fetch_add(");
+    const RESET: &str = concat!("position_us", ".store(0");
+
+    /// The module's source ABOVE this test module, with comments
+    /// stripped.
+    ///
+    /// Both cuts are load-bearing. The prose in this file quotes the
+    /// code it asserts about, and the tests below use the very calls
+    /// they are counting - an earlier version searched the whole file
+    /// and stayed green while the real code was mutated, because it
+    /// kept finding itself.
+    fn code() -> String {
+        let source = include_str!("playback.rs");
+        let shipped = source.split("#[cfg(test)]").next().unwrap_or(source);
+        shipped
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn a_new_song_starts_from_zero() {
+        let shared = MusicShared {
+            position_us: AtomicU64::new(248_000_000),
+            active: AtomicBool::new(false),
+            paused: AtomicBool::new(false),
+            generation: AtomicU64::new(7),
+            healthy: AtomicBool::new(true),
+        };
+        shared.begin_song();
+        assert_eq!(shared.generation.load(Ordering::Acquire), 8);
+        assert_eq!(
+            shared.position_us.load(Ordering::Relaxed),
+            0,
+            "the previous song's position survived into the new one"
+        );
+    }
+
+    #[test]
+    fn the_position_is_cleared_before_the_generation_moves() {
+        // The defect: the generation was bumped first, so a reader
+        // could see the new song carrying the previous song's
+        // position and anchor its clock to the end of a track that
+        // had not started - an empty highway, and a song judged
+        // finished the instant it began.
+        //
+        // Checked against the SOURCE, because a single-threaded test
+        // cannot observe the order of two stores: by the time it
+        // reads, both have happened. An earlier version of this test
+        // asserted the values and passed happily with the order
+        // reversed, which is how it came to be written this way.
+        let code = code();
+        let reset = code.find(RESET).expect("the position is cleared somewhere");
+        let bump = code.find(BUMP).expect("the generation moves somewhere");
+        assert!(
+            reset < bump,
+            "the generation is advanced before the position is cleared"
+        );
+    }
+
+    #[test]
+    fn only_one_place_advances_the_generation() {
+        // The ordering above is worth nothing if a second code path
+        // writes both atomics by hand - which is exactly how the
+        // defect arrived, with two call sites each doing it.
+        let bumps = code().matches(BUMP).count();
+        assert_eq!(
+            bumps, 1,
+            "the generation is advanced in {bumps} places; it belongs only in `begin_song`"
+        );
+    }
+
+    #[test]
+    fn the_generation_is_read_with_acquire() {
+        // Release without Acquire pairs with nothing, and the stale
+        // pairing remains permitted however the stores are ordered.
+        assert!(
+            code().contains(concat!("generation", ".load(Ordering::Acquire)")),
+            "the generation is loaded without Acquire"
+        );
+    }
 }

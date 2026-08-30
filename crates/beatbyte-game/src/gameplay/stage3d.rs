@@ -571,6 +571,29 @@ pub struct SustainTail3d;
 /// Returns `None` once nothing is left to hold. Pure, because the
 /// half-length offset is exactly the kind of arithmetic that has gone
 /// wrong here before — the depth view once drew tails that stood
+/// A lane's resting emission, the value the pulse multiplies.
+fn base_emissive(lane: &Lane, stage: crate::theme::Theme) -> LinearRgba {
+    stage.lane_color(*lane).to_linear()
+}
+
+/// How brightly a sustain glows while it is being held, as a
+/// multiplier on its resting emission.
+///
+/// A held sustain used to show only by getting shorter, which is the
+/// one thing a player cannot watch: their eyes are at the hit line.
+/// This gives the tail a fast throb so holding a note LOOKS like
+/// playing one.
+///
+/// Fast enough to read as energy rather than as breathing, and never
+/// reaching zero - a tail that blinks out would read as a dropped
+/// hold, which is a different thing entirely.
+#[must_use]
+pub fn sustain_pulse(seconds: f64) -> f32 {
+    const RATE_HZ: f64 = 7.0;
+    let wave = (seconds * RATE_HZ * core::f64::consts::TAU).sin() * 0.5 + 0.5;
+    1.6f32 + 2.4 * wave as f32
+}
+
 /// vertical while the lane leaned.
 #[must_use]
 pub fn sustain_tail_span(
@@ -1794,6 +1817,7 @@ pub fn spawn_due_notes(
     time: Res<Time>,
     settings: Res<Settings>,
     assets: Option<Res<NoteAssets>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     if !active(&settings) {
         return;
@@ -1861,6 +1885,14 @@ pub fn spawn_due_notes(
                 // the gem — length is the note's own held time.
                 if event.is_sustain() {
                     let length = (event.sustain_s as f32) * settings.scroll_speed * Z_PER_PIXEL;
+                    // Its own material: the lane's is SHARED by every
+                    // note in that lane, and pulsing it while a note
+                    // is held would light the whole lane along with it
+                    // - the same trap that once greyed a lane out.
+                    let tail_material = materials
+                        .get(&material)
+                        .cloned()
+                        .map_or_else(|| material.clone(), |own| materials.add(own));
                     commands.spawn((
                         GameplayScreen,
                         Stage3d,
@@ -1871,7 +1903,7 @@ pub fn spawn_due_notes(
                         },
                         SustainTail3d,
                         Mesh3d(assets.sustain.clone()),
-                        MeshMaterial3d(material),
+                        MeshMaterial3d(tail_material),
                         // The cylinder is built along Y, so it is
                         // rotated onto the neck's Z axis and pushed
                         // back by half its length.
@@ -1941,6 +1973,7 @@ pub fn move_notes(
 /// The receptor keeps burning (see [`update_receptors`]); this is the
 /// other half of the same feedback — the tail visibly shortens into
 /// the fret for exactly as long as the key is down.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 pub fn consume_sustains(
     mut commands: Commands,
     settings: Res<Settings>,
@@ -1948,15 +1981,26 @@ pub fn consume_sustains(
     game_clock: Res<GameClock>,
     assets: Option<Res<NoteAssets>>,
     players: Query<(&PlayerIndex, &PlayerSession)>,
-    mut tails: Query<(Entity, &Note3d, &mut Transform), With<SustainTail3d>>,
+    mut tails: Query<
+        (
+            Entity,
+            &Note3d,
+            &mut Transform,
+            &MeshMaterial3d<StandardMaterial>,
+        ),
+        With<SustainTail3d>,
+    >,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    theme: Res<crate::theme::ActiveTheme>,
 ) {
+    let stage = theme.0;
     if !active(&settings) {
         return;
     }
     let (Some(now), Some(assets)) = (game_clock.song_time(&time), assets) else {
         return;
     };
-    for (entity, note, mut transform) in &mut tails {
+    for (entity, note, mut transform, material) in &mut tails {
         let Some((_, player)) = players.iter().find(|(index, _)| index.0 == note.player) else {
             continue;
         };
@@ -1973,6 +2017,13 @@ pub fn consume_sustains(
             Some((centre, length)) => {
                 transform.translation.z = centre;
                 transform.scale.y = length;
+                // Being played, and looking it. Driven from the SONG
+                // clock, so the throb keeps time with the music
+                // rather than with the frame rate.
+                if let Some(mut surface) = materials.get_mut(&material.0) {
+                    let glow = sustain_pulse(now);
+                    surface.emissive = base_emissive(&note.lane, stage) * glow;
+                }
             }
             // Fully played: the tail has been eaten, nothing to show.
             None => commands.entity(entity).despawn(),
@@ -1982,7 +2033,7 @@ pub fn consume_sustains(
     // A tail whose hold has ended but which still has length left was
     // DROPPED — it greys out and slides away, so letting go looks
     // different from playing it out.
-    for (entity, note, transform) in &tails {
+    for (entity, note, transform, _) in &tails {
         let held = players
             .iter()
             .find(|(index, _)| index.0 == note.player)
@@ -2371,6 +2422,45 @@ mod rail_tests {
             assert!(
                 (rail_shade(theme, 0.3, 0.7) - rail_shade(theme, 0.3, 0.7)).abs() < f32::EPSILON
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod sustain_pulse_tests {
+    use super::sustain_pulse;
+
+    #[test]
+    fn a_held_sustain_never_goes_dark() {
+        // Blinking out would read as a DROPPED hold, which is a
+        // different thing entirely and already has its own picture.
+        for step in 0..400 {
+            let glow = sustain_pulse(f64::from(step) * 0.01);
+            assert!(glow >= 1.5, "the tail dimmed to {glow}");
+        }
+    }
+
+    #[test]
+    fn the_glow_actually_moves() {
+        // A constant would satisfy the floor above perfectly well and
+        // be a missing feature.
+        let values: Vec<f32> = (0..400)
+            .map(|s| sustain_pulse(f64::from(s) * 0.01))
+            .collect();
+        let low = values.iter().copied().fold(f32::MAX, f32::min);
+        let high = values.iter().copied().fold(f32::MIN, f32::max);
+        assert!(high - low > 2.0, "the pulse spans only {}", high - low);
+    }
+
+    #[test]
+    fn the_pulse_keeps_time() {
+        // Driven from the song clock, so one period is one period
+        // however the frame rate wanders.
+        let period = 1.0 / 7.0;
+        for beat in 0..5 {
+            let a = sustain_pulse(0.123);
+            let b = sustain_pulse(f64::from(beat).mul_add(period, 0.123));
+            assert!((a - b).abs() < 1e-3, "period drifted at {beat}");
         }
     }
 }
