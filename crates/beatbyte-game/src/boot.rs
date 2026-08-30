@@ -99,7 +99,7 @@ fn start_demo_load(mut commands: Commands) {
     let task = AsyncComputeTaskPool::get().spawn(async move {
         let build = |audio: beatbyte_audio::decode::AudioData, title: &str, artist: &str| {
             let analysis = SpectralAnalyzer::default().analyze(&audio);
-            let chart = generate_chart(
+            let mut chart = generate_chart(
                 &analysis,
                 &GenerateMeta {
                     title: title.to_owned(),
@@ -107,6 +107,8 @@ fn start_demo_load(mut commands: Commands) {
                     audio: String::new(), // played from memory, not a file
                 },
             );
+            // Honest metadata: the demo songs ARE chiptune.
+            chart.song.genre = Some("Chiptune".to_owned());
             LoadedSong {
                 chart,
                 audio: SongAudio::Memory(audio),

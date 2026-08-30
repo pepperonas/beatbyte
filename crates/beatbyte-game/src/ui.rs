@@ -24,7 +24,7 @@ pub struct UiFont {
 /// of them, which is why this is style-dependent rather than a blanket
 /// rule: folding "Björk" to "Bjork" when the font can render it would
 /// be damage, and leaving it when the font cannot is a box.
-fn fold_latin(c: char) -> Option<&'static str> {
+pub(crate) fn fold_latin(c: char) -> Option<&'static str> {
     Some(match c {
         'á' | 'à' | 'â' | 'ä' | 'ã' | 'å' => "a",
         'Á' | 'À' | 'Â' | 'Ä' | 'Ã' | 'Å' => "A",

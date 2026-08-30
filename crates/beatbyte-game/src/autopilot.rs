@@ -1045,6 +1045,8 @@ mod tests {
             bpm: 120.0,
             duration_s: None,
             difficulties: vec![],
+            note_counts: vec![],
+            genre: None,
             source: SongSource::Builtin(0),
         }
     }

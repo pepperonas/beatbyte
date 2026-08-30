@@ -160,6 +160,7 @@ pub fn generate_chart(analysis: &SongAnalysis, meta: &GenerateMeta) -> ChartFile
             offset_s: offset_s.clamp(-59.0, 59.0),
             preview_start_s: preview_start(analysis),
             duration_s: Some(analysis.duration_s),
+            genre: None,
         },
         charts,
         provenance: None,

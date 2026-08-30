@@ -14,6 +14,39 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.2] - 2026-08-30
+
+### Added
+
+- **The song browser became a library.** Seven columns per row —
+  title, artist, genre, length, note count, a 1-5 challenge rating
+  (from note density, calibrated on the real library) and your
+  personal best — all following the selected difficulty. `S` cycles
+  the sorting (standard / title / artist / genre / length / best);
+  `/` opens a search filter that matches title, artist and genre,
+  case- and accent-insensitively ("sacre" finds "Sacré"). While the
+  filter is open, letter shortcuts are suppressed — typing "elle"
+  must not open the editor and arm a delete on the way. The cursor
+  follows its *song* through sort changes rather than staying on a
+  raw position, missing genres sort last (an absence is not the
+  alphabet's beginning), and a filter with no matches is an empty
+  list, not a crash.
+- **Genres.** The chart format carries an optional, validated `genre`
+  field — deliberately excluded from the chart hash, like provenance,
+  so tagging a song can never orphan its recorded sessions (proven on
+  live data: sessions recorded before tagging still match after).
+  Imports read the audio file's own genre tag; `beatbyte-cli
+  set-genre` stamps it into every version of a song, which is how the
+  existing library was filled once by hand. The synthesized demo
+  songs honestly declare "Chiptune".
+
+### Fixed
+
+- The harness reference described `BEATBYTE_AUTOPILOT_DELETE` as a
+  flag; its value is actually the title substring to delete. Running
+  it as a flag matches nothing and times out — which is exactly how
+  the error in the reference was found.
+
 ## [0.12.1] - 2026-08-30
 
 ### Changed

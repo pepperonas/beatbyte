@@ -26,7 +26,9 @@ pub mod synth;
 
 pub use analysis::{Analyzer, AnalyzerConfig, SpectralAnalyzer};
 pub use clock::SongClock;
-pub use decode::{AudioData, DecodeError, decode_file, wav_bytes_mono16, write_wav_mono16};
+pub use decode::{
+    AudioData, DecodeError, decode_file, read_genre, wav_bytes_mono16, write_wav_mono16,
+};
 pub use playback::{MusicPlayer, PlaybackError};
 
 /// The crate version, kept in sync with the workspace version.

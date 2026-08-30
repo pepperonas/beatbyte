@@ -11,7 +11,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.12.1"
+version = "0.12.2"
 edition = "2024"
 license = "MIT"
 authors = ["Martin Pfeffer"]
@@ -23,12 +23,12 @@ categories = ["games"]
 
 [workspace.dependencies]
 # Internal crates
-beatbyte-core = { path = "crates/beatbyte-core", version = "0.12.1" }
-beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.12.1" }
-beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.12.1" }
-beatbyte-game = { path = "crates/beatbyte-game", version = "0.12.1" }
-beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.12.1" }
-beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.12.1" }
+beatbyte-core = { path = "crates/beatbyte-core", version = "0.12.2" }
+beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.12.2" }
+beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.12.2" }
+beatbyte-game = { path = "crates/beatbyte-game", version = "0.12.2" }
+beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.12.2" }
+beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.12.2" }
 
 # Engine ("wav" lets bevy_audio play our procedurally generated SFX;
 # "serialize" gives input types serde for the persisted bindings table)
@@ -37,6 +37,7 @@ bevy = { version = "0.19", features = ["wav", "serialize"] }
 # Audio: playback/decoding and FFT for analysis
 rodio = "0.22"
 rusb = { version = "0.9", features = ["vendored"] }
+symphonia = { version = "0.5", default-features = true, features = ["isomp4", "aac", "mp3"] }
 realfft = "3.5"
 # Test-only WAV writing for decode round-trips
 hound = "3.5"

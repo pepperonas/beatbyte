@@ -288,6 +288,14 @@ Parked with reopen criteria (a real player population, or an explicit
 request): population percentiles, automated rollout/A-B
 infrastructure, ML preference and skill models, personalization.
 
+## Library browser (DONE 2026-08-30, v0.12.2)
+
+Sorting (S cycles standard/title/artist/genre/length/best), search
+filter (`/`, folded matching), and per-row facts: genre, length,
+notes, 1-5 density rating, personal best — all per selected
+difficulty. Genre lives in the chart format (hash-neutral, validated),
+filled from audio tags on import and via `beatbyte-cli set-genre`.
+
 ## Backlog (explicitly out of scope until after 1.0)
 
 Not started without a deliberate roadmap edit pulling them forward:

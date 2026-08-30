@@ -239,6 +239,11 @@ fn frame() -> (BackgroundColor, BorderColor) {
 /// screen, and the first and last rows were cut in half.
 pub const PANEL_MAX_H: f32 = 400.0;
 
+/// Width of the wide, column-bearing list panel (the song browser).
+/// The regular menu column stays [`PANEL_WIDTH`]; a table of seven
+/// facts cannot live in 620 px of Press Start 2P.
+pub const PANEL_WIDE: f32 = 1150.0;
+
 /// The scroll offset that brings a row into view, moving as little as
 /// it can.
 ///
@@ -307,11 +312,11 @@ pub fn whole_rows_height(row_h: f32, gap: f32, rows: usize, ceiling: f32) -> Opt
 /// ceiling and the clipping, so a short list is indistinguishable from
 /// the unscrolled one.
 #[must_use]
-pub fn scroll_panel() -> impl Bundle {
+pub fn scroll_panel(width: f32) -> impl Bundle {
     let (background, border) = frame();
     (
         Node {
-            width: px(PANEL_WIDTH),
+            width: px(width),
             max_height: px(PANEL_MAX_H),
             flex_direction: FlexDirection::Column,
             row_gap: px(ROW_GAP),

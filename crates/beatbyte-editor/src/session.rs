@@ -163,6 +163,7 @@ mod tests {
                 offset_s: 0.0,
                 preview_start_s: None,
                 duration_s: None,
+                genre: None,
             },
             charts: vec![ChartDef {
                 difficulty: Difficulty::Expert,

@@ -123,6 +123,17 @@ impl ChartFile {
             }
         }
 
+        // Genre — display metadata, still untrusted input.
+        if let Some(genre) = &self.song.genre
+            && (genre.trim().is_empty() || genre.len() > 48)
+        {
+            err(
+                &mut issues,
+                "song.genre",
+                "must be 1..=48 characters when present".into(),
+            );
+        }
+
         // Provenance — untrusted input like every other field: a
         // redesign wrote it, but so could anything else.
         if let Some(provenance) = &self.provenance {
@@ -318,6 +329,7 @@ mod tests {
                 offset_s: 0.0,
                 preview_start_s: None,
                 duration_s: None,
+                genre: None,
             },
             charts: vec![ChartDef {
                 difficulty: Difficulty::Expert,

@@ -64,6 +64,12 @@ pub struct SongMeta {
     /// Optional total song duration in seconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duration_s: Option<f64>,
+    /// Musical genre, when known — read from the audio file's tags at
+    /// import, or set via `beatbyte-cli set-genre`. Display metadata:
+    /// [`chart_hash`] deliberately does not see it, so tagging a song
+    /// never orphans its recorded sessions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genre: Option<String>,
 }
 
 fn default_artist() -> String {
@@ -226,6 +232,7 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 pub fn chart_hash(chart: &ChartFile) -> String {
     let mut playable = chart.clone();
     playable.provenance = None;
+    playable.song.genre = None;
     let canonical = serde_json::to_vec(&playable).unwrap_or_default();
     format!("{:016x}", fnv1a64(&canonical))
 }
@@ -246,6 +253,7 @@ mod hash_tests {
                 offset_s: 0.0,
                 preview_start_s: None,
                 duration_s: Some(10.0),
+                genre: None,
             },
             charts: vec![ChartDef {
                 difficulty: Difficulty::Medium,
@@ -276,6 +284,17 @@ mod hash_tests {
             directive: None,
         });
         assert_eq!(chart_hash(&chart), chart_hash(&annotated));
+    }
+
+    #[test]
+    fn genre_does_not_change_a_charts_identity() {
+        // Genre is display metadata. If it fed the hash, running
+        // set-genre on a song would orphan every one of its recorded
+        // sessions - notes unchanged, evidence gone.
+        let chart = tiny_chart();
+        let mut tagged = tiny_chart();
+        tagged.song.genre = Some("New Wave".to_owned());
+        assert_eq!(chart_hash(&chart), chart_hash(&tagged));
     }
 
     #[test]

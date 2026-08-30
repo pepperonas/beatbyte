@@ -390,7 +390,7 @@ fn import_song(source: &Path, title: &str, artist: &str) -> Result<(), String> {
 
     let audio = beatbyte_audio::decode_file(&audio_dest).map_err(|e| e.to_string())?;
     let analysis = SpectralAnalyzer::default().analyze(&audio);
-    let chart = generate_chart(
+    let mut chart = generate_chart(
         &analysis,
         &GenerateMeta {
             title: title.to_owned(),
@@ -398,6 +398,9 @@ fn import_song(source: &Path, title: &str, artist: &str) -> Result<(), String> {
             audio: file_name.to_string_lossy().into_owned(),
         },
     );
+    // The file's own genre tag, when it carries one - a metadata
+    // probe, no second decode.
+    chart.song.genre = beatbyte_audio::read_genre(&audio_dest);
     if chart
         .validate()
         .iter()

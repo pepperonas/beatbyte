@@ -22,7 +22,7 @@ about them is compiled into a normal build.
 | `BEATBYTE_AUTOPILOT_NO_STRUM` | set | Fret presses only, no strum. Proves tap mode is really on (and, with tap off, that it is really off). |
 | `BEATBYTE_AUTOPILOT_EDIT` | set | Opens the editor and runs an add / undo / redo / save cycle. |
 | `BEATBYTE_AUTOPILOT_DROP` | set | Injects a drag-and-drop import and then plays the imported chart — the only check that covers `import.rs`, which the CLI path does not. |
-| `BEATBYTE_AUTOPILOT_DELETE` | set | Drives the browser with real arrow and backspace keys through the two-press delete confirmation. |
+| `BEATBYTE_AUTOPILOT_DELETE` | title substring | Drives the browser with real arrow and backspace keys through the two-press delete confirmation, deleting the first song whose title matches. Needs a disposable song — it deletes files. (The value is the needle; `=1` matches nothing and times out, which is how this line got corrected.) |
 | `BEATBYTE_SHOT_DIR` | directory | Screenshots at named moments of a run. |
 | `BEATBYTE_SHOT_STATE` | screen name | Boots straight into one screen, photographs it and quits. |
 | `BEATBYTE_SHOT_ROW` | row index | With `BEATBYTE_SHOT_STATE`, selects that row first. A scrolling list is indistinguishable from a short one until the selection moves past the fold. |

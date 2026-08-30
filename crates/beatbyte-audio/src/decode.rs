@@ -359,3 +359,75 @@ mod tests {
         assert_eq!(same, audio);
     }
 }
+
+/// The genre tag of an audio file, if it carries one.
+///
+/// A metadata-only probe: the container is opened and its tags read,
+/// no audio is decoded — cheap enough to run during a library scan.
+/// Every failure mode is `None`; a missing tag must never make a
+/// song fail to load.
+#[must_use]
+pub fn read_genre(path: &Path) -> Option<String> {
+    use symphonia::core::formats::FormatOptions;
+    use symphonia::core::io::MediaSourceStream;
+    use symphonia::core::meta::{MetadataOptions, StandardTagKey};
+    use symphonia::core::probe::Hint;
+
+    let file = std::fs::File::open(path).ok()?;
+    let stream = MediaSourceStream::new(
+        Box::new(file),
+        symphonia::core::io::MediaSourceStreamOptions::default(),
+    );
+    let mut hint = Hint::new();
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        hint.with_extension(ext);
+    }
+    let mut probed = symphonia::default::get_probe()
+        .format(
+            &hint,
+            stream,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
+        .ok()?;
+    let pick = |meta: &symphonia::core::meta::MetadataRevision| -> Option<String> {
+        meta.tags()
+            .iter()
+            .find(|tag| tag.std_key == Some(StandardTagKey::Genre))
+            .map(|tag| tag.value.to_string())
+            .filter(|value| !value.trim().is_empty())
+    };
+    // Tags can live in the probe metadata (ID3 before the container)
+    // or in the container itself (MP4 atoms, Vorbis comments).
+    if let Some(meta) = probed.metadata.get()
+        && let Some(current) = meta.current()
+        && let Some(genre) = pick(current)
+    {
+        return Some(genre);
+    }
+    probed
+        .format
+        .metadata()
+        .current()
+        .and_then(pick)
+        .map(|genre| genre.trim().to_owned())
+}
+
+#[cfg(test)]
+mod genre_tests {
+    use super::*;
+
+    #[test]
+    fn an_untagged_file_yields_none_not_an_error() {
+        // The bundled fixture carries no genre tag; a missing tag is
+        // an absence, never a failure.
+        let fixture =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/tone.ogg");
+        assert_eq!(read_genre(&fixture), None);
+    }
+
+    #[test]
+    fn a_missing_file_yields_none() {
+        assert_eq!(read_genre(std::path::Path::new("/no/such/file.m4a")), None);
+    }
+}

@@ -421,7 +421,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "beatbyte"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "beatbyte-core",
  "beatbyte-game",
@@ -430,18 +430,19 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-audio"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "beatbyte-core",
  "hound",
  "realfft",
  "rodio",
+ "symphonia",
  "thiserror 2.0.20",
 ]
 
 [[package]]
 name = "beatbyte-chart"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "beatbyte-core",
  "serde",
@@ -451,7 +452,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-cli"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "beatbyte-audio",
  "beatbyte-chart",
@@ -464,7 +465,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-core"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -472,7 +473,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-editor"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "beatbyte-chart",
  "beatbyte-core",
@@ -481,7 +482,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-game"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "beatbyte-audio",
  "beatbyte-chart",
@@ -5172,10 +5173,12 @@ dependencies = [
  "symphonia-bundle-flac",
  "symphonia-bundle-mp3",
  "symphonia-codec-aac",
+ "symphonia-codec-adpcm",
  "symphonia-codec-pcm",
  "symphonia-codec-vorbis",
  "symphonia-core",
  "symphonia-format-isomp4",
+ "symphonia-format-mkv",
  "symphonia-format-ogg",
  "symphonia-format-riff",
  "symphonia-metadata",
@@ -5212,6 +5215,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c263845aa86881416849c1729a54c7f55164f8b96111dba59de46849e73a790"
 dependencies = [
  "lazy_static",
+ "log",
+ "symphonia-core",
+]
+
+[[package]]
+name = "symphonia-codec-adpcm"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2dddc50e2bbea4cfe027441eece77c46b9f319748605ab8f3443350129ddd07f"
+dependencies = [
  "log",
  "symphonia-core",
 ]
@@ -5257,6 +5270,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "243739585d11f81daf8dac8d9f3d18cc7898f6c09a259675fc364b382c30e0a5"
 dependencies = [
  "encoding_rs",
+ "log",
+ "symphonia-core",
+ "symphonia-metadata",
+ "symphonia-utils-xiph",
+]
+
+[[package]]
+name = "symphonia-format-mkv"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "122d786d2c43a49beb6f397551b4a050d8229eaa54c7ddf9ee4b98899b8742d0"
+dependencies = [
+ "lazy_static",
  "log",
  "symphonia-core",
  "symphonia-metadata",

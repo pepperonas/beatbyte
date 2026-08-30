@@ -107,6 +107,15 @@ enum Command {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Set a song's genre (display metadata; hash-neutral, so
+    /// recorded sessions survive).
+    SetGenre {
+        /// Path to the song's chart; the genre is written into every
+        /// version in the folder, so switching versions keeps it.
+        chart: PathBuf,
+        /// The genre, 1-48 characters.
+        genre: String,
+    },
     /// Render the built-in songs and generate their charts.
     Demo {
         /// Directory to write the songs' WAV + chart files into.
@@ -156,6 +165,7 @@ fn main() -> ExitCode {
             include_autopilot,
             out,
         ),
+        Command::SetGenre { chart, genre } => set_genre(&chart, &genre),
         Command::Demo { out_dir } => demo(&out_dir),
     }
 }
@@ -704,5 +714,52 @@ fn run_dossier(
         "next version: {}  parent: {}",
         built.write.next_version_file, built.write.parent_hash
     );
+    ExitCode::SUCCESS
+}
+
+/// `set-genre`: stamp the genre into every chart version of a song.
+fn set_genre(chart_path: &Path, genre: &str) -> ExitCode {
+    use beatbyte_chart::versions;
+    let Some(folder) = chart_path.parent().map(Path::to_path_buf) else {
+        eprintln!("`{}` has no parent folder", chart_path.display());
+        return ExitCode::from(2);
+    };
+    let trimmed = genre.trim();
+    if trimmed.is_empty() || trimmed.len() > 48 {
+        eprintln!("genre must be 1-48 characters");
+        return ExitCode::from(2);
+    }
+    let mut touched = 0usize;
+    let Ok(entries) = std::fs::read_dir(&folder) else {
+        eprintln!("cannot list `{}`", folder.display());
+        return ExitCode::from(2);
+    };
+    for entry in entries.filter_map(Result::ok) {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name != versions::BASE_CHART && !versions::is_version_file(&name) {
+            continue;
+        }
+        let path = entry.path();
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(mut chart) = serde_json::from_str::<ChartFile>(&text) else {
+            continue;
+        };
+        chart.song.genre = Some(trimmed.to_owned());
+        match serde_json::to_string(&chart) {
+            Ok(json) => {
+                if std::fs::write(&path, json).is_ok() {
+                    touched += 1;
+                    println!("{name}: genre = {trimmed}");
+                }
+            }
+            Err(error) => eprintln!("{name}: {error}"),
+        }
+    }
+    if touched == 0 {
+        eprintln!("no chart files found in `{}`", folder.display());
+        return ExitCode::from(1);
+    }
     ExitCode::SUCCESS
 }

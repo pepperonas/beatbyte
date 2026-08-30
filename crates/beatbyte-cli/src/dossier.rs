@@ -249,6 +249,7 @@ mod tests {
                 offset_s: 0.0,
                 preview_start_s: None,
                 duration_s: Some(8.0), // 4 bars
+                genre: None,
             },
             charts: vec![ChartDef {
                 difficulty: Difficulty::Medium,

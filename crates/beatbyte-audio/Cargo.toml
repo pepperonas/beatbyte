@@ -12,6 +12,7 @@ rust-version.workspace = true
 beatbyte-core = { workspace = true }
 thiserror = { workspace = true }
 rodio = { workspace = true }
+symphonia = { workspace = true }
 realfft = { workspace = true }
 
 [dev-dependencies]

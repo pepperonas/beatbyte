@@ -39,8 +39,53 @@ pub struct SongEntry {
     pub duration_s: Option<f64>,
     /// Difficulties present in the chart.
     pub difficulties: Vec<Difficulty>,
+    /// Note count per difficulty, parallel to `difficulties`.
+    pub note_counts: Vec<usize>,
+    /// Musical genre, when known (chart field, else the audio file's
+    /// own tag).
+    pub genre: Option<String>,
     /// Where the audio lives.
     pub source: SongSource,
+}
+
+impl SongEntry {
+    /// Notes in the given difficulty's chart, if it exists.
+    #[must_use]
+    pub fn note_count(&self, difficulty: Difficulty) -> Option<usize> {
+        self.difficulties
+            .iter()
+            .position(|d| *d == difficulty)
+            .and_then(|i| self.note_counts.get(i).copied())
+    }
+
+    /// A 1-5 challenge rating for the given difficulty, from note
+    /// density. `None` when the chart or the duration is missing.
+    #[must_use]
+    pub fn rating(&self, difficulty: Difficulty) -> Option<u8> {
+        let notes = self.note_count(difficulty)?;
+        let duration = self.duration_s?;
+        Some(density_rating(notes, duration))
+    }
+}
+
+/// Notes-per-second folded into a 1-5 challenge rating.
+///
+/// The bands were read off the real library, not invented: medium
+/// charts there run 1.2-2.5 notes/second and should span the middle
+/// of the scale, an expert chart at 4+ should peg it.
+#[must_use]
+pub fn density_rating(notes: usize, duration_s: f64) -> u8 {
+    if duration_s <= 0.0 {
+        return 1;
+    }
+    let nps = notes as f64 / duration_s;
+    match nps {
+        n if n < 0.9 => 1,
+        n if n < 1.6 => 2,
+        n if n < 2.4 => 3,
+        n if n < 3.4 => 4,
+        _ => 5,
+    }
 }
 
 /// The scanned library.
@@ -74,6 +119,8 @@ pub fn scan_library(builtins: &[ChartFile]) -> SongLibrary {
             bpm: chart.song.bpm,
             duration_s: chart.song.duration_s,
             difficulties: chart.charts.iter().map(|c| c.difficulty).collect(),
+            note_counts: chart.charts.iter().map(|c| c.notes.len()).collect(),
+            genre: chart.song.genre.clone(),
             source: SongSource::Builtin(index),
         })
         .collect();
@@ -242,12 +289,23 @@ fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String>
     if !audio_path.exists() {
         return Err(format!("audio file `{}` not found", audio_path.display()));
     }
+    // Genre: the chart's own field wins; a file that predates the
+    // field falls back to the audio's tag (a metadata probe, cheap
+    // enough for a scan; the chart is NEVER mutated implicitly -
+    // hashes are identities).
+    let genre = chart
+        .song
+        .genre
+        .clone()
+        .or_else(|| beatbyte_audio::read_genre(&audio_path));
     Ok(Some(SongEntry {
         title: chart.song.title.clone(),
         artist: chart.song.artist.clone(),
         bpm: chart.song.bpm,
         duration_s: chart.song.duration_s,
         difficulties: chart.charts.iter().map(|c| c.difficulty).collect(),
+        note_counts: chart.charts.iter().map(|c| c.notes.len()).collect(),
+        genre,
         source: SongSource::File {
             chart_path: chart_path.to_path_buf(),
             audio_path,
@@ -413,5 +471,28 @@ mod version_scan_tests {
         touch(&b);
         let kept = select_active_versions(vec![a.clone(), b.clone()]);
         assert_eq!(kept, vec![a, b]);
+    }
+}
+
+#[cfg(test)]
+mod rating_tests {
+    use super::density_rating;
+
+    #[test]
+    fn the_bands_match_the_real_library() {
+        // Calibrated on the actual imports, not invented: a sparse
+        // easy chart (~0.6 nps) is a 1, the typical medium (~1.9) a
+        // 3, a dense expert (4+) pegs the scale.
+        assert_eq!(density_rating(150, 250.0), 1); // 0.6 nps
+        assert_eq!(density_rating(300, 250.0), 2); // 1.2
+        assert_eq!(density_rating(470, 250.0), 3); // 1.88
+        assert_eq!(density_rating(700, 250.0), 4); // 2.8
+        assert_eq!(density_rating(1100, 250.0), 5); // 4.4
+    }
+
+    #[test]
+    fn degenerate_durations_do_not_divide_by_zero() {
+        assert_eq!(density_rating(100, 0.0), 1);
+        assert_eq!(density_rating(100, -5.0), 1);
     }
 }
