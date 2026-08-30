@@ -175,3 +175,75 @@ mod tests {
         assert!(chart.chart_for(Difficulty::Easy).is_none());
     }
 }
+
+/// FNV-1a over a byte slice: deterministic, dependency-free, and not
+/// adversarial — this is an identity for chart *versions*, not a
+/// security boundary.
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
+
+/// The content hash a telemetry session binds to (ADR-0011).
+///
+/// Hashed over the canonical serde serialization rather than the disk
+/// bytes, because builtin songs have no file and formatting must not
+/// matter: the same notes are the same chart however they were
+/// indented.
+#[must_use]
+pub fn chart_hash(chart: &ChartFile) -> String {
+    let canonical = serde_json::to_vec(chart).unwrap_or_default();
+    format!("{:016x}", fnv1a64(&canonical))
+}
+
+#[cfg(test)]
+mod hash_tests {
+    use super::*;
+    use beatbyte_core::Difficulty;
+
+    fn tiny_chart() -> ChartFile {
+        ChartFile {
+            format_version: 1,
+            song: SongMeta {
+                title: "Test".to_owned(),
+                artist: "Unit".to_owned(),
+                audio: "t.wav".to_owned(),
+                bpm: 120.0,
+                offset_s: 0.0,
+                preview_start_s: None,
+                duration_s: Some(10.0),
+            },
+            charts: vec![ChartDef {
+                difficulty: Difficulty::Medium,
+                lanes: 5,
+                notes: vec![ChartNote {
+                    time: 1.0,
+                    lane: 0,
+                    len: 0.0,
+                    hopo: false,
+                }],
+                phrases: Vec::new(),
+            }],
+        }
+    }
+
+    #[test]
+    fn the_hash_binds_to_the_notes_not_the_wrapper() {
+        // The whole point: an edited chart is a different chart. One
+        // note moved by 10 ms must change the identity a telemetry
+        // session binds to.
+        let chart = tiny_chart();
+        let mut edited = tiny_chart();
+        edited.charts[0].notes[0].time = 1.01;
+        assert_eq!(chart_hash(&chart), chart_hash(&chart), "not deterministic");
+        assert_ne!(
+            chart_hash(&chart),
+            chart_hash(&edited),
+            "an edited note did not change the hash"
+        );
+    }
+}

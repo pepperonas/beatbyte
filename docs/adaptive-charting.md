@@ -46,12 +46,15 @@ One line per observation thereafter:
 {"i": 41, "j": "perfect", "off_ms": -12.3}
 {"i": 42, "j": "miss"}
 {"s": 41, "done": false}
-{"o": 1}
+{"o": 1, "near": 42}
 ```
 
 (`i` = event index into the played track, `j` = judgment, `off_ms` =
 signed offset in ms; `s`/`done` = a sustain ended, played out or
-dropped; `o` = an overstrum.)
+dropped; `o` = an overstrum, `near` = the most recently judged event
+when it happened — the session does not position an overstrum, so
+this is how analytics localize one. Optional: absent before the first
+note and in files written before the field existed.)
 
 Rules that are load-bearing:
 

@@ -14,6 +14,32 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.11.11] - 2026-08-30
+
+### Added
+
+- **`beatbyte-cli review`** (adaptive charting phase A2, ADR-0011):
+  joins the recorded sessions with the chart they were played on and
+  answers *where* a chart struggles or bores — accuracy, timing mean
+  and spread, dropped sustains and localized overstrums **per
+  four-bar section**. When enough evidence of the current chart
+  version accumulates (default 3 sessions, `--min-sessions`), it
+  emits generation directives: `low_accuracy`, `dropped_sustains`,
+  `sloppy_timing` per section, or `trivially_mastered` for the whole
+  chart — the last only when nothing else is wrong, because a chart
+  with failing holds is not mastered whatever the average says.
+  Sessions from other chart versions are counted as stale and feed
+  nothing (the hash-binding payoff); autopilot sessions are excluded
+  unless `--include-autopilot`. `--directives <path>` writes the
+  machine-readable half for a later design session.
+- Overstrums now record the most recently judged event index
+  (`near`), so analytics can localize them to a passage. Optional and
+  additive: files written before the field parse unchanged.
+- The telemetry schema moved to `beatbyte-core::telemetry` and the
+  chart hash to `beatbyte-chart` — one implementation shared by the
+  game that writes and the CLI that reads (the mechanics reference's
+  shared-library rule), instead of a copy on each side.
+
 ## [0.11.10] - 2026-08-30
 
 ### Added

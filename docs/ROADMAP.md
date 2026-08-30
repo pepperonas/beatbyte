@@ -248,11 +248,16 @@ before the one it depends on is checked:
   (463/463 judged on a real import) with judgment unchanged — and the
   very first log already earned its keep by locating a one-off
   injector overstrum at line 1, during the count-in.
-- [ ] **A2 — `beatbyte-cli review`** (needs A1). Per-section accuracy /
-  timing-spread / miss-cluster report over all sessions of one
-  (song, difficulty, chart_hash); emits a generation directive once
-  the evidence threshold (default 3 sessions) is met. DoD: report on
-  real logs, directive schema tested, thresholds configurable.
+- [x] **A2 — `beatbyte-cli review`** *(v0.11.11)*. Per-section
+  accuracy / timing / dropped-sustain / overstrum report over all
+  sessions of one (song, difficulty, chart_hash); directives once the
+  evidence threshold is met (default 3 sessions, all thresholds in
+  one struct, `--min-sessions` exposed). Verified on real logs: four
+  autopilot sessions of a real import produced the correct
+  `trivially_mastered` directive with `--include-autopilot` and were
+  correctly excluded without it. Two green-blind tests caught by
+  mutation and rewritten (the mastery veto needed perfect accuracy
+  with dropped holds to be exercised at all).
 - [ ] **A3 — Chart versioning** (needs A2 conceptually, not in code).
   Sibling chart versions with provenance, an active pointer the
   library respects, validation of every new field (charts stay

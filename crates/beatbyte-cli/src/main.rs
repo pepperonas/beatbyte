@@ -11,6 +11,8 @@ use beatbyte_audio::{Analyzer, SpectralAnalyzer, decode_file};
 use beatbyte_chart::{ChartFile, GenerateMeta, Severity, generate_chart};
 use clap::{Parser, Subcommand};
 
+mod review;
+
 #[derive(Parser)]
 #[command(
     name = "beatbyte-cli",
@@ -57,6 +59,29 @@ enum Command {
         /// Path to the chart JSON file.
         chart: PathBuf,
     },
+    /// Review a chart against recorded play sessions (ADR-0011).
+    Review {
+        /// Path to the chart JSON file the sessions were played on.
+        chart: PathBuf,
+        /// Difficulty to review (defaults to medium, the tuning
+        /// anchor).
+        #[arg(long, default_value = "medium")]
+        difficulty: String,
+        /// Telemetry directory (defaults to the game's own).
+        #[arg(long)]
+        telemetry_dir: Option<PathBuf>,
+        /// Sessions of the current chart version required before any
+        /// directive is emitted.
+        #[arg(long, default_value_t = 3)]
+        min_sessions: usize,
+        /// Include autopilot sessions (excluded by default — a
+        /// perfect player makes every chart look too easy).
+        #[arg(long)]
+        include_autopilot: bool,
+        /// Write the directives as JSON to this path.
+        #[arg(long)]
+        directives: Option<PathBuf>,
+    },
     /// Render the built-in songs and generate their charts.
     Demo {
         /// Directory to write the songs' WAV + chart files into.
@@ -76,6 +101,21 @@ fn main() -> ExitCode {
         } => generate(&song, title, &artist, out),
         Command::Validate { chart } => validate(&chart),
         Command::Inspect { chart } => inspect(&chart),
+        Command::Review {
+            chart,
+            difficulty,
+            telemetry_dir,
+            min_sessions,
+            include_autopilot,
+            directives,
+        } => run_review(
+            &chart,
+            &difficulty,
+            telemetry_dir,
+            min_sessions,
+            include_autopilot,
+            directives.as_deref(),
+        ),
         Command::Demo { out_dir } => demo(&out_dir),
     }
 }
@@ -311,4 +351,177 @@ fn load(chart_path: &Path) -> Result<ChartFile, ExitCode> {
         eprintln!("{error}");
         ExitCode::from(2)
     })
+}
+
+/// `review`: join the telemetry with the chart and say where it
+/// struggles or bores. IO here, all judgment in `review.rs`.
+#[allow(clippy::too_many_lines)] // one report, printed in one place
+fn run_review(
+    chart_path: &Path,
+    difficulty: &str,
+    telemetry_dir: Option<PathBuf>,
+    min_sessions: usize,
+    include_autopilot: bool,
+    directives_out: Option<&Path>,
+) -> ExitCode {
+    use beatbyte_core::telemetry::parse_session;
+
+    let text = match std::fs::read_to_string(chart_path) {
+        Ok(text) => text,
+        Err(error) => {
+            eprintln!("cannot read `{}`: {error}", chart_path.display());
+            return ExitCode::from(2);
+        }
+    };
+    let chart: ChartFile = match serde_json::from_str(&text) {
+        Ok(chart) => chart,
+        Err(error) => {
+            eprintln!("`{}` is not a chart: {error}", chart_path.display());
+            return ExitCode::from(1);
+        }
+    };
+    let Some(parsed_difficulty) = parse_difficulty(difficulty) else {
+        eprintln!("unknown difficulty `{difficulty}` (easy/medium/hard/expert)");
+        return ExitCode::from(2);
+    };
+    let track = match chart.to_track(parsed_difficulty) {
+        Ok(track) => track,
+        Err(error) => {
+            eprintln!("chart has no playable {difficulty} track: {error}");
+            return ExitCode::from(1);
+        }
+    };
+    let dir =
+        telemetry_dir.or_else(|| dirs::data_dir().map(|d| d.join("beatbyte").join("telemetry")));
+    let Some(dir) = dir else {
+        eprintln!("no telemetry directory on this platform; pass --telemetry-dir");
+        return ExitCode::from(2);
+    };
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(error) => {
+            eprintln!("cannot read `{}`: {error}", dir.display());
+            eprintln!("(no sessions recorded yet? play the song first)");
+            return ExitCode::from(2);
+        }
+    };
+
+    // Every parseable session for this song + difficulty, whatever
+    // chart version it was played on — the review reports the stale
+    // ones rather than hiding them.
+    let wanted_difficulty = difficulty.to_lowercase();
+    let mut sessions = Vec::new();
+    for entry in entries.filter_map(Result::ok) {
+        let path = entry.path();
+        if path.extension().is_none_or(|e| e != "jsonl") {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Some((header, lines)) = parse_session(&content) else {
+            continue;
+        };
+        if header.title == chart.song.title
+            && header.artist == chart.song.artist
+            && header.difficulty == wanted_difficulty
+        {
+            sessions.push(review::Session { header, lines });
+        }
+    }
+
+    let thresholds = review::Thresholds {
+        min_sessions,
+        ..review::Thresholds::default()
+    };
+    let current_hash = beatbyte_chart::chart_hash(&chart);
+    let outcome = review::review(
+        &track,
+        chart.song.bpm,
+        chart.song.offset_s,
+        &current_hash,
+        &sessions,
+        include_autopilot,
+        &thresholds,
+    );
+
+    println!(
+        "review: \"{}\" — {} <{}>  chart {}",
+        chart.song.title, chart.song.artist, wanted_difficulty, current_hash
+    );
+    let complete = sessions.iter().filter(|s| review::is_complete(s)).count();
+    println!(
+        "sessions: {} used ({} complete), {} stale (other chart version), {} autopilot excluded",
+        outcome.sessions_used, complete, outcome.stale_sessions, outcome.autopilot_sessions
+    );
+    if outcome.sections.is_empty() {
+        println!("no observations for this chart version yet.");
+        return ExitCode::SUCCESS;
+    }
+    println!();
+    println!("bars      time          judged   acc     mean     spread  sustains  overstrums");
+    for section in &outcome.sections {
+        println!(
+            "{:>3}-{:<3}  {:>6.1}-{:<6.1}s  {:>5}  {:>5.1}%  {:>+6.1}ms {:>6.1}ms  {:>3}/{:<3}  {:>4}",
+            section.bar_start,
+            section.bar_end,
+            section.time_s.0,
+            section.time_s.1,
+            section.judged,
+            section.accuracy * 100.0,
+            section.mean_off_ms,
+            section.stddev_ms,
+            section.sustains.1,
+            section.sustains.0,
+            section.overstrums,
+        );
+    }
+    println!();
+    if outcome.directives.is_empty() {
+        println!(
+            "no directives ({} sessions of this version; {} required).",
+            outcome.sessions_used, thresholds.min_sessions
+        );
+    } else {
+        for directive in &outcome.directives {
+            let place = directive.bars.map_or_else(
+                || "whole chart".to_owned(),
+                |(a, b)| format!("bars {a}-{b}"),
+            );
+            println!(
+                "directive: {} at {} — recommend {:?} (acc {:.1}%, spread {:.1} ms, {} sessions)",
+                directive.problem,
+                place,
+                directive.recommend,
+                directive.evidence.accuracy * 100.0,
+                directive.evidence.stddev_ms,
+                directive.evidence.sessions,
+            );
+        }
+        if let Some(out) = directives_out {
+            match serde_json::to_string_pretty(&outcome.directives) {
+                Ok(json) => {
+                    if let Err(error) = std::fs::write(out, json) {
+                        eprintln!("cannot write `{}`: {error}", out.display());
+                        return ExitCode::from(2);
+                    }
+                    println!("directives written to {}", out.display());
+                }
+                Err(error) => eprintln!("cannot serialize directives: {error}"),
+            }
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+/// Parse a difficulty name the way the headers spell it.
+fn parse_difficulty(name: &str) -> Option<beatbyte_core::Difficulty> {
+    use beatbyte_core::Difficulty;
+    match name.to_lowercase().as_str() {
+        "easy" => Some(Difficulty::Easy),
+        "medium" => Some(Difficulty::Medium),
+        "hard" => Some(Difficulty::Hard),
+        "expert" => Some(Difficulty::Expert),
+        _ => None,
+    }
 }

@@ -44,7 +44,7 @@ pub mod validate;
 pub use convert::ConvertError;
 pub use generate::{DifficultyProfile, GenerateMeta, generate_chart};
 pub use io::{ChartIoError, load_chart_file, resolve_audio_path, save_chart_file};
-pub use schema::{ChartDef, ChartFile, ChartNote, ChartPhrase, SongMeta};
+pub use schema::{ChartDef, ChartFile, ChartNote, ChartPhrase, SongMeta, chart_hash};
 pub use validate::{Issue, Severity};
 
 /// The chart format version this crate reads and writes.

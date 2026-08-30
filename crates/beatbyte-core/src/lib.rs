@@ -30,6 +30,7 @@ pub mod music;
 pub mod note;
 pub mod score;
 pub mod session;
+pub mod telemetry;
 pub mod timing;
 
 pub use difficulty::Difficulty;
