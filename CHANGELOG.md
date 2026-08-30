@@ -14,6 +14,22 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.11.7] - 2026-08-30
+
+### Added
+
+- **Escape closes the game from the main menu.** There is no screen
+  above that one to go back to, so Escape means leave. Bound to the
+  key rather than to the menu's general "back", because that also
+  fires on the pad's East button, which the default map gives to fret
+  1 — with a guitar plugged in, a finger resting on the red fret at
+  the menu would have closed the application. A test pins that
+  pairing so the shortcut cannot be quietly simplified later.
+- The smoke test now leaves by **pressing Escape** instead of writing
+  the exit itself, so the cheapest test in the suite proves the way a
+  player actually leaves. It fails loudly if Escape stops working,
+  rather than hanging.
+
 ## [0.11.6] - 2026-08-30
 
 ### Fixed

@@ -50,7 +50,7 @@ impl MenuAction {
 
 /// The currently highlighted menu row.
 #[derive(Resource, Default)]
-struct MenuCursor(usize);
+pub(crate) struct MenuCursor(usize);
 
 /// Plugin for the main menu.
 pub struct MenuPlugin;
@@ -76,7 +76,7 @@ struct MenuTitle;
 
 /// A selectable row, carrying its index.
 #[derive(Component)]
-struct MenuRow(usize);
+pub(crate) struct MenuRow(usize);
 
 /// A row's label text, carrying the same index. The label is a child
 /// of the row now that a row has chrome of its own.
@@ -121,12 +121,12 @@ fn spawn_menu(mut commands: Commands, font: Res<UiFont>) {
             ui_kit::footer(
                 parent,
                 &font,
-                "UP/DOWN choose  ENTER confirm  MOUSE works too",
+                "UP/DOWN choose  ENTER confirm  ESC quit  MOUSE works too",
             );
         });
 }
 
-fn menu_input(
+pub(crate) fn menu_input(
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<&Gamepad>,
     rows: Query<(&MenuRow, &Interaction), Changed<Interaction>>,
@@ -147,6 +147,18 @@ fn menu_input(
     let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
     if let Some(index) = pointer.hovered {
         cursor.0 = index;
+    }
+    // Escape closes the game from here, since there is no screen
+    // above this one to go back to.
+    //
+    // Deliberately the KEY and not `nav.back`: that also fires on the
+    // pad's East button, which the default map gives to fret 1. With a
+    // guitar plugged in, noodling on the red fret at the menu would
+    // close the application. A test pins that pairing so this cannot
+    // be "simplified" to `nav.back` later.
+    if keys.just_pressed(KeyCode::Escape) {
+        app_exit.write(AppExit::Success);
+        return;
     }
     let clicked = pointer.clicked;
     if nav.confirm || clicked {
@@ -200,5 +212,34 @@ fn pulse_title(time: Res<Time>, mut title: Query<&mut TextColor, With<MenuTitle>
 fn despawn_menu(mut commands: Commands, entities: Query<Entity, With<MenuScreen>>) {
     for entity in &entities {
         commands.entity(entity).despawn();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::controls::{Binding, GameAction, InputMap};
+    use bevy::input::gamepad::GamepadButton;
+
+    #[test]
+    fn the_pads_back_button_is_a_fret_so_it_must_not_quit() {
+        // `MenuNav::back` is Escape OR the pad's East button, and the
+        // default map gives East to fret 1. Wiring the menu's quit to
+        // `nav.back` would close the game when a guitarist rests a
+        // finger on the red fret at the menu.
+        //
+        // If this ever stops being true - East freed from the frets -
+        // this test should be deleted along with the workaround in
+        // `menu_input`, not silenced.
+        let map = InputMap::default();
+        let fret_one = map
+            .bindings
+            .iter()
+            .find(|(action, _)| *action == GameAction::Fret(1))
+            .map(|(_, bindings)| bindings.clone())
+            .expect("fret 1 is bound");
+        assert!(
+            fret_one.contains(&Binding::Pad(GamepadButton::East)),
+            "fret 1 no longer uses East: revisit the menu quit key"
+        );
     }
 }

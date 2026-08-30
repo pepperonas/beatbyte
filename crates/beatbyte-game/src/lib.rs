@@ -196,7 +196,11 @@ pub fn run() -> AppExit {
     if std::env::var_os("BEATBYTE_SMOKE_TEST").is_some()
         && std::env::var_os("BEATBYTE_AUTOPILOT").is_none()
     {
-        app.add_systems(Update, smoke_test_exit);
+        // Ordered BEFORE the menu's own input so the simulated key
+        // press is still `just_pressed` when the menu reads it: Bevy
+        // clears that flag at the start of each frame, so a press
+        // written after the reader would never be seen at all.
+        app.add_systems(Update, smoke_test_exit.before(menu::menu_input));
     }
 
     let exit = app.run();
@@ -314,16 +318,30 @@ fn sync_bloom(
 fn smoke_test_exit(
     time: Res<Time>,
     state: Res<State<AppState>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
     mut app_exit: MessageWriter<AppExit>,
 ) {
     let reached_menu = *state.get() != AppState::Boot;
     if time.elapsed_secs() > 3.0 && reached_menu {
+        // Leave by pressing Escape rather than by writing the exit
+        // directly. The smoke test then proves the way a PLAYER
+        // leaves actually works, instead of proving only that the
+        // process can be told to stop - and it costs nothing, because
+        // this run had to end somehow regardless.
         info!(
-            "smoke test: exiting cleanly after {:.1}s in {:?}",
+            "smoke test: pressing ESC after {:.1}s in {:?}",
             time.elapsed_secs(),
             state.get()
         );
-        app_exit.write(AppExit::Success);
+        keys.release(KeyCode::Escape);
+        keys.press(KeyCode::Escape);
+    }
+    // If Escape did not close the game, say so and fail. Without this
+    // the run would simply hang, which reads as a stuck machine rather
+    // than as a broken key.
+    if time.elapsed_secs() > 6.0 && reached_menu {
+        error!("smoke test: ESC did not close the game from the main menu");
+        app_exit.write(AppExit::error());
     }
     if time.elapsed_secs() > 30.0 {
         error!("smoke test: demo load never finished");
