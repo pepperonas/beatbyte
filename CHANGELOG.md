@@ -14,6 +14,26 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.11.9] - 2026-08-30
+
+### Documentation
+
+- **The adaptive-charting decision** ([ADR-0011](docs/decisions/ADR-0011-adaptive-charting.md),
+  spec in [docs/adaptive-charting.md](docs/adaptive-charting.md)).
+  Four planning documents envisioned AI-designed charts and a closed
+  telemetry loop; the decision reconciles them with this repository's
+  reality. The load-bearing findings: the per-note millisecond signal
+  the plans demand **already exists** (`SessionEvent::NoteHit` carries
+  judgment and signed offset, and is currently discarded after every
+  session); the population-scale layers (percentiles, A/B cohorts, ML
+  models) have no players to feed them and are parked with reopen
+  criteria; the runtime never calls a model — Claude designs at design
+  time from a CLI-exported dossier; every regenerated chart is a
+  hash-bound sibling **version**, and adoption stays gated by the
+  by-ear A/B that ADR-0009 established. Phases A1–A5 are on the
+  roadmap, telemetry first, because every later ambition feeds off
+  recorded truth.
+
 ## [0.11.8] - 2026-08-30
 
 ### Fixed

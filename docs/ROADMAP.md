@@ -233,6 +233,45 @@ project. Milestones when picked up:
 - [ ] H3 Sustains as tube meshes, 3D particles, depth-of-field/bloom tuning.
 - [~] H4 Performance pass + packaging size check. Measured on this machine: the 3D stage holds a vsync-locked 60 fps during a full song with a 99th-percentile frame of 19.4 ms — no stalls, so it costs no notes. `BEATBYTE_FPS=1` now reports median and 99th-percentile frame times (an average would hide exactly the stutters that lose notes). Still open: a low-end GPU and the artifact size check.
 
+## Phase 3 — Adaptive charting (DECIDED 2026-08-30, not started)
+
+The architecture is [ADR-0011](decisions/ADR-0011-adaptive-charting.md);
+the spec is [`adaptive-charting.md`](adaptive-charting.md). Tasks in
+dependency order — each is independently shippable and none may start
+before the one it depends on is checked:
+
+- [ ] **A1 — Telemetry recorder.** Per-note session log (judgment,
+  signed offset) + session header with **chart content hash**,
+  append-only JSONL beside `scores.json`, schema v1. Writing must be
+  failure-isolated from gameplay. DoD: round-trip tests, hash-binding
+  test, a full autopilot run leaves a readable log, no measurable
+  frame cost.
+- [ ] **A2 — `beatbyte-cli review`** (needs A1). Per-section accuracy /
+  timing-spread / miss-cluster report over all sessions of one
+  (song, difficulty, chart_hash); emits a generation directive once
+  the evidence threshold (default 3 sessions) is met. DoD: report on
+  real logs, directive schema tested, thresholds configurable.
+- [ ] **A3 — Chart versioning** (needs A2 conceptually, not in code).
+  Sibling chart versions with provenance, an active pointer the
+  library respects, validation of every new field (charts stay
+  untrusted input), import never overwrites a version that has
+  telemetry. DoD: version round-trip + provenance tests, re-import
+  test, browser still shows one entry per song.
+- [ ] **A4 — `beatbyte-cli dossier`** (needs A3). Musical
+  representation + current chart + constraints + open directives in
+  one file; the design-session workflow (Claude at design time, by-ear
+  A/B gate) documented in `docs/workflow`. DoD: dossier generated for
+  a real import, workflow doc bound by the drift tests where
+  checkable.
+- [ ] **A5 — In-game feedback** (needs A3; optional). One-key fun
+  rating on results; pairwise "which felt better?" when two versions
+  exist. DoD: ratings land in the telemetry log, zero friction when
+  skipped.
+
+Parked with reopen criteria (a real player population, or an explicit
+request): population percentiles, automated rollout/A-B
+infrastructure, ML preference and skill models, personalization.
+
 ## Backlog (explicitly out of scope until after 1.0)
 
 Not started without a deliberate roadmap edit pulling them forward:

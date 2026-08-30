@@ -17,6 +17,7 @@ contradicted** — if a decision is reversed, the ADR says so.
 | [0008](ADR-0008-theme-system.md) | Data-driven stage themes | Accepted |
 | 0009 | Automatic guitar transcription engine | **Parked** — see below |
 | [0010](ADR-0010-ui-design-system.md) | One UI kit for every menu | Accepted |
+| [0011](ADR-0011-adaptive-charting.md) | Adaptive charting: AI designs offline, telemetry decides what to redesign | Accepted |
 
 ## The gap at 0009
 
