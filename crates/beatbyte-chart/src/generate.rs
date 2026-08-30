@@ -57,9 +57,10 @@ pub struct DifficultyProfile {
     pub sustains: bool,
     /// Minimum gap to the next note for a sustain to fit.
     pub sustain_min_gap_s: f64,
-    /// Longest run of consecutive events under [`BURST_GAP_S`] this
-    /// difficulty tolerates; longer streams relax their interior to
-    /// every second note (sixteenths become eighths).
+    /// Longest run of consecutive events under the burst gap
+    /// (0.13 s) this difficulty tolerates; longer streams relax
+    /// their interior to every second note (sixteenths become
+    /// eighths).
     pub max_burst_events: usize,
 }
 
