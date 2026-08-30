@@ -296,6 +296,16 @@ notes, 1-5 density rating, personal best — all per selected
 difficulty. Genre lives in the chart format (hash-neutral, validated),
 filled from audio tags on import and via `beatbyte-cli set-genre`.
 
+## Browser polish (PLANNED 2026-08-30 — docs/ui/browser-polish-plan.md)
+
+User verdict on the new browser: better, still buggy. Causes
+confirmed in code, not guessed: full-screen respawn per keystroke
+(D1), resting-mouse hover yanking the selection after each respawn
+(D2), delete-arming bound to a view position instead of the song
+(D3), filter typing not selecting the first match (D4). Plan P1-P7 in
+the document; P1 (rows-only rebuild) first, it changes the structure
+the rest touch.
+
 ## Backlog (explicitly out of scope until after 1.0)
 
 Not started without a deliberate roadmap edit pulling them forward:
