@@ -229,13 +229,20 @@ impl Plugin for GameplayPlugin {
                     .run_if(in_state(GamePhase::Playing)),
             )
             .add_systems(Update, pause_input.run_if(in_state(AppState::Gameplay)))
+            .init_resource::<PauseCursor>()
+            .add_systems(
+                Update,
+                (pause_menu_input, refresh_pause_menu)
+                    .chain()
+                    .run_if(in_state(GamePhase::Paused)),
+            )
             .add_systems(
                 OnEnter(GamePhase::Paused),
                 (pause_audio, spawn_pause_overlay),
             )
             .add_systems(
                 OnExit(GamePhase::Paused),
-                (resume_audio, despawn_pause_overlay),
+                (resume_audio, despawn_pause_overlay, persist_pause_settings),
             )
             .add_systems(OnExit(AppState::Gameplay), teardown_gameplay)
             .add_plugins(stage3d::Stage3dPlugin);
@@ -434,7 +441,9 @@ fn pause_input(
             }
         }
         GamePhase::Paused => {
-            if pause || keys.just_pressed(KeyCode::Enter) {
+            // Enter no longer resumes: it steps the selected settings
+            // row, like on the settings screen. ESC stays the resume.
+            if pause {
                 next_phase.set(GamePhase::Playing);
             }
             if keys.just_pressed(KeyCode::KeyQ) {
@@ -459,7 +468,48 @@ fn resume_audio(music: Res<Music>, mut game_clock: ResMut<GameClock>, time: Res<
 #[derive(Component)]
 struct PauseOverlay;
 
-fn spawn_pause_overlay(mut commands: Commands, font: Res<crate::ui::UiFont>) {
+/// The settings a player may change mid-song, reusing the settings
+/// screen's own rows — one definition of every step size and clamp,
+/// two places that draw it. The subset is deliberate: nothing here
+/// may change the JUDGMENT of the run in flight. Latency offset and
+/// tap mode stay on the settings screen, where flipping them cannot
+/// invalidate a paused song.
+const PAUSE_ROWS: [crate::settings_ui::Row; 3] = [
+    crate::settings_ui::Row::MusicVolume,
+    crate::settings_ui::Row::SfxVolume,
+    crate::settings_ui::Row::ScrollSpeed,
+];
+
+/// Whether adjusting this row previews the MISS sound. The SFX
+/// volume IS the volume of the error sounds, and while the music is
+/// paused there is nothing else to hear — setting it blind would be
+/// guesswork, so every step plays the sound being set.
+fn previews_the_miss_sound(row: crate::settings_ui::Row) -> bool {
+    row == crate::settings_ui::Row::SfxVolume
+}
+
+/// Which pause row the cursor sits on.
+#[derive(Resource, Default)]
+struct PauseCursor(usize);
+
+/// A pause-menu row (index into [`PAUSE_ROWS`]); carries `Button`.
+#[derive(Component)]
+struct PauseRow(usize);
+
+/// A pause row's static label.
+#[derive(Component)]
+struct PauseRowLabel(usize);
+
+/// A pause row's value text — the part that changes.
+#[derive(Component)]
+struct PauseRowValue(usize);
+
+fn spawn_pause_overlay(
+    mut commands: Commands,
+    font: Res<crate::ui::UiFont>,
+    mut cursor: ResMut<PauseCursor>,
+) {
+    cursor.0 = 0;
     commands
         .spawn((
             PauseOverlay,
@@ -482,12 +532,123 @@ fn spawn_pause_overlay(mut commands: Commands, font: Res<crate::ui::UiFont>) {
                 font.text(crate::ui_kit::WORDMARK),
                 TextColor(palette::BRAND),
             ));
+            parent.spawn(crate::ui_kit::panel()).with_children(|panel| {
+                for (index, row) in PAUSE_ROWS.iter().enumerate() {
+                    panel
+                        .spawn((PauseRow(index), Button, crate::ui_kit::row()))
+                        .with_children(|entry| {
+                            entry.spawn((
+                                PauseRowLabel(index),
+                                Text::new(row.label()),
+                                font.text(crate::ui_kit::ROW),
+                                TextColor(palette::TEXT_DIM),
+                                crate::ui_kit::label_node(),
+                            ));
+                            entry.spawn((
+                                PauseRowValue(index),
+                                Text::new(""),
+                                font.text(crate::ui_kit::ROW),
+                                TextColor(palette::TEXT_DIM),
+                                crate::ui_kit::value_node(),
+                            ));
+                        });
+                }
+            });
             parent.spawn((
-                Text::new("ESC resume  Q quit"),
+                Text::new("UP/DOWN choose  LEFT/RIGHT adjust  ESC resume  Q quit"),
                 font.text(crate::ui_kit::ROW),
                 TextColor(palette::TEXT_DIM),
             ));
         });
+}
+
+/// Navigate and adjust the pause rows. Gameplay input is gated to
+/// [`GamePhase::Playing`], so the arrows (which double as strum keys)
+/// can never reach the session from here.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
+fn pause_menu_input(
+    mut commands: Commands,
+    keys: Res<ButtonInput<KeyCode>>,
+    pads: Query<&bevy::input::gamepad::Gamepad>,
+    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
+    rows: Query<(&PauseRow, &Interaction), Changed<Interaction>>,
+    mut cursor: ResMut<PauseCursor>,
+    mut settings: ResMut<crate::config::Settings>,
+    sfx: Res<crate::sfx::SfxLib>,
+) {
+    let nav = crate::controls::MenuNav::read(&keys, pads.iter());
+    let count = PAUSE_ROWS.len();
+    let mut moved = false;
+    if nav.up {
+        cursor.0 = (cursor.0 + count - 1) % count;
+        moved = true;
+    }
+    if nav.down {
+        cursor.0 = (cursor.0 + 1) % count;
+        moved = true;
+    }
+    let pointer = crate::ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
+    if let Some(index) = pointer.hovered {
+        cursor.0 = index;
+    }
+    let mut wheel_step = 0.0;
+    for event in wheel.read() {
+        wheel_step += event.y.signum();
+    }
+    let row = PAUSE_ROWS[cursor.0];
+    let mut adjusted = false;
+    if nav.left || wheel_step < 0.0 {
+        row.adjust(&mut settings, -1.0);
+        adjusted = true;
+    }
+    if nav.right || nav.confirm || pointer.clicked || wheel_step > 0.0 {
+        row.adjust(&mut settings, 1.0);
+        adjusted = true;
+    }
+    if adjusted {
+        let preview = if previews_the_miss_sound(row) {
+            &sfx.miss
+        } else {
+            &sfx.ui_move
+        };
+        crate::sfx::play(&mut commands, preview, settings.sfx_volume);
+    } else if moved {
+        crate::sfx::play(&mut commands, &sfx.ui_move, settings.sfx_volume);
+    }
+}
+
+/// Row highlight + live values, exactly the settings screen's dress.
+fn refresh_pause_menu(
+    settings: Res<crate::config::Settings>,
+    cursor: Res<PauseCursor>,
+    mut rows: Query<(&PauseRow, &mut BackgroundColor, &mut BorderColor)>,
+    mut labels: Query<(&PauseRowLabel, &mut TextColor), Without<PauseRowValue>>,
+    mut values: Query<(&PauseRowValue, &mut Text, &mut TextColor), Without<PauseRowLabel>>,
+) {
+    for (row, mut background, mut border) in &mut rows {
+        let style = crate::ui_kit::row_style(crate::ui_kit::state_for(row.0 == cursor.0, false));
+        background.0 = style.background;
+        *border = BorderColor::all(style.accent);
+    }
+    for (label, mut color) in &mut labels {
+        color.0 =
+            crate::ui_kit::row_style(crate::ui_kit::state_for(label.0 == cursor.0, false)).label;
+    }
+    for (value, mut text, mut color) in &mut values {
+        let wanted = PAUSE_ROWS[value.0].value(&settings);
+        if text.0 != wanted {
+            text.0 = wanted;
+        }
+        color.0 =
+            crate::ui_kit::row_style(crate::ui_kit::state_for(value.0 == cursor.0, false)).value;
+    }
+}
+
+/// Changes made in the pause menu persist like the settings screen's:
+/// on leaving — which covers both resume and quit, because the phase
+/// sub-state exits with the gameplay state.
+fn persist_pause_settings(settings: Res<crate::config::Settings>) {
+    crate::config::save_settings(&settings);
 }
 
 fn despawn_pause_overlay(mut commands: Commands, overlays: Query<Entity, With<PauseOverlay>>) {
@@ -514,4 +675,38 @@ fn teardown_gameplay(
 #[must_use]
 pub fn player_color(index: usize) -> Color {
     PLAYER_COLORS[index % PLAYER_COLORS.len()]
+}
+
+#[cfg(test)]
+mod pause_menu_tests {
+    use super::{PAUSE_ROWS, previews_the_miss_sound};
+    use crate::settings_ui::Row;
+
+    #[test]
+    fn the_pause_menu_offers_the_volumes() {
+        // The commissioned row: the SFX volume governs the miss and
+        // overstrum sounds, and it must be reachable mid-song.
+        assert!(PAUSE_ROWS.contains(&Row::SfxVolume));
+        assert!(PAUSE_ROWS.contains(&Row::MusicVolume));
+    }
+
+    #[test]
+    fn the_pause_menu_cannot_change_the_judgment_mid_song() {
+        // Latency offset moves every timing window; tap mode changes
+        // the strum rules. Either one flipped inside a paused run
+        // would judge the second half of the song by different laws
+        // than the first — they stay on the settings screen.
+        assert!(!PAUSE_ROWS.contains(&Row::LatencyOffset));
+        assert!(!PAUSE_ROWS.contains(&Row::TapMode));
+    }
+
+    #[test]
+    fn adjusting_the_sfx_row_previews_the_error_sound() {
+        // The row sets the volume OF the miss sound; with the music
+        // paused there is nothing else to hear, so every step plays
+        // the sound being set — and only that row does.
+        for row in PAUSE_ROWS {
+            assert_eq!(previews_the_miss_sound(row), row == Row::SfxVolume);
+        }
+    }
 }

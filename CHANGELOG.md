@@ -14,6 +14,25 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.11] - 2026-08-30
+
+### Added
+
+- The pause menu adjusts settings mid-song: MUSIC VOLUME, SFX
+  VOLUME and SCROLL SPEED as selectable rows (UP/DOWN choose,
+  LEFT/RIGHT adjust, mouse and wheel work too), reusing the settings
+  screen's own step sizes and clamps. Stepping the SFX row previews
+  the MISS sound at the new volume - it is the volume of the error
+  sounds, and with the music paused there is nothing else to hear.
+  Changes persist on leaving the pause, whether by resuming or
+  quitting. Judgment-changing settings (latency offset, tap mode)
+  deliberately stay on the settings screen.
+
+### Changed
+
+- Enter on the pause screen steps the selected row (like on the
+  settings screen) instead of resuming; ESC remains the resume.
+
 ## [0.12.10] - 2026-08-30
 
 ### Added

@@ -12,9 +12,11 @@ use crate::states::AppState;
 use crate::ui::UiFont;
 use crate::ui_kit;
 
-/// The adjustable rows, in display order.
+/// The adjustable rows, in display order. `pub(crate)` because the
+/// pause menu reuses a safe subset — one definition of every step
+/// size and clamp, two places that draw it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Row {
+pub(crate) enum Row {
     MusicVolume,
     SfxVolume,
     ScrollSpeed,
@@ -49,7 +51,7 @@ impl Row {
         Row::Controls,
     ];
 
-    const fn label(self) -> &'static str {
+    pub(crate) const fn label(self) -> &'static str {
         match self {
             Row::MusicVolume => "MUSIC VOLUME",
             Row::SfxVolume => "SFX VOLUME",
@@ -68,7 +70,7 @@ impl Row {
         }
     }
 
-    fn value(self, settings: &Settings) -> String {
+    pub(crate) fn value(self, settings: &Settings) -> String {
         match self {
             Row::MusicVolume => format!("{:.0}%", settings.music_volume * 100.0),
             Row::SfxVolume => format!("{:.0}%", settings.sfx_volume * 100.0),
@@ -98,7 +100,7 @@ impl Row {
     }
 
     /// Adjust by one step (direction −1 or +1).
-    fn adjust(self, settings: &mut Settings, direction: f32) {
+    pub(crate) fn adjust(self, settings: &mut Settings, direction: f32) {
         match self {
             Row::MusicVolume => {
                 settings.music_volume = (settings.music_volume + 0.1 * direction).clamp(0.0, 1.0);

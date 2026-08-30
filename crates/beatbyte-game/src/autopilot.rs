@@ -95,6 +95,20 @@ impl Plugin for AutopilotPlugin {
                 ),
             )
             .add_systems(OnEnter(AppState::Gameplay), autopilot_reset);
+            if std::env::var_os("BEATBYTE_AUTOPILOT_PAUSE").is_some() {
+                // Pause-menu validation: mid-song, drive the pause
+                // overlay with REAL keys — pause, step to the SFX
+                // row, adjust down and back up, resume — and verify
+                // the setting actually moved each time. The run then
+                // continues to the normal flawless-finish verdict,
+                // proving the pause round-trip cost nothing.
+                app.add_systems(
+                    PreUpdate,
+                    autopilot_pause
+                        .after(bevy::input::InputSystems)
+                        .run_if(in_state(AppState::Gameplay)),
+                );
+            }
             if std::env::var_os("BEATBYTE_AUTOPILOT_DELETE").is_some() {
                 // Deletion validation drives the browser with REAL
                 // arrow/backspace keys; song selection stays passive.
@@ -640,6 +654,96 @@ fn fail_if_window_vanishes(
         deliver(&mut app_exit, AppExit::error());
     }
     *seen |= present;
+}
+
+/// `BEATBYTE_AUTOPILOT_PAUSE`: exercise the pause menu with real
+/// keys mid-song. Escape pauses, ArrowDown reaches the SFX row, two
+/// ArrowLefts and two ArrowRights step the volume down and back up
+/// (checked against the exact clamp model after every leg), Escape
+/// resumes. Every checkpoint mismatch fails the run loudly; the
+/// normal end-of-song verdict then proves the round-trip cost
+/// nothing.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
+fn autopilot_pause(
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    phase: Res<State<crate::states::GamePhase>>,
+    settings: Res<crate::config::Settings>,
+    time: Res<Time>,
+    mut warmup: Local<f32>,
+    mut frame: Local<u32>,
+    mut baseline: Local<Option<f32>>,
+    mut done: Local<bool>,
+    mut app_exit: MessageWriter<AppExit>,
+) {
+    if *done {
+        return;
+    }
+    if baseline.is_none() {
+        *warmup += time.delta_secs();
+        if *warmup < 1.2 || *phase.get() != crate::states::GamePhase::Playing {
+            return;
+        }
+        *baseline = Some(settings.sfx_volume);
+        info!(
+            "autopilot: pause drill starts at sfx {:.2}",
+            settings.sfx_volume
+        );
+    }
+    let Some(start) = *baseline else { return };
+    let step = |value: f32, direction: f32| (0.1f32.mul_add(direction, value)).clamp(0.0, 1.0);
+    let after_down = step(step(start, -1.0), -1.0);
+    let after_up = step(step(after_down, 1.0), 1.0);
+    // One scripted key per stride: press, release, then idle frames
+    // so state transitions and menu systems settle in between.
+    const STRIDE: u32 = 8;
+    let script = [
+        KeyCode::Escape,
+        KeyCode::ArrowDown,
+        KeyCode::ArrowLeft,
+        KeyCode::ArrowLeft,
+        KeyCode::ArrowRight,
+        KeyCode::ArrowRight,
+        KeyCode::Escape,
+    ];
+    let action = (*frame / STRIDE) as usize;
+    let tick = *frame % STRIDE;
+    if action >= script.len() {
+        *done = true;
+        info!(
+            "autopilot: pause drill PASSED — sfx {start:.2} -> {after_down:.2} -> {:.2}, resumed",
+            settings.sfx_volume
+        );
+        return;
+    }
+    match tick {
+        0 => keys.press(script[action]),
+        1 => keys.release(script[action]),
+        _ if tick == STRIDE - 1 => {
+            let mut fail = |what: String| {
+                error!("autopilot: pause drill FAILED — {what}");
+                deliver(&mut app_exit, AppExit::error());
+            };
+            match action {
+                0 if *phase.get() != crate::states::GamePhase::Paused => {
+                    fail("escape did not pause".to_owned());
+                }
+                3 if (settings.sfx_volume - after_down).abs() > 1e-4 => fail(format!(
+                    "two LEFTs on the sfx row left {:.3}, expected {after_down:.3}",
+                    settings.sfx_volume
+                )),
+                5 if (settings.sfx_volume - after_up).abs() > 1e-4 => fail(format!(
+                    "two RIGHTs on the sfx row left {:.3}, expected {after_up:.3}",
+                    settings.sfx_volume
+                )),
+                6 if *phase.get() != crate::states::GamePhase::Playing => {
+                    fail("escape did not resume".to_owned());
+                }
+                _ => {}
+            }
+        }
+        _ => {}
+    }
+    *frame += 1;
 }
 
 /// Resolve the difficulty the autopilot plays.
