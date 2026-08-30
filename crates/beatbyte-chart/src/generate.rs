@@ -54,6 +54,10 @@ pub struct DifficultyProfile {
     pub sustains: bool,
     /// Minimum gap to the next note for a sustain to fit.
     pub sustain_min_gap_s: f64,
+    /// Longest run of consecutive events under [`BURST_GAP_S`] this
+    /// difficulty tolerates; longer streams relax their interior to
+    /// every second note (sixteenths become eighths).
+    pub max_burst_events: usize,
 }
 
 impl DifficultyProfile {
@@ -74,6 +78,7 @@ impl DifficultyProfile {
                 hopo_max_gap_s: 0.0,
                 sustains: true,
                 sustain_min_gap_s: 0.9,
+                max_burst_events: 4,
             },
             Difficulty::Medium => DifficultyProfile {
                 difficulty,
@@ -88,6 +93,7 @@ impl DifficultyProfile {
                 hopo_max_gap_s: 0.0,
                 sustains: true,
                 sustain_min_gap_s: 0.6,
+                max_burst_events: 8,
             },
             Difficulty::Hard => DifficultyProfile {
                 difficulty,
@@ -102,6 +108,7 @@ impl DifficultyProfile {
                 hopo_max_gap_s: 0.20,
                 sustains: true,
                 sustain_min_gap_s: 0.5,
+                max_burst_events: 10,
             },
             Difficulty::Expert => DifficultyProfile {
                 difficulty,
@@ -116,6 +123,7 @@ impl DifficultyProfile {
                 hopo_max_gap_s: 0.22,
                 sustains: true,
                 sustain_min_gap_s: 0.45,
+                max_burst_events: 24,
             },
         }
     }
@@ -215,6 +223,12 @@ const MASTER_STRENGTH_FLOOR: f32 = 0.07;
 /// — physically brutal where a trill is easy. Real charts alternate
 /// lanes for fast repeated pitches; so does the flow pass.
 const JACK_GAP_S: f64 = 0.18;
+
+/// Consecutive events closer than this form a burst (a stream);
+/// [`DifficultyProfile::max_burst_events`] caps how long one may run.
+/// Sixteenths at 120 BPM sit at exactly 0.125 s — the threshold must
+/// clear them, or the whole discipline misses its main customer.
+const BURST_GAP_S: f64 = 0.13;
 
 /// Build the master chart: melody-first selection, contour lanes on
 /// the full neck, true-length tails.
@@ -393,12 +407,49 @@ fn reduction_chain<'a>(
                 grid_origin_s,
             }),
         );
+        current = discipline_bursts(current, profile.max_burst_events);
         previous_npb = Some(profile.target_notes_per_beat);
         if step == difficulty {
             break;
         }
     }
     current
+}
+
+/// Streams longer than the difficulty tolerates relax their interior
+/// to every second note — sixteenths become eighths — keeping the
+/// run's first and last hits where they land. Runs inside the cap
+/// pass untouched: the cap is a ceiling, not a mower. This runs
+/// INSIDE the reduction chain, so the level below thins from the
+/// disciplined set and the nesting invariant survives by
+/// construction.
+fn discipline_bursts(notes: Vec<&MasterNote>, max_burst_events: usize) -> Vec<&MasterNote> {
+    if notes.len() < 2 || max_burst_events < 2 {
+        return notes;
+    }
+    let mut keep = vec![true; notes.len()];
+    let mut start = 0usize;
+    for i in 1..=notes.len() {
+        let joins = i < notes.len() && notes[i].time_s - notes[i - 1].time_s < BURST_GAP_S;
+        if !joins {
+            // The run spans [start, i).
+            if i - start > max_burst_events {
+                let mut index = start + 1;
+                while index < i - 1 {
+                    if (index - start) % 2 == 1 {
+                        keep[index] = false;
+                    }
+                    index += 1;
+                }
+            }
+            start = i;
+        }
+    }
+    notes
+        .into_iter()
+        .zip(keep)
+        .filter_map(|(note, kept)| kept.then_some(note))
+        .collect()
 }
 
 /// The escalation one thinning step runs under: which bars are hot,
@@ -1508,27 +1559,31 @@ mod tests {
         {}
     }
 
-    /// A melody hammering ONE pitch in sixteenths — the machine-gun
-    /// shape that used to map straight onto a single lane. Strength
-    /// stays below every chord threshold so the property is about
-    /// single notes, and the tones are short so nothing sustains.
-    fn repeated_pitch_analysis() -> SongAnalysis {
+    /// A melody hammering ONE pitch in sixteenth-note bursts — the
+    /// machine-gun shape that used to map straight onto a single
+    /// lane. Strength stays below every chord threshold so the
+    /// property is about single notes, and the tones are short so
+    /// nothing sustains. `groups` bursts of `per_group` sixteenths,
+    /// one burst every two bars.
+    fn sixteenth_bursts(groups: usize, per_group: usize) -> SongAnalysis {
         let beat = 0.5; // 120 BPM
         let mut melody = Vec::new();
         let mut onsets = Vec::new();
-        for k in 0..64 {
-            let time_s = 1.0 + f64::from(k) * beat / 4.0;
-            melody.push(MelodyNote {
-                time_s,
-                end_s: time_s + 0.06,
-                midi: 64.0,
-                strength: 0.5,
-            });
-            onsets.push(Onset {
-                time_s,
-                strength: 0.5,
-                brightness: 0.5,
-            });
+        for group in 0..groups {
+            for k in 0..per_group {
+                let time_s = 1.0 + group as f64 * 8.0 * beat + k as f64 * beat / 4.0;
+                melody.push(MelodyNote {
+                    time_s,
+                    end_s: time_s + 0.06,
+                    midi: 64.0,
+                    strength: 0.5,
+                });
+                onsets.push(Onset {
+                    time_s,
+                    strength: 0.5,
+                    brightness: 0.5,
+                });
+            }
         }
         let beats: Vec<f64> = (0..118).map(|i| 1.0 + f64::from(i) * beat).collect();
         SongAnalysis {
@@ -1542,6 +1597,11 @@ mod tests {
             duration_s: 60.0,
             melody,
         }
+    }
+
+    /// Short bursts that fit inside every burst cap.
+    fn repeated_pitch_analysis() -> SongAnalysis {
+        sixteenth_bursts(8, 12)
     }
 
     #[test]
@@ -1606,6 +1666,57 @@ mod tests {
                 pair[0].time
             );
         }
+    }
+
+    /// The longest run of consecutive events under the burst gap.
+    fn longest_burst(notes: &[ChartNote]) -> usize {
+        let mut longest = 1usize;
+        let mut run = 1usize;
+        for pair in notes.windows(2) {
+            let gap = pair[1].time - pair[0].time;
+            if gap > 0.0 && gap < BURST_GAP_S {
+                run += 1;
+                longest = longest.max(run);
+            } else if gap > 0.0 {
+                run = 1;
+            }
+        }
+        longest
+    }
+
+    #[test]
+    fn over_cap_streams_relax_to_eighths() {
+        // One unbroken 64-event sixteenth stream — longer than any
+        // difficulty tolerates.
+        let chart = generate_chart(&sixteenth_bursts(1, 64), &meta());
+        for difficulty in Difficulty::ALL {
+            let profile = DifficultyProfile::for_difficulty(difficulty);
+            let notes = &chart.chart_for(difficulty).unwrap().notes;
+            assert!(
+                longest_burst(notes) <= profile.max_burst_events,
+                "{difficulty}: burst of {} events exceeds the cap of {}",
+                longest_burst(notes),
+                profile.max_burst_events
+            );
+        }
+        // The stream is relaxed, not deleted: expert still carries a
+        // substantial run of eighths where the sixteenths were.
+        let expert = &chart.chart_for(Difficulty::Expert).unwrap().notes;
+        assert!(expert.len() >= 30, "expert kept {} notes", expert.len());
+    }
+
+    #[test]
+    fn streams_inside_the_cap_survive_at_full_speed() {
+        // Twelve-event bursts sit under expert's cap and must come
+        // through untouched — the cap is a ceiling, not a mower.
+        let chart = generate_chart(&repeated_pitch_analysis(), &meta());
+        let expert = &chart.chart_for(Difficulty::Expert).unwrap().notes;
+        assert!(
+            expert
+                .windows(2)
+                .any(|p| p[1].time - p[0].time > 0.0 && p[1].time - p[0].time < BURST_GAP_S),
+            "sub-cap sixteenth bursts must keep their speed on expert"
+        );
     }
 
     #[test]

@@ -14,6 +14,17 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.6] - 2026-08-30
+
+### Changed
+
+- Streams have a per-difficulty length budget: runs of sixteenths
+  longer than the difficulty tolerates (expert 24 events, hard 10)
+  relax their interior to eighths, first and last hits kept. The
+  imported library carried unbroken machine-gun runs of up to 55
+  events under 0.13 s; a stream inside the budget passes untouched —
+  the cap is a ceiling, not a mower.
+
 ## [0.12.5] - 2026-08-30
 
 ### Fixed
