@@ -84,6 +84,26 @@ impl SortMode {
     }
 }
 
+impl SortMode {
+    /// Parse a persisted label (the inverse of [`SortMode::label`],
+    /// case-insensitive). `None` for anything unknown, so a mangled
+    /// settings file falls back instead of panicking.
+    #[must_use]
+    pub fn from_label(label: &str) -> Option<SortMode> {
+        match label.to_lowercase().as_str() {
+            "standard" => Some(SortMode::Standard),
+            "title" => Some(SortMode::Title),
+            "artist" => Some(SortMode::Artist),
+            "genre" => Some(SortMode::Genre),
+            "length" => Some(SortMode::Length),
+            "best" => Some(SortMode::Best),
+            "notes" => Some(SortMode::Notes),
+            "diff" => Some(SortMode::Diff),
+            _ => None,
+        }
+    }
+}
+
 /// What a click on a column header does: a new column sorts by it in
 /// its default direction, the ACTIVE column flips the direction —
 /// the convention of every library UI. Standard has no direction to
@@ -246,6 +266,54 @@ fn clip_chars(text: &str, max: usize) -> String {
     out
 }
 
+/// The status line's text for the current view state.
+fn status_text(view: &BrowserView) -> String {
+    let direction = if view.flipped { " (reversed)" } else { "" };
+    if view.searching {
+        format!(
+            "SEARCH: {}_   ({} match{})   ESC to close",
+            view.filter,
+            view.order.len(),
+            if view.order.len() == 1 { "" } else { "es" }
+        )
+    } else if view.filter.is_empty() {
+        format!("sort {}{direction}   F to search", view.sort.label())
+    } else {
+        format!(
+            "sort {}{direction}   filter: {} ({} match{})",
+            view.sort.label(),
+            view.filter,
+            view.order.len(),
+            if view.order.len() == 1 { "" } else { "es" }
+        )
+    }
+}
+
+/// A caption's label: the active column carries the direction marker.
+fn caption_label(text: &str, mode: SortMode, view: &BrowserView) -> String {
+    if view.sort == mode {
+        format!("{text} {}", if view.flipped { "^" } else { "v" })
+    } else {
+        text.to_owned()
+    }
+}
+
+/// Where the cursor goes after the view rebuilt: typing a filter
+/// selects the FIRST match (the search expectation: type, Enter,
+/// play), any other change keeps the cursor on its song.
+fn cursor_after_change(
+    filter_changed: bool,
+    old_order: &[usize],
+    cursor: usize,
+    new_order: &[usize],
+) -> usize {
+    if filter_changed {
+        0
+    } else {
+        stable_cursor(old_order, cursor, new_order)
+    }
+}
+
 /// `m:ss` for a duration column.
 fn length_label(duration_s: Option<f64>) -> String {
     duration_s.map_or_else(
@@ -262,6 +330,7 @@ impl Plugin for SongSelectPlugin {
         app.init_resource::<SelectedDifficulty>()
             .init_resource::<BrowserCursor>()
             .init_resource::<BrowserView>()
+            .add_systems(Startup, load_browser_prefs)
             .add_systems(OnEnter(AppState::SongSelect), spawn_browser)
             .add_systems(
                 Update,
@@ -295,6 +364,14 @@ struct SongTitle(usize);
 #[derive(Component)]
 struct SortHeader(SortMode);
 
+/// The sort/search status line.
+#[derive(Component)]
+struct StatusLine;
+
+/// The dimmed "no match" hint row inside an empty list.
+#[derive(Component)]
+struct EmptyHint;
+
 /// A row's artist text, in the right-hand column.
 #[derive(Component)]
 struct SongArtist(usize);
@@ -316,36 +393,8 @@ const COL_NOTES: f32 = 56.0;
 const COL_RATING: f32 = 62.0;
 const COL_BEST: f32 = 92.0;
 
-fn spawn_browser(
-    mut commands: Commands,
-    font: Res<UiFont>,
-    library: Res<SongLibrary>,
-    mut cursor: ResMut<BrowserCursor>,
-    mut view: ResMut<BrowserView>,
-    scores: Res<ScoreBoard>,
-    selected: Res<SelectedDifficulty>,
-) {
-    let difficulty = selected.0;
-    let order = build_order(
-        &library.entries,
-        view.sort,
-        view.flipped,
-        difficulty,
-        &view.filter,
-        |entry| {
-            scores
-                .best(&entry.title, &entry.artist, difficulty)
-                .map(|b| b.score)
-        },
-    );
-    // Bypass change detection: this is the render of the view, not an
-    // edit to it — marking it changed would retrigger sync_view.
-    let raw = view.bypass_change_detection();
-    raw.order = order;
-    if cursor.0 >= raw.order.len() {
-        cursor.0 = 0;
-    }
-    spawn_browser_impl(&mut commands, &font, &library, raw, &scores, difficulty);
+fn spawn_browser(mut commands: Commands, font: Res<UiFont>, view: Res<BrowserView>) {
+    spawn_shell(&mut commands, &font, &view);
 }
 
 /// One SMALL-font cell of fixed width.
@@ -365,46 +414,17 @@ fn cell(row: &mut ChildSpawnerCommands, font: &UiFont, marker: usize, text: Stri
     ));
 }
 
-fn spawn_browser_impl(
-    commands: &mut Commands,
-    font: &UiFont,
-    library: &SongLibrary,
-    view: &BrowserView,
-    scores: &ScoreBoard,
-    selected: Difficulty,
-) {
+fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
     commands
         .spawn((BrowserScreen, ui_kit::screen_root()))
         .with_children(|parent| {
             ui_kit::header(parent, font, "SONG SELECT", "pick a track and a difficulty");
             // Sort / search status line.
-            let direction = if view.flipped { " (reversed)" } else { "" };
-            let status = if view.searching {
-                format!(
-                    "SEARCH: {}_   ({} match{})   ESC to close",
-                    view.filter,
-                    view.order.len(),
-                    if view.order.len() == 1 { "" } else { "es" }
-                )
-            } else if view.filter.is_empty() {
-                format!("sort {}{direction}   F to search", view.sort.label())
-            } else {
-                format!(
-                    "sort {}{direction}   filter: {} ({} match{})",
-                    view.sort.label(),
-                    view.filter,
-                    view.order.len(),
-                    if view.order.len() == 1 { "" } else { "es" }
-                )
-            };
             parent.spawn((
-                Text::new(font.safe(&status)),
+                StatusLine,
+                Text::new(font.safe(&status_text(view))),
                 font.text(ui_kit::SMALL),
-                TextColor(if view.searching {
-                    palette::BRAND
-                } else {
-                    palette::dimmed(palette::TEXT_DIM, 0.85)
-                }),
+                TextColor(palette::dimmed(palette::TEXT_DIM, 0.85)),
                 Node {
                     margin: UiRect::bottom(px(6)),
                     ..default()
@@ -438,11 +458,7 @@ fn spawn_browser_impl(
                             node.flex_grow = 1.0;
                             node.min_width = px(0.0);
                         }
-                        let label = if active {
-                            format!("{text} {}", if view.flipped { "^" } else { "v" })
-                        } else {
-                            text.to_owned()
-                        };
+                        let label = caption_label(text, mode, view);
                         head.spawn((
                             SortHeader(mode),
                             Button,
@@ -464,80 +480,7 @@ fn spawn_browser_impl(
                     caption(head, "DIFF", SortMode::Diff, Some(COL_RATING));
                     caption(head, "BEST", SortMode::Best, Some(COL_BEST));
                 });
-            parent
-                .spawn((SongList, ui_kit::scroll_panel(ui_kit::PANEL_WIDE)))
-                .with_children(|panel| {
-                    for (position, song_index) in view.order.iter().enumerate() {
-                        let Some(entry) = library.entries.get(*song_index) else {
-                            continue;
-                        };
-                        // Facts follow the SELECTED difficulty; a song
-                        // that lacks it shows its first one instead.
-                        let effective = if entry.difficulties.contains(&selected) {
-                            selected
-                        } else {
-                            entry.difficulties.first().copied().unwrap_or(selected)
-                        };
-                        let best = scores
-                            .best(&entry.title, &entry.artist, effective)
-                            .map_or_else(|| "-".to_owned(), |b| b.score.to_string());
-                        panel
-                            .spawn((SongRow(position), Button, ui_kit::row()))
-                            .with_children(|row| {
-                                row.spawn((
-                                    SongTitle(position),
-                                    Text::new(font.safe(&clip_chars(&entry.title, 32))),
-                                    font.text(ui_kit::ROW),
-                                    TextColor(palette::TEXT_DIM),
-                                    TextLayout::default().with_no_wrap(),
-                                    Node {
-                                        flex_grow: 1.0,
-                                        min_width: px(0.0),
-                                        overflow: Overflow::clip(),
-                                        ..default()
-                                    },
-                                ));
-                                cell(
-                                    row,
-                                    font,
-                                    position,
-                                    font.safe(&clip_chars(&entry.artist, 18)),
-                                    COL_ARTIST,
-                                );
-                                cell(
-                                    row,
-                                    font,
-                                    position,
-                                    font.safe(&clip_chars(
-                                        entry.genre.as_deref().unwrap_or("-"),
-                                        11,
-                                    )),
-                                    COL_GENRE,
-                                );
-                                cell(row, font, position, length_label(entry.duration_s), COL_LEN);
-                                cell(
-                                    row,
-                                    font,
-                                    position,
-                                    entry
-                                        .note_count(effective)
-                                        .map_or_else(|| "-".to_owned(), |n| n.to_string()),
-                                    COL_NOTES,
-                                );
-                                cell(
-                                    row,
-                                    font,
-                                    position,
-                                    entry.rating(effective).map_or_else(
-                                        || "-".to_owned(),
-                                        |r| "*".repeat(usize::from(r)),
-                                    ),
-                                    COL_RATING,
-                                );
-                                cell(row, font, position, best, COL_BEST);
-                            });
-                    }
-                });
+            parent.spawn((SongList, ui_kit::scroll_panel(ui_kit::PANEL_WIDE)));
             parent.spawn((
                 DetailText,
                 Text::new(""),
@@ -572,10 +515,13 @@ fn spawn_browser_impl(
 /// Esc that closes the search is not also read as "back to menu" -
 /// `browser_input` still sees the searching flag of this frame.
 fn search_sort_input(
+    mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
     mut typed: MessageReader<bevy::input::keyboard::KeyboardInput>,
     mut view: ResMut<BrowserView>,
     headers: Query<(&SortHeader, &Interaction), Changed<Interaction>>,
+    mut settings: ResMut<crate::config::Settings>,
+    sfx: Res<crate::sfx::SfxLib>,
 ) {
     if view.searching {
         // Printable keys EDIT THE FILTER - every letter shortcut is
@@ -594,10 +540,12 @@ fn search_sort_input(
                 }
             } else if event.logical_key == bevy::input::keyboard::Key::Space {
                 view.filter.push(' ');
+            } else if event.logical_key == bevy::input::keyboard::Key::Backspace {
+                // Handled here rather than via `just_pressed` so the
+                // OS key repeat erases while held, like every text
+                // field.
+                view.filter.pop();
             }
-        }
-        if keys.just_pressed(KeyCode::Backspace) {
-            view.filter.pop();
         }
         // Esc leaves search AND clears it: the recoverable state is
         // "the whole list", not "a filter you can no longer see".
@@ -624,11 +572,14 @@ fn search_sort_input(
     }
     if open_search {
         view.searching = true;
+        crate::sfx::play(&mut commands, &sfx.ui_move, settings.sfx_volume);
     }
+    let mut sorted = false;
     if keys.just_pressed(KeyCode::KeyS) {
         let next = view.sort.next();
         view.sort = next;
         view.flipped = false;
+        sorted = true;
     }
     // Column headers sort on click; clicking the active one flips
     // the direction - the convention of every library UI.
@@ -637,7 +588,17 @@ fn search_sort_input(
             let (sort, flipped) = sort_click(view.sort, view.flipped, header.0);
             view.sort = sort;
             view.flipped = flipped;
+            sorted = true;
         }
+    }
+    // A sort ACTION blips like every other menu key and persists.
+    // Deliberately an explicit flag, not `view.is_changed()`: that
+    // also sees this system's own filter edits, and a blip per typed
+    // letter is noise, not feedback.
+    if sorted {
+        crate::sfx::play(&mut commands, &sfx.ui_move, settings.sfx_volume);
+        settings.browser_sort = view.sort.label().to_lowercase();
+        settings.browser_sort_reversed = view.flipped;
     }
 }
 
@@ -654,6 +615,7 @@ fn browser_input(
     mut next_state: ResMut<NextState<AppState>>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
+    mut moved: MessageReader<bevy::window::CursorMoved>,
     rows: Query<(&SongRow, &Interaction), Changed<Interaction>>,
     time: Res<Time>,
     mut status: ResMut<crate::import::ImportStatus>,
@@ -688,7 +650,15 @@ fn browser_input(
     // menu. This list used to need two clicks (one to select, one to
     // start) and ignored hover entirely.
     let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
-    if let Some(index) = pointer.hovered {
+    // Hover selects only on REAL mouse motion. A freshly rebuilt row
+    // fires Hovered under a resting pointer, and before this gate a
+    // typed letter could yank the selection to wherever the mouse
+    // happened to lie. A click is always deliberate and always
+    // counts.
+    let mouse_moved = moved.read().next().is_some();
+    if let Some(index) = pointer.hovered
+        && (mouse_moved || pointer.clicked)
+    {
         cursor.0 = index;
     }
     let clicked_selected = pointer.clicked;
@@ -750,7 +720,11 @@ fn browser_input(
                 status.0 = "built-in songs cannot be deleted".to_owned();
             }
             crate::library::SongSource::File { chart_path, .. } => {
-                if delete_armed.0 == Some(cursor.0) {
+                // Armed by LIBRARY index: a re-sort between the two
+                // presses moves positions, and the confirmation was
+                // asked about a song, not a row number.
+                let song_index = view.order.get(cursor.0).copied();
+                if delete_armed.0.is_some() && delete_armed.0 == song_index {
                     let title = entry.title.clone();
                     match crate::library::remove_song_files(chart_path) {
                         Ok(()) => {
@@ -763,7 +737,7 @@ fn browser_input(
                     }
                     *delete_armed = (None, 0.0);
                 } else {
-                    *delete_armed = (Some(cursor.0), 3.0);
+                    *delete_armed = (song_index, 3.0);
                     status.0 = format!(
                         "delete \"{}\" and its files? press again to confirm",
                         entry.title
@@ -775,6 +749,106 @@ fn browser_input(
     if back {
         next_state.set(AppState::MainMenu);
     }
+}
+
+/// Fill the (already spawned) list with the view's rows. Rows are
+/// the ONLY part of the screen that rebuilds — header, footer, panel
+/// and scroll state stay alive, which is what stopped every keypress
+/// from re-laying-out the whole screen (the "feels buggy" core).
+#[allow(clippy::too_many_arguments)] // plain helper, one call site
+fn spawn_rows_into(
+    commands: &mut Commands,
+    list: Entity,
+    font: &UiFont,
+    library: &SongLibrary,
+    view: &BrowserView,
+    scores: &ScoreBoard,
+    selected: Difficulty,
+) {
+    commands.entity(list).despawn_children();
+    commands.entity(list).with_children(|panel| {
+        for (position, song_index) in view.order.iter().enumerate() {
+            let Some(entry) = library.entries.get(*song_index) else {
+                continue;
+            };
+            // Facts follow the SELECTED difficulty; a song
+            // that lacks it shows its first one instead.
+            let effective = if entry.difficulties.contains(&selected) {
+                selected
+            } else {
+                entry.difficulties.first().copied().unwrap_or(selected)
+            };
+            let best = scores
+                .best(&entry.title, &entry.artist, effective)
+                .map_or_else(|| "-".to_owned(), |b| b.score.to_string());
+            panel
+                .spawn((SongRow(position), Button, ui_kit::row()))
+                .with_children(|row| {
+                    row.spawn((
+                        SongTitle(position),
+                        Text::new(font.safe(&clip_chars(&entry.title, 32))),
+                        font.text(ui_kit::ROW),
+                        TextColor(palette::TEXT_DIM),
+                        TextLayout::default().with_no_wrap(),
+                        Node {
+                            flex_grow: 1.0,
+                            min_width: px(0.0),
+                            overflow: Overflow::clip(),
+                            ..default()
+                        },
+                    ));
+                    cell(
+                        row,
+                        font,
+                        position,
+                        font.safe(&clip_chars(&entry.artist, 18)),
+                        COL_ARTIST,
+                    );
+                    cell(
+                        row,
+                        font,
+                        position,
+                        font.safe(&clip_chars(entry.genre.as_deref().unwrap_or("-"), 11)),
+                        COL_GENRE,
+                    );
+                    cell(row, font, position, length_label(entry.duration_s), COL_LEN);
+                    cell(
+                        row,
+                        font,
+                        position,
+                        entry
+                            .note_count(effective)
+                            .map_or_else(|| "-".to_owned(), |n| n.to_string()),
+                        COL_NOTES,
+                    );
+                    cell(
+                        row,
+                        font,
+                        position,
+                        entry
+                            .rating(effective)
+                            .map_or_else(|| "-".to_owned(), |r| "*".repeat(usize::from(r))),
+                        COL_RATING,
+                    );
+                    cell(row, font, position, best, COL_BEST);
+                });
+        }
+
+        // An empty result must SAY so; a bare empty panel reads as a
+        // broken screen, not as a search with no matches.
+        if view.order.is_empty() {
+            panel.spawn((
+                EmptyHint,
+                Text::new(font.safe(&format!("no match for \"{}\"  -  ESC clears", view.filter))),
+                font.text(ui_kit::ROW),
+                TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
+                Node {
+                    margin: UiRect::all(px(12.0)),
+                    ..default()
+                },
+            ));
+        }
+    });
 }
 
 /// Build the [`LoadedSong`] for an entry. Built-ins come from cache;
@@ -809,17 +883,88 @@ pub fn prepare_song(entry: &SongEntry, builtins: &BuiltinSongs) -> Result<Loaded
 
 /// Keep rows and the detail block in sync with the cursor.
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
+/// Colour queries for the row texts, factored so clippy's type cap
+/// and Bevy's disjointness proofs both hold.
+type TitleColors<'w, 's> = Query<
+    'w,
+    's,
+    (&'static SongTitle, &'static mut TextColor),
+    (
+        Without<SongArtist>,
+        Without<SortHeader>,
+        Without<StatusLine>,
+    ),
+>;
+/// See [`TitleColors`].
+type ArtistColors<'w, 's> = Query<
+    'w,
+    's,
+    (&'static SongArtist, &'static mut TextColor),
+    (Without<SongTitle>, Without<SortHeader>, Without<StatusLine>),
+>;
+
+#[allow(clippy::too_many_arguments, clippy::type_complexity)] // Bevy system
 fn refresh_browser(
     library: Res<SongLibrary>,
     view: Res<BrowserView>,
     cursor: Res<BrowserCursor>,
     selected: Res<SelectedDifficulty>,
     scores: Res<ScoreBoard>,
+    font: Res<UiFont>,
     mut rows: Query<(&SongRow, &mut BackgroundColor, &mut BorderColor)>,
-    mut titles: Query<(&SongTitle, &mut TextColor), Without<SongArtist>>,
-    mut artists: Query<(&SongArtist, &mut TextColor), Without<SongTitle>>,
-    mut detail: Query<&mut Text, With<DetailText>>,
+    mut titles: TitleColors,
+    mut artists: ArtistColors,
+    mut texts: ParamSet<(
+        Query<&'static mut Text, With<DetailText>>,
+        Query<
+            (&'static mut Text, &'static mut TextColor),
+            (With<StatusLine>, Without<SongTitle>, Without<SongArtist>),
+        >,
+        Query<
+            (
+                &'static SortHeader,
+                &'static mut Text,
+                &'static mut TextColor,
+            ),
+            (Without<SongTitle>, Without<SongArtist>, Without<StatusLine>),
+        >,
+    )>,
 ) {
+    // Status line and column captions update IN PLACE - text writes
+    // only when the string actually changed, or every frame would
+    // re-shape the glyphs.
+    if let Ok((mut text, mut color)) = texts.p1().single_mut() {
+        let wanted = font.safe(&status_text(&view));
+        if text.0 != wanted {
+            text.0 = wanted;
+        }
+        color.0 = if view.searching {
+            palette::BRAND
+        } else {
+            palette::dimmed(palette::TEXT_DIM, 0.85)
+        };
+    }
+    for (header, mut text, mut color) in &mut texts.p2() {
+        let base = match header.0 {
+            SortMode::Title => "TITLE",
+            SortMode::Artist => "ARTIST",
+            SortMode::Genre => "GENRE",
+            SortMode::Length => "LEN",
+            SortMode::Notes => "NOTES",
+            SortMode::Diff => "DIFF",
+            SortMode::Best => "BEST",
+            SortMode::Standard => "",
+        };
+        let wanted = caption_label(base, header.0, &view);
+        if text.0 != wanted {
+            text.0 = wanted;
+        }
+        color.0 = if view.sort == header.0 {
+            palette::BRAND
+        } else {
+            palette::dimmed(palette::TEXT_DIM, 0.7)
+        };
+    }
     for (row, mut background, mut border) in &mut rows {
         let style = ui_kit::row_style(ui_kit::state_for(row.0 == cursor.0, false));
         background.0 = style.background;
@@ -838,7 +983,7 @@ fn refresh_browser(
     else {
         return;
     };
-    if let Ok(mut text) = detail.single_mut() {
+    if let Ok(mut text) = texts.p0().single_mut() {
         let duration = entry.duration_s.map_or_else(String::new, |d| {
             format!("  {}:{:02}", d as u32 / 60, d as u32 % 60)
         });
@@ -899,6 +1044,11 @@ fn rebuild_after_import(
 /// rebuild path — and it keeps the cursor on the same SONG across the
 /// rebuild, because a sort change that teleports the selection reads
 /// as a glitch.
+/// Rebuild the visible ROWS whenever what they show changed: the
+/// sort, the filter, the library (import/delete), or the selected
+/// difficulty (the cells follow it). Everything else on the screen
+/// updates in place and never respawns — a keypress must not
+/// re-layout the world.
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn sync_view(
     mut commands: Commands,
@@ -908,9 +1058,14 @@ fn sync_view(
     mut view: ResMut<BrowserView>,
     scores: Res<ScoreBoard>,
     selected: Res<SelectedDifficulty>,
-    screens: Query<Entity, With<BrowserScreen>>,
+    lists: Query<Entity, With<SongList>>,
+    fresh: Query<(), Added<SongList>>,
+    mut rendered: Local<Option<(Vec<usize>, Difficulty)>>,
+    mut last_filter: Local<String>,
 ) {
-    let dirty = (view.is_changed() && !view.is_added())
+    let entered = !fresh.is_empty();
+    let dirty = entered
+        || (view.is_changed() && !view.is_added())
         || (library.is_changed() && !library.is_added())
         || (selected.is_changed() && !selected.is_added());
     if !dirty {
@@ -929,13 +1084,37 @@ fn sync_view(
                 .map(|b| b.score)
         },
     );
+    let filter_changed = *last_filter != view.filter;
+    last_filter.clone_from(&view.filter);
     let raw = view.bypass_change_detection();
-    cursor.0 = stable_cursor(&raw.order, cursor.0, &order);
+    cursor.0 = cursor_after_change(filter_changed, &raw.order, cursor.0, &order);
     raw.order = order;
-    for entity in &screens {
-        commands.entity(entity).despawn();
+    // Rows rebuild only when their CONTENT changed — the order, or
+    // the difficulty the cells follow. A pure status change (opening
+    // the search) touches neither.
+    let key = (raw.order.clone(), difficulty);
+    if (entered || library.is_changed() || rendered.as_ref() != Some(&key))
+        && let Ok(list) = lists.single()
+    {
+        spawn_rows_into(
+            &mut commands,
+            list,
+            &font,
+            &library,
+            raw,
+            &scores,
+            difficulty,
+        );
+        *rendered = Some(key);
     }
-    spawn_browser_impl(&mut commands, &font, &library, raw, &scores, difficulty);
+}
+
+/// Restore the persisted sort. The filter deliberately starts empty.
+fn load_browser_prefs(settings: Res<crate::config::Settings>, mut view: ResMut<BrowserView>) {
+    if let Some(sort) = SortMode::from_label(&settings.browser_sort) {
+        view.sort = sort;
+        view.flipped = settings.browser_sort_reversed && sort != SortMode::Standard;
+    }
 }
 
 fn despawn_browser(mut commands: Commands, entities: Query<Entity, With<BrowserScreen>>) {
@@ -1325,6 +1504,56 @@ mod view_tests {
             |_| None,
         );
         assert_eq!(*order.last().expect("non-empty"), 3);
+    }
+
+    #[test]
+    fn typing_a_filter_selects_the_first_match() {
+        // The search expectation: type, Enter, play. Any non-filter
+        // change keeps the cursor glued to its song instead.
+        // Cursor on song 2, which survives the narrowing at
+        // position 1 — so "first match" (0) and "follow the song"
+        // (1) give DIFFERENT answers and the branch is really pinned.
+        let old = vec![3, 1, 4, 2];
+        let narrowed = vec![4, 2];
+        assert_eq!(
+            cursor_after_change(true, &old, 3, &narrowed),
+            0,
+            "a filter change selects the first match"
+        );
+        assert_eq!(
+            cursor_after_change(false, &old, 3, &narrowed),
+            1,
+            "a non-filter change follows the song"
+        );
+        let resorted = vec![2, 4, 1, 3];
+        assert_eq!(
+            cursor_after_change(false, &old, 2, &resorted),
+            1,
+            "a sort change follows the song"
+        );
+    }
+
+    #[test]
+    fn every_sort_label_round_trips_through_persistence() {
+        // The label is what settings.json stores; a mode whose label
+        // does not parse back would silently reset the sort on the
+        // next launch.
+        let mut mode = SortMode::Standard;
+        loop {
+            assert_eq!(
+                SortMode::from_label(mode.label()),
+                Some(mode),
+                "label {} must round-trip",
+                mode.label()
+            );
+            mode = mode.next();
+            if mode == SortMode::Standard {
+                break;
+            }
+        }
+        assert_eq!(SortMode::from_label("TITLE"), Some(SortMode::Title));
+        assert_eq!(SortMode::from_label("garbage"), None);
+        assert_eq!(SortMode::from_label(""), None);
     }
 
     #[test]

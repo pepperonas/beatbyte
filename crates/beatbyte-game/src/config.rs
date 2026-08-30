@@ -60,6 +60,14 @@ pub struct Settings {
     pub input_map: InputMap,
     /// The stage theme id, or "auto" to rotate per song.
     pub theme: String,
+    /// The song browser's sort column (a [`crate::song_select::SortMode`]
+    /// label, lowercase). The filter is deliberately NOT persisted: an
+    /// invisible stale filter across sessions is a trap.
+    #[serde(default = "default_browser_sort")]
+    pub browser_sort: String,
+    /// Whether that sort runs reversed.
+    #[serde(default)]
+    pub browser_sort_reversed: bool,
 }
 
 impl Default for Settings {
@@ -80,6 +88,8 @@ impl Default for Settings {
             fullscreen: false,
             input_map: InputMap::default(),
             theme: "auto".to_owned(),
+            browser_sort: default_browser_sort(),
+            browser_sort_reversed: false,
         }
     }
 }
@@ -105,7 +115,15 @@ impl Settings {
         if self.theme != "auto" && crate::theme::Theme::by_id(&self.theme).is_none() {
             self.theme = "auto".to_owned();
         }
+        if crate::song_select::SortMode::from_label(&self.browser_sort).is_none() {
+            self.browser_sort = default_browser_sort();
+        }
     }
+}
+
+/// The browser's default sort label.
+fn default_browser_sort() -> String {
+    "standard".to_owned()
 }
 
 fn clean(value: f32, min: f32, max: f32, fallback: f32) -> f32 {
@@ -219,6 +237,22 @@ fn apply_settings(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+    #[test]
+    fn a_mangled_browser_sort_falls_back_and_a_real_one_survives() {
+        let mut s = super::Settings {
+            browser_sort: "Artist".to_owned(), // case from an older write
+            browser_sort_reversed: true,
+            ..Default::default()
+        };
+        s.sanitize();
+        assert_eq!(s.browser_sort, "Artist", "a parseable label is kept");
+        assert!(s.browser_sort_reversed, "the direction is a free bool");
+
+        s.browser_sort = "bogus".to_owned();
+        s.sanitize();
+        assert_eq!(s.browser_sort, "standard", "unknown labels fall back");
+    }
+
     use super::Settings;
 
     /// Forward compatibility: a settings file written by a NEWER

@@ -14,6 +14,35 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.4] - 2026-08-30
+
+### Fixed
+
+- The song browser no longer rebuilds the whole screen on every
+  keystroke, sort click or difficulty step. The screen spawns once;
+  the status line, header captions and details update in place, and
+  the rows respawn only when their content (order or difficulty)
+  actually changes. Scroll position survives typing.
+- The resting mouse no longer steals the selection: hover only
+  selects when the pointer actually moved, so typing a search or
+  stepping the difficulty cannot yank the cursor to wherever the
+  mouse happens to lie.
+- Delete-arming binds to the song, not to a view position. Sorting
+  or filtering between the two Backspace presses can no longer point
+  the armed deletion at a different track.
+
+### Changed
+
+- Typing in the search selects the first match (type, Enter, play);
+  sort changes still keep the selection on its song.
+- An empty search result says so: `no match — ESC clears` instead of
+  a bare panel.
+- Sort mode and direction persist in `settings.json` (the filter
+  deliberately does not — an invisible stale filter across sessions
+  is a trap). Sort, search and header clicks give the same audio
+  blip as every other menu key.
+- Backspace in the search field repeats when held.
+
 ## [0.12.3] - 2026-08-30
 
 ### Fixed

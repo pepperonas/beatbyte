@@ -140,7 +140,7 @@ fn is_stray_strum(event: &SessionEvent) -> bool {
 }
 
 /// Play a one-shot effect at the configured volume.
-fn play(commands: &mut Commands, handle: &Handle<AudioSource>, volume: f32) {
+pub(crate) fn play(commands: &mut Commands, handle: &Handle<AudioSource>, volume: f32) {
     commands.spawn((
         AudioPlayer::new(handle.clone()),
         PlaybackSettings::DESPAWN.with_volume(Volume::Linear(volume)),

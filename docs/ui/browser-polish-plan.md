@@ -1,5 +1,8 @@
 # The song browser, made solid
 
+**Executed in full, 2026-08-30 (v0.12.4)** — every P below landed;
+verification per item in the roadmap entry.
+
 Diagnosis and plan, 2026-08-30. The browser gained sorting, search and
 seven fact columns in two fast rounds; the user's verdict — better,
 but still buggy and not optimal — is correct, and the causes are

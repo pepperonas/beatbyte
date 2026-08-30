@@ -206,21 +206,18 @@ fn enter_shot_state(
     // marker only exists when a sort is active, so without this it
     // could only be argued about, not seen.
     if let Ok(raw) = std::env::var("BEATBYTE_SHOT_SORT") {
-        use crate::song_select::SortMode;
-        let mode = match raw.to_lowercase().as_str() {
-            "title" => Some(SortMode::Title),
-            "artist" => Some(SortMode::Artist),
-            "genre" => Some(SortMode::Genre),
-            "length" => Some(SortMode::Length),
-            "notes" => Some(SortMode::Notes),
-            "diff" => Some(SortMode::Diff),
-            "best" => Some(SortMode::Best),
-            _ => None,
-        };
-        match mode {
+        match crate::song_select::SortMode::from_label(&raw) {
             Some(mode) => view.sort = mode,
             None => error!("unknown BEATBYTE_SHOT_SORT `{raw}`"),
         }
+    }
+    // Photograph the browser mid-search - the search prompt, the
+    // first-match selection and the "no match" hint only exist while
+    // a filter is typed, so without this they could only be argued
+    // about, not seen.
+    if let Ok(raw) = std::env::var("BEATBYTE_SHOT_SEARCH") {
+        view.searching = true;
+        view.filter = raw.to_lowercase();
     }
     next.set(target.0);
 }

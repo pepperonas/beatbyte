@@ -308,6 +308,20 @@ fn checkable_badges_state_the_truth() {
         "the MSRV badge does not say {msrv}"
     );
 
+    // The tests badge quotes the same total the command line does
+    // (table sum + doc examples). It sat at 313 while the suite was
+    // at 422 — nothing about a wrong number looks wrong, so it is
+    // enforced now like the rest.
+    let doc_examples = read("crates/beatbyte-chart/src/lib.rs")
+        .matches("```")
+        .count()
+        / 2;
+    let total: usize = readme_test_table().iter().map(|(_, n)| n).sum::<usize>() + doc_examples;
+    assert!(
+        readme.contains(&format!("tests-{total}%20passing")),
+        "the tests badge does not say {total} passing"
+    );
+
     // Decision records.
     let adrs = fs::read_dir(repo().join("docs/decisions"))
         .expect("decisions directory")

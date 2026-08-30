@@ -296,15 +296,23 @@ notes, 1-5 density rating, personal best — all per selected
 difficulty. Genre lives in the chart format (hash-neutral, validated),
 filled from audio tags on import and via `beatbyte-cli set-genre`.
 
-## Browser polish (PLANNED 2026-08-30 — docs/ui/browser-polish-plan.md)
+## Browser polish (DONE 2026-08-30, v0.12.4 — docs/ui/browser-polish-plan.md)
 
-User verdict on the new browser: better, still buggy. Causes
-confirmed in code, not guessed: full-screen respawn per keystroke
-(D1), resting-mouse hover yanking the selection after each respawn
-(D2), delete-arming bound to a view position instead of the song
-(D3), filter typing not selecting the first match (D4). Plan P1-P7 in
-the document; P1 (rows-only rebuild) first, it changes the structure
-the rest touch.
+User verdict on the new browser was "better, still buggy"; the causes
+were confirmed in code, not guessed, and all seven plan items landed:
+P1 rows-only rebuild (screen spawns once, status/captions/details
+update in place, rows respawn only on order/difficulty change — the
+scroll survives typing), P2 hover selects only when the pointer moved,
+P3 delete arms on the SONG not the view position, P4 filter typing
+selects the first match, P5 the empty result says so, P6 sort mode +
+direction persist in settings.json (the filter deliberately not), P7
+sort/search actions blip like every other menu key. Backspace repeats
+via the OS key-repeat stream. Verified: staged shots (sorted browser,
+live search with first-match selection, empty-search hint via new
+`BEATBYTE_SHOT_SEARCH`), autopilot on Maria (504/504 perfect), delete
+harness on a disposable song, three new pins mutation-checked (one
+fixture had to be sharpened — mutant and original coincided at
+position 0).
 
 ## Backlog (explicitly out of scope until after 1.0)
 
