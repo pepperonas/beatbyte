@@ -314,6 +314,24 @@ harness on a disposable song, three new pins mutation-checked (one
 fixture had to be sharpened — mutant and original coincided at
 position 0).
 
+## Difficulty redesign: hard + expert (PLANNED 2026-08-30 — docs/difficulty-redesign-plan.md)
+
+User commission: only medium is a designed difficulty — implement
+hard and expert properly and build the charts for the current tracks
+(algorithm first, then a by-hand optimization pass). Measured
+diagnosis over the 25 imported songs: hard is trivial and
+characterless (15/25 songs have zero HOPOs — the 0.20 s HOPO gap
+sits below hard's real gap distribution), expert is a raw
+transcription (median 106 same-lane machine-gun jacks per song, runs
+of up to 55 events under 0.125 s, almost no chords, no escalation
+target). Plan P1–P7 in the document: lane flow (jack-breaking) at
+the master level, burst discipline, percentile chords, hard identity
++ expert escalating toward the master, a `redesign` rollout tool
+that writes sibling versions (easy+medium carried over untouched),
+the per-song optimization pass, and autopilot proof via a new
+`BEATBYTE_AUTOPILOT_DIFFICULTY` switch. The ear gate stays the
+user's; per-song revert = pointer.
+
 ## Backlog (explicitly out of scope until after 1.0)
 
 Not started without a deliberate roadmap edit pulling them forward:
