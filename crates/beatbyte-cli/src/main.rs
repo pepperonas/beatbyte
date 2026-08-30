@@ -12,6 +12,7 @@ use beatbyte_chart::{ChartFile, GenerateMeta, Severity, generate_chart};
 use clap::{Parser, Subcommand};
 
 mod dossier;
+mod redesign;
 mod review;
 
 #[derive(Parser)]
@@ -107,6 +108,18 @@ enum Command {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Regenerate hard + expert as a new sibling version, keeping
+    /// easy + medium from the active version (the difficulty
+    /// redesign rollout; docs/difficulty-redesign-plan.md).
+    Redesign {
+        /// Path to the song's chart (the folder's ACTIVE version is
+        /// resolved from the pointer) — or, with `--all`, the
+        /// directory of song folders to roll over.
+        chart: PathBuf,
+        /// Treat the path as a directory of song folders.
+        #[arg(long)]
+        all: bool,
+    },
     /// Set a song's genre (display metadata; hash-neutral, so
     /// recorded sessions survive).
     SetGenre {
@@ -165,6 +178,13 @@ fn main() -> ExitCode {
             include_autopilot,
             out,
         ),
+        Command::Redesign { chart, all } => {
+            if all {
+                redesign::run_redesign_all(&chart)
+            } else {
+                redesign::run_redesign(&chart)
+            }
+        }
         Command::SetGenre { chart, genre } => set_genre(&chart, &genre),
         Command::Demo { out_dir } => demo(&out_dir),
     }

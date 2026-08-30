@@ -14,6 +14,20 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.9] - 2026-08-30
+
+### Added
+
+- `beatbyte-cli redesign <chart>` (and `--all` over a directory of
+  song folders): regenerates hard + expert from a fresh deterministic
+  analysis and writes the result as the folder's next sibling
+  version - easy and medium are carried note-for-note from the
+  active version, provenance records the parent, the pointer moves,
+  and per-song revert stays one pointer away. Legacy folder layouts
+  are skipped with a message; a tempo drift between the active chart
+  and the fresh analysis refuses to merge; an unchanged result
+  writes nothing.
+
 ## [0.12.8] - 2026-08-30
 
 ### Changed
