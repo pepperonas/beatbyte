@@ -36,6 +36,7 @@
 //! ```
 
 pub mod convert;
+pub mod escalation;
 pub mod generate;
 pub mod io;
 pub mod schema;

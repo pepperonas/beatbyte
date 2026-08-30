@@ -437,13 +437,13 @@ beatbyte-cli demo                  # render the built-in songs + charts
 ## Testing
 
 ```bash
-cargo test --workspace          # 392 tests
+cargo test --workspace          # 403 tests
 ```
 
 | Crate | Tests | Covers |
 |---|---:|---|
 | `beatbyte-core` | 78 | Timing windows to their exact boundaries, judgment, scoring, combos, HOPO and tap rules, the hype meter, the telemetry schema |
-| `beatbyte-chart` | 64 | Format validation, untrusted-input limits, chart generation, difficulty derivation, musical quantisation, chart versions |
+| `beatbyte-chart` | 75 | Format validation, untrusted-input limits, chart generation, difficulty derivation, musical quantisation, chart versions, energy-aware escalation |
 | `beatbyte-game` | 148 | UI kit contracts, settings persistence, library scanning, import naming, the X-plorer report decoder, texture geometry, the song ribbon, list scrolling |
 | `beatbyte-audio` | 58 | Onset detection, tempo estimation, melody contours, the song clock, the error-sound voices, real-file decoding for every advertised format |
 | `beatbyte-cli` | 13 | Review analytics and the design dossier: section windowing, evidence thresholds, hash binding, the mastery veto, write instructions |

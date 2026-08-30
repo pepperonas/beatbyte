@@ -161,6 +161,16 @@ documented step by step in
 explicit request): population percentiles, automated rollout/A-B
 infrastructure, ML preference and skill models, personalization.
 
+## The first graduation (2026-08-30)
+
+The loop produced its first generator improvement: the escalation
+pattern that won two by-ear A/Bs is now the generator's default
+(`beatbyte-chart::escalation`). This is the intended shape of
+progress — a pattern earns its place through the gate, then stops
+needing the gate for every new song. Chart versioning is what made it
+safe to try: existing files were untouched, and the pattern's first
+generator-born chart went into the library as an *inactive* version.
+
 ## The rule that outranks the loop
 
 From ADR-0009, unchanged and now structural: **metrics are a guard,

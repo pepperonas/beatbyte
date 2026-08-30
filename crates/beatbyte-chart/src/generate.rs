@@ -179,7 +179,7 @@ pub fn generate_difficulty(
     grid_origin_s: f64,
 ) -> ChartDef {
     let master = build_master(analysis, grid_origin_s);
-    let notes = derive_notes(analysis, profile, &master);
+    let notes = derive_notes(analysis, profile, &master, grid_origin_s);
     let phrases = place_phrases(analysis, &notes);
     ChartDef {
         difficulty: profile.difficulty,
@@ -326,17 +326,45 @@ fn reduction_chain<'a>(
     master: &'a [MasterNote],
     difficulty: Difficulty,
     analysis: &SongAnalysis,
+    grid_origin_s: f64,
 ) -> Vec<&'a MasterNote> {
+    // The song's own high ground, computed once (ADR-0011: the
+    // design pattern that won its by-ear A/B, graduated into the
+    // generator).
+    let hot_bars = crate::escalation::hot_bar_flags(analysis, grid_origin_s);
     let mut current: Vec<&MasterNote> = master.iter().collect();
-    // Difficulty::ALL is easy..expert; walk it hardest first.
+    // Difficulty::ALL is easy..expert; walk it hardest first. Each
+    // step escalates its hot bars toward the density of the level
+    // ABOVE it — selecting more of the parent set it thins from, so
+    // "medium is a subset of hard" survives by construction. Expert
+    // has nothing above it and stays uniform.
+    let mut previous_npb: Option<f64> = None;
     for &step in Difficulty::ALL.iter().rev() {
         let profile = DifficultyProfile::for_difficulty(step);
-        current = thin_to_target(&current, &profile, analysis);
+        current = thin_to_target(
+            &current,
+            &profile,
+            analysis,
+            previous_npb.map(|npb| Escalation {
+                hot_bars: &hot_bars,
+                hot_notes_per_beat: npb,
+                grid_origin_s,
+            }),
+        );
+        previous_npb = Some(profile.target_notes_per_beat);
         if step == difficulty {
             break;
         }
     }
     current
+}
+
+/// The escalation one thinning step runs under: which bars are hot,
+/// and the density they rise toward (the next difficulty's reading).
+struct Escalation<'a> {
+    hot_bars: &'a [bool],
+    hot_notes_per_beat: f64,
+    grid_origin_s: f64,
 }
 
 /// Thin the master to the difficulty's target density: keep the
@@ -353,6 +381,7 @@ fn thin_to_target<'a>(
     master: &[&'a MasterNote],
     profile: &DifficultyProfile,
     analysis: &SongAnalysis,
+    escalation: Option<Escalation<'_>>,
 ) -> Vec<&'a MasterNote> {
     let beat = analysis.beat_interval_s();
     let candidates: Vec<&'a MasterNote> = master
@@ -364,7 +393,35 @@ fn thin_to_target<'a>(
         return thin(master, profile.strength_floor, profile.min_spacing_s);
     }
     let beats = analysis.duration_s / beat;
-    let target = (profile.target_notes_per_beat * beats).round().max(1.0) as usize;
+
+    // Per-region budgets: hot bars rise toward the level above, cold
+    // bars keep the difficulty's own anchor density. With no hot bars
+    // this degenerates to exactly the uniform budget it replaces.
+    let is_hot = |time_s: f64| -> bool {
+        escalation.as_ref().is_some_and(|e| {
+            e.hot_bars
+                .get(crate::escalation::bar_of(time_s, e.grid_origin_s, beat))
+                .copied()
+                .unwrap_or(false)
+        })
+    };
+    let hot_beats = escalation.as_ref().map_or(0.0, |e| {
+        4.0 * e.hot_bars.iter().filter(|f| **f).count() as f64
+    });
+    let cold_beats = (beats - hot_beats).max(0.0);
+    let hot_npb = escalation
+        .as_ref()
+        .map_or(profile.target_notes_per_beat, |e| {
+            e.hot_notes_per_beat.max(profile.target_notes_per_beat)
+        });
+    let mut cold_budget = (profile.target_notes_per_beat * cold_beats)
+        .round()
+        .max(1.0) as usize;
+    let mut hot_budget = (hot_npb * hot_beats).round() as usize;
+    if hot_beats <= 0.0 {
+        cold_budget = (profile.target_notes_per_beat * beats).round().max(1.0) as usize;
+        hot_budget = 0;
+    }
 
     // Strongest first; ties by time so the order never depends on the
     // input's incidental ordering (determinism is a hard rule here).
@@ -380,11 +437,18 @@ fn thin_to_target<'a>(
             )
     });
 
-    let mut accepted_times: Vec<f64> = Vec::with_capacity(target);
-    let mut kept: Vec<&'a MasterNote> = Vec::with_capacity(target);
+    let mut accepted_times: Vec<f64> = Vec::with_capacity(cold_budget + hot_budget);
+    let mut kept: Vec<&'a MasterNote> = Vec::with_capacity(cold_budget + hot_budget);
+    let mut cold_used = 0usize;
+    let mut hot_used = 0usize;
     for note in ranked {
-        if kept.len() >= target {
-            break;
+        let hot = is_hot(note.time_s);
+        if hot {
+            if hot_used >= hot_budget {
+                continue;
+            }
+        } else if cold_used >= cold_budget {
+            continue;
         }
         // Spacing check against the nearest accepted neighbors.
         let position = accepted_times.partition_point(|t| *t < note.time_s);
@@ -399,6 +463,11 @@ fn thin_to_target<'a>(
         }
         accepted_times.insert(position, note.time_s);
         kept.push(note);
+        if hot {
+            hot_used += 1;
+        } else {
+            cold_used += 1;
+        }
     }
     kept.sort_by(|a, b| {
         a.time_s
@@ -415,9 +484,10 @@ fn derive_notes(
     analysis: &SongAnalysis,
     profile: &DifficultyProfile,
     master: &[MasterNote],
+    grid_origin_s: f64,
 ) -> Vec<ChartNote> {
     let lanes_used = i32::from(profile.lanes_used.clamp(1, LANE_COUNT as u8));
-    let kept = reduction_chain(master, profile.difficulty, analysis);
+    let kept = reduction_chain(master, profile.difficulty, analysis, grid_origin_s);
     // Place.
     let mut notes: Vec<ChartNote> = Vec::new();
     let mut previous_lane: Option<i32> = None;
@@ -852,7 +922,7 @@ mod tests {
     /// 60 s (strength alternating strong beats / weak offbeats,
     /// brightness sweeping low→high per bar), followed by a
     /// sixteenth-note run — the terrain auto-HOPO rules exist for.
-    fn analysis() -> SongAnalysis {
+    pub(super) fn analysis() -> SongAnalysis {
         let mut onsets = Vec::new();
         let beat = 0.5;
         for i in 0..240 {
@@ -1261,10 +1331,15 @@ mod tests {
         let refs: Vec<&MasterNote> = master.iter().collect();
         // One-shot: easy keeps a note medium drops — nesting broken.
         let one_shot = |d: Difficulty| -> Vec<f64> {
-            thin_to_target(&refs, &DifficultyProfile::for_difficulty(d), &analysis)
-                .iter()
-                .map(|n| n.time_s)
-                .collect()
+            thin_to_target(
+                &refs,
+                &DifficultyProfile::for_difficulty(d),
+                &analysis,
+                None,
+            )
+            .iter()
+            .map(|n| n.time_s)
+            .collect()
         };
         let broken = one_shot(Difficulty::Easy)
             .iter()
@@ -1275,7 +1350,7 @@ mod tests {
         );
         // The chain cannot break it: thinning only ever removes.
         let chained = |d: Difficulty| -> Vec<f64> {
-            reduction_chain(&master, d, &analysis)
+            reduction_chain(&master, d, &analysis, 0.0)
                 .iter()
                 .map(|n| n.time_s)
                 .collect()
@@ -1530,5 +1605,150 @@ mod tests {
     fn quantize_snaps_only_within_window() {
         assert!((quantize(1.02, 0.0, 0.5, 0.07) - 1.0).abs() < 1e-9);
         assert!((quantize(1.2, 0.0, 0.5, 0.07) - 1.2).abs() < 1e-9);
+    }
+}
+
+#[cfg(test)]
+mod escalation_generation_tests {
+    use super::*;
+    use crate::escalation::hot_bar_flags;
+
+    /// The flat fixture from `tests`, with one loud 16-bar refrain
+    /// (32-64 s) pushed into the energy envelope.
+    fn hot_analysis() -> SongAnalysis {
+        let mut analysis = super::tests::analysis();
+        // energy_hop_s = 0.05 -> samples 640..1280 are 32 s .. 64 s.
+        for sample in &mut analysis.energy[640..1280] {
+            *sample = 1.0;
+        }
+        // Lower the floor so the refrain is high ground, not part of
+        // a uniformly loud song.
+        for sample in &mut analysis.energy[..640] {
+            *sample = 0.35;
+        }
+        analysis
+    }
+
+    fn notes_in(chart: &ChartDef, from_s: f64, to_s: f64) -> usize {
+        chart
+            .notes
+            .iter()
+            .filter(|n| n.time >= from_s && n.time < to_s)
+            .count()
+    }
+
+    #[test]
+    fn medium_rises_where_the_song_does_and_only_there() {
+        // The graduated pattern: refrains rise toward hard's density,
+        // verses keep the anchor. Compare the same song with and
+        // without its refrain being high ground.
+        let flat = super::tests::analysis();
+        let hot = hot_analysis();
+        assert!(
+            hot_bar_flags(&hot, 1.0).iter().any(|f| *f),
+            "the fixture's refrain must register as hot"
+        );
+        let profile = DifficultyProfile::for_difficulty(Difficulty::Medium);
+        let flat_chart = generate_difficulty(&flat, &profile, 1.0);
+        let hot_chart = generate_difficulty(&hot, &profile, 1.0);
+        let flat_refrain = notes_in(&flat_chart, 32.0, 64.0);
+        let hot_refrain = notes_in(&hot_chart, 32.0, 64.0);
+        assert!(
+            hot_refrain > flat_refrain,
+            "the refrain must densify: {flat_refrain} -> {hot_refrain}"
+        );
+        // And the verse must NOT densify - escalation is selective or
+        // it is nothing.
+        let flat_verse = notes_in(&flat_chart, 1.0, 31.0);
+        let hot_verse = notes_in(&hot_chart, 1.0, 31.0);
+        assert!(
+            hot_verse <= flat_verse + 2,
+            "the verse must keep breathing: {flat_verse} -> {hot_verse}"
+        );
+    }
+
+    #[test]
+    fn the_subset_invariant_survives_escalation() {
+        // "Leveling up is the same song with more of it": every
+        // medium note time must exist in hard. Escalation selects
+        // MORE of the parent set - it must never invent notes hard
+        // does not have.
+        let hot = hot_analysis();
+        let medium = generate_difficulty(
+            &hot,
+            &DifficultyProfile::for_difficulty(Difficulty::Medium),
+            1.0,
+        );
+        let hard = generate_difficulty(
+            &hot,
+            &DifficultyProfile::for_difficulty(Difficulty::Hard),
+            1.0,
+        );
+        let hard_times: std::collections::BTreeSet<u64> = hard
+            .notes
+            .iter()
+            .map(|n| (n.time * 1000.0).round() as u64)
+            .collect();
+        for note in &medium.notes {
+            let key = (note.time * 1000.0).round() as u64;
+            assert!(
+                hard_times.contains(&key),
+                "medium note at {}s does not exist in hard",
+                note.time
+            );
+        }
+    }
+
+    /// A fixture dense enough that EXPERT's budget genuinely thins:
+    /// sixteenth-note onsets for the whole minute (~480 candidates
+    /// against a budget of ~300). The plain fixture saturates -
+    /// every master note survives expert regardless - and a
+    /// saturated fixture made the first version of the test below
+    /// blind: forcing expert to escalate changed nothing it could
+    /// see, and the mutation stayed green.
+    fn dense(energy_hot: bool) -> SongAnalysis {
+        let mut analysis = super::tests::analysis();
+        analysis.onsets = (0..480)
+            .map(|i| beatbyte_core::music::Onset {
+                time_s: 1.0 + f64::from(i) * 0.125,
+                strength: 0.3 + 0.6 * ((i % 7) as f32 / 7.0),
+                brightness: (i % 16) as f32 / 16.0,
+            })
+            .collect();
+        if energy_hot {
+            for sample in &mut analysis.energy[..640] {
+                *sample = 0.35;
+            }
+            for sample in &mut analysis.energy[640..1280] {
+                *sample = 1.0;
+            }
+        }
+        analysis
+    }
+
+    #[test]
+    fn expert_never_escalates() {
+        // Expert is the fullest reading; there is no level above it
+        // to rise toward. Its notes must be identical whether the
+        // song has high ground or not.
+        let profile = DifficultyProfile::for_difficulty(Difficulty::Expert);
+        let flat = generate_difficulty(&dense(false), &profile, 1.0);
+        let hot = generate_difficulty(&dense(true), &profile, 1.0);
+        // The guard against a saturated (and therefore blind)
+        // fixture: expert's thinning must actually be dropping notes.
+        assert!(
+            flat.notes.len() < 460,
+            "the dense fixture no longer thins ({}) - the test is blind",
+            flat.notes.len()
+        );
+        assert_eq!(flat.notes, hot.notes, "expert must not read the energy");
+    }
+
+    #[test]
+    fn escalated_generation_is_deterministic() {
+        let profile = DifficultyProfile::for_difficulty(Difficulty::Medium);
+        let a = generate_difficulty(&hot_analysis(), &profile, 1.0);
+        let b = generate_difficulty(&hot_analysis(), &profile, 1.0);
+        assert_eq!(a.notes, b.notes);
     }
 }

@@ -14,6 +14,35 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.1] - 2026-08-30
+
+### Changed
+
+- **The winning design pattern graduated into the generator.**
+  "Escalate where the song escalates" — validated by ear on one song,
+  then across the library — is now how every chart is generated: a
+  difficulty's density rises toward the next difficulty's reading in
+  the song's own high-energy passages (found from its own percentiles,
+  p70 stepping to p80/p90 when that floods; one-bar dips smoothed;
+  runs under four bars dropped), and stays at its anchor everywhere
+  else. Every FUTURE import gets the better reading at import time
+  instead of needing a design session. The mechanics that made the
+  pattern safe are preserved by construction: escalation selects
+  *more of the parent difficulty's notes*, so "medium is a subset of
+  hard" survives; expert has nothing above it and never escalates; a
+  song with no high ground of its own — including the flat synthetic
+  builtins, whose autopilot baseline is unchanged at 98/98 — generates
+  exactly as before. Existing chart files on disk are untouched;
+  charts are versioned, so even a regretted regeneration is one
+  pointer away from undone.
+
+One of the new pins was born blind and is worth recording: the
+"expert never escalates" test used a fixture whose master had fewer
+notes than expert's budget, so every note survived regardless and
+forcing expert to escalate changed nothing the test could see. The
+fixture now provably thins (with a guard assertion), and the mutation
+fails.
+
 ## [0.12.0] - 2026-08-30
 
 Milestone release: **the adaptive charting loop is closed.** The game
