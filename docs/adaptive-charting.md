@@ -123,7 +123,9 @@ over completeness, pauses are gameplay, four independent difficulty
 designs) — produces a **new chart version** from it.
 
 This is a workflow, not a runtime feature: the game's only interface
-to all of this is "load a chart file".
+to all of this is "load a chart file". The session itself is
+documented step by step in
+[`docs/workflow/design-session.md`](workflow/design-session.md).
 
 ## Layer 4 — Versions and the ear
 

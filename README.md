@@ -437,7 +437,7 @@ beatbyte-cli demo                  # render the built-in songs + charts
 ## Testing
 
 ```bash
-cargo test --workspace          # 387 tests
+cargo test --workspace          # 392 tests
 ```
 
 | Crate | Tests | Covers |
@@ -446,9 +446,9 @@ cargo test --workspace          # 387 tests
 | `beatbyte-chart` | 64 | Format validation, untrusted-input limits, chart generation, difficulty derivation, musical quantisation, chart versions |
 | `beatbyte-game` | 148 | UI kit contracts, settings persistence, library scanning, import naming, the X-plorer report decoder, texture geometry, the song ribbon, list scrolling |
 | `beatbyte-audio` | 58 | Onset detection, tempo estimation, melody contours, the song clock, the error-sound voices, real-file decoding for every advertised format |
-| `beatbyte-cli` | 9 | Review analytics: section windowing, evidence thresholds, hash binding, the mastery veto |
+| `beatbyte-cli` | 13 | Review analytics and the design dossier: section windowing, evidence thresholds, hash binding, the mastery veto, write instructions |
 | `beatbyte-editor` | 19 | Every edit operation round-trips through its own inverse |
-| `beatbyte` | 10 | Documentation consistency: these numbers, the version, the badges, the links, the ADR index, the harness switches, and the figures the rules document quotes |
+| `beatbyte` | 11 | Documentation consistency: these numbers, the version, the badges, the links, the ADR index, the harness switches, and the figures the rules document quotes |
 
 Integration tests decode real fixture files for each supported format,
 including `.m4a`, so "we support AAC" is a passing test rather than a

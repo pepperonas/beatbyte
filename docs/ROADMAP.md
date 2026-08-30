@@ -268,12 +268,17 @@ before the one it depends on is checked:
   played as 232 events with the pointer and 463 without, while the
   browser showed one entry throughout; scan and import pins mutated
   and seen to fail.
-- [ ] **A4 — `beatbyte-cli dossier`** (needs A3). Musical
-  representation + current chart + constraints + open directives in
-  one file; the design-session workflow (Claude at design time, by-ear
-  A/B gate) documented in `docs/workflow`. DoD: dossier generated for
-  a real import, workflow doc bound by the drift tests where
-  checkable.
+- [x] **A4 — `beatbyte-cli dossier`** *(v0.11.13)*. One
+  self-contained briefing per song: active chart (pointer resolved),
+  per-bar structure, melody with true held lengths, per-difficulty
+  constraints from the generator's own profiles, open directives via
+  the same code path as `review`, and the write instructions (next
+  version name + parent hash). Workflow in
+  `docs/workflow/design-session.md`, bound by a drift test that
+  checks every `beatbyte-cli` invocation it teaches against the
+  command enum (mutated with a fake subcommand and seen to fail).
+  Verified on a real import: 166 bars, 485 melody notes, the open
+  directive included, 352 KB.
 - [ ] **A5 — In-game feedback** (needs A3; optional). One-key fun
   rating on results; pairwise "which felt better?" when two versions
   exist. DoD: ratings land in the telemetry log, zero friction when

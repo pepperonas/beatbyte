@@ -389,3 +389,54 @@ fn the_rules_document_quotes_the_real_numbers() {
         config.max_multiplier
     );
 }
+
+#[test]
+fn the_design_workflow_only_names_real_subcommands() {
+    // The workflow document walks through CLI invocations; a renamed
+    // or removed subcommand would leave it teaching commands that do
+    // not exist. The Command enum is the truth.
+    let main_rs = read("crates/beatbyte-cli/src/main.rs");
+    let mut subcommands = BTreeSet::new();
+    let mut in_enum = false;
+    for line in main_rs.lines() {
+        if line.starts_with("enum Command {") {
+            in_enum = true;
+            continue;
+        }
+        if in_enum {
+            if line.starts_with('}') {
+                break;
+            }
+            let trimmed = line.trim();
+            // A variant line: an identifier followed by ` {`.
+            if let Some(name) = trimmed.strip_suffix(" {")
+                && name.chars().all(char::is_alphanumeric)
+                && name.chars().next().is_some_and(char::is_uppercase)
+            {
+                subcommands.insert(name.to_lowercase());
+            }
+        }
+    }
+    assert!(
+        subcommands.len() >= 5,
+        "the Command enum was not found where expected"
+    );
+    let doc = read("docs/workflow/design-session.md");
+    for line in doc.lines() {
+        let mut rest = line;
+        while let Some(at) = rest.find("beatbyte-cli ") {
+            rest = &rest[at + "beatbyte-cli ".len()..];
+            let word: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric())
+                .collect();
+            if !word.is_empty() {
+                assert!(
+                    subcommands.contains(&word),
+                    "the workflow doc invokes `beatbyte-cli {word}`, which does not exist \
+                     (real subcommands: {subcommands:?})"
+                );
+            }
+        }
+    }
+}

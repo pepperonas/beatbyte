@@ -11,6 +11,7 @@ use beatbyte_audio::{Analyzer, SpectralAnalyzer, decode_file};
 use beatbyte_chart::{ChartFile, GenerateMeta, Severity, generate_chart};
 use clap::{Parser, Subcommand};
 
+mod dossier;
 mod review;
 
 #[derive(Parser)]
@@ -82,6 +83,30 @@ enum Command {
         #[arg(long)]
         directives: Option<PathBuf>,
     },
+    /// Write a design dossier: chart + analysis + evidence in one
+    /// file (ADR-0011).
+    Dossier {
+        /// Path to the song's chart (the ACTIVE version is resolved
+        /// from the folder's pointer, so this can always be
+        /// `chart.json`).
+        chart: PathBuf,
+        /// Difficulty under design.
+        #[arg(long, default_value = "medium")]
+        difficulty: String,
+        /// Telemetry directory (defaults to the game's own).
+        #[arg(long)]
+        telemetry_dir: Option<PathBuf>,
+        /// Sessions required before directives are included.
+        #[arg(long, default_value_t = 3)]
+        min_sessions: usize,
+        /// Include autopilot sessions in the evidence.
+        #[arg(long)]
+        include_autopilot: bool,
+        /// Output path (defaults to `dossier-<difficulty>.json` next
+        /// to the chart).
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
     /// Render the built-in songs and generate their charts.
     Demo {
         /// Directory to write the songs' WAV + chart files into.
@@ -115,6 +140,21 @@ fn main() -> ExitCode {
             min_sessions,
             include_autopilot,
             directives.as_deref(),
+        ),
+        Command::Dossier {
+            chart,
+            difficulty,
+            telemetry_dir,
+            min_sessions,
+            include_autopilot,
+            out,
+        } => run_dossier(
+            &chart,
+            &difficulty,
+            telemetry_dir,
+            min_sessions,
+            include_autopilot,
+            out,
         ),
         Command::Demo { out_dir } => demo(&out_dir),
     }
@@ -524,4 +564,145 @@ fn parse_difficulty(name: &str) -> Option<beatbyte_core::Difficulty> {
         "expert" => Some(Difficulty::Expert),
         _ => None,
     }
+}
+
+/// `dossier`: everything a design session needs, in one file.
+fn run_dossier(
+    chart_path: &Path,
+    difficulty: &str,
+    telemetry_dir: Option<PathBuf>,
+    min_sessions: usize,
+    include_autopilot: bool,
+    out: Option<PathBuf>,
+) -> ExitCode {
+    use beatbyte_chart::versions;
+    use beatbyte_core::telemetry::parse_session;
+
+    let Some(folder) = chart_path.parent().map(Path::to_path_buf) else {
+        eprintln!("`{}` has no parent folder", chart_path.display());
+        return ExitCode::from(2);
+    };
+    // Resolve the ACTIVE version — designing against a superseded
+    // chart would attach the wrong parent to the provenance.
+    let names: Vec<String> = std::fs::read_dir(&folder)
+        .map(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+    let pointer = std::fs::read_to_string(folder.join(versions::POINTER_FILE)).ok();
+    let active_name = versions::resolve_active(pointer.as_deref(), &names);
+    let active_path = folder.join(&active_name);
+    let text = match std::fs::read_to_string(&active_path) {
+        Ok(text) => text,
+        Err(error) => {
+            eprintln!("cannot read `{}`: {error}", active_path.display());
+            return ExitCode::from(2);
+        }
+    };
+    let chart: ChartFile = match serde_json::from_str(&text) {
+        Ok(chart) => chart,
+        Err(error) => {
+            eprintln!("`{}` is not a chart: {error}", active_path.display());
+            return ExitCode::from(1);
+        }
+    };
+    let Some(parsed_difficulty) = parse_difficulty(difficulty) else {
+        eprintln!("unknown difficulty `{difficulty}` (easy/medium/hard/expert)");
+        return ExitCode::from(2);
+    };
+    let Ok(track) = chart.to_track(parsed_difficulty) else {
+        eprintln!("chart has no playable {difficulty} track");
+        return ExitCode::from(1);
+    };
+
+    // The audio sits next to the chart; the analysis is recomputed so
+    // the dossier reads the song, not a cached opinion of it.
+    let audio_path = folder.join(&chart.song.audio);
+    let audio = match decode_file(&audio_path) {
+        Ok(audio) => audio,
+        Err(error) => {
+            eprintln!("cannot decode `{}`: {error}", audio_path.display());
+            return ExitCode::from(1);
+        }
+    };
+    let analysis = SpectralAnalyzer::default().analyze(&audio);
+
+    // Evidence, straight from the telemetry — same code path as
+    // `review`, so the two cannot disagree.
+    let dir =
+        telemetry_dir.or_else(|| dirs::data_dir().map(|d| d.join("beatbyte").join("telemetry")));
+    let mut sessions = Vec::new();
+    if let Some(dir) = dir
+        && let Ok(entries) = std::fs::read_dir(&dir)
+    {
+        let wanted = difficulty.to_lowercase();
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            if path.extension().is_none_or(|e| e != "jsonl") {
+                continue;
+            }
+            let Ok(content) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let Some((header, lines)) = parse_session(&content) else {
+                continue;
+            };
+            if header.title == chart.song.title
+                && header.artist == chart.song.artist
+                && header.difficulty == wanted
+            {
+                sessions.push(review::Session { header, lines });
+            }
+        }
+    }
+    let current_hash = beatbyte_chart::chart_hash(&chart);
+    let outcome = review::review(
+        &track,
+        chart.song.bpm,
+        chart.song.offset_s,
+        &current_hash,
+        &sessions,
+        include_autopilot,
+        &dossier::dossier_thresholds(min_sessions),
+    );
+
+    let next_version = versions::next_version_name(&names);
+    let built = dossier::assemble(
+        chart,
+        &analysis,
+        parsed_difficulty,
+        outcome.directives,
+        next_version,
+    );
+    let out_path = out.unwrap_or_else(|| folder.join(format!("dossier-{}.json", built.difficulty)));
+    match serde_json::to_string_pretty(&built) {
+        Ok(json) => {
+            if let Err(error) = std::fs::write(&out_path, json) {
+                eprintln!("cannot write `{}`: {error}", out_path.display());
+                return ExitCode::from(2);
+            }
+        }
+        Err(error) => {
+            eprintln!("cannot serialize dossier: {error}");
+            return ExitCode::from(2);
+        }
+    }
+    println!(
+        "dossier: \"{}\" <{}>  active {}  {} bars, {} melody notes, {} directive(s)",
+        built.chart.song.title,
+        built.difficulty,
+        active_name,
+        built.bars.len(),
+        built.melody.len(),
+        built.directives.len(),
+    );
+    println!("written to {}", out_path.display());
+    println!(
+        "next version: {}  parent: {}",
+        built.write.next_version_file, built.write.parent_hash
+    );
+    ExitCode::SUCCESS
 }

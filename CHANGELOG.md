@@ -14,6 +14,32 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.11.13] - 2026-08-30
+
+### Added
+
+- **`beatbyte-cli dossier`** (adaptive charting phase A4, ADR-0011) —
+  the design session's briefing, one self-contained file per song:
+  the **active** chart (the folder's pointer is resolved, so a
+  redesign can never start from a superseded version and attach the
+  wrong parent), a per-bar structure table (onsets, energy, melody
+  density), the extracted melody with true held lengths, the
+  playability constraints per difficulty straight from the
+  generator's own profiles, the open directives from the review (same
+  code path, so the two cannot disagree), and the mechanical write
+  instructions: the next version's file name and the parent hash the
+  provenance must carry.
+- **The design-session workflow** is documented in
+  `docs/workflow/design-session.md` — play → review → dossier →
+  design → validate → pointer → **the ear decides** — and a new drift
+  test binds it to the code: every `beatbyte-cli` subcommand the
+  document invokes must exist in the CLI's command enum, so a renamed
+  command cannot leave the workflow teaching invocations that fail.
+
+With this, the loop is closed: every layer of ADR-0011's architecture
+short of the deliberately-parked ones exists and is tested end to end
+on real data.
+
 ## [0.11.12] - 2026-08-30
 
 ### Added
