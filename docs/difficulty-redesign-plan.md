@@ -1,5 +1,16 @@
 # Hard and Expert become designed difficulties
 
+**Executed in full, 2026-08-30 (v0.12.5–v0.12.10)** — P1–P7 landed;
+the rollout wrote sibling versions for all 25 imported songs (0
+failures, the legacy layout skipped), the post-rollout measurement
+flagged **zero** charts (jacks 0 everywhere — down from a median of
+106 —, bursts ≤ cap, every hard chart carries HOPO runs, spacing
+floors respected), and autopilot played Maria hard 870/870, Immer
+expert 1064/1064 and Lille Vals expert 1963/1963 — all perfect.
+Restorable copy: `~/backups/beatbyte-charts-pre-hardexpert-20260830/`;
+per-song revert = the folder's pointer. The by-ear gate is the
+user's.
+
 Diagnosis and plan, 2026-08-30. Commissioned by the user: "currently
 there is effectively only medium — implement hard and expert and
 build the charts for the current tracks: algorithm first, then

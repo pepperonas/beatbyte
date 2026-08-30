@@ -322,6 +322,16 @@ fn checkable_badges_state_the_truth() {
         "the tests badge does not say {total} passing"
     );
 
+    // Harness switches: the badge counts the reference's table rows.
+    let switches = read("docs/development/harness.md")
+        .lines()
+        .filter(|line| line.starts_with("| `BEATBYTE_"))
+        .count();
+    assert!(
+        readme.contains(&format!("harness%20switches-{switches}")),
+        "the harness badge does not say {switches} switches"
+    );
+
     // Decision records.
     let adrs = fs::read_dir(repo().join("docs/decisions"))
         .expect("decisions directory")

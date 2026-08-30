@@ -314,23 +314,28 @@ harness on a disposable song, three new pins mutation-checked (one
 fixture had to be sharpened — mutant and original coincided at
 position 0).
 
-## Difficulty redesign: hard + expert (PLANNED 2026-08-30 — docs/difficulty-redesign-plan.md)
+## Difficulty redesign: hard + expert (DONE 2026-08-30, v0.12.5–v0.12.10 — docs/difficulty-redesign-plan.md)
 
-User commission: only medium is a designed difficulty — implement
-hard and expert properly and build the charts for the current tracks
-(algorithm first, then a by-hand optimization pass). Measured
-diagnosis over the 25 imported songs: hard is trivial and
-characterless (15/25 songs have zero HOPOs — the 0.20 s HOPO gap
-sits below hard's real gap distribution), expert is a raw
-transcription (median 106 same-lane machine-gun jacks per song, runs
-of up to 55 events under 0.125 s, almost no chords, no escalation
-target). Plan P1–P7 in the document: lane flow (jack-breaking) at
-the master level, burst discipline, percentile chords, hard identity
-+ expert escalating toward the master, a `redesign` rollout tool
-that writes sibling versions (easy+medium carried over untouched),
-the per-song optimization pass, and autopilot proof via a new
-`BEATBYTE_AUTOPILOT_DIFFICULTY` switch. The ear gate stays the
-user's; per-song revert = pointer.
+User commission: only medium was a designed difficulty. Measured
+diagnosis first (hard: 15/25 songs with zero HOPOs, characterless;
+expert: median 106 machine-gun jacks per song, 55-event streams,
+almost no chords, no escalation target), then P1–P7: master-level
+lane flow turns fast repeated pitches into trills, streams get a
+per-difficulty length budget, chords are a percentile of the song's
+own accents, hard's HOPO gap matches its real densities, expert
+escalates toward the master where the song rises, and
+`beatbyte-cli redesign --all` rolled sibling versions over all 25
+imported songs (easy+medium carried note-for-note; legacy layout
+skipped; per-song revert = pointer; restorable copy in
+`~/backups/beatbyte-charts-pre-hardexpert-20260830/`). Verified: 16
+new pins, every one mutation-checked; post-rollout measurement
+flags ZERO charts (jacks 0, bursts ≤ cap, HOPOs everywhere on hard,
+floors respected); autopilot via the new
+`BEATBYTE_AUTOPILOT_DIFFICULTY` switch — builtin expert 309/309,
+Maria hard 870/870, Immer expert 1064/1064, Lille Vals expert
+1963/1963, all perfect. **Open: the by-ear gate** — the user plays
+hard/expert and keeps or reverts pointers; Maria's pending v3
+listening A/B stayed open (her redesign is v4 on parent v2).
 
 ## Backlog (explicitly out of scope until after 1.0)
 
