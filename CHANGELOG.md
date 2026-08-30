@@ -14,6 +14,25 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.0] - 2026-08-30
+
+Milestone release: **the adaptive charting loop is closed.** The game
+records every session (per-note judgments and millisecond offsets,
+bound to the content hash of the exact chart played), the CLI turns
+recordings into per-section evidence and directives, charts version
+with provenance and nothing overwrites anything, and the design
+dossier hands a redesign everything it needs — with the by-ear A/B as
+the standing gate. The first design session ran end to end and its
+pattern ("escalate where the song escalates") won the ear's verdict,
+first on one song, then across the library.
+
+Everything else since v0.11.0 is described under its own version
+below: distinguishable miss/overstrum sounds, the beat-ruled neck and
+decorated borders, the song ribbon, the scrolling song list, Escape
+closing the game, held sustains that glow, and the fix for the race
+that made a new song inherit the previous song's position — the cause
+of "sometimes no notes appear".
+
 ## [0.11.13] - 2026-08-30
 
 ### Added
