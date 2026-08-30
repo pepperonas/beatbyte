@@ -123,6 +123,34 @@ impl ChartFile {
             }
         }
 
+        // Provenance — untrusted input like every other field: a
+        // redesign wrote it, but so could anything else.
+        if let Some(provenance) = &self.provenance {
+            if provenance.parent_hash.is_empty() || provenance.parent_hash.len() > 64 {
+                err(
+                    &mut issues,
+                    "provenance.parent_hash",
+                    "must be 1..=64 characters".into(),
+                );
+            }
+            if provenance.designer.is_empty() || provenance.designer.len() > 64 {
+                err(
+                    &mut issues,
+                    "provenance.designer",
+                    "must be 1..=64 characters".into(),
+                );
+            }
+            if let Some(directive) = &provenance.directive
+                && (directive.is_empty() || directive.len() > 64)
+            {
+                err(
+                    &mut issues,
+                    "provenance.directive",
+                    "must be 1..=64 characters when present".into(),
+                );
+            }
+        }
+
         // Charts.
         if self.charts.is_empty() {
             err(
@@ -313,7 +341,39 @@ mod tests {
                     end: 1.5,
                 }],
             }],
+            provenance: None,
         }
+    }
+
+    #[test]
+    fn provenance_is_validated_like_everything_else() {
+        use crate::schema::Provenance;
+        let mut chart = valid_chart();
+        chart.provenance = Some(Provenance {
+            parent_hash: "a".repeat(65),
+            designer: String::new(),
+            created_ms: 0,
+            directive: Some("x".repeat(65)),
+        });
+        let issues = errors(&chart);
+        for field in [
+            "provenance.parent_hash",
+            "provenance.designer",
+            "provenance.directive",
+        ] {
+            assert!(
+                issues.iter().any(|i| i.location == field),
+                "{field} escaped validation"
+            );
+        }
+        // And a sane one passes.
+        chart.provenance = Some(Provenance {
+            parent_hash: "06808da3a174344e".to_owned(),
+            designer: "design-session".to_owned(),
+            created_ms: 1,
+            directive: Some("low_accuracy".to_owned()),
+        });
+        assert!(errors(&chart).is_empty(), "sane provenance was rejected");
     }
 
     fn errors(chart: &ChartFile) -> Vec<Issue> {

@@ -170,6 +170,7 @@ mod tests {
                 notes: vec![],
                 phrases: vec![],
             }],
+            provenance: None,
         }
     }
 

@@ -405,9 +405,45 @@ fn import_song(source: &Path, title: &str, artist: &str) -> Result<(), String> {
     {
         return Err("generated chart failed validation".to_owned());
     }
-    let chart_path = folder.join("chart.json");
+    let (chart_path, pointer) = plan_chart_write(&folder)?;
     beatbyte_chart::save_chart_file(&chart_path, &chart).map_err(|e| e.to_string())?;
+    if let Some((pointer_path, text)) = pointer {
+        std::fs::write(pointer_path, text).map_err(|e| format!("cannot write pointer: {e}"))?;
+    }
     Ok(())
+}
+
+/// Where a freshly generated chart may be written (ADR-0011).
+///
+/// NEVER over an existing one: the chart on disk may carry recorded
+/// sessions, hand edits, or be a designed version — none of which a
+/// re-analysis may destroy. A fresh folder gets `chart.json`; a
+/// folder that already has one gets the next version file plus a
+/// pointer naming it, so the re-import is still what plays while
+/// everything it would have clobbered stays on disk.
+fn plan_chart_write(
+    folder: &Path,
+) -> Result<(std::path::PathBuf, Option<(std::path::PathBuf, String)>), String> {
+    use beatbyte_chart::versions;
+    let base = folder.join(versions::BASE_CHART);
+    if !base.exists() {
+        return Ok((base, None));
+    }
+    let existing: Vec<String> = std::fs::read_dir(folder)
+        .map_err(|e| format!("cannot list folder: {e}"))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    let version_name = versions::next_version_name(&existing);
+    let pointer = versions::ActivePointer {
+        active: version_name.clone(),
+    };
+    let text = serde_json::to_string_pretty(&pointer)
+        .map_err(|e| format!("cannot serialize pointer: {e}"))?;
+    Ok((
+        folder.join(version_name),
+        Some((folder.join(versions::POINTER_FILE), text)),
+    ))
 }
 
 /// Where imports land: `songs/imported/` next to a development /
@@ -519,5 +555,53 @@ mod summary_tests {
         assert_eq!(summary_line(3, 0, 0), "3 imported");
         assert_eq!(summary_line(2, 0, 1), "2 imported - 1 skipped");
         assert_eq!(summary_line(0, 2, 1), "0 imported - 1 skipped - 2 failed");
+    }
+}
+
+#[cfg(test)]
+mod write_plan_tests {
+    use super::plan_chart_write;
+    use std::path::PathBuf;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("beatbyte-wp-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+        dir
+    }
+
+    #[test]
+    fn a_fresh_folder_gets_the_base_chart_and_no_pointer() {
+        let dir = scratch("fresh");
+        let (path, pointer) = plan_chart_write(&dir).expect("plans");
+        assert_eq!(path, dir.join("chart.json"));
+        assert!(pointer.is_none());
+    }
+
+    #[test]
+    fn an_existing_chart_is_never_the_write_target() {
+        // The chart on disk may carry recorded sessions or hand
+        // edits; a re-analysis must not destroy either. The fresh
+        // chart becomes v2 and the pointer makes it the one that
+        // plays.
+        let dir = scratch("occupied");
+        std::fs::write(dir.join("chart.json"), "{}").expect("existing chart");
+        let (path, pointer) = plan_chart_write(&dir).expect("plans");
+        assert_eq!(path, dir.join("chart.v2.json"));
+        let (pointer_path, text) = pointer.expect("a pointer moves play to the new version");
+        assert_eq!(pointer_path, dir.join("chart-active.json"));
+        assert!(text.contains("chart.v2.json"));
+    }
+
+    #[test]
+    fn versions_keep_counting_up_never_reusing_a_name() {
+        // Reusing a version name would overwrite the very thing the
+        // scheme exists to protect.
+        let dir = scratch("counting");
+        std::fs::write(dir.join("chart.json"), "{}").expect("base");
+        std::fs::write(dir.join("chart.v2.json"), "{}").expect("v2");
+        std::fs::write(dir.join("chart.v3.json"), "{}").expect("v3");
+        let (path, _) = plan_chart_write(&dir).expect("plans");
+        assert_eq!(path, dir.join("chart.v4.json"));
     }
 }

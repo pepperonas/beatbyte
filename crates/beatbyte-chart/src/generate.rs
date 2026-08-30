@@ -162,6 +162,7 @@ pub fn generate_chart(analysis: &SongAnalysis, meta: &GenerateMeta) -> ChartFile
             duration_s: Some(analysis.duration_s),
         },
         charts,
+        provenance: None,
     }
 }
 

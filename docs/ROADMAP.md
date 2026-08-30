@@ -258,12 +258,16 @@ before the one it depends on is checked:
   correctly excluded without it. Two green-blind tests caught by
   mutation and rewritten (the mastery veto needed perfect accuracy
   with dropped holds to be exercised at all).
-- [ ] **A3 — Chart versioning** (needs A2 conceptually, not in code).
-  Sibling chart versions with provenance, an active pointer the
-  library respects, validation of every new field (charts stay
-  untrusted input), import never overwrites a version that has
-  telemetry. DoD: version round-trip + provenance tests, re-import
-  test, browser still shows one entry per song.
+- [x] **A3 — Chart versioning** *(v0.11.12)*. Sibling versions with
+  provenance (validated; excluded from the chart hash, with a
+  golden-hash pin so no schema change can orphan telemetry as a side
+  effect), pointer file the library respects with every failure mode
+  falling back to the original, import never overwrites ANY existing
+  chart (stronger than the telemetry-conditional wording — simpler
+  and strictly safer). Verified live: a hand-made v2 of a real import
+  played as 232 events with the pointer and 463 without, while the
+  browser showed one entry throughout; scan and import pins mutated
+  and seen to fail.
 - [ ] **A4 — `beatbyte-cli dossier`** (needs A3). Musical
   representation + current chart + constraints + open directives in
   one file; the design-session workflow (Claude at design time, by-ear

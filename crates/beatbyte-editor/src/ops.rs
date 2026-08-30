@@ -224,6 +224,7 @@ mod tests {
                 }],
                 phrases: vec![],
             }],
+            provenance: None,
         }
     }
 

@@ -91,7 +91,13 @@ pub fn scan_library(builtins: &[ChartFile]) -> SongLibrary {
         .iter()
         .map(|b| (b.song.title.to_lowercase(), b.song.artist.to_lowercase()))
         .collect();
-    for chart_path in roots.iter().flat_map(|root| find_chart_files(root)) {
+    let candidates = select_active_versions(
+        roots
+            .iter()
+            .flat_map(|root| find_chart_files(root))
+            .collect(),
+    );
+    for chart_path in candidates {
         match load_entry(&chart_path) {
             Ok(Some(entry)) => {
                 let key = (entry.title.to_lowercase(), entry.artist.to_lowercase());
@@ -126,6 +132,64 @@ pub fn remove_song_files(chart_path: &std::path::Path) -> Result<(), String> {
     } else {
         std::fs::remove_file(chart_path).map_err(|e| format!("cannot remove chart: {e}"))
     }
+}
+
+/// Reduce a flat scan to the files worth loading, version-aware
+/// (ADR-0011): per folder, chart VERSION files (`chart.v<N>.json`)
+/// are dropped unless the folder's pointer names one — and when it
+/// does, the base `chart.json` it supersedes is dropped instead. The
+/// pointer file itself is never a chart. Folders without versions
+/// pass through untouched, which keeps hand-managed folders with
+/// several charts side by side (the builtins) working.
+fn select_active_versions(files: Vec<PathBuf>) -> Vec<PathBuf> {
+    use beatbyte_chart::versions;
+    let name_of = |path: &std::path::Path| -> String {
+        path.file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
+    // Active name per folder that HAS versioned files.
+    let mut active: std::collections::HashMap<PathBuf, String> = std::collections::HashMap::new();
+    for path in &files {
+        let name = name_of(path);
+        if !versions::is_version_file(&name) {
+            continue;
+        }
+        let Some(dir) = path.parent() else { continue };
+        if active.contains_key(dir) {
+            continue;
+        }
+        let siblings: Vec<String> = files
+            .iter()
+            .filter(|f| f.parent() == Some(dir))
+            .map(|f| name_of(f))
+            .collect();
+        let pointer = std::fs::read_to_string(dir.join(versions::POINTER_FILE)).ok();
+        active.insert(
+            dir.to_path_buf(),
+            versions::resolve_active(pointer.as_deref(), &siblings),
+        );
+    }
+    files
+        .into_iter()
+        .filter(|path| {
+            let name = name_of(path);
+            if name == versions::POINTER_FILE {
+                return false;
+            }
+            let Some(chosen) = path.parent().and_then(|dir| active.get(dir)) else {
+                // No versions in this folder: everything stays.
+                return true;
+            };
+            // A versioned folder loads exactly its active chart; the
+            // superseded base and the passed-over versions are real
+            // files that stay on disk, they just do not become songs.
+            if versions::is_version_file(&name) || name == versions::BASE_CHART {
+                return name == *chosen;
+            }
+            true
+        })
+        .collect()
 }
 
 /// All `*.json` files under `dir`, up to two directory levels below
@@ -271,5 +335,83 @@ mod remove_tests {
     #[test]
     fn missing_files_error_cleanly() {
         assert!(remove_song_files(std::path::Path::new("/nonexistent/chart.json")).is_err());
+    }
+}
+
+#[cfg(test)]
+mod version_scan_tests {
+    use super::select_active_versions;
+    use std::path::PathBuf;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("beatbyte-vs-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+        dir
+    }
+
+    fn touch(path: &PathBuf) {
+        std::fs::write(path, "{}").expect("write");
+    }
+
+    #[test]
+    fn a_pointed_at_version_replaces_the_base_chart() {
+        let dir = scratch("pointed");
+        let base = dir.join("chart.json");
+        let v2 = dir.join("chart.v2.json");
+        touch(&base);
+        touch(&v2);
+        std::fs::write(
+            dir.join("chart-active.json"),
+            "{\"active\":\"chart.v2.json\"}",
+        )
+        .expect("pointer");
+        let kept = select_active_versions(vec![
+            base.clone(),
+            v2.clone(),
+            dir.join("chart-active.json"),
+        ]);
+        // Exactly ONE chart survives — the browser must show one
+        // entry per song, and it is the version the pointer names.
+        assert_eq!(kept, vec![v2]);
+    }
+
+    #[test]
+    fn an_unpointed_version_file_is_not_a_second_song() {
+        // The defect this exists for: the flat scan loads every
+        // *.json, so a sibling version file would have appeared as a
+        // second song (deduped only by luck of scan order).
+        let dir = scratch("unpointed");
+        let base = dir.join("chart.json");
+        let v2 = dir.join("chart.v2.json");
+        touch(&base);
+        touch(&v2);
+        let kept = select_active_versions(vec![base.clone(), v2]);
+        assert_eq!(kept, vec![base], "without a pointer the original plays");
+    }
+
+    #[test]
+    fn a_broken_pointer_still_shows_the_original() {
+        let dir = scratch("broken");
+        let base = dir.join("chart.json");
+        let v2 = dir.join("chart.v2.json");
+        touch(&base);
+        touch(&v2);
+        std::fs::write(dir.join("chart-active.json"), "not json").expect("pointer");
+        let kept = select_active_versions(vec![base.clone(), v2, dir.join("chart-active.json")]);
+        assert_eq!(kept, vec![base], "a bad pointer must not lose the song");
+    }
+
+    #[test]
+    fn folders_without_versions_pass_through_untouched() {
+        // The builtins keep several charts side by side in ONE
+        // folder; version logic must not reduce them to one.
+        let dir = scratch("builtin");
+        let a = dir.join("circuit-breaker.chart.json");
+        let b = dir.join("solder-groove.chart.json");
+        touch(&a);
+        touch(&b);
+        let kept = select_active_versions(vec![a.clone(), b.clone()]);
+        assert_eq!(kept, vec![a, b]);
     }
 }

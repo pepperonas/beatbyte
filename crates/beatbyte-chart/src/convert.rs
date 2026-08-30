@@ -123,6 +123,7 @@ mod tests {
                 notes,
                 phrases: vec![],
             }],
+            provenance: None,
         }
     }
 

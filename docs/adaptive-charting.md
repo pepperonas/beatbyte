@@ -134,7 +134,10 @@ to all of this is "load a chart file".
 - It becomes the **active** version only after a by-ear A/B against
   the current one — the ADR-0009 rule. The library loads the active
   version; the browser can expose the choice.
-- Import never overwrites a version that has telemetry.
+- Import never overwrites **any** existing chart — stronger than the
+  original wording (only versions with telemetry), because it is
+  simpler and strictly safer: a re-import writes the next version and
+  moves the pointer.
 
 ## Phases (mirrored in the roadmap)
 

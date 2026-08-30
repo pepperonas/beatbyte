@@ -17,6 +17,11 @@ pub struct ChartFile {
     pub song: SongMeta,
     /// One entry per difficulty.
     pub charts: Vec<ChartDef>,
+    /// Where a chart VERSION came from (ADR-0011). Absent on
+    /// originals; carried by files a redesign wrote. Metadata only:
+    /// [`chart_hash`] deliberately does not see it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<Provenance>,
 }
 
 impl ChartFile {
@@ -176,6 +181,23 @@ mod tests {
     }
 }
 
+/// Where a chart version came from — the paper trail a redesign
+/// leaves (ADR-0011). Self-describing on purpose: a copied file still
+/// says what it is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Provenance {
+    /// [`chart_hash`] of the version this one was derived from.
+    pub parent_hash: String,
+    /// Who produced it (`"design-session"`, `"editor"`, …).
+    pub designer: String,
+    /// Unix milliseconds when it was written.
+    pub created_ms: u64,
+    /// The directive problem it answers (`"low_accuracy"`, …), when
+    /// there was one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub directive: Option<String>,
+}
+
 /// FNV-1a over a byte slice: deterministic, dependency-free, and not
 /// adversarial — this is an identity for chart *versions*, not a
 /// security boundary.
@@ -194,9 +216,17 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 /// bytes, because builtin songs have no file and formatting must not
 /// matter: the same notes are the same chart however they were
 /// indented.
+/// Provenance is metadata about a version, not part of what was
+/// played, so it is stripped before hashing — otherwise touching the
+/// paper trail would orphan every recorded session. Because the field
+/// is skipped when `None`, a chart without provenance serializes
+/// byte-identically to the pre-provenance format, and every hash
+/// recorded before the field existed stays valid.
 #[must_use]
 pub fn chart_hash(chart: &ChartFile) -> String {
-    let canonical = serde_json::to_vec(chart).unwrap_or_default();
+    let mut playable = chart.clone();
+    playable.provenance = None;
+    let canonical = serde_json::to_vec(&playable).unwrap_or_default();
     format!("{:016x}", fnv1a64(&canonical))
 }
 
@@ -228,7 +258,34 @@ mod hash_tests {
                 }],
                 phrases: Vec::new(),
             }],
+            provenance: None,
         }
+    }
+
+    #[test]
+    fn provenance_does_not_change_a_charts_identity() {
+        // Provenance is the paper trail, not the music. If it fed the
+        // hash, touching metadata would orphan every recorded session
+        // of an unchanged chart.
+        let chart = tiny_chart();
+        let mut annotated = tiny_chart();
+        annotated.provenance = Some(Provenance {
+            parent_hash: "abc".to_owned(),
+            designer: "test".to_owned(),
+            created_ms: 1,
+            directive: None,
+        });
+        assert_eq!(chart_hash(&chart), chart_hash(&annotated));
+    }
+
+    #[test]
+    fn the_hash_of_a_plain_chart_is_stable_across_releases() {
+        // Golden value, computed when the provenance field was added.
+        // Recorded sessions bind to these hashes forever; if this
+        // test breaks, a schema change just orphaned every telemetry
+        // file ever written — that is a decision to take knowingly,
+        // never a side effect.
+        assert_eq!(chart_hash(&tiny_chart()), "06808da3a174344e");
     }
 
     #[test]

@@ -14,6 +14,33 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.11.12] - 2026-08-30
+
+### Added
+
+- **Chart versions** (adaptive charting phase A3, ADR-0011). A
+  redesigned chart is a sibling file (`chart.v2.json`, `.v3`, …) with
+  a provenance block — parent hash, designer, date, the directive it
+  answers — and a pointer file (`chart-active.json`) names the one
+  the game loads. The library shows one entry per song whichever
+  version is active; a version without a pointer is ignored rather
+  than becoming a second song; and every broken-pointer case falls
+  back to the original, because the recoverable failure is "you see
+  the original" and the unrecoverable one is "your song is gone".
+  The pointer is untrusted input like every chart file: a target
+  with a path in it is never followed.
+- **Import never overwrites an existing chart** — stronger than the
+  plan's "never one that has telemetry", because it is simpler and
+  strictly safer: a re-analysis writes the next version and moves the
+  pointer, and whatever was on disk (recorded sessions' chart, hand
+  edits, a designed version) stays.
+- Provenance is validated like every other field, and it is
+  deliberately **excluded from the chart hash**: it is the paper
+  trail, not the music — otherwise touching metadata would orphan
+  every recorded session of an unchanged chart. A golden-hash test
+  pins the identity format itself, so a schema change that would
+  orphan all telemetry files cannot happen as a side effect.
+
 ## [0.11.11] - 2026-08-30
 
 ### Added
