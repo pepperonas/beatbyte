@@ -42,8 +42,11 @@ pub struct DifficultyProfile {
     pub target_notes_per_beat: f64,
     /// Number of lanes used, anchored at lane 0 (3 = lanes 0–2).
     pub lanes_used: u8,
-    /// Onset strength at which a note becomes a chord (>1.0 = never).
-    pub chord_threshold: f32,
+    /// Share of the difficulty's kept notes that strike as chords
+    /// (0 = never): the song's OWN strongest hits are its accents,
+    /// whatever the absolute scale. The strongest quarter of that
+    /// share widens to three notes where the cap allows.
+    pub chord_share: f32,
     /// Maximum chord size.
     pub max_chord_size: u8,
     /// Whether fast single-note runs become HOPOs.
@@ -72,7 +75,7 @@ impl DifficultyProfile {
                 strength_floor: 0.20,
                 target_notes_per_beat: 0.35,
                 lanes_used: 3,
-                chord_threshold: 2.0,
+                chord_share: 0.0,
                 max_chord_size: 1,
                 hopos: false,
                 hopo_max_gap_s: 0.0,
@@ -87,7 +90,7 @@ impl DifficultyProfile {
                 strength_floor: 0.12,
                 target_notes_per_beat: 0.70,
                 lanes_used: 4,
-                chord_threshold: 0.85,
+                chord_share: 0.05,
                 max_chord_size: 2,
                 hopos: false,
                 hopo_max_gap_s: 0.0,
@@ -102,7 +105,7 @@ impl DifficultyProfile {
                 strength_floor: 0.08,
                 target_notes_per_beat: 1.30,
                 lanes_used: 5,
-                chord_threshold: 0.75,
+                chord_share: 0.08,
                 max_chord_size: 2,
                 hopos: true,
                 hopo_max_gap_s: 0.20,
@@ -117,7 +120,7 @@ impl DifficultyProfile {
                 strength_floor: 0.05,
                 target_notes_per_beat: 2.20,
                 lanes_used: 5,
-                chord_threshold: 0.62,
+                chord_share: 0.12,
                 max_chord_size: 3,
                 hopos: true,
                 hopo_max_gap_s: 0.22,
@@ -581,6 +584,18 @@ fn derive_notes(
 ) -> Vec<ChartNote> {
     let lanes_used = i32::from(profile.lanes_used.clamp(1, LANE_COUNT as u8));
     let kept = reduction_chain(master, profile.difficulty, analysis, grid_origin_s);
+    // The song's own accents: chord eligibility is a percentile of
+    // the KEPT notes' strengths, never an absolute bar — a quiet
+    // master and a loud one carry the same accent rate. The median
+    // guard keeps accentless songs (uniform strengths) chord-free.
+    let mut sorted_strengths: Vec<f32> = kept.iter().map(|n| n.strength).collect();
+    sorted_strengths.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+    let median_strength = sorted_strengths
+        .get(sorted_strengths.len() / 2)
+        .copied()
+        .unwrap_or(0.0);
+    let accent_floor = share_floor(&sorted_strengths, profile.chord_share);
+    let triple_floor = share_floor(&sorted_strengths, profile.chord_share * 0.25);
     // Place.
     let mut notes: Vec<ChartNote> = Vec::new();
     let mut previous_lane: Option<i32> = None;
@@ -601,12 +616,14 @@ fn derive_notes(
         let gap_to_prev = notes.last().map_or(f64::INFINITY, |n| note.time_s - n.time);
         let hopo =
             profile.hopos && gap_to_prev <= profile.hopo_max_gap_s && previous_lane != Some(lane);
-        let chord_size = if note.strength >= profile.chord_threshold
+        let accented = note.strength >= accent_floor && note.strength > median_strength;
+        let chord_size = if accented
             && gap_to_prev >= profile.min_spacing_s * 2.0
+            && gap_to_next >= profile.min_spacing_s * 1.5
             && len == 0.0
         {
-            let extra = 1 + (note_hash(note.time_s + 0.5) % 2) as u8;
-            (1 + extra).min(profile.max_chord_size)
+            let widened: u8 = if note.strength >= triple_floor { 3 } else { 2 };
+            widened.min(profile.max_chord_size)
         } else {
             1
         };
@@ -627,6 +644,17 @@ fn derive_notes(
     }
     dedupe_same_lane(&mut notes);
     notes
+}
+
+/// The strength at the boundary of the top `share` of a
+/// descending-sorted strength list (infinity when the share is
+/// empty, so nothing qualifies).
+fn share_floor(sorted_desc: &[f32], share: f32) -> f32 {
+    if share <= 0.0 || sorted_desc.is_empty() {
+        return f32::INFINITY;
+    }
+    let count = ((sorted_desc.len() as f32) * share).ceil() as usize;
+    sorted_desc[count.clamp(1, sorted_desc.len()) - 1]
 }
 
 /// Pitch information a candidate carries when the melody stage found
@@ -1717,6 +1745,162 @@ mod tests {
                 .any(|p| p[1].time - p[0].time > 0.0 && p[1].time - p[0].time < BURST_GAP_S),
             "sub-cap sixteenth bursts must keep their speed on expert"
         );
+    }
+
+    /// Unpitched eighth notes with every fourth hit accented, at a
+    /// chosen absolute scale — the accents are unmistakable INSIDE
+    /// the song, whatever the scale.
+    fn accented_analysis(scale: f32) -> SongAnalysis {
+        let onsets: Vec<Onset> = (0..120)
+            .map(|k| Onset {
+                time_s: 1.0 + f64::from(k) * 0.25,
+                strength: scale * if k % 4 == 0 { 1.0 } else { 0.45 },
+                brightness: 0.3 + 0.02 * (k % 8) as f32,
+            })
+            .collect();
+        let beats: Vec<f64> = (0..118).map(|i| 1.0 + f64::from(i) * 0.5).collect();
+        SongAnalysis {
+            bpm: 120.0,
+            bpm_confidence: 0.9,
+            alt_bpm: None,
+            beats,
+            onsets,
+            energy: vec![0.8; 1200],
+            energy_hop_s: 0.05,
+            duration_s: 60.0,
+            melody: vec![],
+        }
+    }
+
+    /// Times at which two or more notes strike together.
+    fn chord_times(notes: &[ChartNote]) -> Vec<f64> {
+        let mut times = Vec::new();
+        for pair in notes.windows(2) {
+            if (pair[1].time - pair[0].time).abs() < 1e-9
+                && times
+                    .last()
+                    .is_none_or(|t: &f64| (t - pair[0].time).abs() > 1e-9)
+            {
+                times.push(pair[0].time);
+            }
+        }
+        times
+    }
+
+    #[test]
+    fn chords_mark_the_songs_own_accents() {
+        // Absolute scale 0.5: every strength sits below the old
+        // absolute chord threshold, but the accents are plain.
+        let chart = generate_chart(&accented_analysis(0.5), &meta());
+        let expert = &chart.chart_for(Difficulty::Expert).unwrap().notes;
+        let chords = chord_times(expert);
+        assert!(!chords.is_empty(), "the accents must become chords");
+        for time in &chords {
+            // Accents land on 1.0 + k where k % 4 == 0 → whole beats.
+            let beats = (time - 1.0) / 0.5;
+            assert!(
+                (beats - beats.round()).abs() < 1e-6 && (beats.round() as i64).rem_euclid(2) == 0,
+                "chord at {time:.3}s sits on no accent"
+            );
+        }
+    }
+
+    #[test]
+    fn chord_rate_is_song_relative_not_absolute() {
+        // The same pattern at two absolute scales: the song's OWN
+        // accents decide, so the chords are identical.
+        let quiet = generate_chart(&accented_analysis(0.5), &meta());
+        let loud = generate_chart(&accented_analysis(0.9), &meta());
+        let count = |chart: &ChartFile| {
+            chord_times(&chart.chart_for(Difficulty::Expert).unwrap().notes).len()
+        };
+        assert!(count(&quiet) > 0, "quiet song must still have accents");
+        assert_eq!(
+            count(&quiet),
+            count(&loud),
+            "chord rate must not depend on the absolute scale"
+        );
+    }
+
+    /// Accent every `stride`-th hit of a burst fixture.
+    fn accent_every(analysis: &mut SongAnalysis, stride: usize) {
+        for (k, onset) in analysis.onsets.iter_mut().enumerate() {
+            if k % stride == 0 {
+                onset.strength = 0.9;
+            }
+        }
+        for (k, tone) in analysis.melody.iter_mut().enumerate() {
+            if k % stride == 0 {
+                tone.strength = 0.9;
+            }
+        }
+    }
+
+    #[test]
+    fn chords_need_room_to_breathe() {
+        // Two shapes, one rule. (a) Accents INSIDE a long sixteenth
+        // stream: no setup room, no chord. (b) Accents on the
+        // OPENERS of short bursts (air before, sixteenths after):
+        // plenty of setup room, no landing room — still no chord. A
+        // chord inside a machine-gun run is a physical absurdity in
+        // either direction.
+        let mut inside = sixteenth_bursts(1, 64);
+        accent_every(&mut inside, 8);
+        let mut openers = sixteenth_bursts(8, 12);
+        accent_every(&mut openers, 12);
+        for analysis in [inside, openers] {
+            check_chord_breathing_room(&generate_chart(&analysis, &meta()));
+        }
+    }
+
+    fn check_chord_breathing_room(chart: &ChartFile) {
+        for difficulty in [Difficulty::Hard, Difficulty::Expert] {
+            let notes = &chart.chart_for(difficulty).unwrap().notes;
+            let profile = DifficultyProfile::for_difficulty(difficulty);
+            for time in chord_times(notes) {
+                let prev_gap = notes
+                    .iter()
+                    .filter(|n| n.time < time - 1e-9)
+                    .map(|n| time - n.time)
+                    .fold(f64::INFINITY, f64::min);
+                assert!(
+                    prev_gap >= profile.min_spacing_s * 2.0 - 1e-9,
+                    "{difficulty}: chord at {time:.3}s has only {prev_gap:.3}s of setup room"
+                );
+                let next_gap = notes
+                    .iter()
+                    .filter(|n| n.time > time + 1e-9)
+                    .map(|n| n.time - time)
+                    .fold(f64::INFINITY, f64::min);
+                assert!(
+                    next_gap >= profile.min_spacing_s * 1.5 - 1e-9,
+                    "{difficulty}: chord at {time:.3}s has only {next_gap:.3}s of landing room"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn uniform_songs_get_no_chords() {
+        // Every hit equally strong = the song has no accents; a
+        // percentile that ignores this would chord EVERYTHING.
+        let uniform: Vec<Onset> = (0..80)
+            .map(|k| Onset {
+                time_s: 1.0 + f64::from(k) * 0.5,
+                strength: 0.5,
+                brightness: 0.4,
+            })
+            .collect();
+        let mut analysis = accented_analysis(0.5);
+        analysis.onsets = uniform;
+        let chart = generate_chart(&analysis, &meta());
+        for difficulty in Difficulty::ALL {
+            let notes = &chart.chart_for(difficulty).unwrap().notes;
+            assert!(
+                chord_times(notes).is_empty(),
+                "{difficulty}: a song without accents must not chord"
+            );
+        }
     }
 
     #[test]

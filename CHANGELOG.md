@@ -14,6 +14,18 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.7] - 2026-08-30
+
+### Changed
+
+- Chords mark the song's own accents: eligibility is a percentile of
+  the difficulty's kept notes (expert 12 %, hard 8 %), never an
+  absolute strength bar - a quiet master and a loud one carry the
+  same accent rate, where the old threshold gave some songs almost
+  no chords and others a flood. Chords need room on both sides
+  (setup and landing), three-note chords are reserved for the very
+  strongest accents, and a song without accents gets no chords.
+
 ## [0.12.6] - 2026-08-30
 
 ### Changed
