@@ -155,7 +155,15 @@ pub fn run() -> AppExit {
     .init_state::<AppState>()
     .add_sub_state::<GamePhase>()
     .add_systems(Startup, spawn_camera)
-    .add_systems(Update, (sync_bloom, sync_ui_scale, report_frame_times))
+    .add_systems(
+        Update,
+        (
+            sync_bloom,
+            sync_stage_compositing,
+            sync_ui_scale,
+            report_frame_times,
+        ),
+    )
     .add_plugins((
         import::ImportPlugin,
         input_test::InputTestPlugin,
@@ -292,6 +300,31 @@ fn sync_ui_scale(windows: Query<&Window>, mut scale: ResMut<bevy::ui::UiScale>) 
     let target = (window.height() / 720.0).clamp(0.6, 2.5);
     if (scale.0 - target).abs() > 0.01 {
         scale.0 = target;
+    }
+}
+
+/// Exactly ONE camera may clear the window. While the 3D stage
+/// camera is on screen (it renders first, order -1), the 2D camera
+/// on top must LOAD the frame instead of wiping it — with the plain
+/// SDR 2D pass (8-bit note style, no bloom) the default clear
+/// erased the entire stage: score and particles over a black void.
+/// The round style dodged the wipe only by accident of its HDR
+/// bloom pipeline, which is why the bug hid behind one particular
+/// settings combination. Without a stage camera the 2D camera is
+/// alone again and must clear, or menus would smear.
+fn sync_stage_compositing(
+    stage_cameras: Query<(), (With<Camera3d>, With<gameplay::stage3d::Stage3d>)>,
+    mut cameras: Query<&mut Camera, With<Camera2d>>,
+) {
+    let wanted = if stage_cameras.is_empty() {
+        bevy::camera::ClearColorConfig::Default
+    } else {
+        bevy::camera::ClearColorConfig::None
+    };
+    for mut camera in &mut cameras {
+        if core::mem::discriminant(&camera.clear_color) != core::mem::discriminant(&wanted) {
+            camera.clear_color = wanted;
+        }
     }
 }
 

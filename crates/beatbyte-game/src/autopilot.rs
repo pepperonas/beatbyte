@@ -678,6 +678,14 @@ fn autopilot_pause(
     mut keys: ResMut<ButtonInput<KeyCode>>,
     phase: Res<State<crate::states::GamePhase>>,
     overlays: Query<&bevy::ui::ComputedNode, With<crate::gameplay::PauseOverlay>>,
+    cameras_2d: Query<&bevy::camera::Camera, With<bevy::camera::Camera2d>>,
+    stage_cameras: Query<
+        (),
+        (
+            With<bevy::camera::Camera3d>,
+            With<crate::gameplay::stage3d::Stage3d>,
+        ),
+    >,
     settings: Res<crate::config::Settings>,
     time: Res<Time>,
     mut warmup: Local<f32>,
@@ -745,6 +753,21 @@ fn autopilot_pause(
                 // an invisible menu.
                 0 if !overlays.iter().any(|node| node.size().x > 0.0) => {
                     fail("the pause overlay laid out to zero size — invisible menu".to_owned());
+                }
+                // Exactly one camera may clear the window: with the
+                // 3D stage on screen the 2D camera must LOAD the
+                // frame (else it wipes the whole stage — shipped
+                // once, hidden behind the round style's HDR bloom),
+                // and without it the 2D camera must clear again.
+                0 if cameras_2d.iter().any(|camera| {
+                    matches!(camera.clear_color, bevy::camera::ClearColorConfig::None)
+                        != !stage_cameras.is_empty()
+                }) =>
+                {
+                    fail(
+                        "the 2D camera's clear does not match the one-camera-clears rule"
+                            .to_owned(),
+                    );
                 }
                 3 if (settings.sfx_volume - after_down).abs() > 1e-4 => fail(format!(
                     "two LEFTs on the sfx row left {:.3}, expected {after_down:.3}",

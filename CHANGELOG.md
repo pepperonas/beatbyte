@@ -14,6 +14,19 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.13] - 2026-08-30
+
+### Fixed
+
+- The 3D stage no longer vanishes with the 8-bit note style. Two
+  cameras drew to one window and the 2D camera's default clear wiped
+  the stage rendered beneath it - score and particles over a black
+  void; the round style escaped only because its bloom pipeline
+  happened to dodge the wipe. The 2D camera now loads the frame
+  while a stage camera is on screen and clears it otherwise, and the
+  autopilot's pause drill fails loudly if the one-camera-clears rule
+  is ever violated again.
+
 ## [0.12.12] - 2026-08-30
 
 ### Fixed
