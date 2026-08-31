@@ -418,14 +418,20 @@ pub struct HypeTinted {
     pub reach: f32,
 }
 
-/// Wash the neck with the energy colour while hype is running.
+/// Wash the neck with the energy colour while hype is running — and
+/// turn the notes themselves toward it, the genre's star-power
+/// signature (all notes change colour while the power runs).
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 pub fn tint_stage_for_hype(
     settings: Res<Settings>,
     time: Res<Time>,
+    theme: Res<crate::theme::ActiveTheme>,
     players: Query<(&PlayerIndex, &PlayerSession)>,
     surfaces: Query<(&HypeTinted, &MeshMaterial3d<StandardMaterial>)>,
+    assets: Option<Res<NoteAssets>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut blend: Local<Vec<f32>>,
+    mut written: Local<Vec<f32>>,
 ) {
     if !active(&settings) {
         return;
@@ -446,15 +452,53 @@ pub fn tint_stage_for_hype(
         };
         blend[index.0] += (target - blend[index.0]) * (6.0 * delta).min(1.0);
     }
+    // Touching a material marks it changed and re-uploads it, so a
+    // settled blend must write NOTHING — before this gate, every
+    // tinted surface was re-uploaded every frame of every song,
+    // hype or no hype.
+    let moved = |written: &mut Vec<f32>, slot: usize, eased: f32| {
+        if written.len() <= slot {
+            written.resize(slot + 1, f32::NAN);
+        }
+        let changed = (written[slot] - eased).abs() > 0.0005 || written[slot].is_nan();
+        if changed {
+            written[slot] = eased;
+        }
+        changed
+    };
     for (surface, material) in &surfaces {
         let Some(&eased) = blend.get(surface.player) else {
             continue;
         };
+        if !moved(&mut written, surface.player, eased) {
+            continue;
+        }
         let amount = eased * surface.reach;
         if let Some(mut paint) = materials.get_mut(&material.0) {
             paint.base_color = surface.base.mix(&palette::HYPE, amount);
             let glow = surface.glow_lift.mul_add(amount, surface.base_glow);
             paint.emissive = paint.base_color.to_linear() * glow;
+        }
+    }
+    // Solo only: the lane materials are shared by every player's
+    // gems, so in multiplayer one player's hype would recolour the
+    // other's notes — there the neck wash alone carries the state.
+    let mut solo_players = players.iter();
+    let (solo, more) = (solo_players.next(), solo_players.next());
+    if let (Some((index, _)), None, Some(assets)) = (solo, more, assets) {
+        let eased = blend.get(index.0).copied().unwrap_or(0.0);
+        if moved(
+            &mut written,
+            crate::multiplayer::MAX_PLAYERS + index.0,
+            eased,
+        ) {
+            for (lane, handle) in Lane::ALL.iter().zip(&assets.lane_material) {
+                if let Some(mut paint) = materials.get_mut(handle) {
+                    let colour = theme.0.lane_color(*lane).mix(&palette::HYPE, eased * 0.75);
+                    paint.base_color = colour;
+                    paint.emissive = colour.to_linear() * 2.2;
+                }
+            }
         }
     }
 }
@@ -710,11 +754,6 @@ fn spawn_venue(
         perceptual_roughness: 0.9,
         ..default()
     });
-    let trim_material = materials.add(StandardMaterial {
-        base_color: stage.accent,
-        emissive: stage.accent.to_linear() * 0.55,
-        ..default()
-    });
     let box_material = materials.add(StandardMaterial {
         base_color: dark.mix(&Color::WHITE, 0.16),
         perceptual_roughness: 0.75,
@@ -735,18 +774,11 @@ fn spawn_venue(
         RenderLayers::layer(STAGE_LAYER),
     ));
 
-    // A lit band across the wall, level with the horizon — it gives
-    // the room a floor line and stops the wall reading as fog.
-    let band = meshes.add(Cuboid::new(90.0, 0.28, 0.2));
-    commands.spawn((
-        GameplayScreen,
-        Stage3d,
-        Venue,
-        Mesh3d(band),
-        MeshMaterial3d(trim_material.clone()),
-        Transform::from_xyz(0.0, 0.12, VENUE_BACK + 0.5),
-        RenderLayers::layer(STAGE_LAYER),
-    ));
+    // No lit band across the wall: the accent-coloured horizon strip
+    // (red on the default stage) read as a stray glowing line behind
+    // the highway and was reported as exactly that. The floor line
+    // the band once provided comes from the barriers and speaker
+    // stacks, which sit at the same height with real depth.
 
     // Side walls, well outside the bed so they frame without crowding.
     let side = meshes.add(Cuboid::new(0.6, 30.0, 46.0));
@@ -1716,6 +1748,52 @@ pub fn move_fret_bars(
     }
 }
 
+/// The outline of a five-point star in the XZ plane: alternating
+/// outer and inner vertices, counter-clockwise, starting at the top
+/// point (−Z, toward the vanishing point). Pure — the star is the
+/// genre's star-power marking, and its geometry should be provable
+/// without a GPU.
+fn star_outline(points: usize, outer: f32, inner: f32) -> Vec<[f32; 2]> {
+    let count = points * 2;
+    (0..count)
+        .map(|i| {
+            let radius = if i % 2 == 0 { outer } else { inner };
+            let angle =
+                core::f32::consts::TAU * (i as f32) / (count as f32) - core::f32::consts::FRAC_PI_2;
+            [radius * angle.cos(), radius * angle.sin()]
+        })
+        .collect()
+}
+
+/// A flat five-point star plate, face up (+Y). Only the top face is
+/// built: at the stage camera's angle the underside of a 0.05-unit
+/// plate is never seen, and half the triangles is half the cost.
+fn star_mesh(outer: f32, inner: f32) -> Mesh {
+    use bevy::mesh::{Indices, PrimitiveTopology};
+    let outline = star_outline(5, outer, inner);
+    let mut positions: Vec<[f32; 3]> = vec![[0.0, 0.0, 0.0]];
+    positions.extend(outline.iter().map(|[x, z]| [*x, 0.0, *z]));
+    let normals = vec![[0.0, 1.0, 0.0]; positions.len()];
+    let uvs: Vec<[f32; 2]> = positions
+        .iter()
+        .map(|p| [0.5 + p[0] / (2.0 * outer), 0.5 + p[2] / (2.0 * outer)])
+        .collect();
+    let rim = outline.len() as u32;
+    let mut indices: Vec<u32> = Vec::with_capacity(outline.len() * 3);
+    for i in 0..rim {
+        // Fan from the centre; wound so the +Y face is the front.
+        indices.extend([0, 1 + (i + 1) % rim, 1 + i]);
+    }
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        bevy::asset::RenderAssetUsages::default(),
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+    .with_inserted_indices(Indices::U32(indices))
+}
+
 /// Reusable geometry and materials for the 3D notes, built once.
 #[derive(Resource)]
 pub struct NoteAssets {
@@ -1724,6 +1802,10 @@ pub struct NoteAssets {
     hopo: Handle<Mesh>,
     hopo_rim: Handle<Mesh>,
     sustain: Handle<Mesh>,
+    /// The star plate a phrase note wears under its gem — the
+    /// genre's star-power marking (star-shaped gems), in place of
+    /// the round rim.
+    star_rim: Handle<Mesh>,
     missed_material: Handle<StandardMaterial>,
     rim_material: Handle<StandardMaterial>,
     hype_rim_material: Handle<StandardMaterial>,
@@ -1759,6 +1841,7 @@ pub fn setup_note_assets(
         hopo: meshes.add(Cylinder::new(gem * 0.62, 0.05)),
         hopo_rim: meshes.add(Cylinder::new(gem * 0.86, 0.04)),
         sustain: meshes.add(Cylinder::new(0.05 * neck_spread(&layout), 1.0)),
+        star_rim: meshes.add(star_mesh(gem * 1.62, gem * 0.82)),
         // ONE grey material that missed notes switch TO. Repainting
         // the lane's own material instead turned every note in that
         // lane black for the rest of the song, because they all share
@@ -1875,7 +1958,12 @@ pub fn spawn_due_notes(
                         event_index: cursor,
                         lane,
                     },
-                    Mesh3d(if hopo {
+                    Mesh3d(if in_phrase {
+                        // A phrase note IS a star: the genre marks
+                        // star-power notes with star-shaped gems, not
+                        // with a differently-lit circle.
+                        assets.star_rim.clone()
+                    } else if hopo {
                         assets.hopo_rim.clone()
                     } else {
                         assets.rim.clone()
@@ -1885,7 +1973,13 @@ pub fn spawn_due_notes(
                     } else {
                         assets.rim_material.clone()
                     }),
-                    Transform::from_xyz(lane_x(&layout, index.0, lane), 0.06, z),
+                    Transform::from_xyz(lane_x(&layout, index.0, lane), 0.06, z).with_scale(
+                        if in_phrase && hopo {
+                            Vec3::splat(0.72)
+                        } else {
+                            Vec3::ONE
+                        },
+                    ),
                     RenderLayers::layer(STAGE_LAYER),
                 ));
                 // A sustain is a tube running back up the neck from
@@ -2469,5 +2563,29 @@ mod sustain_pulse_tests {
             let b = sustain_pulse(f64::from(beat).mul_add(period, 0.123));
             assert!((a - b).abs() < 1e-3, "period drifted at {beat}");
         }
+    }
+}
+
+#[cfg(test)]
+mod star_tests {
+    use super::star_outline;
+
+    #[test]
+    fn the_star_is_five_points_of_alternating_radius() {
+        let outer = 1.0f32;
+        let inner = 0.5f32;
+        let outline = star_outline(5, outer, inner);
+        assert_eq!(outline.len(), 10, "five points, five valleys");
+        for (i, [x, z]) in outline.iter().enumerate() {
+            let radius = (x * x + z * z).sqrt();
+            let wanted = if i % 2 == 0 { outer } else { inner };
+            assert!(
+                (radius - wanted).abs() < 1e-5,
+                "vertex {i} sits at radius {radius}, wanted {wanted}"
+            );
+        }
+        // The first vertex is the tip pointing up the neck (−Z), so
+        // the star reads upright from the player's seat.
+        assert!(outline[0][0].abs() < 1e-5 && outline[0][1] < 0.0);
     }
 }

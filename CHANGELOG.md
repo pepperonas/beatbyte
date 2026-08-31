@@ -14,6 +14,26 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.20] - 2026-08-31
+
+### Changed
+
+- The 3D stage lost the glowing accent-coloured band across the back
+  wall (red on the default stage) - it read as a stray horizontal
+  line behind the highway and was reported as exactly that. The
+  floor line now comes from the barriers and speaker stacks.
+- Star-power notes look the part: a note inside an energy phrase
+  wears a five-point STAR under its gem instead of a lit circle -
+  the genre's star-note convention - and while Hype runs, the note
+  gems themselves shift toward the energy colour (solo; in
+  multiplayer the shared lane materials would recolour the other
+  player's notes, so the neck wash alone carries the state there).
+
+### Fixed
+
+- The stage's hype-tint materials were re-uploaded every frame of
+  every song, Hype or no Hype - a settled blend now writes nothing.
+
 ## [0.12.19] - 2026-08-31
 
 ### Changed
