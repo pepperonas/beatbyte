@@ -50,6 +50,27 @@ pub struct MusicPlayer {
     /// Keeps the output device alive; dropping it stops all audio.
     _device: MixerDeviceSink,
     player: Player,
+    /// Playback speed factor (practice mode). The device position
+    /// rodio reports lives in the OUTPUT timeline (it advances at
+    /// wall-clock pace whatever the factor), while the game thinks
+    /// in SOURCE seconds — the chart's timeline. The base pair below
+    /// anchors the affine map between the two; it is re-based on
+    /// every play, seek and speed change, because after a mid-song
+    /// speed change the naive `output × factor` is off by a constant.
+    speed: f64,
+    /// Source position at the last re-base.
+    src_base_s: f64,
+    /// Output (reported) position at the last re-base.
+    out_base_s: f64,
+}
+
+/// The affine output→source map: source seconds at `outer_now`,
+/// given the base pair and the factor in effect since it. Pure —
+/// this arithmetic is the whole correctness of practice-speed
+/// timing, so it is testable without an audio device.
+#[must_use]
+pub fn map_source_position(src_base_s: f64, out_base_s: f64, speed: f64, outer_now_s: f64) -> f64 {
+    (outer_now_s - out_base_s).mul_add(speed, src_base_s)
 }
 
 impl MusicPlayer {
@@ -61,6 +82,9 @@ impl MusicPlayer {
         Ok(MusicPlayer {
             _device: device,
             player,
+            speed: 1.0,
+            src_base_s: 0.0,
+            out_base_s: 0.0,
         })
     }
 
@@ -81,7 +105,39 @@ impl MusicPlayer {
         self.player.stop();
         self.player.append(decoder);
         self.player.play();
+        self.src_base_s = 0.0;
+        self.out_base_s = 0.0;
         Ok(duration)
+    }
+
+    /// Start playing an in-memory buffer, replacing anything current.
+    pub fn play_buffer(&mut self, audio: &AudioData) {
+        let channels = core::num::NonZero::<u16>::MIN; // mono
+        let Some(rate) = core::num::NonZero::new(audio.sample_rate()) else {
+            return;
+        };
+        let source = rodio::buffer::SamplesBuffer::new(channels, rate, audio.samples().to_vec());
+        self.player.stop();
+        self.player.append(source);
+        self.player.play();
+        self.src_base_s = 0.0;
+        self.out_base_s = 0.0;
+    }
+
+    /// Change the playback speed (practice mode; pitch moves with
+    /// it). Re-bases the position map at the current moment so
+    /// source time stays continuous across the change. Degenerate
+    /// factors are refused.
+    pub fn set_speed(&mut self, speed: f64) {
+        if !(speed.is_finite() && speed > 0.0) {
+            return;
+        }
+        let outer = self.player.get_pos().as_secs_f64();
+        self.src_base_s = map_source_position(self.src_base_s, self.out_base_s, self.speed, outer);
+        self.out_base_s = outer;
+        self.speed = speed;
+        #[allow(clippy::cast_possible_truncation)]
+        self.player.set_speed(speed as f32);
     }
 
     /// Pause playback.
@@ -111,18 +167,32 @@ impl MusicPlayer {
         self.player.empty()
     }
 
-    /// The playback position in seconds, as reported by the device
-    /// (coarse; smooth it through [`crate::clock::SongClock`]).
+    /// The playback position in SOURCE seconds — the chart's
+    /// timeline, at any speed (coarse; smooth it through
+    /// [`crate::clock::SongClock`]).
     #[must_use]
     pub fn position_s(&self) -> f64 {
-        self.player.get_pos().as_secs_f64()
+        map_source_position(
+            self.src_base_s,
+            self.out_base_s,
+            self.speed,
+            self.player.get_pos().as_secs_f64(),
+        )
     }
 
-    /// Seek to a position in seconds.
-    pub fn seek_s(&self, position_s: f64) -> Result<(), PlaybackError> {
+    /// Seek to a SOURCE position in seconds. The player's own seek
+    /// speaks the output timeline (its speed stage multiplies the
+    /// target back up), so the target is divided by the factor and
+    /// the position map re-based on the landing point.
+    pub fn seek_s(&mut self, position_s: f64) -> Result<(), PlaybackError> {
+        let source_s = position_s.max(0.0);
+        let outer_target = source_s / self.speed;
         self.player
-            .try_seek(Duration::from_secs_f64(position_s.max(0.0)))
-            .map_err(|e| PlaybackError::Seek(e.to_string()))
+            .try_seek(Duration::from_secs_f64(outer_target))
+            .map_err(|e| PlaybackError::Seek(e.to_string()))?;
+        self.src_base_s = source_s;
+        self.out_base_s = outer_target;
+        Ok(())
     }
 
     /// Set the music volume (0.0–1.0, values above 1.0 amplify).
@@ -164,6 +234,7 @@ enum MusicCommand {
     Stop,
     SeekS(f64),
     Volume(f32),
+    Speed(f64),
     Shutdown,
 }
 
@@ -247,6 +318,13 @@ impl MusicHandle {
     /// Set music volume (0.0–1.0).
     pub fn set_volume(&self, volume: f32) {
         let _ = self.commands.send(MusicCommand::Volume(volume));
+    }
+
+    /// Change the playback speed (practice mode; 1.0 = normal, pitch
+    /// moves with it). Applied on the music thread; the reported
+    /// position stays in source seconds at any factor.
+    pub fn set_speed(&self, speed: f64) {
+        let _ = self.commands.send(MusicCommand::Speed(speed));
     }
 
     /// The device-reported playback position in seconds (coarse —
@@ -377,15 +455,8 @@ fn handle_command(
             }
         }
         MusicCommand::PlayBuffer(audio) => {
-            let channels = core::num::NonZero::<u16>::MIN; // mono
-            if let Some(rate) = core::num::NonZero::new(audio.sample_rate()) {
-                let source =
-                    rodio::buffer::SamplesBuffer::new(channels, rate, audio.samples().to_vec());
-                player.stop();
-                player.player.append(source);
-                player.player.play();
-                shared.begin_song();
-            }
+            player.play_buffer(&audio);
+            shared.begin_song();
         }
         MusicCommand::Pause => player.pause(),
         MusicCommand::Resume => player.resume(),
@@ -397,9 +468,56 @@ fn handle_command(
             let _ = player.seek_s(position_s);
         }
         MusicCommand::Volume(volume) => player.set_volume(volume),
+        MusicCommand::Speed(speed) => player.set_speed(speed),
         MusicCommand::Shutdown => return true,
     }
     false
+}
+
+#[cfg(test)]
+mod mapping_tests {
+    use super::map_source_position;
+
+    const EPS: f64 = 1e-9;
+
+    #[test]
+    fn at_full_speed_source_equals_output() {
+        assert!((map_source_position(0.0, 0.0, 1.0, 12.34) - 12.34).abs() < EPS);
+    }
+
+    #[test]
+    fn a_mid_song_speed_change_stays_continuous() {
+        // 10 s at full speed, then half speed: rodio's own position
+        // keeps wall-clock pace, so the naive `output × factor`
+        // would be off by a constant after the change — the re-base
+        // is the fix, and this walks it exactly.
+        let (mut src_base, mut out_base, mut speed) = (0.0f64, 0.0f64, 1.0f64);
+        let outer_at_change = 10.0;
+        let source_at_change = map_source_position(src_base, out_base, speed, outer_at_change);
+        assert!((source_at_change - 10.0).abs() < EPS);
+        // Re-base (what set_speed does), then run 4 output seconds
+        // at half speed: source advances 2.
+        src_base = source_at_change;
+        out_base = outer_at_change;
+        speed = 0.5;
+        let source = map_source_position(src_base, out_base, speed, 14.0);
+        assert!((source - 12.0).abs() < EPS, "got {source}");
+        // The naive map without re-basing claims 7.0 — a 5-second
+        // teleport the clock would snap to.
+        assert!((map_source_position(0.0, 0.0, speed, 14.0) - 7.0).abs() < EPS);
+    }
+
+    #[test]
+    fn a_seek_rebases_in_both_timelines() {
+        // Seek to source 30 s at speed 1.25: the player's outer
+        // timeline lands at 24 s; from there, 2 outer seconds are
+        // 2.5 source seconds.
+        let speed = 1.25f64;
+        let source_target = 30.0;
+        let outer_target = source_target / speed;
+        let source = map_source_position(source_target, outer_target, speed, outer_target + 2.0);
+        assert!((source - 32.5).abs() < EPS);
+    }
 }
 
 #[cfg(test)]

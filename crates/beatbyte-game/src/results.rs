@@ -153,7 +153,12 @@ fn spawn_results(
     // results stays available for display.
     let solo = results.players.len() == 1;
     let mut new_record = false;
-    if solo && let Some(player) = results.players.first() {
+    // Practice runs (slowed at any point) never touch the book — a
+    // best set at 50 % speed would be a lie the scoreboard repeats.
+    if solo
+        && !results.practice
+        && let Some(player) = results.players.first()
+    {
         let perf = &player.performance;
         new_record = scores.record(
             &results.title,
@@ -248,11 +253,15 @@ fn spawn_solo(
 
     // The song is the subject of this screen, so it gets the heading
     // rather than a dim line under the grade.
+    let mut subtitle = format!("{} - {}", font.safe(&results.artist), results.difficulty);
+    if results.practice {
+        subtitle.push_str(" - practice (no record)");
+    }
     ui_kit::header(
         parent,
         font,
         &font.safe(&results.title).to_uppercase(),
-        &format!("{} - {}", font.safe(&results.artist), results.difficulty),
+        &subtitle,
     );
 
     parent.spawn(ui_kit::panel()).with_children(|panel| {

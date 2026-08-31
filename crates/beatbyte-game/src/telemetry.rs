@@ -155,10 +155,22 @@ fn finalize_recording(
     song: Option<Res<crate::boot::LoadedSong>>,
     difficulty: Option<Res<crate::song_select::SelectedDifficulty>>,
     autopilot: Option<Res<crate::autopilot::Autopilot>>,
+    practice: Option<Res<crate::gameplay::PracticeState>>,
 ) {
     let Some(recorder) = recorder else {
         return;
     };
+    // Practice runs leave NO telemetry: sessions played slowed (or
+    // part-slowed) would poison the design loop's evidence, and a
+    // marked-but-present file would still need every reader to know
+    // the flag. The empty file list also hides the results screen's
+    // rating offer — feedback about a practice run is feedback
+    // about the speed, not the chart.
+    if practice.as_ref().is_some_and(|p| p.used) {
+        commands.insert_resource(SessionLogFiles { files: Vec::new() });
+        commands.remove_resource::<SessionRecorder>();
+        return;
+    }
     if let (Some(song), Some(difficulty)) = (song, difficulty) {
         let files = write_session(
             &recorder,

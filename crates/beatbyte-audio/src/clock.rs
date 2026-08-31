@@ -39,6 +39,10 @@ enum ClockState {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SongClock {
     state: ClockState,
+    /// Song seconds per monotonic second (practice speed). 1.0 in
+    /// normal play; the estimate advances at this rate and the
+    /// device reconciliation corrects around it as usual.
+    rate: f64,
 }
 
 impl Default for SongClock {
@@ -53,6 +57,7 @@ impl SongClock {
     pub const fn new() -> SongClock {
         SongClock {
             state: ClockState::Stopped,
+            rate: 1.0,
         }
     }
 
@@ -92,6 +97,33 @@ impl SongClock {
         self.state = ClockState::Stopped;
     }
 
+    /// Change the timeline rate (song seconds per monotonic second —
+    /// the practice speed). Re-anchors first, so the current song
+    /// time is continuous across the change: only the SLOPE changes.
+    /// Non-positive and non-finite rates are refused; a clock that
+    /// stands still or runs backwards would deadlock the loop that
+    /// waits for song time to pass.
+    pub fn set_rate(&mut self, mono_s: f64, rate: f64) {
+        if !(rate.is_finite() && rate > 0.0) {
+            return;
+        }
+        if let ClockState::Playing { .. } = self.state
+            && let Some(song_s) = self.song_time(mono_s)
+        {
+            self.state = ClockState::Playing {
+                anchor_mono_s: mono_s,
+                anchor_song_s: song_s,
+            };
+        }
+        self.rate = rate;
+    }
+
+    /// The current timeline rate.
+    #[must_use]
+    pub fn rate(&self) -> f64 {
+        self.rate
+    }
+
     /// The song time at monotonic time `mono_s`, if a song is loaded.
     #[must_use]
     pub fn song_time(&self, mono_s: f64) -> Option<f64> {
@@ -101,7 +133,7 @@ impl SongClock {
             ClockState::Playing {
                 anchor_mono_s,
                 anchor_song_s,
-            } => Some(anchor_song_s + (mono_s - anchor_mono_s)),
+            } => Some((mono_s - anchor_mono_s).mul_add(self.rate, anchor_song_s)),
         }
     }
 
@@ -123,7 +155,7 @@ impl SongClock {
         else {
             return 0.0;
         };
-        let ours = anchor_song_s + (mono_s - anchor_mono_s);
+        let ours = (mono_s - anchor_mono_s).mul_add(self.rate, anchor_song_s);
         let drift = reported_song_s - ours;
         let correction = if drift.abs() >= SNAP_THRESHOLD_S {
             drift
@@ -204,6 +236,50 @@ mod tests {
             clock.reconcile(1.0, 1.010);
         }
         assert!((clock.song_time(1.0).unwrap() - 1.010).abs() < 1e-4);
+    }
+
+    #[test]
+    fn the_rate_scales_the_slope_without_jumping_the_time() {
+        let mut clock = SongClock::new();
+        clock.start(100.0, 0.0);
+        // Half speed from t=104 (song 4.0): the change is continuous.
+        clock.set_rate(104.0, 0.5);
+        assert!((clock.song_time(104.0).unwrap() - 4.0).abs() < EPS);
+        assert!((clock.song_time(106.0).unwrap() - 5.0).abs() < EPS);
+        // Back to full speed, still continuous.
+        clock.set_rate(106.0, 1.0);
+        assert!((clock.song_time(107.0).unwrap() - 6.0).abs() < EPS);
+        // Pause/resume keeps the rate.
+        clock.set_rate(107.0, 1.5);
+        clock.pause(107.0);
+        clock.resume(200.0);
+        assert!((clock.song_time(202.0).unwrap() - 9.0).abs() < EPS);
+    }
+
+    #[test]
+    fn degenerate_rates_are_refused() {
+        // A zero, negative or NaN rate would freeze or reverse the
+        // timeline — the loop waiting for song time would never end.
+        let mut clock = SongClock::new();
+        clock.start(0.0, 0.0);
+        for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            clock.set_rate(1.0, bad);
+        }
+        assert!((clock.rate() - 1.0).abs() < EPS);
+        assert!((clock.song_time(2.0).unwrap() - 2.0).abs() < EPS);
+    }
+
+    #[test]
+    fn reconcile_converges_under_a_rate() {
+        // The device reports source seconds; with the estimate
+        // sloped at the rate, small drift still slews to zero.
+        let mut clock = SongClock::new();
+        clock.start(0.0, 0.0);
+        clock.set_rate(0.0, 0.75);
+        for _ in 0..100 {
+            clock.reconcile(4.0, 3.01);
+        }
+        assert!((clock.song_time(4.0).unwrap() - 3.01).abs() < 1e-4);
     }
 
     #[test]

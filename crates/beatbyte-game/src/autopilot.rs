@@ -95,6 +95,18 @@ impl Plugin for AutopilotPlugin {
                 ),
             )
             .add_systems(OnEnter(AppState::Gameplay), autopilot_reset);
+            if std::env::var_os("BEATBYTE_AUTOPILOT_SPEED").is_some() {
+                // Practice-speed validation: measure the SLOPE of
+                // song time against wall time mid-run. Because the
+                // clock reconciles against the device, a music
+                // stream running at the wrong pace would drag the
+                // measured slope with it — this one number checks
+                // audio pace and clock rate together.
+                app.add_systems(
+                    Update,
+                    autopilot_speed_check.run_if(in_state(crate::states::GamePhase::Playing)),
+                );
+            }
             if std::env::var_os("BEATBYTE_AUTOPILOT_RATE").is_some() {
                 // Results-feedback validation (A5): press a REAL
                 // digit key on the results screen (and RIGHT when
@@ -556,6 +568,7 @@ fn autopilot_song_select(
     builtins: Res<crate::boot::BuiltinSongs>,
     mut roster: ResMut<crate::multiplayer::PlayerRoster>,
     mut selected: ResMut<crate::song_select::SelectedDifficulty>,
+    mut practice: ResMut<crate::gameplay::PracticeState>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     *delay += time.delta_secs();
@@ -637,6 +650,18 @@ fn autopilot_song_select(
             Err(reason) => {
                 error!("autopilot: {reason}");
                 std::process::exit(1);
+            }
+        }
+        if let Ok(raw) = std::env::var("BEATBYTE_AUTOPILOT_SPEED") {
+            match raw.parse::<u32>() {
+                Ok(percent) if (50..=150).contains(&percent) => {
+                    practice.speed_percent = percent;
+                    info!("autopilot: practice speed {percent}%");
+                }
+                _ => {
+                    error!("autopilot: BEATBYTE_AUTOPILOT_SPEED must be 50-150");
+                    std::process::exit(1);
+                }
             }
         }
         let players: usize = std::env::var("BEATBYTE_AUTOPILOT_PLAYERS")
@@ -761,6 +786,50 @@ fn autopilot_rate(
     *frame += 1;
 }
 
+/// `BEATBYTE_AUTOPILOT_SPEED=<50-150>`: verify mid-run that song
+/// time advances at the practice rate — slope over ≥8 wall seconds,
+/// tolerance ±5 %. The autopilot's own judgment cannot see a wrong
+/// rate (injector and notes share the clock), so the slope is the
+/// probe.
+fn autopilot_speed_check(
+    time: Res<Time>,
+    game_clock: Res<crate::audio_sys::GameClock>,
+    practice: Res<crate::gameplay::PracticeState>,
+    mut anchor: Local<Option<(f64, f64)>>,
+    mut done: Local<bool>,
+    mut app_exit: MessageWriter<AppExit>,
+) {
+    if *done {
+        return;
+    }
+    let Some(song_now) = game_clock.song_time(&time) else {
+        return;
+    };
+    // Anchor once the count-in is over — its start transition would
+    // dilute the slope.
+    if song_now < 0.5 {
+        return;
+    }
+    let wall_now = f64::from(time.elapsed_secs());
+    let Some((wall_anchor, song_anchor)) = *anchor else {
+        *anchor = Some((wall_now, song_now));
+        return;
+    };
+    let wall_dt = wall_now - wall_anchor;
+    if wall_dt < 8.0 {
+        return;
+    }
+    let slope = (song_now - song_anchor) / wall_dt;
+    let wanted = practice.rate();
+    *done = true;
+    if (slope - wanted).abs() <= wanted * 0.05 {
+        info!("autopilot: speed check PASSED — song advances at {slope:.3}x (wanted {wanted:.2}x)");
+    } else {
+        error!("autopilot: speed check FAILED — song advances at {slope:.3}x, wanted {wanted:.2}x");
+        deliver(&mut app_exit, AppExit::error());
+    }
+}
+
 /// The cameras that share the primary window: the 2D camera and the
 /// 3D stage camera (their HDR settings must agree, or the HDR
 /// camera's pass is silently dropped).
@@ -824,6 +893,7 @@ fn autopilot_pause(
     const STRIDE: u32 = 8;
     let script = [
         KeyCode::Escape,
+        KeyCode::ArrowDown,
         KeyCode::ArrowDown,
         KeyCode::ArrowLeft,
         KeyCode::ArrowLeft,
@@ -891,15 +961,15 @@ fn autopilot_pause(
                             .to_owned(),
                     );
                 }
-                3 if (settings.sfx_volume - after_down).abs() > 1e-4 => fail(format!(
+                4 if (settings.sfx_volume - after_down).abs() > 1e-4 => fail(format!(
                     "two LEFTs on the sfx row left {:.3}, expected {after_down:.3}",
                     settings.sfx_volume
                 )),
-                5 if (settings.sfx_volume - after_up).abs() > 1e-4 => fail(format!(
+                6 if (settings.sfx_volume - after_up).abs() > 1e-4 => fail(format!(
                     "two RIGHTs on the sfx row left {:.3}, expected {after_up:.3}",
                     settings.sfx_volume
                 )),
-                6 if *phase.get() != crate::states::GamePhase::Playing => {
+                7 if *phase.get() != crate::states::GamePhase::Playing => {
                     fail("escape did not resume".to_owned());
                 }
                 _ => {}

@@ -172,6 +172,50 @@ pub struct LastResults {
     /// Whether tap mode (no-strum assist) was active — such runs stay
     /// out of the scoreboard.
     pub tap_mode: bool,
+    /// Whether practice speed was used at any point — such runs stay
+    /// out of the scoreboard AND the telemetry (slowed evidence
+    /// would poison the design loop).
+    pub practice: bool,
+}
+
+/// Practice mode (optimization plan P1): the chosen speed and
+/// whether this run used it. The percent survives across songs — a
+/// practice session repeats — but `used` re-derives per run.
+#[derive(Resource)]
+pub struct PracticeState {
+    /// Playback speed in percent, 50–150.
+    pub speed_percent: u32,
+    /// Whether THIS run was played at practice speed at any point.
+    /// Sticky within the run: dropping back to 100 % mid-song does
+    /// not un-practice the half already played slowly.
+    pub used: bool,
+}
+
+impl Default for PracticeState {
+    fn default() -> Self {
+        PracticeState {
+            speed_percent: 100,
+            used: false,
+        }
+    }
+}
+
+impl PracticeState {
+    /// The speed as a rate factor (1.0 = normal).
+    #[must_use]
+    pub fn rate(&self) -> f64 {
+        f64::from(self.speed_percent) / 100.0
+    }
+
+    /// Step the speed by `direction` × 5 %, clamped to 50–150.
+    /// Marks the run as practice whenever the result is not 100 %.
+    pub fn step(&mut self, direction: f32) {
+        let step = if direction < 0.0 { -5i64 } else { 5 };
+        self.speed_percent = (i64::from(self.speed_percent) + step).clamp(50, 150) as u32;
+        if self.speed_percent != 100 {
+            self.used = true;
+        }
+    }
 }
 
 /// Marker for everything belonging to the gameplay screen.
@@ -230,6 +274,7 @@ impl Plugin for GameplayPlugin {
             )
             .add_systems(Update, pause_input.run_if(in_state(AppState::Gameplay)))
             .init_resource::<PauseCursor>()
+            .init_resource::<PracticeState>()
             .add_systems(
                 Update,
                 (pause_menu_input, refresh_pause_menu)
@@ -244,7 +289,10 @@ impl Plugin for GameplayPlugin {
                 OnExit(GamePhase::Paused),
                 (resume_audio, despawn_pause_overlay, persist_pause_settings),
             )
-            .add_systems(OnExit(AppState::Gameplay), teardown_gameplay)
+            .add_systems(
+                OnExit(AppState::Gameplay),
+                (teardown_gameplay, restore_normal_speed),
+            )
             .add_plugins(stage3d::Stage3dPlugin);
     }
 }
@@ -256,6 +304,8 @@ fn setup_gameplay(
     selected: Res<SelectedDifficulty>,
     roster: Res<PlayerRoster>,
     mut game_clock: ResMut<GameClock>,
+    music: Res<Music>,
+    mut practice: ResMut<PracticeState>,
     time: Res<Time>,
     settings: Res<crate::config::Settings>,
     mut theme: ResMut<crate::theme::ActiveTheme>,
@@ -310,6 +360,14 @@ fn setup_gameplay(
     // Count-in: the clock starts negative; music starts at zero.
     commands.insert_resource(PendingMusic(song.audio.clone()));
     game_clock.clock.start(time.elapsed_secs_f64(), -PREROLL_S);
+    // Practice speed applies to the WHOLE timeline — count-in
+    // included — so the scroll pace never changes mid-approach. The
+    // run counts as practice from the start when it begins slowed.
+    practice.used = practice.speed_percent != 100;
+    game_clock
+        .clock
+        .set_rate(time.elapsed_secs_f64(), practice.rate());
+    music.0.set_speed(practice.rate());
 }
 
 /// Start the music the moment the count-in ends; run the banner.
@@ -380,6 +438,7 @@ fn check_song_end(
     selected: Res<SelectedDifficulty>,
     roster: Res<PlayerRoster>,
     game_clock: Res<GameClock>,
+    practice: Res<PracticeState>,
     time: Res<Time>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
@@ -408,6 +467,7 @@ fn check_song_end(
             mode: roster.mode,
             players: results,
             tap_mode: players.iter().any(|(_, p)| p.session.tap_mode()),
+            practice: practice.used,
         });
         // Every way out of gameplay says so, and says which way.
         // Twice in one day a report of the game "jumping back to the
@@ -470,24 +530,53 @@ fn resume_audio(music: Res<Music>, mut game_clock: ResMut<GameClock>, time: Res<
 #[derive(Component)]
 pub(crate) struct PauseOverlay;
 
-/// The settings a player may change mid-song, reusing the settings
-/// screen's own rows — one definition of every step size and clamp,
-/// two places that draw it. The subset is deliberate: nothing here
-/// may change the JUDGMENT of the run in flight. Latency offset and
-/// tap mode stay on the settings screen, where flipping them cannot
-/// invalidate a paused song.
-const PAUSE_ROWS: [crate::settings_ui::Row; 3] = [
-    crate::settings_ui::Row::MusicVolume,
-    crate::settings_ui::Row::SfxVolume,
-    crate::settings_ui::Row::ScrollSpeed,
+/// One pause-menu row: the practice speed, or one of the settings
+/// screen's own rows — the latter reused wholesale, one definition
+/// of every step size and clamp, two places that draw it. The
+/// subset is deliberate: nothing here may change the JUDGMENT of
+/// the run in flight. Latency offset and tap mode stay on the
+/// settings screen, where flipping them cannot invalidate a paused
+/// song. (Practice speed scales the whole timeline — audio, clock,
+/// windows together — so relative judgment is untouched; the run is
+/// marked practice and stays out of scoreboard and telemetry.)
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PauseItem {
+    /// Practice speed, 50–150 % (optimization plan P1).
+    Speed,
+    /// A reused settings-screen row.
+    Setting(crate::settings_ui::Row),
+}
+
+impl PauseItem {
+    fn label(self) -> &'static str {
+        match self {
+            PauseItem::Speed => "SPEED (PRACTICE)",
+            PauseItem::Setting(row) => row.label(),
+        }
+    }
+
+    fn value(self, settings: &crate::config::Settings, practice: &PracticeState) -> String {
+        match self {
+            PauseItem::Speed => format!("{}%", practice.speed_percent),
+            PauseItem::Setting(row) => row.value(settings),
+        }
+    }
+}
+
+/// The pause menu's rows, in display order.
+const PAUSE_ROWS: [PauseItem; 4] = [
+    PauseItem::Speed,
+    PauseItem::Setting(crate::settings_ui::Row::MusicVolume),
+    PauseItem::Setting(crate::settings_ui::Row::SfxVolume),
+    PauseItem::Setting(crate::settings_ui::Row::ScrollSpeed),
 ];
 
 /// Whether adjusting this row previews the MISS sound. The SFX
 /// volume IS the volume of the error sounds, and while the music is
 /// paused there is nothing else to hear — setting it blind would be
 /// guesswork, so every step plays the sound being set.
-fn previews_the_miss_sound(row: crate::settings_ui::Row) -> bool {
-    row == crate::settings_ui::Row::SfxVolume
+fn previews_the_miss_sound(item: PauseItem) -> bool {
+    item == PauseItem::Setting(crate::settings_ui::Row::SfxVolume)
 }
 
 /// Which pause row the cursor sits on.
@@ -535,13 +624,13 @@ fn spawn_pause_overlay(
                 TextColor(palette::BRAND),
             ));
             parent.spawn(crate::ui_kit::panel()).with_children(|panel| {
-                for (index, row) in PAUSE_ROWS.iter().enumerate() {
+                for (index, item) in PAUSE_ROWS.iter().enumerate() {
                     panel
                         .spawn((PauseRow(index), Button, crate::ui_kit::row()))
                         .with_children(|entry| {
                             entry.spawn((
                                 PauseRowLabel(index),
-                                Text::new(row.label()),
+                                Text::new(item.label()),
                                 font.text(crate::ui_kit::ROW),
                                 TextColor(palette::TEXT_DIM),
                                 crate::ui_kit::label_node(),
@@ -576,6 +665,10 @@ fn pause_menu_input(
     rows: Query<(&PauseRow, &Interaction), Changed<Interaction>>,
     mut cursor: ResMut<PauseCursor>,
     mut settings: ResMut<crate::config::Settings>,
+    mut practice: ResMut<PracticeState>,
+    music: Res<Music>,
+    mut game_clock: ResMut<GameClock>,
+    time: Res<Time>,
     sfx: Res<crate::sfx::SfxLib>,
 ) {
     let nav = crate::controls::MenuNav::read(&keys, pads.iter());
@@ -597,18 +690,32 @@ fn pause_menu_input(
     for event in wheel.read() {
         wheel_step += event.y.signum();
     }
-    let row = PAUSE_ROWS[cursor.0];
+    let item = PAUSE_ROWS[cursor.0];
+    let mut adjust = |direction: f32,
+                      settings: &mut crate::config::Settings,
+                      practice: &mut PracticeState| match item {
+        PauseItem::Speed => {
+            practice.step(direction);
+            // Applied live: music (paused, takes effect on resume)
+            // and clock together — the timeline has ONE speed.
+            music.0.set_speed(practice.rate());
+            game_clock
+                .clock
+                .set_rate(time.elapsed_secs_f64(), practice.rate());
+        }
+        PauseItem::Setting(row) => row.adjust(settings, direction),
+    };
     let mut adjusted = false;
     if nav.left || wheel_step < 0.0 {
-        row.adjust(&mut settings, -1.0);
+        adjust(-1.0, &mut settings, &mut practice);
         adjusted = true;
     }
     if nav.right || nav.confirm || pointer.clicked || wheel_step > 0.0 {
-        row.adjust(&mut settings, 1.0);
+        adjust(1.0, &mut settings, &mut practice);
         adjusted = true;
     }
     if adjusted {
-        let preview = if previews_the_miss_sound(row) {
+        let preview = if previews_the_miss_sound(item) {
             &sfx.miss
         } else {
             &sfx.ui_move
@@ -622,6 +729,7 @@ fn pause_menu_input(
 /// Row highlight + live values, exactly the settings screen's dress.
 fn refresh_pause_menu(
     settings: Res<crate::config::Settings>,
+    practice: Res<PracticeState>,
     cursor: Res<PauseCursor>,
     mut rows: Query<(&PauseRow, &mut BackgroundColor, &mut BorderColor)>,
     mut labels: Query<(&PauseRowLabel, &mut TextColor), Without<PauseRowValue>>,
@@ -637,7 +745,7 @@ fn refresh_pause_menu(
             crate::ui_kit::row_style(crate::ui_kit::state_for(label.0 == cursor.0, false)).label;
     }
     for (value, mut text, mut color) in &mut values {
-        let wanted = PAUSE_ROWS[value.0].value(&settings);
+        let wanted = PAUSE_ROWS[value.0].value(&settings, &practice);
         if text.0 != wanted {
             text.0 = wanted;
         }
@@ -657,6 +765,13 @@ fn despawn_pause_overlay(mut commands: Commands, overlays: Query<Entity, With<Pa
     for entity in &overlays {
         commands.entity(entity).despawn();
     }
+}
+
+fn restore_normal_speed(music: Res<Music>, mut game_clock: ResMut<GameClock>, time: Res<Time>) {
+    // The menus run at life speed whatever the practice setting; the
+    // chosen percent itself survives for the next song.
+    music.0.set_speed(1.0);
+    game_clock.clock.set_rate(time.elapsed_secs_f64(), 1.0);
 }
 
 fn teardown_gameplay(
@@ -681,15 +796,18 @@ pub fn player_color(index: usize) -> Color {
 
 #[cfg(test)]
 mod pause_menu_tests {
-    use super::{PAUSE_ROWS, previews_the_miss_sound};
+    use super::{PAUSE_ROWS, PauseItem, PracticeState, previews_the_miss_sound};
     use crate::settings_ui::Row;
 
     #[test]
-    fn the_pause_menu_offers_the_volumes() {
-        // The commissioned row: the SFX volume governs the miss and
-        // overstrum sounds, and it must be reachable mid-song.
-        assert!(PAUSE_ROWS.contains(&Row::SfxVolume));
-        assert!(PAUSE_ROWS.contains(&Row::MusicVolume));
+    fn the_pause_menu_offers_the_volumes_and_the_practice_speed() {
+        // The commissioned rows: the SFX volume governs the miss and
+        // overstrum sounds, and the practice speed is the pause
+        // menu's own feature (optimization plan P1) — both must be
+        // reachable mid-song.
+        assert!(PAUSE_ROWS.contains(&PauseItem::Setting(Row::SfxVolume)));
+        assert!(PAUSE_ROWS.contains(&PauseItem::Setting(Row::MusicVolume)));
+        assert!(PAUSE_ROWS.contains(&PauseItem::Speed));
     }
 
     #[test]
@@ -698,8 +816,8 @@ mod pause_menu_tests {
         // the strum rules. Either one flipped inside a paused run
         // would judge the second half of the song by different laws
         // than the first — they stay on the settings screen.
-        assert!(!PAUSE_ROWS.contains(&Row::LatencyOffset));
-        assert!(!PAUSE_ROWS.contains(&Row::TapMode));
+        assert!(!PAUSE_ROWS.contains(&PauseItem::Setting(Row::LatencyOffset)));
+        assert!(!PAUSE_ROWS.contains(&PauseItem::Setting(Row::TapMode)));
     }
 
     #[test]
@@ -707,8 +825,40 @@ mod pause_menu_tests {
         // The row sets the volume OF the miss sound; with the music
         // paused there is nothing else to hear, so every step plays
         // the sound being set — and only that row does.
-        for row in PAUSE_ROWS {
-            assert_eq!(previews_the_miss_sound(row), row == Row::SfxVolume);
+        for item in PAUSE_ROWS {
+            assert_eq!(
+                previews_the_miss_sound(item),
+                item == PauseItem::Setting(Row::SfxVolume)
+            );
         }
+    }
+
+    #[test]
+    fn practice_speed_clamps_and_stays_sticky() {
+        let mut practice = PracticeState::default();
+        assert!((practice.rate() - 1.0).abs() < 1e-9);
+        assert!(!practice.used);
+        // Down to the floor: clamped at 50 %, marked as practice.
+        for _ in 0..30 {
+            practice.step(-1.0);
+        }
+        assert_eq!(practice.speed_percent, 50);
+        assert!((practice.rate() - 0.5).abs() < 1e-9);
+        assert!(practice.used);
+        // Back to exactly 100 %: the half already played slowly
+        // happened — the run STAYS practice.
+        for _ in 0..10 {
+            practice.step(1.0);
+        }
+        assert_eq!(practice.speed_percent, 100);
+        assert!(
+            practice.used,
+            "returning to 100% must not un-practice a run"
+        );
+        // Up to the ceiling.
+        for _ in 0..30 {
+            practice.step(1.0);
+        }
+        assert_eq!(practice.speed_percent, 150);
     }
 }

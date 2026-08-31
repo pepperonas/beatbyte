@@ -14,6 +14,20 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.17] - 2026-08-31
+
+### Added
+
+- Practice speed (optimization plan P1, first half): the pause menu
+  gains a SPEED row, 50-150 % in 5 % steps, applied live to the
+  audio and the song clock together (pitch moves with it - the
+  honest simple version). The whole timeline scales, count-in
+  included, so judgment stays relatively untouched; the run is
+  marked practice and stays out of the scoreboard AND the telemetry
+  (slowed evidence would poison the design loop), and the results
+  screen says so. The chosen speed survives into the next song;
+  menus always run at life speed.
+
 ## [0.12.16] - 2026-08-31
 
 ### Added
