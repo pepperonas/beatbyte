@@ -18,6 +18,7 @@ about them is compiled into a normal build.
 | `BEATBYTE_AUTOPILOT_SONG` | index or title substring | Which song to play (default: the first bundled one). |
 | `BEATBYTE_AUTOPILOT_PLAYERS` | `2`…`4` | Local multiplayer run. |
 | `BEATBYTE_AUTOPILOT_DIFFICULTY` | `easy`…`expert` | Which difficulty to play (default: medium). Unknown names and difficulties the song does not offer fail loudly. |
+| `BEATBYTE_AUTOPILOT_LOOP` | `<from>,<to>` | Arms the practice section loop (seconds) and verifies it: song time must wrap twice and the section's notes must reopen for judgment. |
 | `BEATBYTE_AUTOPILOT_SPEED` | `50`…`150` | Plays the run at that practice speed (percent) and verifies mid-run that song time advances at the rate — slope over 8+ wall seconds, ±5 %. |
 | `BEATBYTE_AUTOPILOT_RATE` | `1`…`5` | Results-feedback drill: presses the real digit key (and RIGHT when the chart has a parent version), then parses the session log back and verifies the feedback lines landed. |
 | `BEATBYTE_AUTOPILOT_PAUSE` | set | Mid-song pause-menu drill with real keys: pause, step to the SFX row, adjust down and back up (checked against the exact clamp model), resume — then the run must still finish flawlessly. |

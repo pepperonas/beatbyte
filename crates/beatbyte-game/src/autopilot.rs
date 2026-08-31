@@ -95,6 +95,15 @@ impl Plugin for AutopilotPlugin {
                 ),
             )
             .add_systems(OnEnter(AppState::Gameplay), autopilot_reset);
+            if std::env::var_os("BEATBYTE_AUTOPILOT_LOOP").is_some() {
+                // Section-loop validation: arm the loop, watch song
+                // time actually wrap twice, and verify the section's
+                // notes reopened for judgment.
+                app.add_systems(
+                    Update,
+                    autopilot_loop_check.run_if(in_state(AppState::Gameplay)),
+                );
+            }
             if std::env::var_os("BEATBYTE_AUTOPILOT_SPEED").is_some() {
                 // Practice-speed validation: measure the SLOPE of
                 // song time against wall time mid-run. Because the
@@ -828,6 +837,97 @@ fn autopilot_speed_check(
         error!("autopilot: speed check FAILED — song advances at {slope:.3}x, wanted {wanted:.2}x");
         deliver(&mut app_exit, AppExit::error());
     }
+}
+
+/// `BEATBYTE_AUTOPILOT_LOOP=<from>,<to>`: arm the practice section
+/// loop and prove it — song time must wrap (jump backwards) twice,
+/// and after a wrap a note inside the section must be judgeable
+/// again. Delivers its own verdict; the song never ends while it
+/// loops, so the normal end-of-song verdict cannot.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
+fn autopilot_loop_check(
+    mut practice: ResMut<crate::gameplay::PracticeState>,
+    game_clock: Res<crate::audio_sys::GameClock>,
+    players: Query<&crate::gameplay::PlayerSession>,
+    time: Res<Time>,
+    mut armed: Local<bool>,
+    mut last_now: Local<Option<f64>>,
+    mut wraps: Local<u32>,
+    mut waited: Local<f32>,
+    mut done: Local<bool>,
+    mut app_exit: MessageWriter<AppExit>,
+) {
+    if *done {
+        return;
+    }
+    let bounds = std::env::var("BEATBYTE_AUTOPILOT_LOOP")
+        .ok()
+        .and_then(|raw| {
+            let (from, to) = raw.split_once(',')?;
+            Some((
+                from.trim().parse::<f64>().ok()?,
+                to.trim().parse::<f64>().ok()?,
+            ))
+        });
+    let Some((from, to)) = bounds else {
+        error!("autopilot: BEATBYTE_AUTOPILOT_LOOP must be `<from>,<to>` in seconds");
+        std::process::exit(1);
+    };
+    if !*armed {
+        practice.set_loop_bound(false, from);
+        practice.set_loop_bound(true, to);
+        if practice.loop_span().is_none() {
+            error!("autopilot: loop {from},{to} does not arm (span too short?)");
+            std::process::exit(1);
+        }
+        *armed = true;
+        info!("autopilot: loop drill armed for {from:.1}-{to:.1}s");
+    }
+    *waited += time.delta_secs();
+    if *waited > 120.0 {
+        error!("autopilot: loop drill FAILED — no second wrap within 120s");
+        deliver(&mut app_exit, AppExit::error());
+        *done = true;
+        return;
+    }
+    let Some(now) = game_clock.song_time(&time) else {
+        return;
+    };
+    if let Some(last) = *last_now
+        && now < last - 1.0
+    {
+        *wraps += 1;
+        info!("autopilot: loop wrap {} ({last:.2}s -> {now:.2}s)", *wraps);
+        // After a wrap, a note inside the section must be judgeable
+        // again — the rewind is the half that silently breaking
+        // would turn the loop into a spectator ride.
+        let reopened = players.iter().any(|player| {
+            let track = player.session.track();
+            track
+                .events()
+                .iter()
+                .enumerate()
+                .filter(|(_, event)| event.time_s >= from && event.time_s <= to)
+                .any(|(index, _)| {
+                    matches!(
+                        player.session.note_state(index),
+                        Some(beatbyte_core::session::NoteState::Pending)
+                    )
+                })
+        });
+        if !reopened {
+            error!("autopilot: loop drill FAILED — no note in the section reopened");
+            deliver(&mut app_exit, AppExit::error());
+            *done = true;
+            return;
+        }
+        if *wraps >= 2 {
+            info!("autopilot: loop drill PASSED — wrapped twice, section notes reopened");
+            deliver(&mut app_exit, AppExit::Success);
+            *done = true;
+        }
+    }
+    *last_now = Some(now);
 }
 
 /// The cameras that share the primary window: the 2D camera and the

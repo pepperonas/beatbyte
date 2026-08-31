@@ -16,6 +16,12 @@ pub struct GameClock {
     pub clock: SongClock,
     /// The music generation the clock is currently tracking.
     pub generation: u64,
+    /// Monotonic time until which reconciliation is suppressed. A
+    /// seek command travels to the music thread asynchronously; for
+    /// a few frames the device still reports the OLD position, and
+    /// reconciling against it would snap the freshly-seeked clock
+    /// right back (a seek storm, in the loop's case).
+    pub hold_reconcile_until: f64,
 }
 
 impl GameClock {
@@ -51,7 +57,10 @@ fn sync_clock(time: Res<Time>, music: Res<Music>, mut game_clock: ResMut<GameClo
         game_clock.clock.start(mono, music.0.position_s());
         return;
     }
-    if game_clock.clock.is_playing() && music.0.is_active() {
+    if game_clock.clock.is_playing()
+        && music.0.is_active()
+        && mono >= game_clock.hold_reconcile_until
+    {
         game_clock.clock.reconcile(mono, music.0.position_s());
     }
 }

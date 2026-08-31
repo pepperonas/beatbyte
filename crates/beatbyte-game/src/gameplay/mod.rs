@@ -185,9 +185,14 @@ pub struct LastResults {
 pub struct PracticeState {
     /// Playback speed in percent, 50–150.
     pub speed_percent: u32,
-    /// Whether THIS run was played at practice speed at any point.
-    /// Sticky within the run: dropping back to 100 % mid-song does
-    /// not un-practice the half already played slowly.
+    /// Section-loop start in song seconds (practice).
+    pub loop_from: Option<f64>,
+    /// Section-loop end in song seconds (practice).
+    pub loop_to: Option<f64>,
+    /// Whether THIS run used practice at any point — speed away from
+    /// 100 %, or a loop bound set. Sticky within the run: dropping
+    /// back to 100 % or clearing the loop does not un-practice the
+    /// part already practiced.
     pub used: bool,
 }
 
@@ -195,10 +200,20 @@ impl Default for PracticeState {
     fn default() -> Self {
         PracticeState {
             speed_percent: 100,
+            loop_from: None,
+            loop_to: None,
             used: false,
         }
     }
 }
+
+/// A loop must be at least this long — a shorter one would wrap
+/// faster than the lead-in plays.
+const LOOP_MIN_SPAN_S: f64 = 1.0;
+
+/// How far before the loop start the wrap lands: reaction room, and
+/// the notes scroll in instead of teleporting onto the receptors.
+const LOOP_LEAD_S: f64 = 1.5;
 
 impl PracticeState {
     /// The speed as a rate factor (1.0 = normal).
@@ -215,6 +230,29 @@ impl PracticeState {
         if self.speed_percent != 100 {
             self.used = true;
         }
+    }
+
+    /// The armed loop, when both bounds are set and the span is
+    /// real (end after start by at least one second).
+    #[must_use]
+    pub fn loop_span(&self) -> Option<(f64, f64)> {
+        match (self.loop_from, self.loop_to) {
+            (Some(from), Some(to)) if to >= from + LOOP_MIN_SPAN_S => Some((from, to)),
+            _ => None,
+        }
+    }
+
+    /// Set a loop bound to a song time (negative times clamp to the
+    /// song start — bounds live in the song, not the count-in).
+    /// Setting a bound is a practice act.
+    pub fn set_loop_bound(&mut self, end: bool, song_s: f64) {
+        let value = Some(song_s.max(0.0));
+        if end {
+            self.loop_to = value;
+        } else {
+            self.loop_from = value;
+        }
+        self.used = true;
     }
 }
 
@@ -273,6 +311,10 @@ impl Plugin for GameplayPlugin {
                     .run_if(in_state(GamePhase::Playing)),
             )
             .add_systems(Update, pause_input.run_if(in_state(AppState::Gameplay)))
+            .add_systems(
+                Update,
+                practice_loop_wrap.run_if(in_state(GamePhase::Playing)),
+            )
             .init_resource::<PauseCursor>()
             .init_resource::<PracticeState>()
             .add_systems(
@@ -364,6 +406,10 @@ fn setup_gameplay(
     // included — so the scroll pace never changes mid-approach. The
     // run counts as practice from the start when it begins slowed.
     practice.used = practice.speed_percent != 100;
+    // Loop bounds are positions in ONE song; a stale pair from the
+    // previous track would wrap this one at nonsense times.
+    practice.loop_from = None;
+    practice.loop_to = None;
     game_clock
         .clock
         .set_rate(time.elapsed_secs_f64(), practice.rate());
@@ -543,14 +589,29 @@ pub(crate) struct PauseOverlay;
 enum PauseItem {
     /// Practice speed, 50–150 % (optimization plan P1).
     Speed,
+    /// Section-loop start (practice): RIGHT sets it to the paused
+    /// moment, LEFT clears it.
+    LoopFrom,
+    /// Section-loop end, same handling.
+    LoopTo,
     /// A reused settings-screen row.
     Setting(crate::settings_ui::Row),
+}
+
+/// A song time as the pause menu prints it (m:ss.t).
+fn fmt_song_time(song_s: f64) -> String {
+    let clamped = song_s.max(0.0);
+    let minutes = (clamped / 60.0).floor() as u64;
+    let seconds = clamped - (minutes as f64) * 60.0;
+    format!("{minutes}:{seconds:04.1}")
 }
 
 impl PauseItem {
     fn label(self) -> &'static str {
         match self {
             PauseItem::Speed => "SPEED (PRACTICE)",
+            PauseItem::LoopFrom => "LOOP FROM",
+            PauseItem::LoopTo => "LOOP TO",
             PauseItem::Setting(row) => row.label(),
         }
     }
@@ -558,14 +619,38 @@ impl PauseItem {
     fn value(self, settings: &crate::config::Settings, practice: &PracticeState) -> String {
         match self {
             PauseItem::Speed => format!("{}%", practice.speed_percent),
+            PauseItem::LoopFrom | PauseItem::LoopTo => {
+                let bound = if self == PauseItem::LoopFrom {
+                    practice.loop_from
+                } else {
+                    practice.loop_to
+                };
+                match bound {
+                    None => "RIGHT sets here".to_owned(),
+                    Some(value) => {
+                        // Both set but not a real span: say so, on
+                        // the row that closes the pair.
+                        if self == PauseItem::LoopTo
+                            && practice.loop_from.is_some()
+                            && practice.loop_span().is_none()
+                        {
+                            format!("{} (after FROM!)", fmt_song_time(value))
+                        } else {
+                            fmt_song_time(value)
+                        }
+                    }
+                }
+            }
             PauseItem::Setting(row) => row.value(settings),
         }
     }
 }
 
 /// The pause menu's rows, in display order.
-const PAUSE_ROWS: [PauseItem; 4] = [
+const PAUSE_ROWS: [PauseItem; 6] = [
     PauseItem::Speed,
+    PauseItem::LoopFrom,
+    PauseItem::LoopTo,
     PauseItem::Setting(crate::settings_ui::Row::MusicVolume),
     PauseItem::Setting(crate::settings_ui::Row::SfxVolume),
     PauseItem::Setting(crate::settings_ui::Row::ScrollSpeed),
@@ -703,6 +788,19 @@ fn pause_menu_input(
                 .clock
                 .set_rate(time.elapsed_secs_f64(), practice.rate());
         }
+        PauseItem::LoopFrom | PauseItem::LoopTo => {
+            let end = item == PauseItem::LoopTo;
+            if direction < 0.0 {
+                // LEFT clears the bound (and with it the loop).
+                if end {
+                    practice.loop_to = None;
+                } else {
+                    practice.loop_from = None;
+                }
+            } else if let Some(now) = game_clock.clock.song_time(time.elapsed_secs_f64()) {
+                practice.set_loop_bound(end, now);
+            }
+        }
         PauseItem::Setting(row) => row.adjust(settings, direction),
     };
     let mut adjusted = false;
@@ -763,6 +861,56 @@ fn persist_pause_settings(settings: Res<crate::config::Settings>) {
 
 fn despawn_pause_overlay(mut commands: Commands, overlays: Query<Entity, With<PauseOverlay>>) {
     for entity in &overlays {
+        commands.entity(entity).despawn();
+    }
+}
+
+/// The note entities a loop wrap sweeps away (both views' gems).
+type LoopedNoteEntities = Or<(With<notes::NoteSprite>, With<stage3d::Note3d>)>;
+
+/// The section loop (optimization plan P1, second half): reaching
+/// the loop end jumps the whole run — music, clock, sessions, note
+/// entities — back to a lead-in before the loop start, and the
+/// section's notes become judgeable again.
+fn practice_loop_wrap(
+    mut commands: Commands,
+    practice: Res<PracticeState>,
+    mut game_clock: ResMut<GameClock>,
+    music: Res<Music>,
+    time: Res<Time>,
+    mut players: Query<&mut PlayerSession>,
+    notes: Query<Entity, LoopedNoteEntities>,
+) {
+    let Some((from, to)) = practice.loop_span() else {
+        return;
+    };
+    let mono = time.elapsed_secs_f64();
+    let Some(now) = game_clock.clock.song_time(mono) else {
+        return;
+    };
+    if now < to {
+        return;
+    }
+    let lead = (from - LOOP_LEAD_S).max(0.0);
+    info!("practice loop: {now:.2}s -> {lead:.2}s (section {from:.2}-{to:.2})");
+    music.0.seek_s(lead);
+    game_clock.clock.seek(mono, lead);
+    // The seek travels to the music thread asynchronously; until it
+    // lands, the device still reports the old position — reconciling
+    // against that would snap the clock straight back to the loop
+    // end and wrap again, forever.
+    game_clock.hold_reconcile_until = mono + 0.25;
+    for mut player in &mut players {
+        player.session.rewind_to(lead);
+        let events = player.session.track().events();
+        player.spawn_cursor = events
+            .iter()
+            .position(|event| event.time_s >= lead)
+            .unwrap_or(events.len());
+    }
+    // Every note entity in flight belongs to the abandoned pass;
+    // the spawn systems rebuild the section from the reset cursor.
+    for entity in &notes {
         commands.entity(entity).despawn();
     }
 }
@@ -831,6 +979,31 @@ mod pause_menu_tests {
                 item == PauseItem::Setting(Row::SfxVolume)
             );
         }
+    }
+
+    #[test]
+    fn the_loop_arms_only_on_a_real_span() {
+        let mut practice = PracticeState::default();
+        assert_eq!(practice.loop_span(), None);
+        practice.set_loop_bound(false, 10.0);
+        assert_eq!(practice.loop_span(), None, "one bound is no loop");
+        assert!(practice.used, "setting a bound is a practice act");
+        // An end before (or hugging) the start never arms — wrapping
+        // faster than the lead-in plays would be a strobe.
+        practice.set_loop_bound(true, 10.5);
+        assert_eq!(practice.loop_span(), None);
+        practice.set_loop_bound(true, 24.0);
+        assert_eq!(practice.loop_span(), Some((10.0, 24.0)));
+        // Bounds live in the song: a count-in moment clamps to 0.
+        practice.set_loop_bound(false, -1.4);
+        assert_eq!(practice.loop_span(), Some((0.0, 24.0)));
+    }
+
+    #[test]
+    fn song_times_print_as_minutes_and_tenths() {
+        assert_eq!(super::fmt_song_time(0.0), "0:00.0");
+        assert_eq!(super::fmt_song_time(92.35), "1:32.3");
+        assert_eq!(super::fmt_song_time(-3.0), "0:00.0");
     }
 
     #[test]

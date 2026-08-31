@@ -14,6 +14,19 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.18] - 2026-08-31
+
+### Added
+
+- Section loop (optimization plan P1, second half): LOOP FROM and
+  LOOP TO rows on the pause menu - RIGHT pins a bound to the paused
+  moment, LEFT clears it. With a real span armed (at least one
+  second), reaching the end jumps the whole run back to a 1.5 s
+  lead-in before the start: music, clock, sessions and the notes in
+  flight together, and the section's notes become judgeable again.
+  Looping is practice: no scoreboard entry, no telemetry. Bounds
+  clear when a new song starts - they are positions in ONE song.
+
 ## [0.12.17] - 2026-08-31
 
 ### Added

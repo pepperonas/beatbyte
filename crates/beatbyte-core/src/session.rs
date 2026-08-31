@@ -270,6 +270,48 @@ impl TrackSession {
                 .all(|s| !matches!(s, NoteState::Pending))
     }
 
+    /// Rewind the session to `time_s` (the practice section loop):
+    /// every event at or after the point becomes judgeable again,
+    /// the session clock moves back so nothing is phantom-missed,
+    /// and the transients (active sustain, HOPO chain) reset —
+    /// half-finished cross-boundary state cannot be honestly
+    /// resumed. Phrase progress is recomputed from the surviving
+    /// states. The performance totals deliberately stay: rewinding
+    /// exists for practice, which records nothing anyway, and a
+    /// score that ran backwards would look like a display bug.
+    pub fn rewind_to(&mut self, time_s: f64) {
+        if !time_s.is_finite() {
+            return;
+        }
+        for (index, event) in self.track.events().iter().enumerate() {
+            if event.time_s >= time_s {
+                self.states[index] = NoteState::Pending;
+            }
+        }
+        self.scan_from = self
+            .states
+            .iter()
+            .position(|state| matches!(state, NoteState::Pending))
+            .unwrap_or(self.states.len());
+        self.clock_s = self.clock_s.min(time_s);
+        self.sustain = None;
+        self.hopo_chain = false;
+        for progress in &mut self.phrases {
+            progress.hits = 0;
+            progress.broken = false;
+        }
+        for (index, &phrase) in self.event_phrase.iter().enumerate() {
+            if phrase == usize::MAX {
+                continue;
+            }
+            match self.states[index] {
+                NoteState::Hit(_) => self.phrases[phrase].hits += 1,
+                NoteState::Missed => self.phrases[phrase].broken = true,
+                NoteState::Pending => {}
+            }
+        }
+    }
+
     /// Advance the song clock, resolving misses, sustain points and Hype
     /// drain. Call once per frame with the current song time, and before
     /// processing each input via [`TrackSession::handle`].
@@ -1120,6 +1162,89 @@ mod tests {
         // and the strum is an overstrum.
         assert!(events.contains(&SessionEvent::NoteMissed { event_index: 0 }));
         assert!(events.contains(&SessionEvent::Overstrum));
+    }
+
+    #[test]
+    fn rewind_reopens_only_the_events_at_or_after_the_point() {
+        let mut s = session(track(vec![
+            tap(1.0, Lane::One),
+            tap(2.0, Lane::Two),
+            tap(3.0, Lane::Three),
+        ]));
+        play(&mut s, 1.0, Lane::One);
+        play(&mut s, 2.0, Lane::Two);
+        assert!(matches!(s.note_state(0), Some(NoteState::Hit(_))));
+        assert!(matches!(s.note_state(1), Some(NoteState::Hit(_))));
+        s.rewind_to(1.5);
+        // The first hit is history the loop does not touch; the
+        // second is inside the section and judgeable again.
+        assert!(matches!(s.note_state(0), Some(NoteState::Hit(_))));
+        assert!(matches!(s.note_state(1), Some(NoteState::Pending)));
+        assert!(matches!(s.note_state(2), Some(NoteState::Pending)));
+        assert!(!s.finished());
+        let events = play(&mut s, 2.0, Lane::Two);
+        assert!(
+            matches!(
+                events.as_slice(),
+                [
+                    SessionEvent::NoteHit {
+                        event_index: 1,
+                        judgment: Judgment::Perfect,
+                        ..
+                    },
+                    ..
+                ]
+            ),
+            "a reopened note judges again: {events:?}"
+        );
+    }
+
+    #[test]
+    fn rewind_moves_the_session_clock_back_without_phantom_misses() {
+        let mut s = session(track(vec![tap(2.0, Lane::One)]));
+        let mut drain = Vec::new();
+        s.advance(5.0, &mut drain);
+        assert!(matches!(s.note_state(0), Some(NoteState::Missed)));
+        s.rewind_to(0.5);
+        assert!(matches!(s.note_state(0), Some(NoteState::Pending)));
+        // Advancing to just before the note again must not re-miss
+        // it — the session clock went back with the rewind.
+        drain.clear();
+        s.advance(1.5, &mut drain);
+        assert!(
+            drain
+                .iter()
+                .all(|e| !matches!(e, SessionEvent::NoteMissed { .. })),
+            "{drain:?}"
+        );
+        assert!(matches!(s.note_state(0), Some(NoteState::Pending)));
+    }
+
+    #[test]
+    fn rewind_recomputes_phrases_and_clears_the_transients() {
+        use crate::note::Phrase;
+        // A phrase over both notes: hit one, miss one, rewind — the
+        // phrase must be whole again (unbroken, one hit remembered
+        // as zero because both notes reopened).
+        let mut s = session(track_with_phrases(
+            vec![tap(1.0, Lane::One), tap(2.0, Lane::Two)],
+            vec![Phrase {
+                start_s: 0.5,
+                end_s: 2.5,
+            }],
+        ));
+        play(&mut s, 1.0, Lane::One);
+        let mut drain = Vec::new();
+        s.advance(5.0, &mut drain); // second note missed -> phrase broken
+        s.rewind_to(0.5);
+        // Both notes reopened; the phrase is intact and countable.
+        play(&mut s, 1.0, Lane::One);
+        play(&mut s, 2.0, Lane::Two);
+        assert!(
+            s.performance().hype_meter() > 0.0,
+            "a re-played phrase must complete (meter {})",
+            s.performance().hype_meter()
+        );
     }
 }
 
