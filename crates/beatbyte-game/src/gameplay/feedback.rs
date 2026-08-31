@@ -102,15 +102,21 @@ pub fn spawn_feedback(
     for message in feedback.read() {
         let player = message.player_index;
         match message.event {
-            SessionEvent::NoteHit { judgment, .. } => {
+            SessionEvent::NoteHit {
+                judgment, offset_s, ..
+            } => {
                 let (label, color) = judgment_style(judgment);
+                let tagged = match timing_tag(judgment, offset_s) {
+                    Some(tag) => format!("{label} ({tag})"),
+                    None => label.to_owned(),
+                };
                 show_popup(
                     &mut popups,
                     &mut commands,
                     &layout,
                     &font,
                     player,
-                    label,
+                    &tagged,
                     color,
                 );
             }
@@ -138,6 +144,19 @@ pub fn spawn_feedback(
             }
             _ => {}
         }
+    }
+}
+
+/// Which side of the note a non-perfect hit landed on. A PERFECT is
+/// inside the tight window and needs no lecture; a miss has no
+/// meaningful side — the tag exists exactly where it is actionable
+/// (optimization plan P2: the popup already knows the signed
+/// offset, showing it is the most actionable feedback there is).
+/// Negative offset = the hit came before the note = EARLY.
+fn timing_tag(judgment: Judgment, offset_s: f64) -> Option<&'static str> {
+    match judgment {
+        Judgment::Great | Judgment::Good => Some(if offset_s < 0.0 { "EARLY" } else { "LATE" }),
+        Judgment::Perfect | Judgment::Miss => None,
     }
 }
 
@@ -188,5 +207,20 @@ pub fn animate_feedback(time: Res<Time>, mut popups: Query<(&mut JudgmentPopup, 
         popup.ttl -= dt;
         let alpha = (popup.ttl / 0.2).clamp(0.0, 1.0);
         color.0 = color.0.with_alpha(alpha);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::timing_tag;
+    use beatbyte_core::Judgment;
+
+    #[test]
+    fn only_the_judgments_that_can_act_on_it_get_a_side() {
+        // Negative offset = hit before the note = EARLY.
+        assert_eq!(timing_tag(Judgment::Great, -0.04), Some("EARLY"));
+        assert_eq!(timing_tag(Judgment::Good, 0.07), Some("LATE"));
+        assert_eq!(timing_tag(Judgment::Perfect, -0.01), None);
+        assert_eq!(timing_tag(Judgment::Miss, 0.2), None);
     }
 }

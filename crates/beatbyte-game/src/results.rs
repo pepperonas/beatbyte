@@ -69,6 +69,31 @@ fn results_footer(can_rate: bool, can_versus: bool) -> String {
     parts.join("  ")
 }
 
+/// Mean drift below which the run counts as on time (ms) — inside
+/// it an EARLY/LATE claim would be noise.
+const ON_TIME_MS: f64 = 3.0;
+
+/// Mean drift at which the screen suggests recalibrating (ms): half
+/// the perfect window — a player this far off is donating half
+/// their margin to a constant the calibration screen can remove.
+const RECALIBRATE_MS: f64 = 15.0;
+
+/// The TIMING row's value for a run's mean signed offset.
+fn drift_value(mean_ms: f64) -> String {
+    if mean_ms.abs() < ON_TIME_MS {
+        "on time".to_owned()
+    } else if mean_ms < 0.0 {
+        format!("{:.0} ms early", mean_ms.abs())
+    } else {
+        format!("+{mean_ms:.0} ms late")
+    }
+}
+
+/// Whether the drift warrants the recalibration hint.
+fn needs_recalibration(mean_ms: f64) -> bool {
+    mean_ms.abs() >= RECALIBRATE_MS
+}
+
 /// What the status line says for the feedback given so far.
 fn feedback_status(fun: Option<u8>, versus: Option<&str>) -> String {
     let mut parts: Vec<String> = Vec::new();
@@ -338,6 +363,36 @@ fn spawn_solo(
         tally(panel, font, "GREAT", counts.great, palette::GREAT);
         tally(panel, font, "GOOD", counts.good, palette::GOOD);
         tally(panel, font, "MISS", counts.miss, palette::MISS);
+        // The run's timing drift (optimization plan P2): the one
+        // number that turns "felt off" into an action. Absent when
+        // nothing was hit — there is no drift to report.
+        if let Some(mean_ms) = perf.mean_offset_ms() {
+            panel.spawn(ui_kit::row()).with_children(|row| {
+                row.spawn((
+                    Text::new("TIMING"),
+                    font.text(ui_kit::ROW),
+                    TextColor(palette::TEXT_DIM),
+                    ui_kit::label_node(),
+                ));
+                row.spawn((
+                    Text::new(drift_value(mean_ms)),
+                    font.text(ui_kit::ROW),
+                    TextColor(if needs_recalibration(mean_ms) {
+                        palette::GOOD
+                    } else {
+                        palette::TEXT
+                    }),
+                    ui_kit::value_node(),
+                ));
+            });
+            if needs_recalibration(mean_ms) {
+                panel.spawn((
+                    Text::new("consistently off — recalibrate in settings"),
+                    font.text(ui_kit::SMALL),
+                    TextColor(palette::TEXT_DIM),
+                ));
+            }
+        }
         tally(
             panel,
             font,
@@ -606,6 +661,23 @@ mod tests {
         assert!(full.contains("LEFT worse"));
         assert!(full.contains("RIGHT better"));
         assert!(full.ends_with("ENTER back to menu"));
+    }
+
+    #[test]
+    fn drift_reads_as_a_side_and_flags_only_real_drift() {
+        use super::{drift_value, needs_recalibration};
+        // Negative mean = the hits came before the notes = early.
+        assert_eq!(drift_value(-32.4), "32 ms early");
+        assert_eq!(drift_value(18.0), "+18 ms late");
+        assert_eq!(drift_value(1.5), "on time");
+        assert_eq!(drift_value(-2.9), "on time");
+        // The hint fires at half the perfect window, either side —
+        // and never inside it (a nag on 5 ms would teach players to
+        // ignore it).
+        assert!(needs_recalibration(15.0));
+        assert!(needs_recalibration(-15.0));
+        assert!(!needs_recalibration(14.9));
+        assert!(!needs_recalibration(-5.0));
     }
 
     #[test]

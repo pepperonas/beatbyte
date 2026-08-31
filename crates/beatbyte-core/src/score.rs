@@ -106,6 +106,15 @@ pub struct PlayerPerformance {
     /// Hype meter, 0.0–1.0.
     hype_meter: f64,
     hype_active: bool,
+    /// Sum of signed hit offsets in ms (positive = late). With
+    /// `offset_samples` this yields the run's mean timing drift —
+    /// the one number that says "recalibrate" (optimization plan
+    /// P2). Defaults keep old serialized state readable.
+    #[serde(default)]
+    offset_sum_ms: f64,
+    /// How many hits contributed to `offset_sum_ms`.
+    #[serde(default)]
+    offset_samples: u32,
 }
 
 impl PlayerPerformance {
@@ -122,6 +131,8 @@ impl PlayerPerformance {
             sustain_accum: 0.0,
             hype_meter: 0.0,
             hype_active: false,
+            offset_sum_ms: 0.0,
+            offset_samples: 0,
         }
     }
 
@@ -212,6 +223,24 @@ impl PlayerPerformance {
         self.score += base * u64::from(self.multiplier());
     }
 
+    /// Record a hit's signed timing offset (ms; positive = late).
+    /// Kept apart from [`PlayerPerformance::register_judgment`]
+    /// because misses have no offset to speak of.
+    pub fn register_offset_ms(&mut self, off_ms: f64) {
+        if !off_ms.is_finite() {
+            return;
+        }
+        self.offset_sum_ms += off_ms;
+        self.offset_samples += 1;
+    }
+
+    /// The mean signed hit offset in ms (positive = late), `None`
+    /// before the first hit.
+    #[must_use]
+    pub fn mean_offset_ms(&self) -> Option<f64> {
+        (self.offset_samples > 0).then(|| self.offset_sum_ms / f64::from(self.offset_samples))
+    }
+
     /// Register a strum that matched no note (overstrum): breaks the
     /// streak but scores no miss (the note count is untouched).
     pub fn register_overstrum(&mut self) {
@@ -294,6 +323,21 @@ mod tests {
 
     fn perf() -> PlayerPerformance {
         PlayerPerformance::new(ScoreConfig::default())
+    }
+
+    #[test]
+    fn mean_offset_is_the_run_average_and_absent_before_hits() {
+        let mut p = perf();
+        assert_eq!(p.mean_offset_ms(), None, "no hits, no drift claim");
+        p.register_offset_ms(10.0);
+        p.register_offset_ms(-4.0);
+        p.register_offset_ms(f64::NAN); // must not poison the mean
+        p.register_offset_ms(f64::INFINITY);
+        let mean = p.mean_offset_ms().unwrap();
+        assert!(
+            (mean - 3.0).abs() < 1e-9,
+            "mean of +10/-4 is +3, got {mean}"
+        );
     }
 
     #[test]

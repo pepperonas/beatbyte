@@ -14,6 +14,18 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.16] - 2026-08-31
+
+### Added
+
+- Early/late feedback (optimization plan P2): the judgment popup
+  tags non-perfect hits with the side they landed on - GREAT
+  (EARLY), GOOD (LATE) - and the solo results screen shows the
+  run's mean timing drift as a TIMING row ("32 ms early", "+18 ms
+  late", "on time" inside 3 ms), with a recalibration hint once the
+  drift reaches 15 ms, half the perfect window. The most actionable
+  number the game knows, shown where it can be acted on.
+
 ## [0.12.15] - 2026-08-31
 
 ### Added

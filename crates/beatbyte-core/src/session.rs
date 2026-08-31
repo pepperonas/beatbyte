@@ -413,6 +413,7 @@ impl TrackSession {
         self.states[index] = NoteState::Hit(judgment);
         self.performance
             .register_judgment(judgment, event.lanes.len());
+        self.performance.register_offset_ms(offset_s * 1000.0);
         self.hopo_chain = true;
         events.push(SessionEvent::NoteHit {
             event_index: index,
