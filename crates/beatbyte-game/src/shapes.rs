@@ -32,6 +32,7 @@ pub struct LaneShapes {
     glow_strip: Handle<Image>,
     bed_gradient: Handle<Image>,
     vignette: Handle<Image>,
+    gauge_arc: Handle<Image>,
 }
 
 impl LaneShapes {
@@ -88,6 +89,14 @@ impl LaneShapes {
         self.soft_dot.clone()
     }
 
+    /// The half-circle gauge track (the Hype gauge's dial): a ring
+    /// over the upper half, with tick notches at every quarter and a
+    /// stronger one at the halfway activation mark.
+    #[must_use]
+    pub fn gauge_arc(&self) -> Handle<Image> {
+        self.gauge_arc.clone()
+    }
+
     /// A soft-edged tube cross-section (sustain tails).
     #[must_use]
     pub fn tube(&self) -> Handle<Image> {
@@ -142,12 +151,47 @@ fn build_shapes(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         glow_strip: images.add(shaded_image(glow_strip_shading)),
         bed_gradient: images.add(shaded_image(bed_shading)),
         vignette: images.add(shaded_image(vignette_shading)),
+        gauge_arc: images.add(shaded_image(gauge_arc_shading)),
     });
 }
 
 /// A (value, alpha) shading sample; value is grayscale 0..1 so the
 /// sprite tint supplies the hue.
 pub type Shade = (f32, f32);
+
+/// The gauge dial: a ring band across the UPPER half of the tile,
+/// centred on the bottom-middle, so a needle pivoting there sweeps
+/// it. Quarter ticks notch the band brighter; the halfway tick — the
+/// activation threshold — is strongest. Pure — tested.
+#[must_use]
+pub fn gauge_arc_shading(u: f32, v: f32) -> Shade {
+    // Pivot at (0.5, 1.0); the tile is meant to be drawn twice as
+    // wide as tall, so u distances count double.
+    let dx = (u - 0.5) * 2.0;
+    let dy = 1.0 - v;
+    let r = (dx * dx + dy * dy).sqrt();
+    if !(0.62..=0.96).contains(&r) || dy < 0.0 {
+        return (0.0, 0.0);
+    }
+    // Soft edges on both rims of the band.
+    let edge = ((r - 0.62) / 0.03).min((0.96 - r) / 0.03).clamp(0.0, 1.0);
+    // Angle across the sweep: 0 at the left horizon, 1 at the right.
+    let sweep = 1.0 - (dy.atan2(-dx) / core::f32::consts::PI);
+    let mut value = 0.42f32;
+    for (tick, strength) in [
+        (0.0, 0.9),
+        (0.25, 0.65),
+        (0.5, 1.0),
+        (0.75, 0.65),
+        (1.0, 0.9),
+    ] {
+        let distance = (sweep - tick).abs();
+        if distance < 0.012 {
+            value = value.max(strength);
+        }
+    }
+    (value, edge * 0.9)
+}
 
 /// Lit-sphere shading: Lambert diffuse from an upper-left light over
 /// a hemisphere normal, ambient floor, darkened contact rim. Pure —
@@ -380,6 +424,31 @@ fn mask_to_image(mask: &[[bool; SHAPE_SIZE]; SHAPE_SIZE]) -> Image {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+
+    #[test]
+    fn the_gauge_arc_is_a_band_with_its_strongest_tick_at_the_top() {
+        use super::gauge_arc_shading;
+        // On the band at the top (u=0.5 near v small): visible.
+        let (top_value, top_alpha) = gauge_arc_shading(0.5, 1.0 - 0.79);
+        assert!(top_alpha > 0.5, "the band must be visible ({top_alpha})");
+        // The activation tick at the top is the strongest mark.
+        let (side_value, _) = gauge_arc_shading(0.5 + 0.35, 1.0 - 0.63);
+        assert!(
+            top_value > side_value,
+            "the halfway tick ({top_value}) must outshine the plain band ({side_value})"
+        );
+        assert!(
+            top_value >= 0.99,
+            "the activation tick is the dial's BRIGHTEST mark ({top_value})"
+        );
+        // Outside the ring: nothing.
+        assert_eq!(gauge_arc_shading(0.5, 0.9).1, 0.0, "inside the hub");
+        assert_eq!(gauge_arc_shading(0.5, 0.005).1, 0.0, "beyond the rim");
+        // The horizon endpoints carry the 0%/100% ticks — brighter
+        // than the plain band, like the activation mark.
+        let (end_value, end_alpha) = gauge_arc_shading(0.1, 1.0);
+        assert!(end_alpha > 0.5 && end_value > side_value);
+    }
     use super::{SHAPE_SIZE, shape_mask};
 
     fn count(mask: &[[bool; SHAPE_SIZE]; SHAPE_SIZE]) -> usize {

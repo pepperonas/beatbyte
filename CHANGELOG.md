@@ -14,6 +14,18 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.23] - 2026-08-31
+
+### Changed
+
+- The HUD reads like an instrument panel (user commission): the
+  streak row is ten glowing BULBS in round sockets - lit toward the
+  next multiplier, hype-coloured while the power runs - the streak
+  counter counts up visibly and POPS as it rises, and the Hype
+  meter is a half-circle GAUGE with a needle: the strongest tick
+  straight up is the activation threshold, so "can I fire it?" is
+  which side of vertical the needle stands on.
+
 ## [0.12.22] - 2026-08-31
 
 ### Fixed

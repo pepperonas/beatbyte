@@ -31,9 +31,9 @@ pub struct ScorePad;
 #[derive(Component)]
 pub struct StreakBead(pub u32);
 
-/// One quarter of the energy meter.
+/// The soft halo behind a streak bulb (dimmer than its core).
 #[derive(Component)]
-pub struct HypeSegment(pub u32);
+pub struct BulbGlow;
 
 /// The frame around the multiplier, which lights while hype runs.
 #[derive(Component)]
@@ -43,6 +43,37 @@ pub struct MultiplierBox;
 #[derive(Component)]
 pub struct HypeReadyText;
 
+/// The Hype gauge's needle (solo panel).
+#[derive(Component)]
+pub struct HypeNeedle;
+
+/// The streak counter's pop animation state.
+#[derive(Component)]
+pub struct StreakPop {
+    /// The streak value last shown.
+    pub seen: u32,
+    /// Seconds since it last rose.
+    pub age: f32,
+}
+
+/// The needle's rotation for a meter level, radians. The sweep runs
+/// −80°..+80° (empty → full) rather than the full half circle: a
+/// needle lying flat on the horizon reads as broken, not as empty.
+#[must_use]
+pub fn gauge_angle(meter: f32) -> f32 {
+    let sweep = 80.0f32.to_radians();
+    sweep - meter.clamp(0.0, 1.0) * 2.0 * sweep
+}
+
+/// The streak counter's scale over its pop: an instant swell to
+/// ~1.4× that settles within a fifth of a second — visible at note
+/// rate without turning the corner into a metronome.
+#[must_use]
+pub fn pop_scale(age: f32) -> f32 {
+    let t = (age / 0.2).clamp(0.0, 1.0);
+    1.0 + 0.4 * (1.0 - t) * (1.0 - t)
+}
+
 /// Digits the counter reserves. Six is beyond any real score; the
 /// point is the fixed width — a number that shifts about as it grows
 /// reads as a sentence rather than an instrument.
@@ -50,9 +81,6 @@ const SCORE_DIGITS: usize = 6;
 
 /// Beads in the streak row — one multiplier level's worth.
 const STREAK_BEADS: u32 = 10;
-
-/// Quarters, because a completed phrase awards exactly a quarter.
-const HYPE_SEGMENTS: u32 = 4;
 
 /// Vertical anchor of the HUD block above each highway.
 const HUD_TOP: f32 = 330.0;
@@ -127,6 +155,7 @@ pub fn spawn_huds(
     song: Res<crate::boot::LoadedSong>,
     players: Query<&PlayerIndex, With<PlayerSession>>,
     font: Res<UiFont>,
+    shapes: Res<crate::shapes::LaneShapes>,
     settings: Res<crate::config::Settings>,
 ) {
     // Quiet corner badge: which input mode this song runs in — one
@@ -200,7 +229,7 @@ pub fn spawn_huds(
     ));
 
     if layout.players() == 1 {
-        spawn_solo_panels(&mut commands, &font);
+        spawn_solo_panels(&mut commands, &font, &shapes);
         return;
     }
     let compact = layout.players() > 2;
@@ -293,7 +322,7 @@ fn caption(commands: &mut Commands, font: &UiFont, text: &str, at: Vec2) {
 
 /// The solo layout: score and multiplier bottom-left, meter
 /// bottom-right, nothing over the highway.
-fn spawn_solo_panels(commands: &mut Commands, font: &UiFont) {
+fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::shapes::LaneShapes) {
     let accent = player_color(0);
     let left = Vec2::new(
         -640.0 + PLATE_INSET + PLATE_W / 2.0,
@@ -370,24 +399,57 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont) {
 
     // Beads: how far the streak has come toward the next multiplier,
     // and — the part that matters — what a miss just cost.
-    let bead_gap = 12.0f32;
-    let bead_x = box_at.x + box_size.x / 2.0 + 20.0;
+    let bead_gap = 13.0f32;
+    let bead_x = box_at.x + box_size.x / 2.0 + 18.0;
     for step in 0..STREAK_BEADS {
+        let x = bead_gap.mul_add(step as f32, bead_x);
+        // The socket: a dark round housing every bulb sits in, so an
+        // unlit lamp is still a lamp and not an absence.
+        commands.spawn((
+            GameplayScreen,
+            Sprite {
+                image: shapes.round_ring(),
+                color: palette::dimmed(palette::TEXT_DIM, 0.5),
+                custom_size: Some(Vec2::splat(11.0)),
+                ..default()
+            },
+            Transform::from_xyz(x, box_at.y, 3.8),
+        ));
+        // The glow halo behind the lit bulb.
         commands.spawn((
             GameplayScreen,
             StreakBead(step),
-            Sprite::from_color(palette::dimmed(palette::TEXT_DIM, 0.3), Vec2::splat(7.0)),
-            Transform::from_xyz(bead_gap.mul_add(step as f32, bead_x), box_at.y, 4.0),
+            BulbGlow,
+            Sprite {
+                image: shapes.soft_dot(),
+                color: Color::NONE,
+                custom_size: Some(Vec2::splat(26.0)),
+                ..default()
+            },
+            Transform::from_xyz(x, box_at.y, 3.9),
+        ));
+        // The bulb itself.
+        commands.spawn((
+            GameplayScreen,
+            StreakBead(step),
+            Sprite {
+                image: shapes.round_core(),
+                color: palette::dimmed(palette::TEXT_DIM, 0.25),
+                custom_size: Some(Vec2::splat(8.0)),
+                ..default()
+            },
+            Transform::from_xyz(x, box_at.y, 4.0),
         ));
     }
     commands.spawn((
         GameplayScreen,
         ComboText(0),
+        StreakPop { seen: 0, age: 1.0 },
         Text2d::new(""),
-        font.text(9.0),
+        font.text(12.0),
         TextColor(palette::TEXT_DIM),
         Anchor::TOP_CENTER,
-        Transform::from_xyz(left.x, left.y - PLATE_H / 2.0 + 14.0, 5.0),
+        Transform::from_xyz(left.x, left.y - PLATE_H / 2.0 + 30.0, 5.0),
     ));
 
     // ── Right: the energy meter, in the quarters it fills in ────────
@@ -398,37 +460,46 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont) {
         "HYPE",
         right + Vec2::new(0.0, PLATE_H / 2.0 - 12.0),
     );
-    let bar = Vec2::new(PLATE_W - 56.0, 24.0);
-    let bar_y = right.y + 6.0;
-    // Four wells. A completed phrase awards exactly a quarter, so a
-    // continuous bar could never show what is being collected.
-    let seg_w = 6.0f32.mul_add(-((HYPE_SEGMENTS - 1) as f32), bar.x) / HYPE_SEGMENTS as f32;
-    for step in 0..HYPE_SEGMENTS {
-        let x = (seg_w + 6.0).mul_add(step as f32, right.x - bar.x / 2.0 + seg_w / 2.0);
-        commands.spawn((
-            GameplayScreen,
-            Sprite::from_color(
-                palette::dimmed(palette::HYPE, 0.18),
-                Vec2::new(seg_w, bar.y),
-            ),
-            Transform::from_xyz(x, bar_y, 3.4),
-        ));
-        commands.spawn((
-            GameplayScreen,
-            HypeSegment(step),
-            Sprite::from_color(palette::HYPE, Vec2::new(seg_w, bar.y)),
-            Transform::from_xyz(x, bar_y, 3.5),
-        ));
-    }
-    // A hairline under the wells carrying the partial quarter, so the
-    // meter still moves between whole segments.
+    // The meter is a GAUGE: a half-circle dial with a needle, the
+    // way the genre's classic meters read — the halfway tick is the
+    // activation threshold, so "can I fire it?" is one glance at
+    // which side of straight-up the needle stands.
+    let pivot = Vec2::new(right.x, right.y - PLATE_H / 2.0 + 34.0);
+    let dial = Vec2::new(150.0, 75.0);
     commands.spawn((
         GameplayScreen,
-        HypeFill(0),
-        Sprite::from_color(palette::HYPE.with_alpha(0.6), Vec2::new(bar.x, 3.0)),
-        Anchor::CENTER_LEFT,
-        Transform::from_xyz(right.x - bar.x / 2.0, bar_y - bar.y / 2.0 - 6.0, 5.0)
-            .with_scale(Vec3::new(0.0, 1.0, 1.0)),
+        Sprite {
+            image: shapes.gauge_arc(),
+            color: palette::dimmed(palette::HYPE, 0.85),
+            custom_size: Some(dial),
+            ..default()
+        },
+        Anchor::BOTTOM_CENTER,
+        Transform::from_xyz(pivot.x, pivot.y, 3.4),
+    ));
+    commands.spawn((
+        GameplayScreen,
+        HypeNeedle,
+        Sprite {
+            image: shapes.glow_strip(),
+            color: palette::TEXT,
+            custom_size: Some(Vec2::new(4.0, 62.0)),
+            ..default()
+        },
+        Anchor::BOTTOM_CENTER,
+        Transform::from_xyz(pivot.x, pivot.y, 3.6)
+            .with_rotation(Quat::from_rotation_z(gauge_angle(0.0))),
+    ));
+    // The hub the needle pivots on.
+    commands.spawn((
+        GameplayScreen,
+        Sprite {
+            image: shapes.round_core(),
+            color: palette::dimmed(palette::HYPE, 0.9),
+            custom_size: Some(Vec2::splat(14.0)),
+            ..default()
+        },
+        Transform::from_xyz(pivot.x, pivot.y, 3.7),
     ));
     commands.spawn((
         GameplayScreen,
@@ -452,17 +523,10 @@ pub fn update_huds(
         Query<&mut Text2d, With<ScorePad>>,
         Query<&mut Text2d, With<HypeReadyText>>,
     )>,
-    mut fills: Query<(&HypeFill, &mut Transform)>,
-    mut beads: Query<(&StreakBead, &mut Sprite), Without<HypeSegment>>,
-    mut segments: Query<(&HypeSegment, &mut Sprite), Without<StreakBead>>,
-    mut boxes: Query<
-        &mut Sprite,
-        (
-            With<MultiplierBox>,
-            Without<StreakBead>,
-            Without<HypeSegment>,
-        ),
-    >,
+    mut fills: Query<(&HypeFill, &mut Transform), Without<HypeNeedle>>,
+    mut needles: Query<&mut Transform, (With<HypeNeedle>, Without<HypeFill>)>,
+    mut beads: Query<(&StreakBead, Has<BulbGlow>, &mut Sprite)>,
+    mut boxes: Query<&mut Sprite, (With<MultiplierBox>, Without<StreakBead>)>,
 ) {
     for (index, player) in &players {
         let perf = player.session.performance();
@@ -477,8 +541,8 @@ pub fn update_huds(
         }
         for (marker, mut text) in &mut texts.p1() {
             if marker.0 == index.0 {
-                let combo = if perf.streak() >= 4 {
-                    format!("{} combo", perf.streak())
+                let combo = if perf.streak() >= 2 {
+                    format!("{} COMBO", perf.streak())
                 } else {
                     String::new()
                 };
@@ -506,6 +570,13 @@ pub fn update_huds(
         for (fill, mut transform) in &mut fills {
             if fill.0 == index.0 {
                 transform.scale.x = perf.hype_meter() as f32;
+            }
+        }
+        // The solo gauge's needle sweeps with the meter; while Hype
+        // runs it blazes white on a lit hub.
+        if index.0 == 0 {
+            for mut transform in &mut needles {
+                transform.rotation = Quat::from_rotation_z(gauge_angle(perf.hype_meter() as f32));
             }
         }
 
@@ -539,29 +610,23 @@ pub fn update_huds(
             } else {
                 perf.streak() % per_level
             };
-        for (bead, mut sprite) in &mut beads {
-            sprite.color = if bead.0 < toward_next {
-                palette::BRAND
-            } else {
-                palette::dimmed(palette::TEXT_DIM, 0.3)
+        let lit_color = if perf.hype_active() {
+            palette::HYPE
+        } else {
+            palette::BRAND
+        };
+        for (bead, glow, mut sprite) in &mut beads {
+            let lit = bead.0 < toward_next;
+            sprite.color = match (lit, glow) {
+                // The halo only exists while its bulb burns.
+                (true, true) => lit_color.with_alpha(0.5),
+                (false, true) => Color::NONE,
+                (true, false) => lit_color.mix(&Color::WHITE, 0.25),
+                (false, false) => palette::dimmed(palette::TEXT_DIM, 0.25),
             };
         }
 
-        // Whole quarters light; the hairline underneath carries the
-        // part-quarter in progress.
         let meter = perf.hype_meter() as f32;
-        let filled = (meter * HYPE_SEGMENTS as f32).floor() as u32;
-        for (segment, mut sprite) in &mut segments {
-            let lit = segment.0 < filled;
-            sprite.color = if !lit {
-                Color::NONE
-            } else if perf.hype_active() {
-                Color::WHITE
-            } else {
-                palette::HYPE
-            };
-        }
-
         if let Ok(mut sprite) = boxes.single_mut() {
             sprite.color = if perf.hype_active() {
                 palette::HYPE
@@ -584,6 +649,28 @@ pub fn update_huds(
                 text.0 = line.to_owned();
             }
         }
+    }
+}
+
+/// Make the streak counter POP as it counts up: every rise swells
+/// the number and lets it settle — the count is felt, not read.
+pub fn pop_streak(
+    time: Res<Time>,
+    players: Query<(&PlayerIndex, &PlayerSession)>,
+    mut counters: Query<(&ComboText, &mut StreakPop, &mut Transform)>,
+) {
+    for (marker, mut pop, mut transform) in &mut counters {
+        let Some((_, player)) = players.iter().find(|(index, _)| index.0 == marker.0) else {
+            continue;
+        };
+        let streak = player.session.performance().streak();
+        if streak > pop.seen {
+            pop.age = 0.0;
+        }
+        pop.seen = streak;
+        pop.age += time.delta_secs();
+        let scale = pop_scale(pop.age);
+        transform.scale = Vec3::splat(scale);
     }
 }
 
@@ -665,5 +752,32 @@ mod ribbon_tests {
         assert_eq!(clock_text(60.0), "1:00");
         assert_eq!(clock_text(125.0), "2:05");
         assert_eq!(clock_text(3661.0), "61:01");
+    }
+}
+
+#[cfg(test)]
+mod gauge_tests {
+    use super::{gauge_angle, pop_scale};
+
+    #[test]
+    fn the_needle_sweeps_left_to_right_and_stands_up_at_the_threshold() {
+        // Empty leans left (+80°), full leans right (−80°) — and the
+        // halfway ACTIVATION mark is the needle standing straight
+        // up, so "can I fire it?" is which side of vertical.
+        assert!((gauge_angle(0.0) - 80f32.to_radians()).abs() < 1e-6);
+        assert!(gauge_angle(0.5).abs() < 1e-6);
+        assert!((gauge_angle(1.0) + 80f32.to_radians()).abs() < 1e-6);
+        // Out-of-range meters clamp instead of spinning the needle
+        // off the dial.
+        assert_eq!(gauge_angle(1.7), gauge_angle(1.0));
+        assert_eq!(gauge_angle(-0.3), gauge_angle(0.0));
+    }
+
+    #[test]
+    fn the_pop_swells_instantly_and_settles_fast() {
+        assert!((pop_scale(0.0) - 1.4).abs() < 1e-6, "full swell at the hit");
+        assert!(pop_scale(0.1) > 1.0 && pop_scale(0.1) < 1.4);
+        assert!((pop_scale(0.2) - 1.0).abs() < 1e-6, "settled after 0.2s");
+        assert!((pop_scale(9.0) - 1.0).abs() < 1e-6, "idle stays at rest");
     }
 }
