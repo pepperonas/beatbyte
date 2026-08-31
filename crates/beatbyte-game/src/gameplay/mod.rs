@@ -363,7 +363,7 @@ fn setup_gameplay(
         Err(error) => {
             error!("cannot build track for {}: {error}", selected.0);
             info!("gameplay ended: the track could not be built");
-            next_state.set(AppState::MainMenu);
+            next_state.set(AppState::SongSelect);
             return;
         }
     };
@@ -554,7 +554,9 @@ fn pause_input(
             }
             if keys.just_pressed(KeyCode::KeyQ) {
                 info!("gameplay ended: quit from the pause screen");
-                next_state.set(AppState::MainMenu);
+                // Like the results exit: back to the browser the
+                // song was picked in, not the main menu.
+                next_state.set(AppState::SongSelect);
             }
         }
     }

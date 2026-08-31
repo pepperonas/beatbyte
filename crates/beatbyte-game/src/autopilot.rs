@@ -126,7 +126,8 @@ impl Plugin for AutopilotPlugin {
                     autopilot_rate
                         .after(bevy::input::InputSystems)
                         .run_if(in_state(AppState::Results)),
-                );
+                )
+                .add_systems(Update, autopilot_rate_return);
             }
             if std::env::var_os("BEATBYTE_AUTOPILOT_PAUSE").is_some() {
                 // Pause-menu validation: mid-song, drive the pause
@@ -790,9 +791,45 @@ fn autopilot_rate(
                 logs.files.len()
             );
         }
+        // Then leave the screen the way a player does and prove the
+        // navigation lands in the BROWSER, not the main menu (user
+        // request: back to the last active submenu). This supersedes
+        // the end-of-song verdict in this drill variant — reaching
+        // the results at all already required the full song.
+        18 => keys.press(KeyCode::Enter),
+        19 => keys.release(KeyCode::Enter),
         _ => {}
     }
     *frame += 1;
+}
+
+/// The second half of the rate drill: after its Enter, the app must
+/// land on the song browser. Runs in every state so it can see where
+/// the navigation actually went.
+fn autopilot_rate_return(
+    state: Res<State<AppState>>,
+    mut left_results: Local<bool>,
+    mut settle: Local<u32>,
+    mut app_exit: MessageWriter<AppExit>,
+) {
+    match state.get() {
+        AppState::Results => {
+            *left_results = true; // armed once the drill reached results
+        }
+        AppState::SongSelect if *left_results => {
+            // A couple of frames of grace for the transition.
+            *settle += 1;
+            if *settle > 3 {
+                info!("autopilot: rate drill return PASSED — results lead back to the browser");
+                deliver(&mut app_exit, AppExit::Success);
+            }
+        }
+        AppState::MainMenu if *left_results => {
+            error!("autopilot: rate drill return FAILED — landed on the main menu");
+            deliver(&mut app_exit, AppExit::error());
+        }
+        _ => {}
+    }
 }
 
 /// `BEATBYTE_AUTOPILOT_SPEED=<50-150>`: verify mid-run that song

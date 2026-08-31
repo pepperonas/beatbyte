@@ -65,7 +65,7 @@ fn results_footer(can_rate: bool, can_versus: bool) -> String {
         parts.push("LEFT worse than before");
         parts.push("RIGHT better");
     }
-    parts.push("ENTER back to menu");
+    parts.push("ENTER back to browser");
     parts.join("  ")
 }
 
@@ -622,7 +622,11 @@ fn results_input(
         || mouse.just_pressed(MouseButton::Left)
         || mouse.just_pressed(MouseButton::Right)
     {
-        next_state.set(AppState::MainMenu);
+        // Back to where the song was picked: the browser, with its
+        // cursor, sort and search intact (they live in resources) —
+        // the flow is browse, play, land on the NEXT choice, not on
+        // the main menu's start line every time (user request).
+        next_state.set(AppState::SongSelect);
     }
 }
 
@@ -659,7 +663,7 @@ mod tests {
     fn the_footer_offers_only_what_works() {
         // Zero friction cuts both ways: no phantom hints when there
         // is no log to rate into, and the exit hint is always there.
-        assert_eq!(results_footer(false, false), "ENTER back to menu");
+        assert_eq!(results_footer(false, false), "ENTER back to browser");
         let rate_only = results_footer(true, false);
         assert!(rate_only.contains("1-5 rate fun"));
         assert!(
@@ -669,7 +673,7 @@ mod tests {
         let full = results_footer(true, true);
         assert!(full.contains("LEFT worse"));
         assert!(full.contains("RIGHT better"));
-        assert!(full.ends_with("ENTER back to menu"));
+        assert!(full.ends_with("ENTER back to browser"));
     }
 
     #[test]

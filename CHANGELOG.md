@@ -14,6 +14,15 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.19] - 2026-08-31
+
+### Changed
+
+- Leaving a finished song returns to the song browser - cursor,
+  sort and search intact - instead of the main menu: browse, play,
+  land on the next choice. Quitting from the pause screen goes to
+  the browser too, and the results footer says "back to browser".
+
 ## [0.12.18] - 2026-08-31
 
 ### Added
