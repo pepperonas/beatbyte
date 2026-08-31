@@ -97,6 +97,27 @@ pub enum NoteLine {
         #[serde(skip_serializing_if = "Option::is_none")]
         near: Option<usize>,
     },
+    /// The player's one-key fun rating from the results screen
+    /// (ADR-0011 A5) — the smallest honest human signal, and the one
+    /// thing telemetry cannot derive. Appended after the session is
+    /// written; when several appear, the LAST one is the player's
+    /// word (they changed their mind).
+    Fun {
+        /// 1 (no fun) … 5 (loved it).
+        fun: u8,
+    },
+    /// The pairwise verdict on a designed chart version: did THIS
+    /// version feel better or worse than the one it was derived
+    /// from? Only offered when the played chart carries provenance.
+    /// Like [`NoteLine::Fun`], the last line wins.
+    Versus {
+        /// `"better"` or `"worse"` — this version against its parent.
+        versus: String,
+        /// [`crate::telemetry`]-external: the parent version's chart
+        /// hash (from the played chart's provenance), so the verdict
+        /// names BOTH sides even if the pointer moves later.
+        parent: String,
+    },
 }
 
 /// The stable label a judgment is recorded under.
@@ -225,6 +246,11 @@ mod tests {
             NoteLine::Overstrum {
                 o: 1,
                 near: Some(9),
+            },
+            NoteLine::Fun { fun: 4 },
+            NoteLine::Versus {
+                versus: "better".to_owned(),
+                parent: "abcd1234abcd1234".to_owned(),
             },
         ] {
             let text = serde_json::to_string(&line).expect("serializes");

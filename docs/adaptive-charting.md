@@ -29,7 +29,8 @@ ear has approved. Nothing overwrites anything.
 
 A session log, written by beatbyte-game beside `scores.json`
 (`<data_dir>/beatbyte/telemetry/`), append-only JSONL, one file per
-session. Never uploaded, never read by the runtime.
+session. Never uploaded; the game never reads it back to decide
+anything (the results screen only ever APPENDS its feedback lines).
 
 Session header (first line):
 
@@ -47,6 +48,8 @@ One line per observation thereafter:
 {"i": 42, "j": "miss"}
 {"s": 41, "done": false}
 {"o": 1, "near": 42}
+{"fun": 4}
+{"versus": "better", "parent": "d29f1c07e1a54b32"}
 ```
 
 (`i` = event index into the played track, `j` = judgment, `off_ms` =
@@ -54,7 +57,11 @@ signed offset in ms; `s`/`done` = a sustain ended, played out or
 dropped; `o` = an overstrum, `near` = the most recently judged event
 when it happened — the session does not position an overstrum, so
 this is how analytics localize one. Optional: absent before the first
-note and in files written before the field existed.)
+note and in files written before the field existed. `fun` = the
+one-key rating from the results screen, 1–5; `versus` = the pairwise
+verdict on a designed version against `parent`, its provenance hash.
+Both are appended after the session was written; when several
+appear, the LAST one is the player's word.)
 
 Rules that are load-bearing:
 
@@ -152,10 +159,14 @@ documented step by step in
    input).
 4. **A4 — `beatbyte-cli dossier`** + the design-session workflow,
    with the by-ear gate written into `docs/workflow`.
-5. **A5 — In-game feedback** (optional, later): a one-key fun rating
-   on the results screen; a pairwise "which felt better?" when two
-   versions of a chart exist. The smallest honest human signal, and
-   the only one the plans ask for that telemetry cannot derive.
+5. **A5 — In-game feedback** *(v0.12.15)*: the results screen takes
+   a one-key fun rating (1–5) and, when the played chart carries
+   provenance, a LEFT/RIGHT "worse/better than the previous
+   version?" verdict — appended to the session log just written,
+   surfaced by `review` (mean fun, better/worse tally), zero
+   friction when skipped (no log = no hint, ENTER always exits
+   untouched). The smallest honest human signal, and the only one
+   the plans asked for that telemetry cannot derive.
 
 **Parked** with reopen criteria (a real player population, or an
 explicit request): population percentiles, automated rollout/A-B

@@ -524,6 +524,22 @@ fn run_review(
         "sessions: {} used ({} complete), {} stale (other chart version), {} autopilot excluded",
         outcome.sessions_used, complete, outcome.stale_sessions, outcome.autopilot_sessions
     );
+    if !outcome.fun_ratings.is_empty() {
+        let sum: u32 = outcome.fun_ratings.iter().map(|r| u32::from(*r)).sum();
+        println!(
+            "fun: {:.1}/5 over {} rating(s)",
+            f64::from(sum) / outcome.fun_ratings.len() as f64,
+            outcome.fun_ratings.len()
+        );
+    }
+    if !outcome.versus.is_empty() {
+        let better = outcome.versus.iter().filter(|v| *v == "better").count();
+        println!(
+            "versus parent version: {} better / {} worse",
+            better,
+            outcome.versus.len() - better
+        );
+    }
     if outcome.sections.is_empty() {
         println!("no observations for this chart version yet.");
         return ExitCode::SUCCESS;

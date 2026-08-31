@@ -279,10 +279,17 @@ before the one it depends on is checked:
   command enum (mutated with a fake subcommand and seen to fail).
   Verified on a real import: 166 bars, 485 melody notes, the open
   directive included, 352 KB.
-- [ ] **A5 — In-game feedback** (needs A3; optional). One-key fun
-  rating on results; pairwise "which felt better?" when two versions
-  exist. DoD: ratings land in the telemetry log, zero friction when
-  skipped.
+- [x] **A5 — In-game feedback** *(v0.12.15)*. Results screen: 1–5
+  rates the fun, LEFT/RIGHT records worse/better than the parent
+  version (offered only when the played chart carries provenance);
+  both append to the session log this run just wrote, `review`
+  surfaces mean fun + the better/worse tally, and zero friction
+  holds both ways (no log = no hint, ENTER always exits untouched).
+  Verified: new `BEATBYTE_AUTOPILOT_RATE` drill presses the REAL
+  keys and parses the log back — builtin (fun only) and Maria v4
+  (fun + versus) both land; four pins mutation-checked, including
+  the untagged-serde collision (a field named `o` on the new line
+  kind gets mis-parsed as an overstrum — seen to fail).
 
 Parked with reopen criteria (a real player population, or an explicit
 request): population percentiles, automated rollout/A-B

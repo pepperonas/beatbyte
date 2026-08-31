@@ -135,6 +135,12 @@ pub struct Review {
     pub stale_sessions: usize,
     /// Sessions excluded because the autopilot played them.
     pub autopilot_sessions: usize,
+    /// The last fun rating of each used session that gave one
+    /// (results-screen A5; the last line is the player's word).
+    pub fun_ratings: Vec<u8>,
+    /// The last versus verdict ("better"/"worse" than the parent
+    /// version) of each used session that gave one.
+    pub versus: Vec<String>,
     /// Per-section aggregation, ascending by bar.
     pub sections: Vec<SectionReport>,
     /// Directives, when the evidence clears the thresholds.
@@ -246,6 +252,9 @@ pub fn review(
                         scratch.entry(section).or_default().overstrums += 1;
                     }
                 }
+                // Feedback lines carry no position; they aggregate
+                // per session below, not per section.
+                NoteLine::Fun { .. } | NoteLine::Versus { .. } => {}
             }
         }
     }
@@ -362,10 +371,33 @@ pub fn review(
         }
     }
 
+    // One voice per session: the LAST fun / versus line is the
+    // player's word (they may have changed their mind on the spot).
+    let fun_ratings: Vec<u8> = used
+        .iter()
+        .filter_map(|session| {
+            session.lines.iter().rev().find_map(|line| match line {
+                NoteLine::Fun { fun } => Some(*fun),
+                _ => None,
+            })
+        })
+        .collect();
+    let versus: Vec<String> = used
+        .iter()
+        .filter_map(|session| {
+            session.lines.iter().rev().find_map(|line| match line {
+                NoteLine::Versus { versus, .. } => Some(versus.clone()),
+                _ => None,
+            })
+        })
+        .collect();
+
     Review {
         sessions_used: used.len(),
         stale_sessions: stale,
         autopilot_sessions: piloted,
+        fun_ratings,
+        versus,
         sections,
         directives,
     }
@@ -469,6 +501,37 @@ mod tests {
         assert_eq!(directive.bars, Some((4, 8)));
         assert!(directive.evidence.accuracy < 0.01);
         assert_eq!(directive.evidence.sessions, 3);
+    }
+
+    #[test]
+    fn the_last_feedback_line_is_the_players_word() {
+        // A rating changed on the spot: two Fun lines in one session,
+        // the LAST wins. The versus verdict aggregates per session,
+        // and a session without feedback simply contributes none.
+        let track = track_with_events(&[1.0, 2.0]);
+        let mut with_feedback = sessions(&[miss(0), miss(1)]);
+        with_feedback[0].lines.push(NoteLine::Fun { fun: 2 });
+        with_feedback[0].lines.push(NoteLine::Fun { fun: 5 });
+        with_feedback[0].lines.push(NoteLine::Versus {
+            versus: "better".to_owned(),
+            parent: "p".to_owned(),
+        });
+        with_feedback[1].lines.push(NoteLine::Fun { fun: 3 });
+        with_feedback[1].lines.push(NoteLine::Versus {
+            versus: "worse".to_owned(),
+            parent: "p".to_owned(),
+        });
+        let out = review(
+            &track,
+            BPM,
+            0.0,
+            "h",
+            &with_feedback,
+            false,
+            &Thresholds::default(),
+        );
+        assert_eq!(out.fun_ratings, vec![5, 3], "the last rating wins");
+        assert_eq!(out.versus, vec!["better".to_owned(), "worse".to_owned()]);
     }
 
     #[test]

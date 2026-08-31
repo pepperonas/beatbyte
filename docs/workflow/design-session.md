@@ -78,7 +78,10 @@ this pipeline may replace that comparison.
 
 Keep whichever version won by moving the pointer to it; the loser
 stays on disk. Telemetry keeps the two apart on its own — sessions
-bind to the content hash of whatever was actually played.
+bind to the content hash of whatever was actually played. The
+verdict itself can be given without leaving the game: on the results
+screen, 1–5 rates the fun and LEFT/RIGHT records worse/better than
+the parent version; `review` reports both.
 
 ## Fresh charts, same rules
 

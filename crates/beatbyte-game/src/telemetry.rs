@@ -160,14 +160,45 @@ fn finalize_recording(
         return;
     };
     if let (Some(song), Some(difficulty)) = (song, difficulty) {
-        write_session(
+        let files = write_session(
             &recorder,
             &song,
             difficulty.0,
             autopilot.is_some_and(|a| a.enabled),
         );
+        // The results screen appends the player's feedback (A5) to
+        // the files this run just wrote — carried by resource,
+        // because the recorder itself is gone by then.
+        commands.insert_resource(SessionLogFiles { files });
     }
     commands.remove_resource::<SessionRecorder>();
+}
+
+/// The session files the last gameplay run wrote — where the results
+/// screen's feedback lines (fun rating, versus verdict) are appended.
+/// Overwritten by every finalized run; empty when nothing was
+/// written (no data dir, empty session).
+#[derive(Resource, Default)]
+pub struct SessionLogFiles {
+    /// One JSONL file per player.
+    pub files: Vec<std::path::PathBuf>,
+}
+
+/// Append one feedback line to every session file of the last run.
+/// Same failure policy as the writer: warn and drop, never panic.
+pub fn append_feedback(logs: &SessionLogFiles, line: &NoteLine) {
+    let Ok(text) = serde_json::to_string(line) else {
+        return;
+    };
+    for path in &logs.files {
+        let result = std::fs::OpenOptions::new()
+            .append(true)
+            .open(path)
+            .and_then(|mut file| writeln!(file, "{text}"));
+        if let Err(error) = result {
+            warn!("telemetry: cannot append to {}: {error}", path.display());
+        }
+    }
 }
 
 /// The one function that touches the disk. Every failure is a warning
@@ -178,20 +209,20 @@ fn write_session(
     song: &crate::boot::LoadedSong,
     difficulty: beatbyte_core::Difficulty,
     autopilot: bool,
-) {
+) -> Vec<std::path::PathBuf> {
     let Some(dir) = telemetry_dir() else {
         warn!("telemetry: no data directory on this platform");
-        return;
+        return Vec::new();
     };
     if let Err(error) = std::fs::create_dir_all(&dir) {
         warn!("telemetry: cannot create {}: {error}", dir.display());
-        return;
+        return Vec::new();
     }
     let hash = chart_hash(&song.chart);
     // A session that saw no player at all (entered and left within a
     // frame) has nothing to bind and nothing to say.
     let Some(notes_total) = recorder.notes_total else {
-        return;
+        return Vec::new();
     };
     // Players that produced no events still get a file: an abandoned
     // session with zero judged notes is the strongest abandonment
@@ -201,6 +232,7 @@ fn write_session(
     } else {
         recorder.lines.iter().map(|(p, _)| *p).collect()
     };
+    let mut written = Vec::new();
     for player in players {
         let empty = Vec::new();
         let lines = recorder
@@ -225,10 +257,14 @@ fn write_session(
         let result =
             std::fs::File::create(&path).and_then(|mut file| file.write_all(body.as_bytes()));
         match result {
-            Ok(()) => info!("telemetry: {} lines -> {}", lines.len(), path.display()),
+            Ok(()) => {
+                info!("telemetry: {} lines -> {}", lines.len(), path.display());
+                written.push(path);
+            }
             Err(error) => warn!("telemetry: cannot write {}: {error}", path.display()),
         }
     }
+    written
 }
 
 /// The telemetry plugin: record while playing, write on the way out.

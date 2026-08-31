@@ -95,6 +95,18 @@ impl Plugin for AutopilotPlugin {
                 ),
             )
             .add_systems(OnEnter(AppState::Gameplay), autopilot_reset);
+            if std::env::var_os("BEATBYTE_AUTOPILOT_RATE").is_some() {
+                // Results-feedback validation (A5): press a REAL
+                // digit key on the results screen (and RIGHT when
+                // the chart has a parent version), then read the
+                // session log back and verify the lines landed.
+                app.add_systems(
+                    PreUpdate,
+                    autopilot_rate
+                        .after(bevy::input::InputSystems)
+                        .run_if(in_state(AppState::Results)),
+                );
+            }
             if std::env::var_os("BEATBYTE_AUTOPILOT_PAUSE").is_some() {
                 // Pause-menu validation: mid-song, drive the pause
                 // overlay with REAL keys — pause, step to the SFX
@@ -664,6 +676,89 @@ fn fail_if_window_vanishes(
         deliver(&mut app_exit, AppExit::error());
     }
     *seen |= present;
+}
+
+/// `BEATBYTE_AUTOPILOT_RATE=<1-5>`: on the results screen, press the
+/// real digit key (and ArrowRight when the played chart carries
+/// provenance), then parse the session log back and verify the
+/// feedback lines actually landed. Failing to find them fails the
+/// run loudly.
+fn autopilot_rate(
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    logs: Option<Res<crate::telemetry::SessionLogFiles>>,
+    song: Option<Res<crate::boot::LoadedSong>>,
+    mut frame: Local<u32>,
+    mut app_exit: MessageWriter<AppExit>,
+) {
+    let Some(rating) = std::env::var("BEATBYTE_AUTOPILOT_RATE")
+        .ok()
+        .and_then(|v| v.parse::<u8>().ok())
+        .filter(|v| (1..=5).contains(v))
+    else {
+        error!("autopilot: BEATBYTE_AUTOPILOT_RATE must be 1-5");
+        std::process::exit(1);
+    };
+    let digit = [
+        KeyCode::Digit1,
+        KeyCode::Digit2,
+        KeyCode::Digit3,
+        KeyCode::Digit4,
+        KeyCode::Digit5,
+    ][usize::from(rating) - 1];
+    let has_parent = song.as_ref().is_some_and(|s| s.chart.provenance.is_some());
+    match *frame {
+        4 => keys.press(digit),
+        5 => keys.release(digit),
+        8 if has_parent => keys.press(KeyCode::ArrowRight),
+        9 if has_parent => keys.release(KeyCode::ArrowRight),
+        14 => {
+            let Some(logs) = logs.as_ref().filter(|l| !l.files.is_empty()) else {
+                error!("autopilot: rate drill FAILED — no session log to rate into");
+                deliver(&mut app_exit, AppExit::error());
+                *frame += 1;
+                return;
+            };
+            for path in &logs.files {
+                let content = std::fs::read_to_string(path).unwrap_or_default();
+                let Some((_, lines)) = beatbyte_core::telemetry::parse_session(&content) else {
+                    error!(
+                        "autopilot: rate drill FAILED — {} unparseable",
+                        path.display()
+                    );
+                    deliver(&mut app_exit, AppExit::error());
+                    *frame += 1;
+                    return;
+                };
+                let fun_ok = lines.iter().any(|line| {
+                    matches!(line, beatbyte_core::telemetry::NoteLine::Fun { fun } if *fun == rating)
+                });
+                let versus_ok = !has_parent
+                    || lines.iter().any(|line| {
+                        matches!(
+                            line,
+                            beatbyte_core::telemetry::NoteLine::Versus { versus, .. }
+                                if versus == "better"
+                        )
+                    });
+                if !fun_ok || !versus_ok {
+                    error!(
+                        "autopilot: rate drill FAILED — {} lacks fun={fun_ok} versus={versus_ok}",
+                        path.display()
+                    );
+                    deliver(&mut app_exit, AppExit::error());
+                    *frame += 1;
+                    return;
+                }
+            }
+            info!(
+                "autopilot: rate drill PASSED — fun {rating} (versus: {}) landed in {} log(s)",
+                if has_parent { "better" } else { "no parent" },
+                logs.files.len()
+            );
+        }
+        _ => {}
+    }
+    *frame += 1;
 }
 
 /// The cameras that share the primary window: the 2D camera and the

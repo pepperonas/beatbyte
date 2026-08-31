@@ -14,6 +14,19 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.15] - 2026-08-31
+
+### Added
+
+- In-game feedback on the results screen (adaptive charting A5):
+  keys 1-5 record a fun rating, and when the played chart is a
+  designed version, LEFT/RIGHT records whether it felt worse or
+  better than the version it was derived from. Both land in the
+  session telemetry log just written; `beatbyte-cli review` reports
+  the mean fun and the better/worse tally next to its accuracy
+  sections. Zero friction when skipped: without a session log no
+  hint is shown, and ENTER leaves the screen untouched either way.
+
 ## [0.12.14] - 2026-08-30
 
 ### Fixed
