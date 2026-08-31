@@ -737,6 +737,56 @@ pub fn pulse_led_wall(
     }
 }
 
+/// The positions of one ring of a beam cone's base, radius 1 at
+/// height −1, `segments` points around. Pure — the mantle's UV seam
+/// and winding live here, and both have bitten before in hand-typed
+/// mesh data.
+fn beam_ring(segments: usize) -> Vec<[f32; 3]> {
+    (0..=segments)
+        .map(|i| {
+            let angle = core::f32::consts::TAU * (i as f32) / (segments as f32);
+            [angle.cos(), -1.0, angle.sin()]
+        })
+        .collect()
+}
+
+/// A unit light-cone MANTLE: apex at the origin, base ring of radius
+/// 1 at y = −1, no cap. UVs run u around the shaft and v from apex
+/// (0) to base (1), which is what the beam gradient texture expects
+/// — the engine's stock cone centres its origin and buries its UV
+/// layout, and a beam has to hang from its lamp.
+fn beam_cone_mesh(segments: usize) -> Mesh {
+    use bevy::mesh::{Indices, PrimitiveTopology};
+    let ring = beam_ring(segments);
+    // Apex vertices: one per segment so each triangle gets a clean
+    // u coordinate (a shared apex smears the texture at the tip).
+    let mut positions: Vec<[f32; 3]> = Vec::new();
+    let mut uvs: Vec<[f32; 2]> = Vec::new();
+    for (i, base) in ring.iter().enumerate() {
+        let u = i as f32 / segments as f32;
+        positions.push([0.0, 0.0, 0.0]);
+        uvs.push([u, 0.0]);
+        positions.push(*base);
+        uvs.push([u, 1.0]);
+    }
+    let normals = vec![[0.0, 0.0, 1.0]; positions.len()]; // unlit: unused
+    let mut indices: Vec<u32> = Vec::new();
+    for i in 0..segments as u32 {
+        let apex = i * 2;
+        let base = i * 2 + 1;
+        let next_base = (i + 1) * 2 + 1;
+        indices.extend([apex, base, next_base]);
+    }
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        bevy::asset::RenderAssetUsages::default(),
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+    .with_inserted_indices(Indices::U32(indices))
+}
+
 /// A piece of the venue behind the neck.
 #[derive(Component)]
 struct Venue;
@@ -776,6 +826,7 @@ fn spawn_venue(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     images: &mut Assets<Image>,
+    shapes: &crate::shapes::LaneShapes,
     stage: crate::theme::Theme,
     motion: bool,
 ) {
@@ -887,50 +938,104 @@ fn spawn_venue(
         RenderLayers::layer(STAGE_LAYER),
     ));
 
-    // Cones stand in for beams. Tall, narrow, unlit-bright and
-    // alpha-blended, which is what a light shaft looks like without a
-    // volumetric pass.
-    // Narrow, and deliberately kept outside the bed: the first
-    // attempt used radius 1.5 cones starting at the centre, which
-    // washed a red haze straight across the fretboard.
-    let beam = meshes.add(Cone {
-        radius: 0.7,
-        height: 7.0,
-    });
-    let beam_material = materials.add(StandardMaterial {
-        base_color: stage.accent.with_alpha(0.045),
-        emissive: stage.accent.to_linear() * 0.5,
-        alpha_mode: AlphaMode::Blend,
-        unlit: true,
-        double_sided: true,
-        cull_mode: None,
+    // The light rig. Each fixture is a PIVOT hanging from the truss
+    // — a moving-head housing with a bright lens, and under it a
+    // pair of nested cone mantles wearing the beam-gradient texture,
+    // additively blended: dense at the lamp, dissolving into the
+    // air, with faint striations around the shaft. The old stock
+    // cones were uniform alpha-blended triangles that read as
+    // coloured glass; a light is a THING with a source, a hot core
+    // and a soft sheath, and it swings from its hanger, not around
+    // its own middle.
+    let mantle = meshes.add(beam_cone_mesh(28));
+    let housing = meshes.add(Cuboid::new(0.34, 0.5, 0.34));
+    let lens = meshes.add(Sphere::new(0.13).mesh().uv(10, 8));
+    let housing_material = materials.add(StandardMaterial {
+        base_color: dark.mix(&Color::BLACK, 0.5),
+        perceptual_roughness: 0.55,
+        metallic: 0.4,
         ..default()
     });
+    // Every second fixture runs a paler, whiter tone — a rig of six
+    // identical colours reads as a texture, two tones read as lamps.
+    let tones = [stage.accent, stage.accent.mix(&Color::WHITE, 0.45)];
+    let beam_materials: Vec<Handle<StandardMaterial>> = tones
+        .iter()
+        .map(|tone| {
+            materials.add(StandardMaterial {
+                base_color: tone.with_alpha(0.16),
+                base_color_texture: Some(shapes.beam_gradient()),
+                alpha_mode: AlphaMode::Add,
+                unlit: true,
+                double_sided: true,
+                cull_mode: None,
+                ..default()
+            })
+        })
+        .collect();
+    let lens_materials: Vec<Handle<StandardMaterial>> = tones
+        .iter()
+        .map(|tone| {
+            materials.add(StandardMaterial {
+                base_color: *tone,
+                emissive: tone.to_linear() * 6.0,
+                unlit: true,
+                ..default()
+            })
+        })
+        .collect();
     // Three a side, none closer to the centre than the speaker
     // stacks — the neck keeps a clear corridor.
     for index in 0..6 {
         let side = if index % 2 == 0 { -1.0 } else { 1.0 };
         let x = side * (3.4 + 1.7 * (index / 2) as f32);
-        let entity = commands
+        let tone = index % 2;
+        let pivot = commands
             .spawn((
                 GameplayScreen,
                 Stage3d,
                 Venue,
-                Mesh3d(beam.clone()),
-                MeshMaterial3d(beam_material.clone()),
-                // Point down and slightly away from the neck, so the
-                // shafts never wash over the notes.
-                Transform::from_xyz(x, 6.4, -13.0).with_rotation(Quat::from_rotation_z(x * 0.05)),
+                Transform::from_xyz(x, 8.9, -13.0).with_rotation(Quat::from_rotation_z(x * 0.05)),
+                Visibility::default(),
                 RenderLayers::layer(STAGE_LAYER),
             ))
             .id();
         if motion {
-            commands.entity(entity).insert(SpotBeam {
+            commands.entity(pivot).insert(SpotBeam {
                 base: x * 0.05,
                 phase: index as f32 * 1.1,
                 speed: 0.35 + 0.05 * index as f32,
             });
         }
+        commands.entity(pivot).with_children(|fixture| {
+            fixture.spawn((
+                Mesh3d(housing.clone()),
+                MeshMaterial3d(housing_material.clone()),
+                Transform::from_xyz(0.0, -0.25, 0.0),
+                RenderLayers::layer(STAGE_LAYER),
+            ));
+            fixture.spawn((
+                Mesh3d(lens.clone()),
+                MeshMaterial3d(lens_materials[tone].clone()),
+                Transform::from_xyz(0.0, -0.52, 0.0),
+                RenderLayers::layer(STAGE_LAYER),
+            ));
+            // The hot core and the soft sheath: same mantle, same
+            // gradient, different girth — their addition is what
+            // fakes the volumetric falloff across the shaft.
+            fixture.spawn((
+                Mesh3d(mantle.clone()),
+                MeshMaterial3d(beam_materials[tone].clone()),
+                Transform::from_xyz(0.0, -0.55, 0.0).with_scale(Vec3::new(0.42, 7.6, 0.42)),
+                RenderLayers::layer(STAGE_LAYER),
+            ));
+            fixture.spawn((
+                Mesh3d(mantle.clone()),
+                MeshMaterial3d(beam_materials[tone].clone()),
+                Transform::from_xyz(0.0, -0.55, 0.0).with_scale(Vec3::new(1.05, 7.9, 1.05)),
+                RenderLayers::layer(STAGE_LAYER),
+            ));
+        });
     }
 
     // Speaker stacks flanking the near end: they give the neck a sense
@@ -1025,6 +1130,7 @@ pub fn setup_stage(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
+    shapes: Res<crate::shapes::LaneShapes>,
 ) {
     if !active(&settings) {
         return;
@@ -1138,6 +1244,7 @@ pub fn setup_stage(
         &mut meshes,
         &mut materials,
         &mut images,
+        &shapes,
         stage,
         settings.backdrop_motion,
     );

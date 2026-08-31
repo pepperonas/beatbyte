@@ -14,6 +14,20 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.25] - 2026-09-01
+
+### Changed
+
+- The stage lights read as lights. Each beam is now a moving-head
+  FIXTURE hanging from the truss - a housing with a bright lens -
+  and under it a pair of nested cone mantles wearing a procedural
+  beam gradient (dense at the lamp, dissolving into the air, faint
+  striations around the shaft), additively blended, swinging from
+  the hanger instead of around their own middle. Every second
+  fixture runs a paler tone, so the rig reads as lamps rather than
+  as a repeated texture. The old uniform alpha cones read as
+  coloured glass triangles.
+
 ## [0.12.24] - 2026-08-31
 
 ### Changed

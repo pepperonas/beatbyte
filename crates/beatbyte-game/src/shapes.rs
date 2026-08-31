@@ -33,6 +33,7 @@ pub struct LaneShapes {
     bed_gradient: Handle<Image>,
     vignette: Handle<Image>,
     gauge_arc: Handle<Image>,
+    beam_gradient: Handle<Image>,
 }
 
 impl LaneShapes {
@@ -87,6 +88,13 @@ impl LaneShapes {
     #[must_use]
     pub fn soft_dot(&self) -> Handle<Image> {
         self.soft_dot.clone()
+    }
+
+    /// The light-beam gradient: bright at the source, gone at the
+    /// foot, with faint seamless striations around the shaft.
+    #[must_use]
+    pub fn beam_gradient(&self) -> Handle<Image> {
+        self.beam_gradient.clone()
     }
 
     /// The half-circle gauge track (the Hype gauge's dial): a ring
@@ -152,12 +160,28 @@ fn build_shapes(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         bed_gradient: images.add(shaded_image(bed_shading)),
         vignette: images.add(shaded_image(vignette_shading)),
         gauge_arc: images.add(shaded_image(gauge_arc_shading)),
+        beam_gradient: images.add(shaded_image(beam_shading)),
     });
 }
 
 /// A (value, alpha) shading sample; value is grayscale 0..1 so the
 /// sprite tint supplies the hue.
 pub type Shade = (f32, f32);
+
+/// A light shaft's skin: `v` runs from the source (0) to the foot
+/// (1). Real beams are dense at the lamp and dissolve into the air,
+/// so alpha falls as a power curve; faint striations around the
+/// shaft (`u`, seamless — whole sine periods) break the cone's
+/// machined smoothness the way dust does. Pure — tested.
+#[must_use]
+pub fn beam_shading(u: f32, v: f32) -> Shade {
+    // A short fade-in at the very tip, so the shaft does not start
+    // with a hard bright edge at the lens.
+    let head = (v / 0.06).clamp(0.0, 1.0);
+    let body = (1.0 - v).clamp(0.0, 1.0).powf(1.7);
+    let striae = 1.0 - 0.18 * (u * core::f32::consts::TAU * 5.0).sin().abs();
+    (striae, head * body)
+}
 
 /// The gauge dial: a ring band across the UPPER half of the tile,
 /// centred on the bottom-middle, so a needle pivoting there sweeps
@@ -424,6 +448,25 @@ fn mask_to_image(mask: &[[bool; SHAPE_SIZE]; SHAPE_SIZE]) -> Image {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+
+    #[test]
+    fn the_beam_dissolves_from_lamp_to_foot_and_tiles_seamlessly() {
+        use super::beam_shading;
+        // Densest just below the lens, thinner halfway, gone at the
+        // foot — that falloff IS the volumetric read.
+        let near = beam_shading(0.25, 0.1).1;
+        let mid = beam_shading(0.25, 0.5).1;
+        let foot = beam_shading(0.25, 0.999).1;
+        assert!(near > mid && mid > foot, "{near} > {mid} > {foot}");
+        assert!(foot < 0.01, "the foot must dissolve, got {foot}");
+        // The tip fades in instead of starting as a hard edge.
+        assert!(beam_shading(0.25, 0.0).1 < 0.01);
+        // The striations close around the shaft: u=0 and u=1 are the
+        // same line, or the cone shows a seam.
+        let (a, _) = beam_shading(0.0, 0.4);
+        let (b, _) = beam_shading(1.0, 0.4);
+        assert!((a - b).abs() < 1e-4, "seam: {a} vs {b}");
+    }
 
     #[test]
     fn the_gauge_arc_is_a_band_with_its_strongest_tick_at_the_top() {
