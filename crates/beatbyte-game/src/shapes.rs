@@ -37,6 +37,8 @@ pub struct LaneShapes {
     speaker_sub: Handle<Image>,
     speaker_top: Handle<Image>,
     led_module: Handle<Image>,
+    plate: Handle<Image>,
+    well: Handle<Image>,
 }
 
 impl LaneShapes {
@@ -112,6 +114,19 @@ impl LaneShapes {
         self.speaker_top.clone()
     }
 
+    /// A HUD plate: brushed dark metal, vignetted, a light catch
+    /// along the top edge, rivets in the corners.
+    #[must_use]
+    pub fn plate(&self) -> Handle<Image> {
+        self.plate.clone()
+    }
+
+    /// A recessed readout well with faint scanlines.
+    #[must_use]
+    pub fn well(&self) -> Handle<Image> {
+        self.well.clone()
+    }
+
     /// An LED wall module: a fine dot matrix on a dark carrier.
     #[must_use]
     pub fn led_module(&self) -> Handle<Image> {
@@ -185,6 +200,8 @@ fn build_shapes(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         speaker_sub: images.add(shaded_image(|u, v| speaker_shading(u, v, true))),
         speaker_top: images.add(shaded_image(|u, v| speaker_shading(u, v, false))),
         led_module: images.add(shaded_image(led_module_shading)),
+        plate: images.add(shaded_image(plate_shading)),
+        well: images.add(shaded_image(well_shading)),
     });
 }
 
@@ -253,6 +270,40 @@ pub fn speaker_shading(u: f32, v: f32, sub: bool) -> Shade {
     (value, 1.0)
 }
 
+/// A HUD plate face: dark brushed metal (fine horizontal grain), a
+/// vignette pulling the corners down, a light catch along the top
+/// edge, and a rivet in each corner — the plates should read as
+/// stage hardware, not as coloured rectangles. Pure — tested.
+#[must_use]
+pub fn plate_shading(u: f32, v: f32) -> Shade {
+    let grain = 0.03 * (v * 640.0).sin();
+    let vignette = 1.0 - 0.55 * (((u - 0.5).abs().powi(2) + (v - 0.5).abs().powi(2)) * 2.4);
+    let mut value = (0.16 + grain) * vignette.max(0.25);
+    // The top-edge light catch, tight and bright.
+    if v < 0.05 {
+        value = value.max(0.5 * (1.0 - v / 0.05));
+    }
+    // Corner rivets: four small bright domes.
+    for (cx, cy) in [(0.045, 0.09), (0.955, 0.09), (0.045, 0.91), (0.955, 0.91)] {
+        let dx = (u - cx) * 8.0;
+        let dy = (v - cy) * 4.0;
+        let dome = (1.0 - (dx * dx + dy * dy) * 14.0).clamp(0.0, 1.0);
+        value = value.max(0.28f32.mul_add(dome, value));
+    }
+    (value.min(1.0), 1.0)
+}
+
+/// A recessed readout well: darker toward the top (light comes from
+/// above, a recess shades under its lip) with faint scanlines.
+/// Pure — tested.
+#[must_use]
+pub fn well_shading(u: f32, v: f32) -> Shade {
+    let _ = u;
+    let lip = 0.5 * (1.0 - (v / 0.16).min(1.0));
+    let scan = 0.025 * ((v * 90.0).sin() * 0.5 + 0.5);
+    ((0.06 + scan) * (1.0 - lip), 1.0)
+}
+
 /// An LED wall module: a matrix of small emitters on a dark carrier
 /// — the pixel structure is what tells a screen from a lamp. Pure —
 /// tested.
@@ -285,14 +336,14 @@ pub fn gauge_arc_shading(u: f32, v: f32) -> Shade {
     let edge = ((r - 0.62) / 0.03).min((0.96 - r) / 0.03).clamp(0.0, 1.0);
     // Angle across the sweep: 0 at the left horizon, 1 at the right.
     let sweep = 1.0 - (dy.atan2(-dx) / core::f32::consts::PI);
-    let mut value = 0.42f32;
-    for (tick, strength) in [
-        (0.0, 0.9),
-        (0.25, 0.65),
-        (0.5, 1.0),
-        (0.75, 0.65),
-        (1.0, 0.9),
-    ] {
+    // The band brightens along the sweep — the dial itself says
+    // "more is that way" — and the READY half (past the activation
+    // mark) sits a step brighter as a zone.
+    let mut value = 0.30f32.mul_add(sweep, 0.20);
+    if sweep >= 0.5 {
+        value += 0.12;
+    }
+    for (tick, strength) in [(0.0, 0.9), (0.25, 0.7), (0.5, 1.0), (0.75, 0.7), (1.0, 0.9)] {
         let distance = (sweep - tick).abs();
         if distance < 0.012 {
             value = value.max(strength);
@@ -532,6 +583,36 @@ fn mask_to_image(mask: &[[bool; SHAPE_SIZE]; SHAPE_SIZE]) -> Image {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+
+    #[test]
+    fn the_plate_reads_as_hardware_not_a_rectangle() {
+        use super::plate_shading;
+        // The top edge catches light, the corners carry rivets that
+        // outshine the metal beside them, and the field vignettes
+        // darker than the centre.
+        let (edge, _) = plate_shading(0.5, 0.01);
+        let (centre, _) = plate_shading(0.5, 0.5);
+        let (corner_field, _) = plate_shading(0.18, 0.09);
+        let (rivet, _) = plate_shading(0.045, 0.09);
+        assert!(
+            edge > centre,
+            "top catch {edge} must outshine the field {centre}"
+        );
+        assert!(
+            rivet > corner_field,
+            "rivet {rivet} vs plain corner {corner_field}"
+        );
+    }
+
+    #[test]
+    fn the_well_shades_under_its_lip() {
+        use super::well_shading;
+        // A recess is darkest right under the lip - that shadow is
+        // what makes it read as IN the plate instead of ON it.
+        let (under_lip, _) = well_shading(0.5, 0.02);
+        let (floor, _) = well_shading(0.5, 0.7);
+        assert!(under_lip < floor, "lip shadow {under_lip} vs floor {floor}");
+    }
 
     #[test]
     fn the_speaker_front_reads_as_drivers_on_a_dark_grille() {

@@ -305,6 +305,8 @@ impl Plugin for GameplayPlugin {
                     feedback::animate_feedback,
                     hud::update_huds,
                     hud::pop_streak,
+                    hud::pop_multiplier,
+                    hud::pulse_gauge,
                     hud::update_song_ribbon,
                     check_song_end,
                 )

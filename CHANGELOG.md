@@ -14,6 +14,23 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.28] - 2026-09-01
+
+### Changed
+
+- The HUD plates became instruments. The corner panels are brushed
+  dark metal now - top-edge light catch, corner rivets, a vignetted
+  field - tinted toward the accent, instead of flat colour
+  rectangles; the score digits sit in a truly recessed well that shades
+  under its lip. The gauge dial gained a sweep gradient that
+  brightens past the activation mark, and its needle got a
+  counterweight tail past the hub - a dial needle, not a rotating
+  line. New motion, all transforms and sprite tints: the multiplier
+  POPS when it changes (up or lost), the next streak bulb carries a
+  faint ember so the row points at where the streak is going, and
+  the gauge breathes toward the Hype tone once it can fire, blazing
+  white-hot while Hype runs.
+
 ## [0.12.27] - 2026-09-01
 
 ### Changed

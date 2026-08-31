@@ -47,6 +47,19 @@ pub struct HypeReadyText;
 #[derive(Component)]
 pub struct HypeNeedle;
 
+/// The hub the gauge needle pivots on (solo panel).
+#[derive(Component)]
+pub struct HypeHub;
+
+/// The multiplier's pop animation state.
+#[derive(Component)]
+pub struct MultiplierPop {
+    /// The multiplier last shown.
+    pub seen: u32,
+    /// Seconds since it last changed.
+    pub age: f32,
+}
+
 /// The streak counter's pop animation state.
 #[derive(Component)]
 pub struct StreakPop {
@@ -292,18 +305,29 @@ pub fn spawn_huds(
 /// Bevy sprites have no border, so a plate is two rectangles. The fill
 /// is drawn slightly in front of the border so the border shows as a
 /// hairline edge rather than being covered.
-fn plate(commands: &mut Commands, center: Vec2, size: Vec2, accent: Color) {
+fn plate(
+    commands: &mut Commands,
+    shapes: &crate::shapes::LaneShapes,
+    center: Vec2,
+    size: Vec2,
+    accent: Color,
+) {
     commands.spawn((
         GameplayScreen,
         Sprite::from_color(palette::dimmed(accent, 0.55), size),
         Transform::from_xyz(center.x, center.y, 3.0),
     ));
+    // Brushed dark metal with a top-edge light catch and corner
+    // rivets, tinted toward the accent: stage hardware, not a
+    // coloured rectangle.
     commands.spawn((
         GameplayScreen,
-        Sprite::from_color(
-            palette::BACKGROUND.with_alpha(0.88),
-            size - Vec2::splat(PLATE_BORDER * 2.0),
-        ),
+        Sprite {
+            image: shapes.plate(),
+            color: palette::BACKGROUND.mix(&accent, 0.35),
+            custom_size: Some(size - Vec2::splat(PLATE_BORDER * 2.0)),
+            ..default()
+        },
         Transform::from_xyz(center.x, center.y, 3.1),
     ));
 }
@@ -332,7 +356,7 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::sha
     let size = Vec2::new(PLATE_W, PLATE_H);
 
     // ── Left: the counter, the multiplier, the streak ───────────────
-    plate(commands, left, size, accent);
+    plate(commands, shapes, left, size, accent);
     caption(
         commands,
         font,
@@ -342,10 +366,11 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::sha
     // A recessed well, so the digits read as sitting IN the plate.
     commands.spawn((
         GameplayScreen,
-        Sprite::from_color(
-            palette::BACKGROUND.mix(&Color::BLACK, 0.5),
-            Vec2::new(PLATE_W - 40.0, 34.0),
-        ),
+        Sprite {
+            image: shapes.well(),
+            custom_size: Some(Vec2::new(PLATE_W - 40.0, 34.0)),
+            ..default()
+        },
         Transform::from_xyz(left.x, left.y + PLATE_H / 2.0 - 44.0, 3.2),
     ));
     // Leading zeros dim, significant digits bright, as ONE line: the
@@ -390,6 +415,7 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::sha
     commands.spawn((
         GameplayScreen,
         MultiplierText(0),
+        MultiplierPop { seen: 1, age: 1.0 },
         Text2d::new("x1"),
         font.text(16.0),
         TextColor(palette::TEXT),
@@ -453,7 +479,7 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::sha
     ));
 
     // ── Right: the energy meter, in the quarters it fills in ────────
-    plate(commands, right, size, palette::HYPE);
+    plate(commands, shapes, right, size, palette::HYPE);
     caption(
         commands,
         font,
@@ -483,16 +509,20 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::sha
         Sprite {
             image: shapes.glow_strip(),
             color: palette::TEXT,
-            custom_size: Some(Vec2::new(4.0, 62.0)),
+            custom_size: Some(Vec2::new(4.0, 74.0)),
             ..default()
         },
-        Anchor::BOTTOM_CENTER,
+        // The pivot sits 18 % up the strip, so the short end past
+        // the hub reads as the needle's counterweight — a real dial
+        // needle, not a rotating line.
+        Anchor(Vec2::new(0.0, -0.32)),
         Transform::from_xyz(pivot.x, pivot.y, 3.6)
             .with_rotation(Quat::from_rotation_z(gauge_angle(0.0))),
     ));
     // The hub the needle pivots on.
     commands.spawn((
         GameplayScreen,
+        HypeHub,
         Sprite {
             image: shapes.round_core(),
             color: palette::dimmed(palette::HYPE, 0.9),
@@ -617,11 +647,15 @@ pub fn update_huds(
         };
         for (bead, glow, mut sprite) in &mut beads {
             let lit = bead.0 < toward_next;
+            let next = bead.0 == toward_next && toward_next < STREAK_BEADS;
             sprite.color = match (lit, glow) {
                 // The halo only exists while its bulb burns.
                 (true, true) => lit_color.with_alpha(0.5),
                 (false, true) => Color::NONE,
                 (true, false) => lit_color.mix(&Color::WHITE, 0.25),
+                // The bulb about to fill carries a faint ember — the
+                // row points at where the streak is going.
+                (false, false) if next => palette::dimmed(lit_color, 0.35),
                 (false, false) => palette::dimmed(palette::TEXT_DIM, 0.25),
             };
         }
@@ -671,6 +705,71 @@ pub fn pop_streak(
         pop.age += time.delta_secs();
         let scale = pop_scale(pop.age);
         transform.scale = Vec3::splat(scale);
+    }
+}
+
+/// Pop the multiplier when it CHANGES — up a level or lost to a
+/// miss, both are moments the eye should be handed.
+pub fn pop_multiplier(
+    time: Res<Time>,
+    players: Query<(&PlayerIndex, &PlayerSession)>,
+    mut counters: Query<(&MultiplierText, &mut MultiplierPop, &mut Transform)>,
+) {
+    for (marker, mut pop, mut transform) in &mut counters {
+        let Some((_, player)) = players.iter().find(|(index, _)| index.0 == marker.0) else {
+            continue;
+        };
+        let multiplier = player.session.performance().multiplier();
+        if multiplier != pop.seen {
+            pop.age = 0.0;
+        }
+        pop.seen = multiplier;
+        pop.age += time.delta_secs();
+        transform.scale = Vec3::splat(pop_scale(pop.age));
+    }
+}
+
+/// The glow blend for the gauge while it stands READY: a slow
+/// breath between a third and two thirds of the hot tone, so the
+/// dial visibly asks to be fired without strobing.
+#[must_use]
+pub fn ready_glow(t: f32) -> f32 {
+    0.16f32.mul_add((t * 4.0).sin(), 0.42)
+}
+
+/// Breathe the gauge when it matters: hub and needle pulse toward
+/// the Hype tone once the meter can fire, and blaze steady white-hot
+/// while Hype runs. Transforms and sprite tints only — no material
+/// or texture writes.
+pub fn pulse_gauge(
+    time: Res<Time>,
+    players: Query<(&PlayerIndex, &PlayerSession)>,
+    mut needles: Query<&mut Sprite, (With<HypeNeedle>, Without<HypeHub>)>,
+    mut hubs: Query<&mut Sprite, (With<HypeHub>, Without<HypeNeedle>)>,
+) {
+    let Some((_, player)) = players.iter().find(|(index, _)| index.0 == 0) else {
+        return;
+    };
+    let perf = player.session.performance();
+    let (needle_color, hub_color) = if perf.hype_active() {
+        (
+            palette::HYPE.mix(&Color::WHITE, 0.7),
+            palette::HYPE.mix(&Color::WHITE, 0.5),
+        )
+    } else if perf.hype_meter() >= 0.5 {
+        let blend = ready_glow(time.elapsed_secs());
+        (
+            palette::TEXT.mix(&palette::HYPE, blend),
+            palette::dimmed(palette::HYPE, 0.9).mix(&Color::WHITE, blend * 0.5),
+        )
+    } else {
+        (palette::TEXT, palette::dimmed(palette::HYPE, 0.9))
+    };
+    for mut sprite in &mut needles {
+        sprite.color = needle_color;
+    }
+    for mut sprite in &mut hubs {
+        sprite.color = hub_color;
     }
 }
 
@@ -757,7 +856,22 @@ mod ribbon_tests {
 
 #[cfg(test)]
 mod gauge_tests {
-    use super::{gauge_angle, pop_scale};
+    use super::{gauge_angle, pop_scale, ready_glow};
+
+    #[test]
+    fn the_ready_breath_stays_a_glow_and_never_a_strobe() {
+        // The blend must MOVE (it is a breath), but stay inside a
+        // band that never reaches full-off or full-hot — a dial that
+        // blinks to black reads as a fault light.
+        let samples: Vec<f32> = (0..100).map(|i| ready_glow(i as f32 * 0.05)).collect();
+        let lo = samples.iter().copied().fold(f32::MAX, f32::min);
+        let hi = samples.iter().copied().fold(f32::MIN, f32::max);
+        assert!(
+            lo > 0.2 && hi < 0.7,
+            "band {lo}..{hi} escapes the glow range"
+        );
+        assert!(hi - lo > 0.25, "breath {lo}..{hi} too shallow to see");
+    }
 
     #[test]
     fn the_needle_sweeps_left_to_right_and_stands_up_at_the_threshold() {
