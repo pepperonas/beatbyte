@@ -83,7 +83,7 @@ impl Default for Settings {
             backdrop_motion: true,
             tap_mode: true,
             perspective: true,
-            stage_3d: false,
+            stage_3d: true,
             round_gems: false,
             fullscreen: false,
             input_map: InputMap::default(),
@@ -107,6 +107,11 @@ impl Settings {
         // selects it would otherwise leave the highway with no depth
         // and no way to get it back from the VIEW row.
         self.perspective = true;
+        // The 2D "depth" view is removed (user call, 2026-08-31,
+        // with screenshots of both note styles): the 3D stage is the
+        // game's one view. A stale settings file must not strand a
+        // player in a view that no longer exists.
+        self.stage_3d = true;
         self.music_volume = clean(self.music_volume, 0.0, 1.0, 0.8);
         self.sfx_volume = clean(self.sfx_volume, 0.0, 1.0, 0.45);
         self.latency_offset_ms = clean(self.latency_offset_ms, -250.0, 250.0, 0.0);

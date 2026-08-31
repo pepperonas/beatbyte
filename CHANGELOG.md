@@ -14,6 +14,16 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.21] - 2026-08-31
+
+### Removed
+
+- The 2D "depth" view (user call, with screenshots of both note
+  styles): the 3D stage is the game's one view. The VIEW settings
+  row is gone, a stale settings file is forced back to the stage,
+  and the note-style choice (8-bit shapes / round) now only shapes
+  the gems on the 3D highway.
+
 ## [0.12.20] - 2026-08-31
 
 ### Changed

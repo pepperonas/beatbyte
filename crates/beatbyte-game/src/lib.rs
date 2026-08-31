@@ -131,7 +131,16 @@ pub fn run() -> AppExit {
                     } else {
                         (1280, 720).into()
                     },
-                    present_mode: PresentMode::AutoVsync,
+                    // Uncapped rendering exists for MEASUREMENT
+                    // (BEATBYTE_UNCAPPED=1): under vsync every
+                    // frame-time median is pinned to the display and
+                    // an optimization cannot be seen. Play stays
+                    // vsynced — tearing buys a player nothing.
+                    present_mode: if std::env::var_os("BEATBYTE_UNCAPPED").is_some() {
+                        PresentMode::AutoNoVsync
+                    } else {
+                        PresentMode::AutoVsync
+                    },
                     ..default()
                 }),
                 // Harness integrity: in autopilot mode the ONLY valid

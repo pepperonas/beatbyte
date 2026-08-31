@@ -27,14 +27,13 @@ pub(crate) enum Row {
     BackdropMotion,
     TapMode,
     NoteStyle,
-    View,
     Fullscreen,
     Theme,
     Controls,
 }
 
 impl Row {
-    const ALL: [Row; 14] = [
+    const ALL: [Row; 13] = [
         Row::MusicVolume,
         Row::SfxVolume,
         Row::ScrollSpeed,
@@ -45,7 +44,6 @@ impl Row {
         Row::BackdropMotion,
         Row::TapMode,
         Row::NoteStyle,
-        Row::View,
         Row::Fullscreen,
         Row::Theme,
         Row::Controls,
@@ -63,7 +61,6 @@ impl Row {
             Row::BackdropMotion => "STAGE MOTION",
             Row::TapMode => "TAP MODE (NO STRUM)",
             Row::NoteStyle => "NOTE STYLE",
-            Row::View => "VIEW",
             Row::Fullscreen => "FULLSCREEN",
             Row::Theme => "STAGE THEME",
             Row::Controls => "CONTROLS",
@@ -81,12 +78,6 @@ impl Row {
             Row::BeatPulse => on_off(settings.beat_pulse),
             Row::BackdropMotion => on_off(settings.backdrop_motion),
             Row::TapMode => on_off(settings.tap_mode),
-            Row::View => if settings.stage_3d {
-                "3D STAGE"
-            } else {
-                "DEPTH"
-            }
-            .to_owned(),
             Row::NoteStyle => if settings.round_gems {
                 "ROUND"
             } else {
@@ -122,13 +113,6 @@ impl Row {
             Row::BackdropMotion => settings.backdrop_motion = !settings.backdrop_motion,
             Row::TapMode => settings.tap_mode = !settings.tap_mode,
             Row::NoteStyle => settings.round_gems = !settings.round_gems,
-            // DEPTH <-> 3D STAGE. The flat view is gone: it was the
-            // original 2D presentation and nothing about it was worth
-            // keeping once the highway had depth.
-            Row::View => {
-                settings.stage_3d = !settings.stage_3d;
-                settings.perspective = true;
-            }
             Row::Fullscreen => settings.fullscreen = !settings.fullscreen,
             Row::Theme => {
                 // Cycle auto → themes → auto.
@@ -374,15 +358,22 @@ mod tests {
     }
 
     #[test]
-    fn switching_the_view_can_never_land_on_the_removed_flat_highway() {
-        // The flat view was removed; `perspective` must stay true
-        // whichever way VIEW is stepped, or a stale settings file
-        // could strand a player on a highway with no depth.
-        let mut settings = Settings::default();
-        for direction in [1.0, -1.0, 1.0, 1.0, -1.0] {
-            Row::View.adjust(&mut settings, direction);
-            assert!(settings.perspective, "flat highway reachable again");
-        }
+    fn no_setting_can_reach_a_removed_view() {
+        // Two views are gone by now — the flat highway and the 2D
+        // depth view. A stale settings file re-opening either would
+        // strand the player in a presentation that no longer exists;
+        // sanitize() forces both flags back.
+        let mut settings = Settings {
+            perspective: false,
+            stage_3d: false,
+            ..Settings::default()
+        };
+        settings.sanitize();
+        assert!(settings.perspective, "flat highway reachable again");
+        assert!(
+            settings.stage_3d,
+            "the removed 2D depth view reachable again"
+        );
     }
 
     #[test]

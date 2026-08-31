@@ -13,6 +13,7 @@ about them is compiled into a normal build.
 
 | Variable | Value | What it does |
 |---|---|---|
+| `BEATBYTE_UNCAPPED` | set | Renders without vsync (measurement only): frame times become real cost instead of display pacing. Combine with `BEATBYTE_FPS=1`. |
 | `BEATBYTE_SMOKE_TEST` | set | Boots to the menu and exits 0. The cheapest proof that nothing panics on startup. |
 | `BEATBYTE_AUTOPILOT` | set | Plays a song perfectly. **Exits non-zero on any miss or overstrum.** |
 | `BEATBYTE_AUTOPILOT_SONG` | index or title substring | Which song to play (default: the first bundled one). |
