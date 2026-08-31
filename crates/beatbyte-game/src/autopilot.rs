@@ -1026,18 +1026,24 @@ fn autopilot_pause(
     let after_down = step(step(start, -1.0), -1.0);
     let after_up = step(step(after_down, 1.0), 1.0);
     // One scripted key per stride: press, release, then idle frames
-    // so state transitions and menu systems settle in between.
+    // so state transitions and menu systems settle in between. The
+    // number of ArrowDowns comes from the MENU, not from a memory of
+    // its layout — a drill with a hard-coded row index went stale
+    // the day rows were inserted above its target.
     const STRIDE: u32 = 8;
-    let script = [
-        KeyCode::Escape,
-        KeyCode::ArrowDown,
-        KeyCode::ArrowDown,
+    let downs = crate::gameplay::sfx_row_position();
+    let mut script = vec![KeyCode::Escape];
+    script.extend(std::iter::repeat_n(KeyCode::ArrowDown, downs));
+    script.extend([
         KeyCode::ArrowLeft,
         KeyCode::ArrowLeft,
         KeyCode::ArrowRight,
         KeyCode::ArrowRight,
         KeyCode::Escape,
-    ];
+    ]);
+    let after_down_check = 1 + downs + 1; // after the second LEFT
+    let after_up_check = after_down_check + 2; // after the second RIGHT
+    let resume_check = after_up_check + 1;
     let action = (*frame / STRIDE) as usize;
     let tick = *frame % STRIDE;
     if action >= script.len() {
@@ -1098,15 +1104,19 @@ fn autopilot_pause(
                             .to_owned(),
                     );
                 }
-                4 if (settings.sfx_volume - after_down).abs() > 1e-4 => fail(format!(
-                    "two LEFTs on the sfx row left {:.3}, expected {after_down:.3}",
-                    settings.sfx_volume
-                )),
-                6 if (settings.sfx_volume - after_up).abs() > 1e-4 => fail(format!(
-                    "two RIGHTs on the sfx row left {:.3}, expected {after_up:.3}",
-                    settings.sfx_volume
-                )),
-                7 if *phase.get() != crate::states::GamePhase::Playing => {
+                a if a == after_down_check && (settings.sfx_volume - after_down).abs() > 1e-4 => {
+                    fail(format!(
+                        "two LEFTs on the sfx row left {:.3}, expected {after_down:.3}",
+                        settings.sfx_volume
+                    ));
+                }
+                a if a == after_up_check && (settings.sfx_volume - after_up).abs() > 1e-4 => {
+                    fail(format!(
+                        "two RIGHTs on the sfx row left {:.3}, expected {after_up:.3}",
+                        settings.sfx_volume
+                    ));
+                }
+                a if a == resume_check && *phase.get() != crate::states::GamePhase::Playing => {
                     fail("escape did not resume".to_owned());
                 }
                 _ => {}

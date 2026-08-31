@@ -14,6 +14,15 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.22] - 2026-08-31
+
+### Fixed
+
+- The autopilot's pause drill navigates to the SFX row by content
+  instead of a remembered row index - inserting the loop rows above
+  it had silently retargeted the drill at a loop bound, which the
+  next run caught loudly.
+
 ## [0.12.21] - 2026-08-31
 
 ### Removed

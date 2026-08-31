@@ -333,6 +333,16 @@ artifact, smoke-test it (neutral CWD!), then
   is evidence, not an artifact**: the missing stage in an autopilot
   shot was waved off as a capture quirk hours before the user
   reported the same black screen.
+- **The user plays from `target/release/beatbyte` — never leave an
+  experimental build there.** During an A/B bisect the half-reverted
+  binary blacked out the user's LIVE game mid-song ("ich sehe
+  highway und die töne nicht mehr"). Experiment builds go to a
+  separate target dir (`CARGO_TARGET_DIR=/tmp/...`), and the real
+  path gets rebuilt from committed state the moment the experiment
+  ends. Related: a render change that passes every drill can still
+  be black on screen — judgment does not need pixels; luma-check the
+  engine screenshots (play AND pause) before keeping any
+  camera/HDR/bloom change.
 - **`dist/` is a build product.** It was once committed (118 MB, and
   CI shipped the stale DMG inside every artifact); it is gitignored —
   keep it that way.

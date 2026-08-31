@@ -648,6 +648,18 @@ impl PauseItem {
     }
 }
 
+/// Where the SFX-volume row sits in the pause menu — the autopilot's
+/// pause drill navigates by CONTENT, so inserting rows above it can
+/// never silently retarget the drill again (it did once: the loop
+/// rows moved SFX from index 2 to 4 and the drill adjusted a loop
+/// bound instead).
+pub(crate) fn sfx_row_position() -> usize {
+    PAUSE_ROWS
+        .iter()
+        .position(|item| *item == PauseItem::Setting(crate::settings_ui::Row::SfxVolume))
+        .unwrap_or(0)
+}
+
 /// The pause menu's rows, in display order.
 const PAUSE_ROWS: [PauseItem; 6] = [
     PauseItem::Speed,
