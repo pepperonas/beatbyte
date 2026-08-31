@@ -695,6 +695,48 @@ pub fn bob_crowd(
     }
 }
 
+/// One panel of the LED wall behind the stage.
+#[derive(Component)]
+pub struct LedPanel {
+    /// The panel's own phase, so the wall ripples instead of
+    /// slamming as one block.
+    pub phase: f32,
+    /// Resting scale (the pulse multiplies it).
+    pub rest: f32,
+}
+
+/// The LED wall's scale pulse on the beat: a quick swell that never
+/// dips below rest. Pure — the wall must breathe with the song, and
+/// the arithmetic should be provable without a stage.
+#[must_use]
+pub fn led_pulse(beats: f32, phase: f32) -> f32 {
+    let swing = (beats * core::f32::consts::PI + phase).sin().max(0.0);
+    0.16f32.mul_add(swing, 1.0)
+}
+
+/// Swell the LED wall with the beat — transforms only: a per-frame
+/// material write would re-upload the material every frame, the
+/// exact waste the hype tint just got rid of.
+pub fn pulse_led_wall(
+    settings: Res<Settings>,
+    game_clock: Res<GameClock>,
+    time: Res<Time>,
+    players: Query<&PlayerSession>,
+    mut panels: Query<(&LedPanel, &mut Transform)>,
+) {
+    if !active(&settings) || !settings.backdrop_motion {
+        return;
+    }
+    let (Some(now), Some(player)) = (game_clock.song_time(&time), players.iter().next()) else {
+        return;
+    };
+    let beats = player.session.track().tempo.beats_at(now) as f32;
+    for (panel, mut transform) in &mut panels {
+        let scale = panel.rest * led_pulse(beats, panel.phase);
+        transform.scale = Vec3::new(scale, scale, 1.0);
+    }
+}
+
 /// A piece of the venue behind the neck.
 #[derive(Component)]
 struct Venue;
@@ -774,11 +816,50 @@ fn spawn_venue(
         RenderLayers::layer(STAGE_LAYER),
     ));
 
-    // No lit band across the wall: the accent-coloured horizon strip
-    // (red on the default stage) read as a stray glowing line behind
-    // the highway and was reported as exactly that. The floor line
-    // the band once provided comes from the barriers and speaker
-    // stacks, which sit at the same height with real depth.
+    // An LED wall instead of the old accent band (which read as a
+    // stray red line and was removed on report): a grid of dim
+    // emissive panels well above the horizon, swelling with the
+    // beat. Two alternating tones so the wall has texture at rest;
+    // the pulse is pure transform — no per-frame material writes.
+    let panel = meshes.add(Cuboid::new(3.2, 1.5, 0.15));
+    let panel_bright = materials.add(StandardMaterial {
+        base_color: dark.mix(&stage.accent, 0.5),
+        emissive: stage.accent.to_linear() * 0.28,
+        perceptual_roughness: 0.6,
+        ..default()
+    });
+    let panel_dim = materials.add(StandardMaterial {
+        base_color: dark.mix(&stage.accent, 0.28),
+        emissive: stage.accent.to_linear() * 0.10,
+        perceptual_roughness: 0.7,
+        ..default()
+    });
+    for row in 0..3 {
+        for column in 0..9 {
+            let x = (column as f32 - 4.0) * 4.0;
+            let y = 6.5 + row as f32 * 2.1;
+            let checker = (row + column) % 2 == 0;
+            commands.spawn((
+                GameplayScreen,
+                Stage3d,
+                Venue,
+                LedPanel {
+                    // Phase runs outward from the middle, so the
+                    // wall ripples from the centre like a wave.
+                    phase: (column as f32 - 4.0).abs() * 0.55,
+                    rest: 1.0,
+                },
+                Mesh3d(panel.clone()),
+                MeshMaterial3d(if checker {
+                    panel_bright.clone()
+                } else {
+                    panel_dim.clone()
+                }),
+                Transform::from_xyz(x, y, VENUE_BACK + 0.5),
+                RenderLayers::layer(STAGE_LAYER),
+            ));
+        }
+    }
 
     // Side walls, well outside the bed so they frame without crowding.
     let side = meshes.add(Cuboid::new(0.6, 30.0, 46.0));
@@ -2181,6 +2262,7 @@ impl Plugin for Stage3dPlugin {
                 move_phrase_bands,
                 tint_stage_for_hype,
                 bob_crowd,
+                pulse_led_wall,
                 update_receptors,
                 apply_note_events,
                 sweep_beams,
@@ -2568,7 +2650,20 @@ mod sustain_pulse_tests {
 
 #[cfg(test)]
 mod star_tests {
-    use super::star_outline;
+    use super::{led_pulse, star_outline};
+
+    #[test]
+    fn the_led_wall_swells_on_the_beat_and_never_shrinks_below_rest() {
+        // On the beat: full swell; off the beat: at rest — and the
+        // rectified sine never dips under 1.0 (a wall shrinking
+        // below its sockets would read as broken panels).
+        assert!((led_pulse(0.5, 0.0) - 1.16).abs() < 1e-6);
+        assert!((led_pulse(0.0, 0.0) - 1.0).abs() < 1e-6);
+        for step in 0..40 {
+            let beats = step as f32 * 0.173;
+            assert!(led_pulse(beats, 1.3) >= 1.0 - 1e-6);
+        }
+    }
 
     #[test]
     fn the_star_is_five_points_of_alternating_radius() {

@@ -14,6 +14,16 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.24] - 2026-08-31
+
+### Changed
+
+- The stage gained an LED wall: a 9x3 grid of dim emissive panels in
+  two alternating tones behind the stage, swelling with the beat in
+  a ripple from the centre - pure transforms, no per-frame material
+  writes. The back wall reads as a concert rig instead of a bare
+  surface.
+
 ## [0.12.23] - 2026-08-31
 
 ### Changed
