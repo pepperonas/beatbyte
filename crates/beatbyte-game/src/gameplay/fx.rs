@@ -282,7 +282,7 @@ fn spawn_burst(
 }
 
 /// Cheap deterministic hash → 0.0..1.0.
-fn hash01(seed: usize) -> f32 {
+pub(crate) fn hash01(seed: usize) -> f32 {
     let mut x = seed as u64;
     x = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
     x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);

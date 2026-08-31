@@ -14,6 +14,25 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.27] - 2026-09-01
+
+### Changed
+
+- The stage learned what a concert looks like (researched against
+  Guitar Hero II's club-first venues; plan in
+  docs/ui/stage-realism-plan.md). Darkness first: key, fill and
+  ambient light drop to club levels and the walls vanish instead of
+  reading as lit cardboard. The crowd is a SILHOUETTE mass now -
+  torso + head per person, hash-jittered off the grid, one in four
+  with an arm up, the whole person bobbing. A handful of static
+  additive haze sheets give the beams a body. A second lattice
+  truss above the LED wall carries a backline of four fixtures
+  firing short cones toward the camera in the accent's
+  complementary tone - the warm/cold opposition concert light lives
+  on. The main truss is a real lattice (chords + diagonal bracing),
+  and the highway stands on a stage riser with a visible front
+  edge instead of floating in the void.
+
 ## [0.12.26] - 2026-09-01
 
 ### Changed
