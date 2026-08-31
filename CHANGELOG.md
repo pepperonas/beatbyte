@@ -14,6 +14,22 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.26] - 2026-09-01
+
+### Changed
+
+- The venue got the realism pass across all three of its set
+  pieces. The stage has a FLOOR at last (everything used to float
+  over a void), with a faint sheen - and each light fixture throws
+  a soft additive pool onto it that slides in step with its
+  swinging shaft (one shared angle function, pinned). The lenses
+  bloom with a soft halo. The speaker stacks are near-black PA
+  cabinets with real driver fronts - one big cone on the sub,
+  woofer and tweeter on the tops, on a faint grille weave - and the
+  fronts breathe with the beat. The LED wall's panels sit on a dark
+  cabinet board and carry a dot-matrix module texture in base and
+  emissive, so the screen reads as pixels rather than as lamps.
+
 ## [0.12.25] - 2026-09-01
 
 ### Changed

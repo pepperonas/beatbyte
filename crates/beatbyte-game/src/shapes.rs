@@ -34,6 +34,9 @@ pub struct LaneShapes {
     vignette: Handle<Image>,
     gauge_arc: Handle<Image>,
     beam_gradient: Handle<Image>,
+    speaker_sub: Handle<Image>,
+    speaker_top: Handle<Image>,
+    led_module: Handle<Image>,
 }
 
 impl LaneShapes {
@@ -95,6 +98,24 @@ impl LaneShapes {
     #[must_use]
     pub fn beam_gradient(&self) -> Handle<Image> {
         self.beam_gradient.clone()
+    }
+
+    /// A subwoofer cabinet front: one big driver.
+    #[must_use]
+    pub fn speaker_sub(&self) -> Handle<Image> {
+        self.speaker_sub.clone()
+    }
+
+    /// A top-cabinet front: woofer below, tweeter above.
+    #[must_use]
+    pub fn speaker_top(&self) -> Handle<Image> {
+        self.speaker_top.clone()
+    }
+
+    /// An LED wall module: a fine dot matrix on a dark carrier.
+    #[must_use]
+    pub fn led_module(&self) -> Handle<Image> {
+        self.led_module.clone()
     }
 
     /// The half-circle gauge track (the Hype gauge's dial): a ring
@@ -161,6 +182,9 @@ fn build_shapes(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         vignette: images.add(shaded_image(vignette_shading)),
         gauge_arc: images.add(shaded_image(gauge_arc_shading)),
         beam_gradient: images.add(shaded_image(beam_shading)),
+        speaker_sub: images.add(shaded_image(|u, v| speaker_shading(u, v, true))),
+        speaker_top: images.add(shaded_image(|u, v| speaker_shading(u, v, false))),
+        led_module: images.add(shaded_image(led_module_shading)),
     });
 }
 
@@ -181,6 +205,66 @@ pub fn beam_shading(u: f32, v: f32) -> Shade {
     let body = (1.0 - v).clamp(0.0, 1.0).powf(1.7);
     let striae = 1.0 - 0.18 * (u * core::f32::consts::TAU * 5.0).sin().abs();
     (striae, head * body)
+}
+
+/// One loudspeaker driver at `(cx, cy)` with radius `r`: surround
+/// ring, dark cone falling toward the centre, a small glinting dust
+/// cap. Returns the brightness to paint at `(u, v)`, or None when
+/// the point is outside the driver.
+fn driver_at(u: f32, v: f32, cx: f32, cy: f32, r: f32) -> Option<f32> {
+    let dx = u - cx;
+    let dy = v - cy;
+    let distance = (dx * dx + dy * dy).sqrt() / r;
+    if distance > 1.0 {
+        return None;
+    }
+    Some(if distance > 0.82 {
+        0.30 // the rubber surround catches a little light
+    } else if distance < 0.16 {
+        0.42 // dust cap glint
+    } else {
+        // The cone: darker toward the throat, as a real cone shades.
+        0.16 - 0.10 * (1.0 - distance)
+    })
+}
+
+/// A speaker cabinet front (`sub` = one big driver; otherwise a
+/// woofer below and a tweeter above), on a dark grille with a faint
+/// weave. Pure — tested.
+#[must_use]
+pub fn speaker_shading(u: f32, v: f32, sub: bool) -> Shade {
+    // The grille weave: a faint regular dot lattice.
+    let weave = 0.015
+        * ((u * core::f32::consts::TAU * 24.0).sin() * (v * core::f32::consts::TAU * 24.0).sin())
+            .abs();
+    let mut value = 0.10 + weave;
+    if sub {
+        if let Some(driver) = driver_at(u, v, 0.5, 0.5, 0.40) {
+            value = driver;
+        }
+    } else {
+        if let Some(driver) = driver_at(u, v, 0.5, 0.66, 0.30) {
+            value = driver;
+        }
+        if let Some(driver) = driver_at(u, v, 0.5, 0.22, 0.13) {
+            value = driver;
+        }
+    }
+    (value, 1.0)
+}
+
+/// An LED wall module: a matrix of small emitters on a dark carrier
+/// — the pixel structure is what tells a screen from a lamp. Pure —
+/// tested.
+#[must_use]
+pub fn led_module_shading(u: f32, v: f32) -> Shade {
+    const GRID: f32 = 12.0;
+    let fx = (u * GRID).fract() - 0.5;
+    let fy = (v * GRID).fract() - 0.5;
+    let distance = (fx * fx + fy * fy).sqrt();
+    // Emitter dots glow; the carrier between them stays dark.
+    let dot = (1.0 - (distance / 0.34).powi(2)).clamp(0.0, 1.0);
+    (0.28f32.mul_add(0.25, 0.90 * dot).min(1.0), 1.0)
 }
 
 /// The gauge dial: a ring band across the UPPER half of the tile,
@@ -448,6 +532,40 @@ fn mask_to_image(mask: &[[bool; SHAPE_SIZE]; SHAPE_SIZE]) -> Image {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+
+    #[test]
+    fn the_speaker_front_reads_as_drivers_on_a_dark_grille() {
+        use super::speaker_shading;
+        // The sub's big cone is darker than the grille around it,
+        // its surround brighter than the cone - that contrast IS
+        // the driver.
+        let (grille, _) = speaker_shading(0.06, 0.06, true);
+        let (cone, _) = speaker_shading(0.5, 0.62, true);
+        let (surround, _) = speaker_shading(0.5, 0.5 + 0.40 * 0.9, true);
+        assert!(
+            cone < grille,
+            "cone {cone} must sit darker than grille {grille}"
+        );
+        assert!(
+            surround > cone,
+            "surround {surround} must catch light over cone {cone}"
+        );
+        // The top cab really has TWO drivers - sampled mid-cone,
+        // not dead centre (the centre is the glinting dust cap).
+        assert!(super::speaker_shading(0.5, 0.66 + 0.30 * 0.5, false).0 < 0.2);
+        assert!(super::speaker_shading(0.5, 0.22 + 0.13 * 0.5, false).0 < 0.2);
+    }
+
+    #[test]
+    fn the_led_module_is_dots_on_a_dark_carrier() {
+        use super::led_module_shading;
+        // Dead centre of an emitter: bright. Between four emitters:
+        // the dark carrier. Without that gap a module is a lamp.
+        let (dot, _) = led_module_shading(0.5 / 12.0, 0.5 / 12.0);
+        let (carrier, _) = led_module_shading(1.0 / 12.0, 1.0 / 12.0);
+        assert!(dot > 0.8, "emitter centre must glow ({dot})");
+        assert!(carrier < 0.15, "carrier must stay dark ({carrier})");
+    }
 
     #[test]
     fn the_beam_dissolves_from_lamp_to_foot_and_tiles_seamlessly() {

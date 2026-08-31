@@ -867,21 +867,63 @@ fn spawn_venue(
         RenderLayers::layer(STAGE_LAYER),
     ));
 
+    // A stage floor. Everything here — speakers, barriers, crowd —
+    // used to float over a void; a floor is also what the light
+    // pools land on, and its faint sheen is what sells them.
+    let floor = meshes.add(Cuboid::new(90.0, 0.3, 64.0));
+    let floor_material = materials.add(StandardMaterial {
+        base_color: dark.mix(&Color::BLACK, 0.55),
+        perceptual_roughness: 0.42,
+        metallic: 0.12,
+        ..default()
+    });
+    commands.spawn((
+        GameplayScreen,
+        Stage3d,
+        Venue,
+        Mesh3d(floor),
+        MeshMaterial3d(floor_material),
+        Transform::from_xyz(0.0, -1.45, -18.0),
+        RenderLayers::layer(STAGE_LAYER),
+    ));
+
     // An LED wall instead of the old accent band (which read as a
     // stray red line and was removed on report): a grid of dim
     // emissive panels well above the horizon, swelling with the
     // beat. Two alternating tones so the wall has texture at rest;
     // the pulse is pure transform — no per-frame material writes.
+    // The panels sit on a dark cabinet board, and each one carries
+    // the LED-module dot matrix in its base AND emissive texture —
+    // the pixel structure is what tells a screen from a lamp.
+    let cabinet = meshes.add(Cuboid::new(38.0, 7.4, 0.2));
+    let cabinet_material = materials.add(StandardMaterial {
+        base_color: dark.mix(&Color::BLACK, 0.65),
+        perceptual_roughness: 0.8,
+        ..default()
+    });
+    commands.spawn((
+        GameplayScreen,
+        Stage3d,
+        Venue,
+        Mesh3d(cabinet),
+        MeshMaterial3d(cabinet_material),
+        Transform::from_xyz(0.0, 8.6, VENUE_BACK + 0.35),
+        RenderLayers::layer(STAGE_LAYER),
+    ));
     let panel = meshes.add(Cuboid::new(3.2, 1.5, 0.15));
     let panel_bright = materials.add(StandardMaterial {
         base_color: dark.mix(&stage.accent, 0.5),
-        emissive: stage.accent.to_linear() * 0.28,
+        base_color_texture: Some(shapes.led_module()),
+        emissive: stage.accent.to_linear() * 0.55,
+        emissive_texture: Some(shapes.led_module()),
         perceptual_roughness: 0.6,
         ..default()
     });
     let panel_dim = materials.add(StandardMaterial {
         base_color: dark.mix(&stage.accent, 0.28),
-        emissive: stage.accent.to_linear() * 0.10,
+        base_color_texture: Some(shapes.led_module()),
+        emissive: stage.accent.to_linear() * 0.22,
+        emissive_texture: Some(shapes.led_module()),
         perceptual_roughness: 0.7,
         ..default()
     });
@@ -984,6 +1026,36 @@ fn spawn_venue(
             })
         })
         .collect();
+    let halo_quad = meshes.add(Rectangle::new(1.5, 1.5));
+    let halo_materials: Vec<Handle<StandardMaterial>> = tones
+        .iter()
+        .map(|tone| {
+            materials.add(StandardMaterial {
+                base_color: tone.with_alpha(0.55),
+                base_color_texture: Some(shapes.soft_dot()),
+                alpha_mode: AlphaMode::Add,
+                unlit: true,
+                double_sided: true,
+                cull_mode: None,
+                ..default()
+            })
+        })
+        .collect();
+    let spot_quad = meshes.add(Rectangle::new(3.4, 2.2));
+    let spot_materials: Vec<Handle<StandardMaterial>> = tones
+        .iter()
+        .map(|tone| {
+            materials.add(StandardMaterial {
+                base_color: tone.with_alpha(0.30),
+                base_color_texture: Some(shapes.soft_dot()),
+                alpha_mode: AlphaMode::Add,
+                unlit: true,
+                double_sided: true,
+                cull_mode: None,
+                ..default()
+            })
+        })
+        .collect();
     // Three a side, none closer to the centre than the speaker
     // stacks — the neck keeps a clear corridor.
     for index in 0..6 {
@@ -1007,11 +1079,38 @@ fn spawn_venue(
                 speed: 0.35 + 0.05 * index as f32,
             });
         }
+        // The pool the shaft throws on the floor: an additive soft
+        // ellipse whose x follows the SAME beam_angle as the sweep.
+        let drop = 8.9 - (-1.3);
+        commands.spawn((
+            GameplayScreen,
+            Stage3d,
+            Venue,
+            FloorSpot {
+                base: x * 0.05,
+                phase: index as f32 * 1.1,
+                speed: 0.35 + 0.05 * index as f32,
+                pivot_x: x,
+                drop,
+            },
+            Mesh3d(spot_quad.clone()),
+            MeshMaterial3d(spot_materials[tone].clone()),
+            Transform::from_xyz(x, -1.28, -13.0)
+                .with_rotation(Quat::from_rotation_x(-core::f32::consts::FRAC_PI_2)),
+            RenderLayers::layer(STAGE_LAYER),
+        ));
         commands.entity(pivot).with_children(|fixture| {
             fixture.spawn((
                 Mesh3d(housing.clone()),
                 MeshMaterial3d(housing_material.clone()),
                 Transform::from_xyz(0.0, -0.25, 0.0),
+                RenderLayers::layer(STAGE_LAYER),
+            ));
+            // A soft halo around the lens: a lamp blooms in air.
+            fixture.spawn((
+                Mesh3d(halo_quad.clone()),
+                MeshMaterial3d(halo_materials[tone].clone()),
+                Transform::from_xyz(0.0, -0.52, 0.05),
                 RenderLayers::layer(STAGE_LAYER),
             ));
             fixture.spawn((
@@ -1038,18 +1137,55 @@ fn spawn_venue(
         });
     }
 
-    // Speaker stacks flanking the near end: they give the neck a sense
-    // of scale, which a bare board in a room does not have.
+    // Speaker stacks flanking the near end: they give the neck a
+    // sense of scale. Real PA is near-black boxes with DRIVERS in
+    // the front — the sub at the bottom carries one big cone, the
+    // tops a woofer and tweeter — and the fronts breathe with the
+    // beat, because a PA that stands dead still gives a stage away.
     let cab = meshes.add(Cuboid::new(1.3, 0.9, 1.1));
+    let cab_material = materials.add(StandardMaterial {
+        base_color: dark.mix(&Color::BLACK, 0.6),
+        perceptual_roughness: 0.85,
+        ..default()
+    });
+    let front = meshes.add(Rectangle::new(1.14, 0.76));
+    let front_materials: Vec<Handle<StandardMaterial>> = [true, false]
+        .iter()
+        .map(|sub| {
+            materials.add(StandardMaterial {
+                base_color: dark.mix(&Color::WHITE, 0.55),
+                base_color_texture: Some(if *sub {
+                    shapes.speaker_sub()
+                } else {
+                    shapes.speaker_top()
+                }),
+                perceptual_roughness: 0.9,
+                ..default()
+            })
+        })
+        .collect();
     for sign in [-1.0f32, 1.0] {
         for level in 0..3 {
+            let position = Vec3::new(sign * 4.4, 0.42 + 0.95 * level as f32, -7.0);
             commands.spawn((
                 GameplayScreen,
                 Stage3d,
                 Venue,
                 Mesh3d(cab.clone()),
-                MeshMaterial3d(box_material.clone()),
-                Transform::from_xyz(sign * 4.4, 0.42 + 0.95 * level as f32, -7.0),
+                MeshMaterial3d(cab_material.clone()),
+                Transform::from_translation(position),
+                RenderLayers::layer(STAGE_LAYER),
+            ));
+            commands.spawn((
+                GameplayScreen,
+                Stage3d,
+                Venue,
+                WooferFront {
+                    phase: sign.mul_add(0.6, level as f32 * 0.8),
+                },
+                Mesh3d(front.clone()),
+                MeshMaterial3d(front_materials[usize::from(level > 0)].clone()),
+                Transform::from_translation(position + Vec3::new(0.0, 0.0, 0.56)),
                 RenderLayers::layer(STAGE_LAYER),
             ));
         }
@@ -1109,13 +1245,76 @@ fn spawn_venue(
     }
 }
 
+/// A fixture's beam angle at a moment — ONE formula for the pivot's
+/// rotation and the floor spot's position, so the pool of light can
+/// never drift away from the shaft that casts it. Pure.
+#[must_use]
+pub fn beam_angle(now: f32, base: f32, phase: f32, speed: f32) -> f32 {
+    let swing = (now * speed + phase).sin();
+    swing.mul_add(0.30, base)
+}
+
 /// Sweep the light beams. Gated on the Stage Motion setting, like
 /// every other ambient movement in the game.
 fn sweep_beams(time: Res<Time>, mut beams: Query<(&SpotBeam, &mut Transform)>) {
     let now = time.elapsed_secs();
     for (beam, mut transform) in &mut beams {
-        let swing = (now * beam.speed + beam.phase).sin();
-        transform.rotation = Quat::from_rotation_z(beam.base + swing * 0.30);
+        transform.rotation =
+            Quat::from_rotation_z(beam_angle(now, beam.base, beam.phase, beam.speed));
+    }
+}
+
+/// The pool of light a fixture throws on the stage floor.
+#[derive(Component)]
+pub struct FloorSpot {
+    /// The fixture's swing parameters (mirroring its beam pivot).
+    pub base: f32,
+    /// Phase offset.
+    pub phase: f32,
+    /// Swing speed.
+    pub speed: f32,
+    /// The fixture's hanger x.
+    pub pivot_x: f32,
+    /// Vertical drop from hanger to floor.
+    pub drop: f32,
+}
+
+/// Slide each floor pool under its swinging shaft.
+fn slide_floor_spots(time: Res<Time>, mut spots: Query<(&FloorSpot, &mut Transform)>) {
+    let now = time.elapsed_secs();
+    for (spot, mut transform) in &mut spots {
+        let angle = beam_angle(now, spot.base, spot.phase, spot.speed);
+        transform.translation.x = angle.tan().mul_add(spot.drop, spot.pivot_x);
+    }
+}
+
+/// A speaker front whose woofer breathes with the beat.
+#[derive(Component)]
+pub struct WooferFront {
+    /// Per-cabinet phase, so the stacks do not pump as one.
+    pub phase: f32,
+}
+
+/// Pump the speaker fronts on the beat — a PA that stands dead still
+/// while the song plays is what gives a fake stage away. Same
+/// rectified-sine pulse as the LED wall, scaled down to a breath.
+pub fn pulse_woofers(
+    settings: Res<Settings>,
+    game_clock: Res<GameClock>,
+    time: Res<Time>,
+    players: Query<&PlayerSession>,
+    mut fronts: Query<(&WooferFront, &mut Transform)>,
+) {
+    if !active(&settings) || !settings.backdrop_motion {
+        return;
+    }
+    let (Some(now), Some(player)) = (game_clock.song_time(&time), players.iter().next()) else {
+        return;
+    };
+    let beats = player.session.track().tempo.beats_at(now) as f32;
+    for (front, mut transform) in &mut fronts {
+        let swell = (led_pulse(beats, front.phase) - 1.0).mul_add(0.30, 1.0);
+        transform.scale = Vec3::new(swell, swell, 1.0);
     }
 }
 
@@ -2370,6 +2569,8 @@ impl Plugin for Stage3dPlugin {
                 tint_stage_for_hype,
                 bob_crowd,
                 pulse_led_wall,
+                pulse_woofers,
+                slide_floor_spots,
                 update_receptors,
                 apply_note_events,
                 sweep_beams,
@@ -2758,6 +2959,25 @@ mod sustain_pulse_tests {
 #[cfg(test)]
 mod star_tests {
     use super::{led_pulse, star_outline};
+
+    #[test]
+    fn the_floor_pool_and_the_shaft_share_one_angle() {
+        use super::beam_angle;
+        // The pool slides by tan(angle) x drop from the hanger; the
+        // shaft rotates by the same angle — both take it from ONE
+        // function, and this pins that the function actually swings
+        // (a constant would keep both technically "in sync" while
+        // freezing the rig).
+        let a = beam_angle(0.0, 0.1, 0.0, 0.5);
+        let b = beam_angle(3.0, 0.1, 0.0, 0.5);
+        assert!((a - b).abs() > 0.05, "the rig must swing: {a} vs {b}");
+        // And the swing stays inside +-0.30 around its base: a shaft
+        // past that would rake across the fretboard.
+        for step in 0..60 {
+            let angle = beam_angle(step as f32 * 0.37, 0.1, 1.1, 0.45);
+            assert!((angle - 0.1).abs() <= 0.30 + 1e-6);
+        }
+    }
 
     #[test]
     fn the_led_wall_swells_on_the_beat_and_never_shrinks_below_rest() {
