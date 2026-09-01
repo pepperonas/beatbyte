@@ -61,3 +61,62 @@ pub fn dimmed(color: Color, factor: f32) -> Color {
         alpha: l.alpha,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Linear-space brightness of a color's brightest channel.
+    fn brightness(color: Color) -> f32 {
+        let l = color.to_linear();
+        l.red.max(l.green).max(l.blue)
+    }
+
+    #[test]
+    fn every_lane_has_its_own_color() {
+        // The lane color is a gameplay signal; two lanes sharing one
+        // would make shape the ONLY difference between them.
+        for (i, a) in LANES.iter().enumerate() {
+            for b in LANES.iter().skip(i + 1) {
+                assert_ne!(a, b, "two lanes share a color");
+            }
+        }
+        for lane in Lane::ALL {
+            assert_eq!(lane_color(lane), LANES[lane.index()]);
+        }
+    }
+
+    #[test]
+    fn dimming_darkens_and_keeps_the_alpha() {
+        let base = LANES[0].with_alpha(0.7);
+        let dim = dimmed(base, 0.5);
+        assert!(brightness(dim) < brightness(base), "dimming must darken");
+        assert!(
+            (dim.alpha() - 0.7).abs() < 1e-6,
+            "dimming a color must not fade it - outlines rely on that"
+        );
+        // Factor 1.0 is the identity, so 'dimmed' can be used
+        // unconditionally in color expressions.
+        let same = dimmed(base, 1.0);
+        assert!((brightness(same) - brightness(base)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn the_judgment_colors_are_pairwise_distinct() {
+        // PERFECT/GREAT/GOOD/MISS are read at a glance mid-song; any
+        // two collapsing into one silently weakens the feedback.
+        let set = [PERFECT, GREAT, GOOD, MISS];
+        for (i, a) in set.iter().enumerate() {
+            for b in set.iter().skip(i + 1) {
+                assert_ne!(a, b, "two judgments share a color");
+            }
+        }
+    }
+
+    #[test]
+    fn text_reads_on_the_background() {
+        // The UI's base contrast: bright text on the navy ground.
+        assert!(brightness(TEXT) > brightness(BACKGROUND) * 5.0);
+        assert!(brightness(TEXT_DIM) > brightness(BACKGROUND) * 2.0);
+    }
+}

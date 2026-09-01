@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎸 BeatByte
+<img src="docs/media/banner.png" alt="BeatByte — an original five-lane rhythm game in Rust" width="900"/>
 
 **An original five-lane rhythm game. Your music. Pixel-art or polished — your call.**
 
@@ -32,7 +32,7 @@
 [![SemVer](https://img.shields.io/badge/versioning-SemVer-blue)](CHANGELOG.md)
 [![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735)](CHANGELOG.md)
 [![Conventional Commits](https://img.shields.io/badge/commits-Conventional-FE5196)](https://www.conventionalcommits.org/)
-[![Tests](https://img.shields.io/badge/tests-498%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-504%20passing-brightgreen)](#testing)
 [![Clippy](https://img.shields.io/badge/clippy-%E2%80%91D%20warnings-brightgreen?logo=rust)](Cargo.toml)
 [![rustfmt](https://img.shields.io/badge/style-rustfmt-orange?logo=rust)](Cargo.toml)
 [![Rustdoc](https://img.shields.io/badge/public%20API-documented-blue)](Cargo.toml)
@@ -88,7 +88,7 @@
 [![Editor](https://img.shields.io/badge/chart%20editor-built%E2%80%91in-blueviolet)](#features)
 [![Themes](https://img.shields.io/badge/stage%20themes-6-blueviolet)](#features)
 [![Colorblind](https://img.shields.io/badge/colorblind-safe%20by%20default-brightgreen)](#features)
-[![Views](https://img.shields.io/badge/views-depth%20%C2%B7%203D%20stage-blueviolet)](#features)
+[![Stage](https://img.shields.io/badge/stage-3D%20concert%20venue-blueviolet)](#features)
 [![Demo Songs](https://img.shields.io/badge/bundled%20songs-2%20synthesized-blue)](docs/decisions/ADR-0006-synthesized-demo-content.md)
 [![Import](https://img.shields.io/badge/import-drag%20%26%20drop-blue)](#how-your-music-becomes-a-playable-track)
 [![Mouse](https://img.shields.io/badge/menus-mouse%20%C2%B7%20keys%20%C2%B7%20pad-9cf)](#controls)
@@ -112,7 +112,8 @@
 BeatByte is an original, open-source rhythm game in the classic five-lane guitar
 tradition — rebuilt from scratch in **Rust** and **Bevy**. It ships two
 looks: a crisp 8-bit / pixel-art identity, and a smooth high-res style
-with round gems, a depth-view highway and bloom — switchable in-game.
+with round glossy gems and HDR bloom — switchable in-game, both played
+on a 3D concert stage with a live venue behind the neck.
 Drop in your own music, let BeatByte analyze it
 and generate a playable chart, then shred it solo or with up to four players on
 one machine.
@@ -126,20 +127,20 @@ one machine.
   <img src="docs/media/beatbyte-gameplay.png" alt="BeatByte gameplay: five-lane highway with falling notes, score, combo, multiplier and judgment popup" width="800"/>
 </p>
 
-*A flawless run in progress: x4 multiplier, 75-note combo, PERFECT
-popup, hit particles on the triangle receptor — with the Metal theme's
-ember backdrop. Every lane has its own shape (square, circle, diamond,
-triangle, cross), so color is never the only signal.*
+*Hype running in the 8-bit look: double points, a held sustain beam
+on the blue lane, the corner instrument panel (score well, multiplier
+box, streak bulbs, the Hype gauge) — on the 3D stage with its light
+rig, LED wall, PA stacks and crowd. Every lane has its own gem shape,
+so color is never the only signal.*
 
 <p align="center">
   <img src="docs/media/beatbyte-round-style.png" alt="BeatByte round note style: glowing lanes with bloom, lit glossy gem spheres, shaded receptor rings" width="800"/>
 </p>
 
-*The same engine with the 8-bit mode switched off and the depth view
-on: a vanishing-point highway, HDR bloom, lit glossy gems growing out
-of the distance. Both views and both styles are switchable in the
-settings — and the projection is presentation only (identical
-autopilot scores prove it).*
+*The same engine with round gems switched on: glossy lit spheres, HDR
+bloom, a held green sustain with its beam, a star-marked energy phrase
+ahead on the purple band. The note style is presentation only —
+identical autopilot scores prove judgment does not change.*
 
 <p align="center">
   <img src="docs/media/beatbyte-results.png" alt="BeatByte results screen: S rank, 100% accuracy, 117 perfect notes" width="800"/>
@@ -159,15 +160,25 @@ autopilot scores prove it).*
   the built-in editor is the correction pass)
 - ✏️ **Chart editor** — beat grid, note placement, HOPOs, audio preview,
   undo/redo, validated saves
-- 👾 **Two looks** — an 8-bit pixel identity (pixel font, six themed
-  stages, procedural beat-reactive backdrops) and a smooth high-res
-  style (round gems, perspective highway, bloom); every asset
-  generated or openly licensed
+- 👾 **Two looks, one stage** — an 8-bit pixel identity and a smooth
+  high-res style (round glossy gems, HDR bloom), both on a 3D concert
+  venue with a beat-reactive light rig, LED wall and crowd across six
+  themes; every asset generated or openly licensed
 - 🕹️ **Controllers** — keyboard, gamepads and guitar-style controllers,
   fully remappable in-game
 - 👥 **Local multiplayer** — 2–4 players, versus and co-op, split highways
 - ⏱️ **Serious timing** — deterministic judgment engine, reconciled song
-  clock, configurable hit windows, in-game latency calibration
+  clock, in-game latency calibration, and a separate video offset that
+  shifts only where notes are drawn, never when they judge
+- 🎓 **Practice mode** — slow a song to 50–100 % and loop any section
+  from the pause menu, without touching the judged difficulty (practice
+  runs never overwrite records)
+- ♿ **Accessibility** — reduced flashing, an effect-intensity slider,
+  a UI-scale multiplier and a high-contrast mode, beside the existing
+  motion and particle toggles
+- 🔊 **A menu that answers** — every screen speaks keyboard *and*
+  gamepad (prompts follow the device in your hand), navigation is
+  remappable, and UI feedback is procedural sound events
 - 🏆 **High scores**, persistent settings, procedural SFX, two original
   synthesized tracks ("Circuit Breaker" at 128 BPM, "Solder Groove" at
   92) — and an autopilot that must play every build flawlessly before
@@ -376,7 +387,7 @@ The repository is a Cargo workspace:
 | `beatbyte-audio` | Decoding, playback, song clock, music analysis. |
 | `beatbyte-game` | Bevy plugins: gameplay, rendering, UI, effects. |
 | `beatbyte-cli` | `beatbyte` command line: analyze, generate, validate. |
-| `beatbyte-editor` | Chart editor (architecture prepared, built later). |
+| `beatbyte-editor` | The chart editor’s invertible edit operations (undo/redo). |
 | `apps/beatbyte` | The shippable game binary. |
 
 Architecture decisions are documented as ADRs in
@@ -385,7 +396,7 @@ Architecture decisions are documented as ADRs in
 
 ## Controls
 
-*Default mapping — everything is remappable (Milestone 8).*
+*Default mapping — every game action and the menu navigation are remappable on the CONTROLS screen.*
 
 | Action | Keyboard |
 |--------|----------|
@@ -401,8 +412,9 @@ Verify any device on the **INPUT TEST** screen (main menu): fret
 lamps, strum flash, Hype lamp, and a would-hit indicator for the
 active mode (tap / strum), toggleable on the spot with `T`.
 
-Settings (volumes, scroll speed, effect toggles, fullscreen) and the
-latency calibration live in-game and persist between sessions. Put
+Settings (volumes, scroll speed, effect toggles, accessibility,
+fullscreen), the latency calibration and the video offset live in-game
+and persist between sessions. Put
 charts into `songs/` (e.g. from `beatbyte-cli generate`) and they appear
 in the song browser.
 
@@ -438,14 +450,14 @@ beatbyte-cli demo                  # render the built-in songs + charts
 ## Testing
 
 ```bash
-cargo test --workspace          # 498 tests
+cargo test --workspace          # 504 tests
 ```
 
 | Crate | Tests | Covers |
 |---|---:|---|
 | `beatbyte-core` | 82 | Timing windows to their exact boundaries, judgment, scoring, combos, HOPO and tap rules, the hype meter, the telemetry schema |
 | `beatbyte-chart` | 86 | Format validation, untrusted-input limits, chart generation, difficulty derivation, musical quantisation, chart versions, energy-aware escalation, jack-free lane flow, burst discipline, accent chords |
-| `beatbyte-game` | 214 | UI kit contracts, settings persistence, library scanning, import naming, the X-plorer report decoder, texture geometry, the song ribbon, list scrolling |
+| `beatbyte-game` | 220 | UI kit contracts, settings persistence, the input tables and binding labels, the color language, library scanning, import naming, the X-plorer report decoder, texture geometry, the song ribbon, list scrolling |
 | `beatbyte-audio` | 66 | Onset detection, tempo estimation, melody contours, the song clock and its practice rate, the speed position map, the error-sound voices, real-file decoding for every advertised format |
 | `beatbyte-cli` | 19 | Review analytics, the design dossier and the redesign rollout: section windowing, evidence thresholds, hash binding, the mastery veto, write instructions, carried difficulties |
 | `beatbyte-editor` | 19 | Every edit operation round-trips through its own inverse |

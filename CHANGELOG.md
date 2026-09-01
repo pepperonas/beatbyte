@@ -14,6 +14,32 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.0] - 2026-09-01
+
+Milestone release: **the game learned to be played your way.** Since
+v0.12.0: the chart generator graduated the design pattern that won the
+by-ear A/B ("escalate where the song escalates") and grew real Hard
+and Expert derivations with jack-free lane flow and burst discipline;
+a practice mode slows any song to 50-100 % and loops any section from
+the pause menu without ever touching a record; the results screen
+grew an in-game feedback channel (rate the fun, judge a redesign
+against its parent). The stage became a concert - researched against
+the genre's club-first classics: a moving-head light rig with real
+beam cones, an LED pixel wall, PA stacks with breathing drivers, a
+silhouette crowd, haze, club darkness - and the HUD became an
+instrument panel with brushed-metal plates, streak bulbs, a Hype
+gauge with a counterweight needle, and star-marked energy phrases on
+the highway. The input layer became fully logical: menu navigation is
+remappable (WASD, Space, Tab included) with hard-wired Enter/Escape
+fallbacks, rebind conflicts ask before stealing, UI feedback is sound
+events that treat every device alike, prompts follow the device in
+your hand, and an accessibility set (reduced flashing, effect
+intensity, UI scale, high contrast) joins a draw-only video offset
+that provably never touches judgment. And a held sustain's beam now
+burns beside the receptor for exactly as long as you hold it.
+
+Everything since v0.12.0 is described under its own version below.
+
 ## [0.12.35] - 2026-09-01
 
 ### Fixed

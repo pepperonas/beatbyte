@@ -486,6 +486,29 @@ mod tests {
     }
 
     #[test]
+    fn binding_labels_are_short_names_not_debug_dumps() {
+        // These strings go straight onto the controls screen and into
+        // the conflict message ("Space is STRUM DOWN - press it
+        // again"); the Key/Arrow prefixes are implementation noise.
+        assert_eq!(Binding::Key(KeyCode::KeyA).label(), "A");
+        assert_eq!(Binding::Key(KeyCode::ArrowUp).label(), "Up");
+        assert_eq!(Binding::Key(KeyCode::Space).label(), "Space");
+        assert_eq!(Binding::Pad(GamepadButton::South).label(), "PAD South");
+    }
+
+    #[test]
+    fn only_fret_actions_resolve_to_a_lane() {
+        for index in 0..5u8 {
+            let lane = GameAction::Fret(index).lane().expect("a fret has a lane");
+            assert_eq!(lane.index(), index as usize);
+        }
+        assert_eq!(GameAction::Fret(9).lane(), None, "out of range is None");
+        for action in [GameAction::StrumUp, GameAction::Hype, GameAction::Pause] {
+            assert_eq!(action.lane(), None, "{action:?} is not a fret");
+        }
+    }
+
+    #[test]
     fn menu_defaults_add_wasd_and_space() {
         use Binding::Key;
         let map = InputMap::default();
