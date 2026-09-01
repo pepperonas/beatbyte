@@ -327,7 +327,8 @@ pub struct SongSelectPlugin;
 
 impl Plugin for SongSelectPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<SelectedDifficulty>()
+        app.init_resource::<LyricsLookup>()
+            .init_resource::<SelectedDifficulty>()
             .init_resource::<BrowserCursor>()
             .init_resource::<crate::mc::McQueue>()
             .init_resource::<BrowserView>()
@@ -337,6 +338,7 @@ impl Plugin for SongSelectPlugin {
                 Update,
                 (
                     browser_input,
+                    poll_lyrics_lookup,
                     search_sort_input,
                     sync_view,
                     refresh_browser,
@@ -505,7 +507,7 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
             crate::prompts::device_footer(
                 parent,
                 font,
-                "UP/DOWN song  LEFT/RIGHT difficulty  S sort  F search  ENTER rock  Q queue MC set  P play set  E edit  DEL delete  ESC back",
+                "UP/DOWN song  LEFT/RIGHT difficulty  S sort  F search  ENTER rock  L lyrics  Q queue MC set  P play set  E edit  DEL delete  ESC back",
                 "D-PAD song and difficulty  SOUTH rock  EAST back",
             );
         });
@@ -619,6 +621,39 @@ struct PointerInput<'w, 's> {
 struct StartDeps<'w> {
     builtins: Res<'w, BuiltinSongs>,
     mc_queue: ResMut<'w, crate::mc::McQueue>,
+    /// The in-flight lyrics lookup — bundled here because Bevy caps
+    /// a system at sixteen parameters and this one is at the line.
+    lookup: ResMut<'w, LyricsLookup>,
+}
+
+/// The in-flight lyrics lookup. One at a time: the browser is not a
+/// place to start a dozen network calls by holding a key.
+#[derive(Resource, Default)]
+pub struct LyricsLookup {
+    task: Option<LyricsTask>,
+    /// The song the running lookup is for, for the status line.
+    title: String,
+}
+
+/// The lookup's background task.
+struct LyricsTask(bevy::tasks::Task<crate::lyrics_fetch::Outcome>);
+
+/// Report a finished lookup. Every outcome writes a line — a lookup
+/// never ends in silence.
+fn poll_lyrics_lookup(
+    mut lookup: ResMut<LyricsLookup>,
+    mut status: ResMut<crate::import::ImportStatus>,
+) {
+    let Some(task) = lookup.task.as_mut() else {
+        return;
+    };
+    let Some(outcome) =
+        bevy::tasks::block_on(bevy::tasks::futures_lite::future::poll_once(&mut task.0))
+    else {
+        return;
+    };
+    status.0 = outcome.message(&lookup.title);
+    lookup.task = None;
 }
 
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
@@ -740,6 +775,31 @@ fn browser_input(
         match crate::editor_ui::open_editor(&mut commands, chart_path, audio_path, selected.0) {
             Ok(()) => next_state.set(AppState::Editor),
             Err(reason) => error!("cannot edit \"{}\": {reason}", entry.title),
+        }
+    }
+    // L looks the highlighted song's karaoke lyrics up in lrclib's
+    // catalogue - the lookup inspector-rust has been running in its
+    // Shazam mode. Deliberately a key press, not something that
+    // happens on its own: it is the one moment BeatByte talks to the
+    // network, and only the artist and the title leave the machine.
+    if !searching && keys.just_pressed(KeyCode::KeyL) && start.lookup.task.is_none() {
+        match &entry.source {
+            SongSource::Builtin(_) => {
+                status.0 = "built-in songs ship with their own lyrics".to_owned();
+            }
+            SongSource::File { audio_path, .. } => {
+                let (artist, title) = (entry.artist.clone(), entry.title.clone());
+                let audio = audio_path.clone();
+                let shown = title.clone();
+                start.lookup.task = Some(LyricsTask(
+                    bevy::tasks::AsyncComputeTaskPool::get().spawn(async move {
+                        crate::lyrics_fetch::fetch_and_cache(&artist, &title, &audio)
+                    }),
+                ));
+                sounds.write(crate::sfx::UiSound::Confirm);
+                status.0 = format!("looking up lyrics for \"{shown}\"...");
+                start.lookup.title = shown;
+            }
         }
     }
     // Q queues the highlighted song for an MC set (again removes it);

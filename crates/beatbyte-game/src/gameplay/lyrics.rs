@@ -180,6 +180,39 @@ pub struct LyricPreview;
 #[derive(Component)]
 pub struct LyricScrim;
 
+/// The band behind the line being sung RIGHT NOW.
+///
+/// The scrim keeps everything legible; this marks *which* passage is
+/// current, in the background, while the neighbouring lines keep
+/// their ordinary look. It is a flat brand-tinted bar rather than a
+/// pulse, so it costs nothing under `reduced motion` and cannot
+/// compete with the note highway for attention.
+#[derive(Component)]
+pub struct LyricHighlight;
+
+/// How opaque the current passage's band is.
+///
+/// ⚠️ The band DARKENS. The first version tinted with plain
+/// [`palette::BRAND`] at low alpha, which is a mid-luminance yellow:
+/// measured on a real frame it left the white glyphs sitting on it
+/// at **3.83:1**, under the 4.5:1 a line of lyrics needs. A
+/// highlight that carries light text has to go the other way — deep
+/// amber, so the marking reads against the LED wall *and* the words
+/// gain contrast instead of losing it.
+const HIGHLIGHT_ALPHA: f32 = 0.92;
+/// How far the band's tint is pulled toward black. See
+/// [`HIGHLIGHT_ALPHA`].
+const HIGHLIGHT_SHADE: f32 = 0.85;
+
+/// The band's colour: the brand hue, deepened. Pure — tested for
+/// contrast against the text that sits on it.
+#[must_use]
+pub fn highlight_color() -> Color {
+    palette::BRAND
+        .mix(&Color::BLACK, HIGHLIGHT_SHADE)
+        .with_alpha(HIGHLIGHT_ALPHA)
+}
+
 /// The glyph row's query, aliased for the lint's sake.
 type GlyphQuery<'w, 's> = Query<
     'w,
@@ -210,6 +243,22 @@ type ScrimQuery<'w, 's> = Query<
     (&'static mut Sprite, &'static mut Visibility),
     (With<LyricScrim>, Without<LyricPreview>, Without<LyricGlyph>),
 >;
+/// The current passage's band.
+type HighlightQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static mut Sprite,
+        &'static mut Transform,
+        &'static mut Visibility,
+    ),
+    (
+        With<LyricHighlight>,
+        Without<LyricScrim>,
+        Without<LyricPreview>,
+        Without<LyricGlyph>,
+    ),
+>;
 
 /// Spawn the persistent parts (preview + scrim); glyphs come and go
 /// with the lines.
@@ -226,6 +275,14 @@ pub fn spawn_lyric_display(
         Sprite::from_color(Color::srgba(0.0, 0.0, 0.0, 0.5), Vec2::new(0.0, 0.0)),
         Visibility::Hidden,
         Transform::from_xyz(0.0, LYRIC_Y - 12.0, 3.8),
+    ));
+    commands.spawn((
+        super::GameplayScreen,
+        LyricPart,
+        LyricHighlight,
+        Sprite::from_color(highlight_color(), Vec2::new(0.0, 0.0)),
+        Visibility::Hidden,
+        Transform::from_xyz(0.0, LYRIC_Y, 3.9),
     ));
     commands.spawn((
         super::GameplayScreen,
@@ -253,6 +310,7 @@ pub fn update_lyrics(
     mut glyphs: GlyphQuery,
     mut preview: PreviewQuery,
     mut scrim: ScrimQuery,
+    mut highlight: HighlightQuery,
 ) {
     let lyrics = song.lyrics.as_ref().filter(|_| settings.lyrics);
     // A song swap (MC set) or a disabled setting clears the board.
@@ -260,7 +318,7 @@ pub fn update_lyrics(
         if display.line.is_some() || lyrics.is_none() {
             clear_glyphs(&mut commands, &glyphs);
             display.line = None;
-            hide_chrome(&mut preview, &mut scrim);
+            hide_chrome(&mut preview, &mut scrim, &mut highlight);
         }
         if lyrics.is_none() {
             return;
@@ -330,6 +388,19 @@ pub fn update_lyrics(
         }
     }
 
+    // The band behind the passage being sung right now.
+    if let Ok((mut sprite, mut transform, mut visibility)) = highlight.single_mut() {
+        let advance = glyph_advance(size * em, active_chars);
+        let box_size = highlight_box(active_chars, advance, size);
+        if box_size == Vec2::ZERO || !settings.lyrics {
+            *visibility = Visibility::Hidden;
+        } else {
+            sprite.custom_size = Some(box_size);
+            transform.translation.y = LYRIC_Y + size * 0.55;
+            *visibility = Visibility::Inherited;
+        }
+    }
+
     // Fill the glyphs.
     let Some(line) = active_line else {
         return;
@@ -364,6 +435,20 @@ pub fn update_lyrics(
         // place. Motion-gated via `enter` staying 1.0.
         transform.translation.y = glyph.home.y - 8.0 * (1.0 - enter);
     }
+}
+
+/// The band behind the current passage: its width and its centre
+/// height, from the line's own length. Pure — tested.
+///
+/// It hugs the words rather than filling the panel: a full-width bar
+/// over a five-lane highway would read as a second HUD element, and
+/// the point is to mark THIS passage, not to draw a box.
+#[must_use]
+pub fn highlight_box(chars: usize, advance: f32, size: f32) -> Vec2 {
+    if chars == 0 {
+        return Vec2::ZERO;
+    }
+    Vec2::new(chars as f32 * advance + size * 0.9, size * 1.5)
 }
 
 /// The per-glyph advance for a line — the face's natural step,
@@ -428,10 +513,11 @@ pub fn clear_for_outro(
     glyphs: GlyphQuery,
     mut preview: PreviewQuery,
     mut scrim: ScrimQuery,
+    mut highlight: HighlightQuery,
 ) {
     clear_glyphs(&mut commands, &glyphs);
     display.line = None;
-    hide_chrome(&mut preview, &mut scrim);
+    hide_chrome(&mut preview, &mut scrim, &mut highlight);
 }
 
 fn clear_glyphs(commands: &mut Commands, glyphs: &GlyphQuery) {
@@ -440,12 +526,15 @@ fn clear_glyphs(commands: &mut Commands, glyphs: &GlyphQuery) {
     }
 }
 
-fn hide_chrome(preview: &mut PreviewQuery, scrim: &mut ScrimQuery) {
+fn hide_chrome(preview: &mut PreviewQuery, scrim: &mut ScrimQuery, highlight: &mut HighlightQuery) {
     if let Ok((mut text, _, mut visibility)) = preview.single_mut() {
         text.0.clear();
         *visibility = Visibility::Hidden;
     }
     if let Ok((_, mut visibility)) = scrim.single_mut() {
+        *visibility = Visibility::Hidden;
+    }
+    if let Ok((_, _, mut visibility)) = highlight.single_mut() {
         *visibility = Visibility::Hidden;
     }
 }
@@ -521,6 +610,88 @@ mod tests {
         assert!(shrunk < 26.0);
         assert!(shrunk * 200.0 <= MAX_LINE_W + 1e-3);
         assert!((glyph_advance(26.0, 0) - 26.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn the_passage_band_hugs_its_words_and_vanishes_with_them() {
+        // It marks THIS passage; a band that kept a size with no
+        // line to mark would sit on the stage as an empty bar.
+        assert_eq!(highlight_box(0, 20.0, 26.0), Vec2::ZERO);
+        let band = highlight_box(20, 20.0, 26.0);
+        assert!(band.x > 20.0 * 20.0, "the band clears the last glyph");
+        assert!(
+            band.x < 20.0 * 20.0 + 26.0 * 2.0,
+            "but does not fill the stage"
+        );
+        assert!(band.y > 26.0, "a line of text fits inside it");
+        // Longer line, wider band - it follows the words.
+        assert!(highlight_box(40, 20.0, 26.0).x > band.x);
+    }
+
+    /// WCAG relative luminance of an opaque colour.
+    fn luminance(color: Color) -> f32 {
+        let c = color.to_linear();
+        0.2126 * c.red + 0.7152 * c.green + 0.0722 * c.blue
+    }
+
+    /// WCAG contrast ratio between two opaque colours.
+    fn contrast(a: Color, b: Color) -> f32 {
+        let (x, y) = (luminance(a), luminance(b));
+        (x.max(y) + 0.05) / (x.min(y) + 0.05)
+    }
+
+    /// One alpha composite, in the LINEAR space Bevy blends in.
+    fn over(top: Color, bottom: Color) -> Color {
+        let (t, b) = (top.to_linear(), bottom.to_linear());
+        let a = t.alpha;
+        Color::linear_rgb(
+            t.red.mul_add(a, b.red * (1.0 - a)),
+            t.green.mul_add(a, b.green * (1.0 - a)),
+            t.blue.mul_add(a, b.blue * (1.0 - a)),
+        )
+    }
+
+    /// The real stack the glyphs sit on: the scrim lies over the
+    /// stage (z 3.8), the band over the scrim (z 3.9), the words on
+    /// top (z 4.0).
+    fn band_over(backdrop: Color) -> Color {
+        let scrim = over(Color::srgba(0.0, 0.0, 0.0, 0.5), backdrop);
+        over(highlight_color(), scrim)
+    }
+
+    #[test]
+    fn the_words_stay_readable_on_their_own_highlight() {
+        // Measured, not guessed: the first band was plain BRAND at
+        // low alpha - a mid-luminance yellow - and a real frame put
+        // the white glyphs on it at 3.83:1, under the 4.5:1 a line
+        // of lyrics needs. The band composites over whatever the
+        // stage shows, so the check runs against the BRIGHTEST
+        // plausible backdrop (a lit LED wall) as well as the dark
+        // one, because that is the worst case for a dark band.
+        for backdrop in [
+            palette::BACKGROUND,
+            Color::srgb(0.55, 0.15, 0.3),
+            Color::WHITE,
+        ] {
+            let band = band_over(backdrop);
+            let ratio = contrast(band, palette::TEXT);
+            assert!(
+                ratio >= 4.5,
+                "sung words sit at {ratio:.2}:1 on the band over {backdrop:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_band_is_visible_as_a_marking() {
+        // A highlight nobody can see is not a highlight: it has to
+        // read apart from the scrim it lies on.
+        let scrim = over(Color::srgba(0.0, 0.0, 0.0, 0.5), palette::BACKGROUND);
+        let ratio = contrast(band_over(palette::BACKGROUND), scrim);
+        assert!(
+            ratio > 1.15,
+            "the band vanishes into the scrim ({ratio:.2}:1)"
+        );
     }
 
     #[test]

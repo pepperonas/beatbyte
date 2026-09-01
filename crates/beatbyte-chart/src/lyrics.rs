@@ -289,6 +289,53 @@ pub fn word_progress(word: &LyricWord, position: f64) -> f32 {
     (((position - word.start) / span) as f32).clamp(0.0, 1.0)
 }
 
+/// Parse an lrclib `/api/get` response body into timed lyrics.
+///
+/// ⚠️ **The preference is inverted against the source this was ported
+/// from.** `inspector-rust` (`core/rust-lib/src/shazam.rs`, its
+/// `parse_lrclib_response`) prefers `plainLyrics` and *strips* the
+/// timestamps out of `syncedLyrics`, because that app only ever
+/// displays the words. BeatByte sings along a clock, so it takes
+/// `syncedLyrics` — the very field the other app throws away — and
+/// treats a track that carries only `plainLyrics` as having no
+/// SYNCED lyrics: honest, and distinct from having none at all.
+///
+/// `None` for both empty (instrumental), malformed JSON, or synced
+/// text that parses to nothing. Pure — tested against synthetic
+/// bodies (never real lyrics: those are copyrighted).
+#[must_use]
+pub fn parse_lrclib_response(body: &str) -> Option<Lyrics> {
+    let value: serde_json::Value = serde_json::from_str(body).ok()?;
+    let synced = value
+        .get("syncedLyrics")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    if synced.trim().is_empty() {
+        return None;
+    }
+    let lyrics = parse_lrc(synced);
+    (!lyrics.lines.is_empty()).then_some(lyrics)
+}
+
+/// Whether an lrclib response carries words but no timing — the
+/// state that deserves its own message instead of "no lyrics".
+/// Pure — tested.
+#[must_use]
+pub fn has_plain_only(body: &str) -> bool {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
+        return false;
+    };
+    let field = |name| {
+        value
+            .get(name)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .is_empty()
+    };
+    field("syncedLyrics") && !field("plainLyrics")
+}
+
 /// Read and parse a `.lrc` file under the size cap. `None` when the
 /// file is missing, oversized, unreadable, or yields no lines.
 #[must_use]
@@ -450,6 +497,33 @@ mod tests {
         );
         // Determinism, literally: twice the same answer.
         assert_eq!(probe(13.37), probe(13.37));
+    }
+
+    #[test]
+    fn an_lrclib_response_yields_the_synced_field() {
+        // Synthetic bodies only - real lyrics are copyrighted and
+        // never enter this repository.
+        let both = r#"{"plainLyrics":"la la","syncedLyrics":"[00:01.00]la\n[00:02.00]la la"}"#;
+        let lyrics = parse_lrclib_response(both).expect("synced wins");
+        assert_eq!(lyrics.lines.len(), 2);
+        assert!((lyrics.lines[0].start - 1.0).abs() < 1e-9);
+        assert!(!has_plain_only(both));
+
+        // Words without timing: a state of its own, not "no lyrics".
+        let plain_only = r#"{"plainLyrics":"la la","syncedLyrics":""}"#;
+        assert!(parse_lrclib_response(plain_only).is_none());
+        assert!(has_plain_only(plain_only));
+
+        // Instrumental / malformed / missing: nothing, and NOT the
+        // plain-only state either.
+        for body in [
+            r#"{"plainLyrics":"","syncedLyrics":""}"#,
+            r#"{"plainLyrics":null}"#,
+            "not json at all",
+        ] {
+            assert!(parse_lrclib_response(body).is_none(), "body: {body}");
+            assert!(!has_plain_only(body), "body: {body}");
+        }
     }
 
     #[test]

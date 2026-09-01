@@ -14,6 +14,36 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.13] - 2026-09-01
+
+### Added
+
+- Lyrics look themselves up. `L` in the song browser asks lrclib's
+  catalogue for the highlighted track and caches the result as an
+  `.lrc` beside the audio, where the loader already looks. The call
+  is the one that has been finding lyrics reliably in
+  `inspector-rust`'s Shazam mode: same endpoint, same two query
+  parameters, same ten-second timeout, same reading of a 404 as an
+  empty catalogue entry rather than a failure. Anonymous - no
+  account, no key, no configuration - and only the artist and the
+  title leave the machine. Deliberately a key press: it is the one
+  moment BeatByte talks to the network.
+- Every outcome is a state the player can read: found (with the
+  line count), "lyrics exist but carry no timing", "not in the
+  catalogue", or the failure's own reason. A lookup never ends in
+  silence.
+- The passage being sung now carries a BACKGROUND HIGHLIGHT: a deep
+  amber band behind the active line, while the lines around it keep
+  their ordinary look.
+
+### Changed
+
+- Unlike the source it was ported from, the response's
+  `syncedLyrics` field is what BeatByte keeps - `inspector-rust`
+  prefers `plainLyrics` and strips the timestamps out, because it
+  only displays words. A track with words but no timing is reported
+  as exactly that, instead of as "no lyrics".
+
 ## [0.13.12] - 2026-09-01
 
 ### Fixed

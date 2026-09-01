@@ -11,7 +11,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.13.12"
+version = "0.13.13"
 edition = "2024"
 license = "MIT"
 authors = ["Martin Pfeffer"]
@@ -23,12 +23,12 @@ categories = ["games"]
 
 [workspace.dependencies]
 # Internal crates
-beatbyte-core = { path = "crates/beatbyte-core", version = "0.13.12" }
-beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.13.12" }
-beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.13.12" }
-beatbyte-game = { path = "crates/beatbyte-game", version = "0.13.12" }
-beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.13.12" }
-beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.13.12" }
+beatbyte-core = { path = "crates/beatbyte-core", version = "0.13.13" }
+beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.13.13" }
+beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.13.13" }
+beatbyte-game = { path = "crates/beatbyte-game", version = "0.13.13" }
+beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.13.13" }
+beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.13.13" }
 
 # Engine ("wav" lets bevy_audio play our procedurally generated SFX;
 # "serialize" gives input types serde for the persisted bindings table)
@@ -54,6 +54,11 @@ clap = { version = "4", features = ["derive"] }
 
 # Platform config/data directories (settings, scores)
 dirs = "6"
+
+# HTTP for the lyrics lookup. Same crate and major version the
+# proven implementation in inspector-rust uses; blocking by design
+# (the call runs on the async compute pool, never the frame thread).
+ureq = { version = "2", features = ["tls"] }
 
 
 [workspace.lints.rust]
