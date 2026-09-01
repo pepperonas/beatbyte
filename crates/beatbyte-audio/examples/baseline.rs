@@ -1,30 +1,32 @@
 //! Phase 1 baseline: run the current pipeline over every case with
 //! known ground truth and print the table.
+use beatbyte_audio::analysis::beats::GridMode;
 use beatbyte_audio::analysis::{Analyzer, SpectralAnalyzer};
 use beatbyte_audio::eval::{self, GroundTruth};
 
-fn row(class: &str, name: &str, property: &str, s: &eval::Scores, truth_bpm: f64) {
-    let octave = if eval::is_octave_error(s.bpm, truth_bpm) {
-        " OKTAVFEHLER"
-    } else {
-        ""
-    };
+fn row(class: &str, name: &str, property: &str, before: &eval::Scores, after: &eval::Scores) {
     println!(
-        "| {class} | {name} | {property} | {:.3} | {:.3} | {:.3} | {:.0} | {:.1} | {:.1} | {:.1}{octave} |",
-        s.beat_f,
-        s.cmlt,
-        s.amlt,
-        s.downbeat_accuracy,
-        s.notes_per_s_median,
-        s.notes_per_s_p95,
-        s.bpm
+        "| {class} | {name} | {property} | {:.3} | **{:.3}** | {:.3} | {:.3} | {:.3} | {:.3} | {:.1} | {:.1} |",
+        before.beat_f,
+        after.beat_f,
+        before.cmlt,
+        after.cmlt,
+        before.amlt,
+        after.amlt,
+        before.notes_per_s_median,
+        after.notes_per_s_median
     );
 }
 
 fn main() {
-    println!("| Klasse | Fall | Eig. | Beat-F | CMLt | AMLt | DB | N/s med | N/s p95 | BPM |");
-    println!("|---|---|---|---|---|---|---|---|---|---|");
-    let analyzer = SpectralAnalyzer::default();
+    println!(
+        "| Klasse | Fall | Eig. | F starr | F verfolgt | CMLt starr | CMLt verf. | AMLt starr | AMLt verf. | N/s starr | N/s verf. |"
+    );
+    println!("|---|---|---|---|---|---|---|---|---|---|---|");
+    let rigid = SpectralAnalyzer::default();
+    let mut tracked = SpectralAnalyzer::default();
+    tracked.config.grid.mode = GridMode::Tracked;
+    tracked.config.grid.low_band_weight = 1.0;
 
     // rock/ — the built-in songs: rendered from a known BPM, so the
     // grid is exact by construction.
@@ -43,19 +45,23 @@ fn main() {
         let duration = audio.duration_s();
         let beats = (duration / (60.0 / bpm)) as usize;
         let truth = GroundTruth::steady(bpm, 0.0, beats);
-        let scores = eval::evaluate(&analyzer.analyze(&audio), &truth);
-        row("rock", name, "-", &scores, bpm);
+        row(
+            "rock",
+            name,
+            "-",
+            &eval::evaluate(&rigid.analyze(&audio), &truth),
+            &eval::evaluate(&tracked.analyze(&audio), &truth),
+        );
     }
 
     // house-sample/ — the synthetic problem class.
     for case in eval::synthetic::house_sample_class() {
-        let scores = eval::evaluate(&analyzer.analyze(&case.audio), &case.truth);
         row(
             "house-sample",
             case.name,
             case.property,
-            &scores,
-            case.truth.bpm,
+            &eval::evaluate(&rigid.analyze(&case.audio), &case.truth),
+            &eval::evaluate(&tracked.analyze(&case.audio), &case.truth),
         );
     }
 }

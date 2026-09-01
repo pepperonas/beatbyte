@@ -403,7 +403,7 @@ Follow-ups (only if wanted): a lyrics editor timeline, automatic
 vocal alignment (the data model already carries word spans), a
 lyrics position setting.
 
-## Loop-house analysis hardening (Phase 0-1 DONE 2026-09-01, v0.13.20-21)
+## Loop-house analysis hardening (Phase 0-2 DONE 2026-09-01, v0.13.20-22)
 
 The commission: make the analysis hold up on sample-based loop
 house in DJ format, without regressing rock. Phased, stopping for
@@ -422,19 +422,38 @@ approval after each phase.
   measured against **7 real tracks from the user's library** with
   the grids a DJ has accepted.
 
-**What Phase 1 established, and why it changes the plan.** Tempo is
+**What Phase 1 established, and why it changed the plan.** Tempo is
 not the weak point (0.02-0.25 % error, no octave errors). Phase is,
 and for two separate reasons: a single global constant tempo drifts
 past the +-70 ms tolerance on *every* track measured (worst 18x),
 and four of seven lock onto the wrong half of the beat. So the
 brief's Phase 3 — "a global fit over (period, phase)" — is what the
-code already does; the measurement argues for a time-varying grid
-plus an accent cue that can break the offbeat tie. That redesign is
-NOT started and needs approval.
+code already did; the measurement argued for a time-varying grid
+plus an accent cue that could break the offbeat tie.
 
-Open, carried forward: whether `ml-downbeat`/`ort` stays off in CI
-and releases; how rock gets real ground truth (bit-identical chart
-output is the interim gate).
+- [x] **Phase 2 — the grid fix.** A tracked grid (dynamic
+  programming, Ellis 2007) and a kick channel (30-130 Hz flux, same
+  FFT loop). Mean beat F on the real corpus **0.278 -> 0.840**,
+  four of seven at 1.000; drift and offbeat lock both eliminated,
+  each verified separately. Rock improved rather than held
+  (circuit-breaker 0.000 -> 0.982, fixing the Phase 1 finding);
+  nothing with ground truth regressed, so it is the shipped default.
+  Rock gate added (`apps/beatbyte/tests/rock_is_unchanged.rs`,
+  byte-identical charts). Autopilot PASSED, 98/98 perfect.
+
+**Decisions taken (user delegated, 2026-09-01):** a time-varying
+grid was the right call and is now in; `ml-downbeat`/`ort` is NOT
+being adopted at all — the measured defect was a phase error on
+four-to-the-floor, which the kick channel already in the signal
+resolves, and an ONNX runtime is heavy freight for a
+one-binary-per-platform project; bit-identical chart output is the
+rock gate.
+
+**Phase 3 has a precise target for the first time:** sub-beat
+alignment. The whole remaining error is a systematic 70-100 ms
+offset on 2 of 7 tracks, sitting just outside the tolerance —
+`docs/audio-eval-baseline.md` names the candidates and does not
+guess between them. Not started.
 
 ## Backlog (explicitly out of scope until after 1.0)
 

@@ -14,6 +14,60 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.22] - 2026-09-01
+
+### Changed
+
+- **The beat grid now follows the music instead of being laid across
+  it.** The pipeline produced one period and one phase for a whole
+  song; v0.13.21 measured that this cannot work on a 6–8 minute
+  track, because a relative tempo error accumulates while the ±70 ms
+  tolerance does not. The grid is now tracked by dynamic programming
+  over the onset envelope (`beatbyte-audio::analysis::beats`, after
+  Ellis 2007), so each beat only has to sit one period after the
+  previous one and error cannot pile up.
+- Onset detection additionally produces a **kick channel** — the same
+  spectral flux restricted to 30–130 Hz, computed in the existing FFT
+  loop. It is what the tracker follows, and its value is that it
+  cannot hear an offbeat hi-hat, which is the tie the old phase fit
+  kept losing on four-to-the-floor material.
+- Measured on the real corpus, mean beat F-measure goes **0.278 →
+  0.840**, with four of seven tracks at 1.000. Drift is gone (the
+  residual stays bounded start to end where it used to grow to
+  1238 ms) and the offbeat lock is gone (first-beat phase now within
+  ±0.094 beats on all seven, against four tracks at −0.25 to −0.47).
+- **Rock did not merely hold, it improved**: `circuit-breaker` goes
+  from 0.000 to 0.982, which fixes the 146 ms phase error v0.13.21
+  found, and `solder-groove` holds at 0.995. No case with ground
+  truth anywhere in the repository got worse, which is why this is
+  the shipped default. Note density is unchanged to one decimal on
+  every track: the grid moved, the notes did not.
+- Newly generated charts therefore differ from ones generated before
+  this version. Existing chart files are untouched, and nothing about
+  gameplay timing changed — the grid is used when a chart is made,
+  not when it is played.
+- The kick weight was **measured, not chosen**: mean beat F runs
+  0.530 / 0.588 / 0.733 / 0.840 across weights 0.0 / 0.5 / 0.75 / 1.0.
+  My first guess was 0.75 on an argument that turned out to be wrong,
+  and the code says so where the constant lives.
+
+### Added
+
+- `apps/beatbyte/tests/rock_is_unchanged.rs` — the rock regression
+  gate the commission asked for: both built-in songs must generate
+  byte-identical charts. Exactness rather than a 2 % tolerance, since
+  a real behaviour change can hide inside a tolerance. Its own honest
+  limit is documented: it catches the architecture, not the tuning.
+- `AnalyzerConfig` is now serialisable end to end, with the new grid
+  settings inside it rather than in a second configuration beside it.
+  A round-trip test proves it, since a `derive` proves nothing.
+
+### Performance
+
+- 469 s of music analysed in 3.6 s, about 130× real time, against a
+  10 s budget for a 7-minute track. The tracker costs roughly a tenth
+  of a second.
+
 ## [0.13.21] - 2026-09-01
 
 ### Added

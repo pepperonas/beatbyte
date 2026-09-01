@@ -7,11 +7,12 @@
 
 use beatbyte_core::music::Onset;
 use realfft::RealFftPlanner;
+use serde::{Deserialize, Serialize};
 
 use crate::decode::AudioData;
 
 /// Configuration for onset detection.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct OnsetConfig {
     /// STFT window size in samples (power of two).
     pub window: usize,
@@ -25,6 +26,10 @@ pub struct OnsetConfig {
     pub threshold_floor: f32,
     /// Minimum spacing between onsets in seconds.
     pub min_gap_s: f64,
+    /// Lowest frequency counted into the kick channel, in Hz.
+    pub low_band_from_hz: f32,
+    /// Highest frequency counted into the kick channel, in Hz.
+    pub low_band_to_hz: f32,
 }
 
 impl Default for OnsetConfig {
@@ -38,6 +43,12 @@ impl Default for OnsetConfig {
             threshold_scale: 1.3,
             threshold_floor: 0.02,
             min_gap_s: 0.05,
+            // A kick's fundamental and its first harmonic. Deliberately
+            // narrow: the point of this channel is that an offbeat open
+            // hat at 6 kHz cannot reach it, which is what breaks the
+            // offbeat tie on four-to-the-floor material.
+            low_band_from_hz: 30.0,
+            low_band_to_hz: 130.0,
         }
     }
 }
@@ -47,6 +58,12 @@ impl Default for OnsetConfig {
 pub struct FluxAnalysis {
     /// Spectral flux per frame, normalized to 0.0–1.0.
     pub flux: Vec<f32>,
+    /// Spectral flux restricted to the kick band, normalised the same
+    /// way. The broadband curve above is dominated by whatever is
+    /// loudest and busiest, which on loop house is the hi-hat layer —
+    /// half of which sits deliberately off the beat. This channel
+    /// hears the kick and little else.
+    pub flux_low: Vec<f32>,
     /// Spectral centroid per frame, 0.0–1.0 (0 = bassy, 1 = bright).
     pub brightness: Vec<f32>,
     /// Seconds between frames.
@@ -71,6 +88,7 @@ pub fn analyze_onsets(audio: &AudioData, config: &OnsetConfig) -> FluxAnalysis {
     if samples.len() < config.window + config.hop {
         return FluxAnalysis {
             flux: Vec::new(),
+            flux_low: Vec::new(),
             brightness: Vec::new(),
             hop_s,
             frame_offset_s,
@@ -95,7 +113,14 @@ pub fn analyze_onsets(audio: &AudioData, config: &OnsetConfig) -> FluxAnalysis {
     let mut previous = vec![0.0f32; bins];
     let mut compressed = vec![0.0f32; bins];
     let mut flux = Vec::with_capacity(frames);
+    let mut flux_low = Vec::with_capacity(frames);
     let mut brightness = Vec::with_capacity(frames);
+
+    // Bin indices for the kick band at THIS rate, so halving the
+    // analysis rate cannot silently move the band.
+    let bin_hz = rate as f32 / config.window as f32;
+    let low_from = ((config.low_band_from_hz / bin_hz).floor() as usize).max(1);
+    let low_to = ((config.low_band_to_hz / bin_hz).ceil() as usize).min(bins);
 
     for frame in 0..frames {
         let start = frame * config.hop;
@@ -108,12 +133,17 @@ pub fn analyze_onsets(audio: &AudioData, config: &OnsetConfig) -> FluxAnalysis {
         }
 
         let mut frame_flux = 0.0f32;
+        let mut frame_low = 0.0f32;
         let mut centroid_num = 0.0f32;
         let mut centroid_den = 0.0f32;
         for (k, value) in spectrum.iter().enumerate() {
             let magnitude = value.norm();
             let comp = (1.0 + 50.0 * magnitude).ln();
-            frame_flux += (comp - previous[k]).max(0.0);
+            let rise = (comp - previous[k]).max(0.0);
+            frame_flux += rise;
+            if k >= low_from && k < low_to {
+                frame_low += rise;
+            }
             compressed[k] = comp;
             centroid_num += k as f32 * magnitude;
             centroid_den += magnitude;
@@ -121,6 +151,7 @@ pub fn analyze_onsets(audio: &AudioData, config: &OnsetConfig) -> FluxAnalysis {
         core::mem::swap(&mut previous, &mut compressed);
 
         flux.push(if frame == 0 { 0.0 } else { frame_flux });
+        flux_low.push(if frame == 0 { 0.0 } else { frame_low });
         brightness.push(if centroid_den > 1e-9 {
             (centroid_num / centroid_den) / bins as f32
         } else {
@@ -129,10 +160,12 @@ pub fn analyze_onsets(audio: &AudioData, config: &OnsetConfig) -> FluxAnalysis {
     }
 
     normalize(&mut flux);
+    normalize(&mut flux_low);
     let onsets = pick_onsets(&flux, &brightness, hop_s, frame_offset_s, config);
 
     FluxAnalysis {
         flux,
+        flux_low,
         brightness,
         hop_s,
         frame_offset_s,

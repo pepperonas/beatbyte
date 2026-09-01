@@ -16,6 +16,11 @@ bevy = { workspace = true }
 # For the documentation-consistency tests: the gameplay rules document
 # quotes concrete numbers, and those numbers live here.
 beatbyte-core = { workspace = true }
+# For the rock regression gate: it renders the built-in songs, runs
+# the real analysis and generation on them, and hashes the result.
+beatbyte-audio = { workspace = true }
+beatbyte-chart = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

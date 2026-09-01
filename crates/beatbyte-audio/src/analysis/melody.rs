@@ -31,11 +31,12 @@
 
 use beatbyte_core::music::MelodyNote;
 use realfft::RealFftPlanner;
+use serde::{Deserialize, Serialize};
 
 use crate::decode::AudioData;
 
 /// Configuration for melody extraction.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct MelodyConfig {
     /// STFT window size in samples (power of two).
     pub window: usize,

@@ -8,6 +8,7 @@
 //! Takes paths because the corpus is local and stays local — no
 //! audio and no grid is checked into this repository.
 
+use beatbyte_audio::analysis::beats::GridMode;
 use beatbyte_audio::analysis::{Analyzer, SpectralAnalyzer};
 use beatbyte_audio::eval::{self, corpus};
 use std::path::PathBuf;
@@ -19,33 +20,56 @@ fn main() {
         return;
     };
 
-    println!("| Fall | BPM-Ref | BPM-ist | Beat-F | CMLt | AMLt | DB | N/s med | N/s p95 |");
-    println!("|---|---|---|---|---|---|---|---|---|");
-    let analyzer = SpectralAnalyzer::default();
+    // Both grid modes on the same decode, so the comparison cannot be
+    // confounded by anything but the mode itself.
+    // "after" is literally what ships; "before" asks for the old grid
+    // explicitly, so the comparison is against the shipped default
+    // rather than against a hand-built configuration.
+    let mut rigid = SpectralAnalyzer::default();
+    rigid.config.grid.mode = GridMode::ConstantTempo;
+    let tracked = SpectralAnalyzer::default();
+
+    println!(
+        "| Fall | BPM-Ref | Beat-F starr | Beat-F verfolgt | CMLt starr | CMLt verfolgt | N/s starr | N/s verfolgt |"
+    );
+    println!("|---|---|---|---|---|---|---|---|");
     let tracks = corpus::pair(&anlz_root, &audio_root, corpus::Profile::loop_house());
+    let (mut sum_rigid, mut sum_tracked, mut counted) = (0.0, 0.0, 0usize);
     for track in &tracks {
         let Ok(decoded) = beatbyte_audio::decode_file(&track.audio) else {
             eprintln!("nicht dekodierbar: {}", track.name);
             continue;
         };
-        let scores = eval::evaluate(&analyzer.analyze(&decoded), &track.truth);
-        let octave = if eval::is_octave_error(scores.bpm, track.truth.bpm) {
-            " OKT!"
-        } else {
-            ""
-        };
+        let before = eval::evaluate(&rigid.analyze(&decoded), &track.truth);
+        let started = std::time::Instant::now();
+        let after = eval::evaluate(&tracked.analyze(&decoded), &track.truth);
+        let elapsed = started.elapsed().as_secs_f64();
+        let length = track.truth.beats.last().copied().unwrap_or(0.0);
+        eprintln!(
+            "{}: {length:.0} s Musik in {elapsed:.1} s analysiert",
+            track.name
+        );
+        sum_rigid += before.beat_f;
+        sum_tracked += after.beat_f;
+        counted += 1;
         println!(
-            "| {} | {:.2} | {:.2}{octave} | {:.3} | {:.3} | {:.3} | {:.0} | {:.1} | {:.1} |",
-            track.name.chars().take(34).collect::<String>(),
+            "| {} | {:.2} | {:.3} | **{:.3}** | {:.3} | {:.3} | {:.1} | {:.1} |",
+            track.name.chars().take(30).collect::<String>(),
             track.truth.bpm,
-            scores.bpm,
-            scores.beat_f,
-            scores.cmlt,
-            scores.amlt,
-            scores.downbeat_accuracy,
-            scores.notes_per_s_median,
-            scores.notes_per_s_p95
+            before.beat_f,
+            after.beat_f,
+            before.cmlt,
+            after.cmlt,
+            before.notes_per_s_median,
+            after.notes_per_s_median
         );
     }
-    eprintln!("{} Tracks gemessen", tracks.len());
+    if counted > 0 {
+        println!(
+            "| **Mittel** | | {:.3} | **{:.3}** | | | | |",
+            sum_rigid / counted as f64,
+            sum_tracked / counted as f64
+        );
+    }
+    eprintln!("{counted} Tracks gemessen");
 }

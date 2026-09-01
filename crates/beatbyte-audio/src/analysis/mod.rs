@@ -1,6 +1,9 @@
 //! The music-analysis pipeline: pure stages from samples to a
 //! [`SongAnalysis`] (see `docs/audio/analysis.md`).
 
+use serde::{Deserialize, Serialize};
+
+pub mod beats;
 pub mod envelope;
 pub mod melody;
 pub mod onset;
@@ -9,12 +12,13 @@ pub mod tempo;
 use beatbyte_core::music::SongAnalysis;
 
 use crate::decode::AudioData;
+use beats::GridConfig;
 use melody::MelodyConfig;
 use onset::OnsetConfig;
 use tempo::TempoConfig;
 
 /// Configuration for the full analysis pipeline.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct AnalyzerConfig {
     /// Onset detection parameters.
     pub onset: OnsetConfig,
@@ -22,6 +26,8 @@ pub struct AnalyzerConfig {
     pub tempo: TempoConfig,
     /// Melody extraction parameters.
     pub melody: MelodyConfig,
+    /// How the beat grid is produced.
+    pub grid: GridConfig,
 }
 
 /// An analysis implementation. The trait keeps the pipeline
@@ -60,7 +66,31 @@ impl Analyzer for SpectralAnalyzer {
             Some(t) => (t.bpm, t.confidence, t.alt_bpm),
             None => (FALLBACK_BPM, 0.0, None),
         };
-        let (_, beats) = tempo::fit_beat_grid(&flux.onsets, bpm, duration_s);
+        let beats = match self.config.grid.mode {
+            beats::GridMode::ConstantTempo => tempo::fit_beat_grid(&flux.onsets, bpm, duration_s).1,
+            beats::GridMode::Tracked => {
+                let envelope = beats::tracking_envelope(
+                    &flux.flux,
+                    &flux.flux_low,
+                    self.config.grid.low_band_weight,
+                );
+                let tracked = beats::track(
+                    &envelope,
+                    flux.hop_s,
+                    flux.frame_offset_s,
+                    bpm,
+                    &self.config.grid,
+                );
+                if tracked.len() < 2 {
+                    // A track the tracker cannot hold still needs a
+                    // grid to quantise against; falling back is
+                    // honest, silently returning nothing is not.
+                    tempo::fit_beat_grid(&flux.onsets, bpm, duration_s).1
+                } else {
+                    beats::extend_to_span(&tracked, duration_s)
+                }
+            }
+        };
 
         let melody = melody::extract_melody(&prepared, &self.config.melody);
 
@@ -122,5 +152,50 @@ mod tests {
         assert_eq!(analysis.bpm, FALLBACK_BPM);
         assert_eq!(analysis.bpm_confidence, 0.0);
         assert!(analysis.onsets.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod config_tests {
+    use super::*;
+
+    /// The commission requires every new parameter to live in one
+    /// central, serialisable configuration. `AnalyzerConfig` is that
+    /// place — it existed already, so the grid settings were added to
+    /// it rather than to a second config beside it.
+    ///
+    /// A `derive` is not proof: this round-trips the real thing and
+    /// checks a NEW field survives, which is what a future parameter
+    /// added to the wrong struct would fail.
+    #[test]
+    fn the_whole_pipeline_configuration_round_trips_through_json() {
+        let mut config = AnalyzerConfig::default();
+        config.grid.mode = beats::GridMode::Tracked;
+        config.grid.low_band_weight = 0.42;
+        config.onset.low_band_to_hz = 155.0;
+
+        let json = serde_json::to_string(&config).expect("serialises");
+        let back: AnalyzerConfig = serde_json::from_str(&json).expect("deserialises");
+
+        assert_eq!(back, config, "a setting was lost on the way through");
+        assert_eq!(back.grid.mode, beats::GridMode::Tracked);
+        assert!((back.grid.low_band_weight - 0.42).abs() < 1e-6);
+        assert!((back.onset.low_band_to_hz - 155.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn the_shipped_default_is_the_tracked_grid() {
+        // Changing this is a deliberate act: it also moves the chart
+        // fingerprints in apps/beatbyte/tests/rock_is_unchanged.rs,
+        // which is the point of that gate.
+        assert_eq!(
+            AnalyzerConfig::default().grid.mode,
+            beats::GridMode::Tracked,
+            "the tracked grid is the shipped one; the constant-tempo \
+             grid remains available to a caller that asks"
+        );
+        // Kick-only, because the sweep over the real corpus said so
+        // monotonically (0.530 / 0.588 / 0.733 / 0.840).
+        assert!((AnalyzerConfig::default().grid.low_band_weight - 1.0).abs() < 1e-6);
     }
 }

@@ -7,9 +7,10 @@
 //! land on actual onsets.
 
 use beatbyte_core::music::Onset;
+use serde::{Deserialize, Serialize};
 
 /// Configuration for tempo estimation.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct TempoConfig {
     /// Lowest tempo considered.
     pub min_bpm: f64,

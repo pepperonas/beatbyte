@@ -1,4 +1,4 @@
-# Analysis baseline (Phase 1)
+# Analysis baseline (Phase 1) and the grid fix (Phase 2)
 
 Measured 2026-09-01 against the pipeline described in
 `docs/audio-pipeline-ist.md`.
@@ -193,4 +193,153 @@ cargo test -p beatbyte-audio --lib eval               # the metrics
 The two real-corpus examples take paths because the corpus is local
 and stays local.
 
-**Phase 1 ends here. Nothing in the analysis pipeline was changed.**
+**Phase 1 ended here. Nothing in the analysis pipeline was changed 
+to produce anything above this line.**
+
+---
+
+# The grid fix (Phase 2)
+
+Measured 2026-09-01, same corpus, same metrics. **The pipeline
+changed here**; everything above this line is the untouched baseline.
+
+## What was built
+
+Two things, both small, both aimed at the two causes Phase 1 named.
+
+**A kick channel** (`onset.rs`). The flux is still summed broadband
+as before, and now *also* over a narrow low band — 30–130 Hz, a
+kick's fundamental and first harmonic, computed in the same FFT loop
+for one extra add per bin. The point is what it cannot hear: an
+offbeat open hat at 6 kHz. On four-to-the-floor the broadband curve
+is dominated by the hat layer, half of which sits deliberately off
+the beat, which is exactly the tie the phase fit was losing.
+
+**A tracked grid** (`analysis/beats.rs`). Dynamic programming over
+the onset envelope, after Ellis (2007): each frame chooses its best
+predecessor and pays a squared-log penalty for landing anywhere but
+one period back, then the best chain is read out backwards. A tracked
+sequence cannot accumulate error, because each beat only has to sit
+one period after the previous one rather than *k* periods after the
+first.
+
+Both are configurable through the existing central `AnalyzerConfig`,
+which is now serialisable end to end (round-tripped by a test, not
+merely derived).
+
+## The result on real tracks
+
+| Fall | BPM-Ref | Beat-F starr | Beat-F verfolgt | CMLt starr | CMLt verfolgt |
+|---|---|---|---|---|---|
+| Groovemasta et al. | 120.00 | 0.000 | **1.000** | 0.000 | 1.000 |
+| Lime – Angel Eyes | 121.78 | 0.332 | **1.000** | 0.396 | 1.000 |
+| Ross – Coming Up | 121.93 | 0.271 | **0.748** | 0.321 | 0.798 |
+| Zsak – I Want Your Soul | 123.00 | 0.000 | **0.245** | 0.000 | 0.246 |
+| Ross – Buscame | 124.42 | 0.676 | **1.000** | 0.767 | 1.000 |
+| BICEP / OPAL (Four Tet Rmx) | 127.00 | 0.339 | **0.889** | 0.398 | 0.994 |
+| Vera – Love Comes Easy | 128.77 | 0.328 | **1.000** | 0.365 | 1.000 |
+| **Mittel** | | 0.278 | **0.840** | | |
+
+Note density is unchanged to one decimal on every track: the grid
+moved, the note count did not.
+
+## And on rock, which was the constraint
+
+| Fall | Beat-F starr | Beat-F verfolgt | CMLt starr | CMLt verfolgt |
+|---|---|---|---|---|
+| rock / circuit-breaker | 0.000 | **0.982** | 0.000 | 0.993 |
+| rock / solder-groove | 0.995 | **0.995** | 1.000 | 1.000 |
+| house-sample / flat-4x4 | 0.977 | 0.977 | 1.000 | 1.000 |
+| house-sample / two-rasters | 0.863 | **0.977** | 1.000 | 1.000 |
+| house-sample / soft-transients | 0.977 | 0.977 | 1.000 | 1.000 |
+| house-sample / filter-sweep | 0.977 | 0.977 | 1.000 | 1.000 |
+
+**Nothing regressed anywhere.** The commission asked for no rock
+regression and got a rock *fix*: the 146 ms phase error Phase 1 found
+on `circuit-breaker` is gone, which also means the built-in song is
+now a defensible transcription and not merely a self-consistent
+chart.
+
+That is why the tracked grid is the shipped default, and why the
+chart fingerprints in `apps/beatbyte/tests/rock_is_unchanged.rs`
+moved — deliberately, once, with this table as the reason.
+
+## The two mechanisms, verified separately
+
+**Drift is gone.** The residual no longer grows across a track:
+
+| Track | Rest 1. Min | Rest letzte Min | Drift den das starre Raster hatte |
+|---|---|---|---|
+| Lime – Angel Eyes | −12 ms | −16 ms | 738 ms |
+| BICEP / OPAL | −15 ms | −67 ms | 1238 ms |
+| Vera – Love Comes Easy | +4 ms | −7 ms | 293 ms |
+| Ross – Buscame | +2 ms | −4 ms | 160 ms |
+
+**The offbeat lock is gone.** First-beat phase, in beats, was −0.473 /
+−0.459 / −0.419 / −0.252 on four tracks; it is now between −0.085 and
++0.094 on **all seven**.
+
+The kick channel is what did the second one, and the sweep says so
+monotonically rather than by argument — mean beat F over the corpus
+at low-band weights 0.0 / 0.5 / 0.75 / 1.0:
+
+| Kick-Gewicht | Beat-F Mittel | Median | schlechtester |
+|---|---|---|---|
+| 0.00 | 0.530 | 0.713 | 0.000 |
+| 0.50 | 0.588 | 0.721 | 0.082 |
+| 0.75 | 0.733 | 0.735 | 0.241 |
+| **1.00** | **0.840** | **1.000** | 0.245 |
+
+⚠️ My first guess was 0.75, reasoning that a breakdown without a kick
+would leave a kick-only tracker with nothing to hold. The reasoning
+was wrong: dynamic programming does not need onsets to cross a gap —
+with nothing to reward it simply continues at the target period and
+picks the music up on the far side.
+
+## What is left, precisely
+
+**Zsak – I Want Your Soul, 0.245.** Not a tracking failure. Its
+residual is −75 ms at the start and −71 ms at the end: a *constant*
+offset of about 73 ms, a grid parallel to Rekordbox's but shifted,
+sitting just outside the ±70 ms tolerance and therefore scoring near
+zero. `Ross – Coming Up` degrades similarly (−12 → −100 ms) for its
+0.748.
+
+So the remaining error is **sub-beat systematic alignment**, on 2 of
+7 tracks, right at the tolerance edge. Candidates, none established
+and none guessed at further here: the analysis look-ahead
+compensation (`onset.rs`, `frame_offset_s` = 34.8 ms), a slow kick
+attack placing the flux peak late, and Rekordbox's own grid placement
+on those tracks. Establishing which needs a listening test or a
+second reference, not another sweep.
+
+## Cost
+
+469 s of music analysed in 3.6 s — about 130× real time, against a
+commission budget of 10 s for a 7-minute track. The tracker is
+O(*n* · 1.5*p*) and adds roughly a tenth of a second.
+
+## The rock gate, and its honest limit
+
+`apps/beatbyte/tests/rock_is_unchanged.rs` hashes both built-in
+songs' generated charts. It caught the grid-mode flip immediately
+(both fingerprints moved). It does **not** catch tracker *tuning*:
+changing the tightness from 100 to 12, or the kick weight from 1.0 to
+0.5, leaves both charts byte-identical, because the demo songs'
+beats are unambiguous enough that any reasonable envelope finds the
+same chain. The gate guards the architecture, not the parameters —
+worth knowing before trusting it for something it does not do.
+
+## Reproducing
+
+```bash
+cargo run -p beatbyte-audio --example baseline           # rock + synthetic, A/B
+cargo run -p beatbyte-audio --example baseline_real \
+  ~/Library/Pioneer/rekordbox/share/PIONEER/USBANLZ ~/Music/DJ
+cargo run -p beatbyte-audio --example sweep_real  <same args>   # the weight sweep
+cargo run -p beatbyte-audio --example drift_real  <same args>   # drift, before/after
+cargo run -p beatbyte-audio --example phase_real  <same args>   # phase, before/after
+```
+
+**Phase 2 ends here.** Phase 3 has a precise target for the first
+time: sub-beat alignment, worth 0.16 of the remaining 0.16.
