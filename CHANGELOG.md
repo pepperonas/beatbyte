@@ -14,6 +14,26 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.16] - 2026-09-01
+
+### Changed
+
+- The in-app history export writes to the platform's DOWNLOADS
+  folder — `$HOME/Downloads` on macOS, `FOLDERID_Downloads` on
+  Windows, `XDG_DOWNLOAD_DIR` on Linux — instead of the data
+  directory next to the save files, which is where a person
+  actually looks for a file they just exported. The Linux value
+  comes from the user-dirs config and can be absent; the old
+  location stays as a documented fallback, and the settings row
+  reports the real path either way.
+- Exports never overwrite each other. The file is named
+  `beatbyte-play-history-<date>.csv` (UTC, the same clock the rows
+  inside use, so a name and a row cannot disagree), and a second
+  export the same day becomes `-2`, `-3` … Downloads is the
+  player's own folder and an export is often the thing they are
+  about to send: silently replacing yesterday's file would be data
+  loss.
+
 ## [0.13.15] - 2026-09-01
 
 ### Added

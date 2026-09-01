@@ -74,11 +74,50 @@ pub fn load() -> Vec<PlayEntry> {
         .map_or_else(Vec::new, |text| parse_log(&text))
 }
 
-/// Where the in-app export writes: beside the log it reads, so a
-/// player who finds one finds the other.
+/// Where exports go: the platform's Downloads folder.
+///
+/// `dirs::download_dir` resolves that per system — `$HOME/Downloads`
+/// on macOS, `FOLDERID_Downloads` on Windows, `XDG_DOWNLOAD_DIR` on
+/// Linux. The Linux one comes from the user-dirs config and can be
+/// absent, so the old location (beside the log) stays as the
+/// fallback: an export that silently goes nowhere would be worse
+/// than one in an unusual folder, and the row reports the path
+/// either way.
 #[must_use]
-pub fn export_path() -> Option<PathBuf> {
-    history_path().map(|path| path.with_file_name("play-history.csv"))
+pub fn export_dir() -> Option<PathBuf> {
+    dirs::download_dir()
+        .or_else(|| history_path().and_then(|path| path.parent().map(std::path::Path::to_path_buf)))
+}
+
+/// The file name an export is offered, before collisions.
+#[must_use]
+pub fn export_stem(now_ms: u64) -> String {
+    // The date is UTC, like every timestamp INSIDE the file — one
+    // clock for the whole export, so a row and the name it sits in
+    // can never disagree.
+    let day = beatbyte_core::history::iso_utc(now_ms);
+    format!("beatbyte-play-history-{}", &day[..10])
+}
+
+/// A file name in `dir` that is not taken yet: the plain one, else
+/// `-2`, `-3` … Pure — `taken` is injected, so the rule is tested
+/// without touching a disk.
+///
+/// Downloads is the player's own folder. Writing a fixed name into
+/// it would quietly replace the export they made an hour ago, and
+/// an export is often the thing somebody is about to send.
+#[must_use]
+pub fn unique_name(stem: &str, taken: &impl Fn(&str) -> bool) -> String {
+    let plain = format!("{stem}.csv");
+    if !taken(&plain) {
+        return plain;
+    }
+    // Bounded: after a hundred exports of the same day, reuse the
+    // last rather than spin.
+    (2..100)
+        .map(|n| format!("{stem}-{n}.csv"))
+        .find(|name| !taken(name))
+        .unwrap_or_else(|| format!("{stem}-100.csv"))
 }
 
 /// Write the whole history as CSV beside the log and return the
@@ -93,7 +132,14 @@ pub fn export_path() -> Option<PathBuf> {
 /// When there is no data directory, or the file cannot be written.
 pub fn export_csv() -> Result<PathBuf, String> {
     let entries = load();
-    let path = export_path().ok_or_else(|| "no data directory on this platform".to_owned())?;
+    let dir = export_dir().ok_or_else(|| "no Downloads folder on this platform".to_owned())?;
+    std::fs::create_dir_all(&dir).map_err(|error| format!("{error}"))?;
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| u64::try_from(d.as_millis()).unwrap_or(0))
+        .unwrap_or(0);
+    let name = unique_name(&export_stem(now_ms), &|name: &str| dir.join(name).exists());
+    let path = dir.join(name);
     std::fs::write(&path, beatbyte_core::history::to_csv(&entries))
         .map_err(|error| format!("{error}"))?;
     Ok(path)
@@ -201,16 +247,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_export_lands_next_to_the_log_it_reads() {
-        // The in-app export writes where the log lives, so a player
-        // who finds one finds the other. `with_file_name` replaces
-        // only the name - a path built by hand could quietly land a
-        // directory higher.
-        let (Some(log), Some(path)) = (history_path(), export_path()) else {
-            return; // headless CI without a data dir
+    fn exports_go_to_the_downloads_folder() {
+        // Where a person looks for a file they just exported.
+        let Some(dir) = export_dir() else {
+            return; // no Downloads and no data dir (headless CI)
         };
-        assert_eq!(log.parent(), path.parent());
-        assert!(path.ends_with("play-history.csv"));
+        if let Some(downloads) = dirs::download_dir() {
+            assert_eq!(dir, downloads);
+        } else {
+            // The documented fallback, not a silent failure.
+            assert_eq!(
+                Some(dir.as_path()),
+                history_path().as_deref().and_then(std::path::Path::parent)
+            );
+        }
+    }
+
+    #[test]
+    fn an_export_never_overwrites_an_earlier_one() {
+        // Downloads is the player's own folder, and an export is
+        // often the thing they are about to send: replacing
+        // yesterday's file without a word is data loss.
+        let stem = "beatbyte-play-history-2026-09-01";
+        assert_eq!(unique_name(stem, &|_| false), format!("{stem}.csv"));
+        let existing = [format!("{stem}.csv"), format!("{stem}-2.csv")];
+        let name = unique_name(stem, &|candidate: &str| {
+            existing.iter().any(|taken| taken == candidate)
+        });
+        assert_eq!(name, format!("{stem}-3.csv"));
+        // Bounded: a pathological folder must not spin forever.
+        assert_eq!(unique_name(stem, &|_| true), format!("{stem}-100.csv"));
+    }
+
+    #[test]
+    fn the_file_name_carries_the_day_it_was_written() {
+        // UTC, the same clock the rows inside use - a name and a row
+        // that disagreed about the date would be worse than neither.
+        assert_eq!(
+            export_stem(1_756_684_800_000),
+            "beatbyte-play-history-2025-09-01"
+        );
     }
 
     #[test]

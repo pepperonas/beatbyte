@@ -121,7 +121,7 @@ impl Row {
             Row::FxIntensity => format!("{:.0}%", settings.fx_intensity * 100.0),
             Row::TextScale => format!("{:.0}%", settings.ui_scale * 100.0),
             Row::HighContrast => on_off(settings.high_contrast),
-            Row::ExportHistory => "ENTER writes CSV >".to_owned(),
+            Row::ExportHistory => "ENTER > DOWNLOADS".to_owned(),
             Row::Lyrics => on_off(settings.lyrics),
             Row::LyricsSize => match settings.lyrics_size {
                 0 => "SMALL",
