@@ -1,0 +1,59 @@
+name: LOC badge
+
+# Keep the lines-of-code badge truthful without anyone touching it:
+# every push to main recounts the repository with tokei and commits
+# the shields.io endpoint JSON the README badge reads. The workflow
+# ignores its own commit (paths-ignore), so it cannot trigger itself.
+#
+# The VERSION badge needs no workflow at all — it is a shields
+# dynamic-toml badge reading `workspace.package.version` straight
+# from Cargo.toml on main.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/badges/**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: loc-badge
+  cancel-in-progress: true
+
+jobs:
+  count:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install tokei
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+      - run: cargo install tokei --version 14.0.0 --locked
+      - name: Count code lines and write the badge endpoint
+        run: |
+          set -euo pipefail
+          # Same invocation as the documented local count: charts in
+          # songs/ are generated data, media are images — not code.
+          LOC=$(tokei --exclude songs --exclude docs/media -o json \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print(sum(v.get('code',0) for k,v in d.items() if k!='Total'))")
+          PRETTY=$(python3 -c "print(f'{int($LOC):,}')")
+          mkdir -p docs/badges
+          printf '{"schemaVersion":1,"label":"lines of code","message":"%s","color":"2f81f7"}\n' "$PRETTY" > docs/badges/loc.json
+          echo "counted: $PRETTY"
+      - name: Commit the badge if it changed
+        run: |
+          set -euo pipefail
+          if git diff --quiet docs/badges/loc.json; then
+            echo "count unchanged, nothing to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/badges/loc.json
+          git commit -m "chore(badges): update lines-of-code count [skip ci]"
+          git pull --rebase origin main
+          git push

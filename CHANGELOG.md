@@ -14,6 +14,18 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.1] - 2026-09-01
+
+### Added
+
+- Two self-maintaining badges sit above all others in the README, in
+  the large style: the CURRENT VERSION, read live from Cargo.toml on
+  main by a shields dynamic-toml badge (no workflow, nothing to
+  forget), and LINES OF CODE, recounted by a new `loc-badge` workflow
+  on every push to main (tokei, charts and media excluded) and
+  served from a committed shields endpoint file. Neither number is
+  ever set by hand again.
+
 ## [0.13.0] - 2026-09-01
 
 Milestone release: **the game learned to be played your way.** Since

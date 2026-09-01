@@ -4,6 +4,9 @@
 
 **An original five-lane rhythm game. Your music. Pixel-art or polished — your call.**
 
+<a href="CHANGELOG.md"><img src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fpepperonas%2Fbeatbyte%2Fmain%2FCargo.toml&query=%24.workspace.package.version&prefix=v&label=version&color=ffd940&style=for-the-badge&logo=rust&logoColor=black" alt="Current version, read live from Cargo.toml"/></a>
+<a href="#development"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fpepperonas%2Fbeatbyte%2Fmain%2Fdocs%2Fbadges%2Floc.json&style=for-the-badge&logo=github&logoColor=white" alt="Lines of code, recounted by CI on every push"/></a>
+
 ### Status
 
 [![CI](https://github.com/pepperonas/beatbyte/actions/workflows/ci.yml/badge.svg)](https://github.com/pepperonas/beatbyte/actions/workflows/ci.yml)
