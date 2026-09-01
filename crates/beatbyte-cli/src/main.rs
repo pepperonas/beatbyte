@@ -279,7 +279,7 @@ fn export_history(
     let all = beatbyte_core::history::parse_log(&text);
     let kept = history::select(&all, filter);
     let rendered = match format {
-        "csv" => history::to_csv(&kept),
+        "csv" => beatbyte_core::history::to_csv(&kept),
         "json" => match history::to_json(&kept) {
             Ok(json) => json,
             Err(error) => {

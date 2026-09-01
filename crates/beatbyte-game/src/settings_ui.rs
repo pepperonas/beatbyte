@@ -35,6 +35,7 @@ pub(crate) enum Row {
     FxIntensity,
     TextScale,
     HighContrast,
+    ExportHistory,
     Lyrics,
     LyricsSize,
     LyricsOffset,
@@ -42,7 +43,7 @@ pub(crate) enum Row {
 }
 
 impl Row {
-    const ALL: [Row; 22] = [
+    const ALL: [Row; 23] = [
         Row::MusicVolume,
         Row::SfxVolume,
         Row::ScrollSpeed,
@@ -57,6 +58,7 @@ impl Row {
         Row::TextScale,
         Row::HighContrast,
         Row::Lyrics,
+        Row::ExportHistory,
         Row::LyricsSize,
         Row::LyricsOffset,
         Row::TapMode,
@@ -82,6 +84,7 @@ impl Row {
             Row::FxIntensity => "EFFECT INTENSITY",
             Row::TextScale => "UI SCALE",
             Row::HighContrast => "HIGH CONTRAST",
+            Row::ExportHistory => "EXPORT PLAY HISTORY",
             Row::Lyrics => "LYRICS",
             Row::LyricsSize => "LYRICS SIZE",
             Row::LyricsOffset => "LYRICS OFFSET",
@@ -118,6 +121,7 @@ impl Row {
             Row::FxIntensity => format!("{:.0}%", settings.fx_intensity * 100.0),
             Row::TextScale => format!("{:.0}%", settings.ui_scale * 100.0),
             Row::HighContrast => on_off(settings.high_contrast),
+            Row::ExportHistory => "ENTER writes CSV >".to_owned(),
             Row::Lyrics => on_off(settings.lyrics),
             Row::LyricsSize => match settings.lyrics_size {
                 0 => "SMALL",
@@ -173,6 +177,9 @@ impl Row {
                 settings.ui_scale = (settings.ui_scale + 0.05 * direction).clamp(0.75, 1.5);
             }
             Row::HighContrast => settings.high_contrast = !settings.high_contrast,
+            // The export is an ACTION, not a value: it happens on
+            // confirm, so stepping left/right must do nothing.
+            Row::ExportHistory => {}
             Row::Lyrics => settings.lyrics = !settings.lyrics,
             Row::LyricsSize => {
                 let step = i32::from(settings.lyrics_size) + direction as i32;
@@ -225,12 +232,19 @@ fn on_off(value: bool) -> String {
 #[derive(Resource, Default)]
 struct SettingsCursor(usize);
 
+/// Where the last in-app export landed (or why it did not). Shown
+/// on the export row itself, so the answer sits where the question
+/// was asked.
+#[derive(Resource, Default)]
+pub struct ExportNote(pub String);
+
 /// Plugin for the settings screen.
 pub struct SettingsUiPlugin;
 
 impl Plugin for SettingsUiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SettingsCursor>()
+            .init_resource::<ExportNote>()
             .add_systems(OnEnter(AppState::Settings), spawn_settings)
             .add_systems(
                 Update,
@@ -341,6 +355,7 @@ fn settings_input(
     mut settings: ResMut<Settings>,
     mut next_state: ResMut<NextState<AppState>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
+    mut export_note: ResMut<ExportNote>,
 ) {
     let nav = MenuNav::read(&map, &keys, pads.iter());
     let count = Row::ALL.len();
@@ -374,6 +389,21 @@ fn settings_input(
         }
     }
     let row = Row::ALL[cursor.0];
+    if row == Row::ExportHistory && (nav.confirm || clicked) {
+        match crate::history::export_csv() {
+            Ok(path) => {
+                sounds.write(crate::sfx::UiSound::Confirm);
+                // The path IS the feedback: an export that only says
+                // "done" leaves the player hunting for the file.
+                export_note.0 = path.display().to_string();
+            }
+            Err(reason) => {
+                sounds.write(crate::sfx::UiSound::Error);
+                export_note.0 = format!("export failed: {reason}");
+            }
+        }
+        return;
+    }
     if row == Row::Controls && (nav.confirm || nav.right || clicked) {
         sounds.write(crate::sfx::UiSound::Confirm);
         next_state.set(AppState::Controls);
@@ -403,6 +433,7 @@ fn refresh_settings(
     mut rows: Query<(&RowText, &mut BackgroundColor, &mut BorderColor)>,
     mut labels: Query<(&SettingLabel, &mut TextColor), Without<SettingValue>>,
     mut values: Query<(&SettingValue, &mut Text, &mut TextColor), Without<SettingLabel>>,
+    export_note: Res<ExportNote>,
 ) {
     for (row, mut background, mut border) in &mut rows {
         let style = ui_kit::styled_row(
@@ -420,7 +451,13 @@ fn refresh_settings(
         .label;
     }
     for (value, mut text, mut color) in &mut values {
-        let wanted = Row::ALL[value.0].value(&settings);
+        // The export row reports where the file went, once it has
+        // written one - the answer belongs where the question was
+        // asked, not in a log nobody reads.
+        let wanted = match Row::ALL[value.0] {
+            Row::ExportHistory if !export_note.0.is_empty() => export_note.0.clone(),
+            row => row.value(&settings),
+        };
         if text.0 != wanted {
             text.0 = wanted;
         }

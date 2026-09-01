@@ -14,6 +14,33 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.15] - 2026-09-01
+
+### Added
+
+- The play history exports from INSIDE the game: SETTINGS →
+  EXPORT PLAY HISTORY writes `play-history.csv` beside the log and
+  then shows the path on the row itself — an export that only says
+  "done" leaves you hunting for the file. CSV, because the in-app
+  button exists for handing a list to someone; the CLI keeps both
+  formats and the filters.
+- The song browser marks which tracks have lyrics with a small
+  microphone at the head of the row. ⚠️ Drawn from nodes, NOT the
+  🎤 character: Press Start 2P has 656 glyphs and that is not one
+  of them — rendered, it comes out as the font's `.notdef` box
+  (verified by rendering it and comparing the bitmap against a
+  private-use codepoint). Songs without lyrics keep the same space
+  empty so the titles stay on one left edge.
+
+### Changed
+
+- `SongEntry` carries `has_lyrics`, set during the library scan as
+  a file check rather than a parse: the browser rebuilds its rows
+  on every view change, and reading fifty lyric files to draw fifty
+  markers would be work for nothing.
+- The CSV rendering moved to `beatbyte-core` beside the schema, so
+  the game and the CLI write byte-identical files.
+
 ## [0.13.14] - 2026-09-01
 
 ### Added

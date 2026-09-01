@@ -15,7 +15,7 @@ use bevy::tasks::{AsyncComputeTaskPool, Task, block_on};
 use beatbyte_audio::{Analyzer, SpectralAnalyzer};
 use beatbyte_chart::{GenerateMeta, generate_chart};
 
-use crate::library::{SONGS_DIR, scan_library, user_songs_dir};
+use crate::library::{SONGS_DIR, user_songs_dir};
 use crate::states::AppState;
 
 /// Extensions the decoder is verified to read (see the decode tests).
@@ -392,8 +392,7 @@ fn poll_import(
             info!("import: \"{title}\" done");
             status.0 = format!("\"{}\" imported", crate::ui::font_safe(&title));
             if let (Some(builtins), Some(mut library)) = (builtins, library) {
-                let charts: Vec<_> = builtins.0.iter().map(|song| song.chart.clone()).collect();
-                *library = scan_library(&charts);
+                *library = crate::boot::scan_with_builtins(&builtins.0);
             }
         }
         Err(reason) => {

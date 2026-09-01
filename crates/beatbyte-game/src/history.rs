@@ -74,6 +74,31 @@ pub fn load() -> Vec<PlayEntry> {
         .map_or_else(Vec::new, |text| parse_log(&text))
 }
 
+/// Where the in-app export writes: beside the log it reads, so a
+/// player who finds one finds the other.
+#[must_use]
+pub fn export_path() -> Option<PathBuf> {
+    history_path().map(|path| path.with_file_name("play-history.csv"))
+}
+
+/// Write the whole history as CSV beside the log and return the
+/// path — the in-app export.
+///
+/// CSV, not JSON: the in-app button exists for the person who wants
+/// to hand a list to someone, and that list opens in a spreadsheet.
+/// The CLI keeps both formats and the filters; this is the one that
+/// needs no terminal.
+///
+/// # Errors
+/// When there is no data directory, or the file cannot be written.
+pub fn export_csv() -> Result<PathBuf, String> {
+    let entries = load();
+    let path = export_path().ok_or_else(|| "no data directory on this platform".to_owned())?;
+    std::fs::write(&path, beatbyte_core::history::to_csv(&entries))
+        .map_err(|error| format!("{error}"))?;
+    Ok(path)
+}
+
 // ── Recording side ──────────────────────────────────────────────────
 
 use bevy::prelude::*;
@@ -174,6 +199,19 @@ fn log_run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_export_lands_next_to_the_log_it_reads() {
+        // The in-app export writes where the log lives, so a player
+        // who finds one finds the other. `with_file_name` replaces
+        // only the name - a path built by hand could quietly land a
+        // directory higher.
+        let (Some(log), Some(path)) = (history_path(), export_path()) else {
+            return; // headless CI without a data dir
+        };
+        assert_eq!(log.parent(), path.parent());
+        assert!(path.ends_with("play-history.csv"));
+    }
 
     #[test]
     fn the_log_sits_beside_the_other_save_files() {

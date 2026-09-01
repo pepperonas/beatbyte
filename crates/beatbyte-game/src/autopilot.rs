@@ -1651,6 +1651,7 @@ mod tests {
             note_counts: vec![],
             genre: None,
             source: SongSource::Builtin(0),
+            has_lyrics: false,
         }
     }
 

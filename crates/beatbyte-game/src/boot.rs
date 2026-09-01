@@ -9,7 +9,6 @@ use bevy::prelude::*;
 use bevy::tasks::futures_lite::future;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on};
 
-use crate::library::scan_library;
 use crate::palette;
 use crate::states::AppState;
 use crate::ui::UiFont;
@@ -32,6 +31,22 @@ pub enum SongAudio {
     Memory(AudioData),
     /// A file on disk, streamed by the music thread.
     File(std::path::PathBuf),
+}
+
+/// Scan the library and flag which built-ins carry lyrics.
+///
+/// The flag cannot come from the scan itself: a built-in's lyrics
+/// are compiled in, not a file on disk. The pairing relies on the
+/// documented order — `scan_library` puts the built-ins first, in
+/// the order it was handed them — which a test pins.
+#[must_use]
+pub fn scan_with_builtins(songs: &[LoadedSong]) -> crate::library::SongLibrary {
+    let charts: Vec<_> = songs.iter().map(|song| song.chart.clone()).collect();
+    let mut library = crate::library::scan_library(&charts);
+    for (entry, song) in library.entries.iter_mut().zip(songs) {
+        entry.has_lyrics = song.lyrics.is_some();
+    }
+    library
 }
 
 /// The cached built-in songs, in library order (survive across
@@ -160,8 +175,7 @@ fn poll_demo_load(
                 song.chart.charts.len()
             );
         }
-        let charts: Vec<_> = songs.iter().map(|song| song.chart.clone()).collect();
-        let library = scan_library(&charts);
+        let library = scan_with_builtins(&songs);
         info!("song library: {} entr(ies)", library.entries.len());
         commands.insert_resource(library);
         commands.insert_resource(BuiltinSongs(songs));

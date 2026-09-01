@@ -872,13 +872,7 @@ fn browser_input(
                     match crate::library::remove_song_files(chart_path) {
                         Ok(()) => {
                             status.0 = format!("\"{title}\" deleted");
-                            let charts: Vec<_> = start
-                                .builtins
-                                .0
-                                .iter()
-                                .map(|song| song.chart.clone())
-                                .collect();
-                            *library = crate::library::scan_library(&charts);
+                            *library = crate::boot::scan_with_builtins(&start.builtins.0);
                         }
                         Err(reason) => status.0 = format!("cannot delete: {reason}"),
                     }
@@ -932,6 +926,7 @@ fn spawn_rows_into(
             panel
                 .spawn((SongRow(position), Button, ui_kit::row()))
                 .with_children(|row| {
+                    spawn_mic(row, entry.has_lyrics);
                     row.spawn((
                         SongTitle(position),
                         Text::new(font.safe(&clip_chars(&entry.title, 32))),
@@ -1028,6 +1023,70 @@ pub fn prepare_song(entry: &SongEntry, builtins: &BuiltinSongs) -> Result<Loaded
             })
         }
     }
+}
+
+/// Width the microphone reserves, so titles line up whether a song
+/// has lyrics or not.
+const MIC_W: f32 = 14.0;
+
+/// Draw the lyrics marker at the head of a row: a microphone, built
+/// from nodes.
+///
+/// ⚠️ Not the 🎤 character. Press Start 2P has 656 glyphs and that
+/// is not one of them — rendered, it comes out as the font's
+/// `.notdef` box (verified by rendering it and comparing the bitmap
+/// against a private-use codepoint). A box in every row would say
+/// nothing at all, so the microphone is drawn: a capsule head, a
+/// stem and a base.
+///
+/// A song WITHOUT lyrics keeps the same space empty, so the titles
+/// stay on one left edge — a marker that shifts the whole column is
+/// harder to scan than no marker.
+fn spawn_mic(row: &mut ChildSpawnerCommands, has_lyrics: bool) {
+    let mut slot = row.spawn(Node {
+        width: px(MIC_W),
+        height: px(14.0),
+        flex_shrink: 0.0,
+        flex_direction: FlexDirection::Column,
+        align_items: AlignItems::Center,
+        justify_content: JustifyContent::Center,
+        row_gap: px(1.0),
+        ..default()
+    });
+    if !has_lyrics {
+        return;
+    }
+    let tint = palette::dimmed(palette::BRAND, 0.85);
+    slot.with_children(|mic| {
+        // Head: a capsule.
+        mic.spawn((
+            Node {
+                width: px(5.0),
+                height: px(7.0),
+                border_radius: BorderRadius::all(px(2.5)),
+                ..default()
+            },
+            BackgroundColor(tint),
+        ));
+        // Stem.
+        mic.spawn((
+            Node {
+                width: px(1.0),
+                height: px(2.0),
+                ..default()
+            },
+            BackgroundColor(tint),
+        ));
+        // Base.
+        mic.spawn((
+            Node {
+                width: px(7.0),
+                height: px(1.0),
+                ..default()
+            },
+            BackgroundColor(tint),
+        ));
+    });
 }
 
 /// Keep rows and the detail block in sync with the cursor.
@@ -1328,6 +1387,7 @@ mod view_tests {
             note_counts: vec![100],
             genre: genre.map(str::to_owned),
             source: SongSource::Builtin(0),
+            has_lyrics: false,
         }
     }
 

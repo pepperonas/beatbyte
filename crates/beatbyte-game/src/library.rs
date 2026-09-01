@@ -46,6 +46,14 @@ pub struct SongEntry {
     pub genre: Option<String>,
     /// Where the audio lives.
     pub source: SongSource,
+    /// Whether karaoke lyrics sit beside this song.
+    ///
+    /// Existence only — a stat, not a parse: the browser rebuilds
+    /// its rows on every view change and reading fifty lyric files
+    /// to draw fifty markers would be work for nothing. A file that
+    /// turns out unparseable simply sings nothing; the marker is a
+    /// promise about the file, not about its contents.
+    pub has_lyrics: bool,
 }
 
 impl SongEntry {
@@ -122,6 +130,9 @@ pub fn scan_library(builtins: &[ChartFile]) -> SongLibrary {
             note_counts: chart.charts.iter().map(|c| c.notes.len()).collect(),
             genre: chart.song.genre.clone(),
             source: SongSource::Builtin(index),
+            // Filled in by the caller: only the game knows which
+            // built-in carries lyrics, and it is loaded, not scanned.
+            has_lyrics: false,
         })
         .collect();
     let builtin_count = entries.len();
@@ -298,6 +309,10 @@ fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String>
         .genre
         .clone()
         .or_else(|| beatbyte_audio::read_genre(&audio_path));
+    // A `.lrc` beside the audio or the chart - the same two places
+    // `beatbyte_chart::lyrics::lyrics_beside` reads at start.
+    let has_lyrics =
+        audio_path.with_extension("lrc").is_file() || chart_path.with_extension("lrc").is_file();
     Ok(Some(SongEntry {
         title: chart.song.title.clone(),
         artist: chart.song.artist.clone(),
@@ -306,6 +321,7 @@ fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String>
         difficulties: chart.charts.iter().map(|c| c.difficulty).collect(),
         note_counts: chart.charts.iter().map(|c| c.notes.len()).collect(),
         genre,
+        has_lyrics,
         source: SongSource::File {
             chart_path: chart_path.to_path_buf(),
             audio_path,
@@ -316,7 +332,53 @@ fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String>
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use super::find_chart_files;
+    use super::{find_chart_files, load_entry};
+
+    #[test]
+    fn a_song_is_marked_when_a_lyrics_file_sits_beside_it() {
+        // Through `load_entry`, not by re-checking the file myself:
+        // the first version of this test only asserted that
+        // `is_file()` works, which is true no matter what the
+        // scanner does with it (it survived the mutation that set
+        // the flag to a constant `false`).
+        let root = std::env::temp_dir().join(format!("bb-lyrmark-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("temp dir");
+        let audio = root.join("song.wav");
+        std::fs::write(&audio, b"not really audio").expect("audio");
+        let chart = root.join("chart.json");
+        std::fs::write(&chart, MINIMAL_CHART).expect("chart");
+
+        let without = load_entry(&chart).expect("loads").expect("an entry");
+        assert!(!without.has_lyrics, "no .lrc yet, no marker");
+
+        std::fs::write(audio.with_extension("lrc"), "[00:01.00]la").expect("lyrics");
+        let with = load_entry(&chart).expect("loads").expect("an entry");
+        assert!(with.has_lyrics, "a .lrc beside the audio marks the song");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The smallest chart `load_entry` accepts, pointing at
+    /// `song.wav` beside it. Synthetic throughout - no real song.
+    const MINIMAL_CHART: &str = r#"{
+        "format_version": 1,
+        "song": {
+            "title": "Synthetic",
+            "artist": "The Null Pointers",
+            "audio": "song.wav",
+            "bpm": 120.0,
+            "duration_s": 60.0
+        },
+        "charts": [
+            {
+                "difficulty": "medium",
+                "lanes": 5,
+                "notes": [{ "time": 1.0, "lane": 0 }],
+                "phrases": []
+            }
+        ]
+    }"#;
 
     #[test]
     fn scan_reaches_two_levels_and_skips_symlinks_and_deeper() {
