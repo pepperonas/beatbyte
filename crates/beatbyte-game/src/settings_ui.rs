@@ -340,6 +340,7 @@ fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
                 "UP/DOWN choose  LEFT/RIGHT adjust  ESC back",
                 "D-PAD choose and adjust  EAST back",
             );
+            ui_kit::back_button(parent, &font, "MAIN MENU");
         });
 }
 
@@ -356,6 +357,10 @@ fn settings_input(
     mut next_state: ResMut<NextState<AppState>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
     mut export_note: ResMut<ExportNote>,
+    mut back: Query<
+        (&Interaction, &mut BackgroundColor, &mut BorderColor),
+        With<ui_kit::BackButton>,
+    >,
 ) {
     let nav = MenuNav::read(&map, &keys, pads.iter());
     let count = Row::ALL.len();
@@ -421,7 +426,7 @@ fn settings_input(
     if adjusted {
         sounds.write(row.sound());
     }
-    if nav.back || mouse.just_pressed(MouseButton::Right) {
+    if nav.back || ui_kit::back_pressed(&mut back) || mouse.just_pressed(MouseButton::Right) {
         sounds.write(crate::sfx::UiSound::Back);
         next_state.set(AppState::MainMenu);
     }

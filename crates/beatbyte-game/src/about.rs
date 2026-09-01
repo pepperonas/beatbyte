@@ -432,6 +432,7 @@ fn spawn_about(mut commands: Commands, font: Res<UiFont>, mut state: ResMut<Abou
                 "UP/DOWN choose  ENTER open  ESC back",
                 "D-PAD choose  SOUTH open  EAST back",
             );
+            ui_kit::back_button(parent, &font, "MAIN MENU");
         });
 }
 
@@ -462,6 +463,10 @@ fn about_input(
     mut state: ResMut<AboutState>,
     mut next_state: ResMut<NextState<AppState>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
+    mut back: Query<
+        (&Interaction, &mut BackgroundColor, &mut BorderColor),
+        With<ui_kit::BackButton>,
+    >,
 ) {
     let nav = MenuNav::read(&map, &keys, pads.iter());
     let count = state.row_count();
@@ -504,7 +509,7 @@ fn about_input(
             Activate::Nothing => {}
         }
     }
-    if nav.back || mouse.just_pressed(MouseButton::Right) {
+    if nav.back || ui_kit::back_pressed(&mut back) || mouse.just_pressed(MouseButton::Right) {
         sounds.write(crate::sfx::UiSound::Back);
         next_state.set(AppState::MainMenu);
     }

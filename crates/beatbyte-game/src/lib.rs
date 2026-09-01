@@ -12,6 +12,7 @@ pub mod calibration;
 pub mod config;
 pub mod controls;
 pub mod controls_ui;
+pub mod crt;
 pub mod editor_ui;
 pub mod gameplay;
 pub mod history;
@@ -206,6 +207,7 @@ pub fn run() -> AppExit {
         sfx::SfxPlugin,
         telemetry::TelemetryPlugin,
         history::HistoryPlugin,
+        crt::CrtPlugin,
         transition::TransitionPlugin,
         autopilot::AutopilotPlugin,
     ));

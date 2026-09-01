@@ -141,7 +141,7 @@ pub(crate) fn menu_input(
     mut cursor: ResMut<MenuCursor>,
     mut roster: ResMut<crate::multiplayer::PlayerRoster>,
     mut next_state: ResMut<NextState<AppState>>,
-    mut app_exit: MessageWriter<AppExit>,
+    mut quit: MessageWriter<crate::crt::QuitRequested>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
     let nav = MenuNav::read(&map, &keys, pads.iter());
@@ -180,7 +180,7 @@ pub(crate) fn menu_input(
     // close the application. A test pins that pairing so this cannot
     // be "simplified" to `nav.back` later.
     if keys.just_pressed(KeyCode::Escape) {
-        app_exit.write(AppExit::Success);
+        quit.write(crate::crt::QuitRequested);
         return;
     }
     let clicked = pointer.clicked;
@@ -198,7 +198,7 @@ pub(crate) fn menu_input(
             MenuAction::InputTest => next_state.set(AppState::InputTest),
             MenuAction::About => next_state.set(AppState::About),
             MenuAction::Quit => {
-                app_exit.write(AppExit::Success);
+                quit.write(crate::crt::QuitRequested);
             }
         }
     }

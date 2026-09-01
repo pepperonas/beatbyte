@@ -271,7 +271,7 @@ fn status_text(view: &BrowserView) -> String {
     let direction = if view.flipped { " (reversed)" } else { "" };
     if view.searching {
         format!(
-            "SEARCH: {}_   ({} match{})   ESC to close",
+            "SEARCH: {}_   ({} match{})   Q keeps it  ESC clears",
             view.filter,
             view.order.len(),
             if view.order.len() == 1 { "" } else { "es" }
@@ -510,6 +510,7 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
                 "UP/DOWN song  LEFT/RIGHT difficulty  S sort  F search  ENTER rock  L lyrics  Q queue MC set  P play set  E edit  DEL delete  ESC back",
                 "D-PAD song and difficulty  SOUTH rock  EAST back",
             );
+            ui_kit::back_button(parent, font, "MAIN MENU");
         });
 }
 
@@ -527,6 +528,21 @@ fn search_sort_input(
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
     if view.searching {
+        // Q CLOSES THE SEARCH and keeps the filter (Esc below closes
+        // AND clears). Checked before the typing loop and the events
+        // are dropped, or the same key press would both leave the
+        // field and leave a "q" behind in it - the reported bug.
+        //
+        // ⚠️ The cost: a title containing "q" cannot be typed into
+        // the search any more. The player asked for this key
+        // explicitly; if a "Queen" ever needs finding, this is the
+        // line to revisit.
+        if keys.just_pressed(KeyCode::KeyQ) {
+            view.searching = false;
+            typed.clear();
+            sounds.write(crate::sfx::UiSound::Back);
+            return;
+        }
         // Printable keys EDIT THE FILTER - every letter shortcut is
         // suppressed while searching (in `browser_input`, off this
         // same flag), or typing "elle" would open the editor and arm
@@ -618,7 +634,19 @@ struct PointerInput<'w, 's> {
 /// reason: what a start needs (the built-ins) and what an MC set
 /// adds (the queue).
 #[derive(bevy::ecs::system::SystemParam)]
-struct StartDeps<'w> {
+struct StartDeps<'w, 's> {
+    /// The clickable way back, bundled here because the browser is
+    /// at Bevy's sixteen-parameter cap.
+    back_button: Query<
+        'w,
+        's,
+        (
+            &'static Interaction,
+            &'static mut BackgroundColor,
+            &'static mut BorderColor,
+        ),
+        With<ui_kit::BackButton>,
+    >,
     builtins: Res<'w, BuiltinSongs>,
     mc_queue: ResMut<'w, crate::mc::McQueue>,
     /// The in-flight lyrics lookup — bundled here because Bevy caps
@@ -681,7 +709,9 @@ fn browser_input(
         MenuNav::read(&map, &keys, pads.iter())
     };
     let searching = view.searching;
-    let back = (!searching && nav.back) || pointer_in.mouse.just_pressed(MouseButton::Right);
+    let clicked_back = ui_kit::back_pressed(&mut start.back_button);
+    let back = (!searching && (nav.back || clicked_back))
+        || pointer_in.mouse.just_pressed(MouseButton::Right);
     let count = view.order.len();
     if count == 0 {
         if back {

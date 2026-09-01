@@ -561,6 +561,72 @@ pub fn value_node() -> impl Bundle {
     )
 }
 
+/// Marker for the clickable back button. One component, so every
+/// screen reads it the same way.
+#[derive(Component)]
+pub struct BackButton;
+
+/// A clickable way out, for the players who never learned that Esc
+/// goes back — the keyboard and pad paths are untouched, this is an
+/// additional door, not a replacement.
+///
+/// Sits above the footer that names the key, so the two readings of
+/// "how do I get out" stand together.
+pub fn back_button(parent: &mut ChildSpawnerCommands, font: &UiFont, label: &str) {
+    parent
+        .spawn((
+            BackButton,
+            Button,
+            Node {
+                // Centred under the panel: the screen root is a
+                // COLUMN, so the cross axis is horizontal and
+                // `Start` parks the button against the left edge of
+                // the window instead of under the content.
+                align_self: AlignSelf::Center,
+                margin: UiRect::top(px(12)),
+                padding: UiRect::axes(px(ROW_PAD_X), px(ROW_PAD_Y)),
+                border: UiRect::all(px(PANEL_BORDER)),
+                border_radius: BorderRadius::all(px(6)),
+                ..default()
+            },
+            BackgroundColor(palette::SURFACE.with_alpha(0.55)),
+            BorderColor::all(palette::dimmed(palette::TEXT_DIM, 0.45)),
+        ))
+        .with_children(|button| {
+            button.spawn((
+                Text::new(format!("< {label}")),
+                font.text(SMALL),
+                TextColor(palette::TEXT_DIM),
+            ));
+        });
+}
+
+/// Whether the back button was pressed this frame, and paint it
+/// while the pointer is on it — the same "hovering shows, clicking
+/// acts" rule the rows follow.
+pub fn back_pressed(
+    buttons: &mut Query<(&Interaction, &mut BackgroundColor, &mut BorderColor), With<BackButton>>,
+) -> bool {
+    let mut pressed = false;
+    for (interaction, mut background, mut border) in buttons.iter_mut() {
+        let hot = matches!(interaction, Interaction::Hovered | Interaction::Pressed);
+        background.0 = if hot {
+            palette::BRAND.with_alpha(FILL_ALPHA)
+        } else {
+            palette::SURFACE.with_alpha(0.55)
+        };
+        *border = BorderColor::all(if hot {
+            palette::BRAND
+        } else {
+            palette::dimmed(palette::TEXT_DIM, 0.45)
+        });
+        if *interaction == Interaction::Pressed {
+            pressed = true;
+        }
+    }
+    pressed
+}
+
 /// The hint line at the bottom of a screen.
 ///
 /// Uniform wording matters as much as uniform styling: `KEY action`

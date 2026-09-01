@@ -218,6 +218,7 @@ fn spawn_controls(mut commands: Commands, font: Res<UiFont>, mut state: ResMut<C
                     ..default()
                 },
             ));
+            ui_kit::back_button(parent, &font, "SETTINGS");
         });
 }
 
@@ -304,6 +305,10 @@ fn controls_input(
     mut map: ResMut<InputMap>,
     mut next_state: ResMut<NextState<AppState>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
+    mut back_button: Query<
+        (&Interaction, &mut BackgroundColor, &mut BorderColor),
+        With<ui_kit::BackButton>,
+    >,
 ) {
     let actions = row_actions();
     let count = actions.len();
@@ -388,7 +393,8 @@ fn controls_input(
         actions[state.cursor].reset(&mut map);
         sounds.write(crate::sfx::UiSound::Toggle);
     }
-    if nav.back || mouse.just_pressed(MouseButton::Right) {
+    if nav.back || ui_kit::back_pressed(&mut back_button) || mouse.just_pressed(MouseButton::Right)
+    {
         sounds.write(crate::sfx::UiSound::Back);
         next_state.set(AppState::Settings);
     }

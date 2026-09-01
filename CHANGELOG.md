@@ -14,6 +14,38 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.17] - 2026-09-01
+
+### Added
+
+- The game powers on like a TV TUBE and collapses to a dot when it
+  quits — the animation ported from `inspector-rust`
+  (`core/frontend/src/lib/md3-motion.ts`, `playCrtOn`/`playCrtOff`),
+  keeping its offsets, its front-loaded power-on and its rule that
+  the power-off is DERIVED from the power-on so leaving can never
+  become slower than arriving. That app scales an HTML shell; a Bevy
+  window has none, so the same shape is drawn as a mask of black
+  panels closing to a bright scanline and pinching to a dot.
+  ⚠️ It plays when the FIRST MENU appears, not at startup: the boot
+  screen is empty while the songs are still being built, so a
+  power-on there revealed nothing and was over before there was
+  anything to see. The duration is 700 ms rather than the source's
+  250 ms — inside the range that app documents (80–900), at the
+  visible end, because a game being launched is not a popup someone
+  is waiting to type into.
+- Every menu with a way back now has a CLICKABLE one: song browser,
+  settings, controls and about carry a "< …" button under the
+  footer that names the key. The keyboard and pad paths are
+  untouched.
+
+### Fixed
+
+- `q` closes the song search instead of being typed into it. It
+  leaves the filter in place (Esc still closes AND clears), and the
+  key press is consumed so the same press cannot both leave the
+  field and drop a "q" in it. ⚠️ The cost: a title containing "q"
+  can no longer be typed into the search.
+
 ## [0.13.16] - 2026-09-01
 
 ### Changed
