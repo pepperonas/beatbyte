@@ -418,6 +418,99 @@ pub struct HypeTinted {
     pub reach: f32,
 }
 
+// ── Burning edges while Star Power runs ─────────────────────────────
+//
+// The genre's classic Star-Power tell: the highway's edges catch
+// BLUE fire while the boost is active. Ours is a row of additive
+// flame cones licking up from each rail — animated purely through
+// transforms (the per-frame channel this stage reserves for motion;
+// the shared flame material is never written after creation), grown
+// in and out with the same eased feel as the hype tint so the fire
+// arrives with the color instead of popping.
+
+/// One flame lick on a highway edge.
+#[derive(Component)]
+pub struct EdgeFlame {
+    /// The player whose Hype this flame answers.
+    pub player: usize,
+    /// Phase offset so the row never moves as one block.
+    pub phase: f32,
+    /// This lick's resting height scale (raggedness).
+    pub base: f32,
+}
+
+/// Spacing of the flame licks along the rail.
+const EDGE_FLAME_SPACING: f32 = 0.9;
+/// A lick's resting height in world units (scaled by the flicker).
+/// Sized against the rail's own glow: the first pass at 0.34 was
+/// rendered and CONFIRMED on screen coordinates, yet visually
+/// drowned in the rail's bloom - fire that must read from the
+/// receptor line to mid-neck needs this much body.
+const EDGE_FLAME_HEIGHT: f32 = 0.62;
+/// The blue the edges burn with (commissioned: blue, the genre's
+/// Star-Power color — not the house Hype purple).
+const EDGE_FLAME_BLUE: Color = Color::srgb(0.35, 0.65, 1.0);
+
+/// How tall a lick stands right now, as a factor on its rest: two
+/// incommensurable sines layered so the row flickers without a
+/// visible loop, bounded well away from zero — a flame that blinks
+/// out reads as the boost dropping. Pure — tested.
+#[must_use]
+pub fn flame_lick(seconds: f32, phase: f32) -> f32 {
+    let a = (seconds * 9.3 + phase).sin();
+    let b = (seconds * 14.1 + phase * 1.7).sin();
+    1.0 + 0.24 * a + 0.14 * b
+}
+
+/// Drive the edge fire: visible and licking while the player's Hype
+/// runs, eased away when it ends. Transforms and visibility only.
+pub fn burn_edges_for_hype(
+    settings: Res<Settings>,
+    time: Res<Time>,
+    players: Query<(&PlayerIndex, &PlayerSession)>,
+    mut flames: Query<(&EdgeFlame, &mut Transform, &mut Visibility)>,
+    mut blend: Local<Vec<f32>>,
+) {
+    if !active(&settings) {
+        return;
+    }
+    let delta = time.delta_secs();
+    // The same 6/s ease the hype tint uses, advanced once per player.
+    for (index, player) in &players {
+        if blend.len() <= index.0 {
+            blend.resize(index.0 + 1, 0.0);
+        }
+        let target = if player.session.performance().hype_active() {
+            1.0
+        } else {
+            0.0
+        };
+        blend[index.0] += (target - blend[index.0]) * (6.0 * delta).min(1.0);
+    }
+    let now = time.elapsed_secs();
+    for (flame, mut transform, mut visibility) in &mut flames {
+        let grown = blend.get(flame.player).copied().unwrap_or(0.0);
+        // Fully out: hide and stop writing transforms - the resting
+        // edge look is exactly the pre-existing rails.
+        let wanted = if grown < 0.02 {
+            Visibility::Hidden
+        } else {
+            Visibility::Inherited
+        };
+        if *visibility != wanted {
+            *visibility = wanted;
+        }
+        if wanted == Visibility::Hidden {
+            continue;
+        }
+        let height = EDGE_FLAME_HEIGHT * flame.base * flame_lick(now, flame.phase) * grown;
+        transform.scale = Vec3::new(grown, height, grown);
+        // The cone's origin is its centre: keep the BASE seated on
+        // the rail while the tip licks upward.
+        transform.translation.y = 0.015 + height / 2.0;
+    }
+}
+
 /// Wash the neck with the energy colour while hype is running — and
 /// turn the notes themselves toward it, the genre's star-power
 /// signature (all notes change colour while the power runs).
@@ -1647,6 +1740,23 @@ pub fn setup_stage(
         height: 1.0,
     });
     let hit_bar = meshes.add(Cuboid::new(1.0, 0.02, 0.06));
+    // The Star-Power edge fire: one cone and ONE material shared by
+    // every lick on every rail; the burn system animates transforms
+    // only and never touches this material again.
+    let edge_flame_mesh = meshes.add(Cone {
+        radius: 0.15,
+        height: 1.0,
+    });
+    let edge_flame_material = materials.add(StandardMaterial {
+        // The house additive recipe (the beams, halos and haze all
+        // use it): an UNLIT material renders its BASE color and
+        // ignores emissive entirely - the first version wrote alpha
+        // 0.0 plus emissive and the fire was invisible.
+        base_color: EDGE_FLAME_BLUE.with_alpha(0.85),
+        alpha_mode: AlphaMode::Add,
+        unlit: true,
+        ..default()
+    });
 
     for index in &players {
         let player = index.0;
@@ -1709,6 +1819,33 @@ pub fn setup_stage(
                 Transform::from_xyz(origin + side * width / 2.0, 0.015, centre),
                 RenderLayers::layer(STAGE_LAYER),
             ));
+
+            // The Star-Power fire: a row of blue flame licks along
+            // this rail, hidden until the boost runs (see
+            // `burn_edges_for_hype`). One shared additive material
+            // for every lick - it is never written again.
+            let mut z = -HIGHWAY_LENGTH + HIGHWAY_BEHIND / 2.0;
+            let mut lick = 0usize;
+            while z < HIGHWAY_BEHIND {
+                let jitter = super::fx::hash01(lick * 73 + if side < 0.0 { 0 } else { 1 });
+                commands.spawn((
+                    GameplayScreen,
+                    Stage3d,
+                    EdgeFlame {
+                        player,
+                        phase: jitter * core::f32::consts::TAU,
+                        base: 0.75 + 0.5 * jitter,
+                    },
+                    Mesh3d(edge_flame_mesh.clone()),
+                    MeshMaterial3d(edge_flame_material.clone()),
+                    Visibility::Hidden,
+                    Transform::from_xyz(origin + side * (width / 2.0 + 0.09), 0.015, z)
+                        .with_scale(Vec3::ZERO),
+                    RenderLayers::layer(STAGE_LAYER),
+                ));
+                z += EDGE_FLAME_SPACING;
+                lick += 1;
+            }
 
             // The decorated trim. Dimmer than the rail on purpose:
             // the border should be seen, the edge should be read.
@@ -2764,6 +2901,7 @@ impl Plugin for Stage3dPlugin {
                 move_fret_bars,
                 move_phrase_bands,
                 tint_stage_for_hype,
+                burn_edges_for_hype,
                 bob_crowd,
                 pulse_led_wall,
                 pulse_woofers,
@@ -3068,6 +3206,29 @@ mod tests {
             "a note covers {travelled} units in the lookahead, \
              but the highway is {HIGHWAY_LENGTH}"
         );
+    }
+}
+
+#[cfg(test)]
+mod edge_flame_tests {
+    use super::flame_lick;
+
+    #[test]
+    fn the_lick_flickers_but_never_dies() {
+        // A flame that blinks out reads as the boost dropping; one
+        // that stands still reads as a painted edge. The factor must
+        // MOVE and must stay well clear of zero.
+        let samples: Vec<f32> = (0..400).map(|i| flame_lick(i as f32 * 0.02, 1.3)).collect();
+        let lo = samples.iter().copied().fold(f32::MAX, f32::min);
+        let hi = samples.iter().copied().fold(f32::MIN, f32::max);
+        assert!(lo > 0.5, "a lick collapsed to {lo}");
+        assert!(hi < 1.5, "a lick blew up to {hi}");
+        assert!(hi - lo > 0.4, "the fire barely moves: {lo}..{hi}");
+        // Two licks with different phases must not move in step - a
+        // row breathing as one block is a curtain, not a fire.
+        let other = flame_lick(1.0, 4.0);
+        let this = flame_lick(1.0, 1.3);
+        assert!((other - this).abs() > 0.01, "phases collapsed");
     }
 }
 

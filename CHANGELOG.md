@@ -14,6 +14,20 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.5] - 2026-09-01
+
+### Added
+
+- The highway edges catch BLUE fire while Hype runs (the genre's
+  classic Star-Power tell): a row of additive flame licks seated
+  along both rails, flickering on two incommensurable sines so the
+  fire never loops visibly and never blinks out, grown in and out
+  with the same eased feel as the hype tint. Purely visual and
+  purely the transform channel - one shared material, created once
+  and never written again; hidden licks are not even animated. The
+  resting edge look is the unchanged rails. Judgment, scoring and
+  Star-Power conditions untouched (autopilot scores identically).
+
 ## [0.13.4] - 2026-09-01
 
 ### Added
