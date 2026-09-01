@@ -288,14 +288,15 @@ pipeline, in order:
    spacing, lane remap onto 3/4/5 lanes, per-difficulty HOPO and
    chord rules) — so a note you learned on Easy sits on the same
    lane on Expert. Same audio in → the same chart out; there is no
-   randomness anywhere. (Byte-for-byte identical on a given machine
-   and build. Across *platforms* the note times can differ in their
-   last bits, because generation runs through `ln`, `exp` and
-   trigonometry and libm implementations are not required to agree
-   there — the difference is far below a millisecond and inaudible,
-   but "bit-identical everywhere" would be a claim this project
-   cannot make. It is checked at millisecond resolution instead:
-   `apps/beatbyte/tests/rock_is_unchanged.rs`.)
+   randomness anywhere. (Reproducible **per platform**: identical on
+   a given machine and build, every time. Not across platforms —
+   generation runs through `ln`, `exp` and trigonometry, libm
+   implementations differ in their last bits, and a threshold
+   comparison can resolve the other way as a result. Measured, not
+   assumed: of the two built-in songs, one generates the same chart
+   on macOS and Linux and the other does not.
+   `apps/beatbyte/tests/rock_is_unchanged.rs` records a fingerprint
+   per platform and says so.)
 8. **Validation** — charts are treated as untrusted input even though
    we just generated them: BPM clamped to 20–400, size caps, path
    traversal and Windows-drive rejection.

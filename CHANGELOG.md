@@ -65,14 +65,19 @@ the manifest ever carries a version this file does not describe.
 ### Fixed
 
 - The README said "same audio in → **bit-identical** charts out". The
-  new rock gate disproved it within an hour of existing: it passed on
-  macOS and failed on Linux in CI, because generation runs through
-  `ln`, `exp` and trigonometry and platform libm implementations
-  differ in the last bits. The "no randomness" half was always true;
-  the "bit-identical" half is now stated with the qualifier it needs
-  (same machine and build), and the gate compares charts at
-  millisecond resolution — far below the tightest judgment window,
-  far above the arithmetic noise.
+  new rock gate disproved it within an hour of existing, in two
+  stages. First it failed on Linux while passing on macOS, because
+  generation runs through `ln`, `exp` and trigonometry and platform
+  libm implementations differ in their last bits — so the gate moved
+  to comparing charts at millisecond resolution. That fixed one of
+  the two built-in songs and **not the other**, which says the
+  divergence there is larger than a millisecond: a threshold
+  comparison resolves differently, and a note is kept, dropped or
+  snapped elsewhere. Rounding harder would have hidden a real
+  property of the pipeline, so the gate records a fingerprint per
+  platform instead and the README now says what is true:
+  reproducible per platform, every time; not across platforms. The
+  "no randomness" half was always correct.
 
 ### Performance
 

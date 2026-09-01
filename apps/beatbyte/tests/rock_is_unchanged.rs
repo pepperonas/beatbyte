@@ -24,18 +24,28 @@
 //! differ in the last bits. Full-precision `f64` note times therefore
 //! serialise differently on different machines.
 //!
-//! The fix is to fingerprint what a *player* could tell apart: note
-//! counts, lanes, flags, and times rounded to whole milliseconds.
-//! A millisecond is far below the tightest judgment window and far
-//! above libm noise, so this catches every behaviour change worth
-//! catching and none of the arithmetic weather. The residual risk is
-//! named rather than denied: a note sitting exactly on a half-
-//! millisecond boundary could still round two ways. Quantised times
-//! are grid multiples, so that is unlikely rather than impossible,
-//! and a single reproducible cross-platform mismatch here is
-//! information, not noise to paper over. `chart_hash` keeps
-//! hashing bytes, correctly — it binds a recorded session to the
+//! The first fix was to fingerprint what a *player* could tell
+//! apart: note counts, lanes, flags, and times rounded to whole
+//! milliseconds. That was right, and not enough. It made
+//! `circuit-breaker` agree across platforms — and `solder-groove`
+//! still did not, which says the divergence there is **larger than a
+//! millisecond**: somewhere in generation a threshold comparison
+//! resolves differently, so a note is kept, dropped, or snapped to a
+//! different frame. No rounding can hide that, and rounding harder
+//! to make it go away would be hiding a real fact about the
+//! pipeline.
+//!
+//! So the fingerprints are recorded **per platform**. That states the
+//! truth — chart generation is reproducible on a given platform, not
+//! across them — and keeps the gate at full strength everywhere it
+//! actually runs: Linux in CI, macOS in development. `chart_hash`
+//! keeps hashing bytes, correctly: it binds a recorded session to the
 //! exact file that was played, on the machine that played it.
+//!
+//! ⚠️ This is a *finding*, not a design. A pipeline whose output can
+//! change with a libm implementation is fragile in a way worth fixing
+//! at the source one day — the cause is a comparison sitting on a
+//! knife edge, not the arithmetic being wrong.
 //!
 //! FNV-1a is written out here on purpose: `DefaultHasher` makes no
 //! stability promise across Rust releases, and CI installs the latest
@@ -116,23 +126,62 @@ fn fingerprint(audio: &beatbyte_audio::decode::AudioData, title: &str) -> u64 {
     fnv1a(projection(&chart).as_bytes())
 }
 
+/// The recorded fingerprint for this platform, if one has been taken.
+///
+/// `circuit-breaker` agrees across macOS and Linux; `solder-groove`
+/// does not, and both values below are measured rather than derived.
+/// A platform with no entry is not silently blessed — see
+/// [`check`].
+fn recorded(song: &str) -> Option<u64> {
+    match (song, std::env::consts::OS) {
+        ("circuit-breaker", "macos" | "linux") => Some(9_619_993_056_299_140_922),
+        ("solder-groove", "macos") => Some(8_006_722_771_110_525_229),
+        ("solder-groove", "linux") => Some(4_651_134_946_397_381_867),
+        _ => None,
+    }
+}
+
+/// Compare against the recorded fingerprint, or say loudly that this
+/// platform has none.
+///
+/// A test that quietly passes on an unrecorded platform would be
+/// worse than no test, so the absence is printed with the value
+/// needed to record it. Tests run on Linux in CI and macOS in
+/// development; Windows only builds.
+fn check(audio: &beatbyte_audio::decode::AudioData, title: &str, song: &str) {
+    let actual = fingerprint(audio, title);
+    match recorded(song) {
+        Some(expected) => assert_eq!(
+            actual,
+            expected,
+            "{song}'s chart changed on {}; if that was intended, \
+             update the constant and say so in the CHANGELOG",
+            std::env::consts::OS
+        ),
+        None => println!(
+            "no fingerprint recorded for {song} on {}; it is {actual}. \
+             The exact gate is enforced on macOS and Linux only — see \
+             this file's header for why it is per platform.",
+            std::env::consts::OS
+        ),
+    }
+}
+
 #[test]
 fn the_demo_song_generates_the_same_chart_it_always_has() {
-    assert_eq!(
-        fingerprint(&beatbyte_audio::demo::render_demo_song(), "Circuit Breaker"),
-        9_619_993_056_299_140_922,
-        "the demo song's chart changed; if that was intended, update \
-         the constant and say so in the CHANGELOG"
+    check(
+        &beatbyte_audio::demo::render_demo_song(),
+        "Circuit Breaker",
+        "circuit-breaker",
     );
 }
 
 #[test]
 fn the_groove_song_generates_the_same_chart_it_always_has() {
-    assert_eq!(
-        fingerprint(&beatbyte_audio::demo::render_groove_song(), "Solder Groove"),
-        8_006_722_771_110_525_229,
-        "the groove song's chart changed; if that was intended, update \
-         the constant and say so in the CHANGELOG"
+    check(
+        &beatbyte_audio::demo::render_groove_song(),
+        "Solder Groove",
+        "solder-groove",
     );
 }
 

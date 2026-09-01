@@ -449,6 +449,13 @@ resolves, and an ONNX runtime is heavy freight for a
 one-binary-per-platform project; bit-identical chart output is the
 rock gate.
 
+**Found on the way, not yet fixed:** chart generation is
+reproducible per platform but not across platforms — a libm
+last-bit difference flips a threshold and moves a note. One of the
+two built-in songs diverges between macOS and Linux. The gate
+records a fingerprint per platform and the README says so; finding
+the knife-edge comparison is a separate piece of work.
+
 **Phase 3 has a precise target for the first time:** sub-beat
 alignment. The whole remaining error is a systematic 70-100 ms
 offset on 2 of 7 tracks, sitting just outside the tolerance —

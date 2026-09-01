@@ -319,6 +319,29 @@ second reference, not another sweep.
 commission budget of 10 s for a 7-minute track. The tracker is
 O(*n* · 1.5*p*) and adds roughly a tenth of a second.
 
+## An unplanned finding: charts are reproducible per platform, not across them
+
+The rock gate found something nobody had looked for, because nothing
+had ever compared two platforms' charts. Hashing the serialised chart
+passed on macOS and failed on Linux. Rounding note times to whole
+milliseconds fixed `circuit-breaker` and **not** `solder-groove` —
+so the divergence there is larger than a millisecond: a threshold
+comparison somewhere in generation resolves the other way, and a note
+is kept, dropped, or snapped to a different frame.
+
+The cause is not that the arithmetic is wrong. It is that a pipeline
+built on thresholds amplifies a last-bit difference into a discrete
+decision, and `ln`/`exp`/trigonometry are not required to agree to
+the last bit between platform libm implementations. Fixing it at the
+source means finding the comparison sitting on the knife edge —
+worth doing one day, out of scope here, and recorded so it is not
+rediscovered from scratch.
+
+What was done instead: the gate records a fingerprint per platform,
+and the README's claim was corrected from "bit-identical charts out"
+to what is actually true — reproducible per platform, every time; not
+across platforms.
+
 ## The rock gate, and its honest limit
 
 `apps/beatbyte/tests/rock_is_unchanged.rs` hashes both built-in
