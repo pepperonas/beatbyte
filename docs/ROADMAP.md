@@ -235,9 +235,9 @@ chart format v1 can be frozen as a promise.
   prompts (`ActiveDevice` + `DeviceHint`, every footer swaps wording
   live; pad players can finally leave the results screen); **phase 4**
   *(v0.12.32)* — reduced flashing, effect-intensity slider, UI-scale
-  multiplier, high contrast; the settings list scrolls. Open:
-  video-offset calibration (5), renderer-boundary ADR + 2D-path
-  prune (6).
+  multiplier, high contrast; the settings list scrolls; **phase 5**
+  *(v0.12.33)* — video offset (draw-only, judgment provably
+  unshifted). Open: renderer-boundary ADR + 2D-path prune (6).
 
 ### F — Release engineering to 1.0
 

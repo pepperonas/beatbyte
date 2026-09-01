@@ -21,6 +21,7 @@ pub(crate) enum Row {
     SfxVolume,
     ScrollSpeed,
     LatencyOffset,
+    VideoOffset,
     Particles,
     ScreenShake,
     BeatPulse,
@@ -37,11 +38,12 @@ pub(crate) enum Row {
 }
 
 impl Row {
-    const ALL: [Row; 17] = [
+    const ALL: [Row; 18] = [
         Row::MusicVolume,
         Row::SfxVolume,
         Row::ScrollSpeed,
         Row::LatencyOffset,
+        Row::VideoOffset,
         Row::Particles,
         Row::ScreenShake,
         Row::BeatPulse,
@@ -63,6 +65,7 @@ impl Row {
             Row::SfxVolume => "SFX VOLUME",
             Row::ScrollSpeed => "SCROLL SPEED",
             Row::LatencyOffset => "LATENCY OFFSET",
+            Row::VideoOffset => "VIDEO OFFSET",
             Row::Particles => "PARTICLES",
             Row::ScreenShake => "SCREEN SHAKE",
             Row::BeatPulse => "BEAT PULSE",
@@ -85,6 +88,7 @@ impl Row {
             Row::SfxVolume => format!("{:.0}%", settings.sfx_volume * 100.0),
             Row::ScrollSpeed => format!("{:.0} px/s", settings.scroll_speed),
             Row::LatencyOffset => format!("{:+.0} ms", settings.latency_offset_ms),
+            Row::VideoOffset => format!("{:+.0} ms", settings.video_offset_ms),
             Row::Particles => on_off(settings.particles),
             Row::ScreenShake => on_off(settings.screen_shake),
             Row::BeatPulse => on_off(settings.beat_pulse),
@@ -122,6 +126,10 @@ impl Row {
             Row::LatencyOffset => {
                 settings.latency_offset_ms =
                     (settings.latency_offset_ms + 5.0 * direction).clamp(-250.0, 250.0);
+            }
+            Row::VideoOffset => {
+                settings.video_offset_ms =
+                    (settings.video_offset_ms + 5.0 * direction).clamp(-100.0, 100.0);
             }
             Row::Particles => settings.particles = !settings.particles,
             Row::ScreenShake => settings.screen_shake = !settings.screen_shake,

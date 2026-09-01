@@ -14,6 +14,19 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.33] - 2026-09-01
+
+### Added
+
+- A VIDEO OFFSET beside the latency offset (phase 5): +-100 ms in
+  5 ms steps, shifting where notes, fret bars, phrase bands and
+  sustains are DRAWN - never when they judge. The renderers read a
+  new `visual_time` (the judgment clock plus the offset); judgment,
+  autopilot and the score keep reading the unshifted clock, which an
+  autopilot run at +100 ms proves: the score stays perfect while the
+  notes draw late. The calibration screen now says what it measures
+  (the input offset) and where the video nudge lives.
+
 ## [0.12.32] - 2026-09-01
 
 ### Added

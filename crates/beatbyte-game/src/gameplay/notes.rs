@@ -245,7 +245,7 @@ pub fn spawn_due_notes(
         // spawn cursor, which is why this must not also advance it.
         return;
     }
-    let Some(now) = game_clock.song_time(&time) else {
+    let Some(now) = game_clock.visual_time(&time, &settings) else {
         return;
     };
     for (index, mut player) in &mut players {
@@ -406,7 +406,7 @@ pub fn move_notes(
     time: Res<Time>,
     settings: Res<Settings>,
 ) {
-    let Some(now) = game_clock.song_time(&time) else {
+    let Some(now) = game_clock.visual_time(&time, &settings) else {
         return;
     };
     // The track is identical across players; take any session's view.
@@ -543,7 +543,7 @@ pub fn move_fret_lines(
     time: Res<Time>,
     settings: Res<Settings>,
 ) {
-    let Some(now) = game_clock.song_time(&time) else {
+    let Some(now) = game_clock.visual_time(&time, &settings) else {
         return;
     };
     for (line, mut transform, mut sprite) in &mut lines {
@@ -577,7 +577,7 @@ pub fn animate_sustains(
     mut notes: Query<(&NoteSprite, &mut Transform, &mut Sprite, &Children)>,
     mut tails: Query<(&SustainTail, &mut Transform, &mut Sprite), Without<NoteSprite>>,
 ) {
-    let Some(now) = game_clock.song_time(&time) else {
+    let Some(now) = game_clock.visual_time(&time, &settings) else {
         return;
     };
     let perspective = settings.perspective;

@@ -105,7 +105,12 @@ fn start_calibration(
     commands
         .spawn((CalibrationScreen, ui_kit::screen_root()))
         .with_children(|parent| {
-            ui_kit::header(parent, &font, "CALIBRATION", "tap SPACE on every click");
+            ui_kit::header(
+                parent,
+                &font,
+                "CALIBRATION",
+                "tap SPACE on every click - measures your INPUT offset; the VIDEO offset is a manual nudge in settings",
+            );
             parent
                 .spawn(ui_kit::panel_centered())
                 .with_children(|panel| {

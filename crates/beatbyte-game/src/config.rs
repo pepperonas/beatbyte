@@ -24,6 +24,12 @@ pub struct Settings {
     /// player's inputs arrive late (typical audio latency); the offset
     /// is subtracted from input timestamps.
     pub latency_offset_ms: f32,
+    /// Video offset in milliseconds: shifts where notes are DRAWN,
+    /// never when they judge. Positive draws notes later (for a
+    /// display that lags the audio). Purely presentational — the
+    /// judgment clock never reads it.
+    #[serde(default)]
+    pub video_offset_ms: f32,
     /// Note scroll speed in pixels per second.
     pub scroll_speed: f32,
     /// Particle effects.
@@ -90,6 +96,7 @@ impl Default for Settings {
             music_volume: 0.8,
             sfx_volume: 0.45,
             latency_offset_ms: 0.0,
+            video_offset_ms: 0.0,
             scroll_speed: 420.0,
             particles: true,
             screen_shake: true,
@@ -119,6 +126,12 @@ impl Settings {
         f64::from(self.latency_offset_ms) / 1000.0
     }
 
+    /// The video offset in seconds (drawing only, never judgment).
+    #[must_use]
+    pub fn video_offset_s(&self) -> f64 {
+        f64::from(self.video_offset_ms) / 1000.0
+    }
+
     /// Clamp all values into their valid ranges (files are input too).
     pub fn sanitize(&mut self) {
         // The flat view was removed; a settings file that still
@@ -133,6 +146,7 @@ impl Settings {
         self.music_volume = clean(self.music_volume, 0.0, 1.0, 0.8);
         self.sfx_volume = clean(self.sfx_volume, 0.0, 1.0, 0.45);
         self.latency_offset_ms = clean(self.latency_offset_ms, -250.0, 250.0, 0.0);
+        self.video_offset_ms = clean(self.video_offset_ms, -100.0, 100.0, 0.0);
         self.scroll_speed = clean(self.scroll_speed, 240.0, 900.0, 420.0);
         self.fx_intensity = clean(self.fx_intensity, 0.0, 1.0, 1.0);
         self.ui_scale = clean(self.ui_scale, 0.75, 1.5, 1.0);
@@ -309,6 +323,24 @@ mod tests {
         assert_eq!(back.round_gems, settings.round_gems);
         assert_eq!(back.perspective, settings.perspective);
         assert!((back.latency_offset_ms - 23.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn the_video_offset_converts_and_clamps() {
+        let mut s = Settings {
+            video_offset_ms: 40.0,
+            ..Default::default()
+        };
+        assert!((s.video_offset_s() - 0.040).abs() < 1e-9);
+        s.video_offset_ms = 4000.0;
+        s.sanitize();
+        assert!((s.video_offset_ms - 100.0).abs() < f32::EPSILON, "clamped");
+        s.video_offset_ms = f32::NAN;
+        s.sanitize();
+        assert!(
+            (s.video_offset_ms - 0.0).abs() < f32::EPSILON,
+            "NaN falls back"
+        );
     }
 
     #[test]

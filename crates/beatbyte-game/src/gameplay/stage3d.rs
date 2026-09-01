@@ -571,7 +571,7 @@ pub fn move_phrase_bands(
     if !active(&settings) {
         return;
     }
-    let Some(now) = game_clock.song_time(&time) else {
+    let Some(now) = game_clock.visual_time(&time, &settings) else {
         return;
     };
     for (band, mut transform, mut visibility) in &mut bands {
@@ -2280,7 +2280,7 @@ pub fn move_fret_bars(
     if !active(&settings) {
         return;
     }
-    let Some(now) = game_clock.song_time(&time) else {
+    let Some(now) = game_clock.visual_time(&time, &settings) else {
         return;
     };
     for (bar, mut transform, material, mut visibility) in &mut bars {
@@ -2473,7 +2473,7 @@ pub fn spawn_due_notes(
     if !active(&settings) {
         return;
     }
-    let (Some(now), Some(assets)) = (game_clock.song_time(&time), assets) else {
+    let (Some(now), Some(assets)) = (game_clock.visual_time(&time, &settings), assets) else {
         return;
     };
     for (index, mut player) in &mut players {
@@ -2594,7 +2594,7 @@ pub fn move_notes(
     if !active(&settings) {
         return;
     }
-    let Some(now) = game_clock.song_time(&time) else {
+    let Some(now) = game_clock.visual_time(&time, &settings) else {
         return;
     };
     let Some((_, reference)) = players.iter().next() else {
@@ -2659,7 +2659,7 @@ pub fn consume_sustains(
     if !active(&settings) {
         return;
     }
-    let (Some(now), Some(assets)) = (game_clock.song_time(&time), assets) else {
+    let (Some(now), Some(assets)) = (game_clock.visual_time(&time, &settings), assets) else {
         return;
     };
     for (entity, note, mut transform, material) in &mut tails {

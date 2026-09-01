@@ -30,6 +30,16 @@ impl GameClock {
     pub fn song_time(&self, time: &Time) -> Option<f64> {
         self.clock.song_time(time.elapsed_secs_f64())
     }
+
+    /// The song time VISUALS draw at: [`GameClock::song_time`] plus
+    /// the player's video offset. Judgment, autopilot and the score
+    /// never read this — the offset shifts where notes are DRAWN,
+    /// never when they count.
+    #[must_use]
+    pub fn visual_time(&self, time: &Time, settings: &crate::config::Settings) -> Option<f64> {
+        self.song_time(time)
+            .map(|now| now + settings.video_offset_s())
+    }
 }
 
 /// Plugin: owns the music thread handle and keeps the clock honest.

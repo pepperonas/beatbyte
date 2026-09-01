@@ -82,11 +82,14 @@ Phased; each phase lands as its own gated, versioned commit.
    high contrast (ui_kit row styles + HUD text step up), and a visual
    effect intensity slider scaling particle counts/glow. All through
    `Settings` → one consumer each, no scattered conditionals.
-5. **Calibration split** — add a *video offset* (shifts where notes
-   are DRAWN, never when they judge) beside the existing input/audio
-   offset; extend the calibration flow to measure both. The spec's
-   rule is already law here: gameplay timing never compensates for
-   visuals.
+5. **Calibration split** *(shipped v0.12.33)* — a VIDEO OFFSET
+   beside the input offset, shifting only where notes are drawn
+   (`GameClock::visual_time`); judgment provably unshifted (an
+   autopilot run at +100 ms stays perfect). Deliberately a manual
+   nudge, not a measured flow: without photometric hardware any
+   "video calibration" is eyeballing, and the settings row IS that,
+   honestly labeled. The tap flow keeps measuring the input offset
+   and its screen now says so.
 6. **Renderer boundary** — ADR documenting the 8-bit style as data
    behind the style boundary; prune the dormant 2D highway path
    (already filed on the roadmap).
