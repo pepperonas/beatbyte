@@ -217,7 +217,12 @@ fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
                         });
                 }
             });
-            ui_kit::footer(parent, &font, "UP/DOWN choose  LEFT/RIGHT adjust  ESC back");
+            crate::prompts::device_footer(
+                parent,
+                &font,
+                "UP/DOWN choose  LEFT/RIGHT adjust  ESC back",
+                "D-PAD choose and adjust  EAST back",
+            );
         });
 }
 

@@ -159,7 +159,7 @@ fn spawn_screen(mut commands: Commands, font: Res<UiFont>, mut timers: ResMut<Fl
                 font.text(ui_kit::TITLE),
                 TextColor(Color::NONE),
             ));
-            ui_kit::footer(parent, &font, "T toggle tap  ESC / pad START back");
+            crate::prompts::device_footer(parent, &font, "T toggle tap  ESC back", "START back");
         });
 }
 

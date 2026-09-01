@@ -401,6 +401,7 @@ fn refresh_controls(
     mut labels: Query<(&ActionLabel, &mut TextColor), Without<ActionBindings>>,
     mut bindings: Query<(&ActionBindings, &mut Text, &mut TextColor), Without<ActionLabel>>,
     mut hint: Query<&mut Text, (With<HintLine>, Without<ActionBindings>)>,
+    active: Res<crate::prompts::ActiveDevice>,
 ) {
     let style_of = |index: usize| {
         ui_kit::row_style(ui_kit::state_for(
@@ -429,13 +430,19 @@ fn refresh_controls(
         color.0 = style_of(row.0).value;
     }
     if let Ok(mut text) = hint.single_mut() {
+        let idle = match *active {
+            crate::prompts::ActiveDevice::Keyboard => {
+                "UP/DOWN choose  ENTER rebind  BACKSPACE reset  ESC back"
+            }
+            crate::prompts::ActiveDevice::Gamepad => "D-PAD choose  SOUTH rebind  EAST back",
+        };
         let line = match (&state.pending, state.capturing) {
             (Some((binding, owner)), true) => format!(
                 "{} is {owner} - press it again to move it  ESC keep it",
                 binding.label()
             ),
             (None, true) => "press the new key or button  ESC cancel".to_owned(),
-            _ => "UP/DOWN choose  ENTER rebind  BACKSPACE reset  ESC back".to_owned(),
+            _ => idle.to_owned(),
         };
         if text.0 != line {
             text.0 = line;

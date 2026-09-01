@@ -748,7 +748,11 @@ fn spawn_pause_overlay(
                 }
             });
             parent.spawn((
-                Text::new("UP/DOWN choose  LEFT/RIGHT adjust  ESC resume  Q quit"),
+                crate::prompts::DeviceHint {
+                    keyboard: "UP/DOWN choose  LEFT/RIGHT adjust  ESC resume  Q quit".to_owned(),
+                    pad: "D-PAD choose and adjust  START resume".to_owned(),
+                },
+                Text::new(String::new()),
                 font.text(crate::ui_kit::ROW),
                 TextColor(palette::TEXT_DIM),
             ));

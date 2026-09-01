@@ -118,10 +118,11 @@ fn spawn_menu(mut commands: Commands, font: Res<UiFont>) {
                         });
                 }
             });
-            ui_kit::footer(
+            crate::prompts::device_footer(
                 parent,
                 &font,
                 "UP/DOWN choose  ENTER confirm  ESC quit  MOUSE works too",
+                "D-PAD choose  SOUTH confirm",
             );
         });
 }

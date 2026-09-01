@@ -231,7 +231,9 @@ chart format v1 can be frozen as a promise.
   the browser search, conflict confirmation on rebind, scrolling
   controls list); **phase 2** *(v0.12.30)* — `UiSound` event system
   (Navigate/Confirm/Back/Error/Toggle/Slider, two new voices, every
-  device sounds alike). Open: contextual device prompts (phase 3),
+  device sounds alike); **phase 3** *(v0.12.31)* — device-aware
+  prompts (`ActiveDevice` + `DeviceHint`, every footer swaps wording
+  live; pad players can finally leave the results screen). Open:
   accessibility completion (4), video-offset calibration (5),
   renderer-boundary ADR + 2D-path prune (6).
 

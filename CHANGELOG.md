@@ -14,6 +14,28 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.31] - 2026-09-01
+
+### Added
+
+- Prompts speak the player's device (phase 3): the game tracks which
+  device produced the last real input, and every footer and hint
+  line swaps its wording to match - a pad player reads "D-PAD choose
+  SOUTH confirm" and never "press ENTER", a keyboard player the
+  reverse, and a shared frame goes to the pad (fretting with a palm
+  on the keyboard is guitar play). The mouse counts as
+  keyboard-family. Where a device honestly cannot do something the
+  prompt says only what it can: the pad line on the results screen
+  offers just "SOUTH back to browser" (ratings are keyboard digits),
+  and the menu's pad line offers no quit (Escape is deliberately not
+  on a pad button).
+
+### Fixed
+
+- A gamepad player could not leave the results screen at all - it
+  listened only to Enter, Escape and the mouse. Confirm or back on
+  any device now returns to the browser.
+
 ## [0.12.30] - 2026-09-01
 
 ### Added

@@ -501,10 +501,11 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
                     ..default()
                 },
             ));
-            ui_kit::footer(
+            crate::prompts::device_footer(
                 parent,
                 font,
                 "UP/DOWN song  LEFT/RIGHT difficulty  S sort  F search  ENTER rock  E edit  DEL delete  ESC back",
+                "D-PAD song and difficulty  SOUTH rock  EAST back",
             );
         });
 }

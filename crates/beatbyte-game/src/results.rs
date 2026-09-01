@@ -69,6 +69,13 @@ fn results_footer(can_rate: bool, can_versus: bool) -> String {
     parts.join("  ")
 }
 
+/// The pad wording of the same footer. Ratings stay keyboard-only
+/// (digits), so the pad line honestly offers only what the pad can
+/// do here.
+fn results_footer_pad() -> String {
+    "SOUTH back to browser".to_owned()
+}
+
 /// Mean drift below which the run counts as on time (ms) — inside
 /// it an EARLY/LATE claim would be noise.
 const ON_TIME_MS: f64 = 3.0;
@@ -192,7 +199,12 @@ fn spawn_results(
                 font.text(ui_kit::SMALL),
                 TextColor(palette::TEXT_DIM),
             ));
-            ui_kit::footer(parent, &font, &results_footer(can_rate, can_versus));
+            crate::prompts::device_footer(
+                parent,
+                &font,
+                &results_footer(can_rate, can_versus),
+                &results_footer_pad(),
+            );
         });
 }
 
@@ -562,6 +574,8 @@ fn count_up_score(time: Res<Time>, mut scores: Query<(&mut ScoreCountUp, &mut Te
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn results_input(
     keys: Res<ButtonInput<KeyCode>>,
+    map: Res<crate::controls::InputMap>,
+    pads: Query<&bevy::input::gamepad::Gamepad>,
     mouse: Res<ButtonInput<MouseButton>>,
     logs: Option<Res<crate::telemetry::SessionLogFiles>>,
     song: Option<Res<crate::boot::LoadedSong>>,
@@ -613,8 +627,11 @@ fn results_input(
             sounds.write(crate::sfx::UiSound::Navigate);
         }
     }
-    if keys.just_pressed(KeyCode::Enter)
-        || keys.just_pressed(KeyCode::Escape)
+    // Confirm or back on ANY device leaves - a pad player was stuck
+    // on this screen until phase 3 of the input commission.
+    let nav = crate::controls::MenuNav::read(&map, &keys, pads.iter());
+    if nav.confirm
+        || nav.back
         || mouse.just_pressed(MouseButton::Left)
         || mouse.just_pressed(MouseButton::Right)
     {

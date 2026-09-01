@@ -152,7 +152,12 @@ fn spawn_join_screen(mut commands: Commands, font: Res<UiFont>, mut roster: ResM
                     ..default()
                 },
             ));
-            ui_kit::footer(parent, &font, "LEFT/RIGHT mode  ENTER continue  ESC back");
+            crate::prompts::device_footer(
+                parent,
+                &font,
+                "A join  LEFT/RIGHT mode  ENTER continue  ESC back",
+                "SOUTH join or continue  D-PAD mode  EAST back",
+            );
         });
 }
 

@@ -20,6 +20,7 @@ pub mod menu;
 pub mod multiplayer;
 pub mod mute;
 pub mod palette;
+pub mod prompts;
 pub mod results;
 pub mod scores;
 pub mod settings_ui;
@@ -196,6 +197,7 @@ pub fn run() -> AppExit {
         theme::ThemePlugin,
         gameplay::GameplayPlugin,
         results::ResultsPlugin,
+        prompts::PromptsPlugin,
         sfx::SfxPlugin,
         telemetry::TelemetryPlugin,
         transition::TransitionPlugin,
