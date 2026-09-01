@@ -14,6 +14,29 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.2] - 2026-09-01
+
+### Added
+
+- An ABOUT entry in the main menu: who made this (Martin Pfeffer -
+  celox.io - 2026), the MIT license, and rows that open the GitHub
+  repository, the website, the Google-Maps review page, a PayPal
+  donation and a contact mail in the system's own browser/mail
+  client. Below them a collapsible CHANGELOG section (closed by
+  default) lists every release of the game, newest first, with the
+  highlighted version's changes as a detail line - fed by parsing
+  the repository's own CHANGELOG.md at build time, so the next
+  release appears there without anyone touching the screen (a test
+  pins that the newest entry IS this build's version). Screens with
+  more rows than fit scroll with the usual whole-row window;
+  `BEATBYTE_SHOT_STATE=about` photographs the screen and
+  `BEATBYTE_ABOUT_EXPANDED=1` pre-expands the changelog for it.
+
+### Fixed
+
+- The harness reference listed `BEATBYTE_SHOT_SEARCH` twice; the
+  switch-count badge had been counting the duplicate.
+
 ## [0.13.1] - 2026-09-01
 
 ### Added

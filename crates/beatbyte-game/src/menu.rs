@@ -22,17 +22,20 @@ pub enum MenuAction {
     Calibration,
     /// Free-play tester for keyboard and guitar input.
     InputTest,
+    /// Credits, license, links and the changelog.
+    About,
     /// Quit the game.
     Quit,
 }
 
 impl MenuAction {
-    const ALL: [MenuAction; 6] = [
+    const ALL: [MenuAction; 7] = [
         MenuAction::Play,
         MenuAction::Multiplayer,
         MenuAction::Settings,
         MenuAction::Calibration,
         MenuAction::InputTest,
+        MenuAction::About,
         MenuAction::Quit,
     ];
 
@@ -43,6 +46,7 @@ impl MenuAction {
             MenuAction::Settings => "SETTINGS",
             MenuAction::Calibration => "CALIBRATION",
             MenuAction::InputTest => "INPUT TEST",
+            MenuAction::About => "ABOUT",
             MenuAction::Quit => "QUIT",
         }
     }
@@ -180,6 +184,7 @@ pub(crate) fn menu_input(
             MenuAction::Settings => next_state.set(AppState::Settings),
             MenuAction::Calibration => next_state.set(AppState::Calibration),
             MenuAction::InputTest => next_state.set(AppState::InputTest),
+            MenuAction::About => next_state.set(AppState::About),
             MenuAction::Quit => {
                 app_exit.write(AppExit::Success);
             }

@@ -96,7 +96,7 @@ BEATBYTE_AUTOPILOT=1 BEATBYTE_AUTOPILOT_PLAYERS=2   # multiplayer variant
 BEATBYTE_AUTOPILOT=1 BEATBYTE_AUTOPILOT_SONG=<sel>  # index or title substring
 BEATBYTE_AUTOPILOT=1 BEATBYTE_AUTOPILOT_EDIT=1  # editor add/undo/redo/save cycle
 BEATBYTE_SHOT_DIR=<dir>                          # + screenshots along the way
-BEATBYTE_SHOT_STATE=settings|controls|calibration|inputtest|menu|songselect|join
+BEATBYTE_SHOT_STATE=settings|controls|calibration|inputtest|menu|songselect|join|about
                                                 # boot into one screen, shoot it, quit
 ```
 

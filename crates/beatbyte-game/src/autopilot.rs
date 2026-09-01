@@ -215,6 +215,7 @@ pub fn shot_state(raw: &str) -> Option<AppState> {
         "calibration" => Some(AppState::Calibration),
         "inputtest" => Some(AppState::InputTest),
         "join" | "multiplayer" | "multiplayersetup" => Some(AppState::MultiplayerSetup),
+        "about" => Some(AppState::About),
         _ => None,
     }
 }
@@ -363,6 +364,7 @@ fn autopilot_screenshots(
         AppState::Controls => Some("controls"),
         AppState::Calibration => Some("calibration"),
         AppState::InputTest => Some("inputtest"),
+        AppState::About => Some("about"),
         _ => None,
     };
     if let Some(name) = moment

@@ -26,6 +26,8 @@ pub enum AppState {
     InputTest,
     /// The latency calibration screen.
     Calibration,
+    /// About: credits, license, links, the changelog.
+    About,
     /// The chart editor.
     Editor,
     /// Playing a song.

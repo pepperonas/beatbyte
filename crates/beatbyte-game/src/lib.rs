@@ -4,6 +4,7 @@
 //! rendering, UI, effects and state management. Gameplay *rules* live
 //! in [`beatbyte_core`]; this crate turns them into pixels and sound.
 
+pub mod about;
 pub mod audio_sys;
 pub mod autopilot;
 pub mod boot;
@@ -190,6 +191,7 @@ pub fn run() -> AppExit {
         song_select::SongSelectPlugin,
     ))
     .add_plugins((
+        about::AboutPlugin,
         settings_ui::SettingsUiPlugin,
         controls_ui::ControlsUiPlugin,
         calibration::CalibrationPlugin,
