@@ -241,6 +241,15 @@ chart format v1 can be frozen as a promise.
   boundary (8-bit = data through one renderer). The commission's
   phases are complete; the 2D-path prune stays its own filed task.
 
+- [ ] G38 **Room Stage — the venue leaves the screen** *(vision doc:
+  `docs/room-stage.md`, commissioned 2026-09-01)*. Optional, off by
+  default: BeatByte's ground-truth events (hits, judgment, sustains,
+  Hype, tempo) drive real room lighting over tiny LAN HTTP posts —
+  reference rig: the lichtwerk WS2812 strip contract (needs no
+  changes) and a disco-controller "external beat source" mode for
+  Hue. Eight wiring TODOs filed in the doc; presentation-only
+  (autopilot must score identically with the bridge on and off).
+
 ### F — Release engineering to 1.0
 
 - [x] F0 **v0.9.0 — content, accessibility, editor v2.** Amendment (2026-08-24): every unblocked B/C/D/E task landed while the A tasks wait on human playtesting — that body of work (second song, song-selector harness, import guide + scan fix, format truth, forward-compat pins, Linux/Windows CI smokes, Stage Motion, colorblind lane shapes, HOPO visibility, editor move/bulk/audition, harness integrity) ships now instead of idling behind A2. *SHIPPED 2026-08-24: all 7 assets auto-attached via the recursive glob; aarch64 tarball smoke + flawless artifact autopilot from neutral CWD + DMG .app smoke; two release-run attempts (spurious hdiutil ENOSPC → retry mitigation).*
