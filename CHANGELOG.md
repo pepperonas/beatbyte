@@ -14,6 +14,18 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.34] - 2026-09-01
+
+### Added
+
+- ADR-0012 records the renderer boundary (phase 6, closing the
+  UX/input commission): the 8-bit look is DATA through the one
+  renderer - per-style textures, a per-style particle sprite and the
+  per-style camera contract in `sync_bloom` - never a forked code
+  path, and gameplay/input/UI carry no note-style conditionals. The
+  dormant flat-2D highway path stays a filed pruning task, distinct
+  from the 8-bit style, which is alive and default.
+
 ## [0.12.33] - 2026-09-01
 
 ### Added

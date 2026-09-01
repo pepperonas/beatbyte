@@ -224,7 +224,7 @@ chart format v1 can be frozen as a promise.
 
 - [x] G36 **The HUD plates become instruments** *(v0.12.28)*. Second HUD pass on commission ("optimiere das hud nochmal deutlich mehr"): corner plates re-skinned as brushed dark metal (top-edge light catch, corner rivets, vignette — `plate_shading`, pinned), the score digits in a recessed scanline well (`well_shading`, pinned), the gauge band gains a sweep gradient with a brighter READY zone past the activation tick, the needle a counterweight tail past the hub (custom sprite anchor). Motion, all transforms + sprite tints: multiplier pops on every change, the next streak bulb carries a faint ember, the gauge breathes toward the Hype tone when it can fire (`ready_glow`, pinned + mutation-checked) and blazes white-hot while Hype runs. *Verified: engine shots in the user's settings (plates/rivets/gradient/counterweight/blaze all visible in late + hype moments), 192 game-crate tests, all new pins seen failing under mutation, pause drill + full gate green.*
 
-- [ ] G37 **UX/input/menu system programme** *(commissioned 2026-09-01;
+- [x] G37 **UX/input/menu system programme** *(commissioned 2026-09-01;
   inventory + phases in `docs/ui/input-ux-plan.md`)*. Shipped:
   **phase 1** *(v0.12.29)* — remappable `UiAction` navigation table
   (WASD + Space + Tab, Enter/Escape hard fallbacks, typing mode for
@@ -237,7 +237,9 @@ chart format v1 can be frozen as a promise.
   *(v0.12.32)* — reduced flashing, effect-intensity slider, UI-scale
   multiplier, high contrast; the settings list scrolls; **phase 5**
   *(v0.12.33)* — video offset (draw-only, judgment provably
-  unshifted). Open: renderer-boundary ADR + 2D-path prune (6).
+  unshifted); **phase 6** *(v0.12.34)* — ADR-0012 records the style
+  boundary (8-bit = data through one renderer). The commission's
+  phases are complete; the 2D-path prune stays its own filed task.
 
 ### F — Release engineering to 1.0
 

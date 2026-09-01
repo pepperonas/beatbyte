@@ -90,9 +90,11 @@ Phased; each phase lands as its own gated, versioned commit.
    "video calibration" is eyeballing, and the settings row IS that,
    honestly labeled. The tap flow keeps measuring the input offset
    and its screen now says so.
-6. **Renderer boundary** — ADR documenting the 8-bit style as data
-   behind the style boundary; prune the dormant 2D highway path
-   (already filed on the roadmap).
+6. **Renderer boundary** *(shipped v0.12.34)* — ADR-0012 documents
+   the 8-bit style as data behind the style boundary (one renderer,
+   three data touch points, no style conditionals in gameplay/
+   input/UI). The dormant 2D highway path stays a filed roadmap
+   task, deliberately separate from the style boundary.
 
 ## Deliberate deviations
 
