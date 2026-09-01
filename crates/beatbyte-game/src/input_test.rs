@@ -168,6 +168,7 @@ fn spawn_screen(mut commands: Commands, font: Res<UiFont>, mut timers: ResMut<Fl
 #[allow(clippy::too_many_arguments, clippy::type_complexity)] // Bevy system: params are DI
 fn run_tester(
     keys: Res<ButtonInput<KeyCode>>,
+    mut sounds: MessageWriter<crate::sfx::UiSound>,
     pads: Query<(&Name, &Gamepad)>,
     map: Res<InputMap>,
     mut settings: ResMut<Settings>,
@@ -203,6 +204,7 @@ fn run_tester(
     }
     if keys.just_pressed(KeyCode::KeyT) {
         settings.tap_mode = !settings.tap_mode;
+        sounds.write(crate::sfx::UiSound::Toggle);
     }
     if let Ok(mut text) = texts.p1().single_mut() {
         let wanted = if settings.tap_mode {
@@ -277,6 +279,7 @@ fn run_tester(
         .iter()
         .any(|(_, pad)| pad.just_pressed(GamepadButton::Start));
     if keys.just_pressed(KeyCode::Escape) || pad_start || mouse.just_pressed(MouseButton::Right) {
+        sounds.write(crate::sfx::UiSound::Back);
         crate::config::save_settings(&settings);
         next_state.set(AppState::MainMenu);
     }

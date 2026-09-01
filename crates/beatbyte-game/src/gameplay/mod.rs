@@ -762,6 +762,7 @@ fn spawn_pause_overlay(
 fn pause_menu_input(
     mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
+    map: Res<crate::controls::InputMap>,
     pads: Query<&bevy::input::gamepad::Gamepad>,
     mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
     rows: Query<(&PauseRow, &Interaction), Changed<Interaction>>,
@@ -773,7 +774,7 @@ fn pause_menu_input(
     time: Res<Time>,
     sfx: Res<crate::sfx::SfxLib>,
 ) {
-    let nav = crate::controls::MenuNav::read(&keys, pads.iter());
+    let nav = crate::controls::MenuNav::read(&map, &keys, pads.iter());
     let count = PAUSE_ROWS.len();
     let mut moved = false;
     if nav.up {

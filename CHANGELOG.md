@@ -14,6 +14,44 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.30] - 2026-09-01
+
+### Added
+
+- UI feedback became a sound EVENT system (phase 2 of the UX/input
+  commission): screens emit what happened - Navigate, Confirm, Back,
+  Error, Toggle, Slider - and one player system turns it into audio,
+  so gamepad and mouse interaction sounds exactly like the keyboard
+  (the old system listened to four raw arrow keys and Enter, and
+  covered four screens). Two new procedural voices join the library:
+  backing out plays the confirm pair falling instead of rising, and
+  a refusal - a rebind conflict - gets a low, deliberately unmusical
+  buzz. Toggles click, stepped values tick, the browser's difficulty
+  stepper ticks, sorting clicks, and the results, calibration,
+  input-test and controls screens speak on entry, exit and capture.
+  No widget owns an audio asset; everything stays synthesized at
+  startup.
+
+## [0.12.29] - 2026-09-01
+
+### Added
+
+- Menu navigation became a logical, remappable input layer (first
+  phase of the UX/input commission; plan in
+  docs/ui/input-ux-plan.md). A `UiAction` bindings table (menu
+  up/down/left/right, confirm, back) joins the game actions in the
+  input map: WASD navigates and Space confirms out of the box,
+  Tab/Shift+Tab cycle rows, and every menu screen reads the table
+  instead of hard-coded keys. Enter and Escape stay hard-wired
+  fallbacks so no rebinding can strand you in a menu, and while the
+  browser search is typing, letter/space bindings type instead of
+  navigating. The controls screen lists the menu actions as
+  MENU-prefixed rows in a list that now scrolls with a whole-row
+  window (fifteen rows had outgrown the screen), and rebinding no
+  longer steals a conflicting binding silently: the row names the
+  current owner and asks for the same press again to confirm the
+  move. Settings files from before the table existed load unchanged.
+
 ## [0.12.28] - 2026-09-01
 
 ### Changed

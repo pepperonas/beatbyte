@@ -158,10 +158,12 @@ fn spawn_join_screen(mut commands: Commands, font: Res<UiFont>, mut roster: ResM
 
 fn join_input(
     keys: Res<ButtonInput<KeyCode>>,
+    map: Res<crate::controls::InputMap>,
     pads: Query<(Entity, &Gamepad)>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut roster: ResMut<PlayerRoster>,
     mut next_state: ResMut<NextState<AppState>>,
+    mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
     // Join: keyboard via the first fret key, pads via South.
     if keys.just_pressed(KeyCode::KeyA)
@@ -179,17 +181,20 @@ fn join_input(
         }
     }
 
-    let nav = MenuNav::read(&keys, pads.iter().map(|(_, pad)| pad));
+    let nav = MenuNav::read(&map, &keys, pads.iter().map(|(_, pad)| pad));
     if nav.left || nav.right {
         roster.mode = match roster.mode {
             MultiplayerMode::Versus => MultiplayerMode::Coop,
             MultiplayerMode::Coop => MultiplayerMode::Versus,
         };
+        sounds.write(crate::sfx::UiSound::Toggle);
     }
     if nav.confirm && !roster.devices.is_empty() {
+        sounds.write(crate::sfx::UiSound::Confirm);
         next_state.set(AppState::SongSelect);
     }
     if nav.back || mouse.just_pressed(MouseButton::Right) {
+        sounds.write(crate::sfx::UiSound::Back);
         next_state.set(AppState::MainMenu);
     }
 }

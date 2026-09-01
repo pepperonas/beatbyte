@@ -515,13 +515,12 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
 /// Esc that closes the search is not also read as "back to menu" -
 /// `browser_input` still sees the searching flag of this frame.
 fn search_sort_input(
-    mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
     mut typed: MessageReader<bevy::input::keyboard::KeyboardInput>,
     mut view: ResMut<BrowserView>,
     headers: Query<(&SortHeader, &Interaction), Changed<Interaction>>,
     mut settings: ResMut<crate::config::Settings>,
-    sfx: Res<crate::sfx::SfxLib>,
+    mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
     if view.searching {
         // Printable keys EDIT THE FILTER - every letter shortcut is
@@ -572,7 +571,7 @@ fn search_sort_input(
     }
     if open_search {
         view.searching = true;
-        crate::sfx::play(&mut commands, &sfx.ui_move, settings.sfx_volume);
+        sounds.write(crate::sfx::UiSound::Confirm);
     }
     let mut sorted = false;
     if keys.just_pressed(KeyCode::KeyS) {
@@ -596,16 +595,26 @@ fn search_sort_input(
     // also sees this system's own filter edits, and a blip per typed
     // letter is noise, not feedback.
     if sorted {
-        crate::sfx::play(&mut commands, &sfx.ui_move, settings.sfx_volume);
+        sounds.write(crate::sfx::UiSound::Toggle);
         settings.browser_sort = view.sort.label().to_lowercase();
         settings.browser_sort_reversed = view.flipped;
     }
+}
+
+/// The browser's pointer inputs, bundled: `browser_input` sits at
+/// Bevy's parameter cap, and these three always travel together.
+#[derive(bevy::ecs::system::SystemParam)]
+struct PointerInput<'w, 's> {
+    mouse: Res<'w, ButtonInput<MouseButton>>,
+    wheel: MessageReader<'w, 's, bevy::input::mouse::MouseWheel>,
+    moved: MessageReader<'w, 's, bevy::window::CursorMoved>,
 }
 
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn browser_input(
     mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
+    map: Res<crate::controls::InputMap>,
     view: Res<BrowserView>,
     pads: Query<&Gamepad>,
     mut library: ResMut<SongLibrary>,
@@ -613,20 +622,24 @@ fn browser_input(
     mut selected: ResMut<SelectedDifficulty>,
     builtins: Res<BuiltinSongs>,
     mut next_state: ResMut<NextState<AppState>>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
-    mut moved: MessageReader<bevy::window::CursorMoved>,
+    mut pointer_in: PointerInput,
     rows: Query<(&SongRow, &Interaction), Changed<Interaction>>,
     time: Res<Time>,
     mut status: ResMut<crate::import::ImportStatus>,
     mut delete_armed: Local<(Option<usize>, f32)>,
+    mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
-    let nav = MenuNav::read(&keys, pads.iter());
+    let nav = if view.searching {
+        MenuNav::read_typing(&map, &keys, pads.iter())
+    } else {
+        MenuNav::read(&map, &keys, pads.iter())
+    };
     let searching = view.searching;
-    let back = (!searching && nav.back) || mouse.just_pressed(MouseButton::Right);
+    let back = (!searching && nav.back) || pointer_in.mouse.just_pressed(MouseButton::Right);
     let count = view.order.len();
     if count == 0 {
         if back {
+            sounds.write(crate::sfx::UiSound::Back);
             next_state.set(AppState::MainMenu);
         }
         return;
@@ -637,13 +650,19 @@ fn browser_input(
     if nav.down {
         cursor.0 = (cursor.0 + 1) % count;
     }
+    if nav.up || nav.down {
+        sounds.write(crate::sfx::UiSound::Navigate);
+    }
     // Mouse: wheel scrolls the list; clicking a row selects it, and
     // clicking the already-selected row starts it.
-    for event in wheel.read() {
+    for event in pointer_in.wheel.read() {
         if event.y > 0.0 {
             cursor.0 = (cursor.0 + count - 1) % count;
         } else if event.y < 0.0 {
             cursor.0 = (cursor.0 + 1) % count;
+        }
+        if event.y != 0.0 {
+            sounds.write(crate::sfx::UiSound::Navigate);
         }
     }
     // Hover selects, click starts — the same rule as every other
@@ -655,7 +674,7 @@ fn browser_input(
     // typed letter could yank the selection to wherever the mouse
     // happened to lie. A click is always deliberate and always
     // counts.
-    let mouse_moved = moved.read().next().is_some();
+    let mouse_moved = pointer_in.moved.read().next().is_some();
     if let Some(index) = pointer.hovered
         && (mouse_moved || pointer.clicked)
     {
@@ -678,6 +697,9 @@ fn browser_input(
         selected.0 = first;
     }
     let position = offered.iter().position(|d| *d == selected.0).unwrap_or(0);
+    if (nav.left && position > 0) || (nav.right && position + 1 < offered.len()) {
+        sounds.write(crate::sfx::UiSound::Slider);
+    }
     if nav.left && position > 0 {
         selected.0 = offered[position - 1];
     }
@@ -686,6 +708,7 @@ fn browser_input(
     }
 
     if nav.confirm || clicked_selected {
+        sounds.write(crate::sfx::UiSound::Confirm);
         match prepare_song(entry, &builtins) {
             Ok(song) => {
                 commands.insert_resource(song);
@@ -747,6 +770,7 @@ fn browser_input(
         }
     }
     if back {
+        sounds.write(crate::sfx::UiSound::Back);
         next_state.set(AppState::MainMenu);
     }
 }

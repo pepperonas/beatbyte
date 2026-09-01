@@ -561,13 +561,11 @@ fn count_up_score(time: Res<Time>, mut scores: Query<(&mut ScoreCountUp, &mut Te
 
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn results_input(
-    mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     logs: Option<Res<crate::telemetry::SessionLogFiles>>,
     song: Option<Res<crate::boot::LoadedSong>>,
-    sfx: Option<Res<crate::sfx::SfxLib>>,
-    settings: Res<crate::config::Settings>,
+    mut sounds: MessageWriter<crate::sfx::UiSound>,
     mut status: Query<&mut Text, With<FeedbackStatus>>,
     mut given: ResMut<FeedbackGiven>,
     mut next_state: ResMut<NextState<AppState>>,
@@ -612,9 +610,7 @@ fn results_input(
             if let Ok(mut text) = status.single_mut() {
                 text.0 = feedback_status(given.fun, given.versus);
             }
-            if let Some(sfx) = sfx.as_ref() {
-                crate::sfx::play(&mut commands, &sfx.ui_move, settings.sfx_volume);
-            }
+            sounds.write(crate::sfx::UiSound::Navigate);
         }
     }
     if keys.just_pressed(KeyCode::Enter)
@@ -622,6 +618,7 @@ fn results_input(
         || mouse.just_pressed(MouseButton::Left)
         || mouse.just_pressed(MouseButton::Right)
     {
+        sounds.write(crate::sfx::UiSound::Back);
         // Back to where the song was picked: the browser, with its
         // cursor, sort and search intact (they live in resources) —
         // the flow is browse, play, land on the NEXT choice, not on

@@ -136,6 +136,7 @@ fn calibration_input(
     mut calibration: ResMut<Calibration>,
     mut settings: ResMut<Settings>,
     mut next_state: ResMut<NextState<AppState>>,
+    mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
     if keys.just_pressed(KeyCode::Space)
         && let Some(now) = game_clock.song_time(&time)
@@ -151,9 +152,11 @@ fn calibration_input(
         settings.latency_offset_ms = (median as f32).clamp(-250.0, 250.0);
         save_settings(&settings);
         info!("calibration saved: {:+.0} ms", settings.latency_offset_ms);
+        sounds.write(crate::sfx::UiSound::Confirm);
         next_state.set(AppState::MainMenu);
     }
     if keys.just_pressed(KeyCode::Escape) {
+        sounds.write(crate::sfx::UiSound::Back);
         next_state.set(AppState::MainMenu);
     }
 }

@@ -126,6 +126,21 @@ impl Row {
             Row::Controls => {}
         }
     }
+
+    /// The feedback voice a row speaks with when it adjusts: toggles
+    /// click, stepped values tick.
+    const fn sound(self) -> crate::sfx::UiSound {
+        match self {
+            Row::Particles
+            | Row::ScreenShake
+            | Row::BeatPulse
+            | Row::BackdropMotion
+            | Row::TapMode
+            | Row::NoteStyle
+            | Row::Fullscreen => crate::sfx::UiSound::Toggle,
+            _ => crate::sfx::UiSound::Slider,
+        }
+    }
 }
 
 fn on_off(value: bool) -> String {
@@ -209,6 +224,7 @@ fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI
 fn settings_input(
     keys: Res<ButtonInput<KeyCode>>,
+    map: Res<crate::controls::InputMap>,
     pads: Query<&Gamepad>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
@@ -216,14 +232,18 @@ fn settings_input(
     mut cursor: ResMut<SettingsCursor>,
     mut settings: ResMut<Settings>,
     mut next_state: ResMut<NextState<AppState>>,
+    mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
-    let nav = MenuNav::read(&keys, pads.iter());
+    let nav = MenuNav::read(&map, &keys, pads.iter());
     let count = Row::ALL.len();
     if nav.up {
         cursor.0 = (cursor.0 + count - 1) % count;
     }
     if nav.down {
         cursor.0 = (cursor.0 + 1) % count;
+    }
+    if nav.up || nav.down {
+        sounds.write(crate::sfx::UiSound::Navigate);
     }
     // Mouse: hover selects; click on the selected row steps it (like
     // RIGHT); the wheel steps the hovered value either way.
@@ -238,16 +258,24 @@ fn settings_input(
     }
     let row = Row::ALL[cursor.0];
     if row == Row::Controls && (nav.confirm || nav.right || clicked) {
+        sounds.write(crate::sfx::UiSound::Confirm);
         next_state.set(AppState::Controls);
         return;
     }
+    let mut adjusted = false;
     if nav.left || wheel_step < 0.0 {
         row.adjust(&mut settings, -1.0);
+        adjusted = true;
     }
     if nav.right || nav.confirm || clicked || wheel_step > 0.0 {
         row.adjust(&mut settings, 1.0);
+        adjusted = true;
+    }
+    if adjusted {
+        sounds.write(row.sound());
     }
     if nav.back || mouse.just_pressed(MouseButton::Right) {
+        sounds.write(crate::sfx::UiSound::Back);
         next_state.set(AppState::MainMenu);
     }
 }

@@ -126,22 +126,28 @@ fn spawn_menu(mut commands: Commands, font: Res<UiFont>) {
         });
 }
 
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 pub(crate) fn menu_input(
     keys: Res<ButtonInput<KeyCode>>,
+    map: Res<crate::controls::InputMap>,
     pads: Query<&Gamepad>,
     rows: Query<(&MenuRow, &Interaction), Changed<Interaction>>,
     mut cursor: ResMut<MenuCursor>,
     mut roster: ResMut<crate::multiplayer::PlayerRoster>,
     mut next_state: ResMut<NextState<AppState>>,
     mut app_exit: MessageWriter<AppExit>,
+    mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
-    let nav = MenuNav::read(&keys, pads.iter());
+    let nav = MenuNav::read(&map, &keys, pads.iter());
     let count = MenuAction::ALL.len();
     if nav.up {
         cursor.0 = (cursor.0 + count - 1) % count;
     }
     if nav.down {
         cursor.0 = (cursor.0 + 1) % count;
+    }
+    if nav.up || nav.down {
+        sounds.write(crate::sfx::UiSound::Navigate);
     }
     // Mouse: hovering selects, clicking activates.
     let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
@@ -162,6 +168,7 @@ pub(crate) fn menu_input(
     }
     let clicked = pointer.clicked;
     if nav.confirm || clicked {
+        sounds.write(crate::sfx::UiSound::Confirm);
         match MenuAction::ALL[cursor.0] {
             MenuAction::Play => {
                 // Solo: one keyboard player.

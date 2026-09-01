@@ -224,6 +224,17 @@ chart format v1 can be frozen as a promise.
 
 - [x] G36 **The HUD plates become instruments** *(v0.12.28)*. Second HUD pass on commission ("optimiere das hud nochmal deutlich mehr"): corner plates re-skinned as brushed dark metal (top-edge light catch, corner rivets, vignette — `plate_shading`, pinned), the score digits in a recessed scanline well (`well_shading`, pinned), the gauge band gains a sweep gradient with a brighter READY zone past the activation tick, the needle a counterweight tail past the hub (custom sprite anchor). Motion, all transforms + sprite tints: multiplier pops on every change, the next streak bulb carries a faint ember, the gauge breathes toward the Hype tone when it can fire (`ready_glow`, pinned + mutation-checked) and blazes white-hot while Hype runs. *Verified: engine shots in the user's settings (plates/rivets/gradient/counterweight/blaze all visible in late + hype moments), 192 game-crate tests, all new pins seen failing under mutation, pause drill + full gate green.*
 
+- [ ] G37 **UX/input/menu system programme** *(commissioned 2026-09-01;
+  inventory + phases in `docs/ui/input-ux-plan.md`)*. Shipped:
+  **phase 1** *(v0.12.29)* — remappable `UiAction` navigation table
+  (WASD + Space + Tab, Enter/Escape hard fallbacks, typing mode for
+  the browser search, conflict confirmation on rebind, scrolling
+  controls list); **phase 2** *(v0.12.30)* — `UiSound` event system
+  (Navigate/Confirm/Back/Error/Toggle/Slider, two new voices, every
+  device sounds alike). Open: contextual device prompts (phase 3),
+  accessibility completion (4), video-offset calibration (5),
+  renderer-boundary ADR + 2D-path prune (6).
+
 ### F — Release engineering to 1.0
 
 - [x] F0 **v0.9.0 — content, accessibility, editor v2.** Amendment (2026-08-24): every unblocked B/C/D/E task landed while the A tasks wait on human playtesting — that body of work (second song, song-selector harness, import guide + scan fix, format truth, forward-compat pins, Linux/Windows CI smokes, Stage Motion, colorblind lane shapes, HOPO visibility, editor move/bulk/audition, harness integrity) ships now instead of idling behind A2. *SHIPPED 2026-08-24: all 7 assets auto-attached via the recursive glob; aarch64 tarball smoke + flawless artifact autopilot from neutral CWD + DMG .app smoke; two release-run attempts (spurious hdiutil ENOSPC → retry mitigation).*
