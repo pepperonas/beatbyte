@@ -21,6 +21,152 @@ use crate::states::AppState;
 /// Extensions the decoder is verified to read (see the decode tests).
 const AUDIO_EXTENSIONS: [&str; 5] = ["wav", "ogg", "flac", "mp3", "m4a"];
 
+/// Whether a path carries one of the supported audio extensions.
+fn is_audio(path: &Path) -> bool {
+    path.extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .is_some_and(|e| AUDIO_EXTENSIONS.contains(&e.as_str()))
+}
+
+// ── Content fingerprints ────────────────────────────────────────────
+//
+// A duplicate is the same BYTES, not the same file name: the old rule
+// (skip when the sanitized folder name exists) re-imported a renamed
+// copy and wrongly skipped a different song that happened to share a
+// file name. The fingerprint is a 64-bit FNV-1a over the file's
+// content plus its size — std-only, deterministic, and plenty for
+// telling one's own music library apart (this is de-duplication, not
+// cryptography).
+
+/// One file's identity for de-duplication.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Fingerprint {
+    /// FNV-1a 64 of the file's bytes.
+    pub hash: u64,
+    /// The file's size — a nearly free second factor.
+    pub size: u64,
+}
+
+/// FNV-1a 64, one chunk at a time. Pure — tested against the
+/// published test vectors.
+#[must_use]
+pub fn fnv1a_update(mut hash: u64, chunk: &[u8]) -> u64 {
+    const PRIME: u64 = 0x0000_0100_0000_01B3;
+    for byte in chunk {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(PRIME);
+    }
+    hash
+}
+
+/// The FNV-1a 64 offset basis (the empty-input hash).
+pub const FNV_BASIS: u64 = 0xCBF2_9CE4_8422_2325;
+
+/// Fingerprint a file by streaming its bytes. `None` when the file
+/// cannot be read (vanished mid-scan, permissions).
+#[must_use]
+pub fn audio_fingerprint(path: &Path) -> Option<Fingerprint> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut hash = FNV_BASIS;
+    let mut size = 0u64;
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer).ok()?;
+        if read == 0 {
+            break;
+        }
+        size += read as u64;
+        hash = fnv1a_update(hash, &buffer[..read]);
+    }
+    Some(Fingerprint { hash, size })
+}
+
+/// Every fingerprint ever imported, persisted so an in-game delete
+/// stays deleted: the watcher must not resurrect a song just because
+/// its file still sits in the watched folder (user decision,
+/// 2026-09-01).
+#[derive(Resource, Default)]
+pub struct ImportedIndex {
+    entries: std::collections::HashSet<Fingerprint>,
+}
+
+impl ImportedIndex {
+    /// Whether this fingerprint was imported before.
+    #[must_use]
+    pub fn contains(&self, fingerprint: Fingerprint) -> bool {
+        self.entries.contains(&fingerprint)
+    }
+
+    /// Record a fingerprint (call on SUCCESSFUL import only — a
+    /// failed one stays retryable) and persist best-effort.
+    pub fn record(&mut self, fingerprint: Fingerprint) {
+        if self.entries.insert(fingerprint) {
+            self.save();
+        }
+    }
+
+    /// The index file: `imported-hashes.json` beside the imports.
+    fn path() -> Option<PathBuf> {
+        import_dir()
+            .ok()
+            .map(|dir| dir.join("imported-hashes.json"))
+    }
+
+    /// Load the persisted index (missing file = empty, first run).
+    #[must_use]
+    pub fn load() -> ImportedIndex {
+        let Some(path) = ImportedIndex::path() else {
+            return ImportedIndex::default();
+        };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return ImportedIndex::default();
+        };
+        ImportedIndex {
+            entries: parse_index(&text),
+        }
+    }
+
+    fn save(&self) {
+        let Some(path) = ImportedIndex::path() else {
+            return;
+        };
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Err(error) = std::fs::write(&path, render_index(&self.entries)) {
+            warn!("cannot save the import index: {error}");
+        }
+    }
+}
+
+/// The index file format: one `hash-size` pair per line inside a
+/// JSON string array — trivially forward-compatible. Pure — tested.
+#[must_use]
+pub fn render_index(entries: &std::collections::HashSet<Fingerprint>) -> String {
+    let mut lines: Vec<String> = entries
+        .iter()
+        .map(|f| format!("\"{:016x}-{}\"", f.hash, f.size))
+        .collect();
+    lines.sort();
+    format!("[\n{}\n]\n", lines.join(",\n"))
+}
+
+/// Parse the index file; unreadable entries are dropped (the file is
+/// input too). Pure — tested.
+#[must_use]
+pub fn parse_index(text: &str) -> std::collections::HashSet<Fingerprint> {
+    text.split('"')
+        .filter_map(|token| {
+            let (hash, size) = token.split_once('-')?;
+            Some(Fingerprint {
+                hash: u64::from_str_radix(hash, 16).ok()?,
+                size: size.parse().ok()?,
+            })
+        })
+        .collect()
+}
+
 /// Status of the current import, shown in the browser.
 #[derive(Resource, Default)]
 pub struct ImportStatus(pub String);
@@ -30,7 +176,7 @@ pub struct ImportStatus(pub String);
 /// and silently dropped the rest — "it looked like songs were lost."
 #[derive(Resource, Default)]
 pub struct ImportQueue {
-    pending: std::collections::VecDeque<PathBuf>,
+    pending: std::collections::VecDeque<(PathBuf, Option<Fingerprint>)>,
     /// Files in the current batch (incl. skipped/failed).
     pub total: usize,
     /// Finished files (ok + failed + skipped).
@@ -43,6 +189,12 @@ pub struct ImportQueue {
     pub skipped: usize,
     /// Title currently being imported.
     pub current: Option<String>,
+    /// Fingerprint of the file currently being imported (recorded in
+    /// the index on success).
+    current_fingerprint: Option<Fingerprint>,
+    /// Source path of the running import (a failure is remembered so
+    /// the watcher does not retry it every five seconds).
+    current_source: Option<PathBuf>,
     /// Seconds since the batch finished (drives the summary fade).
     pub since_finished: f32,
 }
@@ -77,13 +229,18 @@ pub struct ImportPlugin;
 
 impl Plugin for ImportPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<ImportStatus>()
+        app.insert_resource(ImportedIndex::load())
+            .init_resource::<ImportStatus>()
             .init_resource::<ImportQueue>()
+            .init_resource::<WatchState>()
             .add_systems(Startup, spawn_import_panel)
             .add_systems(
                 Update,
                 (
                     handle_drops.run_if(
+                        in_state(AppState::SongSelect).or_else(in_state(AppState::MainMenu)),
+                    ),
+                    watch_song_folder.run_if(
                         in_state(AppState::SongSelect).or_else(in_state(AppState::MainMenu)),
                     ),
                     start_next_import,
@@ -101,11 +258,30 @@ fn handle_drops(
     mut drops: MessageReader<bevy::window::FileDragAndDrop>,
     mut status: ResMut<ImportStatus>,
     mut queue: ResMut<ImportQueue>,
+    index: Res<ImportedIndex>,
+    mut settings: ResMut<crate::config::Settings>,
 ) {
     for drop in drops.read() {
         let bevy::window::FileDragAndDrop::DroppedFile { path_buf, .. } = drop else {
             continue;
         };
+        // A dropped FOLDER is not an import - it is the answer to
+        // "which folder should BeatByte watch?" (there is no native
+        // folder picker in a keyboard/gamepad UI, but dropping is
+        // already the import gesture). Files keep importing directly.
+        if path_buf.is_dir() {
+            info!("watch folder set: {}", path_buf.display());
+            status.0 = format!(
+                "watching {} for new songs",
+                path_buf.file_name().map_or_else(
+                    || path_buf.display().to_string(),
+                    |n| n.to_string_lossy().into_owned()
+                )
+            );
+            settings.watch_folder = Some(path_buf.clone());
+            crate::config::save_settings(&settings);
+            continue;
+        }
         // A fresh gesture after a finished batch starts new counters.
         if !queue.active() {
             *queue = ImportQueue::default();
@@ -121,18 +297,30 @@ fn handle_drops(
             status.0 = format!("skipped `.{extension}` (not audio)");
             continue;
         }
-        let duplicate = path_buf
+        // Duplicates by CONTENT, not by name: the fingerprint knows a
+        // renamed copy and clears a different song that shares a file
+        // name. The old folder-name check stays as a fast second net
+        // (same name AND not in the index = an import that predates
+        // the index).
+        let fingerprint = audio_fingerprint(path_buf);
+        if fingerprint.is_some_and(|f| index.contains(f)) {
+            queue.skipped += 1;
+            queue.done += 1;
+            status.0 = "already imported (same content) - skipped".to_owned();
+            continue;
+        }
+        let name_taken = path_buf
             .file_name()
             .map(|name| sanitize_folder_name(&name.to_string_lossy()))
             .and_then(|folder| import_dir().ok().map(|dir| dir.join(folder)))
             .is_some_and(|dir| dir.exists());
-        if duplicate {
+        if name_taken {
             queue.skipped += 1;
             queue.done += 1;
             status.0 = "already imported - skipped".to_owned();
             continue;
         }
-        queue.pending.push_back(path_buf.clone());
+        queue.pending.push_back((path_buf.clone(), fingerprint));
     }
 }
 
@@ -146,9 +334,11 @@ fn start_next_import(
     if running.is_some() {
         return;
     }
-    let Some(source) = queue.pending.pop_front() else {
+    let Some((source, fingerprint)) = queue.pending.pop_front() else {
         return;
     };
+    queue.current_fingerprint = fingerprint;
+    queue.current_source = Some(source.clone());
     let (title, artist) = song_name_from_stem(
         &source
             .file_stem()
@@ -165,11 +355,14 @@ fn start_next_import(
 
 /// When the import finishes: rescan the library so the browser
 /// rebuilds (it watches the resource for changes).
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn poll_import(
     mut commands: Commands,
     task: Option<ResMut<ImportTask>>,
     mut status: ResMut<ImportStatus>,
     mut queue: ResMut<ImportQueue>,
+    mut index: ResMut<ImportedIndex>,
+    mut watch: ResMut<WatchState>,
     builtins: Option<Res<crate::boot::BuiltinSongs>>,
     library: Option<ResMut<crate::library::SongLibrary>>,
 ) {
@@ -185,6 +378,11 @@ fn poll_import(
     match result {
         Ok(title) => {
             queue.ok += 1;
+            // Only a SUCCESSFUL import burns the fingerprint - a
+            // failed one stays retryable.
+            if let Some(fingerprint) = queue.current_fingerprint.take() {
+                index.record(fingerprint);
+            }
             // Log the finish, not just the start. Until this line
             // existed, a successful import wrote nothing at all, so a
             // log could not tell an import that worked from one that
@@ -200,6 +398,11 @@ fn poll_import(
         }
         Err(reason) => {
             queue.failed += 1;
+            // The watcher must not retry a broken file every poll
+            // for the rest of the session.
+            if let Some(source) = queue.current_source.take() {
+                watch.failed.insert(source);
+            }
             warn!("import failed: {reason}");
             status.0 = format!("import failed: {reason}");
         }
@@ -509,6 +712,264 @@ pub fn song_name_from_stem(stem: &str) -> (String, String) {
         cleaned
     };
     (title, "Unknown".to_owned())
+}
+
+// ── The watched song folder ─────────────────────────────────────────
+//
+// Polling, not filesystem events (user decision, 2026-09-01): every
+// few seconds a cheap directory walk lists the audio files and
+// compares size+mtime against what was seen last time. Only NEW or
+// CHANGED files get hashed - a settled library costs a walk and no
+// I/O beyond directory metadata. No new dependency.
+
+/// Seconds between scans of the watched folder.
+const WATCH_PERIOD_S: f32 = 5.0;
+/// How many new candidates are hashed per tick - spreads the initial
+/// scan of a large folder over several ticks instead of hitching the
+/// menu once.
+const WATCH_HASH_BUDGET: usize = 2;
+/// How deep the recursive walk goes (artist/album nesting, not `/`).
+const WATCH_MAX_DEPTH: usize = 5;
+
+/// What one poll remembered about one file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileSighting {
+    /// File size in bytes.
+    pub size: u64,
+    /// Modification time, as seconds (resolution is irrelevant —
+    /// only equality between two sightings matters).
+    pub mtime: u64,
+}
+
+/// A file is imported only once two consecutive sightings agree:
+/// a file still being copied into the folder grows between polls,
+/// and importing half a song would chart half a song. Pure — tested.
+#[must_use]
+pub fn settled(previous: Option<FileSighting>, current: FileSighting) -> bool {
+    previous == Some(current)
+}
+
+/// The watcher's memory between polls.
+#[derive(Resource, Default)]
+pub struct WatchState {
+    timer: f32,
+    /// Last sighting per path; a path present here with an equal
+    /// sighting is either settled-and-handled or unchanged.
+    seen: std::collections::HashMap<PathBuf, FileSighting>,
+    /// Paths already handled (enqueued or skipped) — never touched
+    /// again unless the file CHANGES.
+    handled: std::collections::HashSet<PathBuf>,
+    /// Imports that failed this session — not retried every poll.
+    failed: std::collections::HashSet<PathBuf>,
+}
+
+/// Collect the audio files under `root`, bounded depth, no symlink
+/// following.
+fn walk_audio(root: &Path, depth: usize, into: &mut Vec<PathBuf>) {
+    if depth > WATCH_MAX_DEPTH {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        if kind.is_symlink() {
+            continue;
+        }
+        if kind.is_dir() {
+            walk_audio(&path, depth + 1, into);
+        } else if is_audio(&path) {
+            into.push(path);
+        }
+    }
+}
+
+/// One sighting of a file, from metadata only (no content I/O).
+fn sight(path: &Path) -> Option<FileSighting> {
+    let meta = std::fs::metadata(path).ok()?;
+    let mtime = meta
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs();
+    Some(FileSighting {
+        size: meta.len(),
+        mtime,
+    })
+}
+
+/// Scan the watched folder and enqueue what is new.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
+fn watch_song_folder(
+    time: Res<Time>,
+    settings: Res<crate::config::Settings>,
+    index: Res<ImportedIndex>,
+    mut watch: ResMut<WatchState>,
+    mut queue: ResMut<ImportQueue>,
+    mut status: ResMut<ImportStatus>,
+) {
+    let Some(root) = settings.watch_folder.clone() else {
+        return;
+    };
+    watch.timer += time.delta_secs();
+    if watch.timer < WATCH_PERIOD_S {
+        return;
+    }
+    watch.timer = 0.0;
+    // A running batch owns the pipeline and the status line.
+    if queue.active() {
+        return;
+    }
+    if !root.is_dir() {
+        // Unmounted drive, renamed folder: dormant, not an error.
+        return;
+    }
+    let mut files = Vec::new();
+    walk_audio(&root, 0, &mut files);
+    let mut budget = WATCH_HASH_BUDGET;
+    for path in files {
+        if budget == 0 {
+            break;
+        }
+        let Some(current) = sight(&path) else {
+            continue;
+        };
+        let previous = watch.seen.get(&path).copied();
+        if previous != Some(current) {
+            // New or still changing: remember the sighting; a file
+            // that changed is eligible again next poll.
+            watch.seen.insert(path.clone(), current);
+            watch.handled.remove(&path);
+            continue;
+        }
+        if watch.handled.contains(&path) || watch.failed.contains(&path) {
+            continue;
+        }
+        if !settled(previous, current) {
+            continue;
+        }
+        // Settled and unhandled: fingerprint it (the budgeted, only
+        // expensive step) and decide.
+        budget -= 1;
+        watch.handled.insert(path.clone());
+        let Some(fingerprint) = audio_fingerprint(&path) else {
+            continue;
+        };
+        if index.contains(fingerprint) {
+            // Silently: the watcher re-seeing the library every boot
+            // is normal life, not a batch worth a summary line.
+            continue;
+        }
+        if !queue.active() {
+            *queue = ImportQueue::default();
+        }
+        queue.total += 1;
+        queue.pending.push_back((path.clone(), Some(fingerprint)));
+        status.0 = format!(
+            "found new song in the watched folder: {}",
+            path.file_name().map_or_else(
+                || path.display().to_string(),
+                |n| n.to_string_lossy().into_owned()
+            )
+        );
+        info!("watch: enqueued {}", path.display());
+    }
+}
+
+#[cfg(test)]
+mod watch_tests {
+    use super::*;
+
+    #[test]
+    fn fnv1a_matches_the_published_vectors() {
+        // The classic FNV-1a 64 test vectors; a silent tweak to the
+        // prime or basis would change every fingerprint and make the
+        // whole index disagree with itself after an update.
+        assert_eq!(fnv1a_update(FNV_BASIS, b""), 0xCBF2_9CE4_8422_2325);
+        assert_eq!(fnv1a_update(FNV_BASIS, b"a"), 0xAF63_DC4C_8601_EC8C);
+        assert_eq!(fnv1a_update(FNV_BASIS, b"foobar"), 0x85944171F73967E8);
+        // Chunked = whole: the streaming update must not depend on
+        // buffer boundaries.
+        let whole = fnv1a_update(FNV_BASIS, b"foobar");
+        let chunked = fnv1a_update(fnv1a_update(FNV_BASIS, b"foo"), b"bar");
+        assert_eq!(whole, chunked);
+    }
+
+    #[test]
+    fn the_index_round_trips_and_shrugs_off_garbage() {
+        let mut entries = std::collections::HashSet::new();
+        entries.insert(Fingerprint {
+            hash: 0xDEAD_BEEF_0000_0001,
+            size: 4_567_890,
+        });
+        entries.insert(Fingerprint { hash: 7, size: 0 });
+        let text = render_index(&entries);
+        assert_eq!(parse_index(&text), entries, "round trip");
+        // The file is input too: junk entries drop, good ones stay.
+        let dirty = text.replace('[', "[\n\"not-a-hash\",");
+        assert_eq!(parse_index(&dirty), entries);
+        assert!(parse_index("").is_empty());
+        assert!(parse_index("{ wrong: true }").is_empty());
+    }
+
+    #[test]
+    fn a_file_is_settled_only_when_two_sightings_agree() {
+        // A file still being copied grows between polls - importing
+        // it would chart half a song.
+        let first = FileSighting {
+            size: 100,
+            mtime: 10,
+        };
+        let grown = FileSighting {
+            size: 200,
+            mtime: 11,
+        };
+        assert!(!settled(None, first), "never on first sight");
+        assert!(!settled(Some(first), grown), "not while it grows");
+        assert!(settled(Some(grown), grown), "two equal sightings");
+    }
+
+    #[test]
+    fn fingerprints_tell_files_apart_by_content_not_name() {
+        // Two files, same name in different dirs, different bytes -
+        // and a renamed copy with identical bytes.
+        let dir = std::env::temp_dir().join(format!("bb-fp-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("a")).expect("mkdir");
+        std::fs::create_dir_all(dir.join("b")).expect("mkdir");
+        std::fs::write(dir.join("a/song.wav"), b"AAAA").expect("write");
+        std::fs::write(dir.join("b/song.wav"), b"BBBBBB").expect("write");
+        std::fs::write(dir.join("b/renamed.wav"), b"AAAA").expect("write");
+        let a = audio_fingerprint(&dir.join("a/song.wav")).expect("fp a");
+        let b = audio_fingerprint(&dir.join("b/song.wav")).expect("fp b");
+        let renamed = audio_fingerprint(&dir.join("b/renamed.wav")).expect("fp r");
+        assert_ne!(a, b, "same name, different content");
+        assert_eq!(a, renamed, "different name, same content");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn the_walk_finds_nested_audio_and_ignores_the_rest() {
+        let dir = std::env::temp_dir().join(format!("bb-walk-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("artist/album")).expect("mkdir");
+        std::fs::write(dir.join("top.mp3"), b"x").expect("write");
+        std::fs::write(dir.join("artist/album/deep.ogg"), b"x").expect("write");
+        std::fs::write(dir.join("artist/cover.jpg"), b"x").expect("write");
+        let mut found = Vec::new();
+        walk_audio(&dir, 0, &mut found);
+        let names: Vec<String> = found
+            .iter()
+            .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+            .collect();
+        assert_eq!(found.len(), 2, "exactly the two audio files: {names:?}");
+        assert!(names.contains(&"top.mp3".to_owned()));
+        assert!(names.contains(&"deep.ogg".to_owned()));
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }
 
 #[cfg(test)]

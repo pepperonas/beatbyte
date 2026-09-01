@@ -35,7 +35,7 @@
 [![SemVer](https://img.shields.io/badge/versioning-SemVer-blue)](CHANGELOG.md)
 [![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735)](CHANGELOG.md)
 [![Conventional Commits](https://img.shields.io/badge/commits-Conventional-FE5196)](https://www.conventionalcommits.org/)
-[![Tests](https://img.shields.io/badge/tests-510%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-515%20passing-brightgreen)](#testing)
 [![Clippy](https://img.shields.io/badge/clippy-%E2%80%91D%20warnings-brightgreen?logo=rust)](Cargo.toml)
 [![rustfmt](https://img.shields.io/badge/style-rustfmt-orange?logo=rust)](Cargo.toml)
 [![Rustdoc](https://img.shields.io/badge/public%20API-documented-blue)](Cargo.toml)
@@ -157,7 +157,9 @@ identical autopilot scores prove judgment does not change.*
   shape on notes and receptors; a Stage Motion setting stills the
   backdrop for reduced motion
 - 🎵 **Bring your own music** — WAV / OGG / FLAC / MP3 / M4A; drop generated
-  charts into `songs/` and they appear in the browser
+  charts into `songs/` and they appear in the browser — or drop a
+  **folder** onto the window and BeatByte watches it for new tracks
+  (duplicates skipped by content hash; in-game deletes stay deleted)
 - 🤖 **Automatic chart generation** — BPM & onset analysis turns any song
   into a playable chart across four difficulties (playable, not perfect —
   the built-in editor is the correction pass)
@@ -453,14 +455,14 @@ beatbyte-cli demo                  # render the built-in songs + charts
 ## Testing
 
 ```bash
-cargo test --workspace          # 510 tests
+cargo test --workspace          # 515 tests
 ```
 
 | Crate | Tests | Covers |
 |---|---:|---|
 | `beatbyte-core` | 82 | Timing windows to their exact boundaries, judgment, scoring, combos, HOPO and tap rules, the hype meter, the telemetry schema |
 | `beatbyte-chart` | 86 | Format validation, untrusted-input limits, chart generation, difficulty derivation, musical quantisation, chart versions, energy-aware escalation, jack-free lane flow, burst discipline, accent chords |
-| `beatbyte-game` | 226 | UI kit contracts, settings persistence, the input tables and binding labels, the color language, library scanning, import naming, the X-plorer report decoder, texture geometry, the song ribbon, list scrolling |
+| `beatbyte-game` | 231 | UI kit contracts, settings persistence, the input tables and binding labels, the color language, library scanning, import naming, the X-plorer report decoder, texture geometry, the song ribbon, list scrolling |
 | `beatbyte-audio` | 66 | Onset detection, tempo estimation, melody contours, the song clock and its practice rate, the speed position map, the error-sound voices, real-file decoding for every advertised format |
 | `beatbyte-cli` | 19 | Review analytics, the design dossier and the redesign rollout: section windowing, evidence thresholds, hash binding, the mastery veto, write instructions, carried difficulties |
 | `beatbyte-editor` | 19 | Every edit operation round-trips through its own inverse |

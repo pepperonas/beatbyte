@@ -30,6 +30,7 @@ pub(crate) enum Row {
     NoteStyle,
     Fullscreen,
     Theme,
+    WatchFolder,
     ReducedFlashing,
     FxIntensity,
     TextScale,
@@ -38,7 +39,7 @@ pub(crate) enum Row {
 }
 
 impl Row {
-    const ALL: [Row; 18] = [
+    const ALL: [Row; 19] = [
         Row::MusicVolume,
         Row::SfxVolume,
         Row::ScrollSpeed,
@@ -56,6 +57,7 @@ impl Row {
         Row::NoteStyle,
         Row::Fullscreen,
         Row::Theme,
+        Row::WatchFolder,
         Row::Controls,
     ];
 
@@ -78,6 +80,7 @@ impl Row {
             Row::NoteStyle => "NOTE STYLE",
             Row::Fullscreen => "FULLSCREEN",
             Row::Theme => "STAGE THEME",
+            Row::WatchFolder => "SONG FOLDER",
             Row::Controls => "CONTROLS",
         }
     }
@@ -93,6 +96,15 @@ impl Row {
             Row::ScreenShake => on_off(settings.screen_shake),
             Row::BeatPulse => on_off(settings.beat_pulse),
             Row::BackdropMotion => on_off(settings.backdrop_motion),
+            Row::WatchFolder => settings.watch_folder.as_ref().map_or_else(
+                || "drop a folder onto the window".to_owned(),
+                |path| {
+                    path.file_name().map_or_else(
+                        || path.display().to_string(),
+                        |name| format!("watching: {}", name.to_string_lossy()),
+                    )
+                },
+            ),
             Row::ReducedFlashing => on_off(settings.reduced_flashing),
             Row::FxIntensity => format!("{:.0}%", settings.fx_intensity * 100.0),
             Row::TextScale => format!("{:.0}%", settings.ui_scale * 100.0),
@@ -135,6 +147,7 @@ impl Row {
             Row::ScreenShake => settings.screen_shake = !settings.screen_shake,
             Row::BeatPulse => settings.beat_pulse = !settings.beat_pulse,
             Row::BackdropMotion => settings.backdrop_motion = !settings.backdrop_motion,
+            Row::WatchFolder => settings.watch_folder = None,
             Row::ReducedFlashing => settings.reduced_flashing = !settings.reduced_flashing,
             Row::FxIntensity => {
                 settings.fx_intensity = (settings.fx_intensity + 0.1 * direction).clamp(0.0, 1.0);
@@ -167,6 +180,7 @@ impl Row {
             | Row::ScreenShake
             | Row::BeatPulse
             | Row::BackdropMotion
+            | Row::WatchFolder
             | Row::ReducedFlashing
             | Row::HighContrast
             | Row::TapMode

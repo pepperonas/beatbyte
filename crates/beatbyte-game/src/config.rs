@@ -76,6 +76,12 @@ pub struct Settings {
     pub round_gems: bool,
     /// Fullscreen window mode.
     pub fullscreen: bool,
+    /// A folder watched for new audio tracks (set by dropping a
+    /// FOLDER onto the window; `None` = no watching). The path is
+    /// deliberately not validated in `sanitize`: an unmounted drive
+    /// is a dormant setting, not a broken one.
+    #[serde(default)]
+    pub watch_folder: Option<std::path::PathBuf>,
     /// The bindings table (see [`crate::controls`]).
     pub input_map: InputMap,
     /// The stage theme id, or "auto" to rotate per song.
@@ -111,6 +117,7 @@ impl Default for Settings {
             stage_3d: true,
             round_gems: false,
             fullscreen: false,
+            watch_folder: None,
             input_map: InputMap::default(),
             theme: "auto".to_owned(),
             browser_sort: default_browser_sort(),

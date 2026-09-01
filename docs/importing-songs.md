@@ -110,3 +110,22 @@ in a busy mix.
   `analyze`; if the alt bpm is the right one, correct the chart in
   the editor or re-encode the intro (long ambient intros weaken the
   tempo fit).
+
+## Watching a folder
+
+Drop a **folder** onto the window (instead of files) and BeatByte
+remembers it as the watched song folder: every few seconds, while you
+are in the menu or the browser, it looks for new audio files (up to
+five directory levels deep) and imports them through the same
+pipeline as a drop. A file is only picked up once it has stopped
+changing between two polls, so a track still being copied is never
+half-imported.
+
+Duplicates are skipped by **content**, not by name: each imported
+file's fingerprint (FNV-1a 64 over its bytes, plus its size) is
+persisted in `imported-hashes.json` next to the imports. A renamed
+copy of an imported song is recognized and skipped; a different song
+that happens to share a file name is not. A song you delete in the
+browser stays deleted — its fingerprint is remembered, so the watcher
+does not resurrect it from the folder. The SONG FOLDER row in the
+settings shows the watched folder; confirming the row clears it.

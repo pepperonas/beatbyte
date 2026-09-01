@@ -14,6 +14,24 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.3] - 2026-09-01
+
+### Added
+
+- A watched SONG FOLDER: drop a FOLDER onto the window and BeatByte
+  keeps an eye on it (light poll every five seconds, menu and
+  browser only) - new audio files are imported automatically through
+  the existing pipeline once they sit still for two polls (a file
+  still being copied would chart half a song). Duplicates are
+  skipped by CONTENT: a 64-bit FNV-1a fingerprint over the file's
+  bytes plus its size, persisted in imported-hashes.json - a renamed
+  copy is recognized, a different song sharing a file name is not
+  wrongly skipped, and a song deleted in-game stays deleted even
+  though its file still sits in the folder. The same fingerprint now
+  also guards the drag-and-drop path (the old rule matched only the
+  sanitized file name). A SONG FOLDER settings row shows the watched
+  folder and clears it; failed imports are not retried every poll.
+
 ## [0.13.2] - 2026-09-01
 
 ### Added
