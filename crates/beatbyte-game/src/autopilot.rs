@@ -324,6 +324,13 @@ fn autopilot_screenshots(
         AppState::Gameplay
             if phase
                 .as_deref()
+                .is_some_and(|p| *p.get() == crate::states::GamePhase::Outro) =>
+        {
+            Some("gameplay-yourock")
+        }
+        AppState::Gameplay
+            if phase
+                .as_deref()
                 .is_some_and(|p| *p.get() == crate::states::GamePhase::Paused) =>
         {
             // The pause menu is UI too — the invisible-settings bug

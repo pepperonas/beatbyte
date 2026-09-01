@@ -46,4 +46,7 @@ pub enum GamePhase {
     Playing,
     /// Paused by the player.
     Paused,
+    /// The song is over: the "YOU ROCK!!!" celebration plays over
+    /// the live stage before the results appear.
+    Outro,
 }

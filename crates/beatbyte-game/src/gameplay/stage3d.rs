@@ -2773,7 +2773,13 @@ impl Plugin for Stage3dPlugin {
                 sweep_beams,
             )
                 .chain()
-                .run_if(in_state(crate::states::GamePhase::Playing)),
+                .run_if(
+                    // The venue plays on through the outro - a stage
+                    // that freezes behind "YOU ROCK!!!" reads as a
+                    // crash, not a celebration.
+                    in_state(crate::states::GamePhase::Playing)
+                        .or_else(in_state(crate::states::GamePhase::Outro)),
+                ),
         );
     }
 }

@@ -14,6 +14,26 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.4] - 2026-09-01
+
+### Added
+
+- A song-completion celebration in the genre's classic beat: the
+  moment the last note has been judged and the timeline has run out,
+  "YOU ROCK!!!" slams onto the screen in the house pixel face -
+  oversized, squashing below rest on impact, then breathing - over
+  the LIVE stage (the venue keeps playing underneath; lane-colored
+  firework bursts march the highway, honoring the particle and
+  intensity settings), with the Hype riser as the fanfare. Exactly
+  five seconds later the detailed results screen takes over
+  automatically (grade, score, accuracy, per-judgment counts,
+  timing drift, overstrums, best streak - the screen that already
+  existed becomes the sequence's second act). Pausing is disarmed
+  during the celebration; a quit from the pause menu still skips
+  straight to the browser as before. The autopilot rides through
+  the new phase (runs are five seconds longer) and photographs it
+  as the `gameplay-yourock` moment.
+
 ## [0.13.3] - 2026-09-01
 
 ### Added

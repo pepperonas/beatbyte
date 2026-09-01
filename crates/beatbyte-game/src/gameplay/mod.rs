@@ -326,6 +326,9 @@ impl Plugin for GameplayPlugin {
                     .chain()
                     .run_if(in_state(GamePhase::Paused)),
             )
+            .add_systems(OnEnter(GamePhase::Outro), spawn_outro)
+            .add_systems(Update, run_outro.run_if(in_state(GamePhase::Outro)))
+            .add_systems(OnExit(AppState::Gameplay), cleanup_outro)
             .add_systems(
                 OnEnter(GamePhase::Paused),
                 (pause_audio, spawn_pause_overlay),
@@ -489,7 +492,7 @@ fn check_song_end(
     game_clock: Res<GameClock>,
     practice: Res<PracticeState>,
     time: Res<Time>,
-    mut next_state: ResMut<NextState<AppState>>,
+    mut next_phase: ResMut<NextState<GamePhase>>,
 ) {
     let Some(now) = game_clock.song_time(&time) else {
         return;
@@ -526,8 +529,119 @@ fn check_song_end(
         // that into a fact, and its ABSENCE is a fact too - it means
         // the window or the process went, not the state machine.
         info!("gameplay ended: song finished at {now:.1}s (content ends {content_end:.1}s)");
+        // Not straight to the results: the celebration plays over
+        // the live stage first, and ITS timer moves the state on.
+        next_phase.set(GamePhase::Outro);
+    }
+}
+
+// ── The "YOU ROCK!!!" outro ─────────────────────────────────────────
+//
+// The genre's classic beat (the GH2 reference): the last note rings
+// out, the band plays on, and a big celebration stamps the screen
+// before the tally. Ours is the house pixel identity - the wordmark
+// face in brand yellow slamming in over the LIVE stage (the venue
+// keeps animating underneath) - never anyone else's artwork.
+
+/// Exactly how long the celebration holds before the results appear.
+const OUTRO_S: f32 = 5.0;
+
+/// Seconds since the outro began.
+#[derive(Resource, Default)]
+pub struct OutroClock(pub f32);
+
+/// Marker for the celebration text entities.
+#[derive(Component)]
+struct OutroStamp;
+
+/// The stamp's scale over its life: slams in oversized, squashes
+/// below rest on impact (the weight), recovers, then breathes
+/// gently for the remaining seconds. Pure — tested.
+#[must_use]
+pub fn stamp_scale(age: f32) -> f32 {
+    /// How far below rest the impact squashes - ONE constant, used
+    /// by the slam's end and the recovery's start alike (the first
+    /// version wrote 0.90 twice, and a mutation of one copy slipped
+    /// past the pin because the boundary belonged to the other).
+    const SQUASH: f32 = 0.90;
+    if age <= 0.0 {
+        return 2.8;
+    }
+    if age < 0.35 {
+        // The slam: 2.8 -> SQUASH, eased hard at the end.
+        let t = age / 0.35;
+        let eased = t * t * (3.0 - 2.0 * t);
+        return 2.8 + (SQUASH - 2.8) * eased;
+    }
+    if age < 0.70 {
+        // Recovery: SQUASH -> 1.0.
+        let t = (age - 0.35) / 0.35;
+        return SQUASH + (1.0 - SQUASH) * (t * t * (3.0 - 2.0 * t));
+    }
+    // The breath: gentle, never a strobe.
+    1.0 + 0.03 * ((age - 0.70) * 4.2).sin()
+}
+
+/// Whether the celebration has run its course.
+#[must_use]
+pub fn outro_over(age: f32) -> bool {
+    age >= OUTRO_S
+}
+
+/// Spawn the celebration and start its clock.
+fn spawn_outro(
+    mut commands: Commands,
+    font: Res<crate::ui::UiFont>,
+    sfx: Res<crate::sfx::SfxLib>,
+    settings: Res<crate::config::Settings>,
+) {
+    commands.insert_resource(OutroClock::default());
+    // The riser the Hype activation plays - the game's own fanfare.
+    crate::sfx::play(&mut commands, &sfx.hype, settings.sfx_volume);
+    // Shadow first, face on top: the same one-two the banner uses.
+    for (offset, color, z) in [
+        (
+            Vec2::new(5.0, -5.0),
+            palette::BACKGROUND.with_alpha(0.9),
+            30.0,
+        ),
+        (Vec2::ZERO, palette::BRAND, 30.1),
+    ] {
+        commands.spawn((
+            GameplayScreen,
+            OutroStamp,
+            Text2d::new("YOU ROCK!!!"),
+            font.text(64.0),
+            TextColor(color),
+            bevy::sprite::Anchor::CENTER,
+            Transform::from_xyz(offset.x, offset.y + 60.0, z)
+                .with_scale(Vec3::splat(stamp_scale(0.0))),
+        ));
+    }
+}
+
+/// Drive the stamp and, at exactly [`OUTRO_S`], hand over to the
+/// results.
+fn run_outro(
+    time: Res<Time>,
+    mut clock: ResMut<OutroClock>,
+    mut stamps: Query<&mut Transform, With<OutroStamp>>,
+    mut next_state: ResMut<NextState<AppState>>,
+) {
+    clock.0 += time.delta_secs();
+    let scale = stamp_scale(clock.0);
+    for mut transform in &mut stamps {
+        transform.scale = Vec3::splat(scale);
+    }
+    if outro_over(clock.0) {
         next_state.set(AppState::Results);
     }
+}
+
+/// The clock must not survive into the NEXT song: a stale outro
+/// resource would make the firework system celebrate the first note.
+fn cleanup_outro(mut commands: Commands) {
+    commands.remove_resource::<OutroClock>();
 }
 
 fn pause_input(
@@ -562,6 +676,9 @@ fn pause_input(
                 next_state.set(AppState::SongSelect);
             }
         }
+        // The song is over - there is nothing left to pause, and the
+        // results arrive on the celebration's own clock.
+        GamePhase::Outro => {}
     }
 }
 
@@ -971,6 +1088,44 @@ fn teardown_gameplay(
 #[must_use]
 pub fn player_color(index: usize) -> Color {
     PLAYER_COLORS[index % PLAYER_COLORS.len()]
+}
+
+#[cfg(test)]
+mod outro_tests {
+    use super::{OUTRO_S, outro_over, stamp_scale};
+
+    #[test]
+    fn the_stamp_slams_squashes_and_settles() {
+        // The GH2 beat in one curve: arrives oversized, squashes
+        // BELOW rest on impact (the weight), and breathes gently
+        // afterwards - never a strobe.
+        assert!(stamp_scale(0.0) >= 2.5, "arrives oversized");
+        // Sampled just inside the slam AND at the boundary: the
+        // first version sampled only the boundary, which the
+        // recovery branch owns - a mutation of the slam's own
+        // target slipped past green.
+        for age in [0.349, 0.35] {
+            let impact = stamp_scale(age);
+            assert!(
+                impact < 0.95,
+                "squashes clearly below rest at {age}s: {impact}"
+            );
+        }
+        let settled = stamp_scale(0.70);
+        assert!((settled - 1.0).abs() < 0.02, "recovered by 0.7s");
+        for tick in 8..50 {
+            let s = stamp_scale(tick as f32 * 0.1);
+            assert!((0.95..=1.05).contains(&s), "breath out of band: {s}");
+        }
+    }
+
+    #[test]
+    fn the_results_arrive_at_exactly_five_seconds() {
+        // The commission's number, to the frame the clock can see.
+        assert!(!outro_over(4.999), "not a moment early");
+        assert!(outro_over(OUTRO_S), "and not late either");
+        assert!((OUTRO_S - 5.0).abs() < f32::EPSILON);
+    }
 }
 
 #[cfg(test)]

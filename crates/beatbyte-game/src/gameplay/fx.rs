@@ -121,7 +121,12 @@ impl Plugin for FxPlugin {
             )
             .add_systems(
                 Update,
-                (simulate_particles, animate_break_flash, apply_shake)
+                (
+                    simulate_particles,
+                    animate_break_flash,
+                    apply_shake,
+                    celebrate_outro,
+                )
                     .run_if(in_state(AppState::Gameplay)),
             )
             .add_systems(OnExit(AppState::Gameplay), reset_camera);
@@ -460,6 +465,57 @@ fn hype_ambience(
             }
         }
     }
+}
+
+/// Fireworks through the outro: lane-colored bursts marching across
+/// the highway every beat-ish while "YOU ROCK!!!" stands. Runs the
+/// particle budget and the intensity slider like every other burst.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
+fn celebrate_outro(
+    mut commands: Commands,
+    time: Res<Time>,
+    clock: Option<Res<super::OutroClock>>,
+    layout: Res<HighwayLayout>,
+    theme: Res<crate::theme::ActiveTheme>,
+    settings: Res<EffectSettings>,
+    shapes: Res<crate::shapes::LaneShapes>,
+    particles: Query<(), With<Particle>>,
+    mut fired: Local<u32>,
+) {
+    if !settings.particles {
+        return;
+    }
+    let Some(clock) = clock else {
+        // A fresh outro: the resource appears with age zero, and the
+        // salvo counter must start over with it.
+        *fired = 0;
+        return;
+    };
+    if clock.0 == 0.0 {
+        *fired = 0;
+    }
+    let _ = time;
+    // One salvo every 0.8 s, deterministic from the clock.
+    let due = (clock.0 / 0.8) as u32 + 1;
+    if *fired >= due {
+        return;
+    }
+    *fired = due;
+    let mut live = particles.iter().count();
+    let soft = settings.round_particles.then(|| shapes.soft_dot());
+    // The salvo walks the lanes so the whole highway celebrates.
+    let lane = (due as usize) % beatbyte_core::Lane::ALL.len();
+    let color = theme.0.lane_color(beatbyte_core::Lane::ALL[lane]);
+    spawn_burst(
+        &mut commands,
+        &mut live,
+        soft,
+        Vec2::new(layout.lane_x(0, beatbyte_core::Lane::ALL[lane]), RECEPTOR_Y),
+        color,
+        scaled_count(16, settings.intensity),
+        360.0,
+        due as usize * 31,
+    );
 }
 
 /// Fade the combo-break flash.
