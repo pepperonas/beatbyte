@@ -14,6 +14,34 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.14] - 2026-09-01
+
+### Added
+
+- A PLAY HISTORY: one line per played track, appended to
+  `history.jsonl` beside `scores.json`. It carries the work (title
+  and artist as separate fields, never the score board's
+  collision-prone joined key), the difficulty, when the run started,
+  how long it actually ran in WALL-CLOCK seconds, the song's own
+  length, whether it reached the end, the player count, the score
+  and accuracy, and flags for practice and autopilot.
+- `beatbyte-cli history` exports it: `--format csv` for reporting
+  (one row per performance, quoted properly so a title with a comma
+  stays one column) and `--format json` for analysis (every field).
+  Filters: `--from-ms`, `--until-ms` (half-open, so neighbouring
+  periods cannot report the same run twice), `--min-seconds`,
+  `--exclude-practice`, `--exclude-autopilot`, `--completed-only`.
+
+### Changed
+
+- The history records every run and lets the export decide which
+  ones count. It is deliberately NOT the telemetry log, which skips
+  practice runs on purpose so slowed evidence cannot poison the
+  design loop - a track played at half speed was still played, and
+  a report of what was performed may not have a hole in it. Dropping
+  a run at recording time would be unrecoverable; filtering it at
+  export is one flag.
+
 ## [0.13.13] - 2026-09-01
 
 ### Added

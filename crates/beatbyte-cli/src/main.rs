@@ -12,6 +12,7 @@ use beatbyte_chart::{ChartFile, GenerateMeta, Severity, generate_chart};
 use clap::{Parser, Subcommand};
 
 mod dossier;
+mod history;
 mod redesign;
 mod review;
 
@@ -129,6 +130,39 @@ enum Command {
         /// The genre, 1-48 characters.
         genre: String,
     },
+    /// Export the play history (every track this installation
+    /// played) for reporting or analysis.
+    History {
+        /// Output format: `csv` for reporting, `json` for analysis.
+        #[arg(long, default_value = "csv")]
+        format: String,
+        /// Write here instead of standard output.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// History file (defaults to the game's own).
+        #[arg(long)]
+        file: Option<PathBuf>,
+        /// Keep only runs started at or after this unix millisecond
+        /// stamp.
+        #[arg(long)]
+        from_ms: Option<u64>,
+        /// Keep only runs started before this unix millisecond stamp
+        /// (half-open, so two periods cannot report the same run).
+        #[arg(long)]
+        until_ms: Option<u64>,
+        /// Drop runs shorter than this many seconds.
+        #[arg(long, default_value_t = 0.0)]
+        min_seconds: f64,
+        /// Drop runs that used practice speed or a section loop.
+        #[arg(long)]
+        exclude_practice: bool,
+        /// Drop autopilot runs (test runs, not performances).
+        #[arg(long)]
+        exclude_autopilot: bool,
+        /// Keep only runs that reached the end of the song.
+        #[arg(long)]
+        completed_only: bool,
+    },
     /// Render the built-in songs and generate their charts.
     Demo {
         /// Directory to write the songs' WAV + chart files into.
@@ -186,8 +220,94 @@ fn main() -> ExitCode {
             }
         }
         Command::SetGenre { chart, genre } => set_genre(&chart, &genre),
+        Command::History {
+            format,
+            out,
+            file,
+            from_ms,
+            until_ms,
+            min_seconds,
+            exclude_practice,
+            exclude_autopilot,
+            completed_only,
+        } => export_history(
+            &format,
+            out.as_deref(),
+            file.as_deref(),
+            history::Filter {
+                from_ms,
+                until_ms,
+                min_seconds,
+                exclude_practice,
+                exclude_autopilot,
+                completed_only,
+            },
+        ),
         Command::Demo { out_dir } => demo(&out_dir),
     }
+}
+
+/// Export the play history.
+///
+/// The default file is the game's own, in the platform data
+/// directory beside `scores.json` — the same rule the game writes
+/// by, so the two never have to agree twice.
+fn export_history(
+    format: &str,
+    out: Option<&Path>,
+    file: Option<&Path>,
+    filter: history::Filter,
+) -> ExitCode {
+    let path = match file {
+        Some(path) => path.to_path_buf(),
+        None => match dirs::data_dir() {
+            Some(dir) => dir.join("beatbyte").join("history.jsonl"),
+            None => {
+                eprintln!("no data directory on this platform - pass --file");
+                return ExitCode::from(2);
+            }
+        },
+    };
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) => {
+            eprintln!("cannot read the history at {}: {error}", path.display());
+            eprintln!("(the file appears once a track has been played)");
+            return ExitCode::from(2);
+        }
+    };
+    let all = beatbyte_core::history::parse_log(&text);
+    let kept = history::select(&all, filter);
+    let rendered = match format {
+        "csv" => history::to_csv(&kept),
+        "json" => match history::to_json(&kept) {
+            Ok(json) => json,
+            Err(error) => {
+                eprintln!("cannot render JSON: {error}");
+                return ExitCode::from(2);
+            }
+        },
+        other => {
+            eprintln!("unknown format `{other}` - use csv or json");
+            return ExitCode::from(2);
+        }
+    };
+    if let Some(out) = out {
+        if let Err(error) = std::fs::write(out, rendered) {
+            eprintln!("cannot write {}: {error}", out.display());
+            return ExitCode::from(2);
+        }
+        // The counts go to stderr, so a piped export stays clean.
+        eprintln!(
+            "{} of {} runs written to {}",
+            kept.len(),
+            all.len(),
+            out.display()
+        );
+    } else {
+        print!("{rendered}");
+    }
+    ExitCode::SUCCESS
 }
 
 fn demo(out_dir: &Path) -> ExitCode {

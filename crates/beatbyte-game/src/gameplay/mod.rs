@@ -653,6 +653,11 @@ fn check_song_end(
             })
             .collect();
         results.sort_by_key(|result| result.index);
+        // The history's completion flag: `LastResults` persists
+        // across runs, so its presence cannot say whether THIS run
+        // reached the end. This marker is inserted only here and
+        // consumed when the run is logged.
+        commands.insert_resource(crate::history::RunCompleted);
         commands.insert_resource(LastResults {
             title: song.chart.song.title.clone(),
             artist: song.chart.song.artist.clone(),

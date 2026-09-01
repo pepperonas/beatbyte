@@ -25,6 +25,7 @@
 //! of the audio). Milliseconds appear only at configuration boundaries.
 
 pub mod difficulty;
+pub mod history;
 pub mod lane;
 pub mod music;
 pub mod note;

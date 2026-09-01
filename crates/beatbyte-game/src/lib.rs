@@ -14,6 +14,7 @@ pub mod controls;
 pub mod controls_ui;
 pub mod editor_ui;
 pub mod gameplay;
+pub mod history;
 pub mod import;
 mod input_test;
 pub mod library;
@@ -204,6 +205,7 @@ pub fn run() -> AppExit {
         prompts::PromptsPlugin,
         sfx::SfxPlugin,
         telemetry::TelemetryPlugin,
+        history::HistoryPlugin,
         transition::TransitionPlugin,
         autopilot::AutopilotPlugin,
     ));
