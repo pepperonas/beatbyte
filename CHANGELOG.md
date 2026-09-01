@@ -14,6 +14,23 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.9] - 2026-09-01
+
+### Changed
+
+- The About screen's detail block shows a changelog entry as REAL
+  BULLET POINTS at row size - version heading, brand-colored dash
+  markers, an honest "+ N more" note - instead of one small
+  flattened prose line. Wrapping is exact: Press Start 2P advances
+  a full em per glyph (measured from the bundled TTF), so the
+  wrapper IS the layout. The block always shows something - the
+  highlighted entry, or THIS BUILD's - so About answers "what's
+  new" the moment it opens, and its height is fixed so the footer
+  never jumps.
+- MADE BY opens the maker's website on confirm, like WEBSITE.
+- The About column widened to 760 px; the e-mail-bearing values no
+  longer wrap mid-address.
+
 ## [0.13.8] - 2026-09-01
 
 ### Changed
