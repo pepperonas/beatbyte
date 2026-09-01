@@ -35,7 +35,7 @@
 [![SemVer](https://img.shields.io/badge/versioning-SemVer-blue)](CHANGELOG.md)
 [![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735)](CHANGELOG.md)
 [![Conventional Commits](https://img.shields.io/badge/commits-Conventional-FE5196)](https://www.conventionalcommits.org/)
-[![Tests](https://img.shields.io/badge/tests-617%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-618%20passing-brightgreen)](#testing)
 [![Clippy](https://img.shields.io/badge/clippy-%E2%80%91D%20warnings-brightgreen?logo=rust)](Cargo.toml)
 [![rustfmt](https://img.shields.io/badge/style-rustfmt-orange?logo=rust)](Cargo.toml)
 [![Rustdoc](https://img.shields.io/badge/public%20API-documented-blue)](Cargo.toml)
@@ -287,8 +287,15 @@ pipeline, in order:
    *derivations of the same master* (thinning by strength and
    spacing, lane remap onto 3/4/5 lanes, per-difficulty HOPO and
    chord rules) — so a note you learned on Easy sits on the same
-   lane on Expert. Same audio in → bit-identical charts out; there
-   is no randomness anywhere.
+   lane on Expert. Same audio in → the same chart out; there is no
+   randomness anywhere. (Byte-for-byte identical on a given machine
+   and build. Across *platforms* the note times can differ in their
+   last bits, because generation runs through `ln`, `exp` and
+   trigonometry and libm implementations are not required to agree
+   there — the difference is far below a millisecond and inaudible,
+   but "bit-identical everywhere" would be a claim this project
+   cannot make. It is checked at millisecond resolution instead:
+   `apps/beatbyte/tests/rock_is_unchanged.rs`.)
 8. **Validation** — charts are treated as untrusted input even though
    we just generated them: BPM clamped to 20–400, size caps, path
    traversal and Windows-drive rejection.
@@ -461,7 +468,7 @@ beatbyte-cli demo                  # render the built-in songs + charts
 ## Testing
 
 ```bash
-cargo test --workspace          # 617 tests
+cargo test --workspace          # 618 tests
 ```
 
 | Crate | Tests | Covers |
@@ -472,7 +479,7 @@ cargo test --workspace          # 617 tests
 | `beatbyte-audio` | 103 | Onset detection, tempo estimation, melody contours, the song clock and its practice rate, the speed position map, the error-sound voices, real-file decoding for every advertised format, beat tracking and the kick channel, the analysis-evaluation metrics (MIREX beat scores, Rekordbox XML and ANLZ grid import, corpus pairing, synthetic corpus) |
 | `beatbyte-cli` | 21 | The play-history export (CSV quoting, UTC stamps, report filters), review analytics, the design dossier and the redesign rollout: section windowing, evidence thresholds, hash binding, the mastery veto, write instructions, carried difficulties |
 | `beatbyte-editor` | 19 | Every edit operation round-trips through its own inverse |
-| `beatbyte` | 14 | Documentation consistency: these numbers, the version, the badges, the links, the ADR index, the harness switches, the network claim against the code, the figures the rules document quotes, and the two built-in songs' chart fingerprints |
+| `beatbyte` | 15 | Documentation consistency: these numbers, the version, the badges, the links, the ADR index, the harness switches, the network claim against the code, the figures the rules document quotes, and the two built-in songs' chart fingerprints (at millisecond resolution, which the projection itself is tested for) |
 
 Integration tests decode real fixture files for each supported format,
 including `.m4a`, so "we support AAC" is a passing test rather than a

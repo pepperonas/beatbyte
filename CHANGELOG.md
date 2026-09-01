@@ -14,7 +14,7 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
-## [0.13.22] - 2026-09-01
+## [0.13.23] - 2026-09-01
 
 ### Changed
 
@@ -61,6 +61,18 @@ the manifest ever carries a version this file does not describe.
 - `AnalyzerConfig` is now serialisable end to end, with the new grid
   settings inside it rather than in a second configuration beside it.
   A round-trip test proves it, since a `derive` proves nothing.
+
+### Fixed
+
+- The README said "same audio in → **bit-identical** charts out". The
+  new rock gate disproved it within an hour of existing: it passed on
+  macOS and failed on Linux in CI, because generation runs through
+  `ln`, `exp` and trigonometry and platform libm implementations
+  differ in the last bits. The "no randomness" half was always true;
+  the "bit-identical" half is now stated with the qualifier it needs
+  (same machine and build), and the gate compares charts at
+  millisecond resolution — far below the tightest judgment window,
+  far above the arithmetic noise.
 
 ### Performance
 
