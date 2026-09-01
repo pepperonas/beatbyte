@@ -21,6 +21,8 @@ pub struct LoadedSong {
     pub chart: ChartFile,
     /// Where the audio comes from.
     pub audio: SongAudio,
+    /// Karaoke lyrics, when the song has them.
+    pub lyrics: Option<beatbyte_chart::lyrics::Lyrics>,
 }
 
 /// The audio side of a loaded song.
@@ -112,10 +114,11 @@ fn start_demo_load(mut commands: Commands) {
             LoadedSong {
                 chart,
                 audio: SongAudio::Memory(audio),
+                lyrics: None,
             }
         };
         use beatbyte_audio::demo;
-        vec![
+        let mut songs = vec![
             build(
                 demo::render_demo_song(),
                 demo::DEMO_TITLE,
@@ -126,7 +129,17 @@ fn start_demo_load(mut commands: Commands) {
                 demo::GROOVE_TITLE,
                 demo::GROOVE_ARTIST,
             ),
-        ]
+        ];
+        // The demo song ships original karaoke lyrics (enhanced LRC,
+        // hand-timed to its 128 BPM grid), so a fresh clone
+        // demonstrates the feature without any user content.
+        let demo_lyrics = beatbyte_chart::lyrics::parse_lrc(include_str!(
+            "../../../assets/lyrics/circuit-breaker.lrc"
+        ));
+        if let Some(song) = songs.first_mut() {
+            song.lyrics = Some(demo_lyrics);
+        }
+        songs
     });
     commands.insert_resource(DemoLoadTask(task));
 }

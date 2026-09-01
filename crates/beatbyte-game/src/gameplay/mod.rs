@@ -15,6 +15,7 @@ pub mod feedback;
 pub mod fx;
 pub mod hud;
 pub mod input;
+pub mod lyrics;
 pub mod notes;
 pub mod stage3d;
 
@@ -282,6 +283,7 @@ impl Plugin for GameplayPlugin {
                     notes::spawn_highways,
                     notes::spawn_fret_lines,
                     hud::spawn_huds,
+                    lyrics::spawn_lyric_display,
                     fx::spawn_fx_scenery,
                     crate::theme::spawn_backdrop,
                 )
@@ -303,11 +305,16 @@ impl Plugin for GameplayPlugin {
                     feedback::spawn_feedback,
                     feedback::coach_strum,
                     feedback::animate_feedback,
-                    hud::update_huds,
-                    hud::pop_streak,
-                    hud::pop_multiplier,
-                    hud::pulse_gauge,
-                    hud::update_song_ribbon,
+                    // Grouped: the tuple would exceed Bevy's cap.
+                    (
+                        hud::update_huds,
+                        hud::pop_streak,
+                        hud::pop_multiplier,
+                        hud::pulse_gauge,
+                        hud::update_song_ribbon,
+                    )
+                        .chain(),
+                    lyrics::update_lyrics,
                     mc_transition,
                     check_song_end,
                 )
@@ -320,6 +327,7 @@ impl Plugin for GameplayPlugin {
                 practice_loop_wrap.run_if(in_state(GamePhase::Playing)),
             )
             .init_resource::<PauseCursor>()
+            .init_resource::<lyrics::LyricDisplay>()
             .init_resource::<PracticeState>()
             .add_systems(
                 Update,
@@ -595,6 +603,7 @@ fn mc_transition(
     commands.insert_resource(crate::boot::LoadedSong {
         chart: next.chart.clone(),
         audio: next.audio.clone(),
+        lyrics: next.lyrics.clone(),
     });
     // The count-in runs while the PREVIOUS song still plays; at zero
     // the pending music CROSSFADES instead of hard-starting.

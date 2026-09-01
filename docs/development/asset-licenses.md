@@ -9,6 +9,7 @@ commercial games.
 
 | Asset | Source | License | Notes |
 |-------|--------|---------|-------|
+| `assets/lyrics/circuit-breaker.lrc` | Original lyrics written for this project (enhanced LRC, hand-timed to the demo song's 128 BPM grid) | MIT (project license) | Text and timing are original; the song itself is synthesized by `beatbyte-audio/src/demo.rs`. |
 | `assets/fonts/PressStart2P-Regular.ttf` | [Press Start 2P](https://fonts.google.com/specimen/Press+Start+2P) by CodeMan38 (via google/fonts) | [SIL OFL 1.1](../../assets/fonts/PressStart2P.OFL.txt) | License text bundled next to the font as required. |
 
 When adding an asset:

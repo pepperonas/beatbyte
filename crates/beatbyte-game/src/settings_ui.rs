@@ -35,11 +35,14 @@ pub(crate) enum Row {
     FxIntensity,
     TextScale,
     HighContrast,
+    Lyrics,
+    LyricsSize,
+    LyricsOffset,
     Controls,
 }
 
 impl Row {
-    const ALL: [Row; 19] = [
+    const ALL: [Row; 22] = [
         Row::MusicVolume,
         Row::SfxVolume,
         Row::ScrollSpeed,
@@ -53,6 +56,9 @@ impl Row {
         Row::FxIntensity,
         Row::TextScale,
         Row::HighContrast,
+        Row::Lyrics,
+        Row::LyricsSize,
+        Row::LyricsOffset,
         Row::TapMode,
         Row::NoteStyle,
         Row::Fullscreen,
@@ -76,6 +82,9 @@ impl Row {
             Row::FxIntensity => "EFFECT INTENSITY",
             Row::TextScale => "UI SCALE",
             Row::HighContrast => "HIGH CONTRAST",
+            Row::Lyrics => "LYRICS",
+            Row::LyricsSize => "LYRICS SIZE",
+            Row::LyricsOffset => "LYRICS OFFSET",
             Row::TapMode => "TAP MODE (NO STRUM)",
             Row::NoteStyle => "NOTE STYLE",
             Row::Fullscreen => "FULLSCREEN",
@@ -109,6 +118,14 @@ impl Row {
             Row::FxIntensity => format!("{:.0}%", settings.fx_intensity * 100.0),
             Row::TextScale => format!("{:.0}%", settings.ui_scale * 100.0),
             Row::HighContrast => on_off(settings.high_contrast),
+            Row::Lyrics => on_off(settings.lyrics),
+            Row::LyricsSize => match settings.lyrics_size {
+                0 => "SMALL",
+                2 => "LARGE",
+                _ => "MEDIUM",
+            }
+            .to_owned(),
+            Row::LyricsOffset => format!("{:+.0} ms", settings.lyrics_offset_ms),
             Row::TapMode => on_off(settings.tap_mode),
             Row::NoteStyle => if settings.round_gems {
                 "ROUND"
@@ -156,6 +173,15 @@ impl Row {
                 settings.ui_scale = (settings.ui_scale + 0.05 * direction).clamp(0.75, 1.5);
             }
             Row::HighContrast => settings.high_contrast = !settings.high_contrast,
+            Row::Lyrics => settings.lyrics = !settings.lyrics,
+            Row::LyricsSize => {
+                let step = i32::from(settings.lyrics_size) + direction as i32;
+                settings.lyrics_size = step.clamp(0, 2) as u8;
+            }
+            Row::LyricsOffset => {
+                settings.lyrics_offset_ms =
+                    (settings.lyrics_offset_ms + 10.0 * direction).clamp(-500.0, 500.0);
+            }
             Row::TapMode => settings.tap_mode = !settings.tap_mode,
             Row::NoteStyle => settings.round_gems = !settings.round_gems,
             Row::Fullscreen => settings.fullscreen = !settings.fullscreen,
@@ -183,6 +209,7 @@ impl Row {
             | Row::WatchFolder
             | Row::ReducedFlashing
             | Row::HighContrast
+            | Row::Lyrics
             | Row::TapMode
             | Row::NoteStyle
             | Row::Fullscreen => crate::sfx::UiSound::Toggle,

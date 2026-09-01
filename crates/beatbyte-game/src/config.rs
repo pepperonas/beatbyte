@@ -55,6 +55,16 @@ pub struct Settings {
     /// fills across every menu.
     #[serde(default)]
     pub high_contrast: bool,
+    /// Live karaoke lyrics during gameplay, for songs that have them.
+    #[serde(default = "default_lyrics")]
+    pub lyrics: bool,
+    /// Lyric text size step: 0 small, 1 medium, 2 large.
+    #[serde(default = "default_lyrics_size")]
+    pub lyrics_size: u8,
+    /// Lyrics display offset in milliseconds: positive shows lyrics
+    /// later. Purely presentational - judgment never reads it.
+    #[serde(default)]
+    pub lyrics_offset_ms: f32,
     /// Tap mode: notes hit on fret press alone, no strum required.
     /// ON by default — the first real playtest showed keyboard
     /// players press frets and nothing happens (receptors light up,
@@ -112,6 +122,9 @@ impl Default for Settings {
             fx_intensity: 1.0,
             ui_scale: 1.0,
             high_contrast: false,
+            lyrics: true,
+            lyrics_size: 1,
+            lyrics_offset_ms: 0.0,
             tap_mode: true,
             perspective: true,
             stage_3d: true,
@@ -157,6 +170,8 @@ impl Settings {
         self.scroll_speed = clean(self.scroll_speed, 240.0, 900.0, 420.0);
         self.fx_intensity = clean(self.fx_intensity, 0.0, 1.0, 1.0);
         self.ui_scale = clean(self.ui_scale, 0.75, 1.5, 1.0);
+        self.lyrics_size = self.lyrics_size.min(2);
+        self.lyrics_offset_ms = clean(self.lyrics_offset_ms, -500.0, 500.0, 0.0);
         self.input_map.sanitize();
         if self.theme != "auto" && crate::theme::Theme::by_id(&self.theme).is_none() {
             self.theme = "auto".to_owned();
@@ -173,6 +188,14 @@ fn default_browser_sort() -> String {
 }
 
 /// Full visual effects, the default.
+fn default_lyrics() -> bool {
+    true
+}
+
+fn default_lyrics_size() -> u8 {
+    1
+}
+
 fn default_fx_intensity() -> f32 {
     1.0
 }

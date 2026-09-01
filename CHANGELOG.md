@@ -14,6 +14,33 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.10] - 2026-09-01
+
+### Added
+
+- LIVE KARAOKE LYRICS. A `.lrc` beside a song's audio (or chart)
+  now sings along during gameplay: the active line renders above
+  the highway with a true karaoke fill - each glyph lights as the
+  word crosses it - the next line waits dimmed below, and a soft
+  scrim keeps everything readable over the LED wall. Both standard
+  LRC (line timing: honest fade in/hold/out, never fake word sync)
+  and enhanced LRC (`<mm:ss.xx>` word timing, plus the `[offset:]`
+  tag) are supported, parsed under the same untrusted-input caps as
+  charts. Lyrics run on the SAME clock notes are drawn with - one
+  timebase, judgment untouched - and MC-set crossfades swap them
+  with the song.
+- The demo song "Circuit Breaker" ships original, hand-timed
+  karaoke lyrics, so a fresh clone demonstrates the feature.
+- Importing (and the watch folder) carries a `.lrc` sitting beside
+  the source audio into the song's folder.
+- Settings: LYRICS on/off, LYRICS SIZE (small/medium/large) and
+  LYRICS OFFSET (±500 ms, display only).
+- `docs/visual-master-plan.md`: the modern-rendering commission
+  mapped against what already ships (3D venue stage, HDR/bloom,
+  budgeted particles, tiered hit feedback, beat-reactive
+  environment), with the honest deviations recorded - including
+  why bevy_hanabi 0.19 was checked and NOT added.
+
 ## [0.13.9] - 2026-09-01
 
 ### Changed

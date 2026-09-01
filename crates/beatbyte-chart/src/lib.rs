@@ -39,6 +39,7 @@ pub mod convert;
 pub mod escalation;
 pub mod generate;
 pub mod io;
+pub mod lyrics;
 pub mod schema;
 pub mod validate;
 pub mod versions;
@@ -46,6 +47,9 @@ pub mod versions;
 pub use convert::ConvertError;
 pub use generate::{DifficultyProfile, GenerateMeta, generate_chart};
 pub use io::{ChartIoError, load_chart_file, resolve_audio_path, save_chart_file};
+pub use lyrics::{
+    LyricCue, LyricLine, LyricWord, Lyrics, cue_at, lyrics_beside, parse_lrc, word_progress,
+};
 pub use schema::{ChartDef, ChartFile, ChartNote, ChartPhrase, Provenance, SongMeta, chart_hash};
 pub use validate::{Issue, Severity};
 

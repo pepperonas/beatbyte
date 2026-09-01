@@ -964,6 +964,7 @@ pub fn prepare_song(entry: &SongEntry, builtins: &BuiltinSongs) -> Result<Loaded
             Ok(LoadedSong {
                 chart,
                 audio: SongAudio::File(audio_path.clone()),
+                lyrics: beatbyte_chart::lyrics::lyrics_beside(audio_path, chart_path),
             })
         }
     }

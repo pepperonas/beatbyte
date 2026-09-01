@@ -590,6 +590,13 @@ fn import_song(source: &Path, title: &str, artist: &str) -> Result<(), String> {
     std::fs::create_dir_all(&folder).map_err(|e| format!("cannot create folder: {e}"))?;
     let audio_dest = folder.join(file_name);
     std::fs::copy(source, &audio_dest).map_err(|e| format!("cannot copy audio: {e}"))?;
+    // A .lrc beside the source travels with the song, so imported
+    // tracks keep their karaoke lyrics. Best-effort: a failed copy
+    // must not fail the import.
+    let lyric_source = source.with_extension("lrc");
+    if lyric_source.is_file() {
+        let _ = std::fs::copy(&lyric_source, audio_dest.with_extension("lrc"));
+    }
 
     let audio = beatbyte_audio::decode_file(&audio_dest).map_err(|e| e.to_string())?;
     let analysis = SpectralAnalyzer::default().analyze(&audio);

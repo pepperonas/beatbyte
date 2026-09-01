@@ -35,7 +35,7 @@
 [![SemVer](https://img.shields.io/badge/versioning-SemVer-blue)](CHANGELOG.md)
 [![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735)](CHANGELOG.md)
 [![Conventional Commits](https://img.shields.io/badge/commits-Conventional-FE5196)](https://www.conventionalcommits.org/)
-[![Tests](https://img.shields.io/badge/tests-524%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-537%20passing-brightgreen)](#testing)
 [![Clippy](https://img.shields.io/badge/clippy-%E2%80%91D%20warnings-brightgreen?logo=rust)](Cargo.toml)
 [![rustfmt](https://img.shields.io/badge/style-rustfmt-orange?logo=rust)](Cargo.toml)
 [![Rustdoc](https://img.shields.io/badge/public%20API-documented-blue)](Cargo.toml)
@@ -160,6 +160,10 @@ identical autopilot scores prove judgment does not change.*
   charts into `songs/` and they appear in the browser — or drop a
   **folder** onto the window and BeatByte watches it for new tracks
   (duplicates skipped by content hash; in-game deletes stay deleted)
+- 🎤 **Live karaoke lyrics** — put a `.lrc` beside your song (standard
+  or enhanced word-timed LRC) and the words sing along above the
+  highway with a true per-glyph karaoke fill, on the same clock the
+  notes fall on; the demo song ships its own lyrics
 - 🤖 **Automatic chart generation** — BPM & onset analysis turns any song
   into a playable chart across four difficulties (playable, not perfect —
   the built-in editor is the correction pass)
@@ -455,14 +459,14 @@ beatbyte-cli demo                  # render the built-in songs + charts
 ## Testing
 
 ```bash
-cargo test --workspace          # 524 tests
+cargo test --workspace          # 537 tests
 ```
 
 | Crate | Tests | Covers |
 |---|---:|---|
 | `beatbyte-core` | 82 | Timing windows to their exact boundaries, judgment, scoring, combos, HOPO and tap rules, the hype meter, the telemetry schema |
-| `beatbyte-chart` | 86 | Format validation, untrusted-input limits, chart generation, difficulty derivation, musical quantisation, chart versions, energy-aware escalation, jack-free lane flow, burst discipline, accent chords |
-| `beatbyte-game` | 239 | UI kit contracts, settings persistence, the input tables and binding labels, the color language, library scanning, import naming, the X-plorer report decoder, texture geometry, the song ribbon, list scrolling |
+| `beatbyte-chart` | 93 | Format validation, untrusted-input limits, chart generation, difficulty derivation, musical quantisation, chart versions, energy-aware escalation, jack-free lane flow, burst discipline, accent chords, LRC/enhanced-LRC lyrics parsing |
+| `beatbyte-game` | 245 | UI kit contracts, settings persistence, the input tables and binding labels, the color language, library scanning, import naming, the X-plorer report decoder, texture geometry, the song ribbon, list scrolling |
 | `beatbyte-audio` | 67 | Onset detection, tempo estimation, melody contours, the song clock and its practice rate, the speed position map, the error-sound voices, real-file decoding for every advertised format |
 | `beatbyte-cli` | 19 | Review analytics, the design dossier and the redesign rollout: section windowing, evidence thresholds, hash binding, the mastery veto, write instructions, carried difficulties |
 | `beatbyte-editor` | 19 | Every edit operation round-trips through its own inverse |

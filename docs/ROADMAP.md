@@ -382,6 +382,27 @@ Maria hard 870/870, Immer expert 1064/1064, Lille Vals expert
 hard/expert and keeps or reverts pointers; Maria's pending v3
 listening A/B stayed open (her redesign is v4 on parent v2).
 
+## Live karaoke lyrics (DONE 2026-09-01, v0.13.10 — docs/visual-master-plan.md)
+
+The modern-rendering commission, mapped honestly: most of its
+rendering phases already shipped (3D venue stage, HDR/bloom,
+budgeted particles, tiered hit feedback, beat-reactive environment
+— see the plan doc's inventory table); the real gap was lyrics.
+
+- [x] LRC + enhanced-LRC parser in beatbyte-chart (untrusted-input
+  caps, `[offset:]` tag, repeated stamps, word spans; pure cue
+  function — deterministic by unit test).
+- [x] Karaoke renderer: per-glyph fill on the notes' own visual
+  clock, next-line preview, scrim, honest line-timing fallback,
+  MC-set handover, multiplayer-safe layout.
+- [x] Sources: `.lrc` beside audio/chart; import + watch folder
+  carry it; demo song ships original hand-timed lyrics.
+- [x] Settings: LYRICS, LYRICS SIZE, LYRICS OFFSET.
+
+Follow-ups (only if wanted): a lyrics editor timeline, automatic
+vocal alignment (the data model already carries word spans), a
+lyrics position setting.
+
 ## Backlog (explicitly out of scope until after 1.0)
 
 Not started without a deliberate roadmap edit pulling them forward:
