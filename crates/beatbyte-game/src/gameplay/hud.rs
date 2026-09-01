@@ -31,9 +31,9 @@ pub struct ScorePad;
 #[derive(Component)]
 pub struct StreakBead(pub u32);
 
-/// The soft halo behind a streak bulb (dimmer than its core).
+/// A streak bulb's socket ring — its rim lights with the fill.
 #[derive(Component)]
-pub struct BulbGlow;
+pub struct BulbRim;
 
 /// The frame around the multiplier, which lights while hype runs.
 #[derive(Component)]
@@ -403,7 +403,7 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::sha
     // The multiplier gets its own box: here it is a state, not a
     // statistic.
     let box_size = Vec2::new(72.0, 30.0);
-    let box_at = Vec2::new(left.x - PLATE_W / 2.0 + 50.0, left.y - PLATE_H / 2.0 + 32.0);
+    let box_at = Vec2::new(left.x - PLATE_W / 2.0 + 50.0, left.y - PLATE_H / 2.0 + 42.0);
     commands.spawn((
         GameplayScreen,
         MultiplierBox,
@@ -429,16 +429,22 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::sha
         Transform::from_xyz(box_at.x, box_at.y, 5.0),
     ));
 
-    // Beads: how far the streak has come toward the next multiplier,
-    // and — the part that matters — what a miss just cost.
+    // Beads: GH2's own grammar — "10 little dots above the
+    // multiplier, each dot one note of the combo" (WikiHero,
+    // Multiplier) — drawn CRISP: a socket ring whose rim lights
+    // with the fill and a solid core, no additive halo. The first
+    // version stacked 26 px soft-dot halos on a 13 px pitch; they
+    // overlapped into one smear (user report: "zu viel glow").
     let bead_gap = 13.0f32;
     let bead_x = box_at.x + box_size.x / 2.0 + 18.0;
     for step in 0..STREAK_BEADS {
         let x = bead_gap.mul_add(step as f32, bead_x);
-        // The socket: a dark round housing every bulb sits in, so an
-        // unlit lamp is still a lamp and not an absence.
+        // The socket ring: its rim takes the lit color, so a filled
+        // dot reads as a lamp ON, not as a blob over a lamp.
         commands.spawn((
             GameplayScreen,
+            StreakBead(step),
+            BulbRim,
             Sprite {
                 image: shapes.round_ring(),
                 color: palette::dimmed(palette::TEXT_DIM, 0.5),
@@ -447,41 +453,35 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::sha
             },
             Transform::from_xyz(x, box_at.y, 3.8),
         ));
-        // The glow halo behind the lit bulb.
-        commands.spawn((
-            GameplayScreen,
-            StreakBead(step),
-            BulbGlow,
-            Sprite {
-                image: shapes.soft_dot(),
-                color: Color::NONE,
-                custom_size: Some(Vec2::splat(26.0)),
-                ..default()
-            },
-            Transform::from_xyz(x, box_at.y, 3.9),
-        ));
-        // The bulb itself.
+        // The core: solid when lit, near-dark when not.
         commands.spawn((
             GameplayScreen,
             StreakBead(step),
             Sprite {
                 image: shapes.round_core(),
                 color: palette::dimmed(palette::TEXT_DIM, 0.25),
-                custom_size: Some(Vec2::splat(8.0)),
+                custom_size: Some(Vec2::splat(7.0)),
                 ..default()
             },
             Transform::from_xyz(x, box_at.y, 4.0),
         ));
     }
+    // The streak counter, GH2-Deluxe style: bright digits with their
+    // own clear line (it used to sit centred under the plate where
+    // the pop scaled it INTO the bead row — "nicht gut sichtbar").
     commands.spawn((
         GameplayScreen,
         ComboText(0),
         StreakPop { seen: 0, age: 1.0 },
         Text2d::new(""),
         font.text(12.0),
-        TextColor(palette::TEXT_DIM),
-        Anchor::TOP_CENTER,
-        Transform::from_xyz(left.x, left.y - PLATE_H / 2.0 + 30.0, 5.0),
+        TextColor(palette::BRAND),
+        Anchor::TOP_LEFT,
+        Transform::from_xyz(
+            box_at.x - box_size.x / 2.0,
+            left.y - PLATE_H / 2.0 + 18.0,
+            5.0,
+        ),
     ));
 
     // ── Right: the energy meter, in the quarters it fills in ────────
@@ -561,7 +561,7 @@ pub fn update_huds(
     )>,
     mut fills: Query<(&HypeFill, &mut Transform), Without<HypeNeedle>>,
     mut needles: Query<&mut Transform, (With<HypeNeedle>, Without<HypeFill>)>,
-    mut beads: Query<(&StreakBead, Has<BulbGlow>, &mut Sprite)>,
+    mut beads: Query<(&StreakBead, Has<BulbRim>, &mut Sprite)>,
     mut boxes: Query<&mut Sprite, (With<MultiplierBox>, Without<StreakBead>)>,
 ) {
     for (index, player) in &players {
@@ -651,13 +651,15 @@ pub fn update_huds(
         } else {
             palette::BRAND
         };
-        for (bead, glow, mut sprite) in &mut beads {
+        for (bead, rim, mut sprite) in &mut beads {
             let lit = bead.0 < toward_next;
             let next = bead.0 == toward_next && toward_next < STREAK_BEADS;
-            sprite.color = match (lit, glow) {
-                // The halo only exists while its bulb burns.
-                (true, true) => lit_color.with_alpha(0.5),
-                (false, true) => Color::NONE,
+            sprite.color = match (lit, rim) {
+                // The ring rim takes the lit color; a filled dot in
+                // a lit ring reads as a lamp, crisply, without any
+                // additive halo (they smeared at this pitch).
+                (true, true) => lit_color,
+                (false, true) => palette::dimmed(palette::TEXT_DIM, 0.5),
                 (true, false) => lit_color.mix(&Color::WHITE, 0.25),
                 // The bulb about to fill carries a faint ember — the
                 // row points at where the streak is going.

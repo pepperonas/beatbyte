@@ -14,6 +14,20 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.8] - 2026-09-01
+
+### Changed
+
+- The streak bulbs are drawn CRISP, the way Guitar Hero II draws
+  its own ("10 little dots above the multiplier, each dot one note
+  of the combo" - WikiHero): a socket ring whose rim lights with
+  the fill and a solid core - the 26 px additive halos on a 13 px
+  pitch are gone (they overlapped into one smear; user report "zu
+  viel glow, unsauber"). The streak counter got its own clear line
+  in bright brand digits, GH2-Deluxe style, below the bulb row -
+  it used to sit centred under the plate where its pop animation
+  scaled it INTO the bulbs ("nicht gut sichtbar").
+
 ## [0.13.7] - 2026-09-01
 
 ### Changed
