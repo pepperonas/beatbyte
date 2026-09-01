@@ -14,6 +14,43 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.20] - 2026-09-01
+
+### Added
+
+- An EVALUATION HARNESS for the analysis pipeline
+  (`beatbyte-audio::eval`), so its quality can be measured before it
+  is tuned: MIREX beat scores (F-measure at ±70 ms, CMLt, AMLt),
+  downbeat and boundary accuracy, and the game-side note-density
+  distribution. The metric definitions are pure and tested against
+  cases whose answers can be worked out by hand — half tempo must
+  fail CMLt and pass AMLt, a burst of detections may not "hit" a
+  whole bar.
+- Ground-truth sources: the JSON sidecar from the brief verbatim, and
+  a Rekordbox XML importer (`Inizio`/`Bpm`/`Battito`, tempo changes
+  included). ⚠️ Ableton `.asd` is deliberately NOT parsed — it is an
+  undocumented binary format, and guessing its layout would put
+  invented facts into the measurement everything else is judged by.
+- Synthetic corpus cases reproducing the material properties that
+  break the pipeline on sample-based loop house: two overlaid timing
+  rasters, soft transients, a filter sweep, and a flat
+  four-to-the-floor. Ground truth is exact by construction. Every
+  number taken from a description rather than measured carries an
+  `// ASSUMPTION:` comment.
+- `docs/audio-pipeline-ist.md` (the pipeline as it stands, with each
+  material property mapped to the code line it breaks at) and
+  `docs/audio-eval-baseline.md` (the measured baseline).
+
+### Notes
+
+The harness found three things on its first run, none of which
+changes behaviour yet: the rock reference's beat grid sits **146 ms
+off the music** (invisible in-game, because the chart is generated
+from the same grid); the second timing layer of a two-raster track is
+**discarded entirely** (128 onsets for 128 beats, note density
+halved); and downbeat accuracy is 0 wherever the material is a flat
+4/4 — there is no downbeat stage at all.
+
 ## [0.13.19] - 2026-09-01
 
 ### Fixed

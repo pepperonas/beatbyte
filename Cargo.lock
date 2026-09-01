@@ -421,7 +421,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "beatbyte"
-version = "0.13.19"
+version = "0.13.20"
 dependencies = [
  "beatbyte-core",
  "beatbyte-game",
@@ -430,19 +430,21 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-audio"
-version = "0.13.19"
+version = "0.13.20"
 dependencies = [
  "beatbyte-core",
  "hound",
  "realfft",
  "rodio",
+ "serde",
+ "serde_json",
  "symphonia",
  "thiserror 2.0.20",
 ]
 
 [[package]]
 name = "beatbyte-chart"
-version = "0.13.19"
+version = "0.13.20"
 dependencies = [
  "beatbyte-core",
  "serde",
@@ -452,7 +454,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-cli"
-version = "0.13.19"
+version = "0.13.20"
 dependencies = [
  "beatbyte-audio",
  "beatbyte-chart",
@@ -465,7 +467,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-core"
-version = "0.13.19"
+version = "0.13.20"
 dependencies = [
  "serde",
  "serde_json",
@@ -473,7 +475,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-editor"
-version = "0.13.19"
+version = "0.13.20"
 dependencies = [
  "beatbyte-chart",
  "beatbyte-core",
@@ -482,7 +484,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-game"
-version = "0.13.19"
+version = "0.13.20"
 dependencies = [
  "beatbyte-audio",
  "beatbyte-chart",

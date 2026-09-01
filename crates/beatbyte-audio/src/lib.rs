@@ -21,6 +21,7 @@ pub mod analysis;
 pub mod clock;
 pub mod decode;
 pub mod demo;
+pub mod eval;
 pub mod playback;
 pub mod synth;
 
