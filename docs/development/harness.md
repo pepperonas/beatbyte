@@ -35,6 +35,7 @@ about them is compiled into a normal build.
 | `BEATBYTE_SHOT_SORT` | column name | With `BEATBYTE_SHOT_STATE=songselect`, activates that sort (title/artist/genre/length/notes/diff/best) so the active-column marker is photographable. |
 | `BEATBYTE_SHOT_SEARCH` | filter text | With `BEATBYTE_SHOT_STATE=songselect`, opens the search with that filter typed, so the prompt, the first-match selection and the empty-result hint are photographable. |
 | `BEATBYTE_ABOUT_EXPANDED` | set | With `BEATBYTE_SHOT_STATE=about`, pre-expands the changelog section (default collapsed), so the expanded state is photographable. |
+| `BEATBYTE_AUTOPILOT_MC` | comma-separated title needles | Queues the named songs as an MC set and plays it as one continuous performance — the only automated path through the DJ crossfade between songs. Combines with `BEATBYTE_AUTOPILOT_PLAYERS`. |
 | `BEATBYTE_WINDOW` | `WxH` | Pins the window size, for layout verification. |
 | `BEATBYTE_FPS` | set | Reports median and 99th-percentile frame time every five seconds. |
 

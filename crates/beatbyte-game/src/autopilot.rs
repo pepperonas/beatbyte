@@ -94,7 +94,8 @@ impl Plugin for AutopilotPlugin {
                     fail_if_window_vanishes,
                 ),
             )
-            .add_systems(OnEnter(AppState::Gameplay), autopilot_reset);
+            .add_systems(OnEnter(AppState::Gameplay), autopilot_reset)
+            .add_systems(Update, autopilot_reset_on_swap);
             if std::env::var_os("BEATBYTE_AUTOPILOT_LOOP").is_some() {
                 // Section-loop validation: arm the loop, watch song
                 // time actually wrap twice, and verify the section's
@@ -642,6 +643,44 @@ fn autopilot_song_select(
                 error!("autopilot: import batch never finished");
                 std::process::exit(1);
             }
+            return;
+        }
+        // MC-set mode: comma-separated title needles queue a set and
+        // start it as one continuous performance.
+        if let Ok(raw) = std::env::var("BEATBYTE_AUTOPILOT_MC") {
+            let mut songs = Vec::new();
+            for needle in raw.split(',').map(str::trim).filter(|n| !n.is_empty()) {
+                match select_song(&library.entries, Some(needle)) {
+                    Ok(entry) => match crate::song_select::prepare_song(entry, &builtins) {
+                        Ok(song) => songs.push(song),
+                        Err(reason) => {
+                            error!("autopilot: cannot load {needle:?}: {reason}");
+                            std::process::exit(1);
+                        }
+                    },
+                    Err(reason) => {
+                        error!("autopilot: {reason}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            let Some(first) = songs.first().cloned() else {
+                error!("autopilot: BEATBYTE_AUTOPILOT_MC names no songs");
+                std::process::exit(1);
+            };
+            let players: usize = std::env::var("BEATBYTE_AUTOPILOT_PLAYERS")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(1)
+                .clamp(1, crate::multiplayer::MAX_PLAYERS);
+            roster.devices = vec![crate::multiplayer::DeviceId::Keyboard; players];
+            info!(
+                "autopilot: starting an MC set of {} song(s) with {players} player(s)",
+                songs.len()
+            );
+            commands.insert_resource(crate::mc::McSet { songs, position: 0 });
+            commands.insert_resource(first);
+            next_state.set(AppState::Gameplay);
             return;
         }
         let selector = std::env::var("BEATBYTE_AUTOPILOT_SONG").ok();
@@ -1293,6 +1332,19 @@ fn autopilot_delete(
 
 fn autopilot_reset(mut hands: ResMut<AutopilotHands>) {
     *hands = AutopilotHands::default();
+}
+
+/// The MC set swaps songs WITHOUT re-entering the gameplay state, so
+/// the `OnEnter` reset above never fires — the hands kept feeding
+/// song A's consumed plan into song B and missed all 81 of its
+/// notes (found by the first MC verification run).
+fn autopilot_reset_on_swap(
+    mut swaps: MessageReader<crate::mc::McSwapped>,
+    mut hands: ResMut<AutopilotHands>,
+) {
+    if swaps.read().count() > 0 {
+        *hands = AutopilotHands::default();
+    }
 }
 
 /// Play through the real keyboard: the default bindings (A S D F G +

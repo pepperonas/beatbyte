@@ -262,7 +262,7 @@ pub struct GameplayScreen;
 
 /// The song audio waiting for the count-in to elapse.
 #[derive(Resource)]
-struct PendingMusic(SongAudio);
+struct PendingMusic(SongAudio, Option<f32>);
 
 /// Marker for the count-in banner.
 #[derive(Component)]
@@ -308,6 +308,7 @@ impl Plugin for GameplayPlugin {
                     hud::pop_multiplier,
                     hud::pulse_gauge,
                     hud::update_song_ribbon,
+                    mc_transition,
                     check_song_end,
                 )
                     .chain()
@@ -325,6 +326,15 @@ impl Plugin for GameplayPlugin {
                 (pause_menu_input, refresh_pause_menu)
                     .chain()
                     .run_if(in_state(GamePhase::Paused)),
+            )
+            .add_message::<crate::mc::McSwapped>()
+            .add_systems(
+                Update,
+                // The per-song scenery follows the set's swaps: the
+                // handover despawned the old chart's bars and bands,
+                // these rebuild them from the freshly-inserted song.
+                (stage3d::spawn_fret_bars, stage3d::spawn_phrase_bands)
+                    .run_if(crate::mc::mc_swapped),
             )
             .add_systems(OnEnter(GamePhase::Outro), spawn_outro)
             .add_systems(Update, run_outro.run_if(in_state(GamePhase::Outro)))
@@ -406,7 +416,7 @@ fn setup_gameplay(
     }
 
     // Count-in: the clock starts negative; music starts at zero.
-    commands.insert_resource(PendingMusic(song.audio.clone()));
+    commands.insert_resource(PendingMusic(song.audio.clone(), None));
     game_clock.clock.start(time.elapsed_secs_f64(), -PREROLL_S);
     // Practice speed applies to the WHOLE timeline — count-in
     // included — so the scroll pace never changes mid-approach. The
@@ -458,9 +468,18 @@ fn run_count_in(
     if now >= 0.0
         && let Some(pending) = pending
     {
-        match &pending.0 {
-            SongAudio::Memory(audio) => music.0.play_buffer(audio.clone()),
-            SongAudio::File(path) => music.0.play_file(path.clone()),
+        match (&pending.0, pending.1) {
+            (SongAudio::Memory(audio), None) => music.0.play_buffer(audio.clone()),
+            (SongAudio::File(path), None) => music.0.play_file(path.clone()),
+            // The MC handover: the previous song keeps sounding as
+            // the outgoing tail while this one fades in and becomes
+            // the reported song (the clock re-anchors to it).
+            (SongAudio::Memory(audio), Some(fade_s)) => {
+                music.0.crossfade_buffer(audio.clone(), fade_s);
+            }
+            (SongAudio::File(path), Some(fade_s)) => {
+                music.0.crossfade_file(path.clone(), fade_s);
+            }
         }
         commands.remove_resource::<PendingMusic>();
     }
@@ -479,6 +498,116 @@ pub(crate) fn advance_sessions(
         let player = &mut *player;
         player.session.advance(now, &mut player.frame_events);
     }
+}
+
+/// The MC set's handover: at the same moment the song-end trigger
+/// would fire, the NEXT song of the set takes over instead of the
+/// outro - fresh sessions on the same player entities, the note
+/// field cleared for the new chart, the clock restarted at the
+/// count-in, and the audio told to CROSSFADE so the previous song
+/// keeps sounding underneath while the new intro rises. Runs before
+/// `check_song_end` in the chain; the freshly-reset sessions are no
+/// longer `finished()`, which is exactly what keeps the outro from
+/// firing mid-set.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
+fn mc_transition(
+    mut commands: Commands,
+    mc: Option<ResMut<crate::mc::McSet>>,
+    selected: Res<SelectedDifficulty>,
+    settings: Res<crate::config::Settings>,
+    game_clock_players: Query<(&PlayerIndex, &mut PlayerSession)>,
+    old_notes: Query<Entity, LoopedNoteEntities>,
+    old_bars: Query<Entity, With<stage3d::FretBar>>,
+    old_bands: Query<Entity, With<stage3d::PhraseBand>>,
+    mut game_clock: ResMut<GameClock>,
+    time: Res<Time>,
+    practice: Res<PracticeState>,
+    mut swaps: MessageWriter<crate::mc::McSwapped>,
+) {
+    let Some(mut mc) = mc else {
+        return;
+    };
+    let mut players = game_clock_players;
+    let Some(now) = game_clock.song_time(&time) else {
+        return;
+    };
+    let all_finished =
+        !players.is_empty() && players.iter().all(|(_, player)| player.session.finished());
+    let content_end = players
+        .iter()
+        .map(|(_, player)| player.session.track().content_end_s())
+        .fold(0.0, f64::max);
+    if !(all_finished && now > content_end + 1.5) {
+        return;
+    }
+    let Some(next) = mc.advance() else {
+        // Last song: hand the moment to check_song_end untouched.
+        return;
+    };
+    let next = next.clone();
+    let offered: Vec<_> = next.chart.charts.iter().map(|c| c.difficulty).collect();
+    let Some(difficulty) = crate::mc::set_difficulty(&offered, selected.0) else {
+        warn!(
+            "mc set: {:?} offers no difficulty - set ends",
+            next.chart.song.title
+        );
+        return;
+    };
+    let track = match next.chart.to_track(difficulty) {
+        Ok(track) => track,
+        Err(error) => {
+            warn!(
+                "mc set: cannot build {:?}: {error} - set ends",
+                next.chart.song.title
+            );
+            return;
+        }
+    };
+    info!(
+        "mc set: crossfading into {:?} on {difficulty} ({} of {})",
+        next.chart.song.title,
+        mc.position + 1,
+        mc.songs.len()
+    );
+    // Fresh sessions ON the existing player entities - the HUD, the
+    // input routing and the layout all keep their references.
+    for (_, mut player) in &mut players {
+        let mut session = TrackSession::new(
+            track.clone(),
+            TimingWindows::default(),
+            ScoreConfig::default(),
+        );
+        session.set_tap_mode(settings.tap_mode);
+        player.session = session;
+        player.frame_events.clear();
+        player.spawn_cursor = 0;
+    }
+    // The old chart's field: notes in flight, its bar lines, its
+    // phrase bands. The spawn systems rebuild all of it from the new
+    // track (bars and bands listen for the swap message).
+    for entity in old_notes
+        .iter()
+        .chain(old_bars.iter())
+        .chain(old_bands.iter())
+    {
+        commands.entity(entity).despawn();
+    }
+    commands.insert_resource(crate::boot::LoadedSong {
+        chart: next.chart.clone(),
+        audio: next.audio.clone(),
+    });
+    // The count-in runs while the PREVIOUS song still plays; at zero
+    // the pending music CROSSFADES instead of hard-starting.
+    commands.insert_resource(PendingMusic(next.audio, Some(crate::mc::MC_CROSSFADE_S)));
+    let mono = time.elapsed_secs_f64();
+    game_clock.clock.start(mono, -PREROLL_S);
+    game_clock.clock.set_rate(mono, practice.rate());
+    // The device still reports the OUTGOING song's position until
+    // the fade begins - reconciling against it would teleport the
+    // fresh clock. The crossfade bumps the generation, which
+    // re-anchors cleanly.
+    game_clock.hold_reconcile_until = mono + PREROLL_S + 0.5;
+    swaps.write(crate::mc::McSwapped);
 }
 
 /// End of song → snapshot results → results screen.
@@ -1076,6 +1205,8 @@ fn teardown_gameplay(
     music: Res<Music>,
     mut game_clock: ResMut<GameClock>,
 ) {
+    // A finished (or quit) set is over - the browser starts fresh.
+    commands.remove_resource::<crate::mc::McSet>();
     for entity in &entities {
         commands.entity(entity).despawn();
     }

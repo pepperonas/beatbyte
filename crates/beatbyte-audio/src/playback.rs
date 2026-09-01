@@ -50,6 +50,13 @@ pub struct MusicPlayer {
     /// Keeps the output device alive; dropping it stops all audio.
     _device: MixerDeviceSink,
     player: Player,
+    /// The OUTGOING song during a DJ crossfade: it keeps playing on
+    /// its own player while its volume ramps to silence. `None`
+    /// outside a transition.
+    tail: Option<TailFade>,
+    /// The volume the game asked for; during a fade both players are
+    /// driven from it through the crossfade gains.
+    base_volume: f32,
     /// Playback speed factor (practice mode). The device position
     /// rodio reports lives in the OUTPUT timeline (it advances at
     /// wall-clock pace whatever the factor), while the game thinks
@@ -73,6 +80,25 @@ pub fn map_source_position(src_base_s: f64, out_base_s: f64, speed: f64, outer_n
     (outer_now_s - out_base_s).mul_add(speed, src_base_s)
 }
 
+/// The outgoing side of a crossfade.
+struct TailFade {
+    player: Player,
+    started: std::time::Instant,
+    fade_s: f32,
+}
+
+/// Equal-power crossfade gains at `elapsed` seconds into a fade of
+/// `fade_s`: `(outgoing, incoming)`. The pair sums in POWER, not in
+/// amplitude — a linear fade dips audibly in the middle, which is
+/// exactly the "hard stop" feel the transition exists to avoid.
+/// Pure — tested.
+#[must_use]
+pub fn crossfade_gains(elapsed_s: f32, fade_s: f32) -> (f32, f32) {
+    let t = (elapsed_s / fade_s.max(1e-3)).clamp(0.0, 1.0);
+    let angle = t * core::f32::consts::FRAC_PI_2;
+    (angle.cos(), angle.sin())
+}
+
 impl MusicPlayer {
     /// Open the default audio output.
     pub fn new() -> Result<MusicPlayer, PlaybackError> {
@@ -82,6 +108,8 @@ impl MusicPlayer {
         Ok(MusicPlayer {
             _device: device,
             player,
+            tail: None,
+            base_volume: 1.0,
             speed: 1.0,
             src_base_s: 0.0,
             out_base_s: 0.0,
@@ -196,8 +224,85 @@ impl MusicPlayer {
     }
 
     /// Set the music volume (0.0–1.0, values above 1.0 amplify).
-    pub fn set_volume(&self, volume: f32) {
-        self.player.set_volume(volume.max(0.0));
+    pub fn set_volume(&mut self, volume: f32) {
+        self.base_volume = volume.max(0.0);
+        if self.tail.is_none() {
+            self.player.set_volume(self.base_volume);
+        }
+        // During a fade `tick_fade` reapplies both sides from the
+        // new base on its next step.
+    }
+
+    /// Begin a DJ crossfade into a file: the current song keeps
+    /// playing as the outgoing tail while the new one starts at
+    /// silence; [`MusicPlayer::tick_fade`] ramps both. Position and
+    /// speed reporting swap to the NEW song immediately.
+    pub fn crossfade_to_file(&mut self, path: &Path, fade_s: f32) -> Result<(), PlaybackError> {
+        let display = path.display().to_string();
+        let file = File::open(path).map_err(|source| PlaybackError::Open {
+            path: display.clone(),
+            source,
+        })?;
+        let decoder = Decoder::try_from(file).map_err(|source| PlaybackError::Decode {
+            path: display,
+            source,
+        })?;
+        self.begin_crossfade(fade_s, |incoming| incoming.append(decoder));
+        Ok(())
+    }
+
+    /// [`MusicPlayer::crossfade_to_file`] for an in-memory song.
+    pub fn crossfade_to_buffer(&mut self, audio: &AudioData, fade_s: f32) {
+        let channels = core::num::NonZero::<u16>::MIN; // mono
+        let Some(rate) = core::num::NonZero::new(audio.sample_rate()) else {
+            return;
+        };
+        let source = rodio::buffer::SamplesBuffer::new(channels, rate, audio.samples().to_vec());
+        self.begin_crossfade(fade_s, |incoming| incoming.append(source));
+    }
+
+    /// The shared half of both crossfades: a fresh player becomes
+    /// the current one, the old one becomes the fading tail.
+    fn begin_crossfade(&mut self, fade_s: f32, load: impl FnOnce(&Player)) {
+        // A fade already running: the old tail has had its moment.
+        if let Some(tail) = self.tail.take() {
+            tail.player.stop();
+        }
+        let incoming = Player::connect_new(self._device.mixer());
+        load(&incoming);
+        incoming.set_volume(0.0);
+        if self.speed != 1.0 {
+            incoming.set_speed(self.speed as f32);
+        }
+        incoming.play();
+        let outgoing = core::mem::replace(&mut self.player, incoming);
+        self.tail = Some(TailFade {
+            player: outgoing,
+            started: std::time::Instant::now(),
+            fade_s,
+        });
+        // The map re-bases on the NEW song's zero.
+        self.src_base_s = 0.0;
+        self.out_base_s = 0.0;
+    }
+
+    /// Advance a running crossfade; call once per thread tick. Does
+    /// nothing outside a fade.
+    pub fn tick_fade(&mut self) {
+        let Some(tail) = &self.tail else {
+            return;
+        };
+        let elapsed = tail.started.elapsed().as_secs_f32();
+        let (out_gain, in_gain) = crossfade_gains(elapsed, tail.fade_s);
+        if elapsed >= tail.fade_s {
+            if let Some(done) = self.tail.take() {
+                done.player.stop();
+            }
+            self.player.set_volume(self.base_volume);
+            return;
+        }
+        tail.player.set_volume(self.base_volume * out_gain);
+        self.player.set_volume(self.base_volume * in_gain);
     }
 }
 
@@ -229,6 +334,8 @@ use crate::decode::AudioData;
 enum MusicCommand {
     PlayFile(std::path::PathBuf),
     PlayBuffer(AudioData),
+    CrossfadeFile(std::path::PathBuf, f32),
+    CrossfadeBuffer(AudioData, f32),
     Pause,
     Resume,
     Stop,
@@ -288,6 +395,23 @@ impl MusicHandle {
     /// Play a song from disk (streamed).
     pub fn play_file(&self, path: std::path::PathBuf) {
         let _ = self.commands.send(MusicCommand::PlayFile(path));
+    }
+
+    /// DJ-crossfade into a file over `fade_s` seconds: the current
+    /// song fades out underneath while the new one fades in and
+    /// becomes the reported song (generation bumps, so the game
+    /// clock re-anchors to it).
+    pub fn crossfade_file(&self, path: std::path::PathBuf, fade_s: f32) {
+        let _ = self
+            .commands
+            .send(MusicCommand::CrossfadeFile(path, fade_s));
+    }
+
+    /// [`MusicHandle::crossfade_file`] for an in-memory song.
+    pub fn crossfade_buffer(&self, audio: AudioData, fade_s: f32) {
+        let _ = self
+            .commands
+            .send(MusicCommand::CrossfadeBuffer(audio, fade_s));
     }
 
     /// Play an in-memory buffer (e.g. the synthesized demo song).
@@ -429,7 +553,8 @@ fn music_thread(rx: &Receiver<MusicCommand>, shared: &MusicShared) {
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
             }
         }
-        if let Some(player) = &player {
+        if let Some(player) = player.as_mut() {
+            player.tick_fade();
             let micros = (player.position_s() * 1_000_000.0) as u64;
             shared.position_us.store(micros, Ordering::Relaxed);
             shared.active.store(!player.is_empty(), Ordering::Relaxed);
@@ -458,6 +583,18 @@ fn handle_command(
             player.play_buffer(&audio);
             shared.begin_song();
         }
+        MusicCommand::CrossfadeFile(path, fade_s) => {
+            if player.crossfade_to_file(&path, fade_s).is_ok() {
+                // A new song begins the moment the fade starts: the
+                // clock re-anchors to the INCOMING side while the
+                // outgoing tail plays itself out underneath.
+                shared.begin_song();
+            }
+        }
+        MusicCommand::CrossfadeBuffer(audio, fade_s) => {
+            player.crossfade_to_buffer(&audio, fade_s);
+            shared.begin_song();
+        }
         MusicCommand::Pause => player.pause(),
         MusicCommand::Resume => player.resume(),
         MusicCommand::Stop => {
@@ -472,6 +609,30 @@ fn handle_command(
         MusicCommand::Shutdown => return true,
     }
     false
+}
+
+#[cfg(test)]
+mod crossfade_tests {
+    use super::crossfade_gains;
+
+    #[test]
+    fn the_fade_is_equal_power_and_never_dips() {
+        // Ends exact: full outgoing at 0, full incoming at the end.
+        let (out0, in0) = crossfade_gains(0.0, 4.0);
+        assert!((out0 - 1.0).abs() < 1e-6 && in0.abs() < 1e-6);
+        let (out1, in1) = crossfade_gains(4.0, 4.0);
+        assert!(out1.abs() < 1e-6 && (in1 - 1.0).abs() < 1e-6);
+        // Equal POWER throughout: out^2 + in^2 == 1. A linear fade
+        // fails this exactly in the middle - the audible dip.
+        for step in 0..=20 {
+            let (out, inn) = crossfade_gains(step as f32 * 0.2, 4.0);
+            let power = out.mul_add(out, inn * inn);
+            assert!((power - 1.0).abs() < 1e-5, "power {power} at step {step}");
+        }
+        // Beyond the fade: clamped, no wrap-around of the cosine.
+        let (out_late, in_late) = crossfade_gains(99.0, 4.0);
+        assert!(out_late.abs() < 1e-6 && (in_late - 1.0).abs() < 1e-6);
+    }
 }
 
 #[cfg(test)]

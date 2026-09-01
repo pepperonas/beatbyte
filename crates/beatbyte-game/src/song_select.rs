@@ -329,6 +329,7 @@ impl Plugin for SongSelectPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SelectedDifficulty>()
             .init_resource::<BrowserCursor>()
+            .init_resource::<crate::mc::McQueue>()
             .init_resource::<BrowserView>()
             .add_systems(Startup, load_browser_prefs)
             .add_systems(OnEnter(AppState::SongSelect), spawn_browser)
@@ -504,7 +505,7 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
             crate::prompts::device_footer(
                 parent,
                 font,
-                "UP/DOWN song  LEFT/RIGHT difficulty  S sort  F search  ENTER rock  E edit  DEL delete  ESC back",
+                "UP/DOWN song  LEFT/RIGHT difficulty  S sort  F search  ENTER rock  Q queue MC set  P play set  E edit  DEL delete  ESC back",
                 "D-PAD song and difficulty  SOUTH rock  EAST back",
             );
         });
@@ -611,6 +612,15 @@ struct PointerInput<'w, 's> {
     moved: MessageReader<'w, 's, bevy::window::CursorMoved>,
 }
 
+/// Song-starting dependencies, bundled for the same parameter-cap
+/// reason: what a start needs (the built-ins) and what an MC set
+/// adds (the queue).
+#[derive(bevy::ecs::system::SystemParam)]
+struct StartDeps<'w> {
+    builtins: Res<'w, BuiltinSongs>,
+    mc_queue: ResMut<'w, crate::mc::McQueue>,
+}
+
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn browser_input(
     mut commands: Commands,
@@ -621,7 +631,7 @@ fn browser_input(
     mut library: ResMut<SongLibrary>,
     mut cursor: ResMut<BrowserCursor>,
     mut selected: ResMut<SelectedDifficulty>,
-    builtins: Res<BuiltinSongs>,
+    mut start: StartDeps,
     mut next_state: ResMut<NextState<AppState>>,
     mut pointer_in: PointerInput,
     rows: Query<(&SongRow, &Interaction), Changed<Interaction>>,
@@ -710,7 +720,7 @@ fn browser_input(
 
     if nav.confirm || clicked_selected {
         sounds.write(crate::sfx::UiSound::Confirm);
-        match prepare_song(entry, &builtins) {
+        match prepare_song(entry, &start.builtins) {
             Ok(song) => {
                 commands.insert_resource(song);
                 next_state.set(AppState::Gameplay);
@@ -731,6 +741,55 @@ fn browser_input(
             Ok(()) => next_state.set(AppState::Editor),
             Err(reason) => error!("cannot edit \"{}\": {reason}", entry.title),
         }
+    }
+    // Q queues the highlighted song for an MC set (again removes it);
+    // P plays the queued set as one continuous DJ performance.
+    if !searching && keys.just_pressed(KeyCode::KeyQ) {
+        let song_index = view.order.get(cursor.0).copied();
+        if let Some(song_index) = song_index {
+            if let Some(at) = start.mc_queue.0.iter().position(|i| *i == song_index) {
+                start.mc_queue.0.remove(at);
+            } else {
+                start.mc_queue.0.push(song_index);
+            }
+            sounds.write(crate::sfx::UiSound::Toggle);
+            // The row list carries no queued-marker (rows rebuild on
+            // view changes only); the status line names the action
+            // and the count instead.
+            let added = start.mc_queue.0.contains(&song_index);
+            status.0 = format!(
+                "{} \"{}\" - MC set: {} song(s), P plays it",
+                if added { "queued" } else { "removed" },
+                entry.title,
+                start.mc_queue.0.len()
+            );
+        }
+    }
+    if !searching && keys.just_pressed(KeyCode::KeyP) && !start.mc_queue.0.is_empty() {
+        let mut songs = Vec::new();
+        for index in &start.mc_queue.0 {
+            let Some(entry) = library.entries.get(*index) else {
+                continue;
+            };
+            match prepare_song(entry, &start.builtins) {
+                Ok(song) => songs.push(song),
+                Err(reason) => {
+                    error!("mc set: cannot load \"{}\": {reason}", entry.title);
+                    status.0 = format!("MC set: cannot load \"{}\"", entry.title);
+                    return;
+                }
+            }
+        }
+        let Some(first) = songs.first().cloned() else {
+            return;
+        };
+        info!("mc set: starting with {} song(s)", songs.len());
+        sounds.write(crate::sfx::UiSound::Confirm);
+        commands.insert_resource(crate::mc::McSet { songs, position: 0 });
+        commands.insert_resource(first);
+        start.mc_queue.0.clear();
+        next_state.set(AppState::Gameplay);
+        return;
     }
     // BACKSPACE/DEL removes the highlighted song from disk — twice,
     // because it deletes files. Built-ins cannot be removed.
@@ -753,8 +812,12 @@ fn browser_input(
                     match crate::library::remove_song_files(chart_path) {
                         Ok(()) => {
                             status.0 = format!("\"{title}\" deleted");
-                            let charts: Vec<_> =
-                                builtins.0.iter().map(|song| song.chart.clone()).collect();
+                            let charts: Vec<_> = start
+                                .builtins
+                                .0
+                                .iter()
+                                .map(|song| song.chart.clone())
+                                .collect();
                             *library = crate::library::scan_library(&charts);
                         }
                         Err(reason) => status.0 = format!("cannot delete: {reason}"),

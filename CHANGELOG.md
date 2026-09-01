@@ -14,6 +14,26 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.6] - 2026-09-01
+
+### Added
+
+- The MC set: queue songs in the browser (Q adds/removes, P plays
+  the set) and they play as ONE continuous performance with a real
+  DJ crossfade between them - the outgoing song keeps sounding on
+  the audio thread's second player while the next fades in over
+  four seconds on an equal-power curve (a linear fade dips audibly
+  in the middle; a test pins the power sum). The handover reuses the
+  count-in: the next chart's notes are already approaching, fully
+  fair, while the previous song still plays underneath - no hard
+  stop, no gap, and judgment never spans two clocks. Works solo and
+  in local multiplayer (both verified end to end); each song plays
+  the selected difficulty or falls back to what it offers; the set
+  keeps the first song's stage. `BEATBYTE_AUTOPILOT_MC` drives the
+  only automated path through a crossfade. Online multiplayer does
+  not exist in BeatByte - the set lives on the session/clock layer,
+  which any future netcode would inherit.
+
 ## [0.13.5] - 2026-09-01
 
 ### Added

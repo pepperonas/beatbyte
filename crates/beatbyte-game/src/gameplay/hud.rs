@@ -134,6 +134,11 @@ pub struct SongProgressFill;
 #[derive(Component)]
 pub struct SongTimeText;
 
+/// The ribbon's title text - marked so an MC-set song swap can
+/// rewrite it (it used to be written once at spawn and never again).
+#[derive(Component)]
+pub struct SongTitleText;
+
 /// Width of the song ribbon, in world units.
 const RIBBON_W: f32 = 620.0;
 
@@ -205,6 +210,7 @@ pub fn spawn_huds(
     );
     commands.spawn((
         GameplayScreen,
+        SongTitleText,
         Text2d::new(title),
         font.text(9.0),
         TextColor(palette::dimmed(palette::TEXT_DIM, 0.9)),
@@ -778,9 +784,25 @@ pub fn update_song_ribbon(
     song: Res<crate::boot::LoadedSong>,
     game_clock: Res<super::GameClock>,
     time: Res<Time>,
+    font: Res<crate::ui::UiFont>,
     mut fill: Query<&mut Transform, With<SongProgressFill>>,
-    mut label: Query<&mut Text2d, With<SongTimeText>>,
+    mut label: Query<&mut Text2d, (With<SongTimeText>, Without<SongTitleText>)>,
+    mut title: Query<&mut Text2d, (With<SongTitleText>, Without<SongTimeText>)>,
 ) {
+    // An MC-set swap replaces the song resource mid-gameplay; the
+    // ribbon's title must follow it.
+    if song.is_changed()
+        && let Ok(mut text) = title.single_mut()
+    {
+        let wanted = format!(
+            "{} - {}",
+            font.safe(&song.chart.song.title),
+            font.safe(&song.chart.song.artist)
+        );
+        if text.0 != wanted {
+            text.0 = wanted;
+        }
+    }
     let Some(now) = game_clock.song_time(&time) else {
         return;
     };

@@ -17,6 +17,7 @@ pub mod gameplay;
 pub mod import;
 mod input_test;
 pub mod library;
+pub mod mc;
 pub mod menu;
 pub mod multiplayer;
 pub mod mute;
