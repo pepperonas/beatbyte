@@ -134,6 +134,7 @@ fn spawn_menu(mut commands: Commands, font: Res<UiFont>) {
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 pub(crate) fn menu_input(
     keys: Res<ButtonInput<KeyCode>>,
+    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
     map: Res<crate::controls::InputMap>,
     pads: Query<&Gamepad>,
     rows: Query<(&MenuRow, &Interaction), Changed<Interaction>>,
@@ -154,10 +155,21 @@ pub(crate) fn menu_input(
     if nav.up || nav.down {
         sounds.write(crate::sfx::UiSound::Navigate);
     }
-    // Mouse: hovering selects, clicking activates.
+    // Mouse: hovering selects, clicking activates - and the wheel
+    // scrolls the rows, like the song list.
     let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
     if let Some(index) = pointer.hovered {
         cursor.0 = index;
+    }
+    for event in wheel.read() {
+        if event.y > 0.0 {
+            cursor.0 = (cursor.0 + count - 1) % count;
+        } else if event.y < 0.0 {
+            cursor.0 = (cursor.0 + 1) % count;
+        }
+        if event.y != 0.0 {
+            sounds.write(crate::sfx::UiSound::Navigate);
+        }
     }
     // Escape closes the game from here, since there is no screen
     // above this one to go back to.

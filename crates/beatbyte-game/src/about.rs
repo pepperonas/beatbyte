@@ -300,6 +300,7 @@ fn about_input(
     map: Res<crate::controls::InputMap>,
     pads: Query<&Gamepad>,
     mouse: Res<ButtonInput<MouseButton>>,
+    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
     rows: Query<(&AboutRow, &Interaction), Changed<Interaction>>,
     mut state: ResMut<AboutState>,
     mut next_state: ResMut<NextState<AppState>>,
@@ -321,6 +322,17 @@ fn about_input(
         && index < count
     {
         state.cursor = index;
+    }
+    // The wheel scrolls the rows, like the song list.
+    for event in wheel.read() {
+        if event.y > 0.0 {
+            state.cursor = (state.cursor + count - 1) % count;
+        } else if event.y < 0.0 {
+            state.cursor = (state.cursor + 1) % count;
+        }
+        if event.y != 0.0 {
+            sounds.write(crate::sfx::UiSound::Navigate);
+        }
     }
     if nav.confirm || pointer.clicked {
         match activation(state.cursor) {

@@ -350,9 +350,18 @@ fn settings_input(
         cursor.0 = index;
     }
     let clicked = pointer.clicked;
-    let mut wheel_step = 0.0;
+    // The wheel SCROLLS the rows, exactly like the song list - it
+    // used to step the hovered value, which changed settings by
+    // accident while browsing them (user report, 2026-09-01).
     for event in wheel.read() {
-        wheel_step += event.y.signum();
+        if event.y > 0.0 {
+            cursor.0 = (cursor.0 + count - 1) % count;
+        } else if event.y < 0.0 {
+            cursor.0 = (cursor.0 + 1) % count;
+        }
+        if event.y != 0.0 {
+            sounds.write(crate::sfx::UiSound::Navigate);
+        }
     }
     let row = Row::ALL[cursor.0];
     if row == Row::Controls && (nav.confirm || nav.right || clicked) {
@@ -361,11 +370,11 @@ fn settings_input(
         return;
     }
     let mut adjusted = false;
-    if nav.left || wheel_step < 0.0 {
+    if nav.left {
         row.adjust(&mut settings, -1.0);
         adjusted = true;
     }
-    if nav.right || nav.confirm || clicked || wheel_step > 0.0 {
+    if nav.right || nav.confirm || clicked {
         row.adjust(&mut settings, 1.0);
         adjusted = true;
     }

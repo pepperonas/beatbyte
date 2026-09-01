@@ -1039,9 +1039,17 @@ fn pause_menu_input(
     if let Some(index) = pointer.hovered {
         cursor.0 = index;
     }
-    let mut wheel_step = 0.0;
+    // The wheel scrolls the ROWS, like the song list - it used to
+    // step the hovered value, which changed a setting by accident
+    // while browsing the pause menu (user report, 2026-09-01).
     for event in wheel.read() {
-        wheel_step += event.y.signum();
+        if event.y > 0.0 {
+            cursor.0 = (cursor.0 + count - 1) % count;
+            moved = true;
+        } else if event.y < 0.0 {
+            cursor.0 = (cursor.0 + 1) % count;
+            moved = true;
+        }
     }
     let item = PAUSE_ROWS[cursor.0];
     let mut adjust = |direction: f32,
@@ -1072,11 +1080,11 @@ fn pause_menu_input(
         PauseItem::Setting(row) => row.adjust(settings, direction),
     };
     let mut adjusted = false;
-    if nav.left || wheel_step < 0.0 {
+    if nav.left {
         adjust(-1.0, &mut settings, &mut practice);
         adjusted = true;
     }
-    if nav.right || nav.confirm || pointer.clicked || wheel_step > 0.0 {
+    if nav.right || nav.confirm || pointer.clicked {
         adjust(1.0, &mut settings, &mut practice);
         adjusted = true;
     }

@@ -14,6 +14,17 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.7] - 2026-09-01
+
+### Changed
+
+- The mouse wheel SCROLLS through menu rows everywhere - main menu,
+  settings, controls, about and the pause menu - exactly like the
+  song list, instead of stepping the hovered value (user report: a
+  wheel turn while browsing the settings changed them by accident).
+  Values adjust with LEFT/RIGHT, Enter or a click, as the footers
+  say.
+
 ## [0.13.6] - 2026-09-01
 
 ### Added

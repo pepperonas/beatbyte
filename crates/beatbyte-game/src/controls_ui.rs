@@ -309,6 +309,7 @@ fn controls_input(
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<&Gamepad>,
     mouse: Res<ButtonInput<MouseButton>>,
+    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
     rows: Query<(&ActionRow, &Interaction), Changed<Interaction>>,
     mut state: ResMut<ControlsState>,
     mut map: ResMut<InputMap>,
@@ -376,6 +377,17 @@ fn controls_input(
     let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
     if let Some(index) = pointer.hovered {
         state.cursor = index;
+    }
+    // The wheel scrolls the rows, like the song list.
+    for event in wheel.read() {
+        if event.y > 0.0 {
+            state.cursor = (state.cursor + count - 1) % count;
+        } else if event.y < 0.0 {
+            state.cursor = (state.cursor + 1) % count;
+        }
+        if event.y != 0.0 {
+            sounds.write(crate::sfx::UiSound::Navigate);
+        }
     }
     let clicked = pointer.clicked;
     if nav.confirm || clicked {
