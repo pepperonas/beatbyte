@@ -242,6 +242,57 @@ mod tests {
     }
 
     #[test]
+    fn the_guitar_can_drive_the_menus_and_the_song_list() {
+        // The whole point of feeding the guitar in as a GAMEPAD: it
+        // must be able to walk the menus and the song browser without
+        // a keyboard. That is not a property of this module alone -
+        // it needs the report bits, THIS translation table and the
+        // default menu bindings to agree - so the contract is pinned
+        // end to end here rather than assumed in a doc comment.
+        use crate::controls::{Binding, InputMap, UiAction};
+        let map = InputMap::default();
+        // What the guitar sends: strum up/down are the D-pad's first
+        // two bits, green is A, red is B.
+        let sent = |byte2: u8, byte3: u8| {
+            BUTTON_BITS
+                .iter()
+                .find(|(bit, _)| decode_report(byte2, byte3) & bit != 0)
+                .map(|(_, button)| *button)
+                .expect("the report bit is translated")
+        };
+        let strum_up = sent(0b0000_0001, 0);
+        let strum_down = sent(0b0000_0010, 0);
+        let green = sent(0, 0b0001_0000);
+        let red = sent(0, 0b0010_0000);
+        // What the menus listen for.
+        let bound = |action: UiAction, button| map.ui_of(action).contains(&Binding::Pad(button));
+        assert!(bound(UiAction::NavUp, strum_up), "strum up walks up");
+        assert!(
+            bound(UiAction::NavDown, strum_down),
+            "strum down walks down"
+        );
+        assert!(bound(UiAction::Confirm, green), "green confirms");
+        assert!(bound(UiAction::Back, red), "red goes back");
+        // The neck reports NO horizontal direction - the strum bar is
+        // the D-pad's up/down and bits 2/3 are deliberately dropped -
+        // so left/right cannot come from the bindings table. They are
+        // hard-wired onto the two middle frets in `MenuNav`; without
+        // that a guitarist can walk the song list but never change
+        // the difficulty beside it.
+        assert!(
+            BUTTON_BITS.iter().all(|(_, button)| !matches!(
+                button,
+                GamepadButton::DPadLeft | GamepadButton::DPadRight
+            )),
+            "if the guitar ever reports left/right, revisit the fret fallback"
+        );
+        let yellow = sent(0, 0b1000_0000);
+        let blue = sent(0, 0b0100_0000);
+        assert_eq!(yellow, GamepadButton::North, "yellow is the menu's left");
+        assert_eq!(blue, GamepadButton::West, "blue is the menu's right");
+    }
+
+    #[test]
     fn untranslated_bits_stay_untranslated() {
         // D-pad left/right and the Guide button exist in the report
         // but mean nothing on a guitar — they must not map to any

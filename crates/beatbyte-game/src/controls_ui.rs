@@ -230,36 +230,25 @@ struct BindingsList;
 fn follow_bindings_cursor(
     state: Res<ControlsState>,
     rows: Query<(&ActionRow, &ComputedNode)>,
-    mut lists: Query<(&ComputedNode, &mut ScrollPosition, &mut Node), With<BindingsList>>,
+    mut lists: Query<(&mut ScrollPosition, &mut Node), With<BindingsList>>,
 ) {
-    let Ok((list, mut scroll, mut node)) = lists.single_mut() else {
+    let Ok((mut scroll, mut node)) = lists.single_mut() else {
         return;
     };
-    let Some(row_h) = rows
+    let Some(row) = rows
         .iter()
-        .map(|(_, node)| node.size().y)
-        .find(|height| *height > 0.0)
+        .map(|(_, node)| node)
+        .find(|node| node.size().y > 0.0)
     else {
         return;
     };
-    let count = row_actions().len();
-    let pitch = row_h + ui_kit::ROW_GAP;
-    if let Some(height) =
-        ui_kit::whole_rows_height(row_h, ui_kit::ROW_GAP, count, ui_kit::PANEL_MAX_H)
-    {
-        let wanted = px(height);
-        if node.max_height != wanted {
-            node.max_height = wanted;
-        }
-    }
-    let total = count as f32;
-    let content_h = total.mul_add(row_h, (total - 1.0).max(0.0) * ui_kit::ROW_GAP);
-    let viewport_h = list.size().y - 2.0 * ui_kit::PANEL_PAD;
-    let row_top = state.cursor as f32 * pitch;
-    let wanted = ui_kit::scroll_to_show(row_top, row_h, viewport_h, content_h, scroll.0.y);
-    if (wanted - scroll.0.y).abs() > 0.5 {
-        scroll.0.y = wanted;
-    }
+    ui_kit::follow_list(
+        state.cursor,
+        row_actions().len(),
+        row,
+        &mut scroll,
+        &mut node,
+    );
 }
 
 /// The connected-devices line.

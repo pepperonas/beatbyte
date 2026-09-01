@@ -130,12 +130,38 @@ fn start_calibration(
                         TextColor(palette::TEXT),
                     ));
                 });
-            ui_kit::footer(parent, &font, "ENTER save  ESC cancel");
+            crate::prompts::device_footer(
+                parent,
+                &font,
+                "SPACE taps  ENTER save  ESC cancel",
+                "STRUM or FRETS tap  START save  BACK cancel",
+            );
         });
 }
 
+/// Tapping the beat, on whatever the player holds.
+///
+/// The keyboard's Space is joined by every *playing* action — the
+/// frets and both strum directions — because this screen measures
+/// the latency of the instrument you will actually play with, and a
+/// guitarist has no Space bar. Without this the screen was keyboard
+/// only: a guitar player could not tap, could not save, and could
+/// not even leave it (Escape was the single exit).
+fn tapped(sources: &crate::controls::InputSources, map: &crate::controls::InputMap) -> bool {
+    use crate::controls::GameAction;
+    let played = (0..5)
+        .map(GameAction::Fret)
+        .chain([GameAction::StrumUp, GameAction::StrumDown]);
+    played
+        .into_iter()
+        .any(|action| sources.just_pressed(map, action))
+}
+
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn calibration_input(
     keys: Res<ButtonInput<KeyCode>>,
+    pads: Query<&bevy::input::gamepad::Gamepad>,
+    map: Res<crate::controls::InputMap>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
     mut calibration: ResMut<Calibration>,
@@ -143,7 +169,19 @@ fn calibration_input(
     mut next_state: ResMut<NextState<AppState>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
-    if keys.just_pressed(KeyCode::Space)
+    let sources = crate::controls::InputSources {
+        keys: &keys,
+        pads: pads.iter().collect(),
+    };
+    // ⚠️ Save and cancel deliberately do NOT go through `MenuNav`
+    // here: its pad bindings are the green and red frets, and on
+    // this screen those are the measuring instrument — the very
+    // first press would have tapped a beat and saved at once. The
+    // input tester solved the same clash the same way (its comment:
+    // "leave with Start — NOT the green fret").
+    let pad = |button| pads.iter().any(|pad| pad.just_pressed(button));
+    use bevy::input::gamepad::GamepadButton;
+    if (keys.just_pressed(KeyCode::Space) || tapped(&sources, &map))
         && let Some(now) = game_clock.song_time(&time)
     {
         // Signed distance to the nearest click.
@@ -151,7 +189,7 @@ fn calibration_input(
         let offset = (position - position.round()) * CLICK_PERIOD_S;
         calibration.offsets.push(offset);
     }
-    if keys.just_pressed(KeyCode::Enter)
+    if (keys.just_pressed(KeyCode::Enter) || pad(GamepadButton::Start))
         && let Some(median) = calibration.median_ms()
     {
         settings.latency_offset_ms = (median as f32).clamp(-250.0, 250.0);
@@ -160,7 +198,7 @@ fn calibration_input(
         sounds.write(crate::sfx::UiSound::Confirm);
         next_state.set(AppState::MainMenu);
     }
-    if keys.just_pressed(KeyCode::Escape) {
+    if keys.just_pressed(KeyCode::Escape) || pad(GamepadButton::Select) {
         sounds.write(crate::sfx::UiSound::Back);
         next_state.set(AppState::MainMenu);
     }
@@ -228,7 +266,41 @@ fn stop_calibration(
 
 #[cfg(test)]
 mod tests {
-    use super::{Calibration, MIN_TAPS};
+    use super::{Calibration, MIN_TAPS, tapped};
+    use crate::controls::{InputMap, InputSources};
+    use bevy::input::gamepad::{Gamepad, GamepadButton};
+    use bevy::prelude::{ButtonInput, KeyCode};
+
+    #[test]
+    fn the_guitar_taps_but_never_with_the_buttons_that_leave() {
+        // This screen measures the latency of the instrument you
+        // will play with, so the frets and the strum bar count as
+        // taps. Save and cancel must therefore sit on buttons that
+        // are NOT part of the instrument - otherwise the first press
+        // would tap a beat and leave the screen in the same frame.
+        let map = InputMap::default();
+        let keys = ButtonInput::<KeyCode>::default();
+        let taps = |button| {
+            let mut pad = Gamepad::default();
+            pad.digital_mut().press(button);
+            let sources = InputSources {
+                keys: &keys,
+                pads: vec![&pad],
+            };
+            tapped(&sources, &map)
+        };
+        assert!(taps(GamepadButton::South), "green fret taps");
+        assert!(taps(GamepadButton::LeftTrigger), "orange fret taps");
+        assert!(taps(GamepadButton::DPadDown), "the strum bar taps");
+        assert!(
+            !taps(GamepadButton::Start),
+            "START saves - it must not also tap"
+        );
+        assert!(
+            !taps(GamepadButton::Select),
+            "BACK cancels - it must not also tap"
+        );
+    }
 
     fn with(offsets: &[f64]) -> Calibration {
         Calibration {

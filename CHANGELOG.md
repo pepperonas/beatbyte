@@ -14,6 +14,42 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.12] - 2026-09-01
+
+### Fixed
+
+- Scrolling lists no longer let the selected row walk off the edge.
+  `ComputedNode` measures in PHYSICAL pixels while `ScrollPosition`
+  and every `Node` length are LOGICAL, and all four scrolling
+  screens - song browser, settings, controls, about - had grown
+  their own copy of the follow loop and every one of them mixed the
+  two. On any display with a scale factor (a Retina panel is 2, and
+  the window-height sync stacks on top) the list believed half as
+  many rows fitted as really did: the cursor walked past the bottom
+  edge before anything scrolled, and the offset it finally wrote
+  moved twice as far as asked. There is now ONE implementation
+  (`ui_kit::follow_list`), and its pure core is tested at both
+  scales.
+- Lists show WHOLE rows again: Bevy clips a scrolling node at its
+  padding box by default, so the neighbouring rows bled through
+  above and below as 12 px slivers of text.
+- The viewport is derived from the window height the same call is
+  about to set, instead of the panel's one-frame-stale measured
+  height - the two disagreed by 6 px, found by a test that walks
+  the whole list rather than by eye.
+
+### Added
+
+- The guitar reaches left and right in menus. Its neck reports no
+  horizontal direction (the strum bar IS the D-pad's up/down), so a
+  guitarist could walk the song list but never change the
+  difficulty beside it; the two middle frets now stand in, the way
+  Enter and Escape already stand in for a mangled bindings file.
+- Calibration works with a guitar: the frets and the strum bar tap
+  the beat, START saves and BACK cancels. It was keyboard-only -
+  a guitarist could not tap, could not save, and could not even
+  leave the screen.
+
 ## [0.13.11] - 2026-09-01
 
 ### Fixed

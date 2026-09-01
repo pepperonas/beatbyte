@@ -1234,45 +1234,23 @@ fn follow_selection(
     cursor: Res<BrowserCursor>,
     view: Res<BrowserView>,
     rows: Query<(&SongRow, &ComputedNode)>,
-    mut lists: Query<(&ComputedNode, &mut ScrollPosition, &mut Node), With<SongList>>,
+    mut lists: Query<(&mut ScrollPosition, &mut Node), With<SongList>>,
 ) {
-    let Ok((list, mut scroll, mut node)) = lists.single_mut() else {
+    let Ok((mut scroll, mut node)) = lists.single_mut() else {
         return;
     };
     // Every row is the same height, so any of them answers the
     // question - but a row may not have been laid out yet on the
     // first frame, and a height of zero would send the offset to
     // infinity.
-    let Some(row_h) = rows
+    let Some(row) = rows
         .iter()
-        .map(|(_, node)| node.size().y)
-        .find(|height| *height > 0.0)
+        .map(|(_, node)| node)
+        .find(|node| node.size().y > 0.0)
     else {
         return;
     };
-    let pitch = row_h + ui_kit::ROW_GAP;
-    // Snap the window to whole rows, so the bottom one is not sliced
-    // through the middle of its letters.
-    if let Some(height) = ui_kit::whole_rows_height(
-        row_h,
-        ui_kit::ROW_GAP,
-        view.order.len(),
-        ui_kit::PANEL_MAX_H,
-    ) {
-        let wanted = bevy::ui::px(height);
-        if node.max_height != wanted {
-            node.max_height = wanted;
-        }
-    }
-    let count = view.order.len() as f32;
-    // The gaps sit BETWEEN rows, so there is one fewer of them.
-    let content_h = count.mul_add(row_h, (count - 1.0).max(0.0) * ui_kit::ROW_GAP);
-    let viewport_h = list.size().y - 2.0 * ui_kit::PANEL_PAD;
-    let row_top = cursor.0 as f32 * pitch;
-    let wanted = ui_kit::scroll_to_show(row_top, row_h, viewport_h, content_h, scroll.0.y);
-    if (wanted - scroll.0.y).abs() > 0.5 {
-        scroll.0.y = wanted;
-    }
+    ui_kit::follow_list(cursor.0, view.order.len(), row, &mut scroll, &mut node);
 }
 
 #[cfg(test)]

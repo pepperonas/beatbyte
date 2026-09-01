@@ -404,6 +404,43 @@ impl InputSources<'_> {
 mod tests {
     use super::*;
 
+    /// A pad with exactly these buttons held down this frame.
+    fn pad_pressing(buttons: &[GamepadButton]) -> Gamepad {
+        let mut pad = Gamepad::default();
+        for button in buttons {
+            pad.digital_mut().press(*button);
+        }
+        pad
+    }
+
+    #[test]
+    fn a_guitar_walks_a_list_and_still_reaches_left_and_right() {
+        // The real path, not a table lookup: strum and frets go
+        // through `MenuNav::read` exactly as a menu calls it.
+        let map = InputMap::default();
+        let keys = ButtonInput::<KeyCode>::default();
+        let nav = |buttons: &[GamepadButton]| {
+            let pad = pad_pressing(buttons);
+            MenuNav::read(&map, &keys, [&pad])
+        };
+        assert!(nav(&[GamepadButton::DPadUp]).up, "strum up walks up");
+        assert!(
+            nav(&[GamepadButton::DPadDown]).down,
+            "strum down walks down"
+        );
+        assert!(nav(&[GamepadButton::South]).confirm, "green confirms");
+        assert!(nav(&[GamepadButton::East]).back, "red goes back");
+        // The neck has no horizontal direction, so the two middle
+        // frets stand in - otherwise a guitarist can walk the song
+        // list but never change the difficulty beside it.
+        assert!(nav(&[GamepadButton::North]).left, "yellow is left");
+        assert!(nav(&[GamepadButton::West]).right, "blue is right");
+        // And they must not fire anything else: a fret that also
+        // confirmed would launch a song while browsing difficulties.
+        let yellow = nav(&[GamepadButton::North]);
+        assert!(!yellow.confirm && !yellow.back && !yellow.up && !yellow.down);
+    }
+
     #[test]
     fn default_bindings_pin_the_user_contract() {
         // These exact defaults were settled in live playtests:
@@ -671,11 +708,22 @@ impl MenuNav {
         };
         let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
         let tab = keys.just_pressed(KeyCode::Tab);
+        // A guitar has no D-pad left/right: the strum bar IS the
+        // D-pad's up/down and nothing else on the neck reports a
+        // horizontal direction. Bound to the table alone, a guitarist
+        // could walk a list but never change the difficulty beside
+        // it — stranded on one axis the same way a mangled bindings
+        // file strands them in a menu, which is why Enter and Escape
+        // are hard-wired above. So the two middle frets stand in:
+        // yellow and blue sit left-to-right on the neck, they carry
+        // no other menu duty (green confirms, red goes back), and a
+        // regular pad gains the same shortcut on Y and X.
+        let fret = |button| pads.iter().any(|pad| pad.just_pressed(button));
         MenuNav {
             up: hit(UiAction::NavUp) || (tab && shift),
             down: hit(UiAction::NavDown) || (tab && !shift),
-            left: hit(UiAction::NavLeft),
-            right: hit(UiAction::NavRight),
+            left: hit(UiAction::NavLeft) || fret(GamepadButton::North),
+            right: hit(UiAction::NavRight) || fret(GamepadButton::West),
             confirm: hit(UiAction::Confirm) || keys.just_pressed(KeyCode::Enter),
             back: hit(UiAction::Back) || keys.just_pressed(KeyCode::Escape),
         }

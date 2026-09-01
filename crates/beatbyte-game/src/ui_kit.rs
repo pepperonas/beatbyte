@@ -330,6 +330,103 @@ pub fn whole_rows_height(row_h: f32, gap: f32, rows: usize, ceiling: f32) -> Opt
     Some(content + 2.0 * (PANEL_PAD + PANEL_BORDER))
 }
 
+/// Keep a list's cursor row in view — the ONE implementation every
+/// scrolling screen uses.
+///
+/// ⚠️ **Units.** [`ComputedNode`] measures in PHYSICAL pixels, while
+/// [`ScrollPosition`] and every [`Node`] length are LOGICAL. Four
+/// screens had each grown their own copy of this loop and all four
+/// mixed the two, so on any display with a scale factor (a Retina
+/// panel is 2, and the window-height sync stacks on top) the list
+/// misbehaved in two directions at once: the visibility test believed
+/// half as many rows fitted as really did, so the cursor walked off
+/// the bottom edge *before* anything scrolled — the reported "titles
+/// outside the visible area" — and when it finally did scroll it
+/// moved twice as far as asked. Measurements are converted here,
+/// once, and the callers own nothing but their own cursor.
+///
+/// `row` is any laid-out row: they are all the same height, and it
+/// carries the scale factor.
+pub fn follow_list(
+    cursor: usize,
+    count: usize,
+    row: &ComputedNode,
+    scroll: &mut ScrollPosition,
+    node: &mut Node,
+) {
+    let Some(view) = list_view(
+        cursor,
+        count,
+        row.size().y,
+        row.inverse_scale_factor(),
+        scroll.0.y,
+    ) else {
+        return;
+    };
+    let wanted = px(view.max_height);
+    if node.max_height != wanted {
+        node.max_height = wanted;
+    }
+    if (view.scroll - scroll.0.y).abs() > 0.5 {
+        scroll.0.y = view.scroll;
+    }
+}
+
+/// What a scrolling list should look like: its window height and its
+/// scroll offset, both in LOGICAL pixels.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ListView {
+    /// The panel's `max_height`.
+    pub max_height: f32,
+    /// The scroll offset that keeps the cursor row visible.
+    pub scroll: f32,
+}
+
+/// The whole list-follow calculation, pure — `row_h` arrives as
+/// [`ComputedNode`] reports it (PHYSICAL pixels) and `inverse_scale`
+/// converts it; everything returned is logical.
+///
+/// The viewport is derived from the window height this call is
+/// ABOUT TO SET, not from the panel's currently measured one. Those
+/// two disagree by up to a row's worth of pixels — the measured
+/// height is one frame stale, and it is this very function that
+/// changes it — which let the cursor row hang 6 px below the fold
+/// (found by the walk-the-whole-list test, not by eye).
+///
+/// `None` when nothing can be decided yet (no laid-out row, empty
+/// list), so the caller leaves the panel alone.
+#[must_use]
+pub fn list_view(
+    cursor: usize,
+    count: usize,
+    row_h: f32,
+    inverse_scale: f32,
+    current_scroll: f32,
+) -> Option<ListView> {
+    let row_h = row_h * inverse_scale;
+    if row_h <= 0.0 || count == 0 {
+        return None;
+    }
+    // Snap the window to whole rows, so the bottom one is not sliced
+    // through the middle of its letters. No ceiling needed when
+    // everything fits — and the panel must be released back to its
+    // natural height when a filter shortens the list again.
+    let max_height = whole_rows_height(row_h, ROW_GAP, count, PANEL_MAX_H).unwrap_or(PANEL_MAX_H);
+    let total = count as f32;
+    // The gaps sit BETWEEN rows, so there is one fewer of them.
+    let content_h = total.mul_add(row_h, (total - 1.0).max(0.0) * ROW_GAP);
+    // Bevy sizes a node by its BORDER box: the visible content is
+    // what is left after the padding AND the border on both edges —
+    // the same subtraction `whole_rows_height` makes, which is why
+    // this lands on exactly a whole number of rows.
+    let viewport_h = max_height - 2.0 * (PANEL_PAD + PANEL_BORDER);
+    let row_top = cursor as f32 * (row_h + ROW_GAP);
+    Some(ListView {
+        max_height,
+        scroll: scroll_to_show(row_top, row_h, viewport_h, content_h, current_scroll),
+    })
+}
+
 /// A list panel that scrolls once its rows outgrow [`PANEL_MAX_H`].
 ///
 /// Same frame and rhythm as [`panel`]; the only difference is the
@@ -339,21 +436,35 @@ pub fn whole_rows_height(row_h: f32, gap: f32, rows: usize, ceiling: f32) -> Opt
 pub fn scroll_panel(width: f32) -> impl Bundle {
     let (background, border) = frame();
     (
-        Node {
-            width: px(width),
-            max_height: px(PANEL_MAX_H),
-            flex_direction: FlexDirection::Column,
-            row_gap: px(ROW_GAP),
-            padding: UiRect::all(px(PANEL_PAD)),
-            border: UiRect::all(px(PANEL_BORDER)),
-            border_radius: BorderRadius::all(px(6)),
-            overflow: Overflow::scroll_y(),
-            ..default()
-        },
+        scroll_node(width),
         ScrollPosition::default(),
         background,
         border,
     )
+}
+
+/// The scrolling panel's [`Node`], split out so its clipping
+/// contract is testable.
+#[must_use]
+pub fn scroll_node(width: f32) -> Node {
+    Node {
+        width: px(width),
+        max_height: px(PANEL_MAX_H),
+        flex_direction: FlexDirection::Column,
+        row_gap: px(ROW_GAP),
+        padding: UiRect::all(px(PANEL_PAD)),
+        border: UiRect::all(px(PANEL_BORDER)),
+        border_radius: BorderRadius::all(px(6)),
+        overflow: Overflow::scroll_y(),
+        // Clip at the CONTENT box, not Bevy's default padding
+        // box: the window is snapped to whole rows, but the
+        // padding let the neighbouring rows bleed through above
+        // and below as 12 px slivers of text — which is what
+        // "titles outside the visible area" looks like once the
+        // scroll offset itself is correct.
+        overflow_clip_margin: OverflowClipMargin::content_box(),
+        ..default()
+    }
 }
 
 /// The framed container that holds a screen's rows.
@@ -599,6 +710,103 @@ mod tests {
                 pair[1]
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod list_view_tests {
+    use super::{ListView, PANEL_MAX_H, PANEL_PAD, ROW_GAP, list_view};
+
+    /// A row is 24 logical px tall; the panel is at its ceiling.
+    const ROW: f32 = 24.0;
+
+    /// The same list, measured on a 1x display and on a 2x one.
+    /// `ComputedNode` reports PHYSICAL pixels, so the 2x display
+    /// hands in doubled numbers with a halved inverse scale.
+    fn both_scales(cursor: usize, count: usize, current: f32) -> (ListView, ListView) {
+        let one = list_view(cursor, count, ROW, 1.0, current).expect("a laid-out row decides");
+        let two =
+            list_view(cursor, count, ROW * 2.0, 0.5, current).expect("a laid-out row decides");
+        (one, two)
+    }
+
+    #[test]
+    fn the_display_scale_changes_nothing() {
+        // THE regression. Four screens each fed physical
+        // `ComputedNode` sizes into logical-pixel math, so on any
+        // Retina panel (scale 2, and the window-height sync stacks
+        // on top) the list believed half as many rows fitted as
+        // really did: the cursor row walked off the bottom edge
+        // before anything scrolled - the reported "titles outside
+        // the visible area" - and the offset it finally wrote moved
+        // twice as far as asked.
+        for cursor in [0, 5, 13, 14, 30, 39] {
+            let (one, two) = both_scales(cursor, 40, 0.0);
+            assert_eq!(
+                one, two,
+                "cursor {cursor} lands differently on a 2x display"
+            );
+        }
+    }
+
+    #[test]
+    fn the_cursor_row_is_always_inside_the_window() {
+        // Walk the whole list the way the arrow keys do, carrying
+        // the scroll offset forward, and check after every step that
+        // the selected row lies within the visible band. This is the
+        // property the player actually sees.
+        let count = 40;
+        let mut scroll = 0.0;
+        for cursor in 0..count {
+            let view = list_view(cursor, count, ROW * 2.0, 0.5, scroll).expect("laid out");
+            scroll = view.scroll;
+            let viewport = view.max_height - 2.0 * (PANEL_PAD + 1.0);
+            let top = cursor as f32 * (ROW + ROW_GAP);
+            assert!(
+                top >= scroll - 0.5 && top + ROW <= scroll + viewport + 0.5,
+                "row {cursor} sits at {top}..{} but the window shows {scroll}..{}",
+                top + ROW,
+                scroll + viewport
+            );
+        }
+    }
+
+    #[test]
+    fn the_window_clips_at_the_content_box() {
+        // The window is snapped to whole rows, but Bevy clips a
+        // scrolling node at its PADDING box by default, so the rows
+        // above and below bled through as 12 px slivers of text —
+        // measured on a real frame, and exactly what "titles outside
+        // the visible area" looks like once the offset itself is
+        // right.
+        use bevy::ui::{OverflowAxis, VisualBox};
+        let node = super::scroll_node(super::PANEL_WIDTH);
+        assert_eq!(
+            node.overflow_clip_margin.visual_box,
+            VisualBox::ContentBox,
+            "the padding must not show a sliver of the next row"
+        );
+        assert_eq!(node.overflow.y, OverflowAxis::Scroll);
+    }
+
+    #[test]
+    fn a_short_list_releases_the_window_again() {
+        // Filtering a long list down used to leave the panel pinned
+        // at the previous window height: three screens set the
+        // ceiling only when the list scrolled and never took it back.
+        let long = list_view(0, 40, ROW, 1.0, 0.0).expect("laid out");
+        let short = list_view(0, 3, ROW, 1.0, 0.0).expect("laid out");
+        assert!(long.max_height < PANEL_MAX_H, "a long list snaps to rows");
+        assert!(
+            (short.max_height - PANEL_MAX_H).abs() < f32::EPSILON,
+            "a short list gets its natural height back"
+        );
+    }
+
+    #[test]
+    fn nothing_is_decided_before_the_first_layout() {
+        assert!(list_view(0, 40, 0.0, 1.0, 0.0).is_none());
+        assert!(list_view(0, 0, ROW, 1.0, 0.0).is_none());
     }
 }
 
