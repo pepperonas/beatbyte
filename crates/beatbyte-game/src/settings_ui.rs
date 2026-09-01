@@ -143,6 +143,31 @@ impl Row {
         }
     }
 
+    /// The line under a row: the fact behind the setting, where
+    /// there is one. Empty for every row that needs no explaining.
+    pub(crate) fn subtitle(self) -> String {
+        match self {
+            // Where the tracks actually come from. The value line
+            // above says whether a folder is WATCHED for new ones;
+            // this says which directories the library is read from,
+            // which is a different question and the one a player
+            // asks when a song is missing.
+            Row::WatchFolder => {
+                let roots = crate::library::live_scan_roots();
+                if roots.is_empty() {
+                    "no song folder on disk yet".to_owned()
+                } else {
+                    roots
+                        .iter()
+                        .map(|root| short_path(&root.display().to_string(), SUBTITLE_CHARS))
+                        .collect::<Vec<_>>()
+                        .join("   ")
+                }
+            }
+            _ => String::new(),
+        }
+    }
+
     /// Adjust by one step (direction −1 or +1).
     pub(crate) fn adjust(self, settings: &mut Settings, direction: f32) {
         match self {
@@ -225,12 +250,46 @@ impl Row {
     }
 }
 
+/// How many glyphs a subtitle may use before it is shortened.
+/// Press Start 2P advances a full em, and the panel is
+/// [`ui_kit::PANEL_WIDTH`] wide minus its padding — a test pins
+/// that this fits.
+const SUBTITLE_CHARS: usize = 56;
+
+/// Shorten a path to fit, keeping the END.
+///
+/// The tail is the informative part — `.../beat-bytes/songs` says
+/// what the head never does — so an over-long path loses its front
+/// to an ellipsis, and the home directory collapses to `~` first.
+/// Pure — tested.
+#[must_use]
+pub fn short_path(path: &str, limit: usize) -> String {
+    let home = dirs::home_dir().map(|home| home.display().to_string());
+    let shortened = match home {
+        Some(home) if !home.is_empty() && path.starts_with(&home) => {
+            format!("~{}", &path[home.len()..])
+        }
+        _ => path.to_owned(),
+    };
+    let count = shortened.chars().count();
+    if count <= limit {
+        return shortened;
+    }
+    let tail: String = shortened
+        .chars()
+        .skip(count - limit.saturating_sub(3))
+        .collect();
+    format!("...{tail}")
+}
+
 fn on_off(value: bool) -> String {
     if value { "ON" } else { "OFF" }.to_owned()
 }
 
 #[derive(Resource, Default)]
-struct SettingsCursor(usize);
+/// The highlighted settings row. Public so the screenshot harness
+/// can select a row below the fold.
+pub struct SettingsCursor(pub usize);
 
 /// Where the last in-app export landed (or why it did not). Shown
 /// on the export row itself, so the answer sits where the question
@@ -299,6 +358,23 @@ struct SettingLabel(usize);
 #[derive(Component)]
 struct SettingValue(usize);
 
+/// The line under the panel: the selected row's explanation.
+#[derive(Component)]
+struct SettingSubtitle;
+
+/// The subtitle's query, aliased for the lint's sake: it must
+/// exclude the row texts to satisfy Bevy's aliasing rules.
+type SubtitleText<'w, 's> = Query<
+    'w,
+    's,
+    &'static mut Text,
+    (
+        With<SettingSubtitle>,
+        Without<SettingLabel>,
+        Without<SettingValue>,
+    ),
+>;
+
 fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
     commands
         .spawn((SettingsScreen, ui_kit::screen_root()))
@@ -312,7 +388,7 @@ fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
                             .spawn((RowText(index), Button, ui_kit::row()))
                             .with_children(|row| {
                                 // Label and value are separate texts in a
-                                // space-between row. The old single-string
+                                // space-between line. The old single-string
                                 // layout padded the label to 16 characters,
                                 // which "TAP MODE (NO STRUM)" overflows by
                                 // three — that one row's value hung out of
@@ -334,6 +410,23 @@ fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
                             });
                     }
                 });
+            // The selected row's explanation, under the panel — the
+            // pattern the song browser already uses for the same
+            // job. ⚠️ NOT a second line inside the row: the panel's
+            // scroll window is built from ONE measured row height
+            // (`ui_kit::follow_list`), so a taller row is clipped by
+            // the frame. The first attempt did exactly that and the
+            // path came out cut in half.
+            parent.spawn((
+                SettingSubtitle,
+                Text::new(""),
+                ui_kit::subtitle_text(&font),
+                Node {
+                    max_width: px(ui_kit::PANEL_WIDTH),
+                    margin: UiRect::top(px(10)),
+                    ..default()
+                },
+            ));
             crate::prompts::device_footer(
                 parent,
                 &font,
@@ -439,6 +532,7 @@ fn refresh_settings(
     mut labels: Query<(&SettingLabel, &mut TextColor), Without<SettingValue>>,
     mut values: Query<(&SettingValue, &mut Text, &mut TextColor), Without<SettingLabel>>,
     export_note: Res<ExportNote>,
+    mut subtitles: SubtitleText,
 ) {
     for (row, mut background, mut border) in &mut rows {
         let style = ui_kit::styled_row(
@@ -454,6 +548,12 @@ fn refresh_settings(
             settings.high_contrast,
         )
         .label;
+    }
+    if let Ok(mut text) = subtitles.single_mut() {
+        let wanted = Row::ALL[cursor.0.min(Row::ALL.len() - 1)].subtitle();
+        if text.0 != wanted {
+            text.0 = wanted;
+        }
     }
     for (value, mut text, mut color) in &mut values {
         // The export row reports where the file went, once it has
@@ -486,6 +586,57 @@ fn despawn_settings(mut commands: Commands, entities: Query<Entity, With<Setting
 
 #[cfg(test)]
 mod tests {
+    use super::{SUBTITLE_CHARS, short_path};
+
+    #[test]
+    fn a_long_path_keeps_its_end() {
+        // The tail says what the head never does: ".../beat-bytes/
+        // songs" answers "which folder", a truncated head does not.
+        let long = "/Users/someone/very/deeply/nested/place/that/keeps/going/beat-bytes/songs";
+        let shown = short_path(long, 30);
+        assert!(shown.starts_with("..."), "the FRONT is what goes: {shown}");
+        assert!(shown.ends_with("beat-bytes/songs"), "the tail survives");
+        assert_eq!(shown.chars().count(), 30);
+        // Short enough already: left exactly alone.
+        assert_eq!(short_path("/songs", 30), "/songs");
+    }
+
+    #[test]
+    fn the_home_directory_collapses_first() {
+        // Shortening before abbreviating: "~" is both shorter AND
+        // more readable than an ellipsis over the same characters.
+        let Some(home) = dirs::home_dir() else {
+            return; // no home on this machine (CI)
+        };
+        let path = home.join("Music").join("songs").display().to_string();
+        assert!(short_path(&path, 60).starts_with("~/"), "home becomes ~");
+    }
+
+    #[test]
+    fn a_subtitle_fits_the_panel() {
+        // Press Start 2P advances a full em, so the widest subtitle
+        // is a plain multiplication - and it has to fit inside the
+        // panel's padding, or the path runs under the frame.
+        let widest = SUBTITLE_CHARS as f32 * crate::ui_kit::SMALL;
+        let inner = crate::ui_kit::PANEL_WIDTH - 2.0 * crate::ui_kit::PANEL_PAD - 2.0 * 14.0;
+        assert!(
+            widest <= inner,
+            "{widest} px of subtitle in {inner} px of panel"
+        );
+    }
+
+    #[test]
+    fn only_the_song_folder_explains_itself() {
+        // A subtitle on every row would be noise; this one exists
+        // because "which folder delivers my tracks" is a question
+        // the value line ("watching: …") does not answer.
+        use super::Row;
+        assert!(!Row::WatchFolder.subtitle().is_empty());
+        for row in [Row::MusicVolume, Row::Lyrics, Row::Controls, Row::Theme] {
+            assert!(row.subtitle().is_empty(), "{row:?} should stay quiet");
+        }
+    }
+
     use super::*;
 
     /// Step a row `count` times in one direction.

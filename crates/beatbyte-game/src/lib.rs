@@ -117,6 +117,14 @@ pub fn run() -> AppExit {
     app.add_plugins(
         DefaultPlugins
             .set(WindowPlugin {
+                // The tube plays the window shut, so this
+                // plugin must NOT close it the instant the
+                // titlebar's X (or Cmd-Q) asks: `crt` answers
+                // that request, runs the collapse and exits when
+                // it is done. Without this the two most common
+                // ways to quit skipped the animation entirely —
+                // which is how it came to be "shown too late".
+                close_when_requested: false,
                 primary_window: Some(Window {
                     title: format!("BeatByte v{VERSION}"),
                     // Harness runs happen on machines people are

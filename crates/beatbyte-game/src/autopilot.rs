@@ -237,6 +237,7 @@ fn enter_shot_state(
     mut next: ResMut<NextState<AppState>>,
     mut cursor: ResMut<crate::song_select::BrowserCursor>,
     mut view: ResMut<crate::song_select::BrowserView>,
+    mut settings_cursor: ResMut<crate::settings_ui::SettingsCursor>,
     mut done: Local<bool>,
 ) {
     if *done || *state.get() != AppState::MainMenu {
@@ -251,6 +252,9 @@ fn enter_shot_state(
         && let Ok(row) = raw.parse::<usize>()
     {
         cursor.0 = row;
+        // The settings list scrolls too, and a row below its fold
+        // was as unphotographable as a song below the browser's.
+        settings_cursor.0 = row;
     }
     // Photograph the browser under a chosen sort - the active-column
     // marker only exists when a sort is active, so without this it

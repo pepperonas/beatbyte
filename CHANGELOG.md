@@ -14,6 +14,37 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.19] - 2026-09-01
+
+### Fixed
+
+- The CRT power-on now OPENS the window instead of playing over one
+  that has been open for seconds. It ran at the main menu, which is
+  reached only after the songs finish building — the boot screen
+  ("tuning the amps…") was already on display long before. It plays
+  on the first frames the window presents, so the first thing on
+  screen is the tube.
+- A stuttering boot can no longer skip the show. The animation
+  advanced by raw frame delta, and boot frames are long (assets,
+  pipelines, the first draw): two 300 ms frames consumed the entire
+  power-on. One frame may now advance at most 1/30 s, so a hitch
+  stretches the animation instead of eating it.
+- The titlebar's X plays the power-off. `close_when_requested` is
+  switched off and the CRT answers the close request, so the two
+  most common ways to quit no longer skip the animation entirely.
+  ⚠️ Verified by clicking the real button: the window still closes.
+
+### Added
+
+- SONG FOLDER in the settings names the directories the library is
+  actually read from, under the panel. The value line says whether
+  a folder is WATCHED for new tracks; this answers the different
+  question a player asks when a song is missing. The paths come
+  from the scan's own list (`library::scan_roots`), so the screen
+  cannot describe a folder the game does not read.
+- `BEATBYTE_SHOT_ROW` reaches the settings list too — a row below
+  its fold was as unphotographable as a song below the browser's.
+
 ## [0.13.18] - 2026-09-01
 
 ### Changed

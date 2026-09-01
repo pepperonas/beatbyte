@@ -532,6 +532,24 @@ pub fn row() -> impl Bundle {
     )
 }
 
+/// A row's subtitle: quieter and smaller than the row itself, for
+/// the fact behind the setting rather than its value.
+#[must_use]
+pub fn subtitle_text(font: &UiFont) -> impl Bundle {
+    (
+        font.text(SMALL),
+        TextColor(dimmed_subtitle()),
+        TextLayout::default().with_no_wrap(),
+    )
+}
+
+/// The subtitle's colour — dim enough to read as a note, bright
+/// enough to be legible (the idle-row rule).
+#[must_use]
+pub fn dimmed_subtitle() -> Color {
+    palette::dimmed(palette::TEXT_DIM, 0.75)
+}
+
 /// A row's left-hand label. Never shrinks: the name of a setting is
 /// what the player scans for.
 #[must_use]

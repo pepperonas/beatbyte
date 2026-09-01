@@ -31,7 +31,7 @@ about them is compiled into a normal build.
 | `BEATBYTE_AUTOPILOT_DELETE` | title substring | Drives the browser with real arrow and backspace keys through the two-press delete confirmation, deleting the first song whose title matches. Needs a disposable song — it deletes files. (The value is the needle; `=1` matches nothing and times out, which is how this line got corrected.) |
 | `BEATBYTE_SHOT_DIR` | directory | Screenshots at named moments of a run. |
 | `BEATBYTE_SHOT_STATE` | screen name | Boots straight into one screen, photographs it and quits. |
-| `BEATBYTE_SHOT_ROW` | row index | With `BEATBYTE_SHOT_STATE`, selects that row first. A scrolling list is indistinguishable from a short one until the selection moves past the fold. |
+| `BEATBYTE_SHOT_ROW` | row index | With `BEATBYTE_SHOT_STATE`, selects that row first — in the song browser AND the settings list. A scrolling list is indistinguishable from a short one until the selection moves past the fold. |
 | `BEATBYTE_SHOT_SORT` | column name | With `BEATBYTE_SHOT_STATE=songselect`, activates that sort (title/artist/genre/length/notes/diff/best) so the active-column marker is photographable. |
 | `BEATBYTE_SHOT_SEARCH` | filter text | With `BEATBYTE_SHOT_STATE=songselect`, opens the search with that filter typed, so the prompt, the first-match selection and the empty-result hint are photographable. |
 | `BEATBYTE_ABOUT_EXPANDED` | set | With `BEATBYTE_SHOT_STATE=about`, pre-expands the changelog section (default collapsed), so the expanded state is photographable. |

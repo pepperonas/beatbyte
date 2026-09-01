@@ -113,6 +113,32 @@ pub fn user_songs_dir() -> Option<PathBuf> {
     dirs::data_dir().map(|dir| dir.join("beatbyte").join("songs"))
 }
 
+/// Every directory songs are read from, in scan order.
+///
+/// ONE definition: the scan walks these, and the settings screen
+/// shows them. Two lists would drift, and the screen would then be
+/// telling the player about a folder the game does not read.
+#[must_use]
+pub fn scan_roots() -> Vec<PathBuf> {
+    let mut roots = vec![PathBuf::from(SONGS_DIR)];
+    if let Some(user_dir) = user_songs_dir() {
+        roots.push(user_dir);
+    }
+    roots
+}
+
+/// The scan roots that exist on disk, as absolute paths — what the
+/// settings screen shows. A root that is not there delivers no
+/// tracks and naming it would only puzzle the reader.
+#[must_use]
+pub fn live_scan_roots() -> Vec<PathBuf> {
+    scan_roots()
+        .into_iter()
+        .filter(|root| root.is_dir())
+        .map(|root| std::fs::canonicalize(&root).unwrap_or(root))
+        .collect()
+}
+
 /// Build the library: built-in songs first (in the given order), then
 /// every valid chart under [`SONGS_DIR`] and the user songs directory
 /// (one level of subdirectories, plus loose files).
@@ -137,10 +163,7 @@ pub fn scan_library(builtins: &[ChartFile]) -> SongLibrary {
         .collect();
     let builtin_count = entries.len();
 
-    let mut roots = vec![PathBuf::from(SONGS_DIR)];
-    if let Some(user_dir) = user_songs_dir() {
-        roots.push(user_dir);
-    }
+    let roots = scan_roots();
     // Title+artist dedupe across ALL scan roots: the same song can
     // legitimately exist twice on disk (imported in the repo folder
     // AND in the user songs dir — exactly what put "Girls Just Want

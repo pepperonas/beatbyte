@@ -54,6 +54,20 @@ const DOT_X: f32 = 0.02;
 const DOT_Y: f32 = 0.012;
 /// How thick the glowing band grows at full brightness, in pixels.
 const GLOW_PX: f32 = 26.0;
+/// Frames to let pass before the tube plays.
+///
+/// The window is mapped by the OS when the first frame is
+/// presented; starting on the very first `Update` paints the mask
+/// into a window nobody is looking at yet.
+const FRAMES_BEFORE_SHOW: u32 = 3;
+/// The largest slice of the animation ONE frame may advance.
+///
+/// Boot frames are long — assets, pipelines, the first draw — and
+/// the tube used to be driven by raw `delta`, so two 300 ms frames
+/// consumed the entire show before anything was on screen. Clamped,
+/// a hitch stretches the animation instead of skipping it, which is
+/// the whole point of an animation that exists to be seen.
+const MAX_STEP_S: f32 = 1.0 / 30.0;
 
 /// The power-off duration for the shipped power-on.
 #[must_use]
@@ -322,13 +336,7 @@ impl Plugin for CrtPlugin {
         app.insert_resource(Crt::Idle)
             .add_message::<QuitRequested>()
             .add_systems(Startup, spawn_mask)
-            // ⚠️ NOT at startup. The boot screen is empty while the
-            // songs are still being built, so a power-on there
-            // revealed nothing and was over before the first menu
-            // existed — which is exactly how it came to be invisible.
-            // It plays when the first real picture arrives.
-            .add_systems(OnEnter(crate::states::AppState::MainMenu), power_on_once)
-            .add_systems(Update, (begin_power_off, run_tube).chain());
+            .add_systems(Update, (power_on_once, begin_power_off, run_tube).chain());
     }
 }
 
@@ -414,25 +422,49 @@ fn spawn_mask(mut commands: Commands) {
         });
 }
 
-/// Play the tube once, when the game first shows a menu. Later
-/// visits to the main menu are navigation, not a power-on.
-fn power_on_once(mut crt: ResMut<Crt>, mut played: Local<bool>) {
-    if *played {
+/// Play the tube once, on the first frame the window actually
+/// PRESENTS — so the animation is what opens the window.
+///
+/// ⚠️ Not at `Startup`, and not at the main menu either, and both
+/// mistakes were made in that order:
+///
+/// - At `Startup` the mask paints before macOS has mapped the
+///   window, so the show ran against nothing.
+/// - At the main menu it ran far too LATE: the boot screen
+///   ("tuning the amps…") is already on display while the songs
+///   build, so the window had been open for seconds by then. That
+///   is the "zu spät" in the report.
+///
+/// The source solves this by keeping the popup HIDDEN, priming the
+/// dot, and showing the window under the bloom. That is not
+/// available here: this project has already observed that an
+/// invisible window kills the macOS event loop (the comment on the
+/// window config says so), so the trigger waits for the first
+/// frames instead of hiding anything.
+fn power_on_once(mut crt: ResMut<Crt>, mut frames: Local<u32>) {
+    if *frames > FRAMES_BEFORE_SHOW {
         return;
     }
-    *played = true;
-    *crt = Crt::On(0.0);
+    *frames += 1;
+    if *frames == FRAMES_BEFORE_SHOW {
+        *crt = Crt::On(0.0);
+    }
 }
 
 /// A quit request starts the power-off — unless motion is off, in
 /// which case the app leaves at once.
 fn begin_power_off(
     mut requests: MessageReader<QuitRequested>,
+    mut closes: MessageReader<bevy::window::WindowCloseRequested>,
     settings: Res<Settings>,
     mut crt: ResMut<Crt>,
     mut exit: MessageWriter<AppExit>,
 ) {
-    if requests.read().count() == 0 {
+    // The titlebar's X and Cmd-Q arrive as a close request, the
+    // menu's QUIT as our own message — both mean the same thing, and
+    // both must play the tube. `close_when_requested` is switched
+    // off in the window config so this is the only handler.
+    if requests.read().count() == 0 && closes.read().count() == 0 {
         return;
     }
     if !settings.backdrop_motion || matches!(*crt, Crt::Off(_)) {
@@ -464,7 +496,7 @@ fn run_tube(
             // Reduced motion skips the show but still settles the
             // mask, so a primed dot can never get stuck on screen.
             let elapsed = if settings.backdrop_motion {
-                elapsed + time.delta_secs()
+                elapsed + time.delta_secs().min(MAX_STEP_S)
             } else {
                 CRT_ON_S
             };
@@ -477,7 +509,7 @@ fn run_tube(
             }
         }
         Crt::Off(elapsed) => {
-            let elapsed = elapsed + time.delta_secs();
+            let elapsed = elapsed + time.delta_secs().min(MAX_STEP_S);
             let total = crt_off_s(CRT_ON_S);
             if elapsed >= total {
                 exit.write(AppExit::Success);
@@ -627,6 +659,23 @@ mod tests {
         // Never during a power-on, and never while idle.
         assert!((burnout(Crt::On(0.1)) - 0.0).abs() < f32::EPSILON);
         assert!((burnout(Crt::Idle) - 0.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn a_hitching_boot_cannot_skip_the_show() {
+        // The tube used to advance by raw delta, so two 300 ms boot
+        // frames consumed the whole animation before the window was
+        // even on screen — the reported "I don't see it". Clamped,
+        // the show always gets a real number of frames no matter how
+        // badly the machine stutters.
+        let frames = (CRT_ON_S / MAX_STEP_S).floor();
+        assert!(
+            frames >= 20.0,
+            "a stuttering boot would show only {frames} frames of tube"
+        );
+        // …and the clamp must not make a healthy frame slower than
+        // it is: 60 fps is well inside it.
+        const { assert!(MAX_STEP_S >= 1.0 / 60.0) };
     }
 
     #[test]
