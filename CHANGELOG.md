@@ -14,6 +14,21 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.11] - 2026-09-01
+
+### Fixed
+
+- Lyric glyphs track at the FACE's own advance in the smooth note
+  style: the engine's bundled monospace moves 0.6 em per glyph
+  (Press Start 2P moves a full em), and the first build spaced every
+  smooth-style line half again too wide - measured from a live
+  frame, after correcting for the UI-scale zoom that disguised the
+  number as 0.7.
+- The lyric display clears when the "YOU ROCK!!!" outro takes the
+  stage, instead of freezing mid-fill behind it.
+- The lyric scrim darkens a touch more (HDR tonemapping compresses
+  its alpha; measured ~18% on the LED wall).
+
 ## [0.13.10] - 2026-09-01
 
 ### Added

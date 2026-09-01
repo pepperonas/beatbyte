@@ -223,7 +223,7 @@ pub fn spawn_lyric_display(
         super::GameplayScreen,
         LyricPart,
         LyricScrim,
-        Sprite::from_color(Color::srgba(0.0, 0.0, 0.0, 0.42), Vec2::new(0.0, 0.0)),
+        Sprite::from_color(Color::srgba(0.0, 0.0, 0.0, 0.5), Vec2::new(0.0, 0.0)),
         Visibility::Hidden,
         Transform::from_xyz(0.0, LYRIC_Y - 12.0, 3.8),
     ));
@@ -313,8 +313,9 @@ pub fn update_lyrics(
     let active_line = cue.active.and_then(|index| lyrics.lines.get(index));
     let active_chars = active_line.map_or(0, |line| font.safe(&line.text).chars().count());
     let preview_chars = wanted_preview.chars().count();
-    let content_w = (active_chars as f32 * glyph_advance(size, active_chars))
-        .max(preview_chars as f32 * size * PREVIEW_SCALE);
+    let em = font.glyph_em();
+    let content_w = (active_chars as f32 * glyph_advance(size * em, active_chars))
+        .max(preview_chars as f32 * size * PREVIEW_SCALE * em);
     if let Ok((mut sprite, mut visibility)) = scrim.single_mut() {
         if content_w > 0.0 {
             let height = if preview_chars > 0 {
@@ -365,14 +366,14 @@ pub fn update_lyrics(
     }
 }
 
-/// The per-glyph advance for a line, shrunk when a long line would
-/// overflow the screen. Pure — tested.
+/// The per-glyph advance for a line — the face's natural step,
+/// shrunk when a long line would overflow the screen. Pure — tested.
 #[must_use]
-pub fn glyph_advance(size: f32, chars: usize) -> f32 {
+pub fn glyph_advance(step: f32, chars: usize) -> f32 {
     if chars == 0 {
-        return size;
+        return step;
     }
-    size.min(MAX_LINE_W / chars as f32)
+    step.min(MAX_LINE_W / chars as f32)
 }
 
 fn spawn_line_glyphs(
@@ -388,7 +389,11 @@ fn spawn_line_glyphs(
     }
     let cues = (!line.words.is_empty()).then(|| glyph_cues(&text, &line.words));
     let size = size_for(settings.lyrics_size);
-    let advance = glyph_advance(size, chars.len());
+    // The step between glyph centers follows the FACE's own advance
+    // (1 em pixel font, 0.6 em smooth font) so the row reads as
+    // ordinary text, not letter-spaced type.
+    let em = font.glyph_em();
+    let advance = glyph_advance(size * em, chars.len());
     let width = advance * chars.len() as f32;
     for (index, glyph) in chars.iter().enumerate() {
         if *glyph == ' ' {
@@ -407,12 +412,26 @@ fn spawn_line_glyphs(
                 home,
             },
             Text2d::new(glyph.to_string()),
-            font.text(advance.min(size)),
+            font.text(advance / em),
             TextColor(palette::dimmed(palette::TEXT, 0.42)),
             Anchor::CENTER,
             Transform::from_translation(home),
         ));
     }
+}
+
+/// The outro owns the stage: whatever line was mid-fill leaves with
+/// the gameplay, instead of hanging frozen behind "YOU ROCK!!!".
+pub fn clear_for_outro(
+    mut commands: Commands,
+    mut display: ResMut<LyricDisplay>,
+    glyphs: GlyphQuery,
+    mut preview: PreviewQuery,
+    mut scrim: ScrimQuery,
+) {
+    clear_glyphs(&mut commands, &glyphs);
+    display.line = None;
+    hide_chrome(&mut preview, &mut scrim);
 }
 
 fn clear_glyphs(commands: &mut Commands, glyphs: &GlyphQuery) {

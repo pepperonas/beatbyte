@@ -344,7 +344,10 @@ impl Plugin for GameplayPlugin {
                 (stage3d::spawn_fret_bars, stage3d::spawn_phrase_bands)
                     .run_if(crate::mc::mc_swapped),
             )
-            .add_systems(OnEnter(GamePhase::Outro), spawn_outro)
+            .add_systems(
+                OnEnter(GamePhase::Outro),
+                (spawn_outro, lyrics::clear_for_outro),
+            )
             .add_systems(Update, run_outro.run_if(in_state(GamePhase::Outro)))
             .add_systems(OnExit(AppState::Gameplay), cleanup_outro)
             .add_systems(

@@ -75,6 +75,17 @@ impl UiFont {
             .collect()
     }
 
+    /// Horizontal advance of one glyph, as a fraction of the font
+    /// size. Both faces are true monospaces: Press Start 2P moves a
+    /// full em (measured from the bundled TTF), the engine's smooth
+    /// face 0.6 em - verified against a live frame, after correcting
+    /// for the UI-scale zoom that first made the measurement read
+    /// 0.7.
+    #[must_use]
+    pub fn glyph_em(&self) -> f32 {
+        if self.smooth { 0.6 } else { 1.0 }
+    }
+
     /// A [`TextFont`] in the active style at the given size.
     #[must_use]
     pub fn text(&self, size: f32) -> TextFont {
