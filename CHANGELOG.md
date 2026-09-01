@@ -14,6 +14,32 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.18] - 2026-09-01
+
+### Changed
+
+- The CRT power-on and power-off use the source's REAL easing
+  curves. The first port interpolated its keyframes linearly, which
+  is what made the tube read as a mechanical wipe: `inspector-rust`
+  assigns a different `cubic-bezier` to every segment, and those
+  curves are most of the character. They are solved here (bisection
+  on the parameter, because the parameter is not the x axis) and
+  checked against values CSS itself produces.
+- The scanline BLOOMS instead of ending at a hard edge — a
+  three-stop gradient that fades either side of the bright core.
+  This is where the source's `brightness()` filter went: a mask
+  cannot brighten the picture, so the light goes where the filter
+  would have spilled it.
+- The power-off ends on a BURNOUT flare, the bright point a real
+  tube dies on, rising over the pinch and gone before the last
+  frame — the app never exits on a lit screen. Suppressed under
+  reduced flashing, which is exactly what that setting is for.
+- The power-on runs 900 ms, the top of the range the source
+  documents. The real easings are front-loaded, so dot, scanline
+  and opening are all over inside the first 56 %; at 700 ms that
+  performance was finished in 390 ms. The offsets are untouched —
+  only the total changed.
+
 ## [0.13.17] - 2026-09-01
 
 ### Added
