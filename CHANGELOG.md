@@ -14,6 +14,23 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.35] - 2026-09-01
+
+### Fixed
+
+- The sustain beam no longer vanishes mid-hold (user report: the
+  drawn-through line must not simply disappear - only on release).
+  Two systems both wrote a held tail's transform: the consumer pins
+  it to the hit line beside the receptor flame and eats it from the
+  front, while the general note mover head-anchored it - and the
+  head marches past the camera during a hold, so the past-the-camera
+  cleanup despawned the very beam the player was still playing (at
+  420 px/s a 2 s sustain lost its beam less than halfway through). A
+  held tail now belongs exclusively to the consumer: it stays pinned
+  and throbbing at the button for exactly as long as the keys are
+  down, greys out and slides away on release, and disappears only
+  when fully played out.
+
 ## [0.12.34] - 2026-09-01
 
 ### Added

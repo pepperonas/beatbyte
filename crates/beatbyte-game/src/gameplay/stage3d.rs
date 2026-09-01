@@ -2581,6 +2581,19 @@ pub fn spawn_due_notes(
     }
 }
 
+/// Whether this entity is a sustain tail the player is HOLDING right
+/// now — in which case [`move_notes`] must not touch it at all:
+/// [`consume_sustains`] pins a held tail to the hit line and eats it
+/// from the front. The head-anchored march below would carry it past
+/// the camera while the hold ran, and the past-the-camera cleanup
+/// then despawned the very beam the player was playing (a 2 s
+/// sustain lost its beam less than halfway through the hold). Pure —
+/// tested against exactly those numbers.
+#[must_use]
+pub fn tail_is_held(is_tail: bool, active_sustain: Option<usize>, event_index: usize) -> bool {
+    is_tail && active_sustain == Some(event_index)
+}
+
 /// Keep the 3D notes in step with the song.
 pub fn move_notes(
     mut commands: Commands,
@@ -2605,6 +2618,16 @@ pub fn move_notes(
         let Some(event) = events.get(note.event_index) else {
             continue;
         };
+        // A held tail is the consumer's: pinned to the hit line,
+        // throbbing beside the receptor flame, shrinking as it is
+        // played — and only released (or fully eaten) may end it.
+        let active = players
+            .iter()
+            .find(|(index, _)| index.0 == note.player)
+            .and_then(|(_, player)| player.session.active_sustain());
+        if tail_is_held(is_tail, active, note.event_index) {
+            continue;
+        }
         let head = note_z(event.time_s - now, settings.scroll_speed);
         // A sustain tube is offset back by half its own length; its
         // scale carries that length, so the offset is recomputed
@@ -2752,6 +2775,36 @@ impl Plugin for Stage3dPlugin {
                 .chain()
                 .run_if(in_state(crate::states::GamePhase::Playing)),
         );
+    }
+}
+
+#[cfg(test)]
+mod held_tail_tests {
+    use super::{note_z, sustain_tail_span, tail_is_held};
+
+    #[test]
+    fn a_held_tail_is_left_to_the_consumer_or_it_dies_mid_hold() {
+        // A 2 s sustain at 420 px/s, 1.2 s into the hold: the
+        // consumer still has 0.8 s of tail to draw at the hit line -
+        // but the head-anchored centre move_notes would compute is
+        // already past the despawn line. Before the tail_is_held
+        // gate, move_notes despawned exactly this entity: the beam
+        // vanished while the key was still down.
+        let scroll = 420.0;
+        let (time_s, sustain_s, now) = (10.0, 2.0, 11.2);
+        let span = sustain_tail_span(time_s, sustain_s, now, scroll);
+        let (_, remaining) = span.expect("the hold still has tail to play");
+        let head = note_z(time_s - now, scroll);
+        let head_anchored_centre = head - remaining / 2.0;
+        assert!(
+            head_anchored_centre > 4.5,
+            "the head-anchored centre ({head_anchored_centre}) sits past the 4.5 despawn              line while the hold runs - which is why a held tail must be skipped"
+        );
+        // The gate itself: only a TAIL of the ACTIVE sustain is held.
+        assert!(tail_is_held(true, Some(7), 7));
+        assert!(!tail_is_held(true, Some(8), 7), "a different sustain");
+        assert!(!tail_is_held(true, None, 7), "no hold running");
+        assert!(!tail_is_held(false, Some(7), 7), "the gem is not a tail");
     }
 }
 
