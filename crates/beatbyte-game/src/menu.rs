@@ -189,17 +189,25 @@ pub(crate) fn menu_input(
 
 /// Paint the highlighted row: accent bar, fill and label together.
 fn highlight_cursor(
+    settings: Res<crate::config::Settings>,
     cursor: Res<MenuCursor>,
     mut rows: Query<(&MenuRow, &mut BackgroundColor, &mut BorderColor)>,
     mut labels: Query<(&MenuLabel, &mut TextColor)>,
 ) {
     for (row, mut background, mut border) in &mut rows {
-        let style = ui_kit::row_style(ui_kit::state_for(row.0 == cursor.0, false));
+        let style = ui_kit::styled_row(
+            ui_kit::state_for(row.0 == cursor.0, false),
+            settings.high_contrast,
+        );
         background.0 = style.background;
         *border = BorderColor::all(style.accent);
     }
     for (label, mut color) in &mut labels {
-        color.0 = ui_kit::row_style(ui_kit::state_for(label.0 == cursor.0, false)).label;
+        color.0 = ui_kit::styled_row(
+            ui_kit::state_for(label.0 == cursor.0, false),
+            settings.high_contrast,
+        )
+        .label;
     }
 }
 

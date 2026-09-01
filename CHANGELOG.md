@@ -14,6 +14,22 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.12.32] - 2026-09-01
+
+### Added
+
+- Accessibility rounds out (phase 4): four new settings that thread
+  through one consumer each. REDUCED FLASHING removes the
+  full-screen combo-break flash entirely (not a dimmer one). EFFECT
+  INTENSITY scales particle counts, screen-shake strength and flash
+  opacity together on one 0-100% slider. UI SCALE stacks a personal
+  75-150% multiplier on the window sync, clamped so no settings file
+  can render the menus unusable. HIGH CONTRAST lifts idle menu text
+  to full brightness and clearly strengthens selection fills on
+  every screen. The settings list - seventeen rows now - scrolls
+  with the same whole-row window as the browser and the controls
+  screen.
+
 ## [0.12.31] - 2026-09-01
 
 ### Added

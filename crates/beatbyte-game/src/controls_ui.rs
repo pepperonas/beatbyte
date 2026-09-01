@@ -396,6 +396,7 @@ fn controls_input(
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI
 fn refresh_controls(
     map: Res<InputMap>,
+    settings: Res<Settings>,
     state: Res<ControlsState>,
     mut rows: Query<(&ActionRow, &mut BackgroundColor, &mut BorderColor)>,
     mut labels: Query<(&ActionLabel, &mut TextColor), Without<ActionBindings>>,
@@ -404,10 +405,13 @@ fn refresh_controls(
     active: Res<crate::prompts::ActiveDevice>,
 ) {
     let style_of = |index: usize| {
-        ui_kit::row_style(ui_kit::state_for(
-            index == state.cursor,
-            state.capturing && index == state.cursor,
-        ))
+        ui_kit::styled_row(
+            ui_kit::state_for(
+                index == state.cursor,
+                state.capturing && index == state.cursor,
+            ),
+            settings.high_contrast,
+        )
     };
     for (row, mut background, mut border) in &mut rows {
         let style = style_of(row.0);

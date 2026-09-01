@@ -29,6 +29,28 @@ pub struct EffectSettings {
     pub backdrop_motion: bool,
     /// Round style: particles render as soft discs, not pixels.
     pub round_particles: bool,
+    /// Suppress full-screen flashes (accessibility).
+    pub reduced_flashing: bool,
+    /// Scales particle counts, shake and flash opacity, 0.0–1.0.
+    pub intensity: f32,
+}
+
+/// A burst's particle count under the intensity slider: identity at
+/// full, nothing at zero, rounded in between. Pure — tested.
+#[must_use]
+pub fn scaled_count(count: usize, intensity: f32) -> usize {
+    (count as f32 * intensity.clamp(0.0, 1.0)).round() as usize
+}
+
+/// The full-screen combo-break flash's opacity: gone entirely under
+/// reduced flashing, scaled by intensity otherwise. Pure — tested.
+#[must_use]
+pub fn flash_alpha(reduced_flashing: bool, intensity: f32) -> f32 {
+    if reduced_flashing {
+        0.0
+    } else {
+        0.10 * intensity.clamp(0.0, 1.0)
+    }
 }
 
 impl Default for EffectSettings {
@@ -39,6 +61,8 @@ impl Default for EffectSettings {
             beat_pulse: true,
             backdrop_motion: true,
             round_particles: false,
+            reduced_flashing: false,
+            intensity: 1.0,
         }
     }
 }
@@ -171,6 +195,7 @@ fn react_to_feedback(
                     Judgment::Great => (12, 240.0, false),
                     _ => (7, 180.0, false),
                 };
+                let count = scaled_count(count, settings.intensity);
                 for lane in event.lanes.iter() {
                     let color = theme.0.lane_color(lane);
                     let x = layout.lane_x(player, lane);
@@ -192,7 +217,7 @@ fn react_to_feedback(
                             soft.clone(),
                             Vec2::new(x, RECEPTOR_Y),
                             Color::WHITE,
-                            5,
+                            scaled_count(5, settings.intensity),
                             speed * 1.4,
                             event_index + 7,
                         );
@@ -201,21 +226,27 @@ fn react_to_feedback(
             }
             SessionEvent::NoteMissed { .. } => {
                 if settings.screen_shake {
-                    shake.add(0.30);
+                    shake.add(0.30 * settings.intensity);
                 }
-                commands.spawn((
-                    GameplayScreen,
-                    BreakFlash { age: 0.0 },
-                    Sprite::from_color(palette::MISS.with_alpha(0.10), Vec2::new(4000.0, 4000.0)),
-                    Transform::from_xyz(0.0, 0.0, 20.0),
-                ));
+                let alpha = flash_alpha(settings.reduced_flashing, settings.intensity);
+                if alpha > 0.0 {
+                    commands.spawn((
+                        GameplayScreen,
+                        BreakFlash { age: 0.0 },
+                        Sprite::from_color(
+                            palette::MISS.with_alpha(alpha),
+                            Vec2::new(4000.0, 4000.0),
+                        ),
+                        Transform::from_xyz(0.0, 0.0, 20.0),
+                    ));
+                }
             }
             SessionEvent::Overstrum if settings.screen_shake => {
-                shake.add(0.20);
+                shake.add(0.20 * settings.intensity);
             }
             SessionEvent::HypeActivated => {
                 if settings.screen_shake {
-                    shake.add(0.30);
+                    shake.add(0.30 * settings.intensity);
                 }
                 // A celebratory salvo across the player's lanes.
                 if settings.particles {
@@ -226,7 +257,7 @@ fn react_to_feedback(
                             soft.clone(),
                             Vec2::new(layout.lane_x(player, lane), RECEPTOR_Y),
                             palette::HYPE,
-                            10,
+                            scaled_count(10, settings.intensity),
                             340.0,
                             lane.index() * 13 + player * 101,
                         );
@@ -476,5 +507,30 @@ fn reset_camera(mut camera: Query<&mut Transform, With<Camera2d>>) {
     if let Ok(mut transform) = camera.single_mut() {
         transform.translation.x = 0.0;
         transform.translation.y = 0.0;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{flash_alpha, scaled_count};
+
+    #[test]
+    fn intensity_scales_counts_from_identity_to_silence() {
+        assert_eq!(scaled_count(18, 1.0), 18, "full intensity is identity");
+        assert_eq!(scaled_count(18, 0.5), 9);
+        assert_eq!(scaled_count(18, 0.0), 0, "zero intensity spawns nothing");
+        // Out-of-range files clamp instead of multiplying upward.
+        assert_eq!(scaled_count(18, 7.0), 18);
+    }
+
+    #[test]
+    fn reduced_flashing_kills_the_full_screen_flash_entirely() {
+        // The accessibility promise is NO flash, not a dimmer one.
+        assert_eq!(flash_alpha(true, 1.0), 0.0);
+        assert!(flash_alpha(false, 1.0) > 0.0);
+        assert!(
+            flash_alpha(false, 0.5) < flash_alpha(false, 1.0),
+            "intensity dims the flash when it is allowed at all"
+        );
     }
 }

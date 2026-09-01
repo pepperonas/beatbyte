@@ -930,6 +930,7 @@ type ArtistColors<'w, 's> = Query<
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)] // Bevy system
 fn refresh_browser(
+    settings: Res<crate::config::Settings>,
     library: Res<SongLibrary>,
     view: Res<BrowserView>,
     cursor: Res<BrowserCursor>,
@@ -991,15 +992,26 @@ fn refresh_browser(
         };
     }
     for (row, mut background, mut border) in &mut rows {
-        let style = ui_kit::row_style(ui_kit::state_for(row.0 == cursor.0, false));
+        let style = ui_kit::styled_row(
+            ui_kit::state_for(row.0 == cursor.0, false),
+            settings.high_contrast,
+        );
         background.0 = style.background;
         *border = BorderColor::all(style.accent);
     }
     for (title, mut color) in &mut titles {
-        color.0 = ui_kit::row_style(ui_kit::state_for(title.0 == cursor.0, false)).label;
+        color.0 = ui_kit::styled_row(
+            ui_kit::state_for(title.0 == cursor.0, false),
+            settings.high_contrast,
+        )
+        .label;
     }
     for (artist, mut color) in &mut artists {
-        color.0 = ui_kit::row_style(ui_kit::state_for(artist.0 == cursor.0, false)).value;
+        color.0 = ui_kit::styled_row(
+            ui_kit::state_for(artist.0 == cursor.0, false),
+            settings.high_contrast,
+        )
+        .value;
     }
     let Some(entry) = view
         .order

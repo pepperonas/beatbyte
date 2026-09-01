@@ -304,14 +304,29 @@ fn report_frame_times(time: Res<Time>, mut log: Option<ResMut<FrameLog>>) {
 /// Scale the (screen-space) UI with the window so menus stay
 /// proportional — without this a 4K window renders tiny menus while
 /// the world scales correctly.
-fn sync_ui_scale(windows: Query<&Window>, mut scale: ResMut<bevy::ui::UiScale>) {
+fn sync_ui_scale(
+    windows: Query<&Window>,
+    settings: Res<config::Settings>,
+    mut scale: ResMut<bevy::ui::UiScale>,
+) {
     let Ok(window) = windows.single() else {
         return;
     };
-    let target = (window.height() / 720.0).clamp(0.6, 2.5);
+    let target = ui_scale_target(window.height(), settings.ui_scale);
     if (scale.0 - target).abs() > 0.01 {
         scale.0 = target;
     }
+}
+
+/// The UI scale for a window height and the player's own multiplier
+/// (an accessibility setting). The window sync keeps menus
+/// proportional; the multiplier stacks on top and the result stays
+/// clamped so no settings file can render the UI unusable. Pure —
+/// tested.
+#[must_use]
+pub fn ui_scale_target(window_height: f32, user_scale: f32) -> f32 {
+    let auto = (window_height / 720.0).clamp(0.6, 2.5);
+    (auto * user_scale.clamp(0.75, 1.5)).clamp(0.5, 3.0)
 }
 
 /// Exactly ONE camera may clear the window. While the 3D stage
@@ -451,5 +466,21 @@ mod tests {
             source.contains("let (w, h) = value.split_once('x')?;"),
             "parse_window_env no longer splits on 'x'; update the test copy"
         );
+    }
+}
+
+#[cfg(test)]
+mod scale_tests {
+    use super::ui_scale_target;
+
+    #[test]
+    fn the_user_multiplier_stacks_on_the_window_sync_and_stays_clamped() {
+        let base = ui_scale_target(720.0, 1.0);
+        assert!((base - 1.0).abs() < 1e-6);
+        assert!(ui_scale_target(720.0, 1.3) > base, "bigger text on request");
+        assert!(ui_scale_target(720.0, 0.8) < base);
+        // Files are input too: absurd values clamp, never break the UI.
+        assert!((ui_scale_target(720.0, 40.0) - 1.5).abs() < 1e-6);
+        assert!(ui_scale_target(4320.0, 1.5) <= 3.0);
     }
 }

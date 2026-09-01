@@ -233,9 +233,11 @@ chart format v1 can be frozen as a promise.
   (Navigate/Confirm/Back/Error/Toggle/Slider, two new voices, every
   device sounds alike); **phase 3** *(v0.12.31)* — device-aware
   prompts (`ActiveDevice` + `DeviceHint`, every footer swaps wording
-  live; pad players can finally leave the results screen). Open:
-  accessibility completion (4), video-offset calibration (5),
-  renderer-boundary ADR + 2D-path prune (6).
+  live; pad players can finally leave the results screen); **phase 4**
+  *(v0.12.32)* — reduced flashing, effect-intensity slider, UI-scale
+  multiplier, high contrast; the settings list scrolls. Open:
+  video-offset calibration (5), renderer-boundary ADR + 2D-path
+  prune (6).
 
 ### F — Release engineering to 1.0
 

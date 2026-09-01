@@ -856,21 +856,30 @@ fn refresh_pause_menu(
     mut values: Query<(&PauseRowValue, &mut Text, &mut TextColor), Without<PauseRowLabel>>,
 ) {
     for (row, mut background, mut border) in &mut rows {
-        let style = crate::ui_kit::row_style(crate::ui_kit::state_for(row.0 == cursor.0, false));
+        let style = crate::ui_kit::styled_row(
+            crate::ui_kit::state_for(row.0 == cursor.0, false),
+            settings.high_contrast,
+        );
         background.0 = style.background;
         *border = BorderColor::all(style.accent);
     }
     for (label, mut color) in &mut labels {
-        color.0 =
-            crate::ui_kit::row_style(crate::ui_kit::state_for(label.0 == cursor.0, false)).label;
+        color.0 = crate::ui_kit::styled_row(
+            crate::ui_kit::state_for(label.0 == cursor.0, false),
+            settings.high_contrast,
+        )
+        .label;
     }
     for (value, mut text, mut color) in &mut values {
         let wanted = PAUSE_ROWS[value.0].value(&settings, &practice);
         if text.0 != wanted {
             text.0 = wanted;
         }
-        color.0 =
-            crate::ui_kit::row_style(crate::ui_kit::state_for(value.0 == cursor.0, false)).value;
+        color.0 = crate::ui_kit::styled_row(
+            crate::ui_kit::state_for(value.0 == cursor.0, false),
+            settings.high_contrast,
+        )
+        .value;
     }
 }
 

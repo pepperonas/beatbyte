@@ -35,6 +35,20 @@ pub struct Settings {
     /// Backdrop animation (turn off for a still stage —
     /// reduced-motion accessibility).
     pub backdrop_motion: bool,
+    /// Reduced flashing: suppress full-screen flashes (accessibility).
+    #[serde(default)]
+    pub reduced_flashing: bool,
+    /// Visual effect intensity, 0.0–1.0: scales particle counts,
+    /// shake strength and flash opacity together.
+    #[serde(default = "default_fx_intensity")]
+    pub fx_intensity: f32,
+    /// User UI scale multiplier on top of the window-height sync.
+    #[serde(default = "default_ui_scale")]
+    pub ui_scale: f32,
+    /// High contrast: brighter idle text and stronger selection
+    /// fills across every menu.
+    #[serde(default)]
+    pub high_contrast: bool,
     /// Tap mode: notes hit on fret press alone, no strum required.
     /// ON by default — the first real playtest showed keyboard
     /// players press frets and nothing happens (receptors light up,
@@ -81,6 +95,10 @@ impl Default for Settings {
             screen_shake: true,
             beat_pulse: true,
             backdrop_motion: true,
+            reduced_flashing: false,
+            fx_intensity: 1.0,
+            ui_scale: 1.0,
+            high_contrast: false,
             tap_mode: true,
             perspective: true,
             stage_3d: true,
@@ -116,6 +134,8 @@ impl Settings {
         self.sfx_volume = clean(self.sfx_volume, 0.0, 1.0, 0.45);
         self.latency_offset_ms = clean(self.latency_offset_ms, -250.0, 250.0, 0.0);
         self.scroll_speed = clean(self.scroll_speed, 240.0, 900.0, 420.0);
+        self.fx_intensity = clean(self.fx_intensity, 0.0, 1.0, 1.0);
+        self.ui_scale = clean(self.ui_scale, 0.75, 1.5, 1.0);
         self.input_map.sanitize();
         if self.theme != "auto" && crate::theme::Theme::by_id(&self.theme).is_none() {
             self.theme = "auto".to_owned();
@@ -129,6 +149,16 @@ impl Settings {
 /// The browser's default sort label.
 fn default_browser_sort() -> String {
     "standard".to_owned()
+}
+
+/// Full visual effects, the default.
+fn default_fx_intensity() -> f32 {
+    1.0
+}
+
+/// No extra UI scaling, the default.
+fn default_ui_scale() -> f32 {
+    1.0
 }
 
 fn clean(value: f32, min: f32, max: f32, fallback: f32) -> f32 {
@@ -227,6 +257,8 @@ fn apply_settings(
     effects.beat_pulse = settings.beat_pulse;
     effects.backdrop_motion = settings.backdrop_motion;
     effects.round_particles = settings.round_gems;
+    effects.reduced_flashing = settings.reduced_flashing;
+    effects.intensity = settings.fx_intensity;
     if let Ok(mut window) = windows.single_mut() {
         let wanted = if settings.fullscreen {
             bevy::window::WindowMode::BorderlessFullscreen(MonitorSelection::Current)

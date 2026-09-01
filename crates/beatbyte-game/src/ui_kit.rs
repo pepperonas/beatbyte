@@ -115,21 +115,45 @@ pub struct RowStyle {
 /// weak cue on a dark background.
 #[must_use]
 pub fn row_style(state: RowState) -> RowStyle {
+    styled_row(state, false)
+}
+
+/// [`row_style`] with the accessibility switch: under high contrast
+/// idle text steps up to full brightness and the selection fill
+/// roughly doubles, so state reads at a glance on any panel.
+#[must_use]
+pub fn styled_row(state: RowState, high_contrast: bool) -> RowStyle {
     match state {
         RowState::Idle => RowStyle {
             background: Color::NONE,
             accent: Color::NONE,
-            label: palette::TEXT_DIM,
-            value: palette::dimmed(palette::TEXT_DIM, 0.8),
+            label: if high_contrast {
+                palette::TEXT
+            } else {
+                palette::TEXT_DIM
+            },
+            value: if high_contrast {
+                palette::TEXT
+            } else {
+                palette::dimmed(palette::TEXT_DIM, 0.8)
+            },
         },
         RowState::Selected => RowStyle {
-            background: palette::BRAND.with_alpha(FILL_ALPHA),
+            background: palette::BRAND.with_alpha(if high_contrast {
+                FILL_ALPHA * 2.2
+            } else {
+                FILL_ALPHA
+            }),
             accent: palette::BRAND,
             label: palette::BRAND,
             value: palette::TEXT,
         },
         RowState::Armed => RowStyle {
-            background: palette::HYPE.with_alpha(FILL_ARMED),
+            background: palette::HYPE.with_alpha(if high_contrast {
+                FILL_ARMED * 2.0
+            } else {
+                FILL_ARMED
+            }),
             accent: palette::HYPE,
             label: palette::HYPE,
             value: palette::TEXT,
@@ -499,6 +523,28 @@ mod tests {
             idle.label.alpha() > 0.9,
             "idle label must not be transparent"
         );
+    }
+
+    #[test]
+    fn high_contrast_brightens_idle_and_strengthens_the_fill() {
+        let normal_idle = styled_row(RowState::Idle, false);
+        let hc_idle = styled_row(RowState::Idle, true);
+        let brightness = |color: Color| {
+            let linear = color.to_linear();
+            linear.red.max(linear.green).max(linear.blue)
+        };
+        assert!(
+            brightness(hc_idle.label) > brightness(normal_idle.label),
+            "high contrast must lift the idle label"
+        );
+        let normal_sel = styled_row(RowState::Selected, false);
+        let hc_sel = styled_row(RowState::Selected, true);
+        assert!(
+            hc_sel.background.alpha() > normal_sel.background.alpha() * 1.5,
+            "the selection fill must strengthen clearly"
+        );
+        // And the states must still differ from each other.
+        assert_ne!(hc_idle.label, hc_sel.label);
     }
 
     #[test]

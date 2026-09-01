@@ -29,11 +29,15 @@ pub(crate) enum Row {
     NoteStyle,
     Fullscreen,
     Theme,
+    ReducedFlashing,
+    FxIntensity,
+    TextScale,
+    HighContrast,
     Controls,
 }
 
 impl Row {
-    const ALL: [Row; 13] = [
+    const ALL: [Row; 17] = [
         Row::MusicVolume,
         Row::SfxVolume,
         Row::ScrollSpeed,
@@ -42,6 +46,10 @@ impl Row {
         Row::ScreenShake,
         Row::BeatPulse,
         Row::BackdropMotion,
+        Row::ReducedFlashing,
+        Row::FxIntensity,
+        Row::TextScale,
+        Row::HighContrast,
         Row::TapMode,
         Row::NoteStyle,
         Row::Fullscreen,
@@ -59,6 +67,10 @@ impl Row {
             Row::ScreenShake => "SCREEN SHAKE",
             Row::BeatPulse => "BEAT PULSE",
             Row::BackdropMotion => "STAGE MOTION",
+            Row::ReducedFlashing => "REDUCED FLASHING",
+            Row::FxIntensity => "EFFECT INTENSITY",
+            Row::TextScale => "UI SCALE",
+            Row::HighContrast => "HIGH CONTRAST",
             Row::TapMode => "TAP MODE (NO STRUM)",
             Row::NoteStyle => "NOTE STYLE",
             Row::Fullscreen => "FULLSCREEN",
@@ -77,6 +89,10 @@ impl Row {
             Row::ScreenShake => on_off(settings.screen_shake),
             Row::BeatPulse => on_off(settings.beat_pulse),
             Row::BackdropMotion => on_off(settings.backdrop_motion),
+            Row::ReducedFlashing => on_off(settings.reduced_flashing),
+            Row::FxIntensity => format!("{:.0}%", settings.fx_intensity * 100.0),
+            Row::TextScale => format!("{:.0}%", settings.ui_scale * 100.0),
+            Row::HighContrast => on_off(settings.high_contrast),
             Row::TapMode => on_off(settings.tap_mode),
             Row::NoteStyle => if settings.round_gems {
                 "ROUND"
@@ -111,6 +127,14 @@ impl Row {
             Row::ScreenShake => settings.screen_shake = !settings.screen_shake,
             Row::BeatPulse => settings.beat_pulse = !settings.beat_pulse,
             Row::BackdropMotion => settings.backdrop_motion = !settings.backdrop_motion,
+            Row::ReducedFlashing => settings.reduced_flashing = !settings.reduced_flashing,
+            Row::FxIntensity => {
+                settings.fx_intensity = (settings.fx_intensity + 0.1 * direction).clamp(0.0, 1.0);
+            }
+            Row::TextScale => {
+                settings.ui_scale = (settings.ui_scale + 0.05 * direction).clamp(0.75, 1.5);
+            }
+            Row::HighContrast => settings.high_contrast = !settings.high_contrast,
             Row::TapMode => settings.tap_mode = !settings.tap_mode,
             Row::NoteStyle => settings.round_gems = !settings.round_gems,
             Row::Fullscreen => settings.fullscreen = !settings.fullscreen,
@@ -135,6 +159,8 @@ impl Row {
             | Row::ScreenShake
             | Row::BeatPulse
             | Row::BackdropMotion
+            | Row::ReducedFlashing
+            | Row::HighContrast
             | Row::TapMode
             | Row::NoteStyle
             | Row::Fullscreen => crate::sfx::UiSound::Toggle,
@@ -159,7 +185,8 @@ impl Plugin for SettingsUiPlugin {
             .add_systems(OnEnter(AppState::Settings), spawn_settings)
             .add_systems(
                 Update,
-                (settings_input, refresh_settings).run_if(in_state(AppState::Settings)),
+                (settings_input, refresh_settings, follow_settings_cursor)
+                    .run_if(in_state(AppState::Settings)),
             )
             .add_systems(
                 OnExit(AppState::Settings),
@@ -170,6 +197,48 @@ impl Plugin for SettingsUiPlugin {
 
 #[derive(Component)]
 struct SettingsScreen;
+
+/// The scrolling list of settings rows.
+#[derive(Component)]
+struct SettingsList;
+
+/// Keep the cursor row in view — the same measured whole-row window
+/// the browser and the controls screen use. Seventeen rows outgrew
+/// the safe area exactly the way fifteen did on the controls screen.
+fn follow_settings_cursor(
+    cursor: Res<SettingsCursor>,
+    rows: Query<(&RowText, &ComputedNode)>,
+    mut lists: Query<(&ComputedNode, &mut ScrollPosition, &mut Node), With<SettingsList>>,
+) {
+    let Ok((list, mut scroll, mut node)) = lists.single_mut() else {
+        return;
+    };
+    let Some(row_h) = rows
+        .iter()
+        .map(|(_, node)| node.size().y)
+        .find(|height| *height > 0.0)
+    else {
+        return;
+    };
+    let count = Row::ALL.len();
+    let pitch = row_h + ui_kit::ROW_GAP;
+    if let Some(height) =
+        ui_kit::whole_rows_height(row_h, ui_kit::ROW_GAP, count, ui_kit::PANEL_MAX_H)
+    {
+        let wanted = px(height);
+        if node.max_height != wanted {
+            node.max_height = wanted;
+        }
+    }
+    let total = count as f32;
+    let content_h = total.mul_add(row_h, (total - 1.0).max(0.0) * ui_kit::ROW_GAP);
+    let viewport_h = list.size().y - 2.0 * ui_kit::PANEL_PAD;
+    let row_top = cursor.0 as f32 * pitch;
+    let wanted = ui_kit::scroll_to_show(row_top, row_h, viewport_h, content_h, scroll.0.y);
+    if (wanted - scroll.0.y).abs() > 0.5 {
+        scroll.0.y = wanted;
+    }
+}
 
 /// A settings row (index into [`Row::ALL`]). Stays on the entity that
 /// carries `Button`, so the existing input handler is untouched.
@@ -189,34 +258,36 @@ fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
         .spawn((SettingsScreen, ui_kit::screen_root()))
         .with_children(|parent| {
             ui_kit::header(parent, &font, "SETTINGS", "sound, feel and looks");
-            parent.spawn(ui_kit::panel()).with_children(|panel| {
-                for (index, definition) in Row::ALL.iter().enumerate() {
-                    panel
-                        .spawn((RowText(index), Button, ui_kit::row()))
-                        .with_children(|row| {
-                            // Label and value are separate texts in a
-                            // space-between row. The old single-string
-                            // layout padded the label to 16 characters,
-                            // which "TAP MODE (NO STRUM)" overflows by
-                            // three — that one row's value hung out of
-                            // the column.
-                            row.spawn((
-                                SettingLabel(index),
-                                Text::new(definition.label()),
-                                font.text(ui_kit::ROW),
-                                TextColor(palette::TEXT_DIM),
-                                ui_kit::label_node(),
-                            ));
-                            row.spawn((
-                                SettingValue(index),
-                                Text::new(""),
-                                font.text(ui_kit::ROW),
-                                TextColor(palette::TEXT_DIM),
-                                ui_kit::value_node(),
-                            ));
-                        });
-                }
-            });
+            parent
+                .spawn((SettingsList, ui_kit::scroll_panel(ui_kit::PANEL_WIDTH)))
+                .with_children(|panel| {
+                    for (index, definition) in Row::ALL.iter().enumerate() {
+                        panel
+                            .spawn((RowText(index), Button, ui_kit::row()))
+                            .with_children(|row| {
+                                // Label and value are separate texts in a
+                                // space-between row. The old single-string
+                                // layout padded the label to 16 characters,
+                                // which "TAP MODE (NO STRUM)" overflows by
+                                // three — that one row's value hung out of
+                                // the column.
+                                row.spawn((
+                                    SettingLabel(index),
+                                    Text::new(definition.label()),
+                                    font.text(ui_kit::ROW),
+                                    TextColor(palette::TEXT_DIM),
+                                    ui_kit::label_node(),
+                                ));
+                                row.spawn((
+                                    SettingValue(index),
+                                    Text::new(""),
+                                    font.text(ui_kit::ROW),
+                                    TextColor(palette::TEXT_DIM),
+                                    ui_kit::value_node(),
+                                ));
+                            });
+                    }
+                });
             crate::prompts::device_footer(
                 parent,
                 &font,
@@ -293,19 +364,30 @@ fn refresh_settings(
     mut values: Query<(&SettingValue, &mut Text, &mut TextColor), Without<SettingLabel>>,
 ) {
     for (row, mut background, mut border) in &mut rows {
-        let style = ui_kit::row_style(ui_kit::state_for(row.0 == cursor.0, false));
+        let style = ui_kit::styled_row(
+            ui_kit::state_for(row.0 == cursor.0, false),
+            settings.high_contrast,
+        );
         background.0 = style.background;
         *border = BorderColor::all(style.accent);
     }
     for (label, mut color) in &mut labels {
-        color.0 = ui_kit::row_style(ui_kit::state_for(label.0 == cursor.0, false)).label;
+        color.0 = ui_kit::styled_row(
+            ui_kit::state_for(label.0 == cursor.0, false),
+            settings.high_contrast,
+        )
+        .label;
     }
     for (value, mut text, mut color) in &mut values {
         let wanted = Row::ALL[value.0].value(&settings);
         if text.0 != wanted {
             text.0 = wanted;
         }
-        color.0 = ui_kit::row_style(ui_kit::state_for(value.0 == cursor.0, false)).value;
+        color.0 = ui_kit::styled_row(
+            ui_kit::state_for(value.0 == cursor.0, false),
+            settings.high_contrast,
+        )
+        .value;
     }
 }
 
