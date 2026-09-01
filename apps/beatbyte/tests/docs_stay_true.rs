@@ -464,3 +464,44 @@ fn the_design_workflow_only_names_real_subcommands() {
         }
     }
 }
+
+/// The README may not claim the game never uses the network while a
+/// crate contains code that does.
+///
+/// This one is written from a mistake of mine: the lyrics lookup was
+/// added, shipped, and documented — and the badge went on saying
+/// `network-never` for several releases, because nothing about a
+/// stale badge looks stale. A privacy claim is the last claim that
+/// should be maintained by hand, so it is counted instead.
+#[test]
+fn the_network_claim_matches_what_the_code_actually_does() {
+    let readme = read("README.md");
+    // Every place a request could originate: the crates that are
+    // allowed to talk to anything at all.
+    let reaches_out = ["crates/beatbyte-game/src/lyrics_fetch.rs"]
+        .iter()
+        .any(|path| repo().join(path).is_file());
+
+    if reaches_out {
+        assert!(
+            !readme.contains("network-never"),
+            "the README claims the game never uses the network, but \
+             an outbound request exists in the tree"
+        );
+        // And it has to say what goes out, not merely drop the claim.
+        assert!(
+            readme.contains("### What leaves your machine"),
+            "a game that makes a request owes the reader a section \
+             saying which one, and when"
+        );
+        assert!(
+            readme.contains("lrclib.net"),
+            "the section must name the service that is contacted"
+        );
+    } else {
+        assert!(
+            readme.contains("network-never"),
+            "nothing in the tree reaches out; say so"
+        );
+    }
+}

@@ -14,6 +14,51 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.21] - 2026-09-01
+
+### Added
+
+- The analysis baseline is now measured against **real music**:
+  Rekordbox's own beat grids, read from its `ANLZ0000.DAT` analysis
+  files (`beatbyte-audio::eval::anlz`), paired with the audio on this
+  machine (`eval::corpus`). Seven tracks of the target profile —
+  loop house, 118–130 BPM, 5–8 minutes — now stand behind the
+  numbers in `docs/audio-eval-baseline.md`. No audio, no grid and no
+  library file enters the repository; the corpus is a local path the
+  examples take as an argument.
+- `eval::corpus` also carries the two pieces of arithmetic the
+  measurement turns on, both tested: the nearest-beat `residual`,
+  which **wraps at half a period** and therefore must never be
+  subtracted from another, and `accumulated_drift_s`, the wrap-free
+  drift a tempo error buys over a track's length.
+
+### Changed
+
+- **The diagnosis in `docs/audio-eval-baseline.md` is now founded on
+  real material, and it contradicts the assumption it started from.**
+  The tempo estimate is not the weak point: seven real tracks come
+  back within 0.25 %, with no octave error anywhere. The failure is
+  phase, from two separate causes — a single global constant tempo
+  cannot hold a 6–8 minute track (every track drifts past the ±70 ms
+  tolerance, the worst by a factor of 18), and four of seven lock
+  onto the wrong half of the beat. Median beat F-measure on real
+  material is **0.33**, against 0.86–0.98 on the synthetic cases,
+  which is the most useful thing the synthetic cases have said: they
+  do not reproduce the defect.
+- The earlier rock finding is folded into the same explanation
+  rather than standing as its own mystery: `circuit-breaker` shows
+  both causes on cleaner, shorter material.
+
+### Fixed
+
+- **The README claimed the game never uses the network.** That
+  stopped being true when the lyrics lookup shipped, and nothing
+  about a stale badge looks stale. The badge now says what actually
+  happens, a new *What leaves your machine* section names the one
+  request, when it is made and what it carries, and
+  `docs_stay_true.rs` fails from now on if the claim and the code
+  disagree in either direction.
+
 ## [0.13.20] - 2026-09-01
 
 ### Added

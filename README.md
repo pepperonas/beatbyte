@@ -35,7 +35,7 @@
 [![SemVer](https://img.shields.io/badge/versioning-SemVer-blue)](CHANGELOG.md)
 [![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735)](CHANGELOG.md)
 [![Conventional Commits](https://img.shields.io/badge/commits-Conventional-FE5196)](https://www.conventionalcommits.org/)
-[![Tests](https://img.shields.io/badge/tests-594%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-606%20passing-brightgreen)](#testing)
 [![Clippy](https://img.shields.io/badge/clippy-%E2%80%91D%20warnings-brightgreen?logo=rust)](Cargo.toml)
 [![rustfmt](https://img.shields.io/badge/style-rustfmt-orange?logo=rust)](Cargo.toml)
 [![Rustdoc](https://img.shields.io/badge/public%20API-documented-blue)](Cargo.toml)
@@ -55,7 +55,7 @@
 [![Determinism](https://img.shields.io/badge/charts-reproducible-blueviolet)](docs/audio/analysis.md)
 [![Dependencies](https://img.shields.io/badge/runtime%20deps-Rust%20crates%20only-informational)](Cargo.toml)
 [![Telemetry](https://img.shields.io/badge/telemetry-none-brightgreen)](#legal)
-[![Network](https://img.shields.io/badge/network-never-brightgreen)](#legal)
+[![Network](https://img.shields.io/badge/network-lyrics%20lookup%20only%2C%20on%20request-brightgreen)](#legal)
 [![Build](https://img.shields.io/badge/build-one%20command-success)](#building-from-source)
 
 ### Tech
@@ -461,7 +461,7 @@ beatbyte-cli demo                  # render the built-in songs + charts
 ## Testing
 
 ```bash
-cargo test --workspace          # 594 tests
+cargo test --workspace          # 606 tests
 ```
 
 | Crate | Tests | Covers |
@@ -469,10 +469,10 @@ cargo test --workspace          # 594 tests
 | `beatbyte-core` | 88 | The play-history schema, timing windows to their exact boundaries, judgment, scoring, combos, HOPO and tap rules, the hype meter, the telemetry schema |
 | `beatbyte-chart` | 94 | Format validation, untrusted-input limits, chart generation, difficulty derivation, musical quantisation, chart versions, energy-aware escalation, jack-free lane flow, burst discipline, accent chords, LRC/enhanced-LRC lyrics parsing |
 | `beatbyte-game` | 277 | UI kit contracts, settings persistence, the input tables and binding labels, the color language, library scanning, import naming, the X-plorer report decoder, texture geometry, the song ribbon, list scrolling |
-| `beatbyte-audio` | 83 | Onset detection, tempo estimation, melody contours, the song clock and its practice rate, the speed position map, the error-sound voices, real-file decoding for every advertised format, the analysis-evaluation metrics (MIREX beat scores, Rekordbox grid import, synthetic corpus) |
+| `beatbyte-audio` | 94 | Onset detection, tempo estimation, melody contours, the song clock and its practice rate, the speed position map, the error-sound voices, real-file decoding for every advertised format, the analysis-evaluation metrics (MIREX beat scores, Rekordbox XML and ANLZ grid import, corpus pairing, synthetic corpus) |
 | `beatbyte-cli` | 21 | The play-history export (CSV quoting, UTC stamps, report filters), review analytics, the design dossier and the redesign rollout: section windowing, evidence thresholds, hash binding, the mastery veto, write instructions, carried difficulties |
 | `beatbyte-editor` | 19 | Every edit operation round-trips through its own inverse |
-| `beatbyte` | 11 | Documentation consistency: these numbers, the version, the badges, the links, the ADR index, the harness switches, and the figures the rules document quotes |
+| `beatbyte` | 12 | Documentation consistency: these numbers, the version, the badges, the links, the ADR index, the harness switches, the network claim against the code, and the figures the rules document quotes |
 
 Integration tests decode real fixture files for each supported format,
 including `.m4a`, so "we support AAC" is a passing test rather than a
@@ -571,6 +571,18 @@ genre. It contains no copyrighted assets, music, artwork or trademarks from
 any commercial rhythm game. All bundled assets are original, procedurally
 generated, or appropriately licensed (CC0 / public domain / OFL) — see
 [`docs/development/asset-licenses.md`](docs/development/asset-licenses.md).
+
+### What leaves your machine
+
+Exactly one thing, and only when you ask for it: pressing **L** in the
+song browser sends the **artist and title** of that one song to
+[lrclib.net](https://lrclib.net) to look up karaoke lyrics. No account,
+no key, no identifier — and no lyrics are stored in this repository,
+because song lyrics are copyrighted. A found `.lrc` is cached beside
+your own audio file.
+
+Nothing else ever goes out. There is no telemetry, no update check,
+no crash reporting, and gameplay never touches the network.
 
 ## License
 

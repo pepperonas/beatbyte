@@ -403,6 +403,39 @@ Follow-ups (only if wanted): a lyrics editor timeline, automatic
 vocal alignment (the data model already carries word spans), a
 lyrics position setting.
 
+## Loop-house analysis hardening (Phase 0-1 DONE 2026-09-01, v0.13.20-21)
+
+The commission: make the analysis hold up on sample-based loop
+house in DJ format, without regressing rock. Phased, stopping for
+approval after each phase.
+
+- [x] **Phase 0 — inventory** (`docs/audio-pipeline-ist.md`, read
+  only). Resolved the brief's placeholders from the code and found
+  that four of its assumptions do not match the tree: there is no
+  beat *tracking* (one global period + one global phase), no
+  downbeat stage at all, no SSM/segmentation, and HPSS already
+  exists in the melody stage with its percussive half discarded.
+- [x] **Phase 1 — measurable harness + baseline**
+  (`docs/audio-eval-baseline.md`). MIREX metrics (F, CMLt, AMLt),
+  four synthetic property cases, and importers for JSON sidecars,
+  Rekordbox XML, and Rekordbox's own ANLZ analysis files. Baseline
+  measured against **7 real tracks from the user's library** with
+  the grids a DJ has accepted.
+
+**What Phase 1 established, and why it changes the plan.** Tempo is
+not the weak point (0.02-0.25 % error, no octave errors). Phase is,
+and for two separate reasons: a single global constant tempo drifts
+past the +-70 ms tolerance on *every* track measured (worst 18x),
+and four of seven lock onto the wrong half of the beat. So the
+brief's Phase 3 — "a global fit over (period, phase)" — is what the
+code already does; the measurement argues for a time-varying grid
+plus an accent cue that can break the offbeat tie. That redesign is
+NOT started and needs approval.
+
+Open, carried forward: whether `ml-downbeat`/`ort` stays off in CI
+and releases; how rock gets real ground truth (bit-identical chart
+output is the interim gate).
+
 ## Backlog (explicitly out of scope until after 1.0)
 
 Not started without a deliberate roadmap edit pulling them forward:

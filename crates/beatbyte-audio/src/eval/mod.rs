@@ -18,8 +18,12 @@
 //! - **The built-in demo songs**: rendered from a known BPM and bar
 //!   count, so their grids are exact too — the rock-class reference
 //!   that must not regress.
-//! - **Real tracks**: the JSON sidecar in [`GroundTruth`], or a
-//!   Rekordbox XML export ([`rekordbox`]).
+//! - **Real tracks**: the JSON sidecar in [`GroundTruth`], a
+//!   Rekordbox XML export ([`rekordbox`]), or Rekordbox's own
+//!   analysis files ([`anlz`]) — which carry the bar position of
+//!   every beat, so downbeats are read rather than inferred.
+//!   [`corpus`] pairs those grids with the audio on this machine;
+//!   the corpus itself stays outside the repository.
 //!
 //! ⚠️ Ableton `.asd` is deliberately NOT parsed: it is an
 //! undocumented binary format, and guessing at its layout would put
@@ -30,6 +34,8 @@ use serde::{Deserialize, Serialize};
 
 use beatbyte_core::music::SongAnalysis;
 
+pub mod anlz;
+pub mod corpus;
 pub mod rekordbox;
 pub mod synthetic;
 
