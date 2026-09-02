@@ -213,6 +213,25 @@ pub fn string_color(stage: crate::theme::Theme) -> Color {
     stage.background.mix(&Color::srgb(0.86, 0.84, 0.80), 0.62)
 }
 
+/// Radius of a gem's white centre, from the gem's own radius.
+///
+/// A strum note's centre is a dot inside the cap; a HOPO's is a CAP
+/// of its own, most of the smaller face — the genre's way of saying
+/// "no strum needed" at a glance, and the difference the player
+/// reads first. Both stay inside their faces: the strum face is
+/// `gem`, the HOPO face `HOPO_FACE * gem`. Pure — tested.
+#[must_use]
+pub fn centre_radius(gem: f32, hopo: bool) -> f32 {
+    if hopo {
+        gem * HOPO_FACE * 0.68
+    } else {
+        gem * 0.30
+    }
+}
+
+/// A HOPO's face radius relative to a strum note's.
+const HOPO_FACE: f32 = 0.62;
+
 /// The board of the instrument neck: the theme's hue, pulled well
 /// down toward a dark warm wood so the gems are the brightest thing
 /// on it. Measured before this existed: the board sat light enough
@@ -2640,6 +2659,9 @@ pub struct NoteAssets {
     /// button marking, which the 2D views carry and the 3D gem did
     /// not. `None` on the neon neck, whose gems are its own.
     centre: Option<Handle<Mesh>>,
+    /// The HOPO's centre, larger than the strum note's: in the genre
+    /// the big white cap IS what says "no strum needed".
+    hopo_centre: Option<Handle<Mesh>>,
     centre_material: Handle<StandardMaterial>,
     /// A brighter core strip inside a sustain tail, instrument neck
     /// only — the held note's own light, running down its rail.
@@ -2677,7 +2699,15 @@ pub fn setup_note_assets(
         rim: meshes.add(Cylinder::new(gem * 1.28, 0.042)),
         centre: match neck {
             NeckStyle::Neon => None,
-            NeckStyle::Instrument => Some(meshes.add(Cylinder::new(gem * 0.30, 0.02))),
+            NeckStyle::Instrument => {
+                Some(meshes.add(Cylinder::new(centre_radius(gem, false), 0.02)))
+            }
+        },
+        hopo_centre: match neck {
+            NeckStyle::Neon => None,
+            NeckStyle::Instrument => {
+                Some(meshes.add(Cylinder::new(centre_radius(gem, true), 0.02)))
+            }
         },
         // Emissive white, not lit white: a lit disc would take the
         // lane's colour from the light bouncing off the cap around
@@ -2690,7 +2720,7 @@ pub fn setup_note_assets(
         }),
         // A HOPO is smaller and reads as a different object, the way
         // the 2D views distinguish it.
-        hopo: meshes.add(Cylinder::new(gem * 0.62, 0.05)),
+        hopo: meshes.add(Cylinder::new(gem * HOPO_FACE, 0.05)),
         hopo_rim: meshes.add(Cylinder::new(gem * 0.86, 0.04)),
         sustain: meshes.add(Cylinder::new(
             match neck {
@@ -2832,7 +2862,12 @@ pub fn spawn_due_notes(
                 // The white centre, on the instrument neck. It shares
                 // the note's key, so it scrolls, vanishes on a hit and
                 // greys on a miss with the rest of the gem for free.
-                if let Some(centre) = &assets.centre {
+                let centre = if hopo {
+                    &assets.hopo_centre
+                } else {
+                    &assets.centre
+                };
+                if let Some(centre) = centre {
                     commands.spawn((
                         GameplayScreen,
                         Stage3d,
@@ -3739,6 +3774,34 @@ mod instrument_neck_tests {
         // Out-of-range amounts are clamped, not trusted.
         let over: bevy::color::Hsla = saturate(dull, 7.0).into();
         assert!(over.saturation <= 1.0 + 1e-6);
+    }
+
+    #[test]
+    fn a_hopo_wears_a_bigger_centre_than_a_strum_note_and_both_fit() {
+        // User, 2026-09-02: "der weiße knopf in den hammer button soll
+        // größer sein." Larger in absolute terms, not merely relative
+        // to the smaller face — and still inside it, or the cap would
+        // swallow the coloured ring that names the lane.
+        let gem = 0.17f32;
+        let strum = centre_radius(gem, false);
+        let hopo = centre_radius(gem, true);
+        assert!(
+            hopo > strum,
+            "hopo {hopo} must be larger than strum {strum}"
+        );
+        assert!(
+            hopo < gem * HOPO_FACE,
+            "the HOPO centre must sit inside the HOPO face"
+        );
+        assert!(
+            strum < gem,
+            "the strum centre must sit inside the strum face"
+        );
+        // And the HOPO keeps a visible coloured ring around its cap.
+        assert!(
+            gem * HOPO_FACE - hopo > gem * 0.15,
+            "a coloured ring must remain"
+        );
     }
 
     #[test]

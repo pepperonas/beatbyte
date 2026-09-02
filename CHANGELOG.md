@@ -14,6 +14,19 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.25] - 2026-09-02
+
+### Changed
+
+- **Hammer-on gems wear a bigger white cap** (user: "der weiße knopf
+  in den hammer button soll größer sein"). A strum note keeps its
+  small centre dot inside the coloured cap; a HOPO's centre is now a
+  cap of its own — 68 % of its face — with a thin coloured ring left
+  around it, which is the genre's at-a-glance "no strum needed".
+  Measured on a capture: cap 71 % of the face width on a HOPO, none
+  on the strum note beside it. Round style only; the 8-bit gems are
+  untouched.
+
 ## [0.13.24] - 2026-09-02
 
 ### Changed
