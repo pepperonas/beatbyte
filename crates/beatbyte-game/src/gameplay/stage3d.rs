@@ -3226,6 +3226,7 @@ impl Plugin for Stage3dPlugin {
                 setup_note_assets,
                 spawn_fret_bars,
                 spawn_phrase_bands,
+                super::band::spawn_band,
             )
                 .chain()
                 .after(super::setup_gameplay),
@@ -3241,6 +3242,7 @@ impl Plugin for Stage3dPlugin {
                 tint_stage_for_hype,
                 burn_edges_for_hype,
                 bob_crowd,
+                super::band::animate_band,
                 pulse_led_wall,
                 pulse_woofers,
                 slide_floor_spots,

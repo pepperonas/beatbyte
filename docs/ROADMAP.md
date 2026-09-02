@@ -429,8 +429,9 @@ own hands — never as anyone's asset.
   (on by default) + fail flow (BOOED OFF! outro, F in red, no record,
   history not completed) + HUD corner (dial + Hype tube, multiplayer
   bars) + `BEATBYTE_AUTOPILOT_FAIL` drill. Solo only can fail.
-- [ ] **Band figures** — original primitive-built figures on the
-  stage, beat-bobbing, hype-reactive; never occluding the neck.
+- [x] **Band figures** *(v0.13.29)* — original primitive-built
+  figures on a riser the neck runs into, beat-driven poses (pinned),
+  hype-reactive; never over a note. `gameplay/band.rs`.
 - [ ] **Typeface for the round style** (= R7; OFL, own).
 
 P3 in the optimization plan is thereby shipped; P6 (the playtest

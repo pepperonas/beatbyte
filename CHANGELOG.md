@@ -14,6 +14,24 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.29] - 2026-09-03
+
+### Added
+
+- **A band on the stage** (round style). Four original figures built
+  from the crowd's own primitives — singer at a stand, guitarist and
+  bassist flanking, drummer on a riser with a kit — on a platform
+  whose front edge is exactly the neck's far end, so the neck runs
+  INTO the stage and nothing on it can ever sit over a note. They
+  play: bodies bob on the beat (higher under Hype), the guitarist
+  strums every beat and the bassist every other, the drummer's hands
+  alternate on the beat and the off-beat, the singer sways over two
+  bars and raises a hand while Hype runs. Every pose is a pure
+  function of song beats, pinned. A warm, ranged wash lights them so
+  they read as figures and not as more crowd. The first placement,
+  seven units further back, had them 65 % into the fog — measured,
+  moved, scaled up; the README shot is the current build.
+
 ## [0.13.28] - 2026-09-02
 
 ### Changed
