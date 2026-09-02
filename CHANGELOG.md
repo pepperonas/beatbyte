@@ -14,6 +14,41 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.26] - 2026-09-02
+
+### Added
+
+- **A rock meter** (optimization plan P3, commissioned 2026-09-02).
+  The crowd's verdict, 0–100 %: starts at 50 %, a judged hit adds
+  2 % (doubled while Hype runs — the boost is now a rescue, not only
+  a multiplier), a miss takes 5 %, an overstrum 2 %. The rules are
+  data in `ScoreConfig`, quoted in `docs/gameplay/rules.md`, and a
+  test fails if the document and the constants disagree — exactly,
+  not rounded.
+- **Settings → NO FAIL**, on by default: the meter moves and shows,
+  the song never ends on it. Off arms failing in a solo run: an
+  empty meter ends the song there — the outro stamps *BOOED OFF!*
+  over the live stage in the house's own words, the results carry
+  an **F** in red with *FAILED (no record)*, no scoreboard entry is
+  written, and the play history logs the run as not completed. A
+  run fails exactly once (the transition is latched and pinned).
+  With more than one player the meters show but never end the song:
+  one player's bad patch should not cut another's song short.
+- **The HUD's right plate is now the genre's corner**: the crowd's
+  dial with its needle (tinted by zone — cyan while the room is with
+  you, amber under half, and a red pulse under a quarter), and the
+  Hype tube beside it with four quarter ticks and the READY line,
+  breathing when it can fire and white-hot while it runs.
+  Multiplayer highways gain a zone-tinted meter bar under their Hype
+  bar.
+- **`BEATBYTE_AUTOPILOT_FAIL=1`**, the fail drill: plays nothing,
+  switches No Fail off in memory for the run, and passes only if the
+  meter emptied, the run is marked failed and the history line on
+  disk says not completed. The one automated path through the
+  failure flow — verified live: empty after 11 misses at 12 s,
+  results F, history `completed: false`, the user's settings file
+  untouched.
+
 ## [0.13.25] - 2026-09-02
 
 ### Changed

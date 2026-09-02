@@ -87,6 +87,10 @@ pub enum SessionEvent {
     },
     /// A strum matched no note.
     Overstrum,
+    /// The rock meter emptied with failing armed. Emitted once per
+    /// session; what happens next (ending the song, or nothing in a
+    /// mode that does not fail) is the caller's decision.
+    Failed,
     /// A sustain tail started (its head was hit).
     SustainStarted {
         /// Index into [`Track::events`].
@@ -346,9 +350,12 @@ impl TrackSession {
             }
             if matches!(self.states[index], NoteState::Pending) {
                 self.states[index] = NoteState::Missed;
-                self.performance.register_judgment(Judgment::Miss, 1);
+                let failed = self.performance.register_judgment(Judgment::Miss, 1);
                 self.hopo_chain = false;
                 events.push(SessionEvent::NoteMissed { event_index: index });
+                if failed {
+                    events.push(SessionEvent::Failed);
+                }
                 self.break_phrase_of(index, events);
             }
         }
@@ -395,8 +402,11 @@ impl TrackSession {
         match candidate {
             Some(index) => self.hit(index, time_s, events),
             None => {
-                self.performance.register_overstrum();
+                let failed = self.performance.register_overstrum();
                 self.hopo_chain = false;
+                if failed {
+                    events.push(SessionEvent::Failed);
+                }
                 self.end_sustain(time_s, events);
                 events.push(SessionEvent::Overstrum);
             }
@@ -453,7 +463,10 @@ impl TrackSession {
         let judgment = self.windows.judge(offset_s).unwrap_or(Judgment::Good);
 
         self.states[index] = NoteState::Hit(judgment);
-        self.performance
+        // A hit can only fill the meter; the return is the fail
+        // transition and cannot be true here.
+        let _ = self
+            .performance
             .register_judgment(judgment, event.lanes.len());
         self.performance.register_offset_ms(offset_s * 1000.0);
         self.hopo_chain = true;
@@ -1045,6 +1058,46 @@ mod tests {
         s.advance(3.0, &mut events);
         assert!(events.contains(&SessionEvent::PhraseBroken { phrase_index: 0 }));
         assert!((s.performance().hype_meter() - 0.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn an_armed_session_fails_exactly_once_and_an_unarmed_one_never() {
+        // Twenty notes nobody plays. Armed: the meter empties after
+        // enough misses and Failed is emitted ONCE, even though the
+        // misses keep coming. Unarmed (No Fail): the same misses, no
+        // event, ever.
+        let notes: Vec<NoteEvent> = (0..20)
+            .map(|i| tap(1.0 + i as f64 * 0.5, Lane::One))
+            .collect();
+        for armed in [true, false] {
+            let cfg = ScoreConfig {
+                fail_when_empty: armed,
+                ..ScoreConfig::default()
+            };
+            let mut s = TrackSession::new(
+                track_with_phrases(notes.clone(), vec![]),
+                TimingWindows::default(),
+                cfg,
+            );
+            let mut events = Vec::new();
+            s.advance(30.0, &mut events);
+            let failures = events
+                .iter()
+                .filter(|e| matches!(e, SessionEvent::Failed))
+                .count();
+            assert_eq!(s.performance().counts().miss, 20, "every note was missed");
+            if armed {
+                assert_eq!(failures, 1, "armed: exactly one Failed");
+                assert!(s.performance().failed());
+            } else {
+                assert_eq!(failures, 0, "no fail: never");
+                assert!(!s.performance().failed());
+                assert!(
+                    s.performance().meter().abs() < 1e-9,
+                    "but the meter did empty"
+                );
+            }
+        }
     }
 
     #[test]

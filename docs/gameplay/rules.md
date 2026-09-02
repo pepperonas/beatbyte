@@ -54,5 +54,20 @@ Chords score per lane (a 3-lane Perfect chord = 150 base points).
   (up to ×8).
 - A full meter drains over **32 beats** of song time.
 
+## Rock meter (the crowd)
+
+- Starts at **50%**. A judged hit adds **2%** (doubled while Hype
+  runs — the boost is a rescue, not only a multiplier); a miss takes
+  **5%**; an overstrum **2%**. Clamped to 0–100%. First tuning: from
+  the middle, ten straight misses fail a run and twenty-five clean
+  hits fill the meter.
+- **No Fail** is on by default: the meter moves and shows, and the
+  song never ends on it. With No Fail off, an empty meter **fails the
+  run** — once, latched — and the song ends there with a FAILED
+  result that enters no scoreboard.
+- Only a solo run can fail. With more than one player the meters
+  show but never end the song: one player's bad patch should not cut
+  another's song short.
+
 All numbers live in `ScoreConfig`/`TimingWindows` and are data, not
 hardcoded rules.

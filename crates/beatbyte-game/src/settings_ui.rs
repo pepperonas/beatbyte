@@ -27,6 +27,7 @@ pub(crate) enum Row {
     BeatPulse,
     BackdropMotion,
     HitLabels,
+    NoFail,
     TapMode,
     NoteStyle,
     Fullscreen,
@@ -44,7 +45,7 @@ pub(crate) enum Row {
 }
 
 impl Row {
-    const ALL: [Row; 24] = [
+    const ALL: [Row; 25] = [
         Row::MusicVolume,
         Row::SfxVolume,
         Row::ScrollSpeed,
@@ -55,6 +56,7 @@ impl Row {
         Row::BeatPulse,
         Row::BackdropMotion,
         Row::HitLabels,
+        Row::NoFail,
         Row::ReducedFlashing,
         Row::FxIntensity,
         Row::TextScale,
@@ -83,6 +85,7 @@ impl Row {
             Row::BeatPulse => "BEAT PULSE",
             Row::BackdropMotion => "STAGE MOTION",
             Row::HitLabels => "HIT LABELS",
+            Row::NoFail => "NO FAIL",
             Row::ReducedFlashing => "REDUCED FLASHING",
             Row::FxIntensity => "EFFECT INTENSITY",
             Row::TextScale => "UI SCALE",
@@ -112,6 +115,7 @@ impl Row {
             Row::BeatPulse => on_off(settings.beat_pulse),
             Row::BackdropMotion => on_off(settings.backdrop_motion),
             Row::HitLabels => on_off(settings.hit_labels),
+            Row::NoFail => on_off(settings.no_fail),
             Row::WatchFolder => settings.watch_folder.as_ref().map_or_else(
                 || "drop a folder onto the window".to_owned(),
                 |path| {
@@ -198,6 +202,7 @@ impl Row {
             Row::BeatPulse => settings.beat_pulse = !settings.beat_pulse,
             Row::BackdropMotion => settings.backdrop_motion = !settings.backdrop_motion,
             Row::HitLabels => settings.hit_labels = !settings.hit_labels,
+            Row::NoFail => settings.no_fail = !settings.no_fail,
             Row::WatchFolder => settings.watch_folder = None,
             Row::ReducedFlashing => settings.reduced_flashing = !settings.reduced_flashing,
             Row::FxIntensity => {
@@ -244,6 +249,7 @@ impl Row {
             | Row::BeatPulse
             | Row::BackdropMotion
             | Row::HitLabels
+            | Row::NoFail
             | Row::WatchFolder
             | Row::ReducedFlashing
             | Row::HighContrast
@@ -740,6 +746,7 @@ mod tests {
             Row::BeatPulse,
             Row::BackdropMotion,
             Row::HitLabels,
+            Row::NoFail,
             Row::TapMode,
             Row::Fullscreen,
         ] {

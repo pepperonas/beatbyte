@@ -421,8 +421,20 @@ documented conventions and a measured capture of the current build.
 - [ ] R7 a typeface for the round style — deliberately its own
   decision (touches the whole design kit and karaoke tracking)
 
-Not done on purpose: rock meter (mechanics, P3), band characters
-(stage-realism plan), any GH2 asset.
+Follow-up commission (2026-09-02, "setzt das um"): the three items
+left out on purpose, done as the genre's conventions in the house's
+own hands — never as anyone's asset.
+
+- [x] **Rock meter (P3)** *(v0.13.26)* — core rule + NO FAIL setting
+  (on by default) + fail flow (BOOED OFF! outro, F in red, no record,
+  history not completed) + HUD corner (dial + Hype tube, multiplayer
+  bars) + `BEATBYTE_AUTOPILOT_FAIL` drill. Solo only can fail.
+- [ ] **Band figures** — original primitive-built figures on the
+  stage, beat-bobbing, hype-reactive; never occluding the neck.
+- [ ] **Typeface for the round style** (= R7; OFL, own).
+
+P3 in the optimization plan is thereby shipped; P6 (the playtest
+pass) is next in that plan's order.
 
 ## Loop-house analysis hardening (Phase 0-2 DONE 2026-09-01, v0.13.20-22)
 

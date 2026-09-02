@@ -121,6 +121,8 @@ fn feedback_status(fun: Option<u8>, versus: Option<&str>) -> String {
 #[derive(Component)]
 struct GradeSlam {
     age: f32,
+    /// The colour the letter settles into.
+    tone: Color,
 }
 
 /// The score ticks up from zero.
@@ -162,8 +164,10 @@ fn spawn_results(
     let mut new_record = false;
     // Practice runs (slowed at any point) never touch the book — a
     // best set at 50 % speed would be a lie the scoreboard repeats.
+    // A failed run is a partial run; its score is not a best.
     if solo
         && !results.practice
+        && !results.failed
         && let Some(player) = results.players.first()
     {
         let perf = &player.performance;
@@ -261,11 +265,21 @@ fn spawn_solo(
     let perf = &results.players[0].performance;
     let counts = perf.counts();
     let accuracy = perf.accuracy() * 100.0;
-    let grade = grade_for(accuracy, counts.miss);
+    let grade = if results.failed {
+        "F"
+    } else {
+        grade_for(accuracy, counts.miss)
+    };
+    // A failed run's badge is red, not brand yellow: the letter says
+    // what happened, the colour must not say the opposite.
+    let badge = grade_tone(results.failed);
 
     // The song is the subject of this screen, so it gets the heading
     // rather than a dim line under the grade.
     let mut subtitle = format!("{} - {}", font.safe(&results.artist), results.difficulty);
+    if results.failed {
+        subtitle.push_str(" - FAILED (no record)");
+    }
     if results.practice {
         subtitle.push_str(" - practice (no record)");
     }
@@ -298,14 +312,17 @@ fn spawn_solo(
                         flex_shrink: 0.0,
                         ..default()
                     },
-                    BackgroundColor(palette::BRAND.with_alpha(0.10)),
-                    BorderColor::all(palette::BRAND),
+                    BackgroundColor(badge.with_alpha(0.10)),
+                    BorderColor::all(badge),
                 ))
                 .with_child((
-                    GradeSlam { age: 0.0 },
+                    GradeSlam {
+                        age: 0.0,
+                        tone: badge,
+                    },
                     Text::new(grade),
                     font.text(20.0),
-                    TextColor(palette::BRAND.with_alpha(0.0)),
+                    TextColor(badge.with_alpha(0.0)),
                 ));
                 top.spawn(Node {
                     flex_direction: FlexDirection::Column,
@@ -525,6 +542,16 @@ fn player_row(
     )
 }
 
+/// The badge colour: brand yellow for a finished run, the miss red
+/// for a failed one. Pure — tested.
+fn grade_tone(failed: bool) -> Color {
+    if failed {
+        palette::MISS
+    } else {
+        palette::BRAND
+    }
+}
+
 /// A simple letter grade from accuracy and misses.
 fn grade_for(accuracy_percent: f64, misses: u32) -> &'static str {
     match accuracy_percent {
@@ -550,7 +577,7 @@ fn animate_grade(
         // Capped so the letter stays inside its badge: the old
         // free-standing version could grow to any size it liked.
         font.font_size = FontSize::Px(16.0 + 40.0 * eased);
-        color.0 = palette::BRAND.with_alpha(t.min(1.0));
+        color.0 = slam.tone.with_alpha(t.min(1.0));
     }
 }
 
@@ -719,6 +746,12 @@ mod tests {
             feedback_status(None, Some("worse")),
             "recorded: felt worse than the previous version"
         );
+    }
+
+    #[test]
+    fn a_failed_badge_is_red_and_a_finished_one_is_not() {
+        assert_eq!(super::grade_tone(true), crate::palette::MISS);
+        assert_eq!(super::grade_tone(false), crate::palette::BRAND);
     }
 
     #[test]

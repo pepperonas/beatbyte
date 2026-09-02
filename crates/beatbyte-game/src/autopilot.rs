@@ -38,6 +38,14 @@ pub struct Autopilot {
     pub enabled: bool,
 }
 
+/// `BEATBYTE_AUTOPILOT_FAIL=1`: the fail drill. The autopilot plays
+/// NOTHING, No Fail is switched off for the run in memory, and the
+/// verdict inverts — the run passes only if the rock meter emptied,
+/// the session failed, and the results say so. The one automated
+/// path through the failure flow.
+#[derive(Resource)]
+struct FailDrill;
+
 /// Frets the autopilot currently holds, per player.
 #[derive(Resource, Default)]
 struct AutopilotHands {
@@ -81,6 +89,10 @@ impl Plugin for AutopilotPlugin {
                 }
                 None => error!("unknown BEATBYTE_SHOT_STATE `{raw}`"),
             }
+        }
+        if enabled && std::env::var_os("BEATBYTE_AUTOPILOT_FAIL").is_some() {
+            app.insert_resource(FailDrill)
+                .add_systems(Startup, arm_failure_for_drill);
         }
         if enabled {
             app.add_systems(
@@ -1470,7 +1482,12 @@ fn autopilot_play(
     mut hands: ResMut<AutopilotHands>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
+    fail_drill: Option<Res<FailDrill>>,
 ) {
+    // The fail drill plays nothing: every note is missed on purpose.
+    if fail_drill.is_some() {
+        return;
+    }
     let Some(now) = game_clock.song_time(&time) else {
         return;
     };
@@ -1554,11 +1571,20 @@ fn autopilot_play(
     }
 }
 
+/// Switch No Fail off in memory for the fail drill. Startup runs long
+/// before a session is built, and nothing on the autopilot's path
+/// persists settings, so the user's own No Fail is untouched on disk.
+fn arm_failure_for_drill(mut settings: ResMut<crate::config::Settings>) {
+    settings.no_fail = false;
+    info!("autopilot: fail drill — No Fail off for this run, no inputs will be played");
+}
+
 /// Log the outcome and exit.
 fn autopilot_results(
     time: Res<Time>,
     mut hands: ResMut<AutopilotHands>,
     results: Option<Res<LastResults>>,
+    fail_drill: Option<Res<FailDrill>>,
     mut app_exit: MessageWriter<AppExit>,
 ) {
     hands.results_time += time.delta_secs();
@@ -1573,6 +1599,36 @@ fn autopilot_results(
     if results.players.is_empty() {
         error!("autopilot: results carry no players");
         deliver(&mut app_exit, AppExit::error());
+        return;
+    }
+    if fail_drill.is_some() {
+        // The inverted verdict: the run must have FAILED, the results
+        // must say so, and the history's newest line must not call it
+        // completed. The line is read back from disk, because the
+        // in-memory completion marker is consumed on the way out of
+        // gameplay and would be absent either way here.
+        let perf = &results.players[0].performance;
+        let logged_incomplete = crate::history::load()
+            .last()
+            .is_some_and(|entry| !entry.completed && entry.title == results.title);
+        let ok = results.failed && perf.failed() && perf.meter() <= 0.0 && logged_incomplete;
+        if ok {
+            info!(
+                "autopilot: fail drill PASSED — meter empty after {} misses, run marked failed, \
+                 logged as not completed",
+                perf.counts().miss
+            );
+            deliver(&mut app_exit, AppExit::Success);
+        } else {
+            error!(
+                "autopilot: fail drill FAILED — failed={} perf.failed={} meter={:.2} logged_incomplete={}",
+                results.failed,
+                perf.failed(),
+                perf.meter(),
+                logged_incomplete
+            );
+            deliver(&mut app_exit, AppExit::error());
+        }
         return;
     }
     let mut all_ok = true;

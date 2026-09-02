@@ -177,6 +177,23 @@ pub struct LastResults {
     /// out of the scoreboard AND the telemetry (slowed evidence
     /// would poison the design loop).
     pub practice: bool,
+    /// Whether the run ended on an empty rock meter. A failed run is
+    /// graded F, enters no scoreboard, and is logged as not completed.
+    pub failed: bool,
+}
+
+/// The scoring rules for a run.
+///
+/// Failing is armed only when No Fail is off AND the run is solo:
+/// with more than one player the meters show but never end the song,
+/// because one player's bad patch should not cut another's song
+/// short. Pure — tested.
+#[must_use]
+pub fn score_config_for(no_fail: bool, players: usize) -> ScoreConfig {
+    ScoreConfig {
+        fail_when_empty: !no_fail && players == 1,
+        ..ScoreConfig::default()
+    }
 }
 
 /// Practice mode (optimization plan P1): the chosen speed and
@@ -317,6 +334,7 @@ impl Plugin for GameplayPlugin {
                     lyrics::update_lyrics,
                     mc_transition,
                     check_song_end,
+                    check_failure,
                 )
                     .chain()
                     .run_if(in_state(GamePhase::Playing)),
@@ -407,12 +425,9 @@ fn setup_gameplay(
         devices.len()
     );
     commands.insert_resource(HighwayLayout::for_players(devices.len()));
+    let score_config = score_config_for(settings.no_fail, devices.len());
     for (index, device) in devices.into_iter().enumerate() {
-        let mut session = TrackSession::new(
-            track.clone(),
-            TimingWindows::default(),
-            ScoreConfig::default(),
-        );
+        let mut session = TrackSession::new(track.clone(), TimingWindows::default(), score_config);
         session.set_tap_mode(settings.tap_mode);
         commands.spawn((
             GameplayScreen,
@@ -582,12 +597,9 @@ fn mc_transition(
     );
     // Fresh sessions ON the existing player entities - the HUD, the
     // input routing and the layout all keep their references.
+    let score_config = score_config_for(settings.no_fail, players.iter().count());
     for (_, mut player) in &mut players {
-        let mut session = TrackSession::new(
-            track.clone(),
-            TimingWindows::default(),
-            ScoreConfig::default(),
-        );
+        let mut session = TrackSession::new(track.clone(), TimingWindows::default(), score_config);
         session.set_tap_mode(settings.tap_mode);
         player.session = session;
         player.frame_events.clear();
@@ -666,6 +678,7 @@ fn check_song_end(
             players: results,
             tap_mode: players.iter().any(|(_, p)| p.session.tap_mode()),
             practice: practice.used,
+            failed: false,
         });
         // Every way out of gameplay says so, and says which way.
         // Twice in one day a report of the game "jumping back to the
@@ -681,6 +694,56 @@ fn check_song_end(
     }
 }
 
+/// An empty rock meter with failing armed ends the run here and now:
+/// results snapshot marked failed, NO completion marker (the history
+/// logs it as a run that did not reach the end), and the outro plays
+/// its other stamp before the tally.
+///
+/// Solo only by construction — `score_config_for` never arms failing
+/// for more than one player, so `failed()` cannot be true there.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
+fn check_failure(
+    mut commands: Commands,
+    players: Query<(&PlayerIndex, &PlayerSession)>,
+    song: Res<LoadedSong>,
+    selected: Res<SelectedDifficulty>,
+    roster: Res<PlayerRoster>,
+    game_clock: Res<GameClock>,
+    practice: Res<PracticeState>,
+    time: Res<Time>,
+    mut next_phase: ResMut<NextState<GamePhase>>,
+) {
+    let Some(now) = game_clock.song_time(&time) else {
+        return;
+    };
+    if !players
+        .iter()
+        .any(|(_, player)| player.session.performance().failed())
+    {
+        return;
+    }
+    let mut results: Vec<PlayerResult> = players
+        .iter()
+        .map(|(index, player)| PlayerResult {
+            index: index.0,
+            performance: player.session.performance().clone(),
+        })
+        .collect();
+    results.sort_by_key(|result| result.index);
+    commands.insert_resource(LastResults {
+        title: song.chart.song.title.clone(),
+        artist: song.chart.song.artist.clone(),
+        difficulty: selected.0,
+        mode: roster.mode,
+        players: results,
+        tap_mode: players.iter().any(|(_, p)| p.session.tap_mode()),
+        practice: practice.used,
+        failed: true,
+    });
+    info!("gameplay ended: rock meter empty at {now:.1}s — the run failed");
+    next_phase.set(GamePhase::Outro);
+}
+
 // ── The "YOU ROCK!!!" outro ─────────────────────────────────────────
 //
 // The genre's classic beat (the GH2 reference): the last note rings
@@ -691,6 +754,19 @@ fn check_song_end(
 
 /// Exactly how long the celebration holds before the results appear.
 const OUTRO_S: f32 = 5.0;
+
+/// The words the outro stamps, their colour, and whether the fanfare
+/// (true) or the miss sound (false) plays under them. A failed run
+/// gets the genre's moment — booed off — in the house's own words
+/// and colours. Pure — tested.
+#[must_use]
+pub fn outro_stamp(failed: bool) -> (&'static str, Color, bool) {
+    if failed {
+        ("BOOED OFF!", palette::MISS, false)
+    } else {
+        ("YOU ROCK!!!", palette::BRAND, true)
+    }
+}
 
 /// Seconds since the outro began.
 #[derive(Resource, Default)]
@@ -740,10 +816,16 @@ fn spawn_outro(
     font: Res<crate::ui::UiFont>,
     sfx: Res<crate::sfx::SfxLib>,
     settings: Res<crate::config::Settings>,
+    results: Option<Res<LastResults>>,
 ) {
     commands.insert_resource(OutroClock::default());
-    // The riser the Hype activation plays - the game's own fanfare.
-    crate::sfx::play(&mut commands, &sfx.hype, settings.sfx_volume);
+    let failed = results.as_ref().is_some_and(|r| r.failed);
+    let (stamp, tone, sound) = outro_stamp(failed);
+    crate::sfx::play(
+        &mut commands,
+        if sound { &sfx.hype } else { &sfx.miss },
+        settings.sfx_volume,
+    );
     // Shadow first, face on top: the same one-two the banner uses.
     for (offset, color, z) in [
         (
@@ -751,12 +833,12 @@ fn spawn_outro(
             palette::BACKGROUND.with_alpha(0.9),
             30.0,
         ),
-        (Vec2::ZERO, palette::BRAND, 30.1),
+        (Vec2::ZERO, tone, 30.1),
     ] {
         commands.spawn((
             GameplayScreen,
             OutroStamp,
-            Text2d::new("YOU ROCK!!!"),
+            Text2d::new(stamp),
             font.text(64.0),
             TextColor(color),
             bevy::sprite::Anchor::CENTER,
@@ -1375,5 +1457,39 @@ mod pause_menu_tests {
             practice.step(1.0);
         }
         assert_eq!(practice.speed_percent, 150);
+    }
+}
+
+#[cfg(test)]
+mod rock_meter_flow_tests {
+    use super::{outro_stamp, score_config_for};
+
+    #[test]
+    fn failing_is_armed_only_solo_and_only_with_no_fail_off() {
+        assert!(
+            score_config_for(false, 1).fail_when_empty,
+            "solo, No Fail off: armed"
+        );
+        assert!(
+            !score_config_for(true, 1).fail_when_empty,
+            "No Fail on: never"
+        );
+        // More than one player: the meters show but never end the
+        // song, whatever the setting says.
+        assert!(!score_config_for(false, 2).fail_when_empty);
+        assert!(!score_config_for(false, 4).fail_when_empty);
+    }
+
+    #[test]
+    fn the_outro_has_two_faces() {
+        let (won, _, fanfare) = outro_stamp(false);
+        let (lost, _, fanfare_lost) = outro_stamp(true);
+        assert_ne!(won, lost);
+        assert!(fanfare, "a finished song gets the fanfare");
+        assert!(!fanfare_lost, "a failed one does not");
+        // The house's own words on both — never another game's.
+        for text in [won, lost] {
+            assert!(!text.to_lowercase().contains("hero"));
+        }
     }
 }

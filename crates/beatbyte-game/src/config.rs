@@ -45,6 +45,10 @@ pub struct Settings {
     /// default; off gives the genre's flame-only hit feedback (the
     /// classic guitar games grade nothing per note on screen).
     pub hit_labels: bool,
+    /// No Fail: the rock meter moves and shows, but an empty meter
+    /// never ends the song. On by default (optimization plan P3: the
+    /// goal is tension, not punishment). Off arms failing in solo.
+    pub no_fail: bool,
     /// Reduced flashing: suppress full-screen flashes (accessibility).
     #[serde(default)]
     pub reduced_flashing: bool,
@@ -123,6 +127,7 @@ impl Default for Settings {
             beat_pulse: true,
             backdrop_motion: true,
             hit_labels: true,
+            no_fail: true,
             reduced_flashing: false,
             fx_intensity: 1.0,
             ui_scale: 1.0,

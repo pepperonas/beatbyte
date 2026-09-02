@@ -47,6 +47,53 @@ pub struct HypeReadyText;
 #[derive(Component)]
 pub struct HypeNeedle;
 
+/// The solo plate's Hype tube: a vertical fill scaled in Y from the
+/// bottom.
+#[derive(Component)]
+pub struct HypeTubeFill;
+
+/// The solo plate's rock-meter dial face (the arc under the needle).
+#[derive(Component)]
+pub struct MeterDial;
+
+/// A multiplayer highway's rock-meter bar (left-anchored fill).
+#[derive(Component)]
+pub struct MeterFill(pub usize);
+
+/// Which region of the rock meter a value sits in — the dial is
+/// tinted by it and the crowd's mood is read off it at a glance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MeterZone {
+    /// Under a quarter: the crowd is turning, the dial pulses red.
+    Critical,
+    /// Under half: not yet won.
+    Low,
+    /// Half and above: the room is with you.
+    Fine,
+}
+
+/// Classify a rock-meter value. Pure — tested.
+#[must_use]
+pub fn meter_zone(meter: f32) -> MeterZone {
+    if meter < 0.25 {
+        MeterZone::Critical
+    } else if meter < 0.5 {
+        MeterZone::Low
+    } else {
+        MeterZone::Fine
+    }
+}
+
+/// The colour a zone paints the dial and the bars.
+#[must_use]
+pub fn zone_color(zone: MeterZone) -> Color {
+    match zone {
+        MeterZone::Critical => palette::MISS,
+        MeterZone::Low => palette::GOOD,
+        MeterZone::Fine => palette::PERFECT,
+    }
+}
+
 /// The hub the gauge needle pivots on (solo panel).
 #[derive(Component)]
 pub struct HypeHub;
@@ -303,6 +350,25 @@ pub fn spawn_huds(
             Transform::from_xyz(origin - bar_width / 2.0, bar_y, 5.0)
                 .with_scale(Vec3::new(0.0, 1.0, 1.0)),
         ));
+        // Rock meter: the same shape one row down, tinted by zone.
+        // It shows in multiplayer but never ends the song there.
+        let meter_y = bar_y - 10.0;
+        commands.spawn((
+            GameplayScreen,
+            Sprite::from_color(
+                palette::dimmed(palette::TEXT_DIM, 0.25),
+                Vec2::new(bar_width, 6.0),
+            ),
+            Transform::from_xyz(origin, meter_y, 4.0),
+        ));
+        commands.spawn((
+            GameplayScreen,
+            MeterFill(player),
+            Sprite::from_color(zone_color(MeterZone::Fine), Vec2::new(bar_width, 6.0)),
+            Anchor::CENTER_LEFT,
+            Transform::from_xyz(origin - bar_width / 2.0, meter_y, 5.0)
+                .with_scale(Vec3::new(0.5, 1.0, 1.0)),
+        ));
     }
 }
 
@@ -497,10 +563,11 @@ fn spawn_solo_panels(
         ),
     ));
 
-    // ── Right: the energy meter, in the quarters it fills in ────────
-    // The frame is chrome like the left plate; the gauge inside it
-    // keeps the hype colour — the meter is what is coloured, not the
-    // housing it sits in.
+    // ── Right: the crowd's dial, and the Hype tube beside it ────────
+    // The genre's corner: a rock meter as a half-circle dial with a
+    // needle, the special-power meter a tube next to it. The frame is
+    // chrome like the left plate; the instruments inside keep their
+    // colours — the meter is what is coloured, not the housing.
     plate(
         commands,
         shapes,
@@ -508,29 +575,72 @@ fn spawn_solo_panels(
         size,
         palette::plate_accent(chrome, palette::HYPE),
     );
+    // The dial sits right of centre to make room for the tube.
+    let pivot = Vec2::new(right.x + DIAL_SHIFT, right.y - PLATE_H / 2.0 + 34.0);
     caption(
         commands,
         font,
-        "HYPE",
-        right + Vec2::new(0.0, PLATE_H / 2.0 - 12.0),
+        "CROWD",
+        Vec2::new(pivot.x, right.y + PLATE_H / 2.0 - 12.0),
     );
-    // The meter is a GAUGE: a half-circle dial with a needle, the
-    // way the genre's classic meters read — the halfway tick is the
-    // activation threshold, so "can I fire it?" is one glance at
-    // which side of straight-up the needle stands.
-    let pivot = Vec2::new(right.x, right.y - PLATE_H / 2.0 + 34.0);
     let dial = Vec2::new(150.0, 75.0);
     commands.spawn((
         GameplayScreen,
+        MeterDial,
         Sprite {
             image: shapes.gauge_arc(),
-            color: palette::dimmed(palette::HYPE, 0.85),
+            color: palette::dimmed(zone_color(MeterZone::Fine), 0.85),
             custom_size: Some(dial),
             ..default()
         },
         Anchor::BOTTOM_CENTER,
         Transform::from_xyz(pivot.x, pivot.y, 3.4),
     ));
+    // The Hype tube: a frame with four quarter ticks and a READY line
+    // at the activation threshold, filled from the bottom.
+    let tube_x = right.x - PLATE_W / 2.0 + TUBE_INSET;
+    let tube_bottom = right.y - PLATE_H / 2.0 + 22.0;
+    caption(
+        commands,
+        font,
+        "HYPE",
+        Vec2::new(tube_x, right.y + PLATE_H / 2.0 - 12.0),
+    );
+    commands.spawn((
+        GameplayScreen,
+        Sprite::from_color(
+            palette::dimmed(palette::HYPE, 0.25),
+            Vec2::new(TUBE_W, TUBE_H),
+        ),
+        Anchor::BOTTOM_CENTER,
+        Transform::from_xyz(tube_x, tube_bottom, 3.4),
+    ));
+    commands.spawn((
+        GameplayScreen,
+        HypeTubeFill,
+        Sprite::from_color(palette::HYPE, Vec2::new(TUBE_W - 4.0, TUBE_H - 4.0)),
+        Anchor::BOTTOM_CENTER,
+        Transform::from_xyz(tube_x, tube_bottom + 2.0, 3.5).with_scale(Vec3::new(1.0, 0.0, 1.0)),
+    ));
+    for quarter in 1..4 {
+        // The halfway tick is the activation line, drawn wider.
+        let ready = quarter == 2;
+        commands.spawn((
+            GameplayScreen,
+            Sprite::from_color(
+                if ready {
+                    palette::TEXT
+                } else {
+                    palette::dimmed(palette::TEXT_DIM, 0.6)
+                },
+                Vec2::new(
+                    if ready { TUBE_W + 8.0 } else { TUBE_W },
+                    if ready { 2.0 } else { 1.0 },
+                ),
+            ),
+            Transform::from_xyz(tube_x, tube_bottom + TUBE_H * quarter as f32 / 4.0, 3.6),
+        ));
+    }
     commands.spawn((
         GameplayScreen,
         HypeNeedle,
@@ -553,7 +663,7 @@ fn spawn_solo_panels(
         HypeHub,
         Sprite {
             image: shapes.round_core(),
-            color: palette::dimmed(palette::HYPE, 0.9),
+            color: palette::dimmed(zone_color(MeterZone::Fine), 0.9),
             custom_size: Some(Vec2::splat(14.0)),
             ..default()
         },
@@ -566,9 +676,17 @@ fn spawn_solo_panels(
         font.text(9.0),
         TextColor(palette::HYPE),
         Anchor::TOP_CENTER,
-        Transform::from_xyz(right.x, right.y - PLATE_H / 2.0 + 24.0, 5.0),
+        Transform::from_xyz(pivot.x, right.y - PLATE_H / 2.0 + 24.0, 5.0),
     ));
 }
+
+/// How far right of the plate's centre the dial's pivot sits.
+const DIAL_SHIFT: f32 = 26.0;
+/// The Hype tube's centre, in from the plate's left edge.
+const TUBE_INSET: f32 = 30.0;
+/// The Hype tube's size.
+const TUBE_W: f32 = 16.0;
+const TUBE_H: f32 = 74.0;
 
 /// Push session numbers into every player's HUD.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
@@ -582,7 +700,33 @@ pub fn update_huds(
         Query<&mut Text2d, With<HypeReadyText>>,
     )>,
     mut fills: Query<(&HypeFill, &mut Transform), Without<HypeNeedle>>,
-    mut needles: Query<&mut Transform, (With<HypeNeedle>, Without<HypeFill>)>,
+    mut meters: Query<
+        (&MeterFill, &mut Transform, &mut Sprite),
+        (
+            Without<HypeNeedle>,
+            Without<HypeFill>,
+            Without<StreakBead>,
+            Without<MultiplierBox>,
+        ),
+    >,
+    mut tubes: Query<
+        &mut Transform,
+        (
+            With<HypeTubeFill>,
+            Without<HypeNeedle>,
+            Without<HypeFill>,
+            Without<MeterFill>,
+        ),
+    >,
+    mut needles: Query<
+        &mut Transform,
+        (
+            With<HypeNeedle>,
+            Without<HypeFill>,
+            Without<MeterFill>,
+            Without<HypeTubeFill>,
+        ),
+    >,
     mut beads: Query<(&StreakBead, Has<BulbRim>, &mut Sprite)>,
     mut boxes: Query<&mut Sprite, (With<MultiplierBox>, Without<StreakBead>)>,
 ) {
@@ -630,11 +774,21 @@ pub fn update_huds(
                 transform.scale.x = perf.hype_meter() as f32;
             }
         }
-        // The solo gauge's needle sweeps with the meter; while Hype
-        // runs it blazes white on a lit hub.
+        for (fill, mut transform, mut sprite) in &mut meters {
+            if fill.0 == index.0 {
+                let meter = perf.meter() as f32;
+                transform.scale.x = meter;
+                sprite.color = zone_color(meter_zone(meter));
+            }
+        }
+        // The solo dial's needle sweeps with the ROCK meter; the tube
+        // beside it fills with Hype.
         if index.0 == 0 {
             for mut transform in &mut needles {
-                transform.rotation = Quat::from_rotation_z(gauge_angle(perf.hype_meter() as f32));
+                transform.rotation = Quat::from_rotation_z(gauge_angle(perf.meter() as f32));
+            }
+            for mut transform in &mut tubes {
+                transform.scale.y = perf.hype_meter() as f32;
             }
         }
 
@@ -705,9 +859,9 @@ pub fn update_huds(
             let line = if perf.hype_active() {
                 "HYPE RUNNING - DOUBLE POINTS"
             } else if meter >= 0.5 {
-                "READY - PRESS HYPE"
+                "HYPE READY - PRESS TO FIRE"
             } else {
-                "HIT MARKED NOTES TO FILL"
+                "MARKED NOTES FILL HYPE"
             };
             if text.0 != line {
                 text.0 = line.to_owned();
@@ -767,39 +921,91 @@ pub fn ready_glow(t: f32) -> f32 {
     0.16f32.mul_add((t * 4.0).sin(), 0.42)
 }
 
-/// Breathe the gauge when it matters: hub and needle pulse toward
-/// the Hype tone once the meter can fire, and blaze steady white-hot
-/// while Hype runs. Transforms and sprite tints only — no material
-/// or texture writes.
+/// Breathe the instruments when it matters. The dial (rock meter):
+/// tinted by zone, and when the crowd is turning the whole dial
+/// pulses red — the one moment the corner may shout. The tube
+/// (Hype): breathes toward the hot tone once it can fire, blazes
+/// white-hot while it runs. Transforms and sprite tints only — no
+/// material or texture writes.
+#[allow(clippy::type_complexity)]
 pub fn pulse_gauge(
     time: Res<Time>,
     players: Query<(&PlayerIndex, &PlayerSession)>,
-    mut needles: Query<&mut Sprite, (With<HypeNeedle>, Without<HypeHub>)>,
-    mut hubs: Query<&mut Sprite, (With<HypeHub>, Without<HypeNeedle>)>,
+    mut needles: Query<
+        &mut Sprite,
+        (
+            With<HypeNeedle>,
+            Without<HypeHub>,
+            Without<MeterDial>,
+            Without<HypeTubeFill>,
+        ),
+    >,
+    mut hubs: Query<
+        &mut Sprite,
+        (
+            With<HypeHub>,
+            Without<HypeNeedle>,
+            Without<MeterDial>,
+            Without<HypeTubeFill>,
+        ),
+    >,
+    mut dials: Query<
+        &mut Sprite,
+        (
+            With<MeterDial>,
+            Without<HypeNeedle>,
+            Without<HypeHub>,
+            Without<HypeTubeFill>,
+        ),
+    >,
+    mut tubes: Query<
+        &mut Sprite,
+        (
+            With<HypeTubeFill>,
+            Without<HypeNeedle>,
+            Without<HypeHub>,
+            Without<MeterDial>,
+        ),
+    >,
 ) {
     let Some((_, player)) = players.iter().find(|(index, _)| index.0 == 0) else {
         return;
     };
     let perf = player.session.performance();
-    let (needle_color, hub_color) = if perf.hype_active() {
+    let zone = meter_zone(perf.meter() as f32);
+    let zone_tone = zone_color(zone);
+    let (dial_color, needle_color, hub_color) = if zone == MeterZone::Critical {
+        let blend = ready_glow(time.elapsed_secs() * 1.5);
         (
-            palette::HYPE.mix(&Color::WHITE, 0.7),
-            palette::HYPE.mix(&Color::WHITE, 0.5),
-        )
-    } else if perf.hype_meter() >= 0.5 {
-        let blend = ready_glow(time.elapsed_secs());
-        (
-            palette::TEXT.mix(&palette::HYPE, blend),
-            palette::dimmed(palette::HYPE, 0.9).mix(&Color::WHITE, blend * 0.5),
+            palette::dimmed(zone_tone, 0.55).mix(&zone_tone, blend),
+            palette::TEXT.mix(&zone_tone, blend),
+            palette::dimmed(zone_tone, 0.9),
         )
     } else {
-        (palette::TEXT, palette::dimmed(palette::HYPE, 0.9))
+        (
+            palette::dimmed(zone_tone, 0.85),
+            palette::TEXT,
+            palette::dimmed(zone_tone, 0.9),
+        )
+    };
+    let tube_color = if perf.hype_active() {
+        palette::HYPE.mix(&Color::WHITE, 0.7)
+    } else if perf.hype_meter() >= 0.5 {
+        palette::HYPE.mix(&Color::WHITE, ready_glow(time.elapsed_secs()) * 0.6)
+    } else {
+        palette::HYPE
     };
     for mut sprite in &mut needles {
         sprite.color = needle_color;
     }
     for mut sprite in &mut hubs {
         sprite.color = hub_color;
+    }
+    for mut sprite in &mut dials {
+        sprite.color = dial_color;
+    }
+    for mut sprite in &mut tubes {
+        sprite.color = tube_color;
     }
 }
 
@@ -846,6 +1052,31 @@ pub fn update_song_ribbon(
     }
     for mut text in &mut label {
         text.0 = format!("{} / {}", clock_text(now), clock_text(duration));
+    }
+}
+
+#[cfg(test)]
+mod meter_tests {
+    use super::{MeterZone, meter_zone, zone_color};
+
+    #[test]
+    fn the_zones_split_at_a_quarter_and_a_half() {
+        assert_eq!(meter_zone(0.0), MeterZone::Critical);
+        assert_eq!(meter_zone(0.249), MeterZone::Critical);
+        assert_eq!(meter_zone(0.25), MeterZone::Low);
+        assert_eq!(meter_zone(0.499), MeterZone::Low);
+        assert_eq!(meter_zone(0.5), MeterZone::Fine);
+        assert_eq!(meter_zone(1.0), MeterZone::Fine);
+    }
+
+    #[test]
+    fn every_zone_has_its_own_colour() {
+        let a = zone_color(MeterZone::Critical);
+        let b = zone_color(MeterZone::Low);
+        let c = zone_color(MeterZone::Fine);
+        assert_ne!(a, b);
+        assert_ne!(b, c);
+        assert_ne!(a, c);
     }
 }
 

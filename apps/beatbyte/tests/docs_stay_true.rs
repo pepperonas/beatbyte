@@ -412,6 +412,35 @@ fn the_rules_document_quotes_the_real_numbers() {
         "the rules do not state the ×{} cap",
         config.max_multiplier
     );
+
+    // The rock meter's figures, the same way.
+    for (name, value) in [
+        ("start", config.meter_start),
+        ("per hit", config.meter_per_hit),
+        ("per miss", config.meter_per_miss),
+        ("per overstrum", config.meter_per_overstrum),
+    ] {
+        // Exact, not rounded: a 1.5 % constant must not pass as "2%".
+        let percent = value * 100.0;
+        assert!(
+            (percent - percent.round()).abs() < 1e-9,
+            "the rock meter's {name} is {percent}%, which this document \
+             cannot state as a whole number — choose one it can"
+        );
+        let percent = percent.round() as u32;
+        assert!(
+            rules.contains(&format!("**{percent}%**")),
+            "the rules do not state the rock meter's {name} of {percent}%"
+        );
+    }
+    assert!(
+        rules.contains(if config.fail_when_empty {
+            "No Fail** is off by default"
+        } else {
+            "No Fail** is on by default"
+        }),
+        "the rules must state the No Fail default the code ships"
+    );
 }
 
 #[test]
