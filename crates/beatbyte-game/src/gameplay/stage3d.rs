@@ -72,6 +72,12 @@ const HIGHWAY_LENGTH: f32 = 26.0;
 /// edge is never visible as a cut-off.
 const HIGHWAY_BEHIND: f32 = 2.5;
 
+/// Where the instrument neck's fog begins and ends, in camera
+/// distance. The camera is ~6 from the strike line and ~31 from the
+/// far end; the back wall is ~45.
+const FOG_START: f32 = 12.0;
+const FOG_END: f32 = 52.0;
+
 /// Radius of a note's coloured face, in world units. Large relative
 /// to the lane spacing, as in the games this borrows from — a gem
 /// nearly fills its lane, which is what makes a chord read as one
@@ -170,6 +176,50 @@ pub struct Receptor3d {
 #[must_use]
 pub fn active(settings: &Settings) -> bool {
     settings.stage_3d
+}
+
+/// What the neck is made of.
+///
+/// The genre's neck is an instrument: a dark, near-neutral board on
+/// which the gems and the fret buttons are the only colour, with pale
+/// strings between the lanes. The 8-bit style keeps its own idea — a
+/// neon runway with a glowing line per lane — because that IS its
+/// look, and the rule is that the 8-bit mode stays untouched. Pure —
+/// tested, so the gate cannot silently invert.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NeckStyle {
+    /// Five glowing lane lines, bright rails: the 8-bit stage.
+    Neon,
+    /// Dark board, pale strings, quiet rails: the round style.
+    Instrument,
+}
+
+/// Which neck the settings ask for.
+#[must_use]
+pub fn neck_style(settings: &Settings) -> NeckStyle {
+    if settings.round_gems {
+        NeckStyle::Instrument
+    } else {
+        NeckStyle::Neon
+    }
+}
+
+/// The colour of a string on the instrument neck: one pale, slightly
+/// warm shade for all five, so lane identity comes from the buttons
+/// and the gems — where the player's eye already is — and not from
+/// the line the note travels down.
+#[must_use]
+pub fn string_color(stage: crate::theme::Theme) -> Color {
+    stage.background.mix(&Color::srgb(0.86, 0.84, 0.80), 0.62)
+}
+
+/// The board of the instrument neck: the theme's hue, pulled well
+/// down toward a dark warm wood so the gems are the brightest thing
+/// on it. Measured before this existed: the board sat light enough
+/// that a yellow gem under bloom read pastel against it.
+#[must_use]
+pub fn instrument_board_color(stage: crate::theme::Theme) -> Color {
+    stage.background.mix(&Color::srgb(0.11, 0.08, 0.06), 0.62)
 }
 
 /// Lane centre in world units for a player's highway.
@@ -702,6 +752,18 @@ pub fn in_energy_phrase(phrases: &[beatbyte_core::Phrase], time_s: f64) -> bool 
 /// lands and goes, but the tail is the part still being played.
 #[derive(Component)]
 pub struct SustainTail3d;
+
+/// The pale core strip inside a sustain tail (instrument neck). Also
+/// a tail — it scrolls, shrinks and greys with the tail — but the
+/// held-tail throb must light it pale, not lane-coloured.
+#[derive(Component)]
+pub struct SustainCore;
+
+/// The core's colour: the lane's, pulled most of the way to white.
+#[must_use]
+pub fn core_color(lane: &Lane, stage: crate::theme::Theme) -> Color {
+    stage.lane_color(*lane).mix(&Color::WHITE, 0.7)
+}
 
 /// Where a sustain's remaining tail sits, and how long it still is.
 ///
@@ -1500,6 +1562,23 @@ fn spawn_venue(
     }
 }
 
+/// Push a colour toward full saturation by `amount` (0 = unchanged,
+/// 1 = fully saturated), keeping its hue and lightness. Pure —
+/// tested: a grey stays grey, and the result is never less saturated
+/// than the input.
+#[must_use]
+pub fn saturate(color: Color, amount: f32) -> Color {
+    let hsl: bevy::color::Hsla = color.into();
+    // A grey carries no hue — HSL stores 0, which is red — so
+    // pushing its saturation would INVENT a colour. The test for this
+    // function found exactly that: a mid grey came back pure red.
+    if hsl.saturation < 1e-3 {
+        return color;
+    }
+    let target = (hsl.saturation + (1.0 - hsl.saturation) * amount.clamp(0.0, 1.0)).clamp(0.0, 1.0);
+    hsl.with_saturation(target).into()
+}
+
 /// The complementary stage tone: the accent's hue swung half the
 /// wheel, keeping its lightness — the warm/cold opposition concert
 /// light lives on. Pure — pinned.
@@ -1599,6 +1678,7 @@ pub fn setup_stage(
         return;
     }
     let stage = theme.0;
+    let neck = neck_style(&settings);
 
     // The camera sits behind and above the hit line, tilted down the
     // neck. This is the framing the genre settled on: close enough
@@ -1635,6 +1715,24 @@ pub fn setup_stage(
                 ..bevy::post_process::bloom::Bloom::NATURAL
             },
         ));
+    }
+    if neck == NeckStyle::Instrument {
+        // The far end of the neck fades into the venue's dark, so
+        // notes emerge from it rather than from the crowd. Linear,
+        // because a curve with a knee is a thing to tune by eye and
+        // a line is a thing to state: the neck's last third (camera
+        // distance ~21–31) darkens to about half, the back wall (~45)
+        // recedes to a fifth. Never to full black, or the venue would
+        // be a hole.
+        stage_camera.insert(bevy::pbr::DistanceFog {
+            color: stage.background.mix(&Color::BLACK, 0.85),
+            directional_light_color: Color::NONE,
+            directional_light_exponent: 8.0,
+            falloff: bevy::pbr::FogFalloff::Linear {
+                start: FOG_START,
+                end: FOG_END,
+            },
+        });
     }
 
     // Key light down the neck plus a soft fill, so gems read as
@@ -1768,15 +1866,21 @@ pub fn setup_stage(
 
         // The bed. Dark and slightly reflective so the lights and the
         // gems have something to sit on.
+        //
+        // Neon: light enough to read AS a fretboard — against a black
+        // bed the gems floated in a void. Instrument: darker and
+        // warmer, because on that neck the gems must be the brightest
+        // thing and the grain texture gives the surface its presence.
+        let board_base = match neck {
+            NeckStyle::Neon => stage.background.mix(&Color::WHITE, 0.16),
+            NeckStyle::Instrument => instrument_board_color(stage),
+        };
         commands.spawn((
             GameplayScreen,
             Stage3d,
             Mesh3d(bed.clone()),
             MeshMaterial3d(materials.add(StandardMaterial {
-                // Light enough to read AS a fretboard: against a
-                // black bed the gems floated in a void and the neck
-                // had no surface for the lights to land on.
-                base_color: stage.background.mix(&Color::WHITE, 0.16),
+                base_color: board_base,
                 base_color_texture: Some(board.clone()),
                 // Tiled far more down the neck than across it, so the
                 // grain runs the way a plank's does.
@@ -1787,7 +1891,7 @@ pub fn setup_stage(
             })),
             HypeTinted {
                 player,
-                base: stage.background.mix(&Color::WHITE, 0.16),
+                base: board_base,
                 base_glow: 0.0,
                 glow_lift: 0.0,
                 reach: 0.55,
@@ -1796,23 +1900,37 @@ pub fn setup_stage(
             RenderLayers::layer(STAGE_LAYER),
         ));
 
-        // Bright rails down both edges. They frame the neck and, more
+        // Rails down both edges. They frame the neck and, more
         // usefully, give the eye a fixed reference for how wide the
-        // playfield is as it recedes.
+        // playfield is as it recedes. On the instrument neck they
+        // keep the theme's colour but most of their glow goes: a
+        // frame is read at the edge of vision, and a bright one pulls
+        // the eye off the gems.
+        // Neon: the rail IS the accent. Instrument: the rail is the
+        // neck's binding — pale chrome with a trace of the theme —
+        // and the theme's colour lives in the decorated trim outside
+        // it. Measured with a coloured rail at 0.7 glow: still the
+        // loudest line on the board.
+        let (rail_base, rail_glow, trim_glow) = match neck {
+            NeckStyle::Neon => (stage.accent, 2.6, 1.05),
+            NeckStyle::Instrument => (string_color(stage).mix(&stage.accent, 0.3), 0.45, 0.32),
+        };
         for side in [-1.0f32, 1.0] {
             commands.spawn((
                 GameplayScreen,
                 Stage3d,
                 Mesh3d(rail.clone()),
                 MeshMaterial3d(materials.add(StandardMaterial {
-                    base_color: stage.accent,
-                    emissive: stage.accent.to_linear() * 2.6,
+                    base_color: rail_base,
+                    emissive: rail_base.to_linear() * rail_glow,
+                    perceptual_roughness: 0.3,
+                    metallic: 0.6,
                     ..default()
                 })),
                 HypeTinted {
                     player,
-                    base: stage.accent,
-                    base_glow: 2.6,
+                    base: rail_base,
+                    base_glow: rail_glow,
                     glow_lift: 0.8,
                     reach: 0.9,
                 },
@@ -1856,7 +1974,7 @@ pub fn setup_stage(
                 MeshMaterial3d(materials.add(StandardMaterial {
                     base_color: stage.accent.mix(&stage.background, 0.28),
                     base_color_texture: Some(trim_texture.clone()),
-                    emissive: stage.accent.to_linear() * 1.05,
+                    emissive: stage.accent.to_linear() * trim_glow,
                     emissive_texture: Some(trim_texture.clone()),
                     // Repeated far more down the neck than across it:
                     // the motif is a rhythm going away from you.
@@ -1868,7 +1986,7 @@ pub fn setup_stage(
                 HypeTinted {
                     player,
                     base: stage.accent.mix(&stage.background, 0.28),
-                    base_glow: 1.05,
+                    base_glow: trim_glow,
                     glow_lift: 0.5,
                     reach: 0.9,
                 },
@@ -1899,20 +2017,34 @@ pub fn setup_stage(
             ));
         }
 
-        // One glowing strip per lane, which is what gives the neck its
-        // sense of depth as it recedes.
+        // One strip per lane, which is what gives the neck its sense
+        // of depth as it recedes. Neon: a glowing line in the lane's
+        // colour. Instrument: a STRING — one pale metallic shade for
+        // all five, barely emissive, so it catches the key light the
+        // way a wound string does and says nothing about which lane
+        // it is. That is the buttons' and the gems' job.
         for lane in Lane::ALL {
             let colour = stage.lane_color(lane);
-            commands.spawn((
-                GameplayScreen,
-                Stage3d,
-                Mesh3d(lane_strip.clone()),
-                MeshMaterial3d(materials.add(StandardMaterial {
+            let string_material = match neck {
+                NeckStyle::Neon => StandardMaterial {
                     base_color: colour,
                     emissive: colour.to_linear() * 1.4,
                     unlit: false,
                     ..default()
-                })),
+                },
+                NeckStyle::Instrument => StandardMaterial {
+                    base_color: string_color(stage),
+                    emissive: string_color(stage).to_linear() * 0.22,
+                    perceptual_roughness: 0.3,
+                    metallic: 0.7,
+                    ..default()
+                },
+            };
+            commands.spawn((
+                GameplayScreen,
+                Stage3d,
+                Mesh3d(lane_strip.clone()),
+                MeshMaterial3d(materials.add(string_material)),
                 Transform::from_xyz(lane_x(&layout, player, lane), 0.005, centre),
                 RenderLayers::layer(STAGE_LAYER),
             ));
@@ -2504,6 +2636,14 @@ pub struct NoteAssets {
     /// genre's star-power marking (star-shaped gems), in place of
     /// the round rim.
     star_rim: Handle<Mesh>,
+    /// The white centre on the instrument neck's gems: the genre's
+    /// button marking, which the 2D views carry and the 3D gem did
+    /// not. `None` on the neon neck, whose gems are its own.
+    centre: Option<Handle<Mesh>>,
+    centre_material: Handle<StandardMaterial>,
+    /// A brighter core strip inside a sustain tail, instrument neck
+    /// only — the held note's own light, running down its rail.
+    sustain_core: Option<Handle<Mesh>>,
     missed_material: Handle<StandardMaterial>,
     rim_material: Handle<StandardMaterial>,
     hype_rim_material: Handle<StandardMaterial>,
@@ -2531,14 +2671,41 @@ pub fn setup_note_assets(
     // The gem radius is a world-unit constant, so widening the neck
     // without it would leave the notes undersized in their own lanes.
     let gem = GEM_RADIUS * neck_spread(&layout);
+    let neck = neck_style(&settings);
     commands.insert_resource(NoteAssets {
         gem: meshes.add(Cylinder::new(gem, 0.055)),
         rim: meshes.add(Cylinder::new(gem * 1.28, 0.042)),
+        centre: match neck {
+            NeckStyle::Neon => None,
+            NeckStyle::Instrument => Some(meshes.add(Cylinder::new(gem * 0.30, 0.02))),
+        },
+        // Emissive white, not lit white: a lit disc would take the
+        // lane's colour from the light bouncing off the cap around
+        // it and read as a paler patch of the same colour.
+        centre_material: materials.add(StandardMaterial {
+            base_color: Color::WHITE,
+            emissive: LinearRgba::rgb(3.0, 3.0, 2.8),
+            perceptual_roughness: 0.4,
+            ..default()
+        }),
         // A HOPO is smaller and reads as a different object, the way
         // the 2D views distinguish it.
         hopo: meshes.add(Cylinder::new(gem * 0.62, 0.05)),
         hopo_rim: meshes.add(Cylinder::new(gem * 0.86, 0.04)),
-        sustain: meshes.add(Cylinder::new(0.05 * neck_spread(&layout), 1.0)),
+        sustain: meshes.add(Cylinder::new(
+            match neck {
+                NeckStyle::Neon => 0.05,
+                // Thinner: the reference's tail is a rail, not a pipe.
+                NeckStyle::Instrument => 0.036,
+            } * neck_spread(&layout),
+            1.0,
+        )),
+        sustain_core: match neck {
+            NeckStyle::Neon => None,
+            NeckStyle::Instrument => {
+                Some(meshes.add(Cylinder::new(0.013 * neck_spread(&layout), 1.0)))
+            }
+        },
         star_rim: meshes.add(star_mesh(gem * 1.62, gem * 0.82)),
         // ONE grey material that missed notes switch TO. Repainting
         // the lane's own material instead turned every note in that
@@ -2550,8 +2717,16 @@ pub fn setup_note_assets(
             ..default()
         }),
         rim_material: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.05, 0.05, 0.07),
-            perceptual_roughness: 0.6,
+            base_color: match neck {
+                NeckStyle::Neon => Color::srgb(0.05, 0.05, 0.07),
+                // Near-black and a touch glossy: the ring on a button
+                // is a bezel, and a bezel catches a little light.
+                NeckStyle::Instrument => Color::srgb(0.02, 0.02, 0.025),
+            },
+            perceptual_roughness: match neck {
+                NeckStyle::Neon => 0.6,
+                NeckStyle::Instrument => 0.35,
+            },
             ..default()
         }),
         // A note inside an energy phrase wears a lit rim instead of a
@@ -2567,7 +2742,13 @@ pub fn setup_note_assets(
         lane_material: Lane::ALL
             .iter()
             .map(|lane| {
-                let colour = theme.0.lane_color(*lane);
+                let colour = match neck {
+                    NeckStyle::Neon => theme.0.lane_color(*lane),
+                    // Pulled toward full saturation: under bloom the
+                    // theme's lane colour read pastel on the darker
+                    // board, and a button cap is a solid colour.
+                    NeckStyle::Instrument => saturate(theme.0.lane_color(*lane), 0.35),
+                };
                 materials.add(StandardMaterial {
                     base_color: colour,
                     base_color_texture: Some(face.clone()),
@@ -2605,6 +2786,7 @@ pub fn spawn_due_notes(
     time: Res<Time>,
     settings: Res<Settings>,
     assets: Option<Res<NoteAssets>>,
+    theme: Res<crate::theme::ActiveTheme>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     if !active(&settings) {
@@ -2647,6 +2829,24 @@ pub fn spawn_due_notes(
                     Transform::from_xyz(lane_x(&layout, index.0, lane), 0.075, z),
                     RenderLayers::layer(STAGE_LAYER),
                 ));
+                // The white centre, on the instrument neck. It shares
+                // the note's key, so it scrolls, vanishes on a hit and
+                // greys on a miss with the rest of the gem for free.
+                if let Some(centre) = &assets.centre {
+                    commands.spawn((
+                        GameplayScreen,
+                        Stage3d,
+                        Note3d {
+                            player: index.0,
+                            event_index: cursor,
+                            lane,
+                        },
+                        Mesh3d(centre.clone()),
+                        MeshMaterial3d(assets.centre_material.clone()),
+                        Transform::from_xyz(lane_x(&layout, index.0, lane), 0.105, z),
+                        RenderLayers::layer(STAGE_LAYER),
+                    ));
+                }
                 // The dark rim the coloured face sits in.
                 commands.spawn((
                     GameplayScreen,
@@ -2711,6 +2911,38 @@ pub fn spawn_due_notes(
                             .with_scale(Vec3::new(1.0, length, 1.0)),
                         RenderLayers::layer(STAGE_LAYER),
                     ));
+                    // The core: same key, same length, its own
+                    // material (the held-tail throb writes emissive),
+                    // marked so the throb keeps it pale instead of
+                    // painting it the lane's colour.
+                    if let Some(core_mesh) = &assets.sustain_core {
+                        let pale = core_color(&lane, theme.0);
+                        commands.spawn((
+                            GameplayScreen,
+                            Stage3d,
+                            Note3d {
+                                player: index.0,
+                                event_index: cursor,
+                                lane,
+                            },
+                            SustainTail3d,
+                            SustainCore,
+                            Mesh3d(core_mesh.clone()),
+                            MeshMaterial3d(materials.add(StandardMaterial {
+                                base_color: pale,
+                                emissive: pale.to_linear() * 1.6,
+                                ..default()
+                            })),
+                            Transform::from_xyz(
+                                lane_x(&layout, index.0, lane),
+                                0.062,
+                                z - length / 2.0,
+                            )
+                            .with_rotation(Quat::from_rotation_x(core::f32::consts::FRAC_PI_2))
+                            .with_scale(Vec3::new(1.0, length, 1.0)),
+                            RenderLayers::layer(STAGE_LAYER),
+                        ));
+                    }
                 }
             }
             player.spawn_cursor += 1;
@@ -2795,7 +3027,7 @@ pub fn move_notes(
 /// The receptor keeps burning (see [`update_receptors`]); this is the
 /// other half of the same feedback — the tail visibly shortens into
 /// the fret for exactly as long as the key is down.
-#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
+#[allow(clippy::too_many_arguments, clippy::type_complexity)] // Bevy system: params are DI, not an API
 pub fn consume_sustains(
     mut commands: Commands,
     settings: Res<Settings>,
@@ -2809,6 +3041,7 @@ pub fn consume_sustains(
             &Note3d,
             &mut Transform,
             &MeshMaterial3d<StandardMaterial>,
+            Has<SustainCore>,
         ),
         With<SustainTail3d>,
     >,
@@ -2822,7 +3055,7 @@ pub fn consume_sustains(
     let (Some(now), Some(assets)) = (game_clock.visual_time(&time, &settings), assets) else {
         return;
     };
-    for (entity, note, mut transform, material) in &mut tails {
+    for (entity, note, mut transform, material, is_core) in &mut tails {
         let Some((_, player)) = players.iter().find(|(index, _)| index.0 == note.player) else {
             continue;
         };
@@ -2844,7 +3077,11 @@ pub fn consume_sustains(
                 // rather than with the frame rate.
                 if let Some(mut surface) = materials.get_mut(&material.0) {
                     let glow = sustain_pulse(now);
-                    surface.emissive = base_emissive(&note.lane, stage) * glow;
+                    surface.emissive = if is_core {
+                        core_color(&note.lane, stage).to_linear() * (1.6 * glow)
+                    } else {
+                        base_emissive(&note.lane, stage) * glow
+                    };
                 }
             }
             // Fully played: the tail has been eaten, nothing to show.
@@ -2855,7 +3092,7 @@ pub fn consume_sustains(
     // A tail whose hold has ended but which still has length left was
     // DROPPED — it greys out and slides away, so letting go looks
     // different from playing it out.
-    for (entity, note, transform, _) in &tails {
+    for (entity, note, transform, _, _) in &tails {
         let held = players
             .iter()
             .find(|(index, _)| index.0 == note.player)
@@ -3420,5 +3657,124 @@ mod star_tests {
         // The first vertex is the tip pointing up the neck (−Z), so
         // the star reads upright from the player's seat.
         assert!(outline[0][0].abs() < 1e-5 && outline[0][1] < 0.0);
+    }
+}
+
+#[cfg(test)]
+mod instrument_neck_tests {
+    use super::*;
+    use crate::config::Settings;
+
+    fn round(on: bool) -> Settings {
+        Settings {
+            round_gems: on,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn the_instrument_neck_belongs_to_the_round_style_only() {
+        // The rule this round was built under: the 8-bit mode stays
+        // untouched. If this gate ever inverted, every 8-bit stage
+        // would quietly turn into a wooden neck.
+        assert_eq!(neck_style(&round(true)), NeckStyle::Instrument);
+        assert_eq!(neck_style(&round(false)), NeckStyle::Neon);
+    }
+
+    #[test]
+    fn the_instrument_board_is_darker_than_the_neon_one_in_every_theme() {
+        // The point of the neck: the gems must be the brightest thing
+        // on it. Checked per theme, because the board keeps the
+        // theme's hue and a light theme could have slipped through.
+        for theme in &crate::theme::THEMES {
+            let neon = theme.background.mix(&Color::WHITE, 0.16).luminance();
+            let instrument = instrument_board_color(*theme).luminance();
+            assert!(
+                instrument < neon * 0.6,
+                "{}: instrument board {instrument} is not well under neon {neon}",
+                theme.id
+            );
+        }
+    }
+
+    #[test]
+    fn strings_are_one_shade_for_all_five_lanes() {
+        // Lane identity lives in the buttons and the gems; a string
+        // that told you its lane would be the neon line back again.
+        let theme = crate::theme::THEMES[0];
+        let string = string_color(theme);
+        for lane in Lane::ALL {
+            assert_ne!(
+                string,
+                theme.lane_color(lane),
+                "a string must not be a lane colour"
+            );
+        }
+        // And pale: brighter than the board it lies on.
+        assert!(string.luminance() > instrument_board_color(theme).luminance() * 2.0);
+    }
+
+    #[test]
+    fn saturate_pushes_toward_full_and_never_desaturates() {
+        let dull = Color::hsl(30.0, 0.4, 0.5);
+        let boosted: bevy::color::Hsla = saturate(dull, 0.5).into();
+        assert!(
+            (boosted.saturation - 0.7).abs() < 1e-4,
+            "got {}",
+            boosted.saturation
+        );
+        // Zero amount is the identity; a full amount is fully saturated.
+        let same: bevy::color::Hsla = saturate(dull, 0.0).into();
+        assert!((same.saturation - 0.4).abs() < 1e-4);
+        let full: bevy::color::Hsla = saturate(dull, 1.0).into();
+        assert!((full.saturation - 1.0).abs() < 1e-4);
+        // A grey has no hue to saturate toward — it stays grey rather
+        // than inventing one. (The first version of `saturate` turned
+        // it red: HSL stores a grey's hue as 0.)
+        let grey: bevy::color::Srgba = saturate(Color::srgb(0.5, 0.5, 0.5), 1.0).into();
+        assert!(
+            (grey.red - grey.green).abs() < 1e-4 && (grey.green - grey.blue).abs() < 1e-4,
+            "a grey came back as {grey:?}"
+        );
+        // Out-of-range amounts are clamped, not trusted.
+        let over: bevy::color::Hsla = saturate(dull, 7.0).into();
+        assert!(over.saturation <= 1.0 + 1e-6);
+    }
+
+    #[test]
+    fn the_sustain_core_is_paler_than_its_lane() {
+        let theme = crate::theme::THEMES[0];
+        for lane in Lane::ALL {
+            let core: bevy::color::Hsla = core_color(&lane, theme).into();
+            let own: bevy::color::Hsla = theme.lane_color(lane).into();
+            assert!(
+                core.lightness > own.lightness,
+                "the core must be the lighter one"
+            );
+        }
+    }
+
+    #[test]
+    fn the_fog_leaves_the_strike_line_clear_and_the_far_end_dim() {
+        // Camera distances from setup_stage's placement.
+        let strike = 6.1f32;
+        let far_end = 31.4f32;
+        let back_wall = 45.0f32;
+        let intensity = |d: f32| 1.0 - ((FOG_END - d) / (FOG_END - FOG_START)).clamp(0.0, 1.0);
+        assert!(
+            intensity(strike) < 1e-6,
+            "the strike line must not be fogged at all"
+        );
+        let end = intensity(far_end);
+        assert!(
+            (0.35..=0.65).contains(&end),
+            "the far end should be about half fogged, got {end}"
+        );
+        let wall = intensity(back_wall);
+        assert!(
+            wall < 1.0,
+            "the venue must never vanish into a hole, got {wall}"
+        );
+        assert!(wall > end, "the venue must recede further than the neck");
     }
 }

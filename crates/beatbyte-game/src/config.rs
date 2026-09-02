@@ -41,6 +41,10 @@ pub struct Settings {
     /// Backdrop animation (turn off for a still stage —
     /// reduced-motion accessibility).
     pub backdrop_motion: bool,
+    /// The PERFECT / GREAT / GOOD / MISS word over the neck. On by
+    /// default; off gives the genre's flame-only hit feedback (the
+    /// classic guitar games grade nothing per note on screen).
+    pub hit_labels: bool,
     /// Reduced flashing: suppress full-screen flashes (accessibility).
     #[serde(default)]
     pub reduced_flashing: bool,
@@ -118,6 +122,7 @@ impl Default for Settings {
             screen_shake: true,
             beat_pulse: true,
             backdrop_motion: true,
+            hit_labels: true,
             reduced_flashing: false,
             fx_intensity: 1.0,
             ui_scale: 1.0,

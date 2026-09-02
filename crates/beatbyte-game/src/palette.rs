@@ -35,6 +35,23 @@ pub const MISS: Color = Color::srgb(1.0, 0.35, 0.4);
 /// Hype meter / active hype tint.
 pub const HYPE: Color = Color::srgb(0.75, 0.5, 1.0);
 
+/// Stage chrome: the neutral, slightly cool grey the round style's
+/// solo HUD plates are framed in. The genre's readouts are hardware
+/// on a dark stage — a dial, a counter — and hardware is not painted
+/// in the player's colour.
+pub const CHROME: Color = Color::srgb(0.66, 0.68, 0.74);
+
+/// The frame colour of a solo HUD plate.
+///
+/// The round style frames its plates in chrome and the 8-bit style in
+/// the player's colour; multiplayer always keeps the player's colour,
+/// because with four necks the colour is how you find your numbers.
+/// Pure — tested.
+#[must_use]
+pub fn plate_accent(chrome: bool, player: Color) -> Color {
+    if chrome { CHROME } else { player }
+}
+
 /// The five lane colors, left to right (classic mapping, original hues).
 pub const LANES: [Color; 5] = [
     Color::srgb(0.24, 0.86, 0.52), // green
@@ -64,6 +81,19 @@ pub fn dimmed(color: Color, factor: f32) -> Color {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_chrome_plate_is_never_the_players_colour() {
+        // The round style frames its solo readouts in stage chrome;
+        // the 8-bit style keeps the player's colour. Multiplayer
+        // never asks for chrome, so the colour that finds your
+        // numbers among four necks is safe either way.
+        let player = super::BRAND;
+        assert_eq!(super::plate_accent(false, player), player);
+        let chrome = super::plate_accent(true, player);
+        assert_ne!(chrome, player);
+        assert_eq!(chrome, super::CHROME);
+    }
+
     use super::*;
 
     /// Linear-space brightness of a color's brightest channel.

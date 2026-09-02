@@ -14,6 +14,45 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.24] - 2026-09-02
+
+### Changed
+
+- **The round style's neck is an instrument, not a light show**
+  (plan: `docs/ui/gameplay-look-plan.md`, round six). Measured
+  against what the genre's classic does, the framing was already
+  right and the difference was what the neck was *made of*: five
+  coloured glowing lane lines, glowing rails and trim. Now — in the
+  round style only, the 8-bit stage is untouched and a test pins the
+  gate — the board is dark and warm, the lane lines are one pale
+  metallic string for all five lanes (lane identity lives in the
+  buttons and the gems), the rails are chrome binding with the theme
+  left to the decorated trim, and the far end fades into the venue so
+  notes emerge from the dark. Neck saturation 0.20 → 0.11, brightness
+  0.33 → 0.18; the back wall recedes to 0.13 from 0.28.
+- **Gems are buttons.** A white centre on every gem, a near-black
+  bezel ring, a more saturated cap. Sustains are thinner rails with a
+  pale core that keeps its own light while held.
+- **Solo HUD plates are stage chrome.** Neutral frames and white
+  digits instead of the player-colour outline and tint (border
+  saturation 0.65 → 0.11); the hype gauge keeps its colour — the meter
+  is what is coloured, not its housing. Multiplayer keeps the player
+  colours: with four necks, the colour is how you find your numbers.
+- **The hit word sits lower and smaller on the instrument neck**, beside the
+  strike instead of over the approach where the notes are.
+
+### Added
+
+- **Settings → HIT LABELS.** On (the default — nothing changes for
+  anyone who did not ask) keeps PERFECT / GREAT / GOOD / MISS; Off
+  gives the genre's flame-only feedback. HYPE! still announces
+  itself either way: it is a state change, not a grade.
+
+### Fixed
+
+- A colour helper written for this round turned greys red (HSL keeps
+  a grey's hue at 0); its own test caught it before it shipped.
+
 ## [0.13.23] - 2026-09-01
 
 ### Changed

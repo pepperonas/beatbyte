@@ -248,7 +248,7 @@ pub fn spawn_huds(
     ));
 
     if layout.players() == 1 {
-        spawn_solo_panels(&mut commands, &font, &shapes);
+        spawn_solo_panels(&mut commands, &font, &shapes, settings.round_gems);
         return;
     }
     let compact = layout.players() > 2;
@@ -352,8 +352,17 @@ fn caption(commands: &mut Commands, font: &UiFont, text: &str, at: Vec2) {
 
 /// The solo layout: score and multiplier bottom-left, meter
 /// bottom-right, nothing over the highway.
-fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::shapes::LaneShapes) {
-    let accent = player_color(0);
+fn spawn_solo_panels(
+    commands: &mut Commands,
+    font: &UiFont,
+    shapes: &crate::shapes::LaneShapes,
+    chrome: bool,
+) {
+    let accent = palette::plate_accent(chrome, player_color(0));
+    // The digits: white on chrome, the player's colour otherwise. A
+    // counter on stage hardware is lit white; a coloured readout is
+    // the arcade's idea.
+    let digits = if chrome { palette::TEXT } else { accent };
     let left = Vec2::new(
         -640.0 + PLATE_INSET + PLATE_W / 2.0,
         -360.0 + PLATE_INSET + PLATE_H / 2.0,
@@ -389,7 +398,7 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::sha
             ScorePad,
             Text2d::new("00000"),
             font.text(24.0),
-            TextColor(palette::dimmed(accent, 0.22)),
+            TextColor(palette::dimmed(digits, 0.22)),
             Anchor::CENTER,
             Transform::from_xyz(left.x, left.y + PLATE_H / 2.0 - 44.0, 5.0),
         ))
@@ -397,7 +406,7 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::sha
             ScoreText(0),
             TextSpan::new("0"),
             font.text(24.0),
-            TextColor(accent),
+            TextColor(digits),
         ));
 
     // The multiplier gets its own box: here it is a state, not a
@@ -475,7 +484,11 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::sha
         StreakPop { seen: 0, age: 1.0 },
         Text2d::new(""),
         font.text(12.0),
-        TextColor(palette::BRAND),
+        TextColor(if chrome {
+            palette::TEXT
+        } else {
+            palette::BRAND
+        }),
         Anchor::TOP_LEFT,
         Transform::from_xyz(
             box_at.x - box_size.x / 2.0,
@@ -485,7 +498,16 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::sha
     ));
 
     // ── Right: the energy meter, in the quarters it fills in ────────
-    plate(commands, shapes, right, size, palette::HYPE);
+    // The frame is chrome like the left plate; the gauge inside it
+    // keeps the hype colour — the meter is what is coloured, not the
+    // housing it sits in.
+    plate(
+        commands,
+        shapes,
+        right,
+        size,
+        palette::plate_accent(chrome, palette::HYPE),
+    );
     caption(
         commands,
         font,

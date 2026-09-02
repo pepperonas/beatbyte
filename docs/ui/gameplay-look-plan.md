@@ -456,3 +456,163 @@ a fixed number of beats and the activation frame decides whether one
 more note lands inside. The invariant is the judgment: 463 perfect, 0
 miss, 0 overstrum, unchanged. [The stage guide](3d-stage.md) now says
 so, since the old wording invited exactly the wrong comparison.
+
+# Round six — the neck is a guitar neck, not a light show
+
+Commissioned 2026-09-02: "make the graphics look like Guitar Hero 2 —
+research, orient on the screenshots, plan first, then build." The two
+attached screenshots arrived as empty JPEG placeholders, so the
+research is from public descriptions (the same WikiHero material round
+five used) and from the game itself: a fresh window-ID capture of the
+current build, measured, set beside what GH2 is documented to do.
+
+## The line, restated
+
+Same as round five. Conventions are the genre's — every guitar game
+and the instrument itself share them — and are adopted. Specific
+artwork (logos, typefaces, character art, neck motifs, the name) is
+one game's and is not. Nothing below copies an asset; every texture
+is generated from a hash as before.
+
+## What a side-by-side actually shows
+
+The framing is already there: the solo neck fills ~38 % of a 16:9
+frame at the strike line (round five widened it from 31 %), the
+vanishing region sits at ~39 % of the height, the HUD occupies the
+lower corners, gems are GRYBO, phrases wear stars, hits throw flames.
+What still reads as "not that game" is not layout — it is **what the
+neck is made of**:
+
+| Trait | GH2 (documented) | BeatByte, measured today | Gap |
+|---|---|---|---|
+| Neck surface | dark, near-neutral; the gems and buttons are the only colour on it | dark grey-blue board, **five coloured glowing lane lines** full length, glowing coloured rails, glowing coloured trim | **the biggest one** — the neck reads as a neon runway, not an instrument |
+| Strings | thin pale division lines between lanes | four dim neutral dividers **plus** the five coloured lines on top | the coloured lines dominate |
+| Gems | saturated cap, **dark ring**, **white centre**; HOPO ringless | flat coloured disc with a dark rim; bloom washes it pastel | no centre, low saturation |
+| Far end | the neck fades into the stage dark | the neck ends hard against the crowd | notes appear "from the crowd" instead of from the dark |
+| HUD plates | neutral dark chrome, white digits, badge multiplier | plates tinted and **outlined in the player colour** (yellow box, purple box) | reads arcade, not stage hardware |
+| Hit feedback | flame + button light; **no per-note text** | flame + button light + "PERFECT" over the neck | the word is a different genre's vocabulary |
+| Sustain | thin rail, bright core when held | thick pill, pulsing | chunkier than the reference |
+| Typography | bold condensed rock face | pixel face in 8-bit; engine fallback in round | round style has no voice of its own |
+| Rock meter | gauge lower right | deliberately absent | unchanged — a fail state is mechanics (P3) |
+| Band on stage | four characters | none | unchanged — separate track (stage-realism plan) |
+
+## The work
+
+Each item is gated on the 3D stage and, where it changes materials,
+on the round style — **the 8-bit mode is untouched**. Each is measured
+on a window-ID capture before and after, and the judgment invariant
+(perfect / miss / overstrum counts on the same run) is checked with
+the autopilot after each.
+
+### R1 — A neutral neck
+
+Lane lines stop glowing in the lane colour and become pale strings:
+thin, slightly metallic, one shade for all five. Rails and trim keep
+their theme identity but lose most of their emission, so they frame
+the neck rather than compete with the gems. The board goes darker and
+warmer (theme hue preserved, value lowered) so that the gems are the
+brightest thing on it.
+
+*Measure:* mean saturation of the neck region between the rails,
+before and after; gem-to-board contrast.
+
+### R2 — Gems are buttons
+
+A white centre on every gem face, a darker ring, and a more saturated
+cap — the genre's marking, which the 2D views already carry and the
+3D gem does not. HOPOs keep their ringless, smaller form.
+
+*Measure:* luminance profile across a gem (centre bright, ring dark,
+cap in between); saturation of the cap.
+
+### R3 — The far end fades
+
+Distance fog on the stage camera, tuned so the last third of the neck
+darkens into the venue and notes emerge from the dark. The venue
+behind stays visible but recedes.
+
+*Measure:* board luminance at the far end vs at the strike line.
+
+### R4 — HUD plates in stage chrome
+
+Solo plates lose the player-colour outline and tint: dark neutral
+plate, white digits, the multiplier a lit badge. Multiplayer keeps the
+tint — with four necks the colour is how you find your numbers.
+
+*Measure:* the plate border is no longer the accent hue.
+
+### R5 — Hit labels become a setting
+
+`Hit labels: On / Off` in settings. On stays the default (nothing
+changes for anyone who did not ask); Off gives the flame-only feedback
+of the reference. The label also moves off the neck centre and shrinks
+when on, so it stops sitting where the notes are.
+
+*Measure:* setting round-trips; with Off, no popup entity is spawned.
+
+### R6 — Thinner sustains with a core
+
+Tail width down, a brighter core strip inside it while held.
+
+### R7 — A voice for the round style (last, its own decision)
+
+An OFL bold condensed face for the round style's HUD and menus, bundled
+with its licence and recorded in `asset-licenses.md`. Last because it
+touches the whole design kit (`ui_kit` owns the type scale) and the
+karaoke tracking (`UiFont::glyph_em` must be measured for it), and
+because a typeface is the most opinionated change on this list.
+
+## Not done, and why
+
+- **Rock meter** — a fail state is a mechanic, not a look (roadmap P3).
+- **Band characters** — a stage-realism item with its own plan.
+- **Any GH2 asset** — motifs, fonts, logo, name. The rule, and it is
+  not in tension with the brief: what makes the reference read as a
+  guitar game is convention, and convention is what is being adopted.
+
+## Round six status
+
+R1–R6 shipped (v0.13.24); R7 is open, see below. Every number is
+from a window-ID capture at a pinned 1280×720, same song, same
+moment, before and after. The judgment invariant held on every run:
+98 perfect, 0 miss, 0 overstrum.
+
+| | Before | After | How measured |
+|---|---|---|---|
+| Neck saturation (board between the rails) | 0.202 | **0.111** | mean HSV S over the mid-neck band |
+| Neck brightness | 0.330 | **0.176** | mean V over the same band |
+| Plate border saturation (solo, round) | 0.649 | **0.113** | along the left plate's top edge |
+| Crowd brightness (fog, untouched by R1) | 0.194 | **0.148** | left crowd ranks |
+| Back wall brightness (fog) | 0.275 | **0.130** | LED-wall band |
+
+The fog number is read off the *venue* rather than the neck on
+purpose: R1 darkened the board too, so a board sample could not
+attribute its drop to fog. The crowd and the wall were not touched by
+anything but the fog, and the wall recedes further than the crowd —
+which is the linear falloff doing what it states.
+
+**A pin found a real bug.** `saturate()` — the cap-saturation helper
+for R2 — turned a mid grey into pure red, because HSL stores a grey's
+hue as 0 and the function pushed the saturation regardless. The
+test's "a grey stays grey" clause caught it before any theme with a
+neutral lane colour could have.
+
+**One mutation probe missed.** The `shows_label` mutation did not
+bite on the first attempt — because `rustfmt` had reflowed the match
+arm and the probe's text anchor no longer matched, so the mutation
+was never applied. Re-anchored on the real line, the pin failed as
+it should. Same lesson as the repository's earlier ones: a mutation
+that does not change the file is not a mutation.
+
+**Screenshots.** The two attached reference images arrived as empty
+JPEG placeholders and could not be used; the round is grounded in
+the documented conventions instead. If there is a specific detail in
+them this round missed, they are worth re-sending.
+
+### R7 — open
+
+Not started. It changes every piece of text in the round style, and
+the karaoke tracking depends on the face's advance width, so it is a
+decision to take on its own rather than the tail of a rendering
+round. Candidates that fit the licence rule: Oswald, Anton, Bebas
+Neue (all OFL).

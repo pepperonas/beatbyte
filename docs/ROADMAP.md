@@ -403,6 +403,27 @@ Follow-ups (only if wanted): a lyrics editor timeline, automatic
 vocal alignment (the data model already carries word spans), a
 lyrics position setting.
 
+## Gameplay look, round six: the instrument neck (DONE 2026-09-02, v0.13.24)
+
+User: "passe die grafik so an, dass sie wie in guitar hero 2 aussieht
+… erstelle erst einen plan und setze diesen dann um." Plan and
+measured status in `docs/ui/gameplay-look-plan.md` (round six). The
+attached screenshots arrived empty; the round is grounded in the
+documented conventions and a measured capture of the current build.
+
+- [x] R1 neutral neck (dark warm board, pale strings, chrome rails) —
+  round style only, gate pinned
+- [x] R2 gems as buttons (white centre, bezel ring, saturated cap)
+- [x] R3 far end fades (linear fog; formula pinned, venue measured)
+- [x] R4 chrome HUD plates in solo
+- [x] R5 HIT LABELS setting + lower, smaller word on the instrument neck
+- [x] R6 thinner sustains with a pale core
+- [ ] R7 a typeface for the round style — deliberately its own
+  decision (touches the whole design kit and karaoke tracking)
+
+Not done on purpose: rock meter (mechanics, P3), band characters
+(stage-realism plan), any GH2 asset.
+
 ## Loop-house analysis hardening (Phase 0-2 DONE 2026-09-01, v0.13.20-22)
 
 The commission: make the analysis hold up on sample-based loop
