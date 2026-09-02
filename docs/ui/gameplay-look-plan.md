@@ -487,7 +487,7 @@ neck is made of**:
 |---|---|---|---|
 | Neck surface | dark, near-neutral; the gems and buttons are the only colour on it | dark grey-blue board, **five coloured glowing lane lines** full length, glowing coloured rails, glowing coloured trim | **the biggest one** — the neck reads as a neon runway, not an instrument |
 | Strings | thin pale division lines between lanes | four dim neutral dividers **plus** the five coloured lines on top | the coloured lines dominate |
-| Gems | saturated cap, **dark ring**, **white centre**; HOPO ringless | flat coloured disc with a dark rim; bloom washes it pastel | no centre, low saturation |
+| Gems | white circle in the middle; strum notes have a **black ring around it** on the face ("black ring on top"), HOPOs no ring (**solid white top**) — WikiHero + GH2 guides, re-verified 2026-09-02 | flat coloured disc with a dark rim; bloom washes it pastel | wrong structure: ring outside, dot bare |
 | Far end | the neck fades into the stage dark | the neck ends hard against the crowd | notes appear "from the crowd" instead of from the dark |
 | HUD plates | neutral dark chrome, white digits, badge multiplier | plates tinted and **outlined in the player colour** (yellow box, purple box) | reads arcade, not stage hardware |
 | Hit feedback | flame + button light; **no per-note text** | flame + button light + "PERFECT" over the neck | the word is a different genre's vocabulary |
@@ -616,3 +616,22 @@ the karaoke tracking depends on the face's advance width, so it is a
 decision to take on its own rather than the tail of a rendering
 round. Candidates that fit the licence rule: Oswald, Anton, Bebas
 Neue (all OFL).
+
+### Round six, corrected (2026-09-02)
+
+R2 shipped with the wrong gem structure. The trait table above had
+said "dark ring, white centre", read off a summary in this repository
+rather than the sources, and the build put the ring OUTSIDE the cap
+and a bare white dot on every gem. The user's report was exact —
+"alle Buttons haben jetzt einen weißen Punkt" — and the sources,
+checked this time ([WikiHero: Hammer-ons and Pull-offs](https://guitarhero.fandom.com/wiki/Hammer-ons_and_Pull-offs),
+[WikiHero: Note types](https://guitarhero.fandom.com/wiki/Note_types),
+the GH2 GameFAQs guides), say: *regular notes have a black circle
+**around** the white circle; hammer-ons don't* — a strum note reads
+as a black ring on top, a HOPO as a solid white top.
+
+Fixed in v0.13.27: the ring is on the face around a small point, the
+outer edge is thin, the HOPO cap stays. The lesson for this document:
+**a summary inside the repository is not a source.** When a round is
+named after a specific game, the visual claims get re-checked against
+the material, not against what an earlier round wrote down.

@@ -215,18 +215,36 @@ pub fn string_color(stage: crate::theme::Theme) -> Color {
 
 /// Radius of a gem's white centre, from the gem's own radius.
 ///
-/// A strum note's centre is a dot inside the cap; a HOPO's is a CAP
-/// of its own, most of the smaller face — the genre's way of saying
-/// "no strum needed" at a glance, and the difference the player
-/// reads first. Both stay inside their faces: the strum face is
-/// `gem`, the HOPO face `HOPO_FACE * gem`. Pure — tested.
+/// The genre's gem, as its own documentation describes it: "in the
+/// middle of the coloured note is a white circle; regular notes have
+/// a black circle AROUND this white circle, hammer-ons don't" — so a
+/// strum note reads as a **black ring on top** with a white point
+/// inside it, and a HOPO as a **solid white top**. The strum centre
+/// is therefore small (the ring is the feature); the HOPO centre is
+/// a cap of its own, most of the smaller face. Both stay inside
+/// their faces: the strum face is `gem`, the HOPO face
+/// `HOPO_FACE * gem`. Pure — tested.
+///
+/// The first version put a naked white dot on every gem and the
+/// dark ring OUTSIDE the cap — "all buttons now have a white dot" was
+/// the user's exact report, and the sources say the ring belongs on
+/// the face, around the dot.
 #[must_use]
 pub fn centre_radius(gem: f32, hopo: bool) -> f32 {
     if hopo {
         gem * HOPO_FACE * 0.68
     } else {
-        gem * 0.30
+        gem * 0.16
     }
+}
+
+/// The black ring on a strum note's face: `(inner, outer)` radii.
+/// It starts at the white centre's edge and is wide enough to be the
+/// thing the eye lands on. Pure — tested.
+#[must_use]
+pub fn face_ring_radii(gem: f32) -> (f32, f32) {
+    let inner = centre_radius(gem, false);
+    (inner, gem * 0.44)
 }
 
 /// A HOPO's face radius relative to a strum note's.
@@ -2662,6 +2680,10 @@ pub struct NoteAssets {
     /// The HOPO's centre, larger than the strum note's: in the genre
     /// the big white cap IS what says "no strum needed".
     hopo_centre: Option<Handle<Mesh>>,
+    /// The black ring on a strum note's face, around its centre —
+    /// the strum note's mark. HOPOs have none.
+    face_ring: Option<Handle<Mesh>>,
+    face_ring_material: Handle<StandardMaterial>,
     centre_material: Handle<StandardMaterial>,
     /// A brighter core strip inside a sustain tail, instrument neck
     /// only — the held note's own light, running down its rail.
@@ -2696,7 +2718,16 @@ pub fn setup_note_assets(
     let neck = neck_style(&settings);
     commands.insert_resource(NoteAssets {
         gem: meshes.add(Cylinder::new(gem, 0.055)),
-        rim: meshes.add(Cylinder::new(gem * 1.28, 0.042)),
+        rim: meshes.add(Cylinder::new(
+            gem * match neck {
+                NeckStyle::Neon => 1.28,
+                // A thin edge only: on this neck the strum note's
+                // mark is the black ring on its FACE, and a fat
+                // outer bezel would compete with it.
+                NeckStyle::Instrument => 1.12,
+            },
+            0.042,
+        )),
         centre: match neck {
             NeckStyle::Neon => None,
             NeckStyle::Instrument => {
@@ -2709,6 +2740,22 @@ pub fn setup_note_assets(
                 Some(meshes.add(Cylinder::new(centre_radius(gem, true), 0.02)))
             }
         },
+        face_ring: match neck {
+            NeckStyle::Neon => None,
+            NeckStyle::Instrument => {
+                let (inner, outer) = face_ring_radii(gem);
+                Some(meshes.add(Annulus::new(inner, outer)))
+            }
+        },
+        // Unlit: a lit near-black picks up the key light and the
+        // cap's bloom and came back as dark orange (measured ~100 of
+        // 255 beside a 207 cap). The ring is the strum note's mark;
+        // it has to read black under every light.
+        face_ring_material: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.01, 0.01, 0.012),
+            unlit: true,
+            ..default()
+        }),
         // Emissive white, not lit white: a lit disc would take the
         // lane's colour from the light bouncing off the cap around
         // it and read as a paler patch of the same colour.
@@ -2867,6 +2914,25 @@ pub fn spawn_due_notes(
                 } else {
                     &assets.centre
                 };
+                // The strum note's black ring, flat on the face around
+                // the centre. An annulus is a 2D primitive in the XY
+                // plane; laid flat it becomes the ring on top.
+                if let (false, Some(ring)) = (hopo, &assets.face_ring) {
+                    commands.spawn((
+                        GameplayScreen,
+                        Stage3d,
+                        Note3d {
+                            player: index.0,
+                            event_index: cursor,
+                            lane,
+                        },
+                        Mesh3d(ring.clone()),
+                        MeshMaterial3d(assets.face_ring_material.clone()),
+                        Transform::from_xyz(lane_x(&layout, index.0, lane), 0.104, z)
+                            .with_rotation(Quat::from_rotation_x(-core::f32::consts::FRAC_PI_2)),
+                        RenderLayers::layer(STAGE_LAYER),
+                    ));
+                }
                 if let Some(centre) = centre {
                     commands.spawn((
                         GameplayScreen,
@@ -3802,6 +3868,27 @@ mod instrument_neck_tests {
             gem * HOPO_FACE - hopo > gem * 0.15,
             "a coloured ring must remain"
         );
+    }
+
+    #[test]
+    fn the_strum_note_is_a_black_ring_around_a_small_point() {
+        // The genre's own description, verified against two sources
+        // after the user reported "all buttons now have a white dot":
+        // regular notes have a black circle AROUND the white circle.
+        // So the ring must start at the centre's edge, be wider than
+        // the centre is, and leave coloured cap outside it.
+        let gem = 0.17f32;
+        let centre = centre_radius(gem, false);
+        let (inner, outer) = face_ring_radii(gem);
+        assert!(
+            (inner - centre).abs() < 1e-6,
+            "the ring starts where the point ends"
+        );
+        assert!(
+            outer - inner > centre,
+            "the ring is the feature, wider than the point"
+        );
+        assert!(outer < gem * 0.6, "and coloured cap remains outside it");
     }
 
     #[test]

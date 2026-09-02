@@ -14,6 +14,25 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.27] - 2026-09-02
+
+### Fixed
+
+- **Strum notes no longer wear a naked white dot.** User report:
+  "alle Buttons haben jetzt einen weißen Punkt." Researched against
+  the genre's own documentation instead of a summary of it — two
+  sources agree: *"in the middle of the coloured note is a white
+  circle; regular notes have a black circle **around** this white
+  circle, hammer-ons don't"*, so a strum note reads as a **black ring
+  on top** and a HOPO as a **solid white top**. Round six had put the
+  dark ring OUTSIDE the cap and a bare dot in the middle, which is
+  the wrong structure. Now, round style only: a strum note carries a
+  black ring on its face around a small centre point (the ring is
+  the mark, 44 % of the gem; the point 16 %), the outer edge is thin,
+  and a HOPO keeps its large white cap and no ring. Pinned. On a
+  capture the ring measures ~100/255 against a 208 cap — dark, not
+  black, because the cap's bloom glows over it.
+
 ## [0.13.26] - 2026-09-02
 
 ### Added
