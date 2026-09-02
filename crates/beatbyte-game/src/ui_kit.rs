@@ -543,6 +543,18 @@ pub fn subtitle_text(font: &UiFont) -> impl Bundle {
     )
 }
 
+/// A subtitle that shows DATA — a folder path, a file name — in the
+/// monospace face, so its case and characters are what is there. The
+/// round style's display face is all-caps, and "/USERS/MARTIN/MUSIC"
+/// is not a path anyone has.
+pub fn data_subtitle_text(font: &UiFont) -> impl Bundle {
+    (
+        font.mono_text(SMALL),
+        TextColor(dimmed_subtitle()),
+        TextLayout::default().with_no_wrap(),
+    )
+}
+
 /// The subtitle's colour — dim enough to read as a note, bright
 /// enough to be legible (the idle-row rule).
 #[must_use]

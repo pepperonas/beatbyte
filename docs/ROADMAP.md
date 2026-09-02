@@ -418,8 +418,7 @@ documented conventions and a measured capture of the current build.
 - [x] R4 chrome HUD plates in solo
 - [x] R5 HIT LABELS setting + lower, smaller word on the instrument neck
 - [x] R6 thinner sustains with a pale core
-- [ ] R7 a typeface for the round style — deliberately its own
-  decision (touches the whole design kit and karaoke tracking)
+- [x] R7 a typeface for the round style *(v0.13.30, see below)*
 
 Follow-up commission (2026-09-02, "setzt das um"): the three items
 left out on purpose, done as the genre's conventions in the house's
@@ -432,7 +431,9 @@ own hands — never as anyone's asset.
 - [x] **Band figures** *(v0.13.29)* — original primitive-built
   figures on a riser the neck runs into, beat-driven poses (pinned),
   hype-reactive; never over a note. `gameplay/band.rs`.
-- [ ] **Typeface for the round style** (= R7; OFL, own).
+- [x] **Typeface for the round style** *(v0.13.30)* — Bebas Neue,
+  chosen for measured tabular digits; 1.3× on the shared scale; mono
+  face kept for karaoke and data text.
 
 P3 in the optimization plan is thereby shipped; P6 (the playtest
 pass) is next in that plan's order.

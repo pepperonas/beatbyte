@@ -6,12 +6,30 @@
 
 use bevy::prelude::*;
 
+/// How much larger the display face is set than the pixel face for
+/// the same nominal size — see [`UiFont::text`].
+pub const DISPLAY_SCALE: f32 = 1.3;
+
 /// The UI font, loaded at startup. In the round (non-8-bit) note
-/// style the whole game drops the pixel font for the engine's smooth
-/// built-in face — "not 8-bit" has to include the type.
+/// style the whole game drops the pixel font for a **display face**
+/// of its own — "not 8-bit" has to include the type, and until
+/// v0.13.30 the round style had no voice of its own: it borrowed the
+/// engine's monospace fallback.
+///
+/// The display face is Bebas Neue (OFL, bundled): bold, condensed,
+/// all-caps — the register a stage HUD speaks in — and chosen for a
+/// measured property, **tabular digits**: all ten at the same
+/// advance, so the score counter never jitters. Oswald (ten digit
+/// widths) and Anton (a narrow 1) failed that test.
+///
+/// The engine's monospace face stays for two jobs where a fixed
+/// advance is the point: the karaoke line, laid out glyph by glyph,
+/// and data text — a folder path, a typed search — where all-caps
+/// would misrepresent what is there.
 #[derive(Resource)]
 pub struct UiFont {
     pixel: Handle<Font>,
+    display: Handle<Font>,
     /// Mirrors `Settings::round_gems`; synced every frame.
     pub smooth: bool,
 }
@@ -58,37 +76,36 @@ pub(crate) fn fold_latin(c: char) -> Option<&'static str> {
 }
 
 impl UiFont {
-    /// Text ready for the face this style actually uses.
+    /// Text ready for the display face of this style.
     ///
-    /// Always maps the look-alikes neither face carries; in the smooth
-    /// style it also folds Latin letters onto ASCII, because the
-    /// built-in face has nothing else.
+    /// Maps the look-alikes neither face carries. Both display faces
+    /// draw the Latin repertoire (Press Start 2P: 656 glyphs; Bebas
+    /// Neue: probed for every letter the old fold handled), so
+    /// nothing is folded here any more — "Motörhead" stays
+    /// "Motörhead". The fold lives on in [`Self::mono_safe`], for the
+    /// one face that still needs it.
     #[must_use]
     pub fn safe(&self, text: &str) -> String {
-        let mapped = font_safe(text);
-        if !self.smooth {
-            return mapped;
-        }
-        mapped
+        font_safe(text)
+    }
+
+    /// Text ready for the engine's monospace face, which carries 95
+    /// glyphs — plain ASCII — so Latin letters with diacritics are
+    /// folded onto what it can draw: a plain letter beats a box.
+    #[must_use]
+    pub fn mono_safe(&self, text: &str) -> String {
+        font_safe(text)
             .chars()
             .map(|c| fold_latin(c).map_or_else(|| c.to_string(), ToOwned::to_owned))
             .collect()
     }
 
-    /// Horizontal advance of one glyph, as a fraction of the font
-    /// size. Both faces are true monospaces: Press Start 2P moves a
-    /// full em (measured from the bundled TTF), the engine's smooth
-    /// face 0.6 em - verified against a live frame, after correcting
-    /// for the UI-scale zoom that first made the measurement read
-    /// 0.7.
+    /// A [`TextFont`] in the engine's monospace face, at the given
+    /// size — for the karaoke line and for data text. In the pixel
+    /// style this is the pixel face: that style is monospace already
+    /// and has only one voice.
     #[must_use]
-    pub fn glyph_em(&self) -> f32 {
-        if self.smooth { 0.6 } else { 1.0 }
-    }
-
-    /// A [`TextFont`] in the active style at the given size.
-    #[must_use]
-    pub fn text(&self, size: f32) -> TextFont {
+    pub fn mono_text(&self, size: f32) -> TextFont {
         TextFont {
             font: if self.smooth {
                 Handle::default().into()
@@ -96,6 +113,46 @@ impl UiFont {
                 self.pixel.clone().into()
             },
             font_size: FontSize::Px(size),
+            ..default()
+        }
+    }
+
+    /// Horizontal advance of one glyph of the MONOSPACE face
+    /// ([`Self::mono_text`]), as a fraction of the font size. Press
+    /// Start 2P moves a full em (measured from the bundled TTF), the
+    /// engine's face 0.6 em — verified against a live frame, after
+    /// correcting for the UI-scale zoom that first made the
+    /// measurement read 0.7. The display face is proportional and
+    /// has no single advance; nothing lays it out glyph by glyph.
+    #[must_use]
+    pub fn glyph_em(&self) -> f32 {
+        if self.smooth { 0.6 } else { 1.0 }
+    }
+
+    /// A [`TextFont`] in the active style's display face at the given
+    /// size.
+    ///
+    /// The type scale in `ui_kit` was drawn for Press Start 2P, whose
+    /// capitals fill the whole em. Bebas Neue's reach 70 % of it and
+    /// the face is condensed besides, so at the same pixel size every
+    /// screen read small (seen on the first capture: row labels the
+    /// height of their own margins). The display face is set at
+    /// [`DISPLAY_SCALE`] times the requested size, which puts its
+    /// capitals at ~91 % of the em — the same visual weight the scale
+    /// was designed around.
+    #[must_use]
+    pub fn text(&self, size: f32) -> TextFont {
+        TextFont {
+            font: if self.smooth {
+                self.display.clone().into()
+            } else {
+                self.pixel.clone().into()
+            },
+            font_size: FontSize::Px(if self.smooth {
+                size * DISPLAY_SCALE
+            } else {
+                size
+            }),
             ..default()
         }
     }
@@ -139,12 +196,12 @@ impl Plugin for UiPlugin {
         // Insert at build time, not from a startup system: the initial
         // state's OnEnter may run before startup-command flushes, and
         // every screen's spawn system reads this resource.
-        let handle = app
-            .world()
-            .resource::<AssetServer>()
-            .load("fonts/PressStart2P-Regular.ttf");
+        let server = app.world().resource::<AssetServer>();
+        let pixel = server.load("fonts/PressStart2P-Regular.ttf");
+        let display = server.load("fonts/BebasNeue-Regular.ttf");
         app.insert_resource(UiFont {
-            pixel: handle,
+            pixel,
+            display,
             smooth: false,
         })
         .add_systems(Update, sync_font_style);
@@ -197,30 +254,38 @@ mod tests {
     }
 
     #[test]
-    fn the_smooth_style_folds_what_its_face_cannot_draw() {
-        // Bevy's built-in face carries 95 glyphs — measured — so in
-        // the smooth style a diacritic is a box, and a box is worse
+    fn the_mono_face_folds_what_it_cannot_draw() {
+        // Bevy's built-in face carries 95 glyphs — measured — so on
+        // the karaoke line a diacritic is a box, and a box is worse
         // than a plain letter.
         let smooth = UiFont {
             pixel: Handle::default(),
+            display: Handle::default(),
             smooth: true,
         };
-        assert_eq!(smooth.safe("Skatebård"), "Skatebard");
-        assert_eq!(smooth.safe("Straße"), "Strasse");
-        assert_eq!(smooth.safe("Beyoncé"), "Beyonce");
-        assert_eq!(smooth.safe("Motörhead"), "Motorhead");
+        assert_eq!(smooth.mono_safe("Skatebård"), "Skatebard");
+        assert_eq!(smooth.mono_safe("Straße"), "Strasse");
+        assert_eq!(smooth.mono_safe("Beyoncé"), "Beyonce");
+        assert_eq!(smooth.mono_safe("Motörhead"), "Motorhead");
     }
 
     #[test]
-    fn the_pixel_style_keeps_letters_it_can_draw() {
-        // Press Start 2P has 656 glyphs and renders all of these.
-        // Folding them here would be damage, not safety.
-        let pixel = UiFont {
-            pixel: Handle::default(),
-            smooth: false,
-        };
-        assert_eq!(pixel.safe("Skatebård"), "Skatebård");
-        assert_eq!(pixel.safe("Straße"), "Straße");
+    fn both_display_faces_keep_letters_they_can_draw() {
+        // Press Start 2P has 656 glyphs; Bebas Neue was probed for
+        // every letter the old fold handled and draws them all.
+        // Folding here would be damage, not safety — and until
+        // v0.13.30 the round style DID fold, because it borrowed the
+        // engine's 95-glyph face for everything.
+        for smooth in [false, true] {
+            let font = UiFont {
+                pixel: Handle::default(),
+                display: Handle::default(),
+                smooth,
+            };
+            assert_eq!(font.safe("Skatebård"), "Skatebård", "smooth={smooth}");
+            assert_eq!(font.safe("Straße"), "Straße", "smooth={smooth}");
+            assert_eq!(font.safe("Motörhead"), "Motörhead", "smooth={smooth}");
+        }
     }
 
     #[test]
@@ -229,6 +294,7 @@ mod tests {
         for smooth in [true, false] {
             let font = UiFont {
                 pixel: Handle::default(),
+                display: Handle::default(),
                 smooth,
             };
             assert_eq!(font.safe("Billie ｜ Glastonbury"), "Billie | Glastonbury");

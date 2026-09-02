@@ -432,7 +432,9 @@ fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
             parent.spawn((
                 SettingSubtitle,
                 Text::new(""),
-                ui_kit::subtitle_text(&font),
+                // Data text: the watch folder is a path, and a path
+                // in the display face's all-caps would be a lie.
+                ui_kit::data_subtitle_text(&font),
                 Node {
                     max_width: px(ui_kit::PANEL_WIDTH),
                     margin: UiRect::top(px(10)),

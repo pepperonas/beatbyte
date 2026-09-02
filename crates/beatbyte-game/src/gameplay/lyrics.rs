@@ -289,7 +289,7 @@ pub fn spawn_lyric_display(
         LyricPart,
         LyricPreview,
         Text2d::new(""),
-        font.text(SIZES[1] * PREVIEW_SCALE),
+        font.mono_text(SIZES[1] * PREVIEW_SCALE),
         TextColor(palette::dimmed(palette::TEXT_DIM, 0.55)),
         Anchor::CENTER,
         Transform::from_xyz(0.0, LYRIC_Y, 4.0),
@@ -351,7 +351,7 @@ pub fn update_lyrics(
         // Only tease a line that is actually near (a preview half a
         // song early reads as a stuck display).
         .filter(|line| line.start - position < 14.0)
-        .map(|line| font.safe(&line.text))
+        .map(|line| font.mono_safe(&line.text))
         .unwrap_or_default();
     let size = size_for(settings.lyrics_size);
     let preview_y = LYRIC_Y - size * 1.15 - 12.0;
@@ -369,7 +369,7 @@ pub fn update_lyrics(
 
     // The scrim sizes to whatever is on show.
     let active_line = cue.active.and_then(|index| lyrics.lines.get(index));
-    let active_chars = active_line.map_or(0, |line| font.safe(&line.text).chars().count());
+    let active_chars = active_line.map_or(0, |line| font.mono_safe(&line.text).chars().count());
     let preview_chars = wanted_preview.chars().count();
     let em = font.glyph_em();
     let content_w = (active_chars as f32 * glyph_advance(size * em, active_chars))
@@ -467,7 +467,7 @@ fn spawn_line_glyphs(
     settings: &Settings,
     line: &beatbyte_chart::lyrics::LyricLine,
 ) {
-    let text = font.safe(&line.text);
+    let text = font.mono_safe(&line.text);
     let chars: Vec<char> = text.chars().collect();
     if chars.is_empty() {
         return;
@@ -497,7 +497,7 @@ fn spawn_line_glyphs(
                 home,
             },
             Text2d::new(glyph.to_string()),
-            font.text(advance / em),
+            font.mono_text(advance / em),
             TextColor(palette::dimmed(palette::TEXT, 0.42)),
             Anchor::CENTER,
             Transform::from_translation(home),

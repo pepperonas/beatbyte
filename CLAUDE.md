@@ -73,8 +73,8 @@ tech writer, release manager. Operate accordingly:
   nothing of Bevy; audio knows nothing of Bevy except nothing (it is
   engine-free); game is the only crate that touches Bevy. Keep it so.
 - **No copyrighted assets, music, or trademarks — ever.** All assets
-  original, generated, CC0, or OFL (font: Press Start 2P, bundled with
-  its license). Demo song is synthesized at build time. No rhythm-game
+  original, generated, CC0, or OFL (fonts: Press Start 2P and Bebas
+  Neue, each bundled with its license). Demo song is synthesized at build time. No rhythm-game
   trademarks, logos, names, fonts or copied artwork. New assets are
   recorded in `docs/asset-licenses.md`.
   **What this rule does NOT forbid:** the genre's conventions — a

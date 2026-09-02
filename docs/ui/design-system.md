@@ -52,6 +52,19 @@ factor of 1.2, which is what caught 9 px against 10 px.
 Press Start 2P runs wide, so these are roughly half what a proportional
 face would use at the same apparent size.
 
+**Two faces, one scale.** The 8-bit style sets everything in Press
+Start 2P. The round style sets its display text — headings, rows,
+HUD readouts — in **Bebas Neue** (OFL, bundled): bold, condensed,
+all-caps, chosen for measured tabular digits so the score counter
+never jitters. Because its capitals reach 70 % of the em where Press
+Start 2P's fill it, `UiFont::text` sets the display face at
+`DISPLAY_SCALE` (1.3×) the nominal size; the tokens above stay the
+single scale, and no screen picks a size of its own. Two jobs keep the
+engine's monospace face in the round style, through
+`UiFont::mono_text`: the karaoke line (laid out glyph by glyph on a
+fixed advance) and data text such as the watch-folder path (all-caps
+would misrepresent it).
+
 ## Spacing
 
 A 4 px grid.

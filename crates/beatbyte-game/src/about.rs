@@ -110,7 +110,44 @@ pub fn parse_changelog(text: &str) -> Vec<ChangelogEntry> {
             }
         }
     }
+    for entry in &mut entries {
+        for bullet in &mut entry.bullets {
+            *bullet = plain_text(bullet);
+        }
+    }
     entries
+}
+
+/// Strip the Markdown a CHANGELOG bullet carries for GitHub — bold
+/// and code markers, and link syntax — so the About screen shows the
+/// words and not the markup. It rendered `**A band on the stage**`
+/// with the asterisks for as long as the entries have used them; the
+/// display face made it impossible to overlook. Pure — tested.
+#[must_use]
+pub fn plain_text(markdown: &str) -> String {
+    let mut out = String::with_capacity(markdown.len());
+    let mut rest = markdown;
+    while !rest.is_empty() {
+        if let Some(after) = rest.strip_prefix("**") {
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix('`') {
+            rest = after;
+        } else if rest.starts_with('[')
+            && let Some(close) = rest.find("](")
+            && let Some(end) = rest[close..].find(')')
+        {
+            // [text](url) → text
+            out.push_str(&rest[1..close]);
+            rest = &rest[close + end + 1..];
+        } else {
+            let mut chars = rest.chars();
+            if let Some(c) = chars.next() {
+                out.push(c);
+            }
+            rest = chars.as_str();
+        }
+    }
+    out
 }
 
 /// Greedy word wrap for the game's face. Press Start 2P is a true
@@ -708,6 +745,22 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn bullets_lose_their_markdown_but_keep_their_words() {
+        use super::plain_text;
+        assert_eq!(
+            plain_text("**A band on the stage** (round style)."),
+            "A band on the stage (round style)."
+        );
+        assert_eq!(
+            plain_text("see `docs/x.md` and [the plan](docs/p.md) now"),
+            "see docs/x.md and the plan now"
+        );
+        assert_eq!(plain_text("plain words"), "plain words");
+        // A lone asterisk is not markup and survives.
+        assert_eq!(plain_text("2 * 3"), "2 * 3");
     }
 
     #[test]

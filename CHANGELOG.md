@@ -14,6 +14,37 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.30] - 2026-09-03
+
+### Added
+
+- **The round style has a voice of its own: Bebas Neue** (OFL,
+  bundled with its licence, recorded in `asset-licenses.md`). Bold,
+  condensed, all-caps — the register a stage HUD and a setlist speak
+  in — set for headings, rows and readouts. Chosen by measurement,
+  not taste: of the three candidates, only Bebas Neue has fully
+  tabular digits (all ten at one advance), which the score counter
+  needs; Oswald had ten widths and Anton a narrow 1. Until now the
+  round style borrowed the engine's 95-glyph monospace fallback for
+  everything.
+- Because its capitals reach 70 % of the em where the pixel face
+  fills it, the display face is set at 1.3× the nominal size — the
+  first capture had row labels the height of their own margins. The
+  type scale stays one scale.
+- The engine's monospace face keeps two jobs in the round style: the
+  karaoke line (laid out glyph by glyph on a fixed advance) and data
+  text — the watch-folder path — where all-caps would misrepresent
+  what is there.
+
+### Fixed
+
+- The round style no longer folds "Motörhead" to "Motorhead": the
+  new face draws the letters the old fallback could not. The fold
+  lives on only for the karaoke line's face, as `mono_safe`.
+- The About screen's changelog bullets showed their Markdown —
+  `**bold**`, backticks, link syntax — as long as entries have used
+  it; the display face made it impossible to overlook. Stripped.
+
 ## [0.13.29] - 2026-09-03
 
 ### Added
