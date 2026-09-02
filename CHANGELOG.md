@@ -14,6 +14,16 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.28] - 2026-09-02
+
+### Changed
+
+- `CLAUDE.md` now says what the asset rule does **not** forbid: the
+  genre's conventions, drawn in our own hands. The old wording ("no
+  lookalike trade dress") had made every reference-driven round hold
+  back. It also records the round-six lesson as a gotcha: a summary
+  inside the repository is not a source.
+
 ## [0.13.27] - 2026-09-02
 
 ### Fixed

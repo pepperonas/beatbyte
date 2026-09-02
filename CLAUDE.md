@@ -75,8 +75,19 @@ tech writer, release manager. Operate accordingly:
 - **No copyrighted assets, music, or trademarks — ever.** All assets
   original, generated, CC0, or OFL (font: Press Start 2P, bundled with
   its license). Demo song is synthesized at build time. No rhythm-game
-  trademarks or lookalike trade dress. New assets are recorded in
-  `docs/asset-licenses.md`.
+  trademarks, logos, names, fonts or copied artwork. New assets are
+  recorded in `docs/asset-licenses.md`.
+  **What this rule does NOT forbid:** the genre's conventions — a
+  ruled neck with strings, round gems in GRYBO, a black ring on a
+  strum note and a white top on a hammer-on, a rock meter as a dial,
+  a power meter as a tube, star-shaped power notes, flames on a hit.
+  Those are the vocabulary every guitar game shares, and a commission
+  that names a specific game as the reference is a commission to
+  adopt its conventions **drawn in our own hands**, not to hedge.
+  (Clarified 2026-09-02: the earlier wording "no lookalike trade
+  dress" made every reference-driven round hold back — the rock
+  meter waited months as "mechanics", typography was never touched —
+  when the user's ask was the look.)
 - **No secrets in the repo.** No tokens, keys, or credentials, not
   even in CI logs or test fixtures.
 
@@ -346,3 +357,13 @@ artifact, smoke-test it (neutral CWD!), then
 - **`dist/` is a build product.** It was once committed (118 MB, and
   CI shipped the stale DMG inside every artifact); it is gitignored —
   keep it that way.
+- **A summary inside this repository is not a source.** Round six of
+  the look plan built the gem from a trait table an earlier round had
+  written ("dark ring, white centre") instead of from the material,
+  and shipped the wrong structure — the user's report was exact:
+  "alle Buttons haben jetzt einen weißen Punkt." When a commission
+  names a specific reference, re-check the visual claims against it
+  (or say plainly that it could not be reached), and look at the
+  result against the reference before measuring anything. Pixel
+  metrics prove a change happened; only looking proves it is the
+  right one.
