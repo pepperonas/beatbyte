@@ -453,10 +453,12 @@ the real system rather than by hand.
   typed (v0.13.34). Found in the same review and left as a fact:
   `fold_latin` folds Western European diacritics only — a title in
   `š`/`ł`/`ő` is found by its own letters, not by their base form.
-- [ ] Not seen on screen: both changes were built and gated while
-  the screen was locked (captures black, keys go to the lock
-  screen). The hold bar's look and the overlay's table on the HUD
-  are unverified pixels until a run with the screen open.
+- [x] Seen on screen once it unlocked (v0.13.36): the bar, the
+  overlay's table and the L key, driven by real key events and
+  captured by window ID. The look found two more faults — the kit's
+  translucent frame let the rows show through the bar, and an empty
+  search kept the previous song's details line and the first
+  letter's hint — both fixed and pinned.
 
 ## Fire and lightning (DONE 2026-09-03, v0.13.31)
 

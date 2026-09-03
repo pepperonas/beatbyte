@@ -423,6 +423,25 @@ fn cursor_after_change(
     }
 }
 
+/// What the rows are built FROM, for deciding whether to rebuild
+/// them: the order and the difficulty — and, while the list is empty,
+/// the filter, because the only row then is the "no match for …"
+/// hint and it quotes the filter. Without that third part the hint
+/// showed the first letter that emptied the list ("q") for the rest
+/// of the word ("queen"): an empty order equals an empty order.
+fn rebuild_key(
+    order: &[usize],
+    difficulty: Difficulty,
+    filter: &str,
+) -> (Vec<usize>, Difficulty, String) {
+    let quoted = if order.is_empty() {
+        filter.to_owned()
+    } else {
+        String::new()
+    };
+    (order.to_vec(), difficulty, quoted)
+}
+
 /// `m:ss` for a duration column.
 fn length_label(duration_s: Option<f64>) -> String {
     duration_s.map_or_else(
@@ -543,6 +562,9 @@ fn spawn_hold_bar(commands: &mut Commands, font: &UiFont) {
                 justify_content: JustifyContent::Center,
                 ..default()
             },
+            // A scrim: the list dims behind the panel, so the panel
+            // reads as the one thing on screen.
+            BackgroundColor(palette::BACKGROUND.with_alpha(0.6)),
             Pickable::IGNORE,
             GlobalZIndex(40),
             Visibility::Hidden,
@@ -550,6 +572,13 @@ fn spawn_hold_bar(commands: &mut Commands, font: &UiFont) {
         .with_children(|layer| {
             layer
                 .spawn(ui_kit::panel_centered())
+                // The kit's frame is translucent by design — it sits
+                // on the page ground. Over a list, the rows showed
+                // through the bar (seen on screen); an overlay's
+                // plate is opaque. FULLY opaque: Bevy blends alpha in
+                // linear light, and at 0.96 the bright row text still
+                // came through as legible grey (seen too).
+                .insert(BackgroundColor(palette::SURFACE))
                 .with_children(|panel| {
                     panel.spawn((
                         Text::new("LEAVING SEARCH"),
@@ -1460,45 +1489,59 @@ fn refresh_browser(
         )
         .value;
     }
-    let Some(entry) = view
+    // The details line follows the highlighted song — and goes BLANK
+    // when there is none: with the early return it kept the last
+    // song's line under an empty list ("1/71 … 336 notes" beneath
+    // "no match", seen on screen).
+    let entry = view
         .order
         .get(cursor.0)
-        .and_then(|i| library.entries.get(*i))
-    else {
-        return;
-    };
+        .and_then(|i| library.entries.get(*i));
     if let Ok(mut text) = texts.p0().single_mut() {
-        let duration = entry.duration_s.map_or_else(String::new, |d| {
-            format!("  {}:{:02}", d as u32 / 60, d as u32 % 60)
+        let line = detail_line(cursor.0, view.order.len(), entry, selected.0, |entry| {
+            scores
+                .best(&entry.title, &entry.artist, selected.0)
+                .map(|b| (b.score, b.accuracy))
         });
-        let best = scores
-            .best(&entry.title, &entry.artist, selected.0)
-            .map_or_else(
-                || "no record yet".to_owned(),
-                |b| format!("best {}  ({:.1}%)", b.score, b.accuracy * 100.0),
-            );
-        // Where you are in the list, and how long it is. With the
-        // rows now clipped to a window, nothing else says whether
-        // three songs follow or thirty.
-        // Position counts the VIEW - under a filter, "3/7" answers
-        // "of the matches", which is the question being asked.
-        let rating = entry
-            .rating(selected.0)
-            .map_or_else(|| "-".to_owned(), |r| "*".repeat(usize::from(r)));
-        let notes = entry
-            .note_count(selected.0)
-            .map_or_else(|| "-".to_owned(), |n| n.to_string());
-        let line = format!(
-            "{}/{}   {:.0} BPM{duration}   <{}>   {rating}   {notes} notes   {best}",
-            cursor.0 + 1,
-            view.order.len(),
-            entry.bpm,
-            selected.0.display_name().to_uppercase()
-        );
         if text.0 != line {
             text.0 = line;
         }
     }
+}
+
+/// The details line under the list: position in the VIEW (under a
+/// filter, "3/7" answers "of the matches"), tempo, length, the
+/// selected difficulty with its rating and note count, and the best
+/// record. Empty when no song is highlighted. Pure — tested.
+fn detail_line(
+    cursor: usize,
+    count: usize,
+    entry: Option<&SongEntry>,
+    difficulty: Difficulty,
+    best: impl Fn(&SongEntry) -> Option<(u64, f64)>,
+) -> String {
+    let Some(entry) = entry else {
+        return String::new();
+    };
+    let duration = entry.duration_s.map_or_else(String::new, |d| {
+        format!("  {}:{:02}", d as u32 / 60, d as u32 % 60)
+    });
+    let best = best(entry).map_or_else(
+        || "no record yet".to_owned(),
+        |(score, accuracy)| format!("best {score}  ({:.1}%)", accuracy * 100.0),
+    );
+    let rating = entry
+        .rating(difficulty)
+        .map_or_else(|| "-".to_owned(), |r| "*".repeat(usize::from(r)));
+    let notes = entry
+        .note_count(difficulty)
+        .map_or_else(|| "-".to_owned(), |n| n.to_string());
+    format!(
+        "{}/{count}   {:.0} BPM{duration}   <{}>   {rating}   {notes} notes   {best}",
+        cursor + 1,
+        entry.bpm,
+        difficulty.display_name().to_uppercase()
+    )
 }
 
 /// The import hint / status line.
@@ -1544,7 +1587,7 @@ fn sync_view(
     selected: Res<SelectedDifficulty>,
     lists: Query<Entity, With<SongList>>,
     fresh: Query<(), Added<SongList>>,
-    mut rendered: Local<Option<(Vec<usize>, Difficulty)>>,
+    mut rendered: Local<Option<(Vec<usize>, Difficulty, String)>>,
     mut last_filter: Local<String>,
 ) {
     let entered = !fresh.is_empty();
@@ -1576,7 +1619,7 @@ fn sync_view(
     // Rows rebuild only when their CONTENT changed — the order, or
     // the difficulty the cells follow. A pure status change (opening
     // the search) touches neither.
-    let key = (raw.order.clone(), difficulty);
+    let key = rebuild_key(&raw.order, difficulty, &raw.filter);
     if (entered || library.is_changed() || rendered.as_ref() != Some(&key))
         && let Ok(list) = lists.single()
     {
@@ -1841,6 +1884,34 @@ mod view_tests {
         assert_eq!(find("elle l'a"), vec![2]);
         // The column join is not a place a word can live.
         assert_eq!(find("mariablondie"), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn an_empty_list_rebuilds_when_the_filter_changes_a_full_one_does_not() {
+        // The hint row quotes the filter; the song rows do not.
+        let empty_q = rebuild_key(&[], Difficulty::Medium, "q");
+        let empty_queen = rebuild_key(&[], Difficulty::Medium, "queen");
+        assert_ne!(empty_q, empty_queen, "the hint must follow the word");
+        let full_a = rebuild_key(&[0, 1], Difficulty::Medium, "a");
+        let full_ab = rebuild_key(&[0, 1], Difficulty::Medium, "ab");
+        assert_eq!(full_a, full_ab, "same rows, no rebuild per keystroke");
+    }
+
+    #[test]
+    fn the_details_line_goes_blank_under_an_empty_list() {
+        let songs = lib();
+        let line = detail_line(0, 4, songs.first(), Difficulty::Medium, |_| {
+            Some((1234, 0.987))
+        });
+        assert_eq!(
+            line,
+            "1/4   120 BPM  4:08   <MEDIUM>   *   100 notes   best 1234  (98.7%)"
+        );
+        assert_eq!(
+            detail_line(0, 0, None, Difficulty::Medium, |_| None),
+            "",
+            "no song, no line - not the previous song's line"
+        );
     }
 
     #[test]

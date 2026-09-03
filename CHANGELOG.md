@@ -14,6 +14,25 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.36] - 2026-09-03
+
+### Fixed
+
+- **The "leaving search" panel is opaque.** Seen with the screen open
+  after 0.13.34 shipped: the kit's frame is translucent by design and
+  the song rows read straight through the bar. The plate is solid
+  now and the list dims behind it. (A 96 % alpha was tried first and
+  still showed the row text as legible grey — Bevy blends in linear
+  light.)
+- **Under an empty search the screen tells the truth.** The "no match
+  for …" hint quoted the first letter that emptied the list (`q`) for
+  the rest of the word (`queen`), because an empty order equals an
+  empty order and the rows never rebuilt; the rebuild key includes
+  the filter while the list is empty. And the details line kept the
+  LAST song's figures under the empty list ("1/71  121 BPM … 336
+  notes" beneath "no match") — it is blank when nothing is
+  highlighted.
+
 ## [0.13.35] - 2026-09-03
 
 ### Changed
