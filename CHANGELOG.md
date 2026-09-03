@@ -14,6 +14,40 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.34] - 2026-09-03
+
+### Fixed
+
+- **A search beginning with q works** (`song_select.rs`). Since
+  0.13.17 a tap of `q` left the search instead of landing in it —
+  the search reader tested the physical key before the typing loop
+  and dropped the typed character with it — so nothing whose title
+  or artist starts with q could be found. `q` is a letter again.
+- **Every word of the filter has to match, in any column.** The
+  filter was one phrase looked for inside each column separately,
+  so "queen rhapsody" (an artist and a title) found nothing. It is
+  split on whitespace now and each word must appear somewhere in
+  title, artist or genre; every phrase that matched before still
+  does, and leading, trailing and doubled spaces no longer matter.
+- **The search shows what was typed.** Characters were lowercased on
+  the way in and folded again when applied; the field now keeps the
+  text as typed (folding happens only when the filter is applied),
+  so Backspace removes exactly the character that was typed — a
+  letter whose lowercase form is two code points used to leave a
+  stray half behind.
+
+### Changed
+
+- **Leaving the search is a HELD q.** Hold `q` for one second: a bar
+  in a centred panel fills over that second, and when it is full the
+  search closes and keeps its filter (Esc still closes AND clears).
+  Release before the second is up and the q is typed instead — the
+  letter is written on release, and the moment another key arrives
+  a pending q is written first, so rolling from q into the next key
+  keeps its order. The OS's key repeats of the held q are not
+  letters. Pinned with a keyboard-message harness and six mutation
+  probes.
+
 ## [0.13.33] - 2026-09-03
 
 ### Added

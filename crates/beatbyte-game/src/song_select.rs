@@ -126,12 +126,106 @@ pub struct BrowserView {
     pub order: Vec<usize>,
     /// Active sort.
     pub sort: SortMode,
-    /// Active search text (already lowercase).
+    /// Active search text, as typed. Case and diacritics are folded
+    /// when the filter is APPLIED (`build_order`), never on the way
+    /// in: the field shows what the player wrote, and Backspace
+    /// removes exactly the character they typed — folding first
+    /// turned some letters into two code points and left a stray
+    /// half behind after one Backspace.
     pub filter: String,
     /// Whether typing currently goes into the filter.
     pub searching: bool,
     /// Whether the sort runs against its default direction.
     pub flipped: bool,
+}
+
+/// How long the letter q has to be held to leave the search.
+pub const HOLD_S: f32 = 1.0;
+
+/// The verdict of one frame on a pending q.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum HoldVerdict {
+    /// No q is pending.
+    Idle,
+    /// Still held; the fraction of [`HOLD_S`] elapsed.
+    Holding(f32),
+    /// Released before the second was up: it was this letter.
+    TypeQ(char),
+    /// Held the full second: leave the search.
+    Close,
+}
+
+/// A press of the letter q while searching, waiting to learn whether
+/// it was a letter or a gesture.
+///
+/// q is both: tapped, it is a character like any other (a search for
+/// "Queen" must work); held for [`HOLD_S`], it leaves the search. The
+/// letter is therefore written on RELEASE, not on press — and the
+/// moment any other character arrives, the pending q is written first,
+/// so rolling from q into the next key ("qu…" with q still down) keeps
+/// its order. Pure, so the timing is tested without a keyboard.
+#[derive(Resource, Default, Debug, PartialEq)]
+pub struct QuitHold {
+    /// The physical key the pending q came in on (release is tracked
+    /// on the physical key, whatever the layout calls it), the letter
+    /// as typed (q or Q), and how long the key has been down.
+    pending: Option<(KeyCode, char, f32)>,
+}
+
+impl QuitHold {
+    /// A fresh press of `letter` (q or Q) on this physical key.
+    pub fn begin(&mut self, key: KeyCode, letter: char) {
+        self.pending = Some((key, letter, 0.0));
+    }
+
+    /// The physical key a pending q sits on, if any — its OS key
+    /// repeats are not letters.
+    #[must_use]
+    pub fn key(&self) -> Option<KeyCode> {
+        self.pending.map(|(key, _, _)| key)
+    }
+
+    /// Another character arrived: the pending q, if any, is a letter
+    /// and must be written before it. Returns that letter.
+    pub fn flush(&mut self) -> Option<char> {
+        self.pending.take().map(|(_, letter, _)| letter)
+    }
+
+    /// Forget any pending q without writing it (the search closed
+    /// some other way).
+    pub fn clear(&mut self) {
+        self.pending = None;
+    }
+
+    /// One frame: `still_down` is the physical key's state now.
+    pub fn tick(&mut self, still_down: bool, dt: f32) -> HoldVerdict {
+        let Some((_, letter, held)) = self.pending.as_mut() else {
+            return HoldVerdict::Idle;
+        };
+        if !still_down {
+            let letter = *letter;
+            self.pending = None;
+            return HoldVerdict::TypeQ(letter);
+        }
+        *held += dt;
+        if *held >= HOLD_S {
+            self.pending = None;
+            return HoldVerdict::Close;
+        }
+        HoldVerdict::Holding(*held / HOLD_S)
+    }
+
+    /// The fill of the hold bar, while a q is held.
+    #[must_use]
+    pub fn progress(&self) -> Option<f32> {
+        self.pending
+            .map(|(_, _, held)| (held / HOLD_S).clamp(0.0, 1.0))
+    }
+}
+
+/// Whether a typed string is the letter q, in either case.
+fn is_q(text: &str) -> bool {
+    text.eq_ignore_ascii_case("q")
 }
 
 /// Case- and diacritic-insensitive haystack for filtering: `fold_latin`
@@ -148,17 +242,32 @@ fn fold(text: &str) -> String {
         .to_lowercase()
 }
 
-/// Whether an entry matches the (already folded) filter.
-fn matches_filter(entry: &SongEntry, folded: &str) -> bool {
-    if folded.is_empty() {
+/// The filter as words: folded, split on whitespace. Empty for a
+/// blank (or all-space) filter.
+fn filter_words(filter: &str) -> Vec<String> {
+    fold(filter).split_whitespace().map(str::to_owned).collect()
+}
+
+/// Whether an entry matches every word of the (already folded and
+/// split) filter, in any of its columns.
+///
+/// Word by word, not as one phrase: "queen rhapsody" names an artist
+/// and a title, and the old whole-phrase test looked for that string
+/// inside each column separately and found nothing. Every phrase that
+/// matched before still matches — its words are substrings of it —
+/// and the columns are joined with a space, which no word contains,
+/// so a word cannot straddle two of them.
+fn matches_filter(entry: &SongEntry, words: &[String]) -> bool {
+    if words.is_empty() {
         return true;
     }
-    fold(&entry.title).contains(folded)
-        || fold(&entry.artist).contains(folded)
-        || entry
-            .genre
-            .as_deref()
-            .is_some_and(|g| fold(g).contains(folded))
+    let haystack = format!(
+        "{} {} {}",
+        fold(&entry.title),
+        fold(&entry.artist),
+        entry.genre.as_deref().map(fold).unwrap_or_default()
+    );
+    words.iter().all(|word| haystack.contains(word.as_str()))
 }
 
 /// The display order for the current sort and filter. Pure: same
@@ -172,11 +281,11 @@ fn build_order(
     filter: &str,
     best: impl Fn(&SongEntry) -> Option<u64>,
 ) -> Vec<usize> {
-    let folded = fold(filter);
+    let words = filter_words(filter);
     let mut order: Vec<usize> = entries
         .iter()
         .enumerate()
-        .filter(|(_, entry)| matches_filter(entry, &folded))
+        .filter(|(_, entry)| matches_filter(entry, &words))
         .map(|(i, _)| i)
         .collect();
     let tie = |i: &usize| (fold(&entries[*i].title), *i);
@@ -271,7 +380,7 @@ fn status_text(view: &BrowserView) -> String {
     let direction = if view.flipped { " (reversed)" } else { "" };
     if view.searching {
         format!(
-            "SEARCH: {}_   ({} match{})   Q keeps it  ESC clears",
+            "SEARCH: {}_   ({} match{})   hold Q keeps it  ESC clears",
             view.filter,
             view.order.len(),
             if view.order.len() == 1 { "" } else { "es" }
@@ -332,6 +441,7 @@ impl Plugin for SongSelectPlugin {
             .init_resource::<BrowserCursor>()
             .init_resource::<crate::mc::McQueue>()
             .init_resource::<BrowserView>()
+            .init_resource::<QuitHold>()
             .add_systems(Startup, load_browser_prefs)
             .add_systems(OnEnter(AppState::SongSelect), spawn_browser)
             .add_systems(
@@ -340,6 +450,7 @@ impl Plugin for SongSelectPlugin {
                     browser_input,
                     poll_lyrics_lookup,
                     search_sort_input,
+                    drive_hold_bar,
                     sync_view,
                     refresh_browser,
                     rebuild_after_import,
@@ -396,8 +507,103 @@ const COL_NOTES: f32 = 56.0;
 const COL_RATING: f32 = 62.0;
 const COL_BEST: f32 = 92.0;
 
-fn spawn_browser(mut commands: Commands, font: Res<UiFont>, view: Res<BrowserView>) {
+fn spawn_browser(
+    mut commands: Commands,
+    font: Res<UiFont>,
+    view: Res<BrowserView>,
+    mut hold: ResMut<QuitHold>,
+) {
+    // A q held when the screen was left is not held now.
+    hold.clear();
     spawn_shell(&mut commands, &font, &view);
+    spawn_hold_bar(&mut commands, &font);
+}
+
+/// The hold bar's root: a full-window layer that centres its panel.
+#[derive(Component)]
+struct HoldBarRoot;
+
+/// The bar's fill, whose width is the hold's progress.
+#[derive(Component)]
+struct HoldBarFill;
+
+/// The (hidden) "leaving search" bar. Its own layer over the browser,
+/// centred in the window, above everything else on the screen; it
+/// shows only while q is held in the search.
+fn spawn_hold_bar(commands: &mut Commands, font: &UiFont) {
+    commands
+        .spawn((
+            BrowserScreen,
+            HoldBarRoot,
+            Node {
+                position_type: PositionType::Absolute,
+                width: percent(100),
+                height: percent(100),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            Pickable::IGNORE,
+            GlobalZIndex(40),
+            Visibility::Hidden,
+        ))
+        .with_children(|layer| {
+            layer
+                .spawn(ui_kit::panel_centered())
+                .with_children(|panel| {
+                    panel.spawn((
+                        Text::new("LEAVING SEARCH"),
+                        font.text(ui_kit::ROW),
+                        TextColor(palette::BRAND),
+                    ));
+                    panel
+                        .spawn((
+                            Node {
+                                width: percent(100),
+                                height: px(10),
+                                border_radius: BorderRadius::all(px(5)),
+                                ..default()
+                            },
+                            BackgroundColor(palette::TEXT.with_alpha(ui_kit::FILL_ALPHA)),
+                        ))
+                        .with_children(|bar| {
+                            bar.spawn((
+                                HoldBarFill,
+                                Node {
+                                    width: percent(0),
+                                    height: percent(100),
+                                    border_radius: BorderRadius::all(px(5)),
+                                    ..default()
+                                },
+                                BackgroundColor(palette::BRAND),
+                            ));
+                        });
+                    panel.spawn((
+                        Text::new("keep holding Q to leave, release to type it"),
+                        ui_kit::subtitle_text(font),
+                    ));
+                });
+        });
+}
+
+/// Show the bar while a q is held, filled to the hold's progress.
+fn drive_hold_bar(
+    hold: Res<QuitHold>,
+    mut roots: Query<&mut Visibility, With<HoldBarRoot>>,
+    mut fills: Query<&mut Node, With<HoldBarFill>>,
+) {
+    let Ok(mut visibility) = roots.single_mut() else {
+        return;
+    };
+    match hold.progress() {
+        Some(progress) => {
+            *visibility = Visibility::Visible;
+            if let Ok(mut node) = fills.single_mut() {
+                node.width = percent(progress * 100.0);
+            }
+        }
+        None => *visibility = Visibility::Hidden,
+    }
 }
 
 /// One SMALL-font cell of fixed width.
@@ -519,58 +725,86 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
 /// beyond the view. Runs AFTER `browser_input` in the chain, so the
 /// Esc that closes the search is not also read as "back to menu" -
 /// `browser_input` still sees the searching flag of this frame.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn search_sort_input(
     keys: Res<ButtonInput<KeyCode>>,
+    time: Res<Time>,
     mut typed: MessageReader<bevy::input::keyboard::KeyboardInput>,
     mut view: ResMut<BrowserView>,
+    mut hold: ResMut<QuitHold>,
     headers: Query<(&SortHeader, &Interaction), Changed<Interaction>>,
     mut settings: ResMut<crate::config::Settings>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
     if view.searching {
-        // Q CLOSES THE SEARCH and keeps the filter (Esc below closes
-        // AND clears). Checked before the typing loop and the events
-        // are dropped, or the same key press would both leave the
-        // field and leave a "q" behind in it - the reported bug.
-        //
-        // ⚠️ The cost: a title containing "q" cannot be typed into
-        // the search any more. The player asked for this key
-        // explicitly; if a "Queen" ever needs finding, this is the
-        // line to revisit.
-        if keys.just_pressed(KeyCode::KeyQ) {
-            view.searching = false;
-            typed.clear();
-            sounds.write(crate::sfx::UiSound::Back);
-            return;
-        }
         // Printable keys EDIT THE FILTER - every letter shortcut is
         // suppressed while searching (in `browser_input`, off this
         // same flag), or typing "elle" would open the editor and arm
         // a delete on the way.
+        //
+        // The letter q is the one exception, and only in TIMING: a
+        // tap is the letter, a hold of `HOLD_S` leaves the search (and
+        // keeps the filter; Esc below leaves AND clears). The first
+        // wiring made q leave on the tap, which made every title and
+        // artist beginning with q unsearchable — the reported bug.
         for event in typed.read() {
             if !event.state.is_pressed() {
                 continue;
             }
-            if let bevy::input::keyboard::Key::Character(text) = &event.logical_key {
-                for c in text.chars().filter(|c| !c.is_control()) {
-                    for low in c.to_lowercase() {
-                        view.filter.push(low);
+            match &event.logical_key {
+                bevy::input::keyboard::Key::Character(text) if is_q(text) => {
+                    // The OS repeats a held key; those repeats are
+                    // the same gesture, not more letters.
+                    if event.repeat && hold.key() == Some(event.key_code) {
+                        continue;
                     }
+                    if let Some(letter) = hold.flush() {
+                        view.filter.push(letter);
+                    }
+                    hold.begin(event.key_code, text.chars().next().unwrap_or('q'));
                 }
-            } else if event.logical_key == bevy::input::keyboard::Key::Space {
-                view.filter.push(' ');
-            } else if event.logical_key == bevy::input::keyboard::Key::Backspace {
-                // Handled here rather than via `just_pressed` so the
-                // OS key repeat erases while held, like every text
-                // field.
-                view.filter.pop();
+                bevy::input::keyboard::Key::Character(text) => {
+                    if let Some(letter) = hold.flush() {
+                        view.filter.push(letter);
+                    }
+                    view.filter.extend(text.chars().filter(|c| !c.is_control()));
+                }
+                bevy::input::keyboard::Key::Space => {
+                    if let Some(letter) = hold.flush() {
+                        view.filter.push(letter);
+                    }
+                    view.filter.push(' ');
+                }
+                bevy::input::keyboard::Key::Backspace => {
+                    // Handled here rather than via `just_pressed` so
+                    // the OS key repeat erases while held, like every
+                    // text field. A pending q is written first: the
+                    // keys were "q, Backspace", and that is what they
+                    // do.
+                    if let Some(letter) = hold.flush() {
+                        view.filter.push(letter);
+                    }
+                    view.filter.pop();
+                }
+                _ => {}
             }
+        }
+        let still_down = hold.key().is_some_and(|key| keys.pressed(key));
+        match hold.tick(still_down, time.delta_secs()) {
+            HoldVerdict::TypeQ(letter) => view.filter.push(letter),
+            HoldVerdict::Close => {
+                view.searching = false;
+                sounds.write(crate::sfx::UiSound::Back);
+                return;
+            }
+            HoldVerdict::Idle | HoldVerdict::Holding(_) => {}
         }
         // Esc leaves search AND clears it: the recoverable state is
         // "the whole list", not "a filter you can no longer see".
         if keys.just_pressed(KeyCode::Escape) {
             view.searching = false;
             view.filter.clear();
+            hold.clear();
         }
         return;
     }
@@ -1583,6 +1817,33 @@ mod view_tests {
     }
 
     #[test]
+    fn every_word_of_the_filter_must_match_in_some_column() {
+        // "toto rock" names the artist and the genre; "blondie maria"
+        // the artist and the title. The whole-phrase test found
+        // neither.
+        let find = |filter: &str| {
+            build_order(
+                &lib(),
+                SortMode::Standard,
+                false,
+                Difficulty::Medium,
+                filter,
+                |_| None,
+            )
+        };
+        assert_eq!(find("toto rock"), vec![1]);
+        assert_eq!(find("blondie maria"), vec![0]);
+        assert_eq!(find("toto maria"), Vec::<usize>::new(), "AND, not OR");
+        // Whitespace around and between words is not part of a word.
+        assert_eq!(find("  toto  "), vec![1]);
+        assert_eq!(find("   "), vec![0, 1, 2, 3]);
+        // A phrase inside one column still matches, as before.
+        assert_eq!(find("elle l'a"), vec![2]);
+        // The column join is not a place a word can live.
+        assert_eq!(find("mariablondie"), Vec::<usize>::new());
+    }
+
+    #[test]
     fn the_cursor_follows_its_song_through_a_sort_change() {
         // Standard order, cursor on "Ella" (position 2). After
         // sorting by title, Ella sits at position 1 - and that is
@@ -1790,5 +2051,214 @@ mod view_tests {
         assert_eq!(clip_chars("short", 10), "short");
         assert_eq!(clip_chars("exactlyten", 10), "exactlyten");
         assert_eq!(clip_chars("elevenchars", 10), "elevencha~");
+    }
+}
+
+/// The search input as the player meets it: real keyboard messages
+/// through the real system, one frame at a time.
+#[cfg(test)]
+mod search_input_tests {
+    use super::*;
+    use bevy::input::ButtonState;
+    use bevy::input::keyboard::{Key, KeyboardInput};
+
+    /// A minimal app that runs `search_sort_input` and nothing else.
+    fn app() -> App {
+        let mut app = App::new();
+        app.add_message::<KeyboardInput>()
+            .add_message::<crate::sfx::UiSound>()
+            .init_resource::<ButtonInput<KeyCode>>()
+            .init_resource::<Time>()
+            .init_resource::<BrowserView>()
+            .init_resource::<QuitHold>()
+            .insert_resource(crate::config::Settings::default())
+            .add_systems(Update, search_sort_input);
+        app.world_mut().resource_mut::<BrowserView>().searching = true;
+        app
+    }
+
+    /// Press a key: the physical state AND the typed message, as the
+    /// keyboard plugin would produce them together.
+    fn press(app: &mut App, code: KeyCode, text: &str) {
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(code);
+        app.world_mut().write_message(KeyboardInput {
+            key_code: code,
+            logical_key: Key::Character(text.into()),
+            state: ButtonState::Pressed,
+            text: Some(text.into()),
+            repeat: false,
+            window: Entity::PLACEHOLDER,
+        });
+    }
+
+    fn release(app: &mut App, code: KeyCode) {
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release(code);
+    }
+
+    /// One frame of `dt` seconds.
+    fn frame(app: &mut App, dt: f32) {
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_secs_f32(dt));
+        app.update();
+        // What the input plugin does at the start of every frame.
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .clear();
+    }
+
+    fn view(app: &App) -> (bool, String) {
+        let view = app.world().resource::<BrowserView>();
+        (view.searching, view.filter.clone())
+    }
+
+    #[test]
+    fn a_tapped_q_is_a_letter_like_any_other() {
+        // THE bug: "q" closed the search instead of landing in it,
+        // so nothing beginning with q could be searched for.
+        let mut app = app();
+        press(&mut app, KeyCode::KeyQ, "q");
+        frame(&mut app, 0.016);
+        release(&mut app, KeyCode::KeyQ);
+        frame(&mut app, 0.016);
+        press(&mut app, KeyCode::KeyU, "u");
+        frame(&mut app, 0.016);
+        assert_eq!(view(&app), (true, "qu".to_owned()));
+    }
+
+    #[test]
+    fn rolling_from_q_into_the_next_key_keeps_the_order() {
+        // Typists press the next key before releasing the last one.
+        // The pending q must land BEFORE the u, not after it.
+        let mut app = app();
+        press(&mut app, KeyCode::KeyQ, "q");
+        frame(&mut app, 0.016);
+        press(&mut app, KeyCode::KeyU, "u");
+        frame(&mut app, 0.016);
+        release(&mut app, KeyCode::KeyQ);
+        frame(&mut app, 0.016);
+        assert_eq!(view(&app), (true, "qu".to_owned()));
+    }
+
+    #[test]
+    fn a_held_q_leaves_the_search_after_one_second_and_keeps_the_filter() {
+        let mut app = app();
+        press(&mut app, KeyCode::KeyU, "u");
+        frame(&mut app, 0.016);
+        press(&mut app, KeyCode::KeyQ, "q");
+        // Nine tenths of a second: still searching, q still pending.
+        for _ in 0..9 {
+            frame(&mut app, 0.1);
+        }
+        assert_eq!(view(&app), (true, "u".to_owned()));
+        assert!(
+            app.world().resource::<QuitHold>().progress().is_some(),
+            "the bar is showing"
+        );
+        // The OS repeats the held key: not more letters.
+        app.world_mut().write_message(KeyboardInput {
+            key_code: KeyCode::KeyQ,
+            logical_key: Key::Character("q".into()),
+            state: ButtonState::Pressed,
+            text: Some("q".into()),
+            repeat: true,
+            window: Entity::PLACEHOLDER,
+        });
+        frame(&mut app, 0.11);
+        assert_eq!(
+            view(&app),
+            (false, "u".to_owned()),
+            "left the search, filter kept, no q written"
+        );
+        assert!(app.world().resource::<QuitHold>().progress().is_none());
+    }
+
+    #[test]
+    fn a_q_released_early_is_typed_with_its_case() {
+        let mut app = app();
+        press(&mut app, KeyCode::KeyQ, "Q");
+        for _ in 0..5 {
+            frame(&mut app, 0.1);
+        }
+        release(&mut app, KeyCode::KeyQ);
+        frame(&mut app, 0.016);
+        assert_eq!(view(&app), (true, "Q".to_owned()));
+    }
+
+    #[test]
+    fn escape_clears_the_filter_and_any_pending_q() {
+        let mut app = app();
+        press(&mut app, KeyCode::KeyU, "u");
+        frame(&mut app, 0.016);
+        press(&mut app, KeyCode::KeyQ, "q");
+        frame(&mut app, 0.1);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Escape);
+        frame(&mut app, 0.016);
+        assert_eq!(view(&app), (false, String::new()));
+        assert!(app.world().resource::<QuitHold>().progress().is_none());
+    }
+
+    #[test]
+    fn the_filter_keeps_what_was_typed_and_backspace_removes_one_character() {
+        let mut app = app();
+        press(&mut app, KeyCode::KeyM, "M");
+        frame(&mut app, 0.016);
+        press(&mut app, KeyCode::KeyO, "ö");
+        frame(&mut app, 0.016);
+        assert_eq!(view(&app).1, "Mö", "as typed, not folded on the way in");
+        app.world_mut().write_message(KeyboardInput {
+            key_code: KeyCode::Backspace,
+            logical_key: Key::Backspace,
+            state: ButtonState::Pressed,
+            text: None,
+            repeat: false,
+            window: Entity::PLACEHOLDER,
+        });
+        frame(&mut app, 0.016);
+        assert_eq!(view(&app).1, "M");
+    }
+}
+
+#[cfg(test)]
+mod hold_tests {
+    use super::*;
+
+    #[test]
+    fn a_tap_is_the_letter_and_a_hold_is_the_gesture() {
+        let mut hold = QuitHold::default();
+        assert_eq!(hold.tick(false, 0.016), HoldVerdict::Idle);
+        hold.begin(KeyCode::KeyQ, 'q');
+        assert_eq!(hold.tick(true, 0.05), HoldVerdict::Holding(0.05));
+        assert_eq!(hold.tick(false, 0.016), HoldVerdict::TypeQ('q'));
+        assert_eq!(hold.progress(), None);
+
+        hold.begin(KeyCode::KeyQ, 'q');
+        assert_eq!(hold.tick(true, 0.5), HoldVerdict::Holding(0.5));
+        assert_eq!(hold.tick(true, 0.49), HoldVerdict::Holding(0.99));
+        assert_eq!(hold.tick(true, 0.02), HoldVerdict::Close);
+        assert_eq!(hold.tick(true, 0.02), HoldVerdict::Idle, "closed once");
+    }
+
+    #[test]
+    fn flushing_hands_back_the_letter_once() {
+        let mut hold = QuitHold::default();
+        assert_eq!(hold.flush(), None);
+        hold.begin(KeyCode::KeyQ, 'Q');
+        assert_eq!(hold.key(), Some(KeyCode::KeyQ));
+        assert_eq!(hold.flush(), Some('Q'));
+        assert_eq!(hold.flush(), None);
+        assert_eq!(hold.key(), None);
+    }
+
+    #[test]
+    fn q_is_recognised_in_either_case_and_nothing_else() {
+        assert!(is_q("q") && is_q("Q"));
+        assert!(!is_q("qu") && !is_q("a") && !is_q(""));
     }
 }
