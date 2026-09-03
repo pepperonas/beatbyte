@@ -14,6 +14,26 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.35] - 2026-09-03
+
+### Changed
+
+- **The debug overlay opens on `L`** (the key left of `1` still
+  works; `F3` is gone — macOS takes it for Mission Control unless a
+  system setting says otherwise, so it worked on some machines and
+  not others). Inside a song `L` is bound to nothing else; the
+  browser's `L` (lyrics lookup) is a different state, and a test
+  asks the binding map, not the source text, that no fret, strum,
+  hype, pause or menu key is the overlay's.
+- **The frame rate is the overlay's headline**: a large figure in the
+  display face above the table, green at the display's rate, amber
+  under 55 fps, red under 30.
+- **The overlay is a table.** Every line is a section label
+  (`CLOCK`, `FRAME`, `TEMPO`, `NOTES`, `P1`…, `SET`) followed by up to
+  three cells of key and right-aligned value in fixed columns, so a
+  figure stays in its place while it changes and two rows of the
+  same kind read against each other.
+
 ## [0.13.34] - 2026-09-03
 
 ### Fixed
