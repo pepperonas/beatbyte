@@ -197,15 +197,24 @@ impl QuitHold {
         self.pending = None;
     }
 
-    /// One frame: `still_down` is the physical key's state now.
-    pub fn tick(&mut self, still_down: bool, dt: f32) -> HoldVerdict {
+    /// One frame. `released` is whether the key's own release event
+    /// arrived; `still_down` is the physical key's state now. A key
+    /// that is up WITHOUT having been released was taken away — the
+    /// window lost focus and every key was let go at once — and that
+    /// is neither a tap nor a hold: the pending q is dropped silently
+    /// (seen: a Cmd-Tab mid-hold left a "q" in the field).
+    pub fn tick(&mut self, still_down: bool, released: bool, dt: f32) -> HoldVerdict {
         let Some((_, letter, held)) = self.pending.as_mut() else {
             return HoldVerdict::Idle;
         };
-        if !still_down {
+        if released {
             let letter = *letter;
             self.pending = None;
             return HoldVerdict::TypeQ(letter);
+        }
+        if !still_down {
+            self.pending = None;
+            return HoldVerdict::Idle;
         }
         *held += dt;
         if *held >= HOLD_S {
@@ -228,8 +237,9 @@ fn is_q(text: &str) -> bool {
     text.eq_ignore_ascii_case("q")
 }
 
-/// Case- and diacritic-insensitive haystack for filtering: `fold_latin`
-/// is what makes "Sacre" find "Sacré".
+/// Case- and diacritic-insensitive key for SORTING: `fold_latin` is
+/// what puts "Sacré" beside "Sacre". Matching lives in
+/// [`crate::search`], which also drops apostrophes and punctuation.
 fn fold(text: &str) -> String {
     text.chars()
         .flat_map(|c| {
@@ -240,34 +250,6 @@ fn fold(text: &str) -> String {
         })
         .collect::<String>()
         .to_lowercase()
-}
-
-/// The filter as words: folded, split on whitespace. Empty for a
-/// blank (or all-space) filter.
-fn filter_words(filter: &str) -> Vec<String> {
-    fold(filter).split_whitespace().map(str::to_owned).collect()
-}
-
-/// Whether an entry matches every word of the (already folded and
-/// split) filter, in any of its columns.
-///
-/// Word by word, not as one phrase: "queen rhapsody" names an artist
-/// and a title, and the old whole-phrase test looked for that string
-/// inside each column separately and found nothing. Every phrase that
-/// matched before still matches — its words are substrings of it —
-/// and the columns are joined with a space, which no word contains,
-/// so a word cannot straddle two of them.
-fn matches_filter(entry: &SongEntry, words: &[String]) -> bool {
-    if words.is_empty() {
-        return true;
-    }
-    let haystack = format!(
-        "{} {} {}",
-        fold(&entry.title),
-        fold(&entry.artist),
-        entry.genre.as_deref().map(fold).unwrap_or_default()
-    );
-    words.iter().all(|word| haystack.contains(word.as_str()))
 }
 
 /// The display order for the current sort and filter. Pure: same
@@ -281,13 +263,21 @@ fn build_order(
     filter: &str,
     best: impl Fn(&SongEntry) -> Option<u64>,
 ) -> Vec<usize> {
-    let words = filter_words(filter);
-    let mut order: Vec<usize> = entries
+    // The filter, fuzzily: every entry gets a score or is out, and
+    // the survivors are RANKED by it below, after the sort — so the
+    // song the player meant sits first and the chosen sort only
+    // breaks ties. See `crate::search` for the rules.
+    let query = crate::search::words(filter);
+    let scored: Vec<(usize, u32)> = entries
         .iter()
         .enumerate()
-        .filter(|(_, entry)| matches_filter(entry, &words))
-        .map(|(i, _)| i)
+        .filter_map(|(i, entry)| {
+            crate::search::Haystack::new(&entry.title, &entry.artist, entry.genre.as_deref())
+                .score(&query)
+                .map(|score| (i, score))
+        })
         .collect();
+    let mut order: Vec<usize> = scored.iter().map(|(i, _)| *i).collect();
     let tie = |i: &usize| (fold(&entries[*i].title), *i);
     match sort {
         SortMode::Standard => {}
@@ -352,6 +342,11 @@ fn build_order(
     if flipped && sort != SortMode::Standard {
         order.reverse();
     }
+    if !query.is_empty() {
+        // Stable: equal scores keep the sort's order.
+        let score_of = |i: &usize| scored.iter().find(|(j, _)| j == i).map_or(0, |(_, s)| *s);
+        order.sort_by_key(|i| std::cmp::Reverse(score_of(i)));
+    }
     order
 }
 
@@ -380,7 +375,7 @@ fn status_text(view: &BrowserView) -> String {
     let direction = if view.flipped { " (reversed)" } else { "" };
     if view.searching {
         format!(
-            "SEARCH: {}_   ({} match{})   hold Q keeps it  ESC clears",
+            "SEARCH: {}_   ({} match{}, best first)   hold Q keeps it  ESC clears",
             view.filter,
             view.order.len(),
             if view.order.len() == 1 { "" } else { "es" }
@@ -389,7 +384,7 @@ fn status_text(view: &BrowserView) -> String {
         format!("sort {}{direction}   F to search", view.sort.label())
     } else {
         format!(
-            "sort {}{direction}   filter: {} ({} match{})",
+            "sort {}{direction}   filter: {} ({} match{}, best first)   F edits  ESC clears",
             view.sort.label(),
             view.filter,
             view.order.len(),
@@ -529,11 +524,16 @@ const COL_BEST: f32 = 92.0;
 fn spawn_browser(
     mut commands: Commands,
     font: Res<UiFont>,
-    view: Res<BrowserView>,
+    mut view: ResMut<BrowserView>,
     mut hold: ResMut<QuitHold>,
 ) {
-    // A q held when the screen was left is not held now.
+    // A q held when the screen was left is not held now — and the
+    // search is not open either: coming back from a song into a
+    // field that swallows every letter (S, E, L, Q, P all "dead")
+    // read as a broken screen. The FILTER stays, so the next song
+    // is still a match away; F reopens the field, Esc clears it.
     hold.clear();
+    view.searching = false;
     spawn_shell(&mut commands, &font, &view);
     spawn_hold_bar(&mut commands, &font);
 }
@@ -776,8 +776,12 @@ fn search_sort_input(
         // keeps the filter; Esc below leaves AND clears). The first
         // wiring made q leave on the tap, which made every title and
         // artist beginning with q unsearchable — the reported bug.
+        let mut released = false;
         for event in typed.read() {
             if !event.state.is_pressed() {
+                if hold.key() == Some(event.key_code) {
+                    released = true;
+                }
                 continue;
             }
             match &event.logical_key {
@@ -791,6 +795,10 @@ fn search_sort_input(
                         view.filter.push(letter);
                     }
                     hold.begin(event.key_code, text.chars().next().unwrap_or('q'));
+                    info!(
+                        "search: q down on {:?} (repeat {})",
+                        event.key_code, event.repeat
+                    );
                 }
                 bevy::input::keyboard::Key::Character(text) => {
                     if let Some(letter) = hold.flush() {
@@ -819,9 +827,13 @@ fn search_sort_input(
             }
         }
         let still_down = hold.key().is_some_and(|key| keys.pressed(key));
-        match hold.tick(still_down, time.delta_secs()) {
-            HoldVerdict::TypeQ(letter) => view.filter.push(letter),
+        match hold.tick(still_down, released, time.delta_secs()) {
+            HoldVerdict::TypeQ(letter) => {
+                info!("search: q released early -> typed '{letter}'");
+                view.filter.push(letter);
+            }
             HoldVerdict::Close => {
+                info!("search: q held {HOLD_S}s -> search closed, filter kept");
                 view.searching = false;
                 sounds.write(crate::sfx::UiSound::Back);
                 return;
@@ -831,6 +843,7 @@ fn search_sort_input(
         // Esc leaves search AND clears it: the recoverable state is
         // "the whole list", not "a filter you can no longer see".
         if keys.just_pressed(KeyCode::Escape) {
+            info!("search: Esc -> search closed, filter cleared");
             view.searching = false;
             view.filter.clear();
             hold.clear();
@@ -853,6 +866,7 @@ fn search_sort_input(
         }
     }
     if open_search {
+        info!("search: opened");
         view.searching = true;
         sounds.write(crate::sfx::UiSound::Confirm);
     }
@@ -952,7 +966,7 @@ fn browser_input(
     mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
     map: Res<crate::controls::InputMap>,
-    view: Res<BrowserView>,
+    mut view: ResMut<BrowserView>,
     pads: Query<&Gamepad>,
     mut library: ResMut<SongLibrary>,
     mut cursor: ResMut<BrowserCursor>,
@@ -973,6 +987,16 @@ fn browser_input(
     };
     let searching = view.searching;
     let clicked_back = ui_kit::back_pressed(&mut start.back_button);
+    // Esc with a filter still narrowing the list CLEARS it first and
+    // leaves on the next press — the whole list is the state to
+    // return to, and a filtered list with no field open had no key
+    // that cleared it. The button and the right mouse button leave
+    // straight away: they are pointed at the door, not at the list.
+    if !searching && nav.back && !view.filter.is_empty() {
+        view.filter.clear();
+        sounds.write(crate::sfx::UiSound::Back);
+        return;
+    }
     let back = (!searching && (nav.back || clicked_back))
         || pointer_in.mouse.just_pressed(MouseButton::Right);
     let count = view.order.len();
@@ -1915,6 +1939,54 @@ mod view_tests {
     }
 
     #[test]
+    fn a_filter_ranks_the_best_match_first_and_tolerates_a_typo() {
+        let songs = vec![
+            entry("Lifeline", "Someone", None, 200.0),
+            entry("Life", "Des'ree", Some("Pop"), 200.0),
+            entry("Livin' On A Prayer", "Bon Jovi", Some("Rock"), 250.0),
+            entry("Smells Like Teen Spirit", "Nirvana", Some("Grunge"), 300.0),
+        ];
+        let find = |filter: &str| {
+            build_order(
+                &songs,
+                SortMode::Standard,
+                false,
+                Difficulty::Medium,
+                filter,
+                |_| None,
+            )
+        };
+        // Standard order would put "Lifeline" first; the exact hit
+        // outranks the prefix hit, and the typo-distance hit ("like")
+        // comes last.
+        assert_eq!(find("life"), vec![1, 0, 3]);
+        // A missed letter, a swapped pair, an apostrophe not typed.
+        assert_eq!(find("smels like"), vec![3]);
+        assert_eq!(find("nirvana spirti"), vec![3]);
+        assert_eq!(find("livin prayr"), vec![2]);
+        assert_eq!(find("bon jovi"), vec![2], "artist");
+        assert_eq!(
+            find("seven nation armi"),
+            Vec::<usize>::new(),
+            "not in this library"
+        );
+        // Three letters get no slack: "lie" is not "life".
+        assert_eq!(find("lie"), Vec::<usize>::new());
+        // A sort still orders EQUAL scores: both "Life…" titles are
+        // prefix hits for "lif", and by title Life sorts before
+        // Lifeline.
+        let by_title = build_order(
+            &songs,
+            SortMode::Title,
+            false,
+            Difficulty::Medium,
+            "lif",
+            |_| None,
+        );
+        assert_eq!(by_title, vec![1, 0]);
+    }
+
+    #[test]
     fn the_cursor_follows_its_song_through_a_sort_change() {
         // Standard order, cursor on "Ella" (position 2). After
         // sorting by title, Ella sits at position 1 - and that is
@@ -2168,6 +2240,22 @@ mod search_input_tests {
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .release(code);
+        app.world_mut().write_message(KeyboardInput {
+            key_code: code,
+            logical_key: Key::Character("".into()),
+            state: ButtonState::Released,
+            text: None,
+            repeat: false,
+            window: Entity::PLACEHOLDER,
+        });
+    }
+
+    /// What a focus loss does: every key let go at once, no release
+    /// message for any of them.
+    fn focus_lost(app: &mut App) {
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release_all();
     }
 
     /// One frame of `dt` seconds.
@@ -2261,6 +2349,19 @@ mod search_input_tests {
     }
 
     #[test]
+    fn a_focus_loss_mid_hold_types_nothing_and_closes_nothing() {
+        let mut app = app();
+        press(&mut app, KeyCode::KeyU, "u");
+        frame(&mut app, 0.016);
+        press(&mut app, KeyCode::KeyQ, "q");
+        frame(&mut app, 0.3);
+        focus_lost(&mut app);
+        frame(&mut app, 0.016);
+        assert_eq!(view(&app), (true, "u".to_owned()));
+        assert!(app.world().resource::<QuitHold>().progress().is_none());
+    }
+
+    #[test]
     fn escape_clears_the_filter_and_any_pending_q() {
         let mut app = app();
         press(&mut app, KeyCode::KeyU, "u");
@@ -2303,17 +2404,26 @@ mod hold_tests {
     #[test]
     fn a_tap_is_the_letter_and_a_hold_is_the_gesture() {
         let mut hold = QuitHold::default();
-        assert_eq!(hold.tick(false, 0.016), HoldVerdict::Idle);
+        assert_eq!(hold.tick(false, false, 0.016), HoldVerdict::Idle);
         hold.begin(KeyCode::KeyQ, 'q');
-        assert_eq!(hold.tick(true, 0.05), HoldVerdict::Holding(0.05));
-        assert_eq!(hold.tick(false, 0.016), HoldVerdict::TypeQ('q'));
+        assert_eq!(hold.tick(true, false, 0.05), HoldVerdict::Holding(0.05));
+        assert_eq!(hold.tick(false, true, 0.016), HoldVerdict::TypeQ('q'));
         assert_eq!(hold.progress(), None);
 
         hold.begin(KeyCode::KeyQ, 'q');
-        assert_eq!(hold.tick(true, 0.5), HoldVerdict::Holding(0.5));
-        assert_eq!(hold.tick(true, 0.49), HoldVerdict::Holding(0.99));
-        assert_eq!(hold.tick(true, 0.02), HoldVerdict::Close);
-        assert_eq!(hold.tick(true, 0.02), HoldVerdict::Idle, "closed once");
+        assert_eq!(hold.tick(true, false, 0.5), HoldVerdict::Holding(0.5));
+        assert_eq!(hold.tick(true, false, 0.49), HoldVerdict::Holding(0.99));
+        assert_eq!(hold.tick(true, false, 0.02), HoldVerdict::Close);
+        assert_eq!(
+            hold.tick(true, false, 0.02),
+            HoldVerdict::Idle,
+            "closed once"
+        );
+
+        // Taken away without a release: dropped, not typed.
+        hold.begin(KeyCode::KeyQ, 'q');
+        assert_eq!(hold.tick(false, false, 0.1), HoldVerdict::Idle);
+        assert_eq!(hold.progress(), None);
     }
 
     #[test]

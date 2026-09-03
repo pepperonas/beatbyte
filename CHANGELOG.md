@@ -14,6 +14,41 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.37] - 2026-09-03
+
+### Changed
+
+- **The song search is fuzzy and ranked** (`search.rs`, new). Typed
+  words are matched against the words of title, artist and genre
+  after folding case, diacritics, apostrophes and punctuation
+  ("dont" finds "Don't Stop Believin'"); a word of four letters or
+  more may be one edit off ("smels" → "smells", "armi" → "army"),
+  eight or more two edits; three letters must match exactly. Every
+  word must hit somewhere (AND), and the list is ORDERED by how well
+  it hit — exact above prefix above substring above typo, title and
+  artist counting double — with the chosen sort breaking ties, so
+  the song you meant is the first row and Enter plays it. Verified
+  on the real library by typing "smels like", "dont stop",
+  "luftbalons", "metalica nothing", "gall" and "warriors wrold"
+  into the running game: each found its one song.
+- **Coming back to the browser never lands you inside the search
+  field.** After a song the search stayed open, every letter went
+  into the filter and every letter shortcut (S, E, L, Q, P) was
+  dead — the screen looked broken. The field is closed on entry; the
+  filter stays, and the status line says how to edit or clear it.
+- **Esc clears a filter before it leaves.** With the field closed
+  and a filter still narrowing the list there was no key that
+  cleared it; Esc now clears first and leaves on the next press
+  (the MAIN MENU button and the right mouse button leave at once).
+
+### Fixed
+
+- **Losing the window mid-hold no longer types a q.** A Cmd-Tab
+  while `q` was held made Bevy let every key go without a release
+  event; the hold read that as "released early" and wrote the
+  letter. A release is the key's own release event now; a key taken
+  away is dropped silently.
+
 ## [0.13.36] - 2026-09-03
 
 ### Fixed

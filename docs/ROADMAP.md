@@ -459,6 +459,18 @@ the real system rather than by hand.
   translucent frame let the rows show through the bar, and an empty
   search kept the previous song's details line and the first
   letter's hint — both fixed and pinned.
+- [x] **The search is fuzzy and ranked** (v0.13.37, `search.rs`;
+  user: "die suche … ist immer noch komplett buggy … am besten als
+  fuzzy matching"). Word scores exact > prefix > inside > one edit
+  (four letters up, first letter fixed) > two edits (eight up), AND
+  over words, title/artist double weight, the list ordered by score.
+  Entering the browser closes the field (it used to stay open after
+  a song, every shortcut dead), Esc clears a kept filter before it
+  leaves, and a key taken away by focus loss no longer types a q.
+  Verified by typing seven misspelt queries into the running game on
+  the real library — each found its one song — with the harness
+  waiting for the game's own "search: opened" line before typing
+  (twice the keys had gone elsewhere: focus, not the game).
 
 ## Fire and lightning (DONE 2026-09-03, v0.13.31)
 

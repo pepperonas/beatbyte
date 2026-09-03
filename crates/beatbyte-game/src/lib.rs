@@ -28,6 +28,7 @@ pub mod palette;
 pub mod prompts;
 pub mod results;
 pub mod scores;
+pub mod search;
 pub mod settings_ui;
 pub mod sfx;
 mod shapes;
