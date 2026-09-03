@@ -14,6 +14,24 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.38] - 2026-09-03
+
+### Fixed
+
+- **A "|" in a title can no longer overwrite another song's record**
+  (roadmap C5). The scoreboard keyed records by the string
+  `title|artist|difficulty`, so "A|B" by "C" and "A" by "B|C" shared
+  one entry — and "|" is a legal file-name character on macOS and
+  Linux. Records are keyed by a struct now, and the file is version
+  2: a list of records, each carrying title, artist and difficulty as
+  fields, in a stable order. **An existing scores file migrates on
+  first load with every record intact** — verified on a real
+  24-record file (24 in, 24 out, none changed) — and the legacy file
+  is kept beside it once as `scores.v1.bak.json`. The one ambiguity
+  a legacy key can hold (a pipe inside the title or the artist) is
+  read the way the old lookup read it: the title ends at the first
+  pipe.
+
 ## [0.13.37] - 2026-09-03
 
 ### Changed
