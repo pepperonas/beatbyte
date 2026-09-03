@@ -14,6 +14,26 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.39] - 2026-09-03
+
+### Added
+
+- **Gamepad hot-plug during a song** (roadmap C4, `gameplay/hotplug.rs`).
+  A controller that disconnects mid-song pauses the song and the pause
+  screen names the player whose controller is gone ("P2'S CONTROLLER
+  DISCONNECTED - PLUG IT BACK IN"); a controller that connects while
+  someone is waiting goes to the player who has waited longest — the
+  same seat, session and score, only the device behind it changes —
+  and the line clears. Resuming stays the player's call. Before, a
+  vanished pad made every remaining note a miss and plugging it back
+  in did nothing, because the player still pointed at the dead entity.
+  A solo player is paused too (they hold every device, and the one
+  that vanished may have been the guitar in their hands) but is not
+  "lost" — the keyboard still plays. The policy is a pure function of
+  the connection event and the seats, tested without a controller;
+  the wiring is tested in a headless app with real states and
+  messages. ⚠️ Not performed here: an actual unplug on real hardware.
+
 ## [0.13.38] - 2026-09-03
 
 ### Fixed

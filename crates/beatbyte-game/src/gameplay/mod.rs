@@ -17,6 +17,7 @@ pub mod debug_overlay;
 pub mod feedback;
 pub mod flame;
 pub mod fx;
+pub mod hotplug;
 pub mod hud;
 pub mod input;
 pub mod lyrics;
@@ -355,6 +356,12 @@ impl Plugin for GameplayPlugin {
                     .run_if(in_state(GamePhase::Playing)),
             )
             .add_systems(Update, pause_input.run_if(in_state(AppState::Gameplay)))
+            // Hot-plug: before the pause menu reads its input, so a
+            // reconnect on the same frame is already in place.
+            .add_systems(
+                Update,
+                hotplug::watch_pads.run_if(in_state(AppState::Gameplay)),
+            )
             .add_systems(
                 Update,
                 practice_loop_wrap.run_if(in_state(GamePhase::Playing)),
@@ -364,7 +371,11 @@ impl Plugin for GameplayPlugin {
             .init_resource::<PracticeState>()
             .add_systems(
                 Update,
-                (pause_menu_input, refresh_pause_menu)
+                (
+                    pause_menu_input,
+                    refresh_pause_menu,
+                    hotplug::refresh_pad_note,
+                )
                     .chain()
                     .run_if(in_state(GamePhase::Paused)),
             )
@@ -1084,6 +1095,14 @@ fn spawn_pause_overlay(
                 Text::new("PAUSED"),
                 font.text(crate::ui_kit::WORDMARK),
                 TextColor(palette::BRAND),
+            ));
+            // Empty unless a controller is missing; `refresh_pad_note`
+            // keeps it current while the menu is up.
+            parent.spawn((
+                hotplug::PadNote,
+                Text::new(""),
+                font.text(crate::ui_kit::ROW),
+                TextColor(palette::MISS),
             ));
             parent.spawn(crate::ui_kit::panel()).with_children(|panel| {
                 for (index, item) in PAUSE_ROWS.iter().enumerate() {
