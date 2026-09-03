@@ -14,6 +14,25 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.33] - 2026-09-03
+
+### Added
+
+- **A debug overlay** (`gameplay/debug_overlay.rs`): during a song,
+  the key left of `1` (`Backquote` on a US board, `IntlBackslash` on
+  a German one — both count) or `F3` shows a monospace block under
+  the mode badge with live facts read straight from the game state:
+  song clock, visual clock, the audio device's position and the
+  drift between them, clock rate and pause state; smoothed frame
+  time and fps, entity count, autopilot; tempo and beat, note events
+  judged and left; per player score, streak, multiplier, accuracy,
+  judgment counts, overstrums, hype and rock meter, mean hit
+  offset, held frets, active sustain, spawn cursor and fret heat;
+  the settings that affect judgment and drawing. Off by default,
+  toggled at any moment without a restart, read-only — it borrows
+  everything immutably except its own text, plate and frame
+  average. Each toggle is logged.
+
 ## [0.13.32] - 2026-09-03
 
 ### Changed

@@ -13,6 +13,7 @@
 
 pub mod arc;
 pub mod band;
+pub mod debug_overlay;
 pub mod feedback;
 pub mod flame;
 pub mod fx;
@@ -306,8 +307,19 @@ impl Plugin for GameplayPlugin {
                     lyrics::spawn_lyric_display,
                     fx::spawn_fx_scenery,
                     crate::theme::spawn_backdrop,
+                    debug_overlay::spawn_debug_overlay,
                 )
                     .chain(),
+            )
+            .init_resource::<debug_overlay::DebugOverlay>()
+            .add_systems(
+                Update,
+                (
+                    debug_overlay::toggle_debug_overlay,
+                    debug_overlay::update_debug_overlay,
+                )
+                    .chain()
+                    .run_if(in_state(AppState::Gameplay)),
             )
             .add_systems(
                 Update,
