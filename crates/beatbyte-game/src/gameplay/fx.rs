@@ -77,6 +77,20 @@ struct Particle {
     age: f32,
     ttl: f32,
     gravity: f32,
+    /// A spark off a flame: it cools as it flies (yellow → red) and
+    /// rises instead of falling. Round style only — the 8-bit
+    /// confetti keeps its colour and its fall.
+    ember: bool,
+}
+
+/// The gravity a burst gets: confetti falls, embers rise.
+///
+/// Positive pulls down. An ember's negative value is buoyancy — the
+/// upward acceleration of hot gas — which is what makes sparks from
+/// a flame climb rather than rain. Pure — tested.
+#[must_use]
+pub fn burst_gravity(ember: bool) -> f32 {
+    if ember { -380.0 } else { 700.0 }
 }
 
 /// Trauma-based camera shake (decays; offset ∝ trauma²).
@@ -213,6 +227,7 @@ fn react_to_feedback(
                         count,
                         speed,
                         event_index,
+                        settings.round_particles,
                     );
                     if spice {
                         // A few white sparks make Perfect feel electric.
@@ -225,6 +240,7 @@ fn react_to_feedback(
                             scaled_count(5, settings.intensity),
                             speed * 1.4,
                             event_index + 7,
+                            settings.round_particles,
                         );
                     }
                 }
@@ -265,6 +281,7 @@ fn react_to_feedback(
                             scaled_count(10, settings.intensity),
                             340.0,
                             lane.index() * 13 + player * 101,
+                            false,
                         );
                     }
                 }
@@ -286,6 +303,7 @@ fn spawn_burst(
     count: usize,
     speed: f32,
     seed: usize,
+    ember: bool,
 ) {
     for i in 0..count {
         if *live >= MAX_PARTICLES {
@@ -294,9 +312,11 @@ fn spawn_burst(
         *live += 1;
         let h = hash01(seed * 31 + i);
         let h2 = hash01(seed * 57 + i * 3 + 1);
-        // Upward-biased fan.
-        let angle = core::f32::consts::PI * (0.15 + 0.7 * h);
-        let magnitude = speed * (0.5 + 0.8 * h2);
+        // Upward-biased fan; an ember's fan is narrower — sparks
+        // leave a flame upward, not sideways.
+        let spread = if ember { 0.45 } else { 0.7 };
+        let angle = core::f32::consts::PI * (0.5 - spread / 2.0 + spread * h);
+        let magnitude = speed * (0.5 + 0.8 * h2) * if ember { 0.55 } else { 1.0 };
         let size = 3.0 + 4.0 * hash01(seed + i * 11);
         commands.spawn((
             GameplayScreen,
@@ -304,7 +324,8 @@ fn spawn_burst(
                 velocity: Vec2::new(angle.cos() * magnitude, angle.sin() * magnitude),
                 age: 0.0,
                 ttl: 0.35 + 0.3 * h,
-                gravity: 700.0,
+                gravity: burst_gravity(ember),
+                ember,
             },
             Sprite {
                 image: soft.clone().unwrap_or_default(),
@@ -344,7 +365,13 @@ fn simulate_particles(
         transform.translation.x += particle.velocity.x * dt;
         transform.translation.y += particle.velocity.y * dt;
         let life = 1.0 - particle.age / particle.ttl;
-        sprite.color = sprite.color.with_alpha(life);
+        if particle.ember {
+            // Cooling: the same ramp the 3D embers use, so the two
+            // layers agree on what a dying spark looks like.
+            sprite.color = super::flame::ember_color(1.0 - life).with_alpha(life);
+        } else {
+            sprite.color = sprite.color.with_alpha(life);
+        }
     }
 }
 
@@ -389,6 +416,9 @@ fn sustain_sparks(
                 ticks.min(2),
                 130.0,
                 sustain_index * 101 + i + (time.elapsed_secs() * 60.0) as usize,
+                // Sustain sparks are embers too in the round style —
+                // they leave a burning fret.
+                settings.round_particles,
             );
         }
     }
@@ -515,6 +545,8 @@ fn celebrate_outro(
         scaled_count(16, settings.intensity),
         360.0,
         due as usize * 31,
+        // The outro salvo is confetti in every style.
+        false,
     );
 }
 
@@ -568,6 +600,12 @@ fn reset_camera(mut camera: Query<&mut Transform, With<Camera2d>>) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn embers_rise_and_confetti_falls() {
+        assert!(super::burst_gravity(true) < 0.0, "an ember is buoyant");
+        assert!(super::burst_gravity(false) > 0.0, "confetti falls");
+    }
+
     use super::{flash_alpha, scaled_count};
 
     #[test]

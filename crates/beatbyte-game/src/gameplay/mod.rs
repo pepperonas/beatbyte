@@ -11,8 +11,10 @@
 //! of them; every system below iterates players instead of assuming
 //! one.
 
+pub mod arc;
 pub mod band;
 pub mod feedback;
+pub mod flame;
 pub mod fx;
 pub mod hud;
 pub mod input;

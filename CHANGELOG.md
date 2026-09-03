@@ -14,6 +14,49 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.31] - 2026-09-03
+
+### Added
+
+- **The hit flame is fire** (round style; `gameplay/flame.rs`). A
+  hit lights three nested bodies per fret — a white-gold core, an
+  orange-to-lane mantle, a dark aura in the lane's colour — each
+  with its own flicker in height and lean (two incommensurable
+  rates, 9–14 Hz), on a rounded foot; six embers rise from the tip
+  with buoyancy and a sway and cool from yellow through orange to
+  red; a small warm light follows the flame so the board takes its
+  glow. Three phases: ignite (life overshoots to 1.15, near-white
+  core), flare, die (height falls faster than girth, colour cools).
+  Everything is pre-spawned and driven by pure functions of life,
+  time and a seed — no allocation per frame, no per-hit spawn. Rapid
+  hits re-raise the flame rather than stack; a new ember shower
+  needs 80 ms since the last. `reduced_flashing` removes flicker and
+  embers, `particles` off removes embers, `fx_intensity` scales
+  height and ember count. The neon stage keeps its cone.
+- **The Star-Power arc** (`gameplay/arc.rs`). While Hype runs, both
+  rails crackle with lightning: chains of thin additive segments
+  whose endpoints jump to a new shape 24 times a second, with gaps,
+  forks thrown off outward and up, and the odd bright flash — the
+  genre's electric edge, in the project's own vocabulary. Fixed
+  pools, one shared material, transforms only. Under
+  `reduced_flashing` it becomes a slow wander with no gaps or
+  flashes. (Commissioned mid-round: a first pass built a sheet of
+  flame licks along the rails, which read as an ice fence — the user
+  asked for the bolt instead, and the fire came out again.)
+- Round-style hit sparks in the 2D layer now **rise and cool** like
+  the 3D embers (buoyancy instead of gravity, the same colour ramp);
+  the 8-bit confetti keeps its colour and its fall.
+
+### Changed
+
+- **Every note on the instrument neck is the same size** (user:
+  "alle Töne sollen gleich groß sein"). The HOPO's white cap is its
+  mark; the smaller face on top of it made the notes look uneven.
+  The neon stage keeps its smaller HOPO.
+- Fret heat (press, hit, held) is published as a resource
+  (`FretHeat`) by the receptor system, so the flame reads the same
+  numbers the ring, the fill and the burst do.
+
 ## [0.13.30] - 2026-09-03
 
 ### Added

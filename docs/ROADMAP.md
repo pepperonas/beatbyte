@@ -438,6 +438,22 @@ own hands — never as anyone's asset.
 P3 in the optimization plan is thereby shipped; P6 (the playtest
 pass) is next in that plan's order.
 
+## Fire and lightning (DONE 2026-09-03, v0.13.31)
+
+Two-part commission: animate hits with a flame, then make the flames
+realistic. Inventory, realism analysis and measures in the session
+report; the code carries the reasoning at every constant.
+
+- [x] Hit flame: three nested bodies + flicker + embers + light,
+  pure functions pinned and mutation-probed (`gameplay/flame.rs`);
+  p99 frame time unchanged at 17–20 ms (display-paced runs).
+- [x] Star-Power edge: **lightning arcs** (`gameplay/arc.rs`) — the
+  user redirected from a flame sheet mid-round.
+- [x] Equal note sizes on the instrument neck.
+- [ ] A noise-driven flame shader would be the realism step above
+  this (soft volumetric edge, real turbulence); not started — the
+  project has no custom shaders, and it is a new asset class.
+
 ## Loop-house analysis hardening (Phase 0-2 DONE 2026-09-01, v0.13.20-22)
 
 The commission: make the analysis hold up on sample-based loop

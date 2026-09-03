@@ -82,7 +82,7 @@ const FOG_END: f32 = 52.0;
 /// to the lane spacing, as in the games this borrows from — a gem
 /// nearly fills its lane, which is what makes a chord read as one
 /// shape rather than three dots.
-const GEM_RADIUS: f32 = 0.17;
+pub const GEM_RADIUS: f32 = 0.17;
 
 /// Render layer for the 3D stage. The HUD camera renders layer 0 and
 /// the stage camera renders this one, so neither draws the other's
@@ -150,6 +150,32 @@ pub struct HitFlame {
     pub lane: Lane,
     /// 1.0 at the strike, decaying to 0.
     pub life: f32,
+}
+
+/// Per-fret heat for this frame — how hard the fret is pressed, how
+/// recently a note landed on it, and whether a sustain holds it —
+/// as `update_receptors` computed it. Published so the round style's
+/// flame ([`super::flame`]) reads the same numbers the ring, the fill
+/// and the burst do, instead of computing its own. Cleared and
+/// refilled in place every frame: the capacity is kept, nothing is
+/// allocated after the first.
+#[derive(Resource, Default)]
+pub struct FretHeat(pub Vec<FretHeatEntry>);
+
+/// One fret's heat this frame.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FretHeatEntry {
+    /// Owning player.
+    pub player: usize,
+    /// Which fret.
+    pub lane: Lane,
+    /// How hard the fret is pressed, 0–1.
+    pub press: f32,
+    /// How recently and cleanly a note landed, 1 at the strike,
+    /// decaying to 0.
+    pub hit: f32,
+    /// Whether a sustain holds this fret right now.
+    pub held: bool,
 }
 
 /// The burst that fires out of a fret when a note lands on it.
@@ -232,7 +258,7 @@ pub fn string_color(stage: crate::theme::Theme) -> Color {
 #[must_use]
 pub fn centre_radius(gem: f32, hopo: bool) -> f32 {
     if hopo {
-        gem * HOPO_FACE * 0.68
+        gem * hopo_face(NeckStyle::Instrument) * 0.68
     } else {
         gem * 0.16
     }
@@ -248,7 +274,18 @@ pub fn face_ring_radii(gem: f32) -> (f32, f32) {
 }
 
 /// A HOPO's face radius relative to a strum note's.
-const HOPO_FACE: f32 = 0.62;
+///
+/// Neon: smaller, the way the 2D views tell a HOPO apart. Instrument:
+/// the SAME size — there the white cap is the mark, and a second
+/// difference on top of it only made the notes look uneven (user:
+/// "alle Töne sollen gleich groß sein"). Pure — tested.
+#[must_use]
+pub const fn hopo_face(neck: NeckStyle) -> f32 {
+    match neck {
+        NeckStyle::Neon => 0.62,
+        NeckStyle::Instrument => 1.0,
+    }
+}
 
 /// The board of the instrument neck: the theme's hue, pulled well
 /// down toward a dark warm wood so the gems are the brightest thing
@@ -257,6 +294,16 @@ const HOPO_FACE: f32 = 0.62;
 #[must_use]
 pub fn instrument_board_color(stage: crate::theme::Theme) -> Color {
     stage.background.mix(&Color::srgb(0.11, 0.08, 0.06), 0.62)
+}
+
+/// Where a player's rail runs, in world x: `side` is −1 (left) or +1
+/// (right). The same arithmetic `setup_stage` places the rails with,
+/// so the rail fire's embers are born on the rail and not beside it.
+#[must_use]
+pub fn rail_x(layout: &HighwayLayout, player: usize, side: f32) -> f32 {
+    let origin = layout.origin(player) * WORLD_PER_PIXEL;
+    let width = layout.bed_width() * WORLD_PER_PIXEL * 1.18 * neck_spread(layout);
+    origin + side * (width / 2.0 + 0.09)
 }
 
 /// Lane centre in world units for a player's highway.
@@ -1882,6 +1929,7 @@ pub fn setup_stage(
         radius: 0.15,
         height: 1.0,
     });
+
     let edge_flame_material = materials.add(StandardMaterial {
         // The house additive recipe (the beams, halos and haze all
         // use it): an UNLIT material renders its BASE color and
@@ -1978,28 +2026,33 @@ pub fn setup_stage(
             // The Star-Power fire: a row of blue flame licks along
             // this rail, hidden until the boost runs (see
             // `burn_edges_for_hype`). One shared additive material
-            // for every lick - it is never written again.
-            let mut z = -HIGHWAY_LENGTH + HIGHWAY_BEHIND / 2.0;
-            let mut lick = 0usize;
-            while z < HIGHWAY_BEHIND {
-                let jitter = super::fx::hash01(lick * 73 + if side < 0.0 { 0 } else { 1 });
-                commands.spawn((
-                    GameplayScreen,
-                    Stage3d,
-                    EdgeFlame {
-                        player,
-                        phase: jitter * core::f32::consts::TAU,
-                        base: 0.75 + 0.5 * jitter,
-                    },
-                    Mesh3d(edge_flame_mesh.clone()),
-                    MeshMaterial3d(edge_flame_material.clone()),
-                    Visibility::Hidden,
-                    Transform::from_xyz(origin + side * (width / 2.0 + 0.09), 0.015, z)
-                        .with_scale(Vec3::ZERO),
-                    RenderLayers::layer(STAGE_LAYER),
-                ));
-                z += EDGE_FLAME_SPACING;
-                lick += 1;
+            // for every lick - it is never written again. Neon only:
+            // the instrument neck's edge crackles with the arc in
+            // `super::arc` instead (user: "am Rand bei Star Power
+            // eher ein Blitzeffekt").
+            if neck == NeckStyle::Neon {
+                let mut z = -HIGHWAY_LENGTH + HIGHWAY_BEHIND / 2.0;
+                let mut lick = 0usize;
+                while z < HIGHWAY_BEHIND {
+                    let jitter = super::fx::hash01(lick * 73 + if side < 0.0 { 0 } else { 1 });
+                    commands.spawn((
+                        GameplayScreen,
+                        Stage3d,
+                        EdgeFlame {
+                            player,
+                            phase: jitter * core::f32::consts::TAU,
+                            base: 0.75 + 0.5 * jitter,
+                        },
+                        Mesh3d(edge_flame_mesh.clone()),
+                        MeshMaterial3d(edge_flame_material.clone()),
+                        Visibility::Hidden,
+                        Transform::from_xyz(origin + side * (width / 2.0 + 0.09), 0.015, z)
+                            .with_scale(Vec3::ZERO),
+                        RenderLayers::layer(STAGE_LAYER),
+                    ));
+                    z += EDGE_FLAME_SPACING;
+                    lick += 1;
+                }
             }
 
             // The decorated trim. Dimmer than the rail on purpose:
@@ -2139,29 +2192,33 @@ pub fn setup_stage(
                 RenderLayers::layer(STAGE_LAYER),
             ));
             // The flame, parked flat until a note lands on this fret.
-            commands.spawn((
-                GameplayScreen,
-                Stage3d,
-                HitFlame {
-                    player,
-                    lane,
-                    life: 0.0,
-                },
-                Mesh3d(flame_mesh.clone()),
-                MeshMaterial3d(materials.add(StandardMaterial {
-                    base_color: colour.with_alpha(0.0),
-                    emissive: colour.to_linear() * 5.0,
-                    alpha_mode: AlphaMode::Add,
-                    unlit: true,
-                    double_sided: true,
-                    cull_mode: None,
-                    ..default()
-                })),
-                // Sits ON the fret, base at the board, tip upward.
-                Transform::from_xyz(lane_x(&layout, player, lane), 0.5, 0.0)
-                    .with_scale(Vec3::splat(0.01)),
-                RenderLayers::layer(STAGE_LAYER),
-            ));
+            // The neon stage's cone; the instrument neck lights the
+            // layered flame in `super::flame` instead.
+            if neck == NeckStyle::Neon {
+                commands.spawn((
+                    GameplayScreen,
+                    Stage3d,
+                    HitFlame {
+                        player,
+                        lane,
+                        life: 0.0,
+                    },
+                    Mesh3d(flame_mesh.clone()),
+                    MeshMaterial3d(materials.add(StandardMaterial {
+                        base_color: colour.with_alpha(0.0),
+                        emissive: colour.to_linear() * 5.0,
+                        alpha_mode: AlphaMode::Add,
+                        unlit: true,
+                        double_sided: true,
+                        cull_mode: None,
+                        ..default()
+                    })),
+                    // Sits ON the fret, base at the board, tip upward.
+                    Transform::from_xyz(lane_x(&layout, player, lane), 0.5, 0.0)
+                        .with_scale(Vec3::splat(0.01)),
+                    RenderLayers::layer(STAGE_LAYER),
+                ));
+            }
             commands.spawn((
                 GameplayScreen,
                 Stage3d,
@@ -2234,6 +2291,7 @@ pub fn update_receptors(
     mut flames: FlameQuery,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut state: Local<Vec<(usize, Lane, f32, f32)>>,
+    mut heat: ResMut<FretHeat>,
 ) {
     if !active(&settings) {
         return;
@@ -2335,6 +2393,17 @@ pub fn update_receptors(
             surface.base_color = colour.mix(&Color::WHITE, 0.6 * hit);
         }
         remembered.push((receptor.player, receptor.lane, press, hit));
+    }
+    // Publish the same numbers for the flame system.
+    heat.0.clear();
+    for &(player, lane, press, hit) in &remembered {
+        heat.0.push(FretHeatEntry {
+            player,
+            lane,
+            press,
+            hit,
+            held: holds(player, lane),
+        });
     }
 
     // The fill is what makes a press unmistakable: the button goes
@@ -2767,8 +2836,16 @@ pub fn setup_note_assets(
         }),
         // A HOPO is smaller and reads as a different object, the way
         // the 2D views distinguish it.
-        hopo: meshes.add(Cylinder::new(gem * HOPO_FACE, 0.05)),
-        hopo_rim: meshes.add(Cylinder::new(gem * 0.86, 0.04)),
+        hopo: meshes.add(Cylinder::new(gem * hopo_face(neck), 0.05)),
+        hopo_rim: meshes.add(Cylinder::new(
+            gem * match neck {
+                NeckStyle::Neon => 0.86,
+                // Same thin edge as the strum note: same size, same
+                // edge, the cap alone tells them apart.
+                NeckStyle::Instrument => 1.12,
+            },
+            0.04,
+        )),
         sustain: meshes.add(Cylinder::new(
             match neck {
                 NeckStyle::Neon => 0.05,
@@ -2973,7 +3050,7 @@ pub fn spawn_due_notes(
                         assets.rim_material.clone()
                     }),
                     Transform::from_xyz(lane_x(&layout, index.0, lane), 0.06, z).with_scale(
-                        if in_phrase && hopo {
+                        if in_phrase && hopo && neck_style(&settings) == NeckStyle::Neon {
                             Vec3::splat(0.72)
                         } else {
                             Vec3::ONE
@@ -3219,6 +3296,7 @@ pub struct Stage3dPlugin;
 
 impl Plugin for Stage3dPlugin {
     fn build(&self, app: &mut App) {
+        app.init_resource::<FretHeat>();
         app.add_systems(
             OnEnter(AppState::Gameplay),
             (
@@ -3227,6 +3305,8 @@ impl Plugin for Stage3dPlugin {
                 spawn_fret_bars,
                 spawn_phrase_bands,
                 super::band::spawn_band,
+                super::flame::spawn_flames,
+                super::arc::spawn_arcs,
             )
                 .chain()
                 .after(super::setup_gameplay),
@@ -3247,6 +3327,12 @@ impl Plugin for Stage3dPlugin {
                 pulse_woofers,
                 slide_floor_spots,
                 update_receptors,
+                // After the receptors: they publish this frame's fret
+                // heat, and the flame must ignite on the frame of the
+                // strike, not the one after.
+                super::flame::drive_flames,
+                super::flame::drive_embers,
+                super::arc::crackle_arcs,
                 apply_note_events,
                 sweep_beams,
             )
@@ -3858,7 +3944,7 @@ mod instrument_neck_tests {
             "hopo {hopo} must be larger than strum {strum}"
         );
         assert!(
-            hopo < gem * HOPO_FACE,
+            hopo < gem * hopo_face(NeckStyle::Instrument),
             "the HOPO centre must sit inside the HOPO face"
         );
         assert!(
@@ -3867,9 +3953,17 @@ mod instrument_neck_tests {
         );
         // And the HOPO keeps a visible coloured ring around its cap.
         assert!(
-            gem * HOPO_FACE - hopo > gem * 0.15,
+            gem * hopo_face(NeckStyle::Instrument) - hopo > gem * 0.15,
             "a coloured ring must remain"
         );
+    }
+
+    #[test]
+    fn on_the_instrument_neck_every_note_is_the_same_size() {
+        // User, 2026-09-03: "alle Töne sollen gleich groß sein." The
+        // cap is the mark; the neon stage keeps its smaller HOPO.
+        assert!((hopo_face(NeckStyle::Instrument) - 1.0).abs() < 1e-6);
+        assert!(hopo_face(NeckStyle::Neon) < 1.0);
     }
 
     #[test]
