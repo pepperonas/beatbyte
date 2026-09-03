@@ -45,32 +45,35 @@ pub(crate) enum Row {
 }
 
 impl Row {
+    /// Every row, in the order the screen shows them: **alphabetical
+    /// by label**, and kept that way by a test — a new row goes where
+    /// its name falls, not at the end of the list.
     const ALL: [Row; 25] = [
-        Row::MusicVolume,
-        Row::SfxVolume,
-        Row::ScrollSpeed,
-        Row::LatencyOffset,
-        Row::VideoOffset,
-        Row::Particles,
-        Row::ScreenShake,
         Row::BeatPulse,
-        Row::BackdropMotion,
-        Row::HitLabels,
-        Row::NoFail,
-        Row::ReducedFlashing,
-        Row::FxIntensity,
-        Row::TextScale,
-        Row::HighContrast,
-        Row::Lyrics,
-        Row::ExportHistory,
-        Row::LyricsSize,
-        Row::LyricsOffset,
-        Row::TapMode,
-        Row::NoteStyle,
-        Row::Fullscreen,
-        Row::Theme,
-        Row::WatchFolder,
         Row::Controls,
+        Row::FxIntensity,
+        Row::ExportHistory,
+        Row::Fullscreen,
+        Row::HighContrast,
+        Row::HitLabels,
+        Row::LatencyOffset,
+        Row::Lyrics,
+        Row::LyricsOffset,
+        Row::LyricsSize,
+        Row::MusicVolume,
+        Row::NoFail,
+        Row::NoteStyle,
+        Row::Particles,
+        Row::ReducedFlashing,
+        Row::ScreenShake,
+        Row::ScrollSpeed,
+        Row::SfxVolume,
+        Row::WatchFolder,
+        Row::BackdropMotion,
+        Row::Theme,
+        Row::TapMode,
+        Row::TextScale,
+        Row::VideoOffset,
     ];
 
     pub(crate) const fn label(self) -> &'static str {
@@ -737,6 +740,25 @@ mod tests {
             settings.stage_3d,
             "the removed 2D depth view reachable again"
         );
+    }
+
+    #[test]
+    fn the_rows_are_alphabetical_and_stay_that_way() {
+        // User, 2026-09-03: "settings alphabetisch sortieren und
+        // sortiert halten wenn neue einträge hinzukommen." The list
+        // is the display order; this is what keeps it sorted when the
+        // next row is added — it names the pair that is out of place.
+        for pair in Row::ALL.windows(2) {
+            assert!(
+                pair[0].label() <= pair[1].label(),
+                "settings rows out of order: {:?} is listed before {:?} but sorts after it — \
+                 move it to where its name falls",
+                pair[0].label(),
+                pair[1].label()
+            );
+        }
+        // And nothing is listed twice or left out.
+        assert_eq!(Row::ALL.len(), 25);
     }
 
     #[test]

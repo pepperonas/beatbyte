@@ -14,6 +14,15 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.32] - 2026-09-03
+
+### Changed
+
+- **Settings rows are alphabetical** by their label, BEAT PULSE to
+  VIDEO OFFSET, and a test keeps them that way: a row added at the
+  end of the list — the natural mistake — fails the suite and names
+  the pair that is out of place.
+
 ## [0.13.31] - 2026-09-03
 
 ### Added
