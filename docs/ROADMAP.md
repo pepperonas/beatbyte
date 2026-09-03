@@ -438,6 +438,26 @@ own hands — never as anyone's asset.
 P3 in the optimization plan is thereby shipped; P6 (the playtest
 pass) is next in that plan's order.
 
+## Search and debug overlay (DONE 2026-09-03, v0.13.32-35)
+
+Small commissions after the look programme, each verified through
+the real system rather than by hand.
+
+- [x] Settings rows alphabetical, and pinned that way (v0.13.32).
+- [x] A read-only debug overlay during a song (v0.13.33), then on
+  `L`, led by a large frame-rate figure, laid out as a table
+  (v0.13.35).
+- [x] The song search takes `q` as a letter again; leaving the
+  search is a **held** q (one second, a centred bar fills); the
+  filter matches every WORD in any column; the field keeps what was
+  typed (v0.13.34). Found in the same review and left as a fact:
+  `fold_latin` folds Western European diacritics only — a title in
+  `š`/`ł`/`ő` is found by its own letters, not by their base form.
+- [ ] Not seen on screen: both changes were built and gated while
+  the screen was locked (captures black, keys go to the lock
+  screen). The hold bar's look and the overlay's table on the HUD
+  are unverified pixels until a run with the screen open.
+
 ## Fire and lightning (DONE 2026-09-03, v0.13.31)
 
 Two-part commission: animate hits with a flame, then make the flames
