@@ -29,6 +29,16 @@ pub struct EffectSettings {
     pub backdrop_motion: bool,
     /// Round style: particles render as soft discs, not pixels.
     pub round_particles: bool,
+    /// Whether the 3D stage is drawing the highway.
+    ///
+    /// These sprites are placed with the FLAT layout, and the 3D solo
+    /// neck is drawn 1.45× wider than that layout implies — so on the
+    /// stage the outer lanes' sparks land at 69 % of the way out,
+    /// beside their receptor rather than on it. The stage throws its
+    /// own, in world space (`spark3d`); this flag is what stops the
+    /// two from doubling up. Same rule the flat notes and the flat
+    /// scenery already follow.
+    pub stage_3d: bool,
     /// Suppress full-screen flashes (accessibility).
     pub reduced_flashing: bool,
     /// Scales particle counts, shake and flash opacity, 0.0–1.0.
@@ -57,6 +67,7 @@ impl Default for EffectSettings {
     fn default() -> Self {
         EffectSettings {
             particles: true,
+            stage_3d: false,
             screen_shake: true,
             beat_pulse: true,
             backdrop_motion: true,
@@ -147,6 +158,21 @@ impl Plugin for FxPlugin {
     }
 }
 
+/// Whether the FLAT sprite bursts are this view's job.
+///
+/// They are placed with the flat layout, and the 3D solo neck is
+/// drawn 1.45× wider than that layout implies — on the stage the
+/// outer lanes' sparks land at 69 % of the way out, beside their
+/// receptor rather than on it. Measured, then replaced: the stage
+/// throws its own in world space (`spark3d`), a held sustain has the
+/// receptor flame, and Hype lights the whole venue. The outro's
+/// fireworks are the one exception and say so where they stand.
+/// Pure — tested.
+#[must_use]
+pub fn throws_flat_sparks(settings: &EffectSettings) -> bool {
+    settings.particles && !settings.stage_3d
+}
+
 /// Fx-owned scenery: one Hype overlay per player (spawned by the
 /// highway builder's chain, reading the layout).
 pub fn spawn_fx_scenery(
@@ -202,7 +228,7 @@ fn react_to_feedback(
                 judgment,
                 ..
             } => {
-                if !settings.particles {
+                if !throws_flat_sparks(&settings) {
                     continue;
                 }
                 let Some((_, session)) = players.iter().find(|(index, _)| index.0 == player) else {
@@ -270,7 +296,7 @@ fn react_to_feedback(
                     shake.add(0.30 * settings.intensity);
                 }
                 // A celebratory salvo across the player's lanes.
-                if settings.particles {
+                if throws_flat_sparks(&settings) {
                     for lane in beatbyte_core::Lane::ALL {
                         spawn_burst(
                             &mut commands,
@@ -388,7 +414,7 @@ fn sustain_sparks(
     particles: Query<(), With<Particle>>,
     mut accumulator: Local<f32>,
 ) {
-    if !settings.particles {
+    if !throws_flat_sparks(&settings) {
         return;
     }
     let soft = settings.round_particles.then(|| shapes.soft_dot());
@@ -512,6 +538,11 @@ fn celebrate_outro(
     particles: Query<(), With<Particle>>,
     mut fired: Local<u32>,
 ) {
+    // Deliberately NOT gated on the 3D stage, unlike the hit, hype
+    // and sustain sparks above: those have a replacement in world
+    // space, and the outro's fireworks do not. Misplaced by the
+    // neck's widening is still better than a bare celebration, and
+    // the song is over — nothing is being read any more.
     if !settings.particles {
         return;
     }
@@ -600,6 +631,33 @@ fn reset_camera(mut camera: Query<&mut Transform, With<Camera2d>>) {
 
 #[cfg(test)]
 mod tests {
+    use super::{EffectSettings, throws_flat_sparks};
+
+    #[test]
+    fn the_flat_bursts_belong_to_the_flat_view() {
+        let flat = EffectSettings {
+            particles: true,
+            stage_3d: false,
+            ..EffectSettings::default()
+        };
+        assert!(throws_flat_sparks(&flat));
+        assert!(
+            !throws_flat_sparks(&EffectSettings {
+                stage_3d: true,
+                ..flat
+            }),
+            "the stage places them 31 % short on the outer lanes and \
+             throws its own instead"
+        );
+        assert!(
+            !throws_flat_sparks(&EffectSettings {
+                particles: false,
+                ..flat
+            }),
+            "particles off is off in either view"
+        );
+    }
+
     #[test]
     fn embers_rise_and_confetti_falls() {
         assert!(super::burst_gravity(true) < 0.0, "an ember is buoyant");

@@ -14,6 +14,28 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.4] - 2026-09-04
+
+### Fixed
+
+- **The flat sprite bursts no longer fire behind the 3D stage** — and
+  the reason turned out not to be the one I assumed. They were not
+  invisible: instrumenting the particle system showed 22–32 alive at
+  a time, three to six pixels across and half transparent, orange
+  dots drowning in the orange glow of the receptor flame. What they
+  *were* is misplaced. They are positioned with the FLAT layout, and
+  the 3D solo neck is drawn **1.45× wider** than that layout implies,
+  so on the outer lanes they land at 69 % of the way out — beside
+  their receptor rather than on it. The stage now throws its own
+  sparks in world space (v0.14.3), a held sustain has the receptor
+  flame and Hype lights the whole venue, so the flat hit, hype and
+  sustain bursts stand down while the stage is up — the rule the flat
+  notes and the flat scenery already followed. Verified by counting:
+  67 samples of zero during play. **The outro's fireworks are
+  deliberately exempt**: nothing in world space replaces them, and a
+  bare celebration would be worse than a misplaced one — the song is
+  over and nothing is being read.
+
 ## [0.14.3] - 2026-09-04
 
 ### Added

@@ -325,6 +325,7 @@ fn apply_settings(
     effects.beat_pulse = settings.beat_pulse;
     effects.backdrop_motion = settings.backdrop_motion;
     effects.round_particles = settings.round_gems;
+    effects.stage_3d = settings.stage_3d;
     effects.reduced_flashing = settings.reduced_flashing;
     effects.intensity = settings.fx_intensity;
     if let Ok(mut window) = windows.single_mut() {
