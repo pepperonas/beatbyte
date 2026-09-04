@@ -3838,8 +3838,69 @@ mod tests {
             app.update();
             assert_eq!(mesh_of(&app, rims[1]), star, "earnable again");
         }
-    }
 
+        #[test]
+        fn one_players_miss_leaves_the_other_players_stars_alone() {
+            // Phrases are earned per player: two necks, the same
+            // chart, and only P1 drops the note. Routing by
+            // `note.player` is what keeps them apart.
+            let mut app = app();
+            let star = app.world().resource::<NoteAssets>().star_rim.clone();
+            let plain = app.world().resource::<NoteAssets>().rim.clone();
+            let hype = app
+                .world()
+                .resource::<NoteAssets>()
+                .hype_rim_material
+                .clone();
+            let players: Vec<Entity> = (0..2)
+                .map(|index| {
+                    app.world_mut()
+                        .spawn((
+                            PlayerIndex(index),
+                            PlayerSession {
+                                session: phrase_session(),
+                                frame_events: Vec::new(),
+                                spawn_cursor: 4,
+                            },
+                        ))
+                        .id()
+                })
+                .collect();
+            // One pending phrase note per player.
+            let rims: Vec<Entity> = (0..2)
+                .map(|player| {
+                    app.world_mut()
+                        .spawn((
+                            Note3d {
+                                player,
+                                event_index: 1,
+                                lane: Lane::One,
+                            },
+                            PhraseRim {
+                                hopo: false,
+                                starred: true,
+                            },
+                            Mesh3d(star.clone()),
+                            MeshMaterial3d(hype.clone()),
+                            Transform::default(),
+                        ))
+                        .id()
+                })
+                .collect();
+
+            // Only P1 lets the first phrase note pass.
+            let mut events = Vec::new();
+            app.world_mut()
+                .get_mut::<PlayerSession>(players[0])
+                .expect("P1")
+                .session
+                .advance(1.2, &mut events);
+            app.update();
+
+            assert_eq!(mesh_of(&app, rims[0]), plain, "P1 lost the phrase");
+            assert_eq!(mesh_of(&app, rims[1]), star, "P2 is still playing it clean");
+        }
+    }
     use super::sustain_tail_span;
 
     /// A note at t = 10 s that is held for 2 s, at the default speed.

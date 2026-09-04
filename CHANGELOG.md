@@ -14,6 +14,15 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.41] - 2026-09-04
+
+### Added
+
+- A test pinning that the star revert is **per player**: two necks on
+  the same chart, only P1 drops the note, and P2's star stays. The
+  routing was right by construction and unproven; a mutation that
+  reads the first player instead of the note's own now fails.
+
 ## [0.13.40] - 2026-09-04
 
 ### Fixed

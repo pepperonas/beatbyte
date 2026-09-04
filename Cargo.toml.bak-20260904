@@ -11,7 +11,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.13.41"
+version = "0.13.40"
 edition = "2024"
 license = "MIT"
 authors = ["Martin Pfeffer"]
@@ -23,12 +23,12 @@ categories = ["games"]
 
 [workspace.dependencies]
 # Internal crates
-beatbyte-core = { path = "crates/beatbyte-core", version = "0.13.41" }
-beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.13.41" }
-beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.13.41" }
-beatbyte-game = { path = "crates/beatbyte-game", version = "0.13.41" }
-beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.13.41" }
-beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.13.41" }
+beatbyte-core = { path = "crates/beatbyte-core", version = "0.13.40" }
+beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.13.40" }
+beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.13.40" }
+beatbyte-game = { path = "crates/beatbyte-game", version = "0.13.40" }
+beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.13.40" }
+beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.13.40" }
 
 # Engine ("wav" lets bevy_audio play our procedurally generated SFX;
 # "serialize" gives input types serde for the persisted bindings table)
@@ -75,11 +75,6 @@ todo = "warn"
 # but optimize dependencies (Bevy itself is unusable unoptimized).
 [profile.dev]
 opt-level = 1
-# Full debuginfo on a Bevy-sized dependency graph is what makes target/debug
-# huge (34 GB of deps/ measured 2026-09-04). Line tables keep backtraces
-# useful (file + line), but a step-debugger can no longer inspect variables.
-# Flip back to `true` for a debugging session if you need that.
-debug = "line-tables-only"
 
 [profile.dev.package."*"]
 opt-level = 3
