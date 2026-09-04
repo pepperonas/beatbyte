@@ -777,6 +777,20 @@ fn fail_if_window_vanishes(
     *seen |= present;
 }
 
+/// Whether a run ended where a run should end.
+///
+/// The song-end check fires once every note is resolved AND the clock
+/// is past the content; a healthy run therefore lands within a couple
+/// of seconds of the content end. Landing far beyond it means the
+/// clock was somewhere else entirely. Pure — tested.
+#[must_use]
+pub fn song_ended_sanely(finished_at_s: f64, content_end_s: f64) -> bool {
+    // Generous: the outro, a long sustain tail and a slow practice
+    // rate all push the end out a little. A hijacked clock misses by
+    // minutes, not by seconds.
+    finished_at_s <= content_end_s + 10.0
+}
+
 /// `BEATBYTE_AUTOPILOT_RATE=<1-5>`: on the results screen, press the
 /// real digit key (and ArrowRight when the played chart carries
 /// provenance), then parse the session log back and verify the
@@ -1632,6 +1646,20 @@ fn autopilot_results(
         return;
     }
     let mut all_ok = true;
+    // The song has to have actually PLAYED. Judgment alone cannot say
+    // so: the injector stamps its inputs with each note's own time, so
+    // it scores a flawless run even against a clock that jumped to
+    // the end — which is precisely how a browser preview's position
+    // once ended a 63-second song ten milliseconds in, with 98
+    // perfects and a PASSED verdict (v0.14.2).
+    if !song_ended_sanely(results.finished_at_s, results.content_end_s) {
+        error!(
+            "autopilot: the song ended at {:.1}s but its content ends at {:.1}s — \
+             the clock did not follow the music",
+            results.finished_at_s, results.content_end_s
+        );
+        all_ok = false;
+    }
     for player in &results.players {
         let perf = &player.performance;
         let counts = perf.counts();
@@ -1765,5 +1793,22 @@ mod tests {
         // fallback to the default.
         assert!(resolve_difficulty(Some("expert"), &offered).is_err());
         assert!(resolve_difficulty(Some("banana"), &offered).is_err());
+    }
+}
+
+#[cfg(test)]
+mod end_tests {
+    use super::song_ended_sanely;
+
+    #[test]
+    fn a_song_that_never_played_is_not_a_clean_run() {
+        // The healthy shape: the end check fires a little past the
+        // content.
+        assert!(song_ended_sanely(64.8, 63.3));
+        assert!(song_ended_sanely(63.3, 63.3));
+        // The v0.14.2 defect, exactly as measured: the clock sat
+        // three minutes inside another track.
+        assert!(!song_ended_sanely(185.6, 63.3));
+        assert!(!song_ended_sanely(600.0, 120.0));
     }
 }

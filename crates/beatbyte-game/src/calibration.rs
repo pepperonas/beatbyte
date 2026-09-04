@@ -99,6 +99,8 @@ fn start_calibration(
 ) {
     calibration.offsets.clear();
     music.0.play_buffer(click_track());
+    // The click track IS the timeline here: the clock may follow it.
+    game_clock.expect_song = true;
     music.0.set_volume(settings.music_volume * muted.factor());
     game_clock.clock.start(time.elapsed_secs_f64(), 0.0);
 

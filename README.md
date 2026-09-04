@@ -35,7 +35,7 @@
 [![SemVer](https://img.shields.io/badge/versioning-SemVer-blue)](CHANGELOG.md)
 [![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735)](CHANGELOG.md)
 [![Conventional Commits](https://img.shields.io/badge/commits-Conventional-FE5196)](https://www.conventionalcommits.org/)
-[![Tests](https://img.shields.io/badge/tests-711%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-723%20passing-brightgreen)](#testing)
 [![Clippy](https://img.shields.io/badge/clippy-%E2%80%91D%20warnings-brightgreen?logo=rust)](Cargo.toml)
 [![rustfmt](https://img.shields.io/badge/style-rustfmt-orange?logo=rust)](Cargo.toml)
 [![Rustdoc](https://img.shields.io/badge/public%20API-documented-blue)](Cargo.toml)
@@ -55,7 +55,7 @@
 [![Determinism](https://img.shields.io/badge/charts-reproducible-blueviolet)](docs/audio/analysis.md)
 [![Dependencies](https://img.shields.io/badge/runtime%20deps-Rust%20crates%20only-informational)](Cargo.toml)
 [![Telemetry](https://img.shields.io/badge/telemetry-none-brightgreen)](#legal)
-[![Network](https://img.shields.io/badge/network-lyrics%20lookup%20only%2C%20on%20request-brightgreen)](#legal)
+[![Network](https://img.shields.io/badge/network-lyrics%20lookup%20%2B%20opt--in%20room%20lights%20(LAN)-brightgreen)](#legal)
 [![Build](https://img.shields.io/badge/build-one%20command-success)](#building-from-source)
 
 ### Tech
@@ -474,14 +474,14 @@ beatbyte-cli demo                  # render the built-in songs + charts
 ## Testing
 
 ```bash
-cargo test --workspace          # 711 tests
+cargo test --workspace          # 723 tests
 ```
 
 | Crate | Tests | Covers |
 |---|---:|---|
 | `beatbyte-core` | 96 | The play-history schema, timing windows to their exact boundaries, judgment, scoring, combos, HOPO and tap rules, the hype meter and which phrase a note belongs to, the rock meter and its single fail transition, the telemetry schema |
 | `beatbyte-chart` | 94 | Format validation, untrusted-input limits, chart generation, difficulty derivation, musical quantisation, chart versions, energy-aware escalation, jack-free lane flow, burst discipline, accent chords, LRC/enhanced-LRC lyrics parsing |
-| `beatbyte-game` | 362 | UI kit contracts, settings persistence, the input tables and binding labels, the color language, library scanning, import naming, the X-plorer report decoder, texture geometry, the song ribbon, list scrolling, the instrument neck's gates and colours, hit-label placement, the rock meter's zones and fail arming, the band's beat-driven poses and placement, the hit flame's ignition, flicker and embers, the Star-Power arc's crackle, the settings rows' alphabetical order, the debug overlay's table, frame-rate colour and key, the search's held-q gesture, fuzzy scorer and ranking, the scoreboard's structured key and migration, gamepad hot-plug policy, the star-note rule and its live rim swap, the browser preview's rest-and-hush policy |
+| `beatbyte-game` | 374 | UI kit contracts, settings persistence, the input tables and binding labels, the color language, library scanning, import naming, the X-plorer report decoder, texture geometry, the song ribbon, list scrolling, the instrument neck's gates and colours, hit-label placement, the rock meter's zones and fail arming, the band's beat-driven poses and placement, the hit flame's ignition, flicker and embers, the Star-Power arc's crackle, the settings rows' alphabetical order, the debug overlay's table, frame-rate colour and key, the search's held-q gesture, fuzzy scorer and ranking, the scoreboard's structured key and migration, gamepad hot-plug policy, the star-note rule and its live rim swap, the browser preview's rest-and-hush policy, Room Stage's event mapping and its drop-never-block queue, which music the clock may follow |
 | `beatbyte-audio` | 103 | Onset detection, tempo estimation, melody contours, the song clock and its practice rate, the speed position map, the error-sound voices, real-file decoding for every advertised format, beat tracking and the kick channel, the analysis-evaluation metrics (MIREX beat scores, Rekordbox XML and ANLZ grid import, corpus pairing, synthetic corpus) |
 | `beatbyte-cli` | 21 | The play-history export (CSV quoting, UTC stamps, report filters), review analytics, the design dossier and the redesign rollout: section windowing, evidence thresholds, hash binding, the mastery veto, write instructions, carried difficulties |
 | `beatbyte-editor` | 19 | Every edit operation round-trips through its own inverse |
@@ -594,8 +594,15 @@ no key, no identifier — and no lyrics are stored in this repository,
 because song lyrics are copyrighted. A found `.lrc` is cached beside
 your own audio file.
 
-Nothing else ever goes out. There is no telemetry, no update check,
-no crash reporting, and gameplay never touches the network.
+**Room Stage** (Settings → ROOM LIGHTS, **off by default**) is the
+one other request the game can make, and only if you switch it on and
+write an address: while a song plays it posts the beats you hit to a
+light service **on your own network**, at the address in your
+`settings.json` and nowhere else. Outbound only, no cloud, no
+account; with it off — which is how it ships — nothing is sent.
+
+Nothing else ever goes out. There is no telemetry, no update check
+and no crash reporting.
 
 ## License
 

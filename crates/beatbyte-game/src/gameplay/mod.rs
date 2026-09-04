@@ -153,6 +153,20 @@ fn drain_feedback(
     }
 }
 
+/// How long a chart's song runs: its stated duration, or where the
+/// last note of its longest chart ends.
+fn song_length(chart: &beatbyte_chart::schema::ChartFile) -> Option<f64> {
+    chart.song.duration_s.or_else(|| {
+        let end = chart
+            .charts
+            .iter()
+            .flat_map(|def| def.notes.iter())
+            .map(|note| note.time + note.len)
+            .fold(0.0, f64::max);
+        (end > 0.0).then_some(end)
+    })
+}
+
 /// One player's final result.
 #[derive(Debug, Clone)]
 pub struct PlayerResult {
@@ -185,6 +199,16 @@ pub struct LastResults {
     /// Whether the run ended on an empty rock meter. A failed run is
     /// graded F, enters no scoreboard, and is logged as not completed.
     pub failed: bool,
+    /// The song time the run ended at, and where the chart's content
+    /// ends. A healthy song finishes just past its content; a clock
+    /// that got hijacked finishes far beyond it — and the harness
+    /// checks exactly that now. (v0.14.2: a browser preview anchored
+    /// the clock three minutes into another track, the song was over
+    /// ten milliseconds after it began, and the autopilot called it a
+    /// flawless run.)
+    pub finished_at_s: f64,
+    /// Where the played chart's content ends.
+    pub content_end_s: f64,
 }
 
 /// The scoring rules for a run.
@@ -356,6 +380,17 @@ impl Plugin for GameplayPlugin {
                     .run_if(in_state(GamePhase::Playing)),
             )
             .add_systems(Update, pause_input.run_if(in_state(AppState::Gameplay)))
+            // Room Stage listens to the same feedback the note
+            // visuals and the sounds listen to — presentation, never
+            // gameplay. It runs after the drain that publishes them.
+            .add_systems(
+                Update,
+                crate::room_stage::drive_room_stage
+                    .after(drain_feedback)
+                    .run_if(in_state(GamePhase::Playing)),
+            )
+            .add_systems(OnEnter(AppState::Gameplay), crate::room_stage::engage_room)
+            .add_systems(OnExit(AppState::Gameplay), crate::room_stage::release_room)
             // Hot-plug: before the pause menu reads its input, so a
             // reconnect on the same frame is already in place.
             .add_systems(
@@ -470,6 +505,10 @@ fn setup_gameplay(
     // Count-in: the clock starts negative; music starts at zero.
     commands.insert_resource(PendingMusic(song.audio.clone(), None));
     game_clock.clock.start(time.elapsed_secs_f64(), -PREROLL_S);
+    // What this song's device positions can plausibly be. Anything
+    // past it belongs to something else that is playing — a browser
+    // preview, say — and the clock must never anchor to it.
+    game_clock.song_len_s = song_length(&song.chart);
     // Practice speed applies to the WHOLE timeline — count-in
     // included — so the scroll pace never changes mid-approach. The
     // run counts as practice from the start when it begins slowed.
@@ -489,7 +528,7 @@ fn run_count_in(
     mut commands: Commands,
     pending: Option<Res<PendingMusic>>,
     music: Res<Music>,
-    game_clock: Res<GameClock>,
+    mut game_clock: ResMut<GameClock>,
     time: Res<Time>,
     font: Res<crate::ui::UiFont>,
     mut banner: Query<(Entity, &mut Text2d), With<CountIn>>,
@@ -533,6 +572,8 @@ fn run_count_in(
                 music.0.crossfade_file(path.clone(), fade_s);
             }
         }
+        // The clock may follow THIS generation: the game asked for it.
+        game_clock.expect_song = true;
         commands.remove_resource::<PendingMusic>();
     }
 }
@@ -657,6 +698,10 @@ fn mc_transition(
     // fresh clock. The crossfade bumps the generation, which
     // re-anchors cleanly.
     game_clock.hold_reconcile_until = mono + PREROLL_S + 0.5;
+    // What this song's positions can plausibly be. A device position
+    // past this belongs to something else — a browser preview, say —
+    // and the clock must not anchor to it.
+    game_clock.song_len_s = song_length(&next.chart);
     swaps.write(crate::mc::McSwapped);
 }
 
@@ -705,6 +750,8 @@ fn check_song_end(
             tap_mode: players.iter().any(|(_, p)| p.session.tap_mode()),
             practice: practice.used,
             failed: false,
+            finished_at_s: now,
+            content_end_s: content_end,
         });
         // Every way out of gameplay says so, and says which way.
         // Twice in one day a report of the game "jumping back to the
@@ -765,6 +812,8 @@ fn check_failure(
         tap_mode: players.iter().any(|(_, p)| p.session.tap_mode()),
         practice: practice.used,
         failed: true,
+        finished_at_s: now,
+        content_end_s: now,
     });
     info!("gameplay ended: rock meter empty at {now:.1}s — the run failed");
     next_phase.set(GamePhase::Outro);
@@ -1354,6 +1403,10 @@ fn teardown_gameplay(
     commands.remove_resource::<PendingMusic>();
     music.0.stop();
     game_clock.clock.stop();
+    // No song is loaded any more: the calibration screen's click
+    // track has no length to be measured against.
+    game_clock.song_len_s = None;
+    game_clock.expect_song = false;
 }
 
 /// The accent color for a player index.

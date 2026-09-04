@@ -241,14 +241,7 @@ chart format v1 can be frozen as a promise.
   boundary (8-bit = data through one renderer). The commission's
   phases are complete; the 2D-path prune stays its own filed task.
 
-- [ ] G38 **Room Stage — the venue leaves the screen** *(vision doc:
-  `docs/room-stage.md`, commissioned 2026-09-01)*. Optional, off by
-  default: BeatByte's ground-truth events (hits, judgment, sustains,
-  Hype, tempo) drive real room lighting over tiny LAN HTTP posts —
-  reference rig: the lichtwerk WS2812 strip contract (needs no
-  changes) and a disco-controller "external beat source" mode for
-  Hue. Eight wiring TODOs filed in the doc; presentation-only
-  (autopilot must score identically with the bridge on and off).
+- [~] G38 **Room Stage — the venue leaves the screen** *(v0.14.2, `room_stage.rs`; vision doc `docs/room-stage.md`)*. Shipped: TODO 1 the bridge (bounded queue, worker thread, drop-never-block, backlog coalesced to the newest cue per path with accents exempt), TODO 2 the mapping (judgment → kick strength, lane → tone, Hype/phrases → accents, miss → dip; pure and mutation-probed), TODO 3 settings (ROOM LIGHTS off by default, `room_stage_url`), TODO 7 the network promise (badge, "what leaves your machine", and the docs test that now counts the second outbound path), TODO 8 autopilot coverage (a mock light service through whole songs: **158/182/166 posts delivered, 0 dropped**, scores identical to the same runs with the bridge off). **Remaining:** TODO 4 the INPUT TEST verification screen, TODO 5 the disco-controller external-beat-source mode (a change in the Pi's repo, not this one), TODO 6 the timing budget against real hardware — all three need the rig, which this machine is not. ⚠️ Never heard: no lamp has answered a note yet; the contract is verified against a mock, not against lichtwerk.
 
 ### F — Release engineering to 1.0
 

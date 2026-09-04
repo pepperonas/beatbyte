@@ -507,9 +507,18 @@ fn the_network_claim_matches_what_the_code_actually_does() {
     let readme = read("README.md");
     // Every place a request could originate: the crates that are
     // allowed to talk to anything at all.
-    let reaches_out = ["crates/beatbyte-game/src/lyrics_fetch.rs"]
-        .iter()
-        .any(|path| repo().join(path).is_file());
+    let reaches_out = [
+        "crates/beatbyte-game/src/lyrics_fetch.rs",
+        "crates/beatbyte-game/src/room_stage.rs",
+    ]
+    .iter()
+    .any(|path| repo().join(path).is_file());
+    // A second outbound path arrived with Room Stage, and the claim
+    // has to name it too — the badge said "lyrics lookup only" the
+    // moment that stopped being true.
+    let room_stage = repo()
+        .join("crates/beatbyte-game/src/room_stage.rs")
+        .is_file();
 
     if reaches_out {
         assert!(
@@ -527,6 +536,23 @@ fn the_network_claim_matches_what_the_code_actually_does() {
             readme.contains("lrclib.net"),
             "the section must name the service that is contacted"
         );
+        if room_stage {
+            assert!(
+                readme.contains("Room Stage"),
+                "Room Stage posts to the local network; the section \
+                 that lists what leaves the machine must say so"
+            );
+            assert!(
+                !readme.contains("gameplay never touches the network"),
+                "with Room Stage in the tree, gameplay CAN touch the \
+                 local network — the claim needs its exception"
+            );
+            assert!(
+                !readme.contains("lyrics%20lookup%20only"),
+                "the badge still says the lyrics lookup is the only \
+                 request the game makes"
+            );
+        }
     } else {
         assert!(
             readme.contains("network-never"),

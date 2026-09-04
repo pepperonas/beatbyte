@@ -28,6 +28,7 @@ pub mod palette;
 pub mod preview;
 pub mod prompts;
 pub mod results;
+pub mod room_stage;
 pub mod scores;
 pub mod search;
 pub mod settings_ui;
@@ -177,6 +178,8 @@ pub fn run() -> AppExit {
             .set(ImagePlugin::default_nearest()),
     )
     .insert_resource(ClearColor(palette::BACKGROUND))
+    .init_resource::<room_stage::RoomStage>()
+    .add_systems(Update, room_stage::sync_room_stage)
     .init_state::<AppState>()
     .add_sub_state::<GamePhase>()
     .add_systems(Startup, spawn_camera)

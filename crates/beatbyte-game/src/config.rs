@@ -73,6 +73,13 @@ pub struct Settings {
     /// later. Purely presentational - judgment never reads it.
     #[serde(default)]
     pub lyrics_offset_ms: f32,
+    /// Room Stage: post the game's own events to light services on
+    /// the local network (roadmap G38). OFF by default, and the one
+    /// place besides the lyrics lookup where anything leaves the
+    /// machine — outbound, to an address you write here, or nowhere.
+    pub room_lights: bool,
+    /// Where those posts go: the base address of a light service.
+    pub room_stage_url: String,
     /// Song previews in the browser: rest the cursor on a song and
     /// its hook plays. On by default — a seventy-song library is a
     /// list of names without it (optimization plan P4).
@@ -139,6 +146,8 @@ impl Default for Settings {
             lyrics: true,
             lyrics_size: 1,
             lyrics_offset_ms: 0.0,
+            room_lights: false,
+            room_stage_url: "http://127.0.0.1:5006".to_owned(),
             song_preview: true,
             tap_mode: true,
             perspective: true,

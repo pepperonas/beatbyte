@@ -14,6 +14,53 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.2] - 2026-09-04
+
+### Added
+
+- **Room Stage** (roadmap G38, `room_stage.rs`, vision doc
+  `docs/room-stage.md`): optional, **off by default**. With it on, the
+  game's own ground-truth events are posted to light services on the
+  local network — a kick per hit whose strength is the JUDGMENT you
+  earned and whose tone is the lane you played, a held level while a
+  sustain burns, accents for Hype and completed phrases, and a scene
+  that engages when the song starts and releases when it ends. A
+  microphone-driven light show hears the mix and guesses; this knows.
+  **Settings → ROOM LIGHTS**, the address in `settings.json`
+  (`room_stage_url`, default `http://127.0.0.1:5006`, the reference
+  rig's strip service). Presentation only: the bridge is an `mpsc`
+  worker behind a bounded queue that DROPS rather than blocks, so a
+  dead endpoint, a wrong URL or a sleeping lamp cost the game nothing.
+  A backlog is coalesced to the newest cue per path — accents
+  excepted, since each is its own gesture. Measured end to end
+  against a mock light service through a whole song: **158 posts
+  delivered, 0 dropped, and a score identical to the same run with
+  the bridge off.**
+
+### Fixed
+
+- **A song started right after a browser preview ended instantly**
+  (v0.14.1's defect, found while measuring Room Stage). The game
+  clock reconciles itself against the position the audio device
+  reports, and **snaps** when the drift is large. A song preview
+  leaves that device playing somewhere inside another track, so the
+  clock snapped there: a 63-second song reported "finished at 185.6s"
+  ten milliseconds after it began — 185.6 being exactly where the
+  preview had been playing. The clock now refuses any position that
+  cannot belong to the loaded song (`song_len_s`), on the reconcile
+  path **and** the anchor path, and additionally only anchors to a
+  generation the game itself asked for (`expect_song`).
+  ⚠️ Two earlier attempts are recorded because each looked right and
+  measured wrong: gating on "are we in the browser" fails because the
+  preview's generation bump can arrive a frame after the player has
+  left it, and guarding only the anchor path fails because the damage
+  came through reconciliation, not through anchoring.
+- **The autopilot called that ten-millisecond song a flawless run.**
+  It stamps its injected inputs with each note's own time, so it
+  scores a perfect play against any clock, however wrong — which is
+  why the defect above shipped under a green harness. A run now fails
+  when the song ends far past where its content does.
+
 ## [0.14.1] - 2026-09-04
 
 ### Added
