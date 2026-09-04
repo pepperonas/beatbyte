@@ -735,6 +735,8 @@ pub fn tint_stage_for_hype(
 pub struct PhraseBand {
     /// Owning player.
     pub player: usize,
+    /// Which phrase of the track this is.
+    pub phrase: usize,
     /// Phrase bounds on the song timeline.
     pub start_s: f64,
     /// Phrase end.
@@ -768,12 +770,13 @@ pub fn spawn_phrase_bands(
     });
     for (index, player) in &players {
         let width = layout.bed_width() * WORLD_PER_PIXEL * 1.12 * neck_spread(&layout);
-        for phrase in player.session.track().phrases() {
+        for (number, phrase) in player.session.track().phrases().iter().enumerate() {
             commands.spawn((
                 GameplayScreen,
                 Stage3d,
                 PhraseBand {
                     player: index.0,
+                    phrase: number,
                     start_s: phrase.start_s,
                     end_s: phrase.end_s,
                 },
@@ -793,6 +796,7 @@ pub fn move_phrase_bands(
     settings: Res<Settings>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
+    players: Query<(&PlayerIndex, &PlayerSession)>,
     mut bands: Query<(&PhraseBand, &mut Transform, &mut Visibility)>,
 ) {
     if !active(&settings) {
@@ -802,6 +806,17 @@ pub fn move_phrase_bands(
         return;
     };
     for (band, mut transform, mut visibility) in &mut bands {
+        // A broken phrase pays nothing any more, so its stretch of
+        // neck stops promising energy — the same moment its notes
+        // stop wearing stars.
+        let broken = players
+            .iter()
+            .find(|(index, _)| index.0 == band.player)
+            .is_some_and(|(_, player)| player.session.phrase_broken(band.phrase));
+        if broken {
+            *visibility = Visibility::Hidden;
+            continue;
+        }
         let near = note_z(band.start_s - now, settings.scroll_speed);
         let far = note_z(band.end_s - now, settings.scroll_speed);
         // Clipped to the drawn highway, so a long phrase does not
@@ -819,15 +834,95 @@ pub fn move_phrase_bands(
     }
 }
 
-/// Whether a note at this time belongs to an energy phrase.
+/// Whether a note is drawn as a star: it belongs to an energy phrase,
+/// and no miss has broken that phrase yet.
 ///
-/// Phrases are sorted and non-overlapping (a `Track` invariant), and
-/// their bounds are INCLUSIVE — a note exactly on the last instant of
-/// a phrase is part of it, and marking it is what makes the run of
-/// marked notes end where the meter step happens.
+/// The second half is the genre's rule, and the reason this is not
+/// simply "is the note inside a phrase" — *"If any note is missed in
+/// a Star Power phrase, the Star Power notes will convert to standard
+/// notes"* (WikiHero, **Star Power**; Clone Hero's manual says the
+/// same: every note of the phrase must be hit for the meter to move).
+/// A phrase that can no longer be earned must stop promising energy —
+/// on the notes already on the neck as much as on the ones still to
+/// come.
 #[must_use]
-pub fn in_energy_phrase(phrases: &[beatbyte_core::Phrase], time_s: f64) -> bool {
-    phrases.iter().any(|phrase| phrase.contains(time_s))
+pub fn wears_a_star(session: &beatbyte_core::TrackSession, event_index: usize) -> bool {
+    session
+        .phrase_of(event_index)
+        .is_some_and(|phrase| !session.phrase_broken(phrase))
+}
+
+/// The rim of a note that belongs to an energy phrase, and the look
+/// it is wearing right now.
+///
+/// The marker stays after a revert so the swap can run both ways: a
+/// practice-loop rewind clears `broken`, and the phrase is then worth
+/// stars again.
+#[derive(Component)]
+pub struct PhraseRim {
+    /// Whether the note is a HOPO — which plain rim to fall back to.
+    pub hopo: bool,
+    /// Whether the rim currently wears the star.
+    pub starred: bool,
+}
+
+/// Take the star off the notes of a phrase a miss has broken, and put
+/// it back if the phrase is re-opened.
+///
+/// Only PENDING notes are re-dressed. A missed note is greyed by
+/// `apply_note_events`, and the note that broke the phrase is exactly
+/// such a note — re-dressing it would paint its own miss away.
+pub fn sync_phrase_rims(
+    settings: Res<Settings>,
+    assets: Option<Res<NoteAssets>>,
+    players: Query<(&PlayerIndex, &PlayerSession)>,
+    mut rims: Query<(
+        &Note3d,
+        &mut PhraseRim,
+        &mut Mesh3d,
+        &mut MeshMaterial3d<StandardMaterial>,
+        &mut Transform,
+    )>,
+) {
+    if !active(&settings) {
+        return;
+    }
+    let Some(assets) = assets else {
+        return;
+    };
+    let neon = neck_style(&settings) == NeckStyle::Neon;
+    for (note, mut rim, mut mesh, mut material, mut transform) in &mut rims {
+        let Some((_, player)) = players.iter().find(|(index, _)| index.0 == note.player) else {
+            continue;
+        };
+        if player.session.note_state(note.event_index)
+            != Some(beatbyte_core::session::NoteState::Pending)
+        {
+            continue;
+        }
+        let wanted = wears_a_star(&player.session, note.event_index);
+        if wanted == rim.starred {
+            continue;
+        }
+        rim.starred = wanted;
+        mesh.0 = if wanted {
+            assets.star_rim.clone()
+        } else if rim.hopo {
+            assets.hopo_rim.clone()
+        } else {
+            assets.rim.clone()
+        };
+        material.0 = if wanted {
+            assets.hype_rim_material.clone()
+        } else {
+            assets.rim_material.clone()
+        };
+        transform.scale = if wanted && rim.hopo && neon {
+            Vec3::splat(0.72)
+        } else {
+            Vec3::ONE
+        };
+    }
 }
 
 /// The tube behind a sustain's gem.
@@ -2962,7 +3057,12 @@ pub fn spawn_due_notes(
             // been paying meter for them, but nothing on screen ever
             // said which notes those were — the player earned energy
             // without being told why.
-            let in_phrase = in_energy_phrase(player.session.track().phrases(), event.time_s);
+            //
+            // Asked of the SESSION, not of the clock: a phrase a miss
+            // has already broken pays nothing, so the notes still to
+            // come from it arrive as plain gems.
+            let in_phrase = player.session.phrase_of(cursor).is_some();
+            let star = wears_a_star(&player.session, cursor);
             for lane in event.lanes.iter() {
                 let material = assets.lane_material[lane.index()].clone();
                 let hopo = event.kind == beatbyte_core::NoteKind::Hopo;
@@ -3026,38 +3126,49 @@ pub fn spawn_due_notes(
                     ));
                 }
                 // The dark rim the coloured face sits in.
-                commands.spawn((
-                    GameplayScreen,
-                    Stage3d,
-                    Note3d {
-                        player: index.0,
-                        event_index: cursor,
-                        lane,
-                    },
-                    Mesh3d(if in_phrase {
-                        // A phrase note IS a star: the genre marks
-                        // star-power notes with star-shaped gems, not
-                        // with a differently-lit circle.
-                        assets.star_rim.clone()
-                    } else if hopo {
-                        assets.hopo_rim.clone()
-                    } else {
-                        assets.rim.clone()
-                    }),
-                    MeshMaterial3d(if in_phrase {
-                        assets.hype_rim_material.clone()
-                    } else {
-                        assets.rim_material.clone()
-                    }),
-                    Transform::from_xyz(lane_x(&layout, index.0, lane), 0.06, z).with_scale(
-                        if in_phrase && hopo && neck_style(&settings) == NeckStyle::Neon {
-                            Vec3::splat(0.72)
-                        } else {
-                            Vec3::ONE
+                let rim = commands
+                    .spawn((
+                        GameplayScreen,
+                        Stage3d,
+                        Note3d {
+                            player: index.0,
+                            event_index: cursor,
+                            lane,
                         },
-                    ),
-                    RenderLayers::layer(STAGE_LAYER),
-                ));
+                        Mesh3d(if star {
+                            // A phrase note IS a star: the genre marks
+                            // star-power notes with star-shaped gems,
+                            // not with a differently-lit circle.
+                            assets.star_rim.clone()
+                        } else if hopo {
+                            assets.hopo_rim.clone()
+                        } else {
+                            assets.rim.clone()
+                        }),
+                        MeshMaterial3d(if star {
+                            assets.hype_rim_material.clone()
+                        } else {
+                            assets.rim_material.clone()
+                        }),
+                        Transform::from_xyz(lane_x(&layout, index.0, lane), 0.06, z).with_scale(
+                            if star && hopo && neck_style(&settings) == NeckStyle::Neon {
+                                Vec3::splat(0.72)
+                            } else {
+                                Vec3::ONE
+                            },
+                        ),
+                        RenderLayers::layer(STAGE_LAYER),
+                    ))
+                    .id();
+                // Every phrase note's rim can change its look later —
+                // the miss that breaks the phrase may be still to
+                // come, and these notes are already on the neck.
+                if in_phrase {
+                    commands.entity(rim).insert(PhraseRim {
+                        hopo,
+                        starred: star,
+                    });
+                }
                 // A sustain is a tube running back up the neck from
                 // the gem — length is the note's own held time.
                 if event.is_sustain() {
@@ -3334,6 +3445,7 @@ impl Plugin for Stage3dPlugin {
                 super::flame::drive_embers,
                 super::arc::crackle_arcs,
                 apply_note_events,
+                sync_phrase_rims,
                 sweep_beams,
             )
                 .chain()
@@ -3495,43 +3607,237 @@ mod tests {
         );
     }
 
-    use super::in_energy_phrase;
-    use beatbyte_core::Phrase;
+    use super::wears_a_star;
+    use beatbyte_core::{
+        Difficulty, Lane, NoteEvent, NoteKind, Phrase, ScoreConfig, TimingWindows, Track,
+        TrackSession,
+    };
 
-    fn phrases() -> Vec<Phrase> {
-        vec![
-            Phrase {
-                start_s: 4.0,
-                end_s: 8.0,
-            },
-            Phrase {
-                start_s: 20.0,
-                end_s: 24.0,
-            },
-        ]
+    /// Three notes inside one phrase (1.0, 1.5, 1.9) and one outside
+    /// it (3.0). The miss window is 100 ms, so advancing to 1.2 misses
+    /// the FIRST phrase note and leaves the other two pending — the
+    /// situation the genre's rule is about.
+    pub(super) fn phrase_session() -> TrackSession {
+        let note = |time_s: f64| NoteEvent {
+            time_s,
+            lanes: beatbyte_core::LaneSet::single(Lane::One),
+            kind: NoteKind::Strum,
+            sustain_s: 0.0,
+        };
+        let track = Track::new(
+            Difficulty::Medium,
+            beatbyte_core::TempoMap::constant(120.0, 0.0),
+            vec![note(1.0), note(1.5), note(1.9), note(3.0)],
+            vec![Phrase {
+                start_s: 0.5,
+                end_s: 2.0,
+            }],
+        )
+        .expect("a valid track");
+        TrackSession::new(track, TimingWindows::default(), ScoreConfig::default())
     }
 
     #[test]
-    fn notes_inside_a_phrase_are_marked() {
-        assert!(in_energy_phrase(&phrases(), 6.0));
-        assert!(in_energy_phrase(&phrases(), 22.5));
+    fn notes_inside_an_unbroken_phrase_wear_a_star() {
+        let session = phrase_session();
+        for index in 0..3 {
+            assert!(
+                wears_a_star(&session, index),
+                "note {index} is in the phrase"
+            );
+        }
+        assert!(!wears_a_star(&session, 3), "outside the phrase");
+        assert!(!wears_a_star(&session, 99), "no such note");
     }
 
     #[test]
-    fn notes_outside_every_phrase_are_not() {
-        assert!(!in_energy_phrase(&phrases(), 3.9));
-        assert!(!in_energy_phrase(&phrases(), 12.0));
-        assert!(!in_energy_phrase(&phrases(), 24.1));
-        assert!(!in_energy_phrase(&[], 6.0), "no phrases marks nothing");
+    fn one_miss_takes_the_star_off_the_rest_of_the_phrase() {
+        // The genre's rule (WikiHero, Star Power): a missed note
+        // converts the phrase's remaining star notes to standard
+        // ones. Before this, a broken phrase kept promising energy it
+        // could no longer pay.
+        let mut session = phrase_session();
+        let mut events = Vec::new();
+        session.advance(1.2, &mut events); // the first phrase note only
+        assert!(session.phrase_broken(0), "one miss is enough");
+        for index in 0..3 {
+            assert!(!wears_a_star(&session, index), "note {index} lost its star");
+        }
+        // A rewind re-opens the phrase, and the stars come back.
+        session.rewind_to(0.0);
+        for index in 0..3 {
+            assert!(
+                wears_a_star(&session, index),
+                "note {index} is a star again"
+            );
+        }
     }
 
-    #[test]
-    fn the_bounds_themselves_count_as_inside() {
-        // Phrase bounds are inclusive in the core, and the run of
-        // marked notes has to end exactly where the meter is awarded
-        // — a note on the last instant belongs to the phrase.
-        assert!(in_energy_phrase(&phrases(), 4.0), "start is inside");
-        assert!(in_energy_phrase(&phrases(), 8.0), "end is inside");
+    /// The rim swap in a real world: the system, the components and
+    /// the asset handles it actually writes.
+    mod wired {
+        use super::super::*;
+        use super::phrase_session;
+        use crate::gameplay::{PlayerIndex, PlayerSession};
+
+        /// A minimal `NoteAssets` — distinct handles, so a swap is
+        /// visible as a change of handle rather than of pixels.
+        fn assets(app: &mut App) -> NoteAssets {
+            let mut meshes = app.world_mut().resource_mut::<Assets<Mesh>>();
+            let gem = meshes.add(Sphere::new(0.1));
+            let rim = meshes.add(Sphere::new(0.2));
+            let hopo = meshes.add(Sphere::new(0.3));
+            let hopo_rim = meshes.add(Sphere::new(0.4));
+            let sustain = meshes.add(Sphere::new(0.5));
+            let star_rim = meshes.add(Sphere::new(0.6));
+            let mut materials = app.world_mut().resource_mut::<Assets<StandardMaterial>>();
+            let plain = materials.add(StandardMaterial::default());
+            let hype = materials.add(StandardMaterial::default());
+            let missed = materials.add(StandardMaterial::default());
+            let lane = materials.add(StandardMaterial::default());
+            NoteAssets {
+                gem,
+                rim,
+                hopo,
+                hopo_rim,
+                sustain,
+                star_rim,
+                centre: None,
+                hopo_centre: None,
+                face_ring: None,
+                face_ring_material: plain.clone(),
+                centre_material: plain.clone(),
+                sustain_core: None,
+                missed_material: missed,
+                rim_material: plain,
+                hype_rim_material: hype,
+                lane_material: vec![lane],
+            }
+        }
+
+        fn app() -> App {
+            let mut app = App::new();
+            app.add_plugins(bevy::asset::AssetPlugin::default())
+                .init_asset::<Mesh>()
+                .init_asset::<StandardMaterial>()
+                .add_systems(Update, sync_phrase_rims);
+            let note_assets = assets(&mut app);
+            app.insert_resource(Settings {
+                stage_3d: true,
+                round_gems: true,
+                ..Settings::default()
+            })
+            .insert_resource(note_assets);
+            app
+        }
+
+        /// The player, plus a starred rim for the first phrase note
+        /// (the one that will be missed) and for the second (which
+        /// stays pending) — the shape `spawn_due_notes` leaves behind.
+        fn stage(app: &mut App) -> (Entity, Vec<Entity>) {
+            let star = app.world().resource::<NoteAssets>().star_rim.clone();
+            let hype = app
+                .world()
+                .resource::<NoteAssets>()
+                .hype_rim_material
+                .clone();
+            let player = app
+                .world_mut()
+                .spawn((
+                    PlayerIndex(0),
+                    PlayerSession {
+                        session: phrase_session(),
+                        frame_events: Vec::new(),
+                        spawn_cursor: 4,
+                    },
+                ))
+                .id();
+            let rims = (0..2)
+                .map(|event_index| {
+                    app.world_mut()
+                        .spawn((
+                            Note3d {
+                                player: 0,
+                                event_index,
+                                lane: Lane::One,
+                            },
+                            PhraseRim {
+                                hopo: false,
+                                starred: true,
+                            },
+                            Mesh3d(star.clone()),
+                            MeshMaterial3d(hype.clone()),
+                            Transform::default(),
+                        ))
+                        .id()
+                })
+                .collect();
+            (player, rims)
+        }
+
+        fn mesh_of(app: &App, entity: Entity) -> Handle<Mesh> {
+            app.world()
+                .get::<Mesh3d>(entity)
+                .expect("the rim has a mesh")
+                .0
+                .clone()
+        }
+
+        #[test]
+        fn a_broken_phrase_takes_the_star_off_the_notes_still_pending() {
+            let mut app = app();
+            let (player, rims) = stage(&mut app);
+            let star = app.world().resource::<NoteAssets>().star_rim.clone();
+            let plain = app.world().resource::<NoteAssets>().rim.clone();
+            let plain_material = app.world().resource::<NoteAssets>().rim_material.clone();
+
+            app.update();
+            assert_eq!(mesh_of(&app, rims[0]), star, "nothing missed yet");
+            assert_eq!(mesh_of(&app, rims[1]), star);
+
+            // Let the FIRST phrase note pass unplayed. It breaks the
+            // phrase; the second note is still pending.
+            let mut events = Vec::new();
+            app.world_mut()
+                .get_mut::<PlayerSession>(player)
+                .expect("the player")
+                .session
+                .advance(1.2, &mut events);
+            app.update();
+
+            // The pending note loses the star, mesh and material both.
+            assert_eq!(
+                mesh_of(&app, rims[1]),
+                plain,
+                "a phrase that can no longer be earned stops promising it"
+            );
+            assert_eq!(
+                app.world()
+                    .get::<MeshMaterial3d<StandardMaterial>>(rims[1])
+                    .map(|m| m.0.clone()),
+                Some(plain_material),
+            );
+            assert!(
+                app.world()
+                    .get::<PhraseRim>(rims[1])
+                    .is_some_and(|rim| !rim.starred),
+                "and the marker remembers the new look"
+            );
+
+            // The note that WAS missed keeps what `apply_note_events`
+            // gave it — its grey is not this system's to undo.
+            assert_eq!(mesh_of(&app, rims[0]), star, "a missed note is left alone");
+
+            // A rewind re-opens the phrase and the star comes back,
+            // without anything respawning.
+            app.world_mut()
+                .get_mut::<PlayerSession>(player)
+                .expect("the player")
+                .session
+                .rewind_to(0.0);
+            app.update();
+            assert_eq!(mesh_of(&app, rims[1]), star, "earnable again");
+        }
     }
 
     use super::sustain_tail_span;

@@ -245,6 +245,28 @@ impl TrackSession {
         self.states.get(event_index).copied()
     }
 
+    /// The special phrase an event belongs to, if any.
+    ///
+    /// Fixed when the session is built — phrase bounds are inclusive
+    /// and phrases never overlap, so an event belongs to at most one.
+    #[must_use]
+    pub fn phrase_of(&self, event_index: usize) -> Option<usize> {
+        self.event_phrase
+            .get(event_index)
+            .copied()
+            .filter(|&phrase| phrase != usize::MAX)
+    }
+
+    /// Whether a phrase has been broken by a miss: its Hype can no
+    /// longer be earned, however the rest of it is played. `false` for
+    /// an index no phrase has.
+    #[must_use]
+    pub fn phrase_broken(&self, phrase_index: usize) -> bool {
+        self.phrases
+            .get(phrase_index)
+            .is_some_and(|progress| progress.broken)
+    }
+
     /// The currently held frets.
     #[must_use]
     pub fn held(&self) -> LaneSet {
@@ -1058,6 +1080,58 @@ mod tests {
         s.advance(3.0, &mut events);
         assert!(events.contains(&SessionEvent::PhraseBroken { phrase_index: 0 }));
         assert!((s.performance().hype_meter() - 0.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_phrase_reports_which_events_are_in_it_and_whether_it_is_still_earnable() {
+        // The mapping is static; only `broken` moves. This is what
+        // the renderer asks to decide whether a note still wears a
+        // star (Guitar Hero: a missed note converts the phrase's
+        // remaining star notes into standard ones).
+        let mut s = session(track_with_phrases(
+            vec![
+                tap(1.0, Lane::One),
+                tap(1.5, Lane::Two),
+                tap(3.0, Lane::One),
+            ],
+            vec![Phrase {
+                start_s: 0.5,
+                end_s: 2.0,
+            }],
+        ));
+        assert_eq!(s.phrase_of(0), Some(0));
+        assert_eq!(s.phrase_of(1), Some(0));
+        assert_eq!(s.phrase_of(2), None, "outside the phrase");
+        assert_eq!(s.phrase_of(99), None, "no such event");
+        assert!(!s.phrase_broken(0));
+        assert!(!s.phrase_broken(7), "no such phrase");
+
+        // Miss the first note of the phrase.
+        let mut events = Vec::new();
+        s.advance(2.5, &mut events);
+        assert!(s.phrase_broken(0));
+        assert_eq!(
+            (s.phrase_of(0), s.phrase_of(1)),
+            (Some(0), Some(0)),
+            "the mapping does not move when the phrase breaks"
+        );
+
+        // A rewind re-opens it: the notes are pending again, so the
+        // phrase can be earned on the next pass.
+        s.rewind_to(0.0);
+        assert!(!s.phrase_broken(0));
+
+        // But a rewind to a point AFTER the phrase leaves the misses
+        // standing, and the phrase must stay broken — the state is
+        // re-derived from the notes, not simply cleared.
+        let mut events = Vec::new();
+        s.advance(2.5, &mut events);
+        assert!(s.phrase_broken(0));
+        s.rewind_to(2.6);
+        assert!(
+            s.phrase_broken(0),
+            "the misses behind the rewind point still count"
+        );
     }
 
     #[test]

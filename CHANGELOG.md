@@ -14,6 +14,27 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.13.40] - 2026-09-04
+
+### Fixed
+
+- **A missed note ends the star notes at once** (`gameplay/stage3d.rs`,
+  user report). Energy-phrase notes were drawn as stars from a
+  time-only test — "is this note inside a phrase" — so a phrase a miss
+  had already broken kept arriving in stars and kept its lit band, and
+  the screen went on promising energy that could no longer be earned.
+  The genre's rule is the opposite, and it is the point of the marking:
+  *"If any note is missed in a Star Power phrase, the Star Power notes
+  will convert to standard notes"* (WikiHero, **Star Power**; Clone
+  Hero's manual says the same — every note of the phrase must be hit
+  for the meter to move). Now the drawing asks the SESSION: notes
+  still to come from a broken phrase spawn as plain gems, the stars
+  **already on the neck revert on the frame of the miss**, and the
+  phrase's band on the neck goes out with them. The note that was
+  missed keeps its grey — that is `apply_note_events`' to give, and
+  re-dressing it would paint the miss away. A practice-loop rewind
+  re-opens the phrase and the stars come back.
+
 ## [0.13.39] - 2026-09-03
 
 ### Added

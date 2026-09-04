@@ -447,6 +447,19 @@ the real system rather than by hand.
 - [x] A read-only debug overlay during a song (v0.13.33), then on
   `L`, led by a large frame-rate figure, laid out as a table
   (v0.13.35).
+- [x] **A broken energy phrase stops showing stars** *(v0.13.40, user
+  report: "beim ersten miss sollte die Ansicht der Sterne aufhören")*.
+  The genre's rule, researched and cited in the code (WikiHero *Star
+  Power*, Clone Hero manual): one miss converts the phrase's remaining
+  star notes to standard ones. The drawing asked a time-only test, so
+  a dead phrase kept arriving in stars behind its lit band. Now the
+  session decides — notes still to come spawn plain, the stars on the
+  neck revert on the frame of the miss, the band goes out, the missed
+  note keeps its grey, and a rewind re-opens the phrase. *Verified: 6
+  tests (3 pure, 1 core, 1 wired ECS swap, 1 rewind), 4 mutation
+  probes; live on "Girls Just Want to Have Fun" — at 15.472 s band +
+  star note, at 15.873 s the miss counter goes 19 → 20 and both are
+  gone; the SECOND phrase at 30.741 s arrives in stars as it should.*
 - [x] The song search takes `q` as a letter again; leaving the
   search is a **held** q (one second, a centred bar fills); the
   filter matches every WORD in any column; the field keeps what was
