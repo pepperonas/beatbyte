@@ -52,6 +52,18 @@ pub struct HypeNeedle;
 #[derive(Component)]
 pub struct HypeTubeFill;
 
+/// The bright cap riding the top of the Hype fill.
+#[derive(Component)]
+pub struct HypeMeniscus;
+
+/// The band of light travelling up the charged column.
+#[derive(Component)]
+pub struct HypeShimmer;
+
+/// The glass housing around the Hype column.
+#[derive(Component)]
+pub struct HypeGlass;
+
 /// The solo plate's rock-meter dial face (the arc under the needle).
 #[derive(Component)]
 pub struct MeterDial;
@@ -606,39 +618,98 @@ fn spawn_solo_panels(
         "HYPE",
         Vec2::new(tube_x, right.y + PLATE_H / 2.0 - 12.0),
     );
+    // The well behind the glass, so an empty tube is a dark hollow
+    // rather than a hole in the plate.
     commands.spawn((
         GameplayScreen,
-        Sprite::from_color(
-            palette::dimmed(palette::HYPE, 0.25),
-            Vec2::new(TUBE_W, TUBE_H),
-        ),
+        Sprite {
+            image: shapes.hype_glass(),
+            // Enough to read as a vessel when it is empty, far from
+            // enough to be mistaken for charge. ⚠️ The old flat bar
+            // was solid violet at rest and looked FULL when it held
+            // nothing — that misreading is what this replaces.
+            color: palette::dimmed(palette::HYPE, 0.22),
+            custom_size: Some(Vec2::new(TUBE_W, TUBE_H)),
+            ..default()
+        },
         Anchor::BOTTOM_CENTER,
-        Transform::from_xyz(tube_x, tube_bottom, 3.4),
+        Transform::from_xyz(tube_x, tube_bottom, 3.35),
     ));
+    // The charge itself: a lit column, scaled from the bottom.
     commands.spawn((
         GameplayScreen,
         HypeTubeFill,
-        Sprite::from_color(palette::HYPE, Vec2::new(TUBE_W - 4.0, TUBE_H - 4.0)),
+        Sprite {
+            image: shapes.hype_fill(),
+            color: palette::HYPE,
+            custom_size: Some(Vec2::new(TUBE_W - 5.0, TUBE_H - 6.0)),
+            ..default()
+        },
         Anchor::BOTTOM_CENTER,
-        Transform::from_xyz(tube_x, tube_bottom + 2.0, 3.5).with_scale(Vec3::new(1.0, 0.0, 1.0)),
+        Transform::from_xyz(tube_x, tube_bottom + 3.0, 3.5).with_scale(Vec3::new(1.0, 0.0, 1.0)),
+    ));
+    // A band of light climbing the charge — the tube is being FED,
+    // and a still column never says that.
+    commands.spawn((
+        GameplayScreen,
+        HypeShimmer,
+        Sprite {
+            image: shapes.glow_strip(),
+            color: palette::HYPE,
+            custom_size: Some(Vec2::new(TUBE_W - 5.0, 10.0)),
+            ..default()
+        },
+        Transform::from_xyz(tube_x, tube_bottom + 3.0, 3.55),
+        Visibility::Hidden,
+    ));
+    // The meniscus: the surface of the charge, brighter than the
+    // body, riding wherever the fill happens to end.
+    commands.spawn((
+        GameplayScreen,
+        HypeMeniscus,
+        Sprite {
+            image: shapes.glow_strip(),
+            color: palette::TEXT,
+            custom_size: Some(Vec2::new(TUBE_W - 2.0, 5.0)),
+            ..default()
+        },
+        Transform::from_xyz(tube_x, tube_bottom + 3.0, 3.6),
+        Visibility::Hidden,
+    ));
+    // The glass over all of it: rim, hollow and specular in one
+    // capsule, so the column reads as being INSIDE something.
+    commands.spawn((
+        GameplayScreen,
+        HypeGlass,
+        Sprite {
+            image: shapes.hype_glass(),
+            color: palette::dimmed(palette::TEXT_DIM, 0.55),
+            custom_size: Some(Vec2::new(TUBE_W, TUBE_H)),
+            ..default()
+        },
+        Anchor::BOTTOM_CENTER,
+        Transform::from_xyz(tube_x, tube_bottom, 3.7),
     ));
     for quarter in 1..4 {
         // The halfway tick is the activation line, drawn wider.
         let ready = quarter == 2;
         commands.spawn((
             GameplayScreen,
+            // Etched INSIDE the glass, not sticking out of it: the
+            // first pass hung them over both rims and they read as
+            // little handles. The activation line stays the loud one.
             Sprite::from_color(
                 if ready {
-                    palette::TEXT
+                    palette::TEXT.with_alpha(0.85)
                 } else {
-                    palette::dimmed(palette::TEXT_DIM, 0.6)
+                    palette::dimmed(palette::TEXT_DIM, 0.5).with_alpha(0.5)
                 },
                 Vec2::new(
-                    if ready { TUBE_W + 8.0 } else { TUBE_W },
+                    if ready { TUBE_W - 3.0 } else { TUBE_W - 7.0 },
                     if ready { 2.0 } else { 1.0 },
                 ),
             ),
-            Transform::from_xyz(tube_x, tube_bottom + TUBE_H * quarter as f32 / 4.0, 3.6),
+            Transform::from_xyz(tube_x, tube_bottom + TUBE_H * quarter as f32 / 4.0, 3.75),
         ));
     }
     commands.spawn((
@@ -683,6 +754,52 @@ fn spawn_solo_panels(
 /// How far right of the plate's centre the dial's pivot sits.
 const DIAL_SHIFT: f32 = 26.0;
 /// The Hype tube's centre, in from the plate's left edge.
+/// How fast the charge column follows the meter, per second.
+///
+/// The meter itself steps: a marked phrase pays a quarter at once.
+/// A column that teleported would read as a glitch, and one that
+/// crawled would lie about when the power is ready — this lands in
+/// about a fifth of a second.
+const FILL_RATE: f32 = 14.0;
+
+/// Frame-rate independent approach: the fraction of the remaining
+/// distance covered in `dt` at `rate` per second. Pure — tested.
+#[must_use]
+pub fn approach(current: f32, target: f32, rate: f32, dt: f32) -> f32 {
+    let t = 1.0 - (-rate * dt.max(0.0)).exp();
+    current + (target - current) * t
+}
+
+/// Where the climbing band sits inside the charge, 0 at the bottom of
+/// the column and 1 at its surface.
+///
+/// It runs faster while the power is being SPENT — the tube is
+/// draining and the light rushing out of it says so. Pure — tested.
+#[must_use]
+pub fn shimmer_at(seconds: f32, active: bool) -> f32 {
+    let speed = if active { 1.9 } else { 0.62 };
+    (seconds * speed).rem_euclid(1.0)
+}
+
+/// How brightly the tube breathes: 0 while it is merely filling, a
+/// slow swell once there is enough to spend, a faster one while it is
+/// being spent.
+///
+/// `reduced` (the reduced-flashing setting) holds it at a steady
+/// middle instead of pulsing at all — that setting exists for people
+/// for whom a pulsing light is not decoration. Pure — tested.
+#[must_use]
+pub fn charge_glow(ready: bool, active: bool, seconds: f32, reduced: bool) -> f32 {
+    if !ready && !active {
+        return 0.0;
+    }
+    if reduced {
+        return 0.5;
+    }
+    let hz = if active { 3.4 } else { 1.25 };
+    0.5 + 0.5 * (seconds * hz * core::f32::consts::TAU).sin()
+}
+
 const TUBE_INSET: f32 = 30.0;
 /// The Hype tube's size.
 const TUBE_W: f32 = 16.0;
@@ -787,9 +904,9 @@ pub fn update_huds(
             for mut transform in &mut needles {
                 transform.rotation = Quat::from_rotation_z(gauge_angle(perf.meter() as f32));
             }
-            for mut transform in &mut tubes {
-                transform.scale.y = perf.hype_meter() as f32;
-            }
+            // The tube's own animator owns the column now (it eases,
+            // and carries the meniscus and the shimmer with it).
+            let _ = &mut tubes;
         }
 
         // Everything below is the solo plate, which only player one
@@ -922,6 +1039,118 @@ pub fn ready_glow(t: f32) -> f32 {
 }
 
 /// Breathe the instruments when it matters. The dial (rock meter):
+/// Drive the Hype tube: ease the column toward the meter, ride the
+/// meniscus on its surface, and run the climbing band through it.
+///
+/// Split out from `pulse_gauge` (which tints) because this one MOVES
+/// things, and the two want different queries. Everything it does is
+/// a transform or a tint — no texture is rebuilt per frame.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)] // Bevy system: params are DI
+pub fn animate_hype_tube(
+    time: Res<Time>,
+    settings: Res<crate::gameplay::fx::EffectSettings>,
+    players: Query<(&PlayerIndex, &PlayerSession)>,
+    mut fills: Query<
+        &mut Transform,
+        (
+            With<HypeTubeFill>,
+            Without<HypeMeniscus>,
+            Without<HypeShimmer>,
+            Without<HypeGlass>,
+        ),
+    >,
+    mut menisci: Query<
+        (&mut Transform, &mut Visibility, &mut Sprite),
+        (
+            With<HypeMeniscus>,
+            Without<HypeTubeFill>,
+            Without<HypeShimmer>,
+            Without<HypeGlass>,
+        ),
+    >,
+    mut shimmers: Query<
+        (&mut Transform, &mut Visibility, &mut Sprite),
+        (
+            With<HypeShimmer>,
+            Without<HypeTubeFill>,
+            Without<HypeMeniscus>,
+            Without<HypeGlass>,
+        ),
+    >,
+    mut glasses: Query<
+        &mut Sprite,
+        (
+            With<HypeGlass>,
+            Without<HypeTubeFill>,
+            Without<HypeMeniscus>,
+            Without<HypeShimmer>,
+        ),
+    >,
+    mut column: Local<f32>,
+) {
+    let Some((_, player)) = players.iter().find(|(index, _)| index.0 == 0) else {
+        return;
+    };
+    let perf = player.session.performance();
+    let meter = perf.hype_meter() as f32;
+    let active = perf.hype_active();
+    let ready = meter >= perf.config().hype_activation_threshold as f32;
+    let seconds = time.elapsed_secs();
+    let dt = time.delta_secs();
+    *column = approach(*column, meter, FILL_RATE, dt);
+    let filled = column.clamp(0.0, 1.0);
+    let glow = charge_glow(ready, active, seconds, settings.reduced_flashing)
+        * settings.intensity.clamp(0.0, 1.0);
+
+    let mut base_y = 0.0;
+    let mut height = 0.0;
+    for mut transform in &mut fills {
+        transform.scale.y = filled;
+        base_y = transform.translation.y;
+        height = TUBE_H - 6.0;
+    }
+    let surface = base_y + height * filled;
+
+    // The surface of the charge: hidden while the tube is empty,
+    // brighter as it breathes.
+    for (mut transform, mut visibility, mut sprite) in &mut menisci {
+        *visibility = if filled > 0.02 {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        transform.translation.y = surface;
+        sprite.color = palette::TEXT.with_alpha(0.55 + 0.45 * glow);
+    }
+
+    // The band climbing through the charge. It only exists inside
+    // the column, so an empty tube has none and a quarter-full tube
+    // runs it over a quarter of the glass.
+    for (mut transform, mut visibility, mut sprite) in &mut shimmers {
+        let travel = shimmer_at(seconds, active);
+        *visibility = if filled > 0.10 {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        transform.translation.y = base_y + height * filled * travel;
+        // Fades out as it reaches the surface, so it arrives rather
+        // than being cut off.
+        let fade = (1.0 - travel).powf(0.7);
+        sprite.color = palette::HYPE.with_alpha(0.10 + 0.45 * fade * (0.4 + 0.6 * glow));
+    }
+
+    // The glass picks up the breathing as a rim light.
+    for mut sprite in &mut glasses {
+        let lit = palette::dimmed(palette::TEXT_DIM, 0.55);
+        sprite.color = if glow > 0.0 {
+            palette::HYPE.mix(&lit, 1.0 - glow * 0.75)
+        } else {
+            lit
+        };
+    }
+}
+
 /// tinted by zone, and when the crowd is turning the whole dial
 /// pulses red — the one moment the corner may shout. The tube
 /// (Hype): breathes toward the hot tone once it can fire, blazes
@@ -1133,6 +1362,84 @@ mod ribbon_tests {
 
 #[cfg(test)]
 mod gauge_tests {
+    use super::{approach, charge_glow, shimmer_at};
+
+    #[test]
+    fn the_column_eases_toward_the_meter_and_never_past_it() {
+        // A marked phrase pays a quarter at once; the column must
+        // travel it rather than teleport.
+        let mut column = 0.0;
+        let step = approach(column, 0.25, super::FILL_RATE, 1.0 / 60.0);
+        assert!(step > 0.0 && step < 0.25, "moved, but not all the way");
+        // And it arrives: a fifth of a second is enough to be close.
+        for _ in 0..12 {
+            column = approach(column, 0.25, super::FILL_RATE, 1.0 / 60.0);
+        }
+        assert!((column - 0.25).abs() < 0.02, "arrives in about 0.2 s");
+        // Draining works the same way, downward.
+        let down = approach(1.0, 0.0, super::FILL_RATE, 1.0 / 60.0);
+        assert!(down < 1.0 && down > 0.0);
+        // Frame rate must not change where it ends up: one long frame
+        // covers what several short ones do.
+        let long = approach(0.0, 1.0, super::FILL_RATE, 0.1);
+        let mut short = 0.0;
+        for _ in 0..6 {
+            short = approach(short, 1.0, super::FILL_RATE, 0.1 / 6.0);
+        }
+        assert!((long - short).abs() < 0.01, "{long} vs {short}");
+    }
+
+    #[test]
+    fn the_band_climbs_and_runs_faster_while_the_power_is_spent() {
+        // It travels bottom to surface and wraps.
+        assert!((shimmer_at(0.0, false) - 0.0).abs() < 1e-6);
+        let a = shimmer_at(0.4, false);
+        let b = shimmer_at(0.8, false);
+        assert!(b > a, "climbing");
+        for t in [0.0, 0.7, 3.3, 91.0] {
+            let v = shimmer_at(t, true);
+            assert!((0.0..1.0).contains(&v), "stays inside the column at {t}");
+        }
+        // Spending it runs the light out faster.
+        assert!(shimmer_at(0.3, true) > shimmer_at(0.3, false));
+    }
+
+    #[test]
+    fn the_tube_breathes_only_when_there_is_something_to_spend() {
+        // Filling: no pulse at all — a meter that throbs while it is
+        // still charging says "fire me" before it can be fired.
+        for t in [0.0, 0.4, 1.9] {
+            assert_eq!(charge_glow(false, false, t, false), 0.0);
+        }
+        // Ready, and running, both breathe — and running is faster,
+        // so over one slow half-cycle the two disagree somewhere.
+        let ready: Vec<f32> = (0..24)
+            .map(|i| charge_glow(true, false, i as f32 / 24.0, false))
+            .collect();
+        let active: Vec<f32> = (0..24)
+            .map(|i| charge_glow(false, true, i as f32 / 24.0, false))
+            .collect();
+        assert!(ready.iter().cloned().fold(0.0, f32::max) > 0.9, "it swells");
+        assert!(
+            ready.iter().cloned().fold(1.0, f32::min) < 0.1,
+            "and settles"
+        );
+        assert!(
+            ready.iter().zip(&active).any(|(r, a)| (r - a).abs() > 0.3),
+            "spending it pulses at its own, faster rate"
+        );
+        // Reduced flashing: lit, steady, never pulsing.
+        for t in [0.0, 0.25, 0.5, 7.5] {
+            assert_eq!(charge_glow(true, false, t, true), 0.5);
+            assert_eq!(charge_glow(false, true, t, true), 0.5);
+        }
+        assert_eq!(
+            charge_glow(false, false, 1.0, true),
+            0.0,
+            "and still nothing while it is merely filling"
+        );
+    }
+
     use super::{gauge_angle, pop_scale, ready_glow};
 
     #[test]

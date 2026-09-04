@@ -369,6 +369,7 @@ impl Plugin for GameplayPlugin {
                         hud::pop_streak,
                         hud::pop_multiplier,
                         hud::pulse_gauge,
+                        hud::animate_hype_tube,
                         hud::update_song_ribbon,
                     )
                         .chain(),

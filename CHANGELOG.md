@@ -14,6 +14,44 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.5] - 2026-09-04
+
+### Changed
+
+- **The Hype meter is an instrument now** (user: "gestalte das hud
+  nochmal optisch ansprechender und hochauflösender, insb unten
+  rechts … diese soll auch animiert sein"). It was a flat purple
+  rectangle with three gaps and a white line. It is a **glass tube**:
+  a capsule with round caps, a lit rim and a specular down its left
+  shoulder, drawn from its own non-square texture so the caps stay
+  round instead of stretching into ovals. Inside it, a charge column
+  with a bright core and shaded flanks, a **meniscus** riding its
+  surface, and the quarter marks etched under the glass rather than
+  hung over both rims like handles.
+- **And it moves.** The column *eases* toward the meter instead of
+  jumping a quarter at a time when a marked phrase pays out
+  (frame-rate independent, arriving in about a fifth of a second); a
+  band of light **climbs** the charge, faster while the power is
+  being spent, fading as it reaches the surface; and once there is
+  enough to fire, the glass **breathes** — slowly when ready, quickly
+  while running. Measured on screen over 24 frames of a song: the
+  rim's brightness swings 17.9 → 27.8. Reduced flashing holds it lit
+  and steady instead of pulsing, and effect intensity scales the
+  whole thing.
+- The empty tube now reads as an empty vessel. ⚠️ Worth naming
+  because it was a defect hiding in the old design: the flat bar was
+  solid violet at rest, so a meter holding nothing looked FULL.
+
+⚠️ A halo for the crowd dial's needle was built in the same pass and
+taken out again: on screen it turned the one crisp white line into a
+fat white wedge and flattened the dial. The needle was better before.
+
+⚠️ The first version of the glass was a filled capsule that painted
+over the charge it was supposed to contain — a handsome tube with an
+unreadable meter inside. It was caught by looking at it, and the pin
+that would have caught it (the middle of the glass must be
+see-through) is now in the shading tests.
+
 ## [0.14.4] - 2026-09-04
 
 ### Fixed

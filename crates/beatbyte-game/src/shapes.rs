@@ -33,6 +33,8 @@ pub struct LaneShapes {
     bed_gradient: Handle<Image>,
     vignette: Handle<Image>,
     gauge_arc: Handle<Image>,
+    hype_glass: Handle<Image>,
+    hype_fill: Handle<Image>,
     beam_gradient: Handle<Image>,
     speaker_sub: Handle<Image>,
     speaker_top: Handle<Image>,
@@ -141,6 +143,18 @@ impl LaneShapes {
         self.gauge_arc.clone()
     }
 
+    /// The Hype tube's glass housing.
+    #[must_use]
+    pub fn hype_glass(&self) -> Handle<Image> {
+        self.hype_glass.clone()
+    }
+
+    /// The Hype tube's fill column.
+    #[must_use]
+    pub fn hype_fill(&self) -> Handle<Image> {
+        self.hype_fill.clone()
+    }
+
     /// A soft-edged tube cross-section (sustain tails).
     #[must_use]
     pub fn tube(&self) -> Handle<Image> {
@@ -196,6 +210,10 @@ fn build_shapes(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         bed_gradient: images.add(shaded_image(bed_shading)),
         vignette: images.add(shaded_image(vignette_shading)),
         gauge_arc: images.add(shaded_image(gauge_arc_shading)),
+        // Twice the pixels the tube occupies on a retina panel, and
+        // in its own aspect so the caps stay round.
+        hype_glass: images.add(shaded_image_wh(64, 296, hype_glass_shading)),
+        hype_fill: images.add(shaded_image_wh(64, 64, hype_fill_shading)),
         beam_gradient: images.add(shaded_image(beam_shading)),
         speaker_sub: images.add(shaded_image(|u, v| speaker_shading(u, v, true))),
         speaker_top: images.add(shaded_image(|u, v| speaker_shading(u, v, false))),
@@ -352,6 +370,74 @@ pub fn gauge_arc_shading(u: f32, v: f32) -> Shade {
     (value, edge * 0.9)
 }
 
+/// The Hype tube's glass housing: a capsule with rounded caps, a
+/// dark well inside, a bright rim, and a specular running down the
+/// left shoulder.
+///
+/// The tile is meant to be drawn [`TUBE_ASPECT`] times taller than it
+/// is wide, and the cap geometry is corrected for that — a capsule
+/// drawn from a square tile would have oval ends. Pure — tested.
+#[must_use]
+pub fn hype_glass_shading(u: f32, v: f32) -> Shade {
+    // Distance to the capsule's skeleton, in units of half-width.
+    let dx = (u - 0.5) * 2.0;
+    // The caps are half a width tall, which is 0.5/ASPECT in v.
+    let cap = 0.5 / TUBE_ASPECT;
+    let dy = if v < cap {
+        (cap - v) * TUBE_ASPECT * 2.0
+    } else if v > 1.0 - cap {
+        (v - (1.0 - cap)) * TUBE_ASPECT * 2.0
+    } else {
+        0.0
+    };
+    let r = (dx * dx + dy * dy).sqrt();
+    if r > 1.0 {
+        return (0.0, 0.0);
+    }
+    // ⚠️ The glass is a FRAME, not a lid. Its alpha has to fall to
+    // almost nothing across the middle, or it paints over the charge
+    // it is supposed to contain — which is exactly what the first
+    // version did: a handsome capsule with an unreadable meter
+    // inside it.
+    //
+    // The rim: bright and opaque at the outside, gone by 78 % of the
+    // way in.
+    let rim = ((r - 0.78) / 0.20).clamp(0.0, 1.0);
+    // A specular streak down the left shoulder, brightest up top.
+    let streak = (1.0 - ((dx + 0.45).abs() / 0.22).min(1.0)).powi(2) * (1.0 - v * 0.55);
+    let value = (0.34 + 0.66 * rim.max(streak * 0.9)).clamp(0.0, 1.0);
+    // Alpha: the rim carries it, the streak adds a sheen, and the
+    // middle keeps a whisper so the tube still reads as glazed.
+    let alpha = (0.06 + 0.94 * rim.max(streak * 0.55)).min(1.0);
+    // A soft outer edge so the capsule has no staircase.
+    let edge = ((1.0 - r) / 0.06).clamp(0.0, 1.0);
+    (value, alpha * edge)
+}
+
+/// How many times taller than wide the Hype tube is drawn.
+pub const TUBE_ASPECT: f32 = 74.0 / 16.0;
+
+/// The Hype tube's fill: a column with a lit core and shaded flanks,
+/// so the charge reads as a body of light rather than a flat bar.
+///
+/// Shaped across the WIDTH on purpose: the sprite is scaled
+/// vertically as the meter fills, and anything that varied down the
+/// tile would stretch with it. Pure — tested.
+#[must_use]
+pub fn hype_fill_shading(u: f32, _v: f32) -> Shade {
+    let dx = (u - 0.5) * 2.0;
+    // Lit core, falling off to the flanks; never fully dark, or the
+    // column would look like two stripes.
+    // A wide value range on purpose: multiplied by a pale violet, a
+    // narrow one comes out as flat lavender. Dark flanks and a near
+    // white core are what make it read as a lit column.
+    let core = (1.0 - dx.abs()).powf(0.6);
+    let value = 0.22 + 0.78 * core.powf(0.8);
+    // The column is inset inside the glass, with a soft edge.
+    let edge = ((1.0 - dx.abs()) / 0.18).clamp(0.0, 1.0);
+    (value, edge)
+}
+
 /// Lit-sphere shading: Lambert diffuse from an upper-left light over
 /// a hemisphere normal, ambient floor, darkened contact rim. Pure —
 /// tested.
@@ -429,6 +515,39 @@ pub fn vignette_shading(u: f32, v: f32) -> Shade {
 #[must_use]
 pub fn bed_shading(_u: f32, v: f32) -> Shade {
     (0.55 + 0.45 * v, 1.0)
+}
+
+/// Bake a shading function into a texture of the given size.
+///
+/// Non-square exists for the Hype tube: it is drawn four and a half
+/// times taller than it is wide, and a square texture stretched to
+/// that shape turns its round caps into ellipses and its specular
+/// into a smear.
+fn shaded_image_wh(width: usize, height: usize, shade: fn(f32, f32) -> Shade) -> Image {
+    let mut data = Vec::with_capacity(width * height * 4);
+    for y in 0..height {
+        for x in 0..width {
+            let (value, alpha) = shade(
+                (x as f32 + 0.5) / width as f32,
+                (y as f32 + 0.5) / height as f32,
+            );
+            let v = (value.clamp(0.0, 1.0) * 255.0) as u8;
+            data.extend_from_slice(&[v, v, v, (alpha.clamp(0.0, 1.0) * 255.0) as u8]);
+        }
+    }
+    let mut image = Image::new(
+        Extent3d {
+            width: width as u32,
+            height: height as u32,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD,
+    );
+    image.sampler = bevy::image::ImageSampler::linear();
+    image
 }
 
 /// Bake a shading function into a 256-px linearly sampled texture.
@@ -665,6 +784,45 @@ mod tests {
         let (a, _) = beam_shading(0.0, 0.4);
         let (b, _) = beam_shading(1.0, 0.4);
         assert!((a - b).abs() < 1e-4, "seam: {a} vs {b}");
+    }
+
+    #[test]
+    fn the_hype_glass_is_a_frame_and_not_a_lid() {
+        use super::hype_glass_shading;
+        // THE defect this pins, found by looking at it: the first
+        // version was a filled capsule, and it painted over the very
+        // charge it was supposed to contain.
+        let (_, middle) = hype_glass_shading(0.5, 0.5);
+        assert!(middle < 0.2, "the middle must be see-through, not {middle}");
+        // The rim carries the shape. It is a THIN band — about a
+        // pixel and a half at the size this is drawn — so the sample
+        // has to sit inside it rather than in the soft outer edge.
+        for u in [0.035, 0.965] {
+            let (value, alpha) = hype_glass_shading(u, 0.5);
+            assert!(alpha > 0.7, "the rim is solid at {u}, not {alpha}");
+            assert!(value > 0.6, "and bright at {u}, not {value}");
+        }
+        // Outside the capsule there is nothing at all: the caps are
+        // round, so a corner of the tile is empty.
+        assert_eq!(hype_glass_shading(0.02, 0.001).1, 0.0, "outside the cap");
+        // The specular sits on the left shoulder, and is brighter up
+        // top than down at the bottom.
+        let (top, _) = hype_glass_shading(0.275, 0.2);
+        let (bottom, _) = hype_glass_shading(0.275, 0.85);
+        assert!(top > bottom, "the light comes from above");
+    }
+
+    #[test]
+    fn the_hype_fill_is_a_lit_column() {
+        use super::hype_fill_shading;
+        let (core, core_a) = hype_fill_shading(0.5, 0.5);
+        let (flank, _) = hype_fill_shading(0.14, 0.5);
+        assert!(core > flank, "a core brighter than its flanks");
+        assert!(core > 0.9 && flank < 0.75, "and enough of a range to read");
+        assert!(core_a > 0.9, "solid down the middle");
+        // Shaped across the width only: scaling it vertically must
+        // not change what it looks like.
+        assert_eq!(hype_fill_shading(0.5, 0.05), hype_fill_shading(0.5, 0.95));
     }
 
     #[test]
