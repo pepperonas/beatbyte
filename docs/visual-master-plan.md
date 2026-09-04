@@ -91,9 +91,11 @@ a screenshot.
 
 1. A `.lrc` beside the song's audio (same stem), or beside the
    chart. Import and the watch folder copy it along with the audio.
-2. The demo song "Circuit Breaker" ships hand-written original
-   enhanced-LRC (recorded in `docs/development/asset-licenses.md`), so a fresh
-   clone demonstrates karaoke without any user content.
+2. Otherwise the lyrics lookup fetches them (lrclib) and caches the
+   `.lrc` beside the audio. A bundled example used to exist — the
+   synthesized demo song carried hand-written enhanced LRC — but an
+   instrumental that sings along is a lie about the audio, so both
+   the song and its lyrics are gone (ADR-0006, amendment).
 
 ### Settings (commission §29, trimmed honestly)
 

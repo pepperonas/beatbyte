@@ -48,7 +48,12 @@ Kept as the dependency record and the map of where things live.
 - [x] M3.2 `SongClock`: anchored monotonic time, snap ≥30 ms / slew 10 % vs device position. *Verify: clock tests.*
 - [x] M3.3 Music on a dedicated thread behind Send `MusicHandle` (mpsc + atomics): play/pause/seek/volume/position. *Verify: playback tests + game integration.*
 - [x] M3.4 Synth: click track + burst synthesis (15 % release ramp — hard truncation is an audible/detectable click). *Verify: onset tests.*
-- [x] M3.5 Build-time synthesized demo song (128 BPM, no copyrighted audio). *Verify: `beatbyte-cli demo`.*
+- [x] M3.5 Build-time synthesized demo song (128 BPM, no copyrighted
+  audio). *Verify: `beatbyte-cli demo`.* **Superseded 2026-09-05:**
+  the synthesized songs no longer ship in the game (they are
+  instrumentals that were showing karaoke lyrics — user's call).
+  The synthesis stays as the analysis/charting test fixture and
+  behind `beatbyte-cli demo`. ADR-0006, amendment.
 
 ### M4 — Analysis & chart generation (v0.0.3) — dep: M3
 
@@ -390,7 +395,9 @@ budgeted particles, tiered hit feedback, beat-reactive environment
   clock, next-line preview, scrim, honest line-timing fallback,
   MC-set handover, multiplayer-safe layout.
 - [x] Sources: `.lrc` beside audio/chart; import + watch folder
-  carry it; demo song ships original hand-timed lyrics.
+  carry it, and the lyrics lookup fetches + caches one. (The demo
+  song's hand-timed lyrics are gone with the demo song itself —
+  2026-09-05, an instrumental must not sing along.)
 - [x] Settings: LYRICS, LYRICS SIZE, LYRICS OFFSET.
 
 Follow-ups (only if wanted): a lyrics editor timeline, automatic
@@ -544,7 +551,7 @@ rock gate.
 **Found on the way, not yet fixed:** chart generation is
 reproducible per platform but not across platforms — a libm
 last-bit difference flips a threshold and moves a note. One of the
-two built-in songs diverges between macOS and Linux. The gate
+two synthesized reference tracks diverges between macOS and Linux. The gate
 records a fingerprint per platform and the README says so; finding
 the knife-edge comparison is a separate piece of work.
 

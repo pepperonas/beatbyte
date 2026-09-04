@@ -74,7 +74,9 @@ tech writer, release manager. Operate accordingly:
   engine-free); game is the only crate that touches Bevy. Keep it so.
 - **No copyrighted assets, music, or trademarks — ever.** All assets
   original, generated, CC0, or OFL (fonts: Press Start 2P and Bebas
-  Neue, each bundled with its license). Demo song is synthesized at build time. No rhythm-game
+  Neue, each bundled with its license). No song ships with the game;
+  the synthesized reference tracks live in `beatbyte-audio::demo` as
+  test fixtures. No rhythm-game
   trademarks, logos, names, fonts or copied artwork. New assets are
   recorded in `docs/asset-licenses.md`.
   **What this rule does NOT forbid:** the genre's conventions — a
@@ -117,10 +119,13 @@ BEATBYTE_SHOT_STATE=settings|controls|calibration|inputtest|menu|songselect|join
   release** and after any change to gameplay, timing, input, or state
   flow. **Local verification runs play the user's imported tracks**
   (`BEATBYTE_AUTOPILOT_SONG="Never Gonna"` etc. — user preference,
-  2026-08-26); the bundled synthesized songs stay the CI/release
-  baseline because a fresh clone has nothing else and nothing else
-  may legally be bundled. Keep local runs `BEATBYTE_AUTOPILOT_MUTE=1`
-  — and the in-app `M` toggle now flips sound live either way.
+  2026-08-26). **BeatByte bundles no songs** (2026-09-05, user: the
+  synthesized instrumentals were showing karaoke lyrics) — on a clone
+  without a library, run `beatbyte-cli demo` first to materialize the
+  synthesized reference tracks, which is also how CI would get one.
+  Keep local runs `BEATBYTE_AUTOPILOT_MUTE=1` — and the in-app `M`
+  toggle now flips sound live either way (it is a gate inside the
+  player: never re-introduce mute as a factor at call sites).
 - **Artifacts are tested, not assumed.** Before publishing a release,
   download a CI artifact and smoke-test it (portable layout from a
   *neutral* CWD — that is the layout that has actually broken).

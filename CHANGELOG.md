@@ -14,6 +14,37 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.7] - 2026-09-05
+
+### Removed
+
+- **The two synthesized songs are gone from the game** (user: "nimm
+  die generierten test songs raus, die haben keine vokals zeigen aber
+  trotzdem lyrics an. das kann nicht sein"). "Circuit Breaker" shipped
+  hand-written karaoke lyrics over a chiptune instrumental — a track
+  with no voice on it was singing along, which is the game
+  demonstrating a feature by lying about the audio. Both tracks and
+  `assets/lyrics/circuit-breaker.lrc` are out; boot no longer
+  synthesizes anything and spends the time scanning the library
+  off-thread instead.
+- **BeatByte therefore ships no songs at all.** Said plainly rather
+  than discovered: the browser's empty list now distinguishes an
+  empty *library* ("no songs yet — drag an audio file onto the
+  window") from an empty *search* ("no match for … — ESC clears"),
+  because "no match for """ would be both false and useless on a
+  first launch. The README says it before the download link.
+- What did **not** change: `beatbyte-audio::demo` still renders both
+  tracks — they are the deterministic fixture the analysis and
+  charting regression tests are built on, where a known-BPM signal is
+  worth more than a playlist entry — and `beatbyte-cli demo` still
+  writes them to disk (`songs/builtin/` by default, which the library
+  scans), so anyone who wants them can have them in one command.
+  Verified: the command produces both WAVs and both charts.
+- The built-in *mechanism* also stays (`SongSource::Builtin`,
+  `BuiltinSongs`, inserted empty): a bundled song remains a supported
+  shape, there simply is not one. ADR-0006 is amended rather than
+  quietly contradicted.
+
 ## [0.14.6] - 2026-09-05
 
 ### Fixed

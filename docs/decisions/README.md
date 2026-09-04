@@ -12,7 +12,7 @@ contradicted** — if a decision is reversed, the ADR says so.
 | [0003](ADR-0003-chart-format.md) | JSON chart format, versioned | Accepted |
 | [0004](ADR-0004-gameplay-timing.md) | Input-stamp-driven timing and judgment | Accepted |
 | [0005](ADR-0005-audio-architecture.md) | Playback thread, song clock, analysis pipeline | Accepted |
-| [0006](ADR-0006-synthesized-demo-content.md) | Demo songs synthesized at build time | Accepted |
+| [0006](ADR-0006-synthesized-demo-content.md) | Demo songs synthesized at build time | **Amended** — synthesis stays as the test fixture, the songs left the game |
 | [0007](ADR-0007-input-abstraction.md) | Actions and bindings, not keys | Accepted |
 | [0008](ADR-0008-theme-system.md) | Data-driven stage themes | Accepted |
 | 0009 | Automatic guitar transcription engine | **Parked** — see below |

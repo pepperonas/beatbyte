@@ -1,10 +1,23 @@
-//! The boot screen: shows the title while the built-in songs render,
-//! analyze and chart themselves in the background, then scans the
-//! song library and moves to the main menu.
+//! The boot screen: shows the title while the song library is
+//! scanned in the background, then moves to the main menu.
+//!
+//! **BeatByte ships no songs.** It used to boot with two synthesized
+//! chiptune instrumentals ("Circuit Breaker", "Solder Groove") that
+//! demonstrated the pipeline without any copyrighted audio — and one
+//! of them carried hand-written karaoke lyrics, so a track with no
+//! voice on it sang along. The user's verdict was short: that cannot
+//! be. They are gone from the game. The synthesis itself
+//! ([`beatbyte_audio::demo`]) stays where it always belonged: as the
+//! deterministic fixture the analysis and charting regression tests
+//! are built on, and behind `beatbyte-cli demo` for anyone who wants
+//! them on disk.
+//!
+//! The built-in MECHANISM stays (`SongSource::Builtin`,
+//! [`BuiltinSongs`] — inserted empty): a bundled song remains a
+//! supported shape, there simply is not one.
 
 use beatbyte_audio::decode::AudioData;
-use beatbyte_audio::{Analyzer, SpectralAnalyzer};
-use beatbyte_chart::{ChartFile, GenerateMeta, generate_chart};
+use beatbyte_chart::ChartFile;
 use bevy::prelude::*;
 use bevy::tasks::futures_lite::future;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on};
@@ -27,7 +40,10 @@ pub struct LoadedSong {
 /// The audio side of a loaded song.
 #[derive(Clone)]
 pub enum SongAudio {
-    /// Fully synthesized/decoded samples (the demo).
+    /// Samples already in memory. Nothing constructs this while no
+    /// song is bundled; the path stays because a built-in song is
+    /// still a supported shape (and the browser preview and
+    /// `prepare_song` both handle it).
     Memory(AudioData),
     /// A file on disk, streamed by the music thread.
     File(std::path::PathBuf),
@@ -55,9 +71,9 @@ pub fn scan_with_builtins(songs: &[LoadedSong]) -> crate::library::SongLibrary {
 #[derive(Resource, Clone)]
 pub struct BuiltinSongs(pub Vec<LoadedSong>);
 
-/// The in-flight background build of the built-in songs.
+/// The in-flight background scan of the song library.
 #[derive(Resource)]
-struct DemoLoadTask(Task<Vec<LoadedSong>>);
+struct LibraryScanTask(Task<crate::library::SongLibrary>);
 
 /// Plugin for the boot screen shown in [`AppState::Boot`].
 pub struct BootPlugin;
@@ -66,9 +82,9 @@ impl Plugin for BootPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             OnEnter(AppState::Boot),
-            (spawn_boot_screen, start_demo_load),
+            (spawn_boot_screen, start_library_scan),
         )
-        .add_systems(Update, poll_demo_load.run_if(in_state(AppState::Boot)))
+        .add_systems(Update, poll_library_scan.run_if(in_state(AppState::Boot)))
         .add_systems(OnExit(AppState::Boot), despawn_boot_screen);
     }
 }
@@ -110,76 +126,31 @@ fn spawn_boot_screen(mut commands: Commands, font: Res<UiFont>) {
         });
 }
 
-/// Kick off the built-in song builds: render → analyze → chart each,
-/// off-thread.
-fn start_demo_load(mut commands: Commands) {
-    let task = AsyncComputeTaskPool::get().spawn(async move {
-        let build = |audio: beatbyte_audio::decode::AudioData, title: &str, artist: &str| {
-            let analysis = SpectralAnalyzer::default().analyze(&audio);
-            let mut chart = generate_chart(
-                &analysis,
-                &GenerateMeta {
-                    title: title.to_owned(),
-                    artist: artist.to_owned(),
-                    audio: String::new(), // played from memory, not a file
-                },
-            );
-            // Honest metadata: the demo songs ARE chiptune.
-            chart.song.genre = Some("Chiptune".to_owned());
-            LoadedSong {
-                chart,
-                audio: SongAudio::Memory(audio),
-                lyrics: None,
-            }
-        };
-        use beatbyte_audio::demo;
-        let mut songs = vec![
-            build(
-                demo::render_demo_song(),
-                demo::DEMO_TITLE,
-                demo::DEMO_ARTIST,
-            ),
-            build(
-                demo::render_groove_song(),
-                demo::GROOVE_TITLE,
-                demo::GROOVE_ARTIST,
-            ),
-        ];
-        // The demo song ships original karaoke lyrics (enhanced LRC,
-        // hand-timed to its 128 BPM grid), so a fresh clone
-        // demonstrates the feature without any user content.
-        let demo_lyrics = beatbyte_chart::lyrics::parse_lrc(include_str!(
-            "../../../assets/lyrics/circuit-breaker.lrc"
-        ));
-        if let Some(song) = songs.first_mut() {
-            song.lyrics = Some(demo_lyrics);
-        }
-        songs
-    });
-    commands.insert_resource(DemoLoadTask(task));
+/// Scan the song library off-thread: reading and parsing a chart per
+/// song is file I/O, and a full library of them would stall the first
+/// frames on the main thread. (It used to hide the demo synthesis,
+/// which was the expensive part.)
+fn start_library_scan(mut commands: Commands) {
+    let task = AsyncComputeTaskPool::get().spawn(async move { crate::library::scan_library(&[]) });
+    commands.insert_resource(LibraryScanTask(task));
 }
 
-/// When the built-ins are ready: publish them, scan the library,
-/// enter the menu.
-fn poll_demo_load(
+/// When the scan is done: publish the library and enter the menu.
+fn poll_library_scan(
     mut commands: Commands,
-    mut task: ResMut<DemoLoadTask>,
+    mut task: ResMut<LibraryScanTask>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
-    if let Some(songs) = block_on(future::poll_once(&mut task.0)) {
-        for song in &songs {
-            info!(
-                "built-in song ready: \"{}\" — {:.1} BPM, {} difficulties",
-                song.chart.song.title,
-                song.chart.song.bpm,
-                song.chart.charts.len()
-            );
-        }
-        let library = scan_with_builtins(&songs);
+    if let Some(library) = block_on(future::poll_once(&mut task.0)) {
         info!("song library: {} entr(ies)", library.entries.len());
+        if library.entries.is_empty() {
+            info!("no songs yet — drag an audio file onto the window to import one");
+        }
         commands.insert_resource(library);
-        commands.insert_resource(BuiltinSongs(songs));
-        commands.remove_resource::<DemoLoadTask>();
+        // Empty, but present: systems take `Res<BuiltinSongs>`, and a
+        // missing resource makes a Bevy system vanish silently.
+        commands.insert_resource(BuiltinSongs(Vec::new()));
+        commands.remove_resource::<LibraryScanTask>();
         next_state.set(AppState::MainMenu);
     }
 }

@@ -16,8 +16,9 @@ entry needs the build version. Roadmap tasks A1–A4 consume this file.
 
 ## Session script
 
-Play **both** built-in songs. For each, one run per difficulty, Easy →
-Expert ("Circuit Breaker" 128 BPM, "Solder Groove" 92 BPM half-time).
+Play **two songs of your own** — ideally one steady four-to-the-floor
+and one half-time/syncopated, so the tempo tracking is judged on both.
+For each, one run per difficulty, Easy → Expert.
 After each run, before looking at the score, answer from feel:
 
 ### Timing windows (A2)
@@ -38,7 +39,8 @@ After each run, before looking at the score, answer from feel:
 
 - Does holding to the tail's end feel rewarded? Does releasing early
   penalize about right?
-- "Solder Groove" Medium carries the most sustains — judge there.
+- Judge this on the song with the most held notes: a track with long
+  pad or vocal tails charts the most sustains.
 
 ### Hype (A2)
 
@@ -48,7 +50,7 @@ After each run, before looking at the score, answer from feel:
 ### Difficulty curve (A4)
 
 - Does each difficulty step feel like ONE step up? Note any cliff
-  (e.g. "Hard→Expert on Circuit Breaker doubles note count").
+  (e.g. "Hard→Expert doubles the note count on this track").
 - Known suspicion to confirm/refute: Hard/Expert generate almost no
   sustains (1–2 per song vs Medium's 6) — does their absence hurt?
 - Do generated charts *follow the music* — lanes tracking melody

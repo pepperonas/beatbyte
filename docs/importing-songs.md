@@ -77,8 +77,9 @@ keep the two files together. `beatbyte-cli validate <chart>` and
 
 ## 4. Play it
 
-Start BeatByte — the song is in the browser (built-in songs first,
-then yours, sorted by title). Pick a difficulty and play.
+Start BeatByte — the song is in the browser, sorted by title. Pick a
+difficulty and play. (BeatByte ships no songs of its own, so until you
+import one the browser says so.)
 
 ## 5. Correct it (this is expected!)
 

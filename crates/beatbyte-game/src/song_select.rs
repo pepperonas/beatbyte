@@ -437,6 +437,20 @@ fn rebuild_key(
     (order.to_vec(), difficulty, quoted)
 }
 
+/// The line that stands in for the list when it has no rows. Two
+/// different silences, two different sentences: a library with songs
+/// in it whose filter matched nothing can be cleared with ESC, while
+/// an empty library needs a song — telling the latter "no match for
+/// """ would be both false and useless. Pure — tested.
+#[must_use]
+pub fn empty_hint(library_len: usize, filter: &str) -> String {
+    if library_len == 0 {
+        "no songs yet  -  drag an audio file onto the window".to_owned()
+    } else {
+        format!("no match for \"{filter}\"  -  ESC clears")
+    }
+}
+
 /// `m:ss` for a duration column.
 fn length_label(duration_s: Option<f64>) -> String {
     duration_s.map_or_else(
@@ -1307,7 +1321,7 @@ fn spawn_rows_into(
         if view.order.is_empty() {
             panel.spawn((
                 EmptyHint,
-                Text::new(font.safe(&format!("no match for \"{}\"  -  ESC clears", view.filter))),
+                Text::new(font.safe(&empty_hint(library.entries.len(), &view.filter))),
                 font.text(ui_kit::ROW),
                 TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
                 Node {
@@ -1890,6 +1904,22 @@ mod view_tests {
             )
             .is_empty()
         );
+    }
+
+    #[test]
+    fn an_empty_library_is_told_apart_from_an_empty_search() {
+        // Since BeatByte ships no songs, a fresh install lands on an
+        // empty browser. "no match for """ would be nonsense there,
+        // and ESC would clear nothing — the screen has to say what
+        // is actually missing and how to fix it.
+        let fresh = empty_hint(0, "");
+        assert!(fresh.contains("no songs"), "{fresh}");
+        assert!(fresh.contains("drag"), "must name the way in: {fresh}");
+        assert!(!fresh.contains("ESC"), "nothing to clear: {fresh}");
+        // A library that HAS songs keeps the search wording.
+        let filtered = empty_hint(12, "queen");
+        assert!(filtered.contains("queen"), "{filtered}");
+        assert!(filtered.contains("ESC"), "{filtered}");
     }
 
     #[test]

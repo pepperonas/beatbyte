@@ -16,7 +16,7 @@ about them is compiled into a normal build.
 | `BEATBYTE_UNCAPPED` | set | Renders without vsync (measurement only): frame times become real cost instead of display pacing. Combine with `BEATBYTE_FPS=1`. |
 | `BEATBYTE_SMOKE_TEST` | set | Boots to the menu and exits 0. The cheapest proof that nothing panics on startup. |
 | `BEATBYTE_AUTOPILOT` | set | Plays a song perfectly. **Exits non-zero on any miss or overstrum.** |
-| `BEATBYTE_AUTOPILOT_SONG` | index or title substring | Which song to play (default: the first bundled one). |
+| `BEATBYTE_AUTOPILOT_SONG` | index or title substring | Which song to play (default: the first in the library). |
 | `BEATBYTE_AUTOPILOT_PLAYERS` | `2`…`4` | Local multiplayer run. |
 | `BEATBYTE_AUTOPILOT_DIFFICULTY` | `easy`…`expert` | Which difficulty to play (default: medium). Unknown names and difficulties the song does not offer fail loudly. |
 | `BEATBYTE_AUTOPILOT_LOOP` | `<from>,<to>` | Arms the practice section loop (seconds) and verifies it: song time must wrap twice and the section's notes must reopen for judgment. |
@@ -69,9 +69,18 @@ BEATBYTE_AUTOPILOT_SONG="Never Gonna" …     # title substring
 ```
 
 Local verification runs play imported tracks, because that is what the
-game is actually used with. The **bundled synthesized songs stay the CI
-and release baseline**: a fresh clone has nothing else, and nothing else
-may legally be bundled.
+game is actually used with. **BeatByte bundles no songs**, so autopilot
+needs a library: on a fresh clone, materialize the synthesized
+reference tracks first —
+
+```bash
+cargo run -p beatbyte-cli -- demo        # writes songs/builtin/*.wav + charts
+```
+
+— and autopilot picks them up like any imported song. (They left the
+game because they are instrumentals that were shipping karaoke lyrics;
+as test input a known-BPM signal is worth more than as a playlist
+entry. ADR-0006, amendment.)
 
 Keep local runs muted (`BEATBYTE_AUTOPILOT_MUTE=1`) unless you are
 listening for something specific.

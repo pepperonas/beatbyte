@@ -38,7 +38,8 @@ real judgment engine:
 BEATBYTE_AUTOPILOT=1 cargo run -p beatbyte
 ```
 
-Autopilot starts the bundled demo song, feeds exact-time inputs into
+Autopilot starts the first song in your library (or the one named by
+`BEATBYTE_AUTOPILOT_SONG`), feeds exact-time inputs into
 the session, and exits at the results screen — success **only** on a
 flawless run (any miss or overstrum in autopilot is a gameplay bug).
 Because judgment is input-stamp-driven, autopilot is frame-rate
