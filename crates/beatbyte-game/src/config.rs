@@ -73,6 +73,10 @@ pub struct Settings {
     /// later. Purely presentational - judgment never reads it.
     #[serde(default)]
     pub lyrics_offset_ms: f32,
+    /// Song previews in the browser: rest the cursor on a song and
+    /// its hook plays. On by default — a seventy-song library is a
+    /// list of names without it (optimization plan P4).
+    pub song_preview: bool,
     /// Tap mode: notes hit on fret press alone, no strum required.
     /// ON by default — the first real playtest showed keyboard
     /// players press frets and nothing happens (receptors light up,
@@ -135,6 +139,7 @@ impl Default for Settings {
             lyrics: true,
             lyrics_size: 1,
             lyrics_offset_ms: 0.0,
+            song_preview: true,
             tap_mode: true,
             perspective: true,
             stage_3d: true,

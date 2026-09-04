@@ -456,6 +456,7 @@ impl Plugin for SongSelectPlugin {
             .init_resource::<crate::mc::McQueue>()
             .init_resource::<BrowserView>()
             .init_resource::<QuitHold>()
+            .init_resource::<crate::preview::SongPreview>()
             .add_systems(Startup, load_browser_prefs)
             .add_systems(OnEnter(AppState::SongSelect), spawn_browser)
             .add_systems(
@@ -466,6 +467,10 @@ impl Plugin for SongSelectPlugin {
                     search_sort_input,
                     drive_hold_bar,
                     sync_view,
+                    // After `sync_view`: the cursor and the order are
+                    // settled for this frame, so a filter that moves
+                    // the selection is heard as a move, not a start.
+                    crate::preview::drive_preview,
                     refresh_browser,
                     rebuild_after_import,
                     follow_selection,
@@ -473,7 +478,10 @@ impl Plugin for SongSelectPlugin {
                     .chain()
                     .run_if(in_state(AppState::SongSelect)),
             )
-            .add_systems(OnExit(AppState::SongSelect), despawn_browser);
+            .add_systems(
+                OnExit(AppState::SongSelect),
+                (despawn_browser, crate::preview::stop_preview),
+            );
     }
 }
 
@@ -1717,6 +1725,7 @@ mod view_tests {
             difficulties: vec![Difficulty::Medium],
             note_counts: vec![100],
             genre: genre.map(str::to_owned),
+            preview_start_s: None,
             source: SongSource::Builtin(0),
             has_lyrics: false,
         }

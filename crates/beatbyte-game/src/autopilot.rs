@@ -1710,6 +1710,7 @@ mod tests {
             difficulties: vec![],
             note_counts: vec![],
             genre: None,
+            preview_start_s: None,
             source: SongSource::Builtin(0),
             has_lyrics: false,
         }

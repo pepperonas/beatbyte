@@ -25,6 +25,7 @@ pub mod menu;
 pub mod multiplayer;
 pub mod mute;
 pub mod palette;
+pub mod preview;
 pub mod prompts;
 pub mod results;
 pub mod scores;

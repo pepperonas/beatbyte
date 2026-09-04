@@ -28,6 +28,8 @@ pub(crate) enum Row {
     BackdropMotion,
     HitLabels,
     NoFail,
+    /// Preview a song's hook while the browser cursor rests on it.
+    SongPreview,
     TapMode,
     NoteStyle,
     Fullscreen,
@@ -48,7 +50,7 @@ impl Row {
     /// Every row, in the order the screen shows them: **alphabetical
     /// by label**, and kept that way by a test — a new row goes where
     /// its name falls, not at the end of the list.
-    const ALL: [Row; 25] = [
+    const ALL: [Row; 26] = [
         Row::BeatPulse,
         Row::Controls,
         Row::FxIntensity,
@@ -69,6 +71,7 @@ impl Row {
         Row::ScrollSpeed,
         Row::SfxVolume,
         Row::WatchFolder,
+        Row::SongPreview,
         Row::BackdropMotion,
         Row::Theme,
         Row::TapMode,
@@ -102,6 +105,7 @@ impl Row {
             Row::Fullscreen => "FULLSCREEN",
             Row::Theme => "STAGE THEME",
             Row::WatchFolder => "SONG FOLDER",
+            Row::SongPreview => "SONG PREVIEW",
             Row::Controls => "CONTROLS",
         }
     }
@@ -119,6 +123,7 @@ impl Row {
             Row::BackdropMotion => on_off(settings.backdrop_motion),
             Row::HitLabels => on_off(settings.hit_labels),
             Row::NoFail => on_off(settings.no_fail),
+            Row::SongPreview => on_off(settings.song_preview),
             Row::WatchFolder => settings.watch_folder.as_ref().map_or_else(
                 || "drop a folder onto the window".to_owned(),
                 |path| {
@@ -206,6 +211,7 @@ impl Row {
             Row::BackdropMotion => settings.backdrop_motion = !settings.backdrop_motion,
             Row::HitLabels => settings.hit_labels = !settings.hit_labels,
             Row::NoFail => settings.no_fail = !settings.no_fail,
+            Row::SongPreview => settings.song_preview = !settings.song_preview,
             Row::WatchFolder => settings.watch_folder = None,
             Row::ReducedFlashing => settings.reduced_flashing = !settings.reduced_flashing,
             Row::FxIntensity => {
@@ -253,6 +259,7 @@ impl Row {
             | Row::BackdropMotion
             | Row::HitLabels
             | Row::NoFail
+            | Row::SongPreview
             | Row::WatchFolder
             | Row::ReducedFlashing
             | Row::HighContrast
@@ -758,7 +765,7 @@ mod tests {
             );
         }
         // And nothing is listed twice or left out.
-        assert_eq!(Row::ALL.len(), 25);
+        assert_eq!(Row::ALL.len(), 26);
     }
 
     #[test]

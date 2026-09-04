@@ -44,6 +44,11 @@ pub struct SongEntry {
     /// Musical genre, when known (chart field, else the audio file's
     /// own tag).
     pub genre: Option<String>,
+    /// The hook: where a browser preview should start, when the
+    /// chart carries one (the generator stores the loudest ten
+    /// seconds). `None` for a chart written before the field, or one
+    /// whose analysis found nothing.
+    pub preview_start_s: Option<f64>,
     /// Where the audio lives.
     pub source: SongSource,
     /// Whether karaoke lyrics sit beside this song.
@@ -150,6 +155,7 @@ pub fn scan_library(builtins: &[ChartFile]) -> SongLibrary {
         .map(|(index, chart)| SongEntry {
             title: chart.song.title.clone(),
             artist: chart.song.artist.clone(),
+            preview_start_s: chart.song.preview_start_s,
             bpm: chart.song.bpm,
             duration_s: chart.song.duration_s,
             difficulties: chart.charts.iter().map(|c| c.difficulty).collect(),
@@ -345,6 +351,7 @@ fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String>
         note_counts: chart.charts.iter().map(|c| c.notes.len()).collect(),
         genre,
         has_lyrics,
+        preview_start_s: chart.song.preview_start_s,
         source: SongSource::File {
             chart_path: chart_path.to_path_buf(),
             audio_path,

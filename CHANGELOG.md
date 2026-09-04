@@ -14,6 +14,31 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.1] - 2026-09-04
+
+### Added
+
+- **Song previews in the browser** (optimization plan P4, the half
+  that was never built; `preview.rs`, new). Rest the cursor on a song
+  and its hook plays — the loudest ten seconds, which the chart has
+  carried as `preview_start_s` since the generator was written and
+  which nothing had ever played. A seventy-song library is a list of
+  names without it. Three rules keep it from being a nuisance: the
+  cursor must REST for 0.55 s (arrowing through twenty songs fires
+  nothing), moving on hushes it at once, and it crossfades in and out
+  rather than cutting. A chart with no hook starts a quarter of the
+  way in; a chart with a nonsense one (negative, NaN) does the same
+  instead of seeking somewhere that cannot exist. **Settings → SONG
+  PREVIEW** turns it off, and a music volume of zero counts as off.
+  ⚠️ Verified through the real system in a headless app (cursor →
+  state → the entry it resolves) and by eight tests with eight
+  mutation probes; **not** verified by ear — the screen was locked
+  for the whole session, so injected keys went to the lock screen and
+  captures came back empty. What no test can see is stated at the
+  test: the calls into the music thread are fire-and-forget, so that
+  the browser truly falls silent on the way out is still an ear's
+  job.
+
 ## [0.14.0] - 2026-09-04
 
 Milestone release: **it looks like the thing it loves, and it hears
