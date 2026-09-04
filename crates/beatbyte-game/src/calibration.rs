@@ -95,13 +95,12 @@ fn start_calibration(
     mut calibration: ResMut<Calibration>,
     time: Res<Time>,
     settings: Res<Settings>,
-    muted: Res<crate::mute::Muted>,
 ) {
     calibration.offsets.clear();
     music.0.play_buffer(click_track());
     // The click track IS the timeline here: the clock may follow it.
     game_clock.expect_song = true;
-    music.0.set_volume(settings.music_volume * muted.factor());
+    music.0.set_volume(settings.music_volume);
     game_clock.clock.start(time.elapsed_secs_f64(), 0.0);
 
     commands

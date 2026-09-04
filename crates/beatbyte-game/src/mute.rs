@@ -10,7 +10,6 @@
 use bevy::audio::{GlobalVolume, Volume};
 use bevy::prelude::*;
 
-use crate::config::Settings;
 use crate::palette;
 use crate::states::AppState;
 use crate::ui::UiFont;
@@ -81,21 +80,36 @@ fn toggle_mute(
     }
 }
 
-/// Apply on every state change (including the insert frame, which
-/// carries the env-var starting state): the music thread gets its
-/// scaled volume, Bevy's [`GlobalVolume`] silences every SFX sink,
-/// and the badge re-labels.
+/// Whether the state still has to be pushed to the audio side.
+/// `None` = nothing pushed yet. Pure — tested.
+///
+/// Deliberately NOT `Res::is_changed`: that fires once, on the frame
+/// the state flips, and anything that misses that frame (a resource
+/// inserted later, a system that did not run yet) would leave the
+/// audio side out of step until the next keypress.
+#[must_use]
+pub fn needs_push(pushed: Option<bool>, muted: bool) -> bool {
+    pushed != Some(muted)
+}
+
+/// Push the state to both audio paths and the badge, once per change.
+///
+/// The music side is a GATE in the player ([`MusicHandle::set_muted`]),
+/// not a volume — the volume belongs to the settings and to whoever
+/// starts a song, and folding mute into it made every new call site a
+/// chance to lose the silence.
 fn apply_mute(
     muted: Res<Muted>,
-    settings: Res<Settings>,
     music: Res<crate::audio_sys::Music>,
+    mut pushed: Local<Option<bool>>,
     mut global: ResMut<GlobalVolume>,
     mut badges: Query<(&mut Text, &mut TextColor), With<MuteBadge>>,
 ) {
-    if !muted.is_changed() {
+    if !needs_push(*pushed, muted.0) {
         return;
     }
-    music.0.set_volume(settings.music_volume * muted.factor());
+    *pushed = Some(muted.0);
+    music.0.set_muted(muted.0);
     global.volume = Volume::Linear(muted.factor());
     for (mut text, mut color) in &mut badges {
         text.0 = mute_label(muted.0).to_owned();
@@ -109,7 +123,22 @@ fn apply_mute(
 
 #[cfg(test)]
 mod tests {
-    use super::{Muted, mute_label};
+    use super::{Muted, mute_label, needs_push};
+
+    #[test]
+    fn the_state_is_pushed_once_per_change_and_always_at_least_once() {
+        // Nothing pushed yet: push, whatever the state — the env var
+        // can start a run muted, and that must reach the audio side
+        // without anyone touching the key.
+        assert!(needs_push(None, false));
+        assert!(needs_push(None, true));
+        // Steady state is quiet.
+        assert!(!needs_push(Some(true), true));
+        assert!(!needs_push(Some(false), false));
+        // A flip in either direction is pushed.
+        assert!(needs_push(Some(false), true));
+        assert!(needs_push(Some(true), false));
+    }
 
     #[test]
     fn the_factor_silences_or_passes() {

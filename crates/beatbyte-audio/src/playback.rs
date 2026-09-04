@@ -57,6 +57,13 @@ pub struct MusicPlayer {
     /// The volume the game asked for; during a fade both players are
     /// driven from it through the crossfade gains.
     base_volume: f32,
+    /// Global silence, held HERE rather than folded into
+    /// `base_volume` by each caller. It used to be the caller's job
+    /// (`set_volume(v * muted_factor)`), and the browser's song
+    /// preview forgot it — one missing multiplication and a muted
+    /// run played out loud until the key was toggled twice. A gate
+    /// the player owns cannot be forgotten by a new call site.
+    muted: bool,
     /// Playback speed factor (practice mode). The device position
     /// rodio reports lives in the OUTPUT timeline (it advances at
     /// wall-clock pace whatever the factor), while the game thinks
@@ -87,6 +94,19 @@ struct TailFade {
     fade_s: f32,
 }
 
+/// The gain actually handed to an output player: the volume the game
+/// asked for, scaled by a crossfade side's gain, and silenced while
+/// muted. Mute WINS over any volume — that is the whole point of
+/// keeping it here. Pure — tested.
+#[must_use]
+pub fn output_gain(base_volume: f32, muted: bool, fade_gain: f32) -> f32 {
+    if muted {
+        0.0
+    } else {
+        base_volume.max(0.0) * fade_gain
+    }
+}
+
 /// Equal-power crossfade gains at `elapsed` seconds into a fade of
 /// `fade_s`: `(outgoing, incoming)`. The pair sums in POWER, not in
 /// amplitude — a linear fade dips audibly in the middle, which is
@@ -110,6 +130,7 @@ impl MusicPlayer {
             player,
             tail: None,
             base_volume: 1.0,
+            muted: false,
             speed: 1.0,
             src_base_s: 0.0,
             out_base_s: 0.0,
@@ -224,13 +245,28 @@ impl MusicPlayer {
     }
 
     /// Set the music volume (0.0–1.0, values above 1.0 amplify).
+    /// Silence stays silent: while muted this only remembers the
+    /// level to return to.
     pub fn set_volume(&mut self, volume: f32) {
         self.base_volume = volume.max(0.0);
+        self.apply_gain();
+    }
+
+    /// Silence (or unsilence) the output without disturbing the
+    /// volume the game asked for.
+    pub fn set_muted(&mut self, muted: bool) {
+        self.muted = muted;
+        self.apply_gain();
+    }
+
+    /// Push the current gain to the live player. Skipped during a
+    /// fade, where `tick_fade` reapplies both sides every 2 ms tick
+    /// anyway.
+    fn apply_gain(&self) {
         if self.tail.is_none() {
-            self.player.set_volume(self.base_volume);
+            self.player
+                .set_volume(output_gain(self.base_volume, self.muted, 1.0));
         }
-        // During a fade `tick_fade` reapplies both sides from the
-        // new base on its next step.
     }
 
     /// Begin a DJ crossfade into a file: the current song keeps
@@ -298,11 +334,13 @@ impl MusicPlayer {
             if let Some(done) = self.tail.take() {
                 done.player.stop();
             }
-            self.player.set_volume(self.base_volume);
+            self.apply_gain();
             return;
         }
-        tail.player.set_volume(self.base_volume * out_gain);
-        self.player.set_volume(self.base_volume * in_gain);
+        tail.player
+            .set_volume(output_gain(self.base_volume, self.muted, out_gain));
+        self.player
+            .set_volume(output_gain(self.base_volume, self.muted, in_gain));
     }
 }
 
@@ -341,6 +379,7 @@ enum MusicCommand {
     Stop,
     SeekS(f64),
     Volume(f32),
+    Mute(bool),
     Speed(f64),
     Shutdown,
 }
@@ -439,9 +478,16 @@ impl MusicHandle {
         let _ = self.commands.send(MusicCommand::SeekS(position_s));
     }
 
-    /// Set music volume (0.0–1.0).
+    /// Set music volume (0.0–1.0). While muted this only chooses the
+    /// level playback returns to — see [`MusicHandle::set_muted`].
     pub fn set_volume(&self, volume: f32) {
         let _ = self.commands.send(MusicCommand::Volume(volume));
+    }
+
+    /// Silence or unsilence all music. Independent of the volume, so
+    /// nothing that starts a song can undo it by accident.
+    pub fn set_muted(&self, muted: bool) {
+        let _ = self.commands.send(MusicCommand::Mute(muted));
     }
 
     /// Change the playback speed (practice mode; 1.0 = normal, pitch
@@ -605,10 +651,40 @@ fn handle_command(
             let _ = player.seek_s(position_s);
         }
         MusicCommand::Volume(volume) => player.set_volume(volume),
+        MusicCommand::Mute(muted) => player.set_muted(muted),
         MusicCommand::Speed(speed) => player.set_speed(speed),
         MusicCommand::Shutdown => return true,
     }
     false
+}
+
+#[cfg(test)]
+mod gain_tests {
+    use super::output_gain;
+
+    #[test]
+    fn mute_beats_every_volume_a_caller_can_ask_for() {
+        // The bug this gate exists for: a call site set the raw
+        // volume and the muted run played out loud. No argument may
+        // lift the silence.
+        for volume in [0.0, 0.3, 0.8, 1.0, 4.0] {
+            for fade in [0.0, 0.5, 1.0] {
+                assert!(
+                    output_gain(volume, true, fade).abs() < f32::EPSILON,
+                    "volume {volume} at fade {fade} escaped the mute"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn unmuted_passes_the_volume_through_the_fade() {
+        assert!((output_gain(0.8, false, 1.0) - 0.8).abs() < 1e-6);
+        assert!((output_gain(0.8, false, 0.5) - 0.4).abs() < 1e-6);
+        // A negative volume is a caller mistake, not an inverted
+        // phase: clamp rather than amplify.
+        assert!(output_gain(-1.0, false, 1.0).abs() < f32::EPSILON);
+    }
 }
 
 #[cfg(test)]

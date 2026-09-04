@@ -408,15 +408,14 @@ fn autopilot_menu(
     time: Res<Time>,
     mut delay: Local<f32>,
     music: Res<crate::audio_sys::Music>,
-    muted: Res<crate::mute::Muted>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     *delay += time.delta_secs();
     if *delay > 0.8 {
         *delay = 0.0;
-        // Respect the LIVE mute state — the watcher may have toggled
-        // it mid-run (the env var only seeds it).
-        music.0.set_volume(0.5 * muted.factor());
+        // Quieter than a played run; the mute gate rides on top, so
+        // toggling `M` mid-run keeps working.
+        music.0.set_volume(0.5);
         info!("autopilot: opening song select");
         next_state.set(AppState::SongSelect);
     }
@@ -431,7 +430,6 @@ fn autopilot_edit(
     mut edits_done: Local<bool>,
     state: Option<ResMut<crate::editor_ui::EditorState>>,
     music: Res<crate::audio_sys::Music>,
-    muted: Res<crate::mute::Muted>,
     mut game_clock: ResMut<crate::audio_sys::GameClock>,
     clicks: Res<crate::editor_ui::AuditionClicks>,
     mut app_exit: MessageWriter<AppExit>,
@@ -577,7 +575,7 @@ fn autopilot_edit(
     if ok {
         // Edits verified; start the audition (preview from cursor)
         // and let phase 2 assert the metronome overlay.
-        music.0.set_volume(0.3 * muted.factor());
+        music.0.set_volume(0.3);
         music.0.play_file(state.audio_path.clone());
         music.0.seek_s(state.cursor_s);
         game_clock

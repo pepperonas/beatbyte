@@ -312,14 +312,15 @@ impl Plugin for ConfigPlugin {
 fn apply_settings(
     settings: Res<Settings>,
     music: Res<crate::audio_sys::Music>,
-    muted: Res<crate::mute::Muted>,
     mut effects: ResMut<EffectSettings>,
     mut windows: Query<&mut Window>,
 ) {
     if !settings.is_changed() {
         return;
     }
-    music.0.set_volume(settings.music_volume * muted.factor());
+    // Mute is a gate inside the player, not a factor here: it stays
+    // shut whatever volume anyone asks for.
+    music.0.set_volume(settings.music_volume);
     effects.particles = settings.particles;
     effects.screen_shake = settings.screen_shake;
     effects.beat_pulse = settings.beat_pulse;

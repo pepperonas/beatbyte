@@ -14,6 +14,37 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.6] - 2026-09-05
+
+### Fixed
+
+- **Muted runs played out loud** (user: "aktuell wird sound gespielt
+  obwohl mute beim testen eingeschaltet ist. erst wenn ich hin und her
+  toggle ist wieder mute aktiv"). Reproduced before it was touched:
+  a run started with `BEATBYTE_AUTOPILOT_MUTE=1` pushed `volume 0` at
+  startup, and then `volume 0.8` the moment the song browser began
+  its preview. The mechanism: mute was a **multiplication every caller
+  had to remember** (`set_volume(v * muted.factor())`) and the browser
+  preview, added a day earlier, did not — and since the state was only
+  re-applied when it *changed*, the sound stayed on until `M` was
+  pressed twice. That is exactly the "toggle it back and forth" in the
+  report.
+- **Mute is now a gate inside the player**, not a factor at the call
+  sites: `MusicHandle::set_muted` holds it, `output_gain` folds it
+  into every volume the output ever sees — including both sides of a
+  crossfade — and the four call sites that used to multiply now just
+  say what volume they want. A new call site cannot lose the silence
+  any more, because there is nothing left to forget. Verified live:
+  the same muted run now reports `base=0.8 muted=true -> out=0` where
+  it used to report `0.8`.
+- The state is pushed **once per change and always at least once**
+  (`needs_push`), instead of relying on the single frame a resource
+  reports itself as changed — so the env-var starting state cannot be
+  missed by a system that has not run yet.
+- Unmuting mid-run restores the volume that was actually in effect
+  (an autopilot run stays at its quieter 0.5) instead of jumping to
+  the settings volume.
+
 ## [0.14.5] - 2026-09-04
 
 ### Changed
