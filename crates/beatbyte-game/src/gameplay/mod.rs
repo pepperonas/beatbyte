@@ -22,6 +22,7 @@ pub mod hud;
 pub mod input;
 pub mod lyrics;
 pub mod notes;
+pub mod spark3d;
 pub mod stage3d;
 
 use beatbyte_core::{

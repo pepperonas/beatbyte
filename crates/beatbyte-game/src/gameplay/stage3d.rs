@@ -204,6 +204,29 @@ pub fn active(settings: &Settings) -> bool {
     settings.stage_3d
 }
 
+/// ⚠️ There is no depth of field on this stage, and that is a
+/// measured decision rather than an omission (roadmap H3).
+///
+/// A lens was built, shipped into a run, and removed again. The
+/// numbers, from eight frames of a song each, as the median variance
+/// of an edge filter over a far band of the neck and over the strike
+/// line:
+///
+/// | lens | far | near | far/near |
+/// |---|---|---|---|
+/// | none | 544 | 566 | 0.962 |
+/// | f/16–f/5 (the shipped setting) | 593 | 612 | 0.969 |
+/// | f/0.6 (wide open) | 535 | 475 | 1.126 |
+///
+/// At a sane aperture it changes nothing — the camera is a 20 mm
+/// lens with its subject at six units and the venue at twenty-five,
+/// so the circle of confusion at the far end works out to a fraction
+/// of a pixel. Open it far enough to see and the thing that goes
+/// soft first is the STRIKE LINE (near sharpness 612 → 475): a
+/// rhythm game may not blur what it asks you to read. The separation
+/// the effect was wanted for is already done, honestly, by the
+/// stage's linear fog.
+///
 /// What the neck is made of.
 ///
 /// The genre's neck is an instrument: a dark, near-neutral board on
@@ -3413,6 +3436,7 @@ impl Plugin for Stage3dPlugin {
             (
                 setup_stage,
                 setup_note_assets,
+                super::spark3d::setup_spark_assets,
                 spawn_fret_bars,
                 spawn_phrase_bands,
                 super::band::spawn_band,
@@ -3447,6 +3471,10 @@ impl Plugin for Stage3dPlugin {
                 apply_note_events,
                 sync_phrase_rims,
                 sweep_beams,
+                // The room's own sparks: spawned from the same
+                // feedback the flat burst reads, flown in world space.
+                // Grouped — the tuple is at Bevy's cap of twenty.
+                (super::spark3d::spawn_sparks, super::spark3d::drive_sparks).chain(),
             )
                 .chain()
                 .run_if(

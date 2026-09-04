@@ -14,6 +14,38 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.3] - 2026-09-04
+
+### Added
+
+- **Sparks that live in the room** (roadmap H3, `gameplay/spark3d.rs`).
+  A hit on the 3D stage throws world-space embers from the receptor
+  that was struck: they arc up and toward you in perspective, catch
+  the stage light and the bloom, and shrink to nothing rather than
+  fading (alpha would drag every one of them into the transparency
+  sort). Fourteen on a Perfect down to five on a Good, every fourth
+  one of a Perfect white, scaled by EFFECT INTENSITY and gone at
+  zero, capped at 260 alive. **Round neck only** — the 8-bit neck
+  keeps its own vocabulary, and that gate is a tested rule rather
+  than a condition buried in a system. Measured: median frame 16.7 ms
+  (60 fps, vsync-locked), 99th percentile 18.8 ms against H4's
+  recorded 19.4 ms — the sparks cost no frames.
+
+### Changed
+
+- **No depth of field, measured rather than assumed** (also H3). A
+  lens was built, shipped into a run and taken out again; the numbers
+  are recorded at the code. At a sane aperture it changed nothing —
+  a 20 mm lens with its subject at six units and the venue at
+  twenty-five puts the far end's circle of confusion below a pixel
+  (far/near sharpness 0.962 without, 0.969 with). Opened far enough
+  to see (f/0.6), the first thing to go soft is the STRIKE LINE
+  (near sharpness 612 → 475), and a rhythm game may not blur what it
+  asks you to read. The separation the effect was wanted for is
+  already done, honestly, by the stage's linear fog. Bloom was
+  reviewed in the same pass and left alone: it was tuned when the
+  venue was built and nothing in these measurements argues with it.
+
 ## [0.14.2] - 2026-09-04
 
 ### Added
