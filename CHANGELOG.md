@@ -14,6 +14,40 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.0] - 2026-09-04
+
+Milestone release: **it looks like the thing it loves, and it hears
+the beat.** Since v0.13.0 the round style stopped being a light show
+and became an instrument — a dark board with strings, gems that read
+as buttons (white cap, black ring on a strum note, a bigger cap on a
+hammer-on), every note the same size, a rock meter as the crowd's
+dial with No Fail on by default, a four-piece band playing on the
+riser behind the neck, and a typeface of its own (Bebas Neue). Hits
+light real fire — three nested bodies, flicker, embers, cast light —
+and Star Power runs the rails as lightning. Every motif is drawn in
+our own hands from the genre's shared vocabulary; nothing is
+borrowed.
+
+Underneath, the analysis learned to follow the music instead of
+laying a ruler across it: a tracked beat grid (dynamic programming
+over a kick-band onset envelope) lifted sample-based loop house from
+a beat F-measure of 0.278 to 0.840 against real annotated grids — and
+rock did not merely hold, it improved.
+
+The song browser became a library — seven columns, click-to-sort,
+genres — and its search became fuzzy and ranked: type "smels like"
+or "dont stop" and the song you meant is the first row. A read-only
+debug overlay (`L`) puts the frame rate, the clock drift and every
+judgment number on screen without a restart.
+
+And the rules of the genre are kept where they were quietly broken:
+one missed note now ends a Star Power phrase's stars at once, a
+controller unplugged mid-song pauses and returns to the same player
+when it comes back, and a "|" in a song title can no longer overwrite
+another song's record.
+
+Everything since v0.13.0 is described under its own version below.
+
 ## [0.13.41] - 2026-09-04
 
 ### Added
