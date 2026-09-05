@@ -356,8 +356,28 @@ public corpus, cannot regress a note.
   clips of Martin's own voice + their words, then a click-track
   correction loop — `docs/lyrics/fixtures.md` has the instructions.
   Until then a clone without the corpus measures nothing.
-- [ ] L6 separation + multilingual — acceptance criteria in the
-  plan's §9.
+- [ ] **L6 separation + multilingual — the runtime is ready, the
+  LICENCES are the blocker** (researched 2026-09-05). `rten`
+  implements everything a separator needs (`STFT`, `DFT`, `LSTM`,
+  `GRU`, `ConvTranspose`, `BatchNormalization`,
+  `InstanceNormalization`, `Attention`), so the pure-Rust decision of
+  ADR-0013 does not stand in the way. What does: **open-unmix `umxl`
+  is CC BY-NC-SA 4.0** — unusable in an MIT project we distribute —
+  `umxhq`'s weight licence is not stated (and MUSDB18-HQ is itself
+  research-only data), and Demucs' README licenses the *code* MIT
+  while saying nothing about the weights. No separator with weights
+  we may ship has been found yet; MMS-FA carries the same NC risk for
+  the multilingual half (the plan flags it).
+- [ ] **Measure the game's REAL case first** (proposed instead of
+  going straight at L6). The corpus run withheld line stamps because
+  JamendoLyrics' lyrics have none — but the corpus DOES carry
+  `annotations/lines` (`start_time,end_time,lyrics_line`), which is
+  exactly the shape lrclib gives the game. Anchoring the Viterbi to
+  those lines costs no download, no licence and no new dependency,
+  and it attacks the measured failure directly (a slide cannot
+  propagate past an anchor). Same for the plan's own cheap fallback,
+  a mid/side + band-pass vocal emphasis. Both measurable on the same
+  79 songs with the harness that now exists.
 - [ ] C1 Beat This! A/B · [ ] C2 stems · [ ] C3 Basic Pitch ·
   [ ] C4 structure — only after L ships, each by ear against
   `chart-feel-good-20260826`.

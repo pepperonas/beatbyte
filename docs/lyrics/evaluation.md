@@ -127,11 +127,20 @@ In order of expected effect on the twenty lost songs:
 
 1. **Vocal separation** (L6, planned): a stem where the instrumental
    passages really are quiet removes the mechanism above at its root.
+   ⚠️ The runtime can carry it — `rten` implements `STFT`, `LSTM`,
+   `ConvTranspose` and the rest — but as of 2026-09-05 no separator
+   has been found whose *weights* may ship in an MIT project:
+   open-unmix `umxl` is CC BY-NC-SA 4.0, `umxhq` states no weight
+   licence, and Demucs licenses its code MIT while saying nothing
+   about its models.
 2. **Line stamps as anchors** (not in the plan): when the source has
    line stamps — the common case in the game — constraining the
    Viterbi to a window around each line would stop a slide from
    propagating past it. Cheap, local, and it uses data already in
-   hand.
+   hand. It is also *measurable* here: JamendoLyrics carries
+   `annotations/lines` beside the word annotations, which is the same
+   shape lrclib hands the game, so the game's real case can be
+   measured rather than guessed at.
 3. **A blank prior in low-energy frames**: nudging the blank
    probability where nothing voice-like is present, which is the
    classic remedy for exactly this failure.
