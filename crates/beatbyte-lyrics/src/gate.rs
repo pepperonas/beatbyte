@@ -372,8 +372,17 @@ pub fn verdict_of(pairs: &[(f64, f64)], audio_duration_s: f64, config: &GateConf
     )
 }
 
+/// Seconds an estimated word gets when it has only one trusted
+/// neighbour (the start or the end of a line) — the same allowance
+/// the aligner gives letterless words. A trailing word must NOT take
+/// the line's end: the Viterbi stretches the last word of a line
+/// over the silence after it, and that stretch is the very thing
+/// that got the word marked.
+const LONE_ESTIMATED_S: f64 = 0.3;
+
 /// Estimated words inside a line that kept its alignment take an even
-/// share of the gap between the trusted words around them.
+/// share of the gap between the trusted words around them; at the
+/// line's edges they get [`LONE_ESTIMATED_S`] each.
 fn retime_estimated_within(line: &mut AlignedLine) {
     let n = line.words.len();
     let mut i = 0;
@@ -389,13 +398,13 @@ fn retime_estimated_within(line: &mut AlignedLine) {
         let run_end = i;
         let before = run_start.checked_sub(1).map(|j| line.words[j].end);
         let after = (run_end < n).then(|| line.words[run_end].start);
+        let count = (run_end - run_start) as f64;
         let (from, to) = match (before, after) {
             (Some(b), Some(a)) => (b, a.max(b)),
-            (Some(b), None) => (b, line.end.max(b)),
-            (None, Some(a)) => (line.start.min(a), a),
+            (Some(b), None) => (b, b + LONE_ESTIMATED_S * count),
+            (None, Some(a)) => ((a - LONE_ESTIMATED_S * count).max(0.0), a),
             (None, None) => (line.start, line.end),
         };
-        let count = (run_end - run_start) as f64;
         for (k, j) in (run_start..run_end).enumerate() {
             let word = &mut line.words[j];
             word.start = from + (to - from) * k as f64 / count;
@@ -579,6 +588,29 @@ mod tests {
         assert!(w[3].estimated);
         assert!((w[3].start - 11.5).abs() < 1e-9 && (w[3].end - 17.5).abs() < 1e-9);
         assert!([0, 2, 4, 5, 6].iter().all(|&i| !w[i].estimated));
+        // A stretched LAST word is retimed to a short span after its
+        // neighbour, not to the line's end - the stretch was the
+        // symptom (seen live: "remember" held for ten seconds of
+        // instrumental, and the line never dimmed).
+        let mut a = alignment(vec![line(
+            10.0,
+            vec![
+                word("ab", 10.0, 10.4, 0.5, 2),
+                word("cd", 10.4, 10.8, 0.5, 2),
+                word("ef", 10.8, 11.2, 0.5, 2),
+                word("remember", 11.2, 21.2, 0.5, 8),
+            ],
+        )]);
+        let t = Transcript::parse("ab cd ef remember");
+        gate(&mut a, &t, 200.0, &cfg());
+        let last = &a.lines[0].words[3];
+        assert!(last.estimated);
+        assert!((last.start - 11.2).abs() < 1e-9);
+        assert!(last.end < 12.0, "bounded, not the stretch: {}", last.end);
+        assert!(
+            (a.lines[0].end - last.end).abs() < 1e-9,
+            "the line ends with it"
+        );
         assert!(a.gate.is_some(), "the file records what the gate did");
     }
 

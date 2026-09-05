@@ -320,8 +320,22 @@ public corpus, cannot regress a note.
   default (not discriminative on the mix). 7 tests, 9 mutations seen
   to bite; four real songs each judged as their data deserves.
   Thresholds are assumptions until L5 calibrates them.
-- [ ] L4 renderer · [ ] L5 eval harness · [ ] L6 separation +
-  multilingual — acceptance criteria in the plan's §9.
+- [x] **L4 — renderer** *(v0.14.14)*. `beatbyte-chart` reads
+  `words.json` under the LRC caps (wins over the `.lrc`; all-estimated
+  lines shown line-timed; `♪` lines are gaps) + per-song offset
+  sidecar; the display fills from character spans, has a real line
+  end (dim), a lead-in (setting, band grows), the sung-word colour
+  step, a four-pulse beat countdown into gaps > 4 s; pause-menu
+  LYRIC OFFSET (SONG). `BEATBYTE_SHOT_TIMES` for the harness. Every
+  rule pinned pure + mutation-probed; phases photographed on Gotye
+  (lead-in 18.4 s, fill 34.5 s, dim 50 s, countdown 62.3 s);
+  autopilot 392/392 perfect with the alignment in place. **Not in
+  L4:** in-game model download + "realign this song" panel (plan §6)
+  — the alignment still comes from `beatbyte-cli align`; filed as L4b.
+- [ ] L4b in-game alignment (settings §6: download with progress,
+  realign with progress panel, off the main thread) · [ ] L5 eval
+  harness · [ ] L6 separation + multilingual — acceptance criteria in
+  the plan's §9.
 - [ ] C1 Beat This! A/B · [ ] C2 stems · [ ] C3 Basic Pitch ·
   [ ] C4 structure — only after L ships, each by ear against
   `chart-feel-good-20260826`.

@@ -694,6 +694,7 @@ fn mc_transition(
         chart: next.chart.clone(),
         audio: next.audio.clone(),
         lyrics: next.lyrics.clone(),
+        lyric_offset_ms: next.lyric_offset_ms,
     });
     // The count-in runs while the PREVIOUS song still plays; at zero
     // the pending music CROSSFADES instead of hard-starting.
@@ -1027,6 +1028,11 @@ enum PauseItem {
     LoopFrom,
     /// Section-loop end, same handling.
     LoopTo,
+    /// THIS song's lyric offset, saved beside its audio (plan L4:
+    /// per song, separate from the calibration offsets — sources
+    /// vary). Here rather than on the settings screen because the
+    /// drift is noticed while playing.
+    LyricOffset,
     /// A reused settings-screen row.
     Setting(crate::settings_ui::Row),
 }
@@ -1045,13 +1051,26 @@ impl PauseItem {
             PauseItem::Speed => "SPEED (PRACTICE)",
             PauseItem::LoopFrom => "LOOP FROM",
             PauseItem::LoopTo => "LOOP TO",
+            PauseItem::LyricOffset => "LYRIC OFFSET (SONG)",
             PauseItem::Setting(row) => row.label(),
         }
     }
 
-    fn value(self, settings: &crate::config::Settings, practice: &PracticeState) -> String {
+    fn value(
+        self,
+        settings: &crate::config::Settings,
+        practice: &PracticeState,
+        song: &crate::boot::LoadedSong,
+    ) -> String {
         match self {
             PauseItem::Speed => format!("{}%", practice.speed_percent),
+            PauseItem::LyricOffset => {
+                if song.lyrics.is_some() {
+                    format!("{:+} ms", song.lyric_offset_ms)
+                } else {
+                    "no lyrics".to_owned()
+                }
+            }
             PauseItem::LoopFrom | PauseItem::LoopTo => {
                 let bound = if self == PauseItem::LoopFrom {
                     practice.loop_from
@@ -1092,14 +1111,31 @@ pub(crate) fn sfx_row_position() -> usize {
 }
 
 /// The pause menu's rows, in display order.
-const PAUSE_ROWS: [PauseItem; 6] = [
+const PAUSE_ROWS: [PauseItem; 7] = [
     PauseItem::Speed,
     PauseItem::LoopFrom,
     PauseItem::LoopTo,
+    PauseItem::LyricOffset,
     PauseItem::Setting(crate::settings_ui::Row::MusicVolume),
     PauseItem::Setting(crate::settings_ui::Row::SfxVolume),
     PauseItem::Setting(crate::settings_ui::Row::ScrollSpeed),
 ];
+
+/// One step of the song's lyric offset, in milliseconds.
+const LYRIC_OFFSET_STEP_MS: i32 = 10;
+
+/// The song's lyric offset after one step, clamped to what the
+/// sidecar accepts. Pure — tested.
+#[must_use]
+pub fn step_lyric_offset(current: i32, direction: f32) -> i32 {
+    let step = if direction < 0.0 {
+        -LYRIC_OFFSET_STEP_MS
+    } else {
+        LYRIC_OFFSET_STEP_MS
+    };
+    let max = beatbyte_chart::lyrics::MAX_SONG_LYRIC_OFFSET_MS;
+    (current + step).clamp(-max, max)
+}
 
 /// Whether adjusting this row previews the MISS sound. The SFX
 /// volume IS the volume of the error sounds, and while the music is
@@ -1209,6 +1245,7 @@ fn pause_menu_input(
     mut cursor: ResMut<PauseCursor>,
     mut settings: ResMut<crate::config::Settings>,
     mut practice: ResMut<PracticeState>,
+    mut song: ResMut<crate::boot::LoadedSong>,
     music: Res<Music>,
     mut game_clock: ResMut<GameClock>,
     time: Res<Time>,
@@ -1244,7 +1281,28 @@ fn pause_menu_input(
     let item = PAUSE_ROWS[cursor.0];
     let mut adjust = |direction: f32,
                       settings: &mut crate::config::Settings,
-                      practice: &mut PracticeState| match item {
+                      practice: &mut PracticeState,
+                      song: &mut crate::boot::LoadedSong| match item {
+        PauseItem::LyricOffset => {
+            if song.lyrics.is_none() {
+                return;
+            }
+            let next = step_lyric_offset(song.lyric_offset_ms, direction);
+            if next == song.lyric_offset_ms {
+                return;
+            }
+            song.lyric_offset_ms = next;
+            // Saved beside the audio at once: the offset belongs to
+            // the song, not to this run.
+            if let crate::boot::SongAudio::File(path) = &song.audio
+                && let Err(error) = beatbyte_chart::lyrics::save_song_lyric_offset(path, next)
+            {
+                warn!(
+                    "could not save the lyric offset beside `{}`: {error}",
+                    path.display()
+                );
+            }
+        }
         PauseItem::Speed => {
             practice.step(direction);
             // Applied live: music (paused, takes effect on resume)
@@ -1271,11 +1329,11 @@ fn pause_menu_input(
     };
     let mut adjusted = false;
     if nav.left {
-        adjust(-1.0, &mut settings, &mut practice);
+        adjust(-1.0, &mut settings, &mut practice, &mut song);
         adjusted = true;
     }
     if nav.right || nav.confirm || pointer.clicked {
-        adjust(1.0, &mut settings, &mut practice);
+        adjust(1.0, &mut settings, &mut practice, &mut song);
         adjusted = true;
     }
     if adjusted {
@@ -1294,6 +1352,7 @@ fn pause_menu_input(
 fn refresh_pause_menu(
     settings: Res<crate::config::Settings>,
     practice: Res<PracticeState>,
+    song: Res<crate::boot::LoadedSong>,
     cursor: Res<PauseCursor>,
     mut rows: Query<(&PauseRow, &mut BackgroundColor, &mut BorderColor)>,
     mut labels: Query<(&PauseRowLabel, &mut TextColor), Without<PauseRowValue>>,
@@ -1315,7 +1374,7 @@ fn refresh_pause_menu(
         .label;
     }
     for (value, mut text, mut color) in &mut values {
-        let wanted = PAUSE_ROWS[value.0].value(&settings, &practice);
+        let wanted = PAUSE_ROWS[value.0].value(&settings, &practice, &song);
         if text.0 != wanted {
             text.0 = wanted;
         }
@@ -1463,8 +1522,22 @@ mod outro_tests {
 
 #[cfg(test)]
 mod pause_menu_tests {
-    use super::{PAUSE_ROWS, PauseItem, PracticeState, previews_the_miss_sound};
+    use super::{PAUSE_ROWS, PauseItem, PracticeState, previews_the_miss_sound, step_lyric_offset};
     use crate::settings_ui::Row;
+
+    #[test]
+    fn the_songs_lyric_offset_is_reachable_mid_song_and_steps_in_10_ms() {
+        // Plan L4: the offset belongs to the song and the drift is
+        // noticed while playing, so the pause menu carries it.
+        assert!(PAUSE_ROWS.contains(&PauseItem::LyricOffset));
+        assert_eq!(step_lyric_offset(0, 1.0), 10);
+        assert_eq!(step_lyric_offset(0, -1.0), -10);
+        assert_eq!(step_lyric_offset(-130, -1.0), -140);
+        // Clamped to what the sidecar accepts.
+        let max = beatbyte_chart::lyrics::MAX_SONG_LYRIC_OFFSET_MS;
+        assert_eq!(step_lyric_offset(max, 1.0), max);
+        assert_eq!(step_lyric_offset(-max, -1.0), -max);
+    }
 
     #[test]
     fn the_pause_menu_offers_the_volumes_and_the_practice_speed() {

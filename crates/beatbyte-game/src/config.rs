@@ -73,6 +73,11 @@ pub struct Settings {
     /// later. Purely presentational - judgment never reads it.
     #[serde(default)]
     pub lyrics_offset_ms: f32,
+    /// How long before its first word a lyric line appears, in
+    /// milliseconds (plan L4: the next line is on screen and legible
+    /// before it is sung). Purely presentational.
+    #[serde(default = "default_lyrics_lead_in_ms")]
+    pub lyrics_lead_in_ms: f32,
     /// Room Stage: post the game's own events to light services on
     /// the local network (roadmap G38). OFF by default, and the one
     /// place besides the lyrics lookup where anything leaves the
@@ -146,6 +151,7 @@ impl Default for Settings {
             lyrics: true,
             lyrics_size: 1,
             lyrics_offset_ms: 0.0,
+            lyrics_lead_in_ms: default_lyrics_lead_in_ms(),
             room_lights: false,
             room_stage_url: "http://127.0.0.1:5006".to_owned(),
             song_preview: true,
@@ -196,6 +202,7 @@ impl Settings {
         self.ui_scale = clean(self.ui_scale, 0.75, 1.5, 1.0);
         self.lyrics_size = self.lyrics_size.min(2);
         self.lyrics_offset_ms = clean(self.lyrics_offset_ms, -500.0, 500.0, 0.0);
+        self.lyrics_lead_in_ms = clean(self.lyrics_lead_in_ms, 0.0, 4000.0, 1500.0);
         self.input_map.sanitize();
         if self.theme != "auto" && crate::theme::Theme::by_id(&self.theme).is_none() {
             self.theme = "auto".to_owned();
@@ -214,6 +221,10 @@ fn default_browser_sort() -> String {
 /// Full visual effects, the default.
 fn default_lyrics() -> bool {
     true
+}
+
+fn default_lyrics_lead_in_ms() -> f32 {
+    1500.0
 }
 
 fn default_lyrics_size() -> u8 {

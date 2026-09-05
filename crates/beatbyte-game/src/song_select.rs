@@ -1359,6 +1359,7 @@ pub fn prepare_song(entry: &SongEntry, builtins: &BuiltinSongs) -> Result<Loaded
                 chart,
                 audio: SongAudio::File(audio_path.clone()),
                 lyrics: beatbyte_chart::lyrics::lyrics_beside(audio_path, chart_path),
+                lyric_offset_ms: beatbyte_chart::lyrics::load_song_lyric_offset(audio_path),
             })
         }
     }

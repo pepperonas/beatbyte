@@ -15,9 +15,20 @@
 //! - **Enhanced LRC** — inline `<mm:ss.xx>` stamps split a line into
 //!   karaoke words with absolute spans.
 //!
-//! The model keeps absolute per-word spans, which is exactly what a
-//! later lyrics editor or automatic aligner needs — neither exists
-//! yet, but the data does not stand in their way.
+//! The model keeps absolute per-word spans, and — from an alignment
+//! — per-character spans inside them.
+//!
+//! - **`<song>.words.json`** — the aligner's output (schema
+//!   `beatbyte.lyrics/1`, written by `beatbyte-lyrics`, which this
+//!   crate does not depend on: the schema is mirrored here as plain
+//!   serde structs and read under the same caps as an `.lrc`). It
+//!   wins over an `.lrc` beside the song: it was computed against
+//!   this very audio.
+//!
+//! A per-song **lyric offset** lives beside the audio too
+//! (`<song>.lyrics-offset.json`): sources vary per song, and it must
+//! survive a realignment, so it is neither in the alignment nor in
+//! the settings.
 
 /// The largest lyrics file read, in bytes. Lyrics are text; a
 /// megabyte is already thousands of lines.
@@ -60,7 +71,7 @@ pub struct LyricLine {
     pub words: Vec<LyricWord>,
 }
 
-/// One karaoke word (an enhanced-LRC span).
+/// One karaoke word (an enhanced-LRC span, or an aligned word).
 #[derive(Debug, Clone, PartialEq)]
 pub struct LyricWord {
     /// The word's text (no surrounding whitespace).
@@ -69,6 +80,23 @@ pub struct LyricWord {
     pub start: f64,
     /// When it is fully sung.
     pub end: f64,
+    /// Per-character spans `[start, end]`, one per `char` of `text`,
+    /// when an alignment provided them. Empty = the fill runs
+    /// linearly across the word.
+    pub chars: Vec<[f64; 2]>,
+}
+
+impl LyricWord {
+    /// A word with linear fill (no character spans).
+    #[must_use]
+    pub fn new(text: &str, start: f64, end: f64) -> LyricWord {
+        LyricWord {
+            text: text.to_owned(),
+            start,
+            end,
+            chars: Vec::new(),
+        }
+    }
 }
 
 /// Parse an LRC document into the model. Pure and total: malformed
@@ -99,6 +127,9 @@ pub fn parse_lrc(text: &str) -> Lyrics {
         }
         let body: String = rest.chars().take(MAX_LYRIC_LINE_CHARS).collect();
         let (plain, words) = parse_words(&body, offset_s);
+        if is_instrumental_marker(&plain) {
+            continue; // a gap, and the countdown's business
+        }
         for (which, stamp) in stamps.iter().enumerate() {
             if lines.len() >= MAX_LYRIC_LINES {
                 break;
@@ -177,11 +208,11 @@ fn parse_words(body: &str, offset_s: f64) -> (String, Vec<LyricWord>) {
             return;
         }
         if let Some(start) = start {
-            words.push(LyricWord {
-                text: trimmed.to_owned(),
-                start: clamp_time(start + offset_s),
-                end: 0.0, // resolved below
-            });
+            words.push(LyricWord::new(
+                trimmed,
+                clamp_time(start + offset_s),
+                0.0, // resolved below
+            ));
         }
     };
     while let Some(open) = cursor.find('<') {
@@ -216,6 +247,16 @@ fn parse_words(body: &str, offset_s: f64) -> (String, Vec<LyricWord>) {
     (plain, words)
 }
 
+/// A line that is not sung: empty, or nothing but `♪`, `♫`, dashes,
+/// dots — the markers lyric sources put on instrumental passages.
+/// Such a line is a GAP to the display (the countdown's business),
+/// not a line to show; the font has no glyph for the note anyway.
+/// Pure — tested.
+#[must_use]
+pub fn is_instrumental_marker(text: &str) -> bool {
+    !text.chars().any(char::is_alphanumeric)
+}
+
 /// Collapse runs of whitespace left behind by removed stamps.
 fn normalize_spaces(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -241,11 +282,209 @@ fn resolve_ends(lines: &mut [LyricLine]) {
             last.end = last.end.min(end);
         }
         // A word must never end before it starts, whatever the file
-        // said.
+        // said — and its characters stay inside it.
         for word in &mut line.words {
             word.end = word.end.max(word.start);
+            for span in &mut word.chars {
+                span[0] = span[0].clamp(word.start, word.end);
+                span[1] = span[1].clamp(span[0], word.end);
+            }
         }
     }
+}
+
+/// The largest `words.json` read, in bytes: a four-minute song with
+/// character spans is ~150 KB; four megabytes is thousands of lines.
+pub const MAX_WORDS_FILE_BYTES: u64 = 4 * 1024 * 1024;
+/// The schema this reader understands.
+pub const WORDS_SCHEMA: &str = "beatbyte.lyrics/1";
+/// The per-song lyric offset is clamped to this many milliseconds
+/// either way.
+pub const MAX_SONG_LYRIC_OFFSET_MS: i32 = 2000;
+
+/// `words.json` as it is on disk — a mirror of `beatbyte-lyrics`'s
+/// schema, deserialised leniently: unknown fields are ignored,
+/// missing optional ones default, so a newer writer never breaks an
+/// older reader.
+#[derive(serde::Deserialize)]
+struct WordsFile {
+    schema: String,
+    #[serde(default)]
+    offset_ms: i32,
+    #[serde(default)]
+    lines: Vec<WordsLine>,
+}
+
+#[derive(serde::Deserialize)]
+struct WordsLine {
+    start: f64,
+    #[serde(default)]
+    end: f64,
+    #[serde(default)]
+    text: String,
+    #[serde(default)]
+    words: Vec<WordsWord>,
+}
+
+#[derive(serde::Deserialize)]
+struct WordsWord {
+    text: String,
+    start: f64,
+    end: f64,
+    #[serde(default)]
+    estimated: bool,
+    #[serde(default)]
+    chars: Vec<[f64; 2]>,
+}
+
+/// Parse a `words.json` document. Pure and total under the same
+/// discipline as [`parse_lrc`]: a bad line or word is dropped, a bad
+/// span is straightened, nothing panics. `None` when the document is
+/// not this schema or yields no lines.
+#[must_use]
+pub fn parse_words_json(text: &str) -> Option<Lyrics> {
+    let file: WordsFile = serde_json::from_str(text).ok()?;
+    if file.schema != WORDS_SCHEMA {
+        return None;
+    }
+    let offset_s = f64::from(file.offset_ms.clamp(-60_000, 60_000)) / 1000.0;
+    let time = |t: f64| t.is_finite().then(|| clamp_time(t + offset_s));
+    let mut lines: Vec<LyricLine> = Vec::new();
+    for raw in file.lines.into_iter().take(MAX_LYRIC_LINES) {
+        let Some(start) = time(raw.start) else {
+            continue;
+        };
+        let text: String = normalize_spaces(&raw.text)
+            .chars()
+            .take(MAX_LYRIC_LINE_CHARS)
+            .collect();
+        if is_instrumental_marker(&text) {
+            continue;
+        }
+        let mut words: Vec<LyricWord> = Vec::new();
+        let mut any_aligned = false;
+        for word in raw.words.into_iter().take(MAX_LYRIC_LINE_CHARS) {
+            let (Some(ws), Some(we)) = (time(word.start), time(word.end)) else {
+                continue;
+            };
+            let word_text = normalize_spaces(&word.text);
+            if word_text.is_empty() {
+                continue;
+            }
+            // Character spans count only when there is exactly one
+            // per character and every one is a finite time; anything
+            // else falls back to the linear fill.
+            let chars: Vec<[f64; 2]> = if word.chars.len() == word_text.chars().count()
+                && word
+                    .chars
+                    .iter()
+                    .all(|c| c[0].is_finite() && c[1].is_finite())
+            {
+                word.chars
+                    .iter()
+                    .map(|c| [clamp_time(c[0] + offset_s), clamp_time(c[1] + offset_s)])
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            any_aligned |= !word.estimated;
+            words.push(LyricWord {
+                text: word_text,
+                start: ws,
+                end: we.max(ws),
+                chars,
+            });
+        }
+        // A line whose every word is estimated is a line the gate
+        // fell back to line level: its word times are an even spread,
+        // not knowledge. It is shown as a line-timed line — fade in,
+        // hold, fade out — never as a fill that pretends.
+        if !any_aligned {
+            words.clear();
+        }
+        words.sort_by(|a, b| a.start.total_cmp(&b.start));
+        let end = time(raw.end).unwrap_or(start).max(start);
+        lines.push(LyricLine {
+            start,
+            end,
+            text,
+            words,
+        });
+    }
+    if lines.is_empty() {
+        return None;
+    }
+    lines.sort_by(|a, b| a.start.total_cmp(&b.start));
+    resolve_ends(&mut lines);
+    Some(Lyrics { lines })
+}
+
+/// Read and parse a `words.json` under its size cap. `None` when the
+/// file is missing, oversized, unreadable, not the schema, or empty.
+#[must_use]
+pub fn load_words_file(path: &std::path::Path) -> Option<Lyrics> {
+    let metadata = std::fs::metadata(path).ok()?;
+    if metadata.len() > MAX_WORDS_FILE_BYTES {
+        return None;
+    }
+    let text = std::fs::read_to_string(path).ok()?;
+    parse_words_json(&text)
+}
+
+/// Where a song's alignment lives: `<audio stem>.words.json` beside
+/// the audio.
+#[must_use]
+pub fn words_path(audio_path: &std::path::Path) -> std::path::PathBuf {
+    audio_path.with_extension("words.json")
+}
+
+/// Where a song's own lyric offset lives:
+/// `<audio stem>.lyrics-offset.json` beside the audio.
+#[must_use]
+pub fn song_offset_path(audio_path: &std::path::Path) -> std::path::PathBuf {
+    audio_path.with_extension("lyrics-offset.json")
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SongOffsetFile {
+    offset_ms: i32,
+}
+
+/// The song's own lyric offset in milliseconds (positive = lyrics
+/// later), 0 when none was saved. Clamped to
+/// [`MAX_SONG_LYRIC_OFFSET_MS`].
+#[must_use]
+pub fn load_song_lyric_offset(audio_path: &std::path::Path) -> i32 {
+    let path = song_offset_path(audio_path);
+    let Ok(metadata) = std::fs::metadata(&path) else {
+        return 0;
+    };
+    if metadata.len() > 4096 {
+        return 0;
+    }
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<SongOffsetFile>(&text).ok())
+        .map_or(0, |file| {
+            file.offset_ms
+                .clamp(-MAX_SONG_LYRIC_OFFSET_MS, MAX_SONG_LYRIC_OFFSET_MS)
+        })
+}
+
+/// Persist the song's own lyric offset beside the audio; an offset of
+/// 0 removes the file instead (nothing to keep).
+pub fn save_song_lyric_offset(audio_path: &std::path::Path, offset_ms: i32) -> std::io::Result<()> {
+    let path = song_offset_path(audio_path);
+    let offset_ms = offset_ms.clamp(-MAX_SONG_LYRIC_OFFSET_MS, MAX_SONG_LYRIC_OFFSET_MS);
+    if offset_ms == 0 {
+        return match std::fs::remove_file(&path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            other => other,
+        };
+    }
+    let json = serde_json::to_string_pretty(&SongOffsetFile { offset_ms })
+        .map_err(|error| std::io::Error::other(error.to_string()))?;
+    std::fs::write(path, json)
 }
 
 /// What the display shows at a song position. Pure — the
@@ -349,12 +588,23 @@ pub fn load_lyrics_file(path: &std::path::Path) -> Option<Lyrics> {
     (!lyrics.lines.is_empty()).then_some(lyrics)
 }
 
-/// The `.lrc` beside a song: `audio.lrc` first (the importer copies
-/// it there), then `chart.lrc`.
+/// The lyrics beside a song: the alignment `audio.words.json` first
+/// (computed against this very audio), then `audio.lrc` (the
+/// importer copies it there), then `chart.lrc`.
 #[must_use]
 pub fn lyrics_beside(audio_path: &std::path::Path, chart_path: &std::path::Path) -> Option<Lyrics> {
-    load_lyrics_file(&audio_path.with_extension("lrc"))
+    load_words_file(&words_path(audio_path))
+        .or_else(|| load_lyrics_file(&audio_path.with_extension("lrc")))
         .or_else(|| load_lyrics_file(&chart_path.with_extension("lrc")))
+}
+
+/// Whether any lyrics file sits beside a song — the scan's cheap
+/// question, the same three places [`lyrics_beside`] reads.
+#[must_use]
+pub fn lyrics_exist_beside(audio_path: &std::path::Path, chart_path: &std::path::Path) -> bool {
+    words_path(audio_path).is_file()
+        || audio_path.with_extension("lrc").is_file()
+        || chart_path.with_extension("lrc").is_file()
 }
 
 #[cfg(test)]
@@ -528,19 +778,196 @@ mod tests {
 
     #[test]
     fn word_progress_is_clamped_and_linear() {
-        let word = LyricWord {
-            text: "x".to_owned(),
-            start: 10.0,
-            end: 12.0,
-        };
+        let word = LyricWord::new("x", 10.0, 12.0);
         assert!((word_progress(&word, 9.0) - 0.0).abs() < 1e-6);
         assert!((word_progress(&word, 11.0) - 0.5).abs() < 1e-6);
         assert!((word_progress(&word, 13.0) - 1.0).abs() < 1e-6);
-        let degenerate = LyricWord {
-            text: "x".to_owned(),
-            start: 10.0,
-            end: 10.0,
-        };
+        let degenerate = LyricWord::new("x", 10.0, 10.0);
         assert!((word_progress(&degenerate, 10.0) - 1.0).abs() < 1e-6);
+    }
+
+    const WORDS: &str = r#"{
+      "schema": "beatbyte.lyrics/1", "audio_sha256": "00", "pipeline_version": 1,
+      "language": "en", "source": {"text": "t", "separator": "none", "aligner": "a"},
+      "offset_ms": 0,
+      "gate": {"verdict": "same_master", "lines_compared": 2},
+      "lines": [
+        {"start": 20.0, "end": 21.0, "text": "second", "words": [
+          {"text": "second", "start": 20.0, "end": 21.0, "conf": 0.2,
+           "chars": [[20.0,20.2],[20.2,20.4],[20.4,20.5],[20.5,20.7],[20.7,20.9],[20.9,21.0]]}]},
+        {"start": 10.0, "end": 11.5, "text": "Hi there", "words": [
+          {"text": "Hi", "start": 10.0, "end": 10.4, "conf": 0.5, "chars": [[10.0,10.2],[10.2,10.4]]},
+          {"text": "there", "start": 10.6, "end": 11.5, "conf": 0.0, "estimated": true}]}
+      ]
+    }"#;
+
+    #[test]
+    fn words_json_parses_sorted_with_character_spans_and_real_ends() {
+        let lyrics = parse_words_json(WORDS).expect("parses");
+        assert_eq!(lyrics.lines.len(), 2);
+        let first = &lyrics.lines[0];
+        assert_eq!(first.text, "Hi there");
+        assert!((first.start - 10.0).abs() < 1e-9);
+        // The line's end is its last word's end, not the next line's
+        // start: a real end, the renderer dims after it.
+        assert!((first.words[1].end - 11.5).abs() < 1e-9);
+        assert!(first.end >= 11.5 && first.end <= 20.0);
+        assert_eq!(first.words[0].chars.len(), 2, "aligned characters kept");
+        assert!(
+            first.words[1].chars.is_empty(),
+            "an estimated word fills linearly"
+        );
+        assert_eq!(lyrics.lines[1].words[0].chars.len(), 6);
+        assert!(lyrics.has_word_timing());
+    }
+
+    #[test]
+    fn words_json_is_untrusted_input() {
+        // Wrong schema: not ours.
+        assert!(parse_words_json(&WORDS.replace("beatbyte.lyrics/1", "other/9")).is_none());
+        // Garbage: none, never a panic.
+        assert!(parse_words_json("{").is_none());
+        assert!(parse_words_json(r#"{"schema":"beatbyte.lyrics/1","lines":[]}"#).is_none());
+        // A number JSON cannot hold (1e999) fails the whole document
+        // in serde_json - garbage, not lyrics.
+        assert!(parse_words_json(&WORDS.replace("20.0,", "1e999,")).is_none());
+        // An empty line text drops the line; a mismatched char count
+        // drops the spans (linear fill), not the word; a negative
+        // time clamps to 0 rather than going anywhere else.
+        let doc = r#"{"schema":"beatbyte.lyrics/1","lines":[
+          {"start": 3.0, "text": "   ", "words": []},
+          {"start": -5.0, "end": 6.0, "text": "ab cd", "words": [
+            {"text": "ab", "start": -5.0, "end": 5.5, "chars": [[5.0, 5.2]]},
+            {"text": "cd", "start": 5.5, "end": 6.0, "chars": [[5.5, 5.7], [5.7, 5.8], [5.8, 6.0]]}]}]}"#;
+        let lyrics = parse_words_json(doc).expect("the good line survives");
+        assert_eq!(lyrics.lines.len(), 1);
+        assert_eq!(lyrics.lines[0].words.len(), 2);
+        assert!(lyrics.lines[0].words.iter().all(|w| w.chars.is_empty()));
+        assert!(
+            (lyrics.lines[0].start - 0.0).abs() < 1e-9,
+            "clamped, not negative"
+        );
+        // A backwards word is straightened, a char span outside its
+        // word is pulled inside.
+        let doc = r#"{"schema":"beatbyte.lyrics/1","lines":[
+          {"start": 5.0, "end": 6.0, "text": "ab", "words": [
+            {"text": "ab", "start": 5.5, "end": 5.0, "chars": [[4.0, 9.0], [5.2, 5.4]]}]}]}"#;
+        let word = &parse_words_json(doc).expect("parses").lines[0].words[0];
+        assert!(word.end >= word.start);
+        assert!(word.chars[0][0] >= word.start && word.chars[0][1] <= word.end);
+        // Line and char caps hold.
+        let many = format!(
+            r#"{{"schema":"beatbyte.lyrics/1","lines":[{}]}}"#,
+            (0..MAX_LYRIC_LINES + 50)
+                .map(|i| format!(r#"{{"start": {i}.0, "text": "x"}}"#))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        assert_eq!(
+            parse_words_json(&many).expect("parses").lines.len(),
+            MAX_LYRIC_LINES
+        );
+    }
+
+    #[test]
+    fn a_line_of_only_estimated_words_is_shown_line_timed() {
+        // The gate's line-level fallback spreads words evenly and
+        // marks them all estimated; the display must not fill them
+        // as if it knew.
+        let doc = r#"{"schema":"beatbyte.lyrics/1","lines":[
+          {"start": 10.0, "end": 12.0, "text": "ab cd", "words": [
+            {"text": "ab", "start": 10.0, "end": 11.0, "estimated": true},
+            {"text": "cd", "start": 11.0, "end": 12.0, "estimated": true}]},
+          {"start": 20.0, "end": 21.0, "text": "ef gh", "words": [
+            {"text": "ef", "start": 20.0, "end": 20.5},
+            {"text": "gh", "start": 20.6, "end": 21.0, "estimated": true}]}]}"#;
+        let lyrics = parse_words_json(doc).expect("parses");
+        assert!(lyrics.lines[0].words.is_empty(), "line-timed");
+        assert_eq!(
+            lyrics.lines[1].words.len(),
+            2,
+            "one aligned anchor keeps the words"
+        );
+    }
+
+    #[test]
+    fn instrumental_markers_are_gaps_not_lines() {
+        assert!(is_instrumental_marker("♪"));
+        assert!(is_instrumental_marker("♪ ♫ ..."));
+        assert!(is_instrumental_marker("---"));
+        assert!(is_instrumental_marker(""));
+        assert!(!is_instrumental_marker("Oh"));
+        assert!(!is_instrumental_marker("1999"));
+        // Both readers drop them: the `.lrc`...
+        let lyrics = parse_lrc("[00:10.00]sung\n[00:20.00]♪\n[00:30.00]more\n");
+        assert_eq!(lyrics.lines.len(), 2);
+        assert_eq!(lyrics.lines[1].text, "more");
+        // ...and the alignment.
+        let doc = r#"{"schema":"beatbyte.lyrics/1","lines":[
+          {"start": 10.0, "text": "sung", "words": []},
+          {"start": 20.0, "text": "♪", "words": [{"text": "♪", "start": 20.0, "end": 20.5}]},
+          {"start": 30.0, "text": "more", "words": []}]}"#;
+        let lyrics = parse_words_json(doc).expect("parses");
+        assert_eq!(lyrics.lines.len(), 2);
+        assert_eq!(lyrics.lines[1].text, "more");
+    }
+
+    #[test]
+    fn the_offset_field_shifts_every_time_in_the_file() {
+        let shifted = WORDS.replace("\"offset_ms\": 0", "\"offset_ms\": 500");
+        let lyrics = parse_words_json(&shifted).expect("parses");
+        assert!((lyrics.lines[0].start - 10.5).abs() < 1e-9);
+        assert!((lyrics.lines[0].words[0].chars[0][0] - 10.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn the_song_offset_round_trips_and_zero_leaves_nothing_behind() {
+        let dir = std::env::temp_dir().join(format!("bb-lyric-offset-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let audio = dir.join("song.m4a");
+        assert_eq!(load_song_lyric_offset(&audio), 0, "nothing saved = 0");
+        save_song_lyric_offset(&audio, -120).expect("saves");
+        assert_eq!(load_song_lyric_offset(&audio), -120);
+        assert!(song_offset_path(&audio).is_file());
+        // Out of range is clamped, both on save and on load.
+        save_song_lyric_offset(&audio, 99_999).expect("saves");
+        assert_eq!(load_song_lyric_offset(&audio), MAX_SONG_LYRIC_OFFSET_MS);
+        std::fs::write(song_offset_path(&audio), r#"{"offset_ms": -99999}"#).expect("writes");
+        assert_eq!(load_song_lyric_offset(&audio), -MAX_SONG_LYRIC_OFFSET_MS);
+        // Zero removes the file rather than leaving a `0` sidecar.
+        save_song_lyric_offset(&audio, 0).expect("saves");
+        assert!(!song_offset_path(&audio).is_file());
+        save_song_lyric_offset(&audio, 0).expect("removing twice is fine");
+        // Garbage in the file reads as 0.
+        std::fs::write(song_offset_path(&audio), "nope").expect("writes");
+        assert_eq!(load_song_lyric_offset(&audio), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_alignment_beside_a_song_wins_over_its_lrc() {
+        let dir = std::env::temp_dir().join(format!("bb-lyrics-beside-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let audio = dir.join("song.m4a");
+        let chart = dir.join("chart.json");
+        assert!(!lyrics_exist_beside(&audio, &chart));
+        std::fs::write(
+            audio.with_extension("lrc"),
+            "[00:01.00]from the lrc
+",
+        )
+        .expect("writes");
+        assert!(lyrics_exist_beside(&audio, &chart));
+        assert_eq!(
+            lyrics_beside(&audio, &chart).expect("lrc").lines[0].text,
+            "from the lrc"
+        );
+        std::fs::write(words_path(&audio), WORDS).expect("writes");
+        assert_eq!(
+            lyrics_beside(&audio, &chart).expect("words").lines[0].text,
+            "Hi there",
+            "the alignment was computed against this audio"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

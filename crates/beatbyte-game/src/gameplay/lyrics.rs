@@ -13,13 +13,23 @@
 //! per frame, no text re-measures, and entities churn only when the
 //! line changes — a handful of times per song.
 //!
-//! Honesty rule (commission §30): a line without word stamps fades
-//! in, holds, and fades out. It never pretends to know word timing.
+//! The fill is driven from the finest timing the song has (plan L4):
+//! per-character spans from an alignment, else the word's span split
+//! evenly across its letters, else — a line without word stamps —
+//! the line fades in, holds, and fades out. It never pretends to know
+//! word timing it does not have (commission §30).
+//!
+//! A line has a real END: once its last word is sung it dims instead
+//! of staying "in progress" until the next line. The next line
+//! appears a *lead-in* before its first word (its band grows across
+//! the lead-in, so the eye knows what is coming), and a long
+//! instrumental gap ends in a countdown of four pulses on the beat —
+//! all read off the same clock the notes fall on.
 
 use bevy::prelude::*;
 use bevy::sprite::Anchor;
 
-use beatbyte_chart::lyrics::{cue_at, word_progress};
+use beatbyte_chart::lyrics::cue_at;
 
 use crate::audio_sys::GameClock;
 use crate::boot::LoadedSong;
@@ -47,29 +57,33 @@ fn size_for(step: u8) -> f32 {
     SIZES[usize::from(step.min(2))]
 }
 
-/// One glyph's window within its word: the fill crosses the glyph
-/// while `word_progress` runs from `from` to `to`.
+/// One glyph's window on the song clock: the fill crosses the glyph
+/// from `start` to `end` (song seconds).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GlyphCue {
     /// The word this glyph belongs to.
     pub word: usize,
-    /// Word progress at which this glyph starts filling.
-    pub from: f32,
-    /// Word progress at which it is fully lit.
-    pub to: f32,
+    /// When the glyph starts filling.
+    pub start: f64,
+    /// When it is fully lit.
+    pub end: f64,
 }
 
-/// Map every character of a line to its word window. Characters
-/// outside any stamped word (spaces, unstamped lead-ins) light up
-/// when their preceding word completes. Pure — tested.
+/// Map every character of a line to its window. A word with aligned
+/// character spans hands each glyph its own; a word without splits
+/// its span evenly across its letters. Characters outside any
+/// stamped word (spaces, unstamped lead-ins) light when their
+/// preceding word completes; a lead-in before the first word lights
+/// the moment that word starts. Pure — tested.
 #[must_use]
 pub fn glyph_cues(text: &str, words: &[beatbyte_chart::lyrics::LyricWord]) -> Vec<GlyphCue> {
     let chars: Vec<char> = text.chars().collect();
+    let first_start = words.first().map_or(0.0, |word| word.start);
     let mut cues = vec![
         GlyphCue {
             word: 0,
-            from: 0.0,
-            to: 0.0,
+            start: first_start,
+            end: first_start,
         };
         chars.len()
     ];
@@ -83,35 +97,46 @@ pub fn glyph_cues(text: &str, words: &[beatbyte_chart::lyrics::LyricWord]) -> Ve
             continue;
         };
         // Everything between the previous word and this one waits
-        // for the previous word to finish. A lead-in BEFORE the
-        // first word keeps its init value instead — lit from the
-        // line's start, not after a word it precedes.
+        // for the previous word to finish.
         if index > 0 {
+            let previous_end = words[index - 1].end;
             for cue in cues.iter_mut().take(found).skip(cursor) {
                 *cue = GlyphCue {
                     word: index - 1,
-                    from: 1.0,
-                    to: 1.0,
+                    start: previous_end,
+                    end: previous_end,
                 };
             }
         }
-        let len = needle.len() as f32;
+        let aligned = word.chars.len() == needle.len();
+        let len = needle.len() as f64;
+        let span = word.end - word.start;
         for offset in 0..needle.len() {
+            let (start, end) = if aligned {
+                (word.chars[offset][0], word.chars[offset][1])
+            } else {
+                (
+                    word.start + span * offset as f64 / len,
+                    word.start + span * (offset + 1) as f64 / len,
+                )
+            };
             cues[found + offset] = GlyphCue {
                 word: index,
-                from: offset as f32 / len,
-                to: (offset + 1) as f32 / len,
+                start,
+                end,
             };
         }
         cursor = found + needle.len();
     }
     // A tail after the last word follows that word's completion.
-    for cue in cues.iter_mut().skip(cursor) {
-        *cue = GlyphCue {
-            word: words.len().saturating_sub(1),
-            from: 1.0,
-            to: 1.0,
-        };
+    if let Some(last) = words.last() {
+        for cue in cues.iter_mut().skip(cursor) {
+            *cue = GlyphCue {
+                word: words.len() - 1,
+                start: last.end,
+                end: last.end,
+            };
+        }
     }
     cues
 }
@@ -122,16 +147,116 @@ fn find_chars(haystack: &[char], needle: &[char], start: usize) -> Option<usize>
         .find(|&at| haystack[at..at + needle.len()] == *needle)
 }
 
-/// How lit one glyph is, given its word's progress: 0 dark, 1 sung,
-/// linear across the glyph's own window. A degenerate window (the
-/// waiting spaces) snaps when crossed. Pure — tested.
+/// How lit one glyph is at `position`: 0 dark, 1 sung, linear across
+/// the glyph's own window — a window is a letter's worth of time, so
+/// the edge reads as hard. A degenerate window (the waiting spaces)
+/// snaps when crossed. Pure — tested.
 #[must_use]
-pub fn glyph_fill(cue: &GlyphCue, progress: f32) -> f32 {
-    let span = cue.to - cue.from;
-    if span <= f32::EPSILON {
-        return if progress >= cue.to { 1.0 } else { 0.0 };
+pub fn glyph_fill(cue: &GlyphCue, position: f64) -> f32 {
+    let span = cue.end - cue.start;
+    if span <= f64::EPSILON {
+        return if position >= cue.end { 1.0 } else { 0.0 };
     }
-    ((progress - cue.from) / span).clamp(0.0, 1.0)
+    (((position - cue.start) / span) as f32).clamp(0.0, 1.0)
+}
+
+/// What the display shows at a song position — [`cue_at`] with the
+/// lead-in and the real line end folded in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DisplayCue {
+    /// The line on the active row, if any.
+    pub active: Option<usize>,
+    /// What the active line is doing.
+    pub phase: Phase,
+    /// The line for the preview row, if any.
+    pub upcoming: Option<usize>,
+}
+
+/// The active line's state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Phase {
+    /// Nothing on the active row.
+    Idle,
+    /// On screen ahead of its first word.
+    LeadIn,
+    /// Being sung.
+    Singing,
+    /// Every word sung; the line dims until the next takes over.
+    Sung,
+}
+
+/// Where the singing of a line ends: its last word's end, or — a
+/// line without word timing — its display end.
+fn sung_end(line: &beatbyte_chart::lyrics::LyricLine) -> f64 {
+    line.words.last().map_or(line.end, |word| word.end)
+}
+
+/// The display cue at `position` with a `lead_in` (seconds). The
+/// next line takes the active row `lead_in` before its first word —
+/// but only once the current line is SUNG (or there is none): a
+/// line still being sung is never cut for a preview. Pure — tested.
+#[must_use]
+pub fn display_cue(
+    lyrics: &beatbyte_chart::lyrics::Lyrics,
+    position: f64,
+    lead_in: f64,
+) -> DisplayCue {
+    let base = cue_at(lyrics, position);
+    let current = base.active.map(|index| {
+        let line = &lyrics.lines[index];
+        let phase = if !line.words.is_empty() && position >= sung_end(line) {
+            Phase::Sung
+        } else {
+            Phase::Singing
+        };
+        (index, phase)
+    });
+    if let Some(next) = base.upcoming
+        && lyrics.lines[next].start - position <= lead_in
+        && current.is_none_or(|(_, phase)| phase == Phase::Sung)
+    {
+        return DisplayCue {
+            active: Some(next),
+            phase: Phase::LeadIn,
+            upcoming: (next + 1 < lyrics.lines.len()).then_some(next + 1),
+        };
+    }
+    match current {
+        Some((index, phase)) => DisplayCue {
+            active: Some(index),
+            phase,
+            upcoming: base.upcoming,
+        },
+        None => DisplayCue {
+            active: None,
+            phase: Phase::Idle,
+            upcoming: base.upcoming,
+        },
+    }
+}
+
+/// Gaps longer than this end in a countdown.
+pub const COUNTDOWN_GAP_S: f64 = 4.0;
+/// Pulses in the countdown.
+pub const COUNTDOWN_PULSES: usize = 4;
+
+/// The countdown before a line: how many of the four pulses are lit
+/// at `position`, when a countdown is due at all — the line starts
+/// more than [`COUNTDOWN_GAP_S`] after the previous singing ended
+/// (`gap_from`), and the position is within four beats of it. `None`
+/// = no countdown on show. Pure — tested.
+#[must_use]
+pub fn countdown_lit(position: f64, line_start: f64, gap_from: f64, beat_s: f64) -> Option<usize> {
+    if beat_s <= 0.0 || !beat_s.is_finite() || line_start - gap_from <= COUNTDOWN_GAP_S {
+        return None;
+    }
+    let remaining = line_start - position;
+    if remaining < 0.0 || remaining > beat_s * COUNTDOWN_PULSES as f64 {
+        return None;
+    }
+    // Pulse k lights when fewer than (PULSES - k) beats remain.
+    let lit = (COUNTDOWN_PULSES as f64 - remaining / beat_s).floor();
+    Some((lit.max(0.0) as usize).min(COUNTDOWN_PULSES))
 }
 
 /// The fade of a line-timed lyric at `position`: rises over
@@ -166,11 +291,21 @@ pub struct LyricPart;
 /// One glyph of the active line.
 #[derive(Component)]
 pub struct LyricGlyph {
-    /// This glyph's word window (None = line-timed lyric).
+    /// This glyph's window (None = line-timed lyric).
     cue: Option<GlyphCue>,
     /// The glyph's resting position.
     home: Vec3,
 }
+
+/// One pulse of the gap countdown.
+#[derive(Component)]
+pub struct LyricPulse(usize);
+
+/// A sung line dims to this alpha until the next takes over.
+const SUNG_ALPHA: f32 = 0.55;
+/// Countdown pulse size and spacing, in world units.
+const PULSE_SIZE: f32 = 10.0;
+const PULSE_GAP: f32 = 22.0;
 
 /// The dimmed preview of the next line.
 #[derive(Component)]
@@ -294,10 +429,41 @@ pub fn spawn_lyric_display(
         Anchor::CENTER,
         Transform::from_xyz(0.0, LYRIC_Y, 4.0),
     ));
+    // The countdown: four squares above the row, lit one per beat.
+    let span = PULSE_GAP * (COUNTDOWN_PULSES as f32 - 1.0);
+    for pulse in 0..COUNTDOWN_PULSES {
+        commands.spawn((
+            super::GameplayScreen,
+            LyricPart,
+            LyricPulse(pulse),
+            Sprite::from_color(palette::dimmed(palette::TEXT, 0.3), Vec2::splat(PULSE_SIZE)),
+            Visibility::Hidden,
+            Transform::from_xyz(-span / 2.0 + pulse as f32 * PULSE_GAP, LYRIC_Y, 4.1),
+        ));
+    }
 }
 
+/// The countdown pulses' query.
+type PulseQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static LyricPulse,
+        &'static mut Sprite,
+        &'static mut Transform,
+        &'static mut Visibility,
+    ),
+    (
+        With<LyricPulse>,
+        Without<LyricHighlight>,
+        Without<LyricScrim>,
+        Without<LyricPreview>,
+        Without<LyricGlyph>,
+    ),
+>;
+
 /// The per-frame drive: cue from the shared clock, rebuild on line
-/// changes, fill glyphs by word progress.
+/// changes, fill glyphs by their windows.
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 pub fn update_lyrics(
     mut commands: Commands,
@@ -311,6 +477,7 @@ pub fn update_lyrics(
     mut preview: PreviewQuery,
     mut scrim: ScrimQuery,
     mut highlight: HighlightQuery,
+    mut pulses: PulseQuery,
 ) {
     let lyrics = song.lyrics.as_ref().filter(|_| settings.lyrics);
     // A song swap (MC set) or a disabled setting clears the board.
@@ -318,7 +485,7 @@ pub fn update_lyrics(
         if display.line.is_some() || lyrics.is_none() {
             clear_glyphs(&mut commands, &glyphs);
             display.line = None;
-            hide_chrome(&mut preview, &mut scrim, &mut highlight);
+            hide_chrome(&mut preview, &mut scrim, &mut highlight, &mut pulses);
         }
         if lyrics.is_none() {
             return;
@@ -330,8 +497,12 @@ pub fn update_lyrics(
     let Some(now) = game_clock.visual_time(&time, &settings) else {
         return;
     };
-    let position = now + f64::from(settings.lyrics_offset_ms) / 1000.0;
-    let cue = cue_at(lyrics, position);
+    // The global offset AND the song's own: sources vary per song.
+    let position = now
+        + f64::from(settings.lyrics_offset_ms) / 1000.0
+        + f64::from(song.lyric_offset_ms) / 1000.0;
+    let lead_in = f64::from(settings.lyrics_lead_in_ms) / 1000.0;
+    let cue = display_cue(lyrics, position, lead_in);
 
     // Rebuild the glyph row when the active line or the size changed.
     if display.line != cue.active || display.size_step != settings.lyrics_size {
@@ -388,16 +559,58 @@ pub fn update_lyrics(
         }
     }
 
-    // The band behind the passage being sung right now.
+    // The band behind the passage being sung right now. In the
+    // lead-in it grows from nothing to the line's width, so the eye
+    // knows the line is coming; once the line is sung it goes.
     if let Ok((mut sprite, mut transform, mut visibility)) = highlight.single_mut() {
         let advance = glyph_advance(size * em, active_chars);
         let box_size = highlight_box(active_chars, advance, size);
-        if box_size == Vec2::ZERO || !settings.lyrics {
+        let grow = match (cue.phase, active_line) {
+            (Phase::LeadIn, Some(line)) => {
+                lead_in_progress(line.start, lead_in, position).max(0.05)
+            }
+            (Phase::Singing, _) => 1.0,
+            _ => 0.0,
+        };
+        if box_size == Vec2::ZERO || !settings.lyrics || grow <= 0.0 {
             *visibility = Visibility::Hidden;
         } else {
-            sprite.custom_size = Some(box_size);
+            sprite.custom_size = Some(Vec2::new(box_size.x * grow, box_size.y));
             transform.translation.y = LYRIC_Y + size * 0.55;
             *visibility = Visibility::Inherited;
+        }
+    }
+
+    // The gap countdown: on the beat grid, off the same clock.
+    let beat_s = 60.0 / song.chart.song.bpm.max(1.0);
+    let countdown = match (cue.phase, cue.active, cue.upcoming) {
+        // Idle: the countdown belongs to the next line.
+        (Phase::Idle, None, Some(next)) => Some(next),
+        // Lead-in: the countdown (if any) keeps running into the
+        // line's own lead-in — the beats do not stop for it.
+        (Phase::LeadIn, Some(next), _) => Some(next),
+        _ => None,
+    }
+    .and_then(|next| {
+        let line = &lyrics.lines[next];
+        let gap_from = next
+            .checked_sub(1)
+            .map_or(0.0, |previous| sung_end(&lyrics.lines[previous]));
+        countdown_lit(position, line.start, gap_from, beat_s)
+    });
+    for (pulse, mut sprite, mut transform, mut visibility) in &mut pulses {
+        match countdown {
+            None => *visibility = Visibility::Hidden,
+            Some(lit) => {
+                sprite.color = if pulse.0 < lit {
+                    palette::BRAND
+                } else {
+                    palette::dimmed(palette::TEXT, 0.3)
+                };
+                // Above the row, clear of the band, whatever the size.
+                transform.translation.y = pulse_y(size);
+                *visibility = Visibility::Inherited;
+            }
         }
     }
 
@@ -411,30 +624,83 @@ pub fn update_lyrics(
         1.0
     };
     let enter = enter * enter * (3.0 - 2.0 * enter); // smoothstep
-    let fade = if line.words.is_empty() {
-        line_alpha(line.start, line.end, position)
-    } else {
-        1.0
-    };
+    let fade = line_fade(cue.phase, line, position);
     let unsung = palette::dimmed(palette::TEXT, 0.42);
     for (_, glyph, mut color, mut transform) in &mut glyphs {
-        let fill = glyph.cue.as_ref().map_or(1.0, |cue| {
-            let progress = line
-                .words
-                .get(cue.word)
-                .map_or(0.0, |word| word_progress(word, position));
-            glyph_fill(cue, progress)
-        });
-        let base = if glyph.cue.is_some() {
-            unsung.mix(&palette::BRAND, fill)
-        } else {
-            palette::TEXT
+        let base = match glyph.cue.as_ref() {
+            Some(cue) => {
+                let fill = glyph_fill(cue, position);
+                let singing = line
+                    .words
+                    .get(cue.word)
+                    .is_some_and(|word| position < word.end);
+                unsung.mix(&glyph_tone(singing), fill)
+            }
+            None => line_timed_tone(cue.phase, position < line.start),
         };
         color.0 = base.with_alpha(base.alpha() * fade * enter);
         // The entry ease: the line rises the last few pixels into
         // place. Motion-gated via `enter` staying 1.0.
         transform.translation.y = glyph.home.y - 8.0 * (1.0 - enter);
     }
+}
+
+/// Where the countdown pulses sit for a lyric size: above the band
+/// behind the row (which reaches `LYRIC_Y + 1.3 × size`), never on
+/// the words. Pure — tested.
+#[must_use]
+pub fn pulse_y(size: f32) -> f32 {
+    LYRIC_Y + size * 1.3 + PULSE_SIZE
+}
+
+/// The whole line's alpha for its phase. In the lead-in the line
+/// stands unlit at full alpha, whatever timing it has: a line-timed
+/// line fades in at its start, but it is ON SCREEN before that (the
+/// first version faded it to nothing and grew the band around an
+/// empty row). A sung line dims. Pure — tested.
+#[must_use]
+pub fn line_fade(phase: Phase, line: &beatbyte_chart::lyrics::LyricLine, position: f64) -> f32 {
+    match phase {
+        Phase::LeadIn => 1.0,
+        _ if line.words.is_empty() => line_alpha(line.start, line.end, position),
+        Phase::Sung => SUNG_ALPHA,
+        _ => 1.0,
+    }
+}
+
+/// A line-timed glyph's colour: unlit through the lead-in (and any
+/// moment before the line's start), the text colour once the line
+/// has begun. Pure — tested.
+#[must_use]
+pub fn line_timed_tone(phase: Phase, before_start: bool) -> Color {
+    if phase == Phase::LeadIn || before_start {
+        palette::dimmed(palette::TEXT, 0.42)
+    } else {
+        palette::TEXT
+    }
+}
+
+/// The lit colour of a glyph: the word being sung RIGHT NOW fills to
+/// white, a word already sung settles to the brand amber — a colour
+/// step on the current word, so it reads at speed. Pure — tested for
+/// contrast against the band.
+#[must_use]
+pub fn glyph_tone(singing: bool) -> Color {
+    if singing {
+        palette::TEXT
+    } else {
+        palette::BRAND
+    }
+}
+
+/// How far into a lead-in the position is: 0 as the line appears,
+/// 1 at its first word. Pure — tested.
+#[must_use]
+pub fn lead_in_progress(line_start: f64, lead_in: f64, position: f64) -> f32 {
+    if lead_in <= 0.0 {
+        return 1.0;
+    }
+    (((position - (line_start - lead_in)) / lead_in) as f32).clamp(0.0, 1.0)
 }
 
 /// The band behind the current passage: its width and its centre
@@ -514,10 +780,11 @@ pub fn clear_for_outro(
     mut preview: PreviewQuery,
     mut scrim: ScrimQuery,
     mut highlight: HighlightQuery,
+    mut pulses: PulseQuery,
 ) {
     clear_glyphs(&mut commands, &glyphs);
     display.line = None;
-    hide_chrome(&mut preview, &mut scrim, &mut highlight);
+    hide_chrome(&mut preview, &mut scrim, &mut highlight, &mut pulses);
 }
 
 fn clear_glyphs(commands: &mut Commands, glyphs: &GlyphQuery) {
@@ -526,7 +793,12 @@ fn clear_glyphs(commands: &mut Commands, glyphs: &GlyphQuery) {
     }
 }
 
-fn hide_chrome(preview: &mut PreviewQuery, scrim: &mut ScrimQuery, highlight: &mut HighlightQuery) {
+fn hide_chrome(
+    preview: &mut PreviewQuery,
+    scrim: &mut ScrimQuery,
+    highlight: &mut HighlightQuery,
+    pulses: &mut PulseQuery,
+) {
     if let Ok((mut text, _, mut visibility)) = preview.single_mut() {
         text.0.clear();
         *visibility = Visibility::Hidden;
@@ -537,6 +809,9 @@ fn hide_chrome(preview: &mut PreviewQuery, scrim: &mut ScrimQuery, highlight: &m
     if let Ok((_, _, mut visibility)) = highlight.single_mut() {
         *visibility = Visibility::Hidden;
     }
+    for (_, _, _, mut visibility) in pulses.iter_mut() {
+        *visibility = Visibility::Hidden;
+    }
 }
 
 #[cfg(test)]
@@ -545,11 +820,7 @@ mod tests {
     use beatbyte_chart::lyrics::LyricWord;
 
     fn word(text: &str, start: f64, end: f64) -> LyricWord {
-        LyricWord {
-            text: text.to_owned(),
-            start,
-            end,
-        }
+        LyricWord::new(text, start, end)
     }
 
     #[test]
@@ -557,37 +828,215 @@ mod tests {
         let words = [word("Hello", 1.0, 2.0), word("world", 2.0, 3.0)];
         let cues = glyph_cues("Hello world", &words);
         assert_eq!(cues.len(), 11);
-        // 'H' is the first fifth of "Hello".
+        // 'H' is the first fifth of "Hello": 1.0..1.2.
         assert_eq!(cues[0].word, 0);
-        assert!((cues[0].from - 0.0).abs() < 1e-6 && (cues[0].to - 0.2).abs() < 1e-6);
+        assert!((cues[0].start - 1.0).abs() < 1e-9 && (cues[0].end - 1.2).abs() < 1e-9);
         // 'o' is the last fifth.
-        assert!((cues[4].from - 0.8).abs() < 1e-6);
+        assert!((cues[4].start - 1.8).abs() < 1e-9);
         // The space lights when "Hello" completes - a degenerate
-        // window at progress 1.
+        // window at the word's end.
         assert_eq!(cues[5].word, 0);
-        assert!((cues[5].from - 1.0).abs() < 1e-6);
+        assert!((cues[5].start - 2.0).abs() < 1e-9 && (cues[5].end - 2.0).abs() < 1e-9);
         // 'w' opens "world".
         assert_eq!(cues[6].word, 1);
-        assert!((cues[6].from - 0.0).abs() < 1e-6);
+        assert!((cues[6].start - 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn aligned_character_spans_drive_the_glyphs_directly() {
+        // "Hi" sung slowly on the H and fast on the i: the glyph
+        // windows are the alignment's, not an even split.
+        let mut hi = word("Hi", 1.0, 2.0);
+        hi.chars = vec![[1.0, 1.8], [1.8, 2.0]];
+        let cues = glyph_cues("Hi there", &[hi, word("there", 2.5, 3.0)]);
+        assert!((cues[0].start - 1.0).abs() < 1e-9 && (cues[0].end - 1.8).abs() < 1e-9);
+        assert!((cues[1].start - 1.8).abs() < 1e-9 && (cues[1].end - 2.0).abs() < 1e-9);
+        // A count mismatch (a word with spans for another spelling)
+        // falls back to the even split rather than misplacing spans.
+        let mut odd = word("Hi", 1.0, 2.0);
+        odd.chars = vec![[1.0, 2.0]];
+        let cues = glyph_cues("Hi", &[odd]);
+        assert!((cues[0].end - 1.5).abs() < 1e-9);
     }
 
     #[test]
     fn the_fill_crosses_a_glyph_linearly_and_snaps_degenerates() {
         let cue = GlyphCue {
             word: 0,
-            from: 0.2,
-            to: 0.4,
+            start: 1.2,
+            end: 1.4,
         };
-        assert!((glyph_fill(&cue, 0.1) - 0.0).abs() < 1e-6);
-        assert!((glyph_fill(&cue, 0.3) - 0.5).abs() < 1e-6);
-        assert!((glyph_fill(&cue, 0.9) - 1.0).abs() < 1e-6);
+        assert!((glyph_fill(&cue, 1.1) - 0.0).abs() < 1e-6);
+        assert!((glyph_fill(&cue, 1.3) - 0.5).abs() < 1e-6);
+        assert!((glyph_fill(&cue, 1.9) - 1.0).abs() < 1e-6);
         let space = GlyphCue {
             word: 0,
-            from: 1.0,
-            to: 1.0,
+            start: 2.0,
+            end: 2.0,
         };
-        assert!((glyph_fill(&space, 0.99) - 0.0).abs() < 1e-6);
-        assert!((glyph_fill(&space, 1.0) - 1.0).abs() < 1e-6);
+        assert!((glyph_fill(&space, 1.99) - 0.0).abs() < 1e-6);
+        assert!((glyph_fill(&space, 2.0) - 1.0).abs() < 1e-6);
+    }
+
+    fn two_lines() -> beatbyte_chart::lyrics::Lyrics {
+        use beatbyte_chart::lyrics::{LyricLine, Lyrics};
+        Lyrics {
+            lines: vec![
+                LyricLine {
+                    start: 10.0,
+                    end: 20.0,
+                    text: "one two".to_owned(),
+                    words: vec![word("one", 10.0, 10.5), word("two", 10.6, 11.0)],
+                },
+                LyricLine {
+                    start: 20.0,
+                    end: 24.0,
+                    text: "three".to_owned(),
+                    words: vec![word("three", 20.0, 21.0)],
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn a_line_has_a_real_end_and_the_next_leads_in_only_after_it() {
+        let lyrics = two_lines();
+        // Being sung.
+        let cue = display_cue(&lyrics, 10.3, 1.5);
+        assert_eq!((cue.active, cue.phase), (Some(0), Phase::Singing));
+        assert_eq!(cue.upcoming, Some(1));
+        // Every word sung: the line is SUNG, not still in progress,
+        // even though its display end (20.0) is far away.
+        let cue = display_cue(&lyrics, 15.0, 1.5);
+        assert_eq!((cue.active, cue.phase), (Some(0), Phase::Sung));
+        // 1.5 s before the next line it takes the row: lead-in.
+        let cue = display_cue(&lyrics, 18.6, 1.5);
+        assert_eq!((cue.active, cue.phase), (Some(1), Phase::LeadIn));
+        assert_eq!(cue.upcoming, None, "nothing after the last line");
+        // Between: the sung line holds until the lead-in begins.
+        let cue = display_cue(&lyrics, 18.4, 1.5);
+        assert_eq!((cue.active, cue.phase), (Some(0), Phase::Sung));
+        // Before anything: idle, the first line upcoming.
+        let cue = display_cue(&lyrics, 2.0, 1.5);
+        assert_eq!((cue.active, cue.phase), (None, Phase::Idle));
+        assert_eq!(cue.upcoming, Some(0));
+        // ...until its lead-in.
+        let cue = display_cue(&lyrics, 8.6, 1.5);
+        assert_eq!((cue.active, cue.phase), (Some(0), Phase::LeadIn));
+    }
+
+    #[test]
+    fn a_line_still_being_sung_is_never_cut_for_the_next_ones_lead_in() {
+        // Line-timed lyrics (no words) are "singing" until their
+        // display end; a lead-in of 15 s would otherwise steal the
+        // row from a line in progress.
+        use beatbyte_chart::lyrics::{LyricLine, Lyrics};
+        let lyrics = Lyrics {
+            lines: vec![
+                LyricLine {
+                    start: 10.0,
+                    end: 20.0,
+                    text: "a".to_owned(),
+                    words: Vec::new(),
+                },
+                LyricLine {
+                    start: 20.0,
+                    end: 24.0,
+                    text: "b".to_owned(),
+                    words: Vec::new(),
+                },
+            ],
+        };
+        let cue = display_cue(&lyrics, 19.0, 15.0);
+        assert_eq!((cue.active, cue.phase), (Some(0), Phase::Singing));
+        // With no line in progress the lead-in applies.
+        let cue = display_cue(&lyrics, 9.0, 1.5);
+        assert_eq!((cue.active, cue.phase), (Some(0), Phase::LeadIn));
+    }
+
+    #[test]
+    fn the_countdown_runs_four_beats_into_a_long_gap_only() {
+        let beat = 0.5;
+        // A 10 s gap before a line at 30: four beats = 2 s.
+        assert_eq!(countdown_lit(27.0, 30.0, 20.0, beat), None, "too early");
+        assert_eq!(
+            countdown_lit(28.0, 30.0, 20.0, beat),
+            Some(0),
+            "first beat pending"
+        );
+        assert_eq!(countdown_lit(28.6, 30.0, 20.0, beat), Some(1));
+        assert_eq!(countdown_lit(29.1, 30.0, 20.0, beat), Some(2));
+        assert_eq!(countdown_lit(29.6, 30.0, 20.0, beat), Some(3));
+        assert_eq!(
+            countdown_lit(30.0, 30.0, 20.0, beat),
+            Some(4),
+            "all lit at the line"
+        );
+        assert_eq!(countdown_lit(30.1, 30.0, 20.0, beat), None, "over");
+        // A short gap gets no countdown: lines flow into each other.
+        assert_eq!(countdown_lit(29.0, 30.0, 27.0, beat), None);
+        // A degenerate beat never divides by zero.
+        assert_eq!(countdown_lit(29.0, 30.0, 20.0, 0.0), None);
+    }
+
+    #[test]
+    fn the_countdown_sits_above_the_band_at_every_size() {
+        for step in 0..3u8 {
+            let size = size_for(step);
+            let band_top = LYRIC_Y + size * 0.55 + highlight_box(20, size, size).y / 2.0;
+            assert!(
+                pulse_y(size) - PULSE_SIZE / 2.0 >= band_top,
+                "size {size}: pulses at {} overlap the band top {band_top}",
+                pulse_y(size)
+            );
+        }
+    }
+
+    #[test]
+    fn a_line_timed_line_stands_unlit_through_its_lead_in() {
+        // Seen live: the band grew around an EMPTY row because the
+        // line-timed fade was 0 before the line's start.
+        let timed = beatbyte_chart::lyrics::LyricLine {
+            start: 10.0,
+            end: 14.0,
+            text: "a".to_owned(),
+            words: Vec::new(),
+        };
+        assert!(
+            (line_fade(Phase::LeadIn, &timed, 9.0) - 1.0).abs() < 1e-6,
+            "on screen"
+        );
+        assert!((line_fade(Phase::Singing, &timed, 12.0) - 1.0).abs() < 1e-6);
+        assert!(
+            line_fade(Phase::Singing, &timed, 13.9) < 1.0,
+            "fades out at its end"
+        );
+        let worded = two_lines().lines.remove(0);
+        assert!(
+            (line_fade(Phase::Sung, &worded, 15.0) - SUNG_ALPHA).abs() < 1e-6,
+            "dims"
+        );
+        assert!((line_fade(Phase::Singing, &worded, 10.3) - 1.0).abs() < 1e-6);
+        assert_eq!(
+            line_timed_tone(Phase::LeadIn, true),
+            palette::dimmed(palette::TEXT, 0.42)
+        );
+        assert_eq!(line_timed_tone(Phase::Singing, false), palette::TEXT);
+        assert_ne!(
+            line_timed_tone(Phase::LeadIn, true),
+            line_timed_tone(Phase::Singing, false)
+        );
+    }
+
+    #[test]
+    fn the_lead_in_band_grows_from_nothing_to_the_first_word() {
+        assert!((lead_in_progress(10.0, 1.5, 8.5) - 0.0).abs() < 1e-6);
+        assert!((lead_in_progress(10.0, 1.5, 9.25) - 0.5).abs() < 1e-6);
+        assert!((lead_in_progress(10.0, 1.5, 10.0) - 1.0).abs() < 1e-6);
+        assert!(
+            (lead_in_progress(10.0, 0.0, 9.0) - 1.0).abs() < 1e-6,
+            "no lead-in = full"
+        );
     }
 
     #[test]
@@ -707,10 +1156,26 @@ mod tests {
         let words = [word("yeah", 5.0, 6.0)];
         let cues = glyph_cues("Oh yeah", &words);
         assert_eq!(cues[3].word, 0);
-        assert!((cues[3].from - 0.0).abs() < 1e-6, "'y' opens the word");
-        // The lead-in glyphs light as the word completes... they sit
-        // before word 0, whose index they carry with a degenerate
-        // window at 0 - lit the moment the word starts.
-        assert!((cues[0].to - 0.0).abs() < 1e-6);
+        assert!((cues[3].start - 5.0).abs() < 1e-9, "'y' opens the word");
+        // The lead-in glyphs sit before word 0 with a degenerate
+        // window at its start - lit the moment the word starts.
+        assert!((cues[0].start - 5.0).abs() < 1e-9 && (cues[0].end - 5.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn both_lit_tones_stay_readable_on_the_band() {
+        // The current word fills to white, a sung word settles to
+        // amber: both sit on the band, both need 4.5:1.
+        for backdrop in [palette::BACKGROUND, Color::WHITE] {
+            let band = band_over(backdrop);
+            for singing in [true, false] {
+                let ratio = contrast(band, glyph_tone(singing));
+                assert!(
+                    ratio >= 4.5,
+                    "tone (singing={singing}) at {ratio:.2}:1 on the band"
+                );
+            }
+        }
+        assert_ne!(glyph_tone(true), glyph_tone(false), "the step is a step");
     }
 }

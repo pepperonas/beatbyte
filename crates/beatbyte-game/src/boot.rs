@@ -35,6 +35,10 @@ pub struct LoadedSong {
     pub audio: SongAudio,
     /// Karaoke lyrics, when the song has them.
     pub lyrics: Option<beatbyte_chart::lyrics::Lyrics>,
+    /// The song's own lyric offset in milliseconds (positive = lyrics
+    /// later), read from beside the audio and adjustable from the
+    /// pause menu. Sources vary per song; this is where that lives.
+    pub lyric_offset_ms: i32,
 }
 
 /// The audio side of a loaded song.

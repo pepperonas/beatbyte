@@ -311,6 +311,28 @@ fn quit_after_shot(
 #[derive(Resource)]
 struct ShotDir(std::path::PathBuf);
 
+/// The song times `BEATBYTE_SHOT_TIMES` asks for, parsed once. Pure
+/// parsing — tested via [`parse_shot_times`].
+fn shot_times() -> Vec<f64> {
+    static TIMES: std::sync::OnceLock<Vec<f64>> = std::sync::OnceLock::new();
+    TIMES
+        .get_or_init(|| {
+            std::env::var("BEATBYTE_SHOT_TIMES")
+                .map(|raw| parse_shot_times(&raw))
+                .unwrap_or_default()
+        })
+        .clone()
+}
+
+/// `17.5,39` → `[17.5, 39.0]`; junk entries are skipped, never fatal.
+#[must_use]
+pub fn parse_shot_times(raw: &str) -> Vec<f64> {
+    raw.split(',')
+        .filter_map(|part| part.trim().parse::<f64>().ok())
+        .filter(|at| at.is_finite() && *at >= 0.0)
+        .collect()
+}
+
 /// Take one screenshot per named moment of the run (state screens
 /// wait out the transition fade first).
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI
@@ -371,7 +393,19 @@ fn autopilot_screenshots(
             let hype = players
                 .iter()
                 .any(|player| player.session.performance().hype_active());
-            if hype {
+            // Extra moments on request (`BEATBYTE_SHOT_TIMES=17.5,39`):
+            // a frame within a second after each listed song time,
+            // named by it — for looking at a lyric lead-in, a
+            // countdown, a line mid-fill, whatever a change touched.
+            let requested = shot_times()
+                .into_iter()
+                .find(|&at| (at..at + 1.0).contains(&now));
+            if let Some(at) = requested {
+                // One leak per requested moment: the set of names is
+                // `&'static str`, and a run asks for a handful.
+                let name: &'static str = Box::leak(format!("gameplay-t{at}").into_boxed_str());
+                Some(name)
+            } else if hype {
                 Some("gameplay-hype")
             } else if in_phrase {
                 Some("gameplay-phrase")
@@ -1726,6 +1760,15 @@ fn autopilot_results(
 mod tests {
     use super::shot_state;
     use crate::states::AppState;
+
+    #[test]
+    fn shot_times_parse_leniently() {
+        assert_eq!(
+            super::parse_shot_times("17.5, 39,x,-2,inf"),
+            vec![17.5, 39.0]
+        );
+        assert!(super::parse_shot_times("").is_empty());
+    }
 
     #[test]
     fn shot_state_reaches_every_screen_the_autopilot_cannot() {

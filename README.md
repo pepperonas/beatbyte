@@ -35,7 +35,7 @@
 [![SemVer](https://img.shields.io/badge/versioning-SemVer-blue)](CHANGELOG.md)
 [![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735)](CHANGELOG.md)
 [![Conventional Commits](https://img.shields.io/badge/commits-Conventional-FE5196)](https://www.conventionalcommits.org/)
-[![Tests](https://img.shields.io/badge/tests-813%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-830%20passing-brightgreen)](#testing)
 [![Clippy](https://img.shields.io/badge/clippy-%E2%80%91D%20warnings-brightgreen?logo=rust)](Cargo.toml)
 [![rustfmt](https://img.shields.io/badge/style-rustfmt-orange?logo=rust)](Cargo.toml)
 [![Rustdoc](https://img.shields.io/badge/public%20API-documented-blue)](Cargo.toml)
@@ -44,7 +44,7 @@
 [![Autopilot](https://img.shields.io/badge/releases-autopilot%20verified-success)](#testing)
 [![ADRs](https://img.shields.io/badge/decisions-12%20ADRs-lightgrey)](docs/decisions/README.md)
 [![MSRV](https://img.shields.io/badge/MSRV-1.95-orange?logo=rust)](Cargo.toml)
-[![Harnesses](https://img.shields.io/badge/harness%20switches-26-success)](docs/development/harness.md)
+[![Harnesses](https://img.shields.io/badge/harness%20switches-27-success)](docs/development/harness.md)
 [![Docs](https://img.shields.io/badge/docs-architecture%20%C2%B7%20ADRs%20%C2%B7%20specs-blue)](docs/)
 [![Design System](https://img.shields.io/badge/UI-one%20design%20kit-blueviolet)](docs/ui/design-system.md)
 [![3D Stage](https://img.shields.io/badge/3D%20stage-documented-blueviolet)](docs/ui/3d-stage.md)
@@ -168,7 +168,13 @@ judgment counts prove it does not change.*
   account, only artist and title leave the machine), or drop your own
   `.lrc` beside the song. The words sing along above the highway on
   the same clock the notes fall on, with a per-glyph karaoke fill and
-  a highlight behind the passage being sung
+  a highlight behind the passage being sung. With the optional local
+  aligner (`beatbyte-cli align`, build feature `ml`) the fill follows
+  the song letter by letter: each line appears a lead-in early, ends
+  when its last word does, the word being sung steps to white, and a
+  long instrumental gap counts down four pulses on the beat. Sources
+  drift per song — the pause menu carries a lyric offset saved beside
+  the song
 - 🤖 **Automatic chart generation** — BPM & onset analysis turns any song
   into a playable chart across four difficulties (playable, not perfect —
   the built-in editor is the correction pass)
@@ -476,14 +482,14 @@ beatbyte-cli demo                  # render the synthesized reference tracks
 ## Testing
 
 ```bash
-cargo test --workspace          # 813 tests
+cargo test --workspace          # 830 tests
 ```
 
 | Crate | Tests | Covers |
 |---|---:|---|
 | `beatbyte-core` | 96 | The play-history schema, timing windows to their exact boundaries, judgment, scoring, combos, HOPO and tap rules, the hype meter and which phrase a note belongs to, the rock meter and its single fail transition, the telemetry schema |
-| `beatbyte-chart` | 97 | Format validation, untrusted-input limits, the audio-timeline marker and the one-time move onto it, chart generation, difficulty derivation, musical quantisation, chart versions, energy-aware escalation, jack-free lane flow, burst discipline, accent chords, LRC/enhanced-LRC lyrics parsing |
-| `beatbyte-game` | 400 | UI kit contracts, settings persistence, the input tables and binding labels, the color language, library scanning, import naming, the X-plorer report decoder, texture geometry, the song ribbon, list scrolling, the instrument neck's gates and colours, hit-label placement, the rock meter's zones and fail arming, the band's beat-driven poses and placement, the hit flame's ignition, flicker and embers, the Star-Power arc's crackle, the settings rows' alphabetical order, the debug overlay's table, frame-rate colour and key, the search's held-q gesture, fuzzy scorer and ranking, the scoreboard's structured key and migration, gamepad hot-plug policy, the star-note rule and its live rim swap, the browser preview's rest-and-hush policy, Room Stage's event mapping and its drop-never-block queue, which music the clock may follow and that a fresh timeline follows none until its song is anchored, the autopilot's teleport rule, the 3D sparks' flight and the 8-bit neck's exemption from them, the Hype tube's easing, breathing and climbing band, its star crown's poses and the sparks in its charge, the mute state's one-push-per-change rule, an empty library told apart from an empty search, the chart-timeline migration (moved, marked, or left alone) |
+| `beatbyte-chart` | 104 | Format validation, untrusted-input limits, the audio-timeline marker and the one-time move onto it, chart generation, difficulty derivation, musical quantisation, chart versions, energy-aware escalation, jack-free lane flow, burst discipline, accent chords, LRC/enhanced-LRC lyrics parsing, the `words.json` reader under the same caps (character spans, real line ends, all-estimated lines shown line-timed, instrumental markers dropped as gaps, the alignment winning over the `.lrc`) and the per-song lyric offset sidecar |
+| `beatbyte-game` | 410 | UI kit contracts, settings persistence, the input tables and binding labels, the color language, library scanning, import naming, the X-plorer report decoder, texture geometry, the song ribbon, list scrolling, the instrument neck's gates and colours, hit-label placement, the rock meter's zones and fail arming, the band's beat-driven poses and placement, the hit flame's ignition, flicker and embers, the Star-Power arc's crackle, the settings rows' alphabetical order, the debug overlay's table, frame-rate colour and key, the search's held-q gesture, fuzzy scorer and ranking, the scoreboard's structured key and migration, gamepad hot-plug policy, the star-note rule and its live rim swap, the browser preview's rest-and-hush policy, Room Stage's event mapping and its drop-never-block queue, which music the clock may follow and that a fresh timeline follows none until its song is anchored, the autopilot's teleport rule, the 3D sparks' flight and the 8-bit neck's exemption from them, the Hype tube's easing, breathing and climbing band, its star crown's poses and the sparks in its charge, the mute state's one-push-per-change rule, an empty library told apart from an empty search, the chart-timeline migration (moved, marked, or left alone), the karaoke display's rules (glyph windows from character spans or an even split, the real line end and the lead-in that waits for it, the gap countdown on the beat, the pulses above the band, the colour step on the word being sung, a line-timed line standing unlit through its lead-in, the pause menu's per-song lyric offset) |
 | `beatbyte-audio` | 122 | Onset detection, tempo estimation, melody contours, the song clock and its practice rate, the speed position map, the error-sound voices, real-file decoding for every advertised format, the container's declared encoder priming and that both decode paths skip it sample-exactly, the resampler's length, passband, stopband and determinism, beat tracking and the kick channel, the analysis-evaluation metrics (MIREX beat scores, Rekordbox XML and ANLZ grid import, corpus pairing, synthetic corpus), the mute gate no volume write can lift |
 | `beatbyte-cli` | 21 | The play-history export (CSV quoting, UTC stamps, report filters), review analytics, the design dossier and the redesign rollout: section windowing, evidence thresholds, hash binding, the mastery veto, write instructions, carried difficulties |
 | `beatbyte-editor` | 19 | Every edit operation round-trips through its own inverse |

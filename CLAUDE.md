@@ -413,6 +413,17 @@ artifact, smoke-test it (neutral CWD!), then
   (2e-16 s). Harmless in play; remember it before treating a
   load→save round trip as byte-identical, and before enabling the
   feature: it would re-hash charts.
+- **Photographing a moment of a run: `BEATBYTE_SHOT_TIMES`**
+  (`=17.5,39` with `BEATBYTE_SHOT_DIR`) names frames by song time —
+  the fixed moments (24 s, 44 s) never land on a lyric lead-in or a
+  countdown. Two traps met while using it: the raised window
+  **steals the user's focus** and a stray key paused the run (the
+  harness sat in the pause menu until the timeout — kill the run
+  once the wanted frames are on disk instead of waiting for PASS),
+  and occlusion **flickers** on a busy desktop: raise the window
+  every ~2.5 s across the target window, not once at the start
+  (frames at 44 s came back fine and frames at 62 s black in the
+  same run). A frame is evidence only after its luma is checked.
 - **A summary inside this repository is not a source.** Round six of
   the look plan built the gem from a trait table an earlier round had
   written ("dark ring, white centre") instead of from the material,

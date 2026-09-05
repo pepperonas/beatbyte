@@ -14,6 +14,42 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.14] - 2026-09-05
+
+### Added
+
+- **The karaoke display reads the alignment** (plan milestone L4).
+  `<song>.words.json` beside the audio wins over the `.lrc`: the
+  fill runs letter by letter from the aligner's character spans (an
+  even split across the word where a source has only word stamps —
+  never a sweep across a line that has word data), a line has a
+  **real end** (its last word's; it dims to 55 % instead of staying
+  "in progress" until the next line), the next line takes the row a
+  **lead-in** early (new setting LYRICS LEAD-IN, default 1.5 s, its
+  band growing across the lead-in — but never while a line is still
+  being sung), the word being sung **steps to white** while sung
+  words settle to amber (both measured ≥ 4.5:1 on the band), and an
+  instrumental gap longer than 4 s ends in a **countdown of four
+  pulses on the beat** above the row, off the same clock the notes
+  fall on. Lines the gate fell back to line level (every word
+  estimated) are shown line-timed — fade in, hold, fade out — never
+  as a fill that pretends; `♪`/`---` marker lines are gaps, not
+  lines (they rendered as a boxed glyph before).
+- **A lyric offset per song** in the pause menu (LYRIC OFFSET
+  (SONG), ±10 ms steps, ±2 s), saved as `<song>.lyrics-offset.json`
+  beside the audio — separate from the global offset and the
+  calibration offsets, surviving a realignment; 0 removes the file.
+- `BEATBYTE_SHOT_TIMES=17.5,39` adds gameplay frames at the listed
+  song times to a `BEATBYTE_SHOT_DIR` run — how the lead-in, the
+  countdown, the fill and the dim were photographed for this entry.
+
+### Fixed
+
+- The gate gave a stretched LAST word the line's end when it
+  retimed it (seen: "remember" held for ten seconds of instrumental
+  and the line never dimmed); a lone estimated word at either edge
+  of a line now gets 0.3 s, as the aligner's own letterless words do.
+
 ## [0.14.13] - 2026-09-05
 
 ### Added

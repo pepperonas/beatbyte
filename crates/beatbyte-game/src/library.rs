@@ -477,10 +477,10 @@ fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String>
         .genre
         .clone()
         .or_else(|| beatbyte_audio::read_genre(&audio_path));
-    // A `.lrc` beside the audio or the chart - the same two places
-    // `beatbyte_chart::lyrics::lyrics_beside` reads at start.
-    let has_lyrics =
-        audio_path.with_extension("lrc").is_file() || chart_path.with_extension("lrc").is_file();
+    // An alignment or an `.lrc` beside the audio or the chart - the
+    // same places `beatbyte_chart::lyrics::lyrics_beside` reads at
+    // start.
+    let has_lyrics = beatbyte_chart::lyrics::lyrics_exist_beside(&audio_path, chart_path);
     Ok(Some(SongEntry {
         title: chart.song.title.clone(),
         artist: chart.song.artist.clone(),

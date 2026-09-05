@@ -45,6 +45,7 @@ pub(crate) enum Row {
     Lyrics,
     LyricsSize,
     LyricsOffset,
+    LyricsLeadIn,
     Controls,
 }
 
@@ -52,7 +53,7 @@ impl Row {
     /// Every row, in the order the screen shows them: **alphabetical
     /// by label**, and kept that way by a test — a new row goes where
     /// its name falls, not at the end of the list.
-    const ALL: [Row; 27] = [
+    const ALL: [Row; 28] = [
         Row::BeatPulse,
         Row::Controls,
         Row::FxIntensity,
@@ -62,6 +63,7 @@ impl Row {
         Row::HitLabels,
         Row::LatencyOffset,
         Row::Lyrics,
+        Row::LyricsLeadIn,
         Row::LyricsOffset,
         Row::LyricsSize,
         Row::MusicVolume,
@@ -104,6 +106,7 @@ impl Row {
             Row::Lyrics => "LYRICS",
             Row::LyricsSize => "LYRICS SIZE",
             Row::LyricsOffset => "LYRICS OFFSET",
+            Row::LyricsLeadIn => "LYRICS LEAD-IN",
             Row::TapMode => "TAP MODE (NO STRUM)",
             Row::NoteStyle => "NOTE STYLE",
             Row::Fullscreen => "FULLSCREEN",
@@ -151,6 +154,7 @@ impl Row {
             }
             .to_owned(),
             Row::LyricsOffset => format!("{:+.0} ms", settings.lyrics_offset_ms),
+            Row::LyricsLeadIn => format!("{:.2} s", settings.lyrics_lead_in_ms / 1000.0),
             Row::TapMode => on_off(settings.tap_mode),
             Row::NoteStyle => if settings.round_gems {
                 "ROUND"
@@ -238,6 +242,10 @@ impl Row {
             Row::LyricsOffset => {
                 settings.lyrics_offset_ms =
                     (settings.lyrics_offset_ms + 10.0 * direction).clamp(-500.0, 500.0);
+            }
+            Row::LyricsLeadIn => {
+                settings.lyrics_lead_in_ms =
+                    (settings.lyrics_lead_in_ms + 250.0 * direction).clamp(0.0, 4000.0);
             }
             Row::TapMode => settings.tap_mode = !settings.tap_mode,
             Row::NoteStyle => settings.round_gems = !settings.round_gems,
@@ -772,7 +780,7 @@ mod tests {
             );
         }
         // And nothing is listed twice or left out.
-        assert_eq!(Row::ALL.len(), 27);
+        assert_eq!(Row::ALL.len(), 28);
     }
 
     #[test]

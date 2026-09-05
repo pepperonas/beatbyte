@@ -100,10 +100,12 @@ a screenshot.
 ### Settings (commission §29, trimmed honestly)
 
 `LYRICS` on/off · `LYRICS SIZE` (small/medium/large) ·
-`LYRICS OFFSET` (ms). Position stays fixed (the one place that
-covers nothing), opacity folds into the design, intensity/motion
-follow the existing `fx_intensity` / motion settings — no settings
-that exist only in the menu.
+`LYRICS OFFSET` (ms, global) · `LYRICS LEAD-IN` (s, since v0.14.14:
+how early a line appears). The song's OWN offset lives in the pause
+menu (`LYRIC OFFSET (SONG)`), saved beside the song. Position stays
+fixed (the one place that covers nothing), opacity folds into the
+design, intensity/motion follow the existing `fx_intensity` / motion
+settings — no settings that exist only in the menu.
 
 ## Deliberate deviations from the commission text
 
