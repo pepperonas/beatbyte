@@ -35,6 +35,7 @@ pub struct LaneShapes {
     gauge_arc: Handle<Image>,
     hype_glass: Handle<Image>,
     hype_fill: Handle<Image>,
+    star: Handle<Image>,
     beam_gradient: Handle<Image>,
     speaker_sub: Handle<Image>,
     speaker_top: Handle<Image>,
@@ -155,6 +156,12 @@ impl LaneShapes {
         self.hype_fill.clone()
     }
 
+    /// A five-point star, tip up: the Hype tube's crown.
+    #[must_use]
+    pub fn star(&self) -> Handle<Image> {
+        self.star.clone()
+    }
+
     /// A soft-edged tube cross-section (sustain tails).
     #[must_use]
     pub fn tube(&self) -> Handle<Image> {
@@ -212,8 +219,13 @@ fn build_shapes(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         gauge_arc: images.add(shaded_image(gauge_arc_shading)),
         // Twice the pixels the tube occupies on a retina panel, and
         // in its own aspect so the caps stay round.
-        hype_glass: images.add(shaded_image_wh(64, 296, hype_glass_shading)),
+        hype_glass: images.add(shaded_image_wh(
+            TUBE_TEXTURE_W,
+            (TUBE_TEXTURE_W as f32 * TUBE_ASPECT).round() as usize,
+            hype_glass_shading,
+        )),
         hype_fill: images.add(shaded_image_wh(64, 64, hype_fill_shading)),
+        star: images.add(shaded_image_wh(96, 96, star_shading)),
         beam_gradient: images.add(shaded_image(beam_shading)),
         speaker_sub: images.add(shaded_image(|u, v| speaker_shading(u, v, true))),
         speaker_top: images.add(shaded_image(|u, v| speaker_shading(u, v, false))),
@@ -414,8 +426,89 @@ pub fn hype_glass_shading(u: f32, v: f32) -> Shade {
     (value, alpha * edge)
 }
 
-/// How many times taller than wide the Hype tube is drawn.
-pub const TUBE_ASPECT: f32 = 74.0 / 16.0;
+/// The Hype tube's drawn width, in logical pixels.
+pub const TUBE_W: f32 = 22.0;
+/// The Hype tube's drawn height, in logical pixels.
+pub const TUBE_H: f32 = 64.0;
+/// How many times taller than wide the Hype tube is drawn. Derived,
+/// never typed: the glass texture's cap geometry is corrected for
+/// this ratio, and a ratio that drifted from the sprite's size would
+/// stretch the caps into ovals again.
+pub const TUBE_ASPECT: f32 = TUBE_H / TUBE_W;
+// A tube, not a pill: the cap geometry assumes the straight middle
+// is longer than the two caps together.
+const _: () = assert!(TUBE_ASPECT > 2.0);
+/// The glass texture's width in texels: about twice the tube's
+/// retina footprint.
+const TUBE_TEXTURE_W: usize = 96;
+
+/// Signed distance from `(x, y)` (y up) to a five-point star with one
+/// tip pointing up, `outer` the tip radius and `inner` the valley
+/// radius. Negative inside. Pure — tested through [`star_shading`].
+///
+/// The star has five-fold rotational symmetry and a mirror through
+/// every tip, so a point is folded into the wedge between a tip and
+/// its neighbouring valley and measured against that ONE edge — as a
+/// segment, not a line: measured against the line, points straight
+/// beyond a tip sit close to both edge lines and would smear every
+/// tip into a comet.
+fn star_distance(x: f32, y: f32, outer: f32, inner: f32) -> f32 {
+    use core::f32::consts::{FRAC_PI_2, TAU};
+    let sector = TAU / 5.0;
+    let radius = x.hypot(y);
+    if radius < 1e-6 {
+        return -inner;
+    }
+    let angle = (y.atan2(x) - FRAC_PI_2).rem_euclid(sector);
+    // Angle from the nearest tip, 0 at the tip, sector/2 at the valley.
+    let phi = if angle > sector / 2.0 {
+        sector - angle
+    } else {
+        angle
+    };
+    let (px, py) = (radius * phi.cos(), radius * phi.sin());
+    let (tx, ty) = (outer, 0.0);
+    let (vx, vy) = (inner * (sector / 2.0).cos(), inner * (sector / 2.0).sin());
+    let (ex, ey) = (vx - tx, vy - ty);
+    let (wx, wy) = (px - tx, py - ty);
+    let t = ((wx * ex + wy * ey) / (ex * ex + ey * ey)).clamp(0.0, 1.0);
+    let (cx, cy) = (tx + t * ex, ty + t * ey);
+    let distance = (px - cx).hypot(py - cy);
+    // Same side of the edge as the origin = inside.
+    let side = ex * wy - ey * wx;
+    let origin_side = ex * (0.0 - ty) - ey * (0.0 - tx);
+    if side * origin_side >= 0.0 {
+        -distance
+    } else {
+        distance
+    }
+}
+
+/// A five-point star, tip up, filling the tile: opaque with a soft
+/// edge, lit from the centre out so the tint reads as a body rather
+/// than a flat cut-out, with a faint facet on the left half of every
+/// point. Pure — tested.
+#[must_use]
+pub fn star_shading(u: f32, v: f32) -> Shade {
+    let (x, y) = ((u - 0.5) * 2.0, (0.5 - v) * 2.0);
+    const OUTER: f32 = 0.92;
+    const INNER: f32 = 0.42;
+    let d = star_distance(x, y, OUTER, INNER);
+    let alpha = ((-d) / 0.05 + 0.5).clamp(0.0, 1.0);
+    if alpha <= 0.0 {
+        return (0.0, 0.0);
+    }
+    let radius = (x.hypot(y) / OUTER).min(1.0);
+    // Facets: the left flank of each point catches the light. From a
+    // tip, angles grow counter-clockwise — leftward — so the first
+    // half of the sector is that tip's left flank.
+    use core::f32::consts::{FRAC_PI_2, TAU};
+    let sector = TAU / 5.0;
+    let angle = (y.atan2(x) - FRAC_PI_2).rem_euclid(sector);
+    let facet = if angle <= sector / 2.0 { 0.08 } else { 0.0 };
+    let value = (0.62 + 0.38 * (1.0 - radius).powf(0.8) + facet).clamp(0.0, 1.0);
+    (value, alpha)
+}
 
 /// The Hype tube's fill: a column with a lit core and shaded flanks,
 /// so the charge reads as a body of light rather than a flat bar.
@@ -823,6 +916,53 @@ mod tests {
         // Shaped across the width only: scaling it vertically must
         // not change what it looks like.
         assert_eq!(hype_fill_shading(0.5, 0.05), hype_fill_shading(0.5, 0.95));
+    }
+
+    #[test]
+    fn the_tube_aspect_is_the_tubes_own_proportion() {
+        use super::{TUBE_ASPECT, TUBE_H, TUBE_W};
+        // The glass texture's caps are drawn for this ratio. It is
+        // derived, so this pins that nobody re-types it as a number.
+        assert!((TUBE_ASPECT - TUBE_H / TUBE_W).abs() < 1e-6);
+    }
+
+    #[test]
+    fn the_star_is_a_star() {
+        use super::star_shading;
+        // Tip up: the top centre of the tile is inside, the top
+        // corners are not.
+        let (_, tip) = star_shading(0.5, 0.08);
+        assert!(tip > 0.9, "the upper tip is solid ({tip})");
+        assert_eq!(star_shading(0.08, 0.08).1, 0.0, "top-left corner is empty");
+        assert_eq!(star_shading(0.92, 0.08).1, 0.0, "top-right corner is empty");
+        // Between two tips, at the tips' radius, is the sky — that is
+        // what makes it a star and not a disc.
+        // 36° off the top, at radius 0.8: x = 0.8 sin 36°, y = 0.8 cos 36°.
+        let (bx, by) = (0.5 + 0.4 * 0.5878, 0.5 - 0.4 * 0.8090);
+        assert_eq!(
+            star_shading(bx, by).1,
+            0.0,
+            "the valley between tips is open"
+        );
+        // The centre is solid and brighter than a tip: lit from
+        // within, not a flat cut-out.
+        let (centre, centre_a) = star_shading(0.5, 0.5);
+        let (tip_value, _) = star_shading(0.5, 0.08);
+        assert!(centre_a > 0.99);
+        assert!(
+            centre > tip_value,
+            "lit from the centre: {centre} > {tip_value}"
+        );
+        // Five-fold symmetry: the same radius 72° round is the same
+        // shape (the next tip, up-left, at 162° from +x).
+        let (rx, ry) = (0.5 - 0.42 * 0.9511, 0.5 - 0.42 * 0.3090);
+        let (_, rotated) = star_shading(rx, ry);
+        assert!(
+            rotated > 0.9,
+            "a tip 72° round is just as solid ({rotated})"
+        );
+        // No comet tails: straight beyond a tip there is nothing.
+        assert_eq!(star_shading(0.5, 0.005).1, 0.0, "beyond the tip is empty");
     }
 
     #[test]

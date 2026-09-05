@@ -8,6 +8,7 @@ use bevy::sprite::Anchor;
 
 use super::{GameplayScreen, HighwayLayout, PlayerIndex, PlayerSession, player_color};
 use crate::palette;
+use crate::shapes::{TUBE_H, TUBE_W};
 use crate::ui::UiFont;
 
 /// Score line marker.
@@ -63,6 +64,43 @@ pub struct HypeShimmer;
 /// The glass housing around the Hype column.
 #[derive(Component)]
 pub struct HypeGlass;
+
+/// The ornaments around the Hype tube — everything that is not the
+/// column itself. One enum, one query, one system: a marker per part
+/// would need a `Without<>` for every other part on every query.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HypeOrnament {
+    /// The five-point star crowning the tube: dim while charging, lit
+    /// and breathing once there is enough to fire, spinning while it
+    /// runs. The genre's glyph for this power.
+    Star,
+    /// The dark star behind the lit one, a touch larger: an outline
+    /// that separates the crown from the plate whatever colour the
+    /// crown is.
+    StarShadow,
+    /// The soft light behind the star.
+    StarHalo,
+    /// The soft light behind the tube.
+    TubeHalo,
+    /// One of the sparks drifting up inside the charge.
+    Spark(usize),
+}
+
+/// Where an ornament is measured from — the sparks' home is the
+/// fill's base, and their transform is rewritten every frame.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct HypeAnchor(pub Vec2);
+
+/// The tube's animated state this frame, published by
+/// [`animate_hype_tube`] for the ornaments to follow: the eased column
+/// (0..1) and the breathing (0..1).
+#[derive(Resource, Default, Clone, Copy, Debug)]
+pub struct HypeTubeState {
+    /// The column's eased fill, 0..1.
+    pub column: f32,
+    /// The breathing, 0..1, already scaled by effect intensity.
+    pub glow: f32,
+}
 
 /// The solo plate's rock-meter dial face (the arc under the needle).
 #[derive(Component)]
@@ -608,16 +646,34 @@ fn spawn_solo_panels(
         Anchor::BOTTOM_CENTER,
         Transform::from_xyz(pivot.x, pivot.y, 3.4),
     ));
-    // The Hype tube: a frame with four quarter ticks and a READY line
-    // at the activation threshold, filled from the bottom.
+    // The Hype tube: a glass column filled from the bottom, quarter
+    // ticks and a READY line etched in it, a star crowning it.
     let tube_x = right.x - PLATE_W / 2.0 + TUBE_INSET;
-    let tube_bottom = right.y - PLATE_H / 2.0 + 22.0;
+    let tube_bottom = right.y - PLATE_H / 2.0 + 24.0;
+    let tube_centre = Vec2::new(tube_x, tube_bottom + TUBE_H / 2.0);
+    // The name sits UNDER the instrument, like a plate on a panel —
+    // the top belongs to the star, which is the genre's own label
+    // for this meter.
     caption(
         commands,
         font,
         "HYPE",
-        Vec2::new(tube_x, right.y + PLATE_H / 2.0 - 12.0),
+        Vec2::new(tube_x, right.y - PLATE_H / 2.0 + 14.0),
     );
+    // The light behind the tube: nothing while charging, a soft bloom
+    // once the power is ready, so "you can fire" is visible from the
+    // corner of the eye, not only by reading the meter.
+    commands.spawn((
+        GameplayScreen,
+        HypeOrnament::TubeHalo,
+        Sprite {
+            image: shapes.soft_dot(),
+            color: palette::HYPE.with_alpha(0.0),
+            custom_size: Some(Vec2::new(TUBE_W * 3.4, TUBE_H * 1.3)),
+            ..default()
+        },
+        Transform::from_xyz(tube_centre.x, tube_centre.y, 3.3),
+    ));
     // The well behind the glass, so an empty tube is a dark hollow
     // rather than a hole in the plate.
     commands.spawn((
@@ -642,7 +698,7 @@ fn spawn_solo_panels(
         Sprite {
             image: shapes.hype_fill(),
             color: palette::HYPE,
-            custom_size: Some(Vec2::new(TUBE_W - 5.0, TUBE_H - 6.0)),
+            custom_size: Some(Vec2::new(FILL_W, FILL_H)),
             ..default()
         },
         Anchor::BOTTOM_CENTER,
@@ -656,12 +712,30 @@ fn spawn_solo_panels(
         Sprite {
             image: shapes.glow_strip(),
             color: palette::HYPE,
-            custom_size: Some(Vec2::new(TUBE_W - 5.0, 10.0)),
+            custom_size: Some(Vec2::new(FILL_W, 10.0)),
             ..default()
         },
         Transform::from_xyz(tube_x, tube_bottom + 3.0, 3.55),
         Visibility::Hidden,
     ));
+    // Sparks rising through the charge: a body of energy, not a
+    // column of paint. Few and small on purpose — a meter that
+    // swarms is a meter nobody can read.
+    for index in 0..SPARKS {
+        commands.spawn((
+            GameplayScreen,
+            HypeOrnament::Spark(index),
+            HypeAnchor(Vec2::new(tube_x, tube_bottom + 3.0)),
+            Sprite {
+                image: shapes.soft_dot(),
+                color: palette::TEXT.with_alpha(0.0),
+                custom_size: Some(Vec2::splat(SPARK_SIZE)),
+                ..default()
+            },
+            Transform::from_xyz(tube_x, tube_bottom + 3.0, 3.57),
+            Visibility::Hidden,
+        ));
+    }
     // The meniscus: the surface of the charge, brighter than the
     // body, riding wherever the fill happens to end.
     commands.spawn((
@@ -705,13 +779,50 @@ fn spawn_solo_panels(
                     palette::dimmed(palette::TEXT_DIM, 0.5).with_alpha(0.5)
                 },
                 Vec2::new(
-                    if ready { TUBE_W - 3.0 } else { TUBE_W - 7.0 },
+                    if ready { TUBE_W - 4.0 } else { TUBE_W - 10.0 },
                     if ready { 2.0 } else { 1.0 },
                 ),
             ),
             Transform::from_xyz(tube_x, tube_bottom + TUBE_H * quarter as f32 / 4.0, 3.75),
         ));
     }
+    // The crown: the star sits on the tube's top cap, its lowest
+    // point just into the glass, so it belongs to the instrument
+    // rather than floating over it.
+    let star_at = Vec2::new(tube_x, tube_bottom + TUBE_H + STAR_SIZE * 0.34);
+    commands.spawn((
+        GameplayScreen,
+        HypeOrnament::StarHalo,
+        Sprite {
+            image: shapes.soft_dot(),
+            color: palette::HYPE.with_alpha(0.0),
+            custom_size: Some(Vec2::splat(STAR_SIZE * 3.2)),
+            ..default()
+        },
+        Transform::from_xyz(star_at.x, star_at.y, 3.8),
+    ));
+    commands.spawn((
+        GameplayScreen,
+        HypeOrnament::StarShadow,
+        Sprite {
+            image: shapes.star(),
+            color: palette::BACKGROUND.with_alpha(0.9),
+            custom_size: Some(Vec2::splat(STAR_SIZE)),
+            ..default()
+        },
+        Transform::from_xyz(star_at.x, star_at.y, 3.85).with_scale(Vec3::splat(STAR_SHADOW_SCALE)),
+    ));
+    commands.spawn((
+        GameplayScreen,
+        HypeOrnament::Star,
+        Sprite {
+            image: shapes.star(),
+            color: palette::dimmed(palette::HYPE, 0.4),
+            custom_size: Some(Vec2::splat(STAR_SIZE)),
+            ..default()
+        },
+        Transform::from_xyz(star_at.x, star_at.y, 3.9),
+    ));
     commands.spawn((
         GameplayScreen,
         HypeNeedle,
@@ -740,14 +851,25 @@ fn spawn_solo_panels(
         },
         Transform::from_xyz(pivot.x, pivot.y, 3.7),
     ));
+    // The readout under the dial. Its longest line is 26 glyphs, and
+    // the pixel font advances a full em per glyph: at 9 px that is
+    // 234 px, wider than the plate's free span beside the tube
+    // (measured: it ran off the right edge and under the tube). At
+    // 8 px, centred on the free span rather than on the dial, it
+    // fits. The display face is narrow and keeps its size.
+    let free_centre = (tube_x + TUBE_W / 2.0 + right.x + PLATE_W / 2.0) / 2.0;
     commands.spawn((
         GameplayScreen,
         HypeReadyText,
         Text2d::new(""),
-        font.text(9.0),
+        font.text(if chrome { 9.0 } else { 8.0 }),
         TextColor(palette::HYPE),
         Anchor::TOP_CENTER,
-        Transform::from_xyz(pivot.x, right.y - PLATE_H / 2.0 + 24.0, 5.0),
+        Transform::from_xyz(
+            if chrome { pivot.x } else { free_centre },
+            right.y - PLATE_H / 2.0 + 24.0,
+            5.0,
+        ),
     ));
 }
 
@@ -800,10 +922,23 @@ pub fn charge_glow(ready: bool, active: bool, seconds: f32, reduced: bool) -> f3
     0.5 + 0.5 * (seconds * hz * core::f32::consts::TAU).sin()
 }
 
-const TUBE_INSET: f32 = 30.0;
-/// The Hype tube's size.
-const TUBE_W: f32 = 16.0;
-const TUBE_H: f32 = 74.0;
+const TUBE_INSET: f32 = 32.0;
+/// The charge column's size: the tube's, less the glass on each side.
+const FILL_W: f32 = TUBE_W - 6.0;
+const FILL_H: f32 = TUBE_H - 6.0;
+/// The star crowning the tube, in logical pixels.
+const STAR_SIZE: f32 = 24.0;
+/// How much larger the dark star behind it is drawn: the outline's
+/// width, as a scale.
+const STAR_SHADOW_SCALE: f32 = 1.16;
+/// How many sparks drift through the charge.
+const SPARKS: usize = 6;
+/// A spark's size, in logical pixels.
+const SPARK_SIZE: f32 = 3.5;
+/// The star's spin while the power runs, in radians per second — a
+/// five-point star repeats every 72°, so this is one apparent turn
+/// every 1.4 s: alive, not a propeller.
+const STAR_SPIN: f32 = 0.9;
 
 /// Push session numbers into every player's HUD.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
@@ -974,7 +1109,7 @@ pub fn update_huds(
 
         if let Ok(mut text) = texts.p4().single_mut() {
             let line = if perf.hype_active() {
-                "HYPE RUNNING - DOUBLE POINTS"
+                "HYPE RUNNING - 2X POINTS"
             } else if meter >= 0.5 {
                 "HYPE READY - PRESS TO FIRE"
             } else {
@@ -1038,20 +1173,22 @@ pub fn ready_glow(t: f32) -> f32 {
     0.16f32.mul_add((t * 4.0).sin(), 0.42)
 }
 
-/// Breathe the instruments when it matters. The dial (rock meter):
-/// Drive the Hype tube: ease the column toward the meter, ride the
-/// meniscus on its surface, and run the climbing band through it.
+/// Drive the Hype tube: ease the column toward the meter, tint it
+/// from plain to white-hot on the breathing, ride the meniscus on its
+/// surface, and run the climbing band through it. Everything it does
+/// is a transform or a tint — no texture is rebuilt per frame.
 ///
-/// Split out from `pulse_gauge` (which tints) because this one MOVES
-/// things, and the two want different queries. Everything it does is
-/// a transform or a tint — no texture is rebuilt per frame.
+/// The column's tint lives HERE and not in `pulse_gauge`, because the
+/// breathing has one clock: the star, the glass, the halos and the
+/// column all follow `charge_glow`. Two breaths at different rates
+/// on one instrument read as a fault.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)] // Bevy system: params are DI
 pub fn animate_hype_tube(
     time: Res<Time>,
     settings: Res<crate::gameplay::fx::EffectSettings>,
     players: Query<(&PlayerIndex, &PlayerSession)>,
     mut fills: Query<
-        &mut Transform,
+        (&mut Transform, &mut Sprite),
         (
             With<HypeTubeFill>,
             Without<HypeMeniscus>,
@@ -1087,6 +1224,7 @@ pub fn animate_hype_tube(
         ),
     >,
     mut column: Local<f32>,
+    mut state: ResMut<HypeTubeState>,
 ) {
     let Some((_, player)) = players.iter().find(|(index, _)| index.0 == 0) else {
         return;
@@ -1101,13 +1239,21 @@ pub fn animate_hype_tube(
     let filled = column.clamp(0.0, 1.0);
     let glow = charge_glow(ready, active, seconds, settings.reduced_flashing)
         * settings.intensity.clamp(0.0, 1.0);
+    *state = HypeTubeState {
+        column: filled,
+        glow,
+    };
 
     let mut base_y = 0.0;
     let mut height = 0.0;
-    for mut transform in &mut fills {
+    for (mut transform, mut sprite) in &mut fills {
         transform.scale.y = filled;
         base_y = transform.translation.y;
-        height = TUBE_H - 6.0;
+        height = FILL_H;
+        // Plain violet while charging; toward white-hot on the
+        // breathing — never all the way, or the column loses its
+        // colour and reads as a grey bar under the meniscus.
+        sprite.color = column_tint(glow);
     }
     let surface = base_y + height * filled;
 
@@ -1151,11 +1297,153 @@ pub fn animate_hype_tube(
     }
 }
 
-/// tinted by zone, and when the crowd is turning the whole dial
-/// pulses red — the one moment the corner may shout. The tube
-/// (Hype): breathes toward the hot tone once it can fire, blazes
-/// white-hot while it runs. Transforms and sprite tints only — no
-/// material or texture writes.
+/// The charge column's tint for a breathing level: the Hype violet,
+/// pulled toward white as the glow rises, capped so it stays violet.
+/// Pure — tested.
+#[must_use]
+pub fn column_tint(glow: f32) -> Color {
+    palette::HYPE.mix(&palette::TEXT, 0.55 * glow.clamp(0.0, 1.0))
+}
+
+/// Where spark `index` sits inside the charge at `seconds`: its
+/// sideways drift as a fraction of the column's half-width (−1..1),
+/// its height as a fraction of the filled column (0..1, wrapping), and
+/// its brightness (0..1) — born dim at the bottom, brightest mid-way,
+/// gone before it reaches the surface, so none of them ever pops out
+/// of the meniscus. Every spark has its own speed and phase; while the
+/// power is being spent they rush. Pure — tested.
+#[must_use]
+pub fn spark_at(index: usize, seconds: f32, active: bool) -> (f32, f32, f32) {
+    let n = index as f32;
+    let speed = (0.20 + 0.045 * n) * if active { 2.8 } else { 1.0 };
+    let phase = (n * 0.381_966).rem_euclid(1.0);
+    let height = (seconds * speed + phase).rem_euclid(1.0);
+    let drift = 0.6 * (seconds * (0.9 + 0.17 * n) + n * 1.7).sin();
+    let brightness = (core::f32::consts::PI * height).sin().max(0.0).powf(0.6);
+    (drift, height, brightness)
+}
+
+/// How the star carries itself: `(scale, spin_delta)` — the scale to
+/// draw it at, and how far to turn it this frame.
+///
+/// Charging: still and plain. Ready: it swells with the breathing.
+/// Running: larger, and turning. Reduced flashing keeps every state
+/// still and at a steady size — a spinning star is motion, and that
+/// setting is for people who asked for less of it. Pure — tested.
+#[must_use]
+pub fn star_pose(ready: bool, active: bool, glow: f32, reduced: bool, dt: f32) -> (f32, f32) {
+    let glow = glow.clamp(0.0, 1.0);
+    match (active, ready) {
+        (true, _) if reduced => (1.14, 0.0),
+        (true, _) => (1.10 + 0.08 * glow, STAR_SPIN * dt.max(0.0)),
+        (false, true) if reduced => (1.06, 0.0),
+        (false, true) => (1.0 + 0.10 * glow, 0.0),
+        (false, false) => (1.0, 0.0),
+    }
+}
+
+/// Where the star settles when it stops turning: the nearest angle
+/// at which it looks upright again. A five-point star is upright
+/// every 72°, so it never has to unwind more than 36°. Pure — tested.
+#[must_use]
+pub fn star_rest(angle: f32) -> f32 {
+    let step = core::f32::consts::TAU / 5.0;
+    (angle / step).round() * step
+}
+
+/// Drive the ornaments around the tube from the state
+/// [`animate_hype_tube`] published: the star's pose and tint, the two
+/// halos, and the sparks inside the charge. Transforms and tints only.
+pub fn animate_hype_ornaments(
+    time: Res<Time>,
+    settings: Res<crate::gameplay::fx::EffectSettings>,
+    state: Res<HypeTubeState>,
+    players: Query<(&PlayerIndex, &PlayerSession)>,
+    mut parts: Query<(
+        &HypeOrnament,
+        Option<&HypeAnchor>,
+        &mut Transform,
+        &mut Sprite,
+        &mut Visibility,
+    )>,
+    mut spin: Local<f32>,
+) {
+    let Some((_, player)) = players.iter().find(|(index, _)| index.0 == 0) else {
+        return;
+    };
+    let perf = player.session.performance();
+    let active = perf.hype_active();
+    let ready = perf.hype_meter() >= perf.config().hype_activation_threshold;
+    let seconds = time.elapsed_secs();
+    let dt = time.delta_secs();
+    let filled = state.column;
+    let glow = state.glow;
+    let (scale, turn) = star_pose(ready, active, glow, settings.reduced_flashing, dt);
+    if turn > 0.0 {
+        *spin += turn;
+    } else {
+        *spin = approach(*spin, star_rest(*spin), 10.0, dt);
+    }
+    // The charge's own colour, from plain to white-hot.
+    let lit = palette::HYPE.mix(&palette::TEXT, 0.15 + 0.55 * glow);
+
+    for (part, anchor, mut transform, mut sprite, mut visibility) in &mut parts {
+        match part {
+            HypeOrnament::Star => {
+                transform.scale = Vec3::splat(scale);
+                transform.rotation = Quat::from_rotation_z(*spin);
+                sprite.color = if ready || active {
+                    lit
+                } else {
+                    // Dim while charging, but not dead: it brightens
+                    // with the column so a nearly-ready meter reads
+                    // as nearly ready from the crown alone.
+                    palette::dimmed(palette::HYPE, 0.35 + 0.35 * filled)
+                };
+            }
+            HypeOrnament::StarShadow => {
+                transform.scale = Vec3::splat(scale * STAR_SHADOW_SCALE);
+                transform.rotation = Quat::from_rotation_z(*spin);
+            }
+            HypeOrnament::StarHalo => {
+                sprite.color = palette::HYPE.with_alpha(0.55 * glow);
+                transform.scale = Vec3::splat(0.85 + 0.3 * glow);
+            }
+            HypeOrnament::TubeHalo => {
+                sprite.color = palette::HYPE.with_alpha(0.42 * glow);
+            }
+            HypeOrnament::Spark(index) => {
+                // A spark's home is the fill's base; without one it
+                // has nowhere to be measured from.
+                let Some(home) = anchor else {
+                    continue;
+                };
+                let (drift, height, brightness) = spark_at(*index, seconds, active);
+                // Inside the charge only: an empty tube has no sparks,
+                // and a shallow one has no room for them.
+                let shown = filled > 0.12;
+                *visibility = if shown {
+                    Visibility::Inherited
+                } else {
+                    Visibility::Hidden
+                };
+                if !shown {
+                    continue;
+                }
+                transform.translation.x = home.0.x + drift * (FILL_W - SPARK_SIZE) / 2.0;
+                transform.translation.y = home.0.y + FILL_H * filled * height;
+                sprite.color =
+                    palette::TEXT.with_alpha(0.25 + 0.6 * brightness * (0.5 + 0.5 * glow));
+            }
+        }
+    }
+}
+
+/// Breathe the dial when it matters: the rock meter is tinted by
+/// zone, and when the crowd is turning the whole dial pulses red —
+/// the one moment the corner may shout. Sprite tints only — no
+/// material or texture writes. (The Hype tube breathes in
+/// [`animate_hype_tube`].)
 #[allow(clippy::type_complexity)]
 pub fn pulse_gauge(
     time: Res<Time>,
@@ -1187,15 +1475,6 @@ pub fn pulse_gauge(
             Without<HypeTubeFill>,
         ),
     >,
-    mut tubes: Query<
-        &mut Sprite,
-        (
-            With<HypeTubeFill>,
-            Without<HypeNeedle>,
-            Without<HypeHub>,
-            Without<MeterDial>,
-        ),
-    >,
 ) {
     let Some((_, player)) = players.iter().find(|(index, _)| index.0 == 0) else {
         return;
@@ -1217,13 +1496,6 @@ pub fn pulse_gauge(
             palette::dimmed(zone_tone, 0.9),
         )
     };
-    let tube_color = if perf.hype_active() {
-        palette::HYPE.mix(&Color::WHITE, 0.7)
-    } else if perf.hype_meter() >= 0.5 {
-        palette::HYPE.mix(&Color::WHITE, ready_glow(time.elapsed_secs()) * 0.6)
-    } else {
-        palette::HYPE
-    };
     for mut sprite in &mut needles {
         sprite.color = needle_color;
     }
@@ -1232,9 +1504,6 @@ pub fn pulse_gauge(
     }
     for mut sprite in &mut dials {
         sprite.color = dial_color;
-    }
-    for mut sprite in &mut tubes {
-        sprite.color = tube_color;
     }
 }
 
@@ -1437,6 +1706,126 @@ mod gauge_tests {
             charge_glow(false, false, 1.0, true),
             0.0,
             "and still nothing while it is merely filling"
+        );
+    }
+
+    use super::{column_tint, spark_at, star_pose, star_rest};
+
+    #[test]
+    fn the_sparks_are_born_dim_and_die_before_the_surface() {
+        // Never outside the charge: height in [0, 1) at any time,
+        // any speed.
+        for index in 0..super::SPARKS {
+            for t in [0.0, 0.37, 2.9, 61.0, 1000.5] {
+                for active in [false, true] {
+                    let (drift, height, brightness) = spark_at(index, t, active);
+                    assert!(
+                        (0.0..1.0).contains(&height),
+                        "spark {index} at {t}: {height}"
+                    );
+                    assert!((-1.0..=1.0).contains(&drift), "stays inside the column");
+                    assert!((0.0..=1.0).contains(&brightness));
+                }
+            }
+        }
+        // A spark at the very bottom or the very top is dark — it
+        // must not pop out of the meniscus as a bright dot. Find the
+        // moments spark 0 crosses them and sample there.
+        let (_, _, at_bottom) = spark_at(0, 0.0, false); // phase 0 → height 0
+        assert!(at_bottom < 0.05, "born dark, not {at_bottom}");
+        let (_, h_mid, at_mid) = spark_at(0, 2.5, false); // 0.2 cycles/s → 0.5
+        assert!((h_mid - 0.5).abs() < 1e-3);
+        assert!(at_mid > 0.95, "brightest mid-way, not {at_mid}");
+        // They rise: a moment later the height is greater.
+        let (_, h0, _) = spark_at(2, 1.0, false);
+        let (_, h1, _) = spark_at(2, 1.2, false);
+        assert!(h1 > h0, "rising: {h0} → {h1}");
+        // Spending the power makes them rush.
+        let (_, slow, _) = spark_at(1, 0.4, false);
+        let (_, fast, _) = spark_at(1, 0.4, true);
+        assert!(fast > slow, "rushing: {fast} > {slow}");
+        // No two sparks share a path: at one moment their heights differ.
+        let heights: Vec<f32> = (0..super::SPARKS)
+            .map(|i| spark_at(i, 3.0, false).1)
+            .collect();
+        for (a, x) in heights.iter().enumerate() {
+            for (b, y) in heights.iter().enumerate() {
+                assert!(
+                    a == b || (x - y).abs() > 0.02,
+                    "sparks {a} and {b} coincide"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_star_is_still_while_charging_swells_when_ready_and_turns_when_running() {
+        let dt = 1.0 / 60.0;
+        // Charging: plain, still.
+        assert_eq!(star_pose(false, false, 0.0, false, dt), (1.0, 0.0));
+        // Ready: larger with the breathing, still.
+        let (small, turn0) = star_pose(true, false, 0.0, false, dt);
+        let (big, turn1) = star_pose(true, false, 1.0, false, dt);
+        assert!(
+            big > small && small >= 1.0,
+            "swells with the glow: {small} → {big}"
+        );
+        assert_eq!(turn0, 0.0);
+        assert_eq!(turn1, 0.0);
+        // Running: larger still, and it turns — by an amount that
+        // scales with the frame, so the spin is frame-rate free.
+        let (running, turn) = star_pose(false, true, 0.5, false, dt);
+        assert!(running > big.max(small), "running is the largest state");
+        assert!(turn > 0.0, "it turns");
+        let (_, long_turn) = star_pose(false, true, 0.5, false, dt * 3.0);
+        assert!(
+            (long_turn - turn * 3.0).abs() < 1e-6,
+            "per second, not per frame"
+        );
+        // Reduced flashing: lit and larger, but STILL — no swell, no spin.
+        let (r_ready, r_turn) = star_pose(true, false, 0.7, true, dt);
+        let (r_ready2, _) = star_pose(true, false, 0.1, true, dt);
+        assert_eq!(r_turn, 0.0);
+        assert_eq!(r_ready, r_ready2, "no breathing under reduced flashing");
+        let (r_run, r_run_turn) = star_pose(false, true, 0.7, true, dt);
+        assert_eq!(r_run_turn, 0.0, "no spin under reduced flashing");
+        assert!(r_run > r_ready, "running still reads as more than ready");
+    }
+
+    #[test]
+    fn the_star_settles_upright_by_the_shortest_way() {
+        use core::f32::consts::TAU;
+        let step = TAU / 5.0;
+        // Just past a fifth of a turn: settle forward onto it, not
+        // back to zero.
+        assert!((star_rest(step * 1.1) - step).abs() < 1e-6);
+        // Just short of it: the same.
+        assert!((star_rest(step * 0.9) - step).abs() < 1e-6);
+        // Near zero: zero.
+        assert!(star_rest(0.1).abs() < 1e-6);
+        // Never more than half a step away.
+        for i in 0..50 {
+            let angle = i as f32 * 0.37;
+            assert!((star_rest(angle) - angle).abs() <= step / 2.0 + 1e-6);
+        }
+    }
+
+    #[test]
+    fn the_column_keeps_its_colour_at_full_glow() {
+        let plain = column_tint(0.0).to_srgba();
+        let hot = column_tint(1.0).to_srgba();
+        let violet = super::palette::HYPE.to_srgba();
+        assert!(
+            (plain.red - violet.red).abs() < 1e-6,
+            "no glow = the Hype violet"
+        );
+        // Hotter, but still not white: the old 70 % mix bleached the
+        // column into a grey bar under the meniscus.
+        assert!(hot.red > plain.red && hot.green > plain.green);
+        assert!(
+            hot.green < 0.85,
+            "still a colour, not white ({})",
+            hot.green
         );
     }
 

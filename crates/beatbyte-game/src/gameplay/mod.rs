@@ -370,6 +370,7 @@ impl Plugin for GameplayPlugin {
                         hud::pop_multiplier,
                         hud::pulse_gauge,
                         hud::animate_hype_tube,
+                        hud::animate_hype_ornaments,
                         hud::update_song_ribbon,
                     )
                         .chain(),
@@ -404,6 +405,7 @@ impl Plugin for GameplayPlugin {
                 practice_loop_wrap.run_if(in_state(GamePhase::Playing)),
             )
             .init_resource::<PauseCursor>()
+            .init_resource::<hud::HypeTubeState>()
             .init_resource::<lyrics::LyricDisplay>()
             .init_resource::<PracticeState>()
             .add_systems(

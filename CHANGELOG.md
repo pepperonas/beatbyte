@@ -14,6 +14,49 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.9] - 2026-09-05
+
+### Changed
+
+- **The Hype meter gets its star** (user: "optimiere die optik der
+  star power anzeige unten rechts weiter"). The genre's own glyph for
+  this power now crowns the tube — a five-point star drawn from a
+  generated texture (signed distance to the star's edges, measured
+  against the edge *segments*, or every tip smeared into a comet),
+  outlined by a darker star behind it so it separates from the plate
+  in either look. Dim while charging and brightening with the column,
+  it lights and **breathes** once there is enough to fire, and
+  **turns** while the power runs — settling upright again by the
+  shortest way, since a star is upright every 72°. A soft halo
+  behind the star and another behind the tube bloom with the same
+  breathing, so "you can fire" is visible from the corner of the eye.
+- **Sparks in the charge.** Six small lights drift up inside the
+  column at their own speeds, born dim at the bottom and gone before
+  the surface so none ever pops out of the meniscus; they rush while
+  the power is spent. The tube itself is wider (16 → 22 px) with a
+  higher-resolution glass, and the "HYPE" caption moved under it like
+  a nameplate — the star is the label now.
+- **One breath for the whole instrument.** The column's tint used to
+  pulse at 0.64 Hz from `pulse_gauge` while the glass and the new
+  crown breathed at 1.25 Hz from `charge_glow` — two rates on one
+  meter read as a fault. The column now follows the same clock, and
+  it stays violet at full glow (the old 70 % mix toward white left a
+  grey bar under the meniscus).
+- The tube's dimensions live in one place (`shapes::TUBE_W/TUBE_H`,
+  aspect derived) instead of being typed in two files.
+
+### Fixed
+
+- **The 8-bit readout ran off the plate.** "HYPE RUNNING - DOUBLE
+  POINTS" in the pixel font is 252 px wide; the plate's free span
+  beside the tube is 215. It now reads "HYPE RUNNING - 2X POINTS"
+  (the multiplier box says "x8" in the same breath), sits at 8 px in
+  the pixel look and is centred on the free span, not on the dial.
+  The display face is narrow and keeps its size.
+- The README's two gameplay screenshots showed the flat tube of two
+  rounds ago and the deleted demo lyrics; both re-shot from the
+  current build on the synthesized track.
+
 ## [0.14.8] - 2026-09-05
 
 ### Fixed
