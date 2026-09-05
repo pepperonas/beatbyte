@@ -150,6 +150,13 @@ cargo test --workspace
 cargo check --workspace
 ```
 
+Plus rustdoc as CI runs it — `RUSTDOCFLAGS="-D warnings" cargo doc
+--workspace --no-deps` **without** `--all-features` (and once with):
+an intra-doc link into an optional dependency resolves only with the
+feature on, and the default-feature docs are what CI builds (an
+`[`beatbyte_lyrics::…`]` link in the game crate went red in CI after
+passing locally with `--all-features`).
+
 CI installs the **latest stable** — keep the local toolchain current
 (`rustup update stable`); a stale local clippy passes locally and fails
 CI (happened twice).

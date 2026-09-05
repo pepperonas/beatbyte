@@ -9,8 +9,10 @@
 //! confirms the LYRICS MODEL row (the one explicit action the README
 //! promises), the alignment when they press `K` on a song that has
 //! lyrics beside it. Both use exactly the code `beatbyte-cli` runs
-//! ([`beatbyte_lyrics::align_file`], `ModelStore::install`), so the
-//! result from the menu is the result from the terminal.
+//! (`beatbyte_lyrics::align_file`, `ModelStore::install` — not linked:
+//! in a build without `ml` those crates are not dependencies and
+//! rustdoc has nothing to link to), so the result from the menu is
+//! the result from the terminal.
 
 use std::path::{Path, PathBuf};
 
