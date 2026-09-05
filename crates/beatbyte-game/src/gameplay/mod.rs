@@ -506,7 +506,11 @@ fn setup_gameplay(
 
     // Count-in: the clock starts negative; music starts at zero.
     commands.insert_resource(PendingMusic(song.audio.clone(), None));
-    game_clock.clock.start(time.elapsed_secs_f64(), -PREROLL_S);
+    // A fresh timeline: it follows no device position until THIS
+    // song is anchored. The browser preview is still winding down on
+    // the device for a few frames, and its position — inside a long
+    // song's length — teleported the count-in before this.
+    game_clock.begin(time.elapsed_secs_f64(), -PREROLL_S);
     // What this song's device positions can plausibly be. Anything
     // past it belongs to something else that is playing — a browser
     // preview, say — and the clock must never anchor to it.
@@ -693,7 +697,7 @@ fn mc_transition(
     // the pending music CROSSFADES instead of hard-starting.
     commands.insert_resource(PendingMusic(next.audio, Some(crate::mc::MC_CROSSFADE_S)));
     let mono = time.elapsed_secs_f64();
-    game_clock.clock.start(mono, -PREROLL_S);
+    game_clock.begin(mono, -PREROLL_S);
     game_clock.clock.set_rate(mono, practice.rate());
     // The device still reports the OUTGOING song's position until
     // the fade begins - reconciling against it would teleport the

@@ -14,6 +14,46 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.8] - 2026-09-05
+
+### Fixed
+
+- **The count-in teleported to the browser preview's position.**
+  Found while photographing the HUD: every capture of a song started
+  from the browser showed the same score and a 371 combo, from the
+  first seconds to the third minute, with an empty highway. Probed:
+  one frame into the count-in, song time read **185.6 s** — exactly
+  where the preview of the *previous* song was still winding down on
+  the device. The autopilot, which hits by stamp, played all 371
+  notes before that point in that frame and reported a flawless run;
+  a person would have missed every one of them, in the first frame
+  of the song. The mechanism: `stop()` reaches the music thread
+  asynchronously, so for a few frames the device still reports the
+  preview as active at its old position, and the clock — same
+  generation, running, plausible (185 s is inside a 248-second song,
+  so the length bound from 0.14.2 passed it) — reconciled onto it.
+  0.14.2's 63-second test song could not show this: 185 s is outside
+  its length, inside a real one's.
+  The MC handover had guarded this exact case with a timed hold; the
+  plain song start never had to, until previews arrived.
+- **The rule, not a hold:** a fresh timeline follows *no* device
+  position until the song the game asked for has been anchored
+  (`GameClock::anchored`, cleared by `GameClock::begin`, set by the
+  anchor). Gameplay, the MC handover, calibration and the editor's
+  audition all begin their timelines through it.
+- **And at the source:** a new song now gets a new output player.
+  rodio zeroes a stopped player's position later, on the audio
+  thread, so `stop()`+`append()` on the same player still reported
+  the OLD position for a few milliseconds (measured: 185.630 s right
+  after loading the new file) — publish that once and the clock
+  anchors three minutes in. A fresh player is at zero from its first
+  sample. Crossfades already worked this way.
+- **The autopilot can see this class of bug now.** It fails a run in
+  which song time jumps forward by more than half a second between
+  two frames — a loop wrap or an MC handover jumps *backward* and
+  stays legal. Verified by putting the bug back: the guard fails the
+  run with `-2.000 -> 185.625 in one frame`.
+
 ## [0.14.7] - 2026-09-05
 
 ### Removed

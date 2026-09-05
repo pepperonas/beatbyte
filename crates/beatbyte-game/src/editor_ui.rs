@@ -414,9 +414,7 @@ fn editor_input(
             music.0.play_file(state.audio_path.clone());
             game_clock.expect_song = true;
             music.0.seek_s(state.cursor_s);
-            game_clock
-                .clock
-                .start(time.elapsed_secs_f64(), state.cursor_s);
+            game_clock.begin(time.elapsed_secs_f64(), state.cursor_s);
             state.previewing = true;
         }
     }

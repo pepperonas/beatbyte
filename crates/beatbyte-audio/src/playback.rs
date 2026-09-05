@@ -150,12 +150,7 @@ impl MusicPlayer {
             source,
         })?;
         let duration = rodio::Source::total_duration(&decoder);
-
-        self.player.stop();
-        self.player.append(decoder);
-        self.player.play();
-        self.src_base_s = 0.0;
-        self.out_base_s = 0.0;
+        self.replace_player(|fresh| fresh.append(decoder));
         Ok(duration)
     }
 
@@ -166,9 +161,35 @@ impl MusicPlayer {
             return;
         };
         let source = rodio::buffer::SamplesBuffer::new(channels, rate, audio.samples().to_vec());
-        self.player.stop();
-        self.player.append(source);
-        self.player.play();
+        self.replace_player(|fresh| fresh.append(source));
+    }
+
+    /// A new song gets a NEW output player; the old one is stopped
+    /// and dropped, along with any crossfade tail.
+    ///
+    /// Not a tidiness measure. rodio's `stop()` only raises a flag:
+    /// its position is zeroed later, on the audio thread, when the
+    /// stopped source is next pulled — so for a few milliseconds
+    /// after `stop()`+`append()` the SAME player still reports the
+    /// OLD song's position. Measured: 185.630 s right after loading
+    /// a new file, the browser preview's place inside another track.
+    /// Publish that once and the game anchors its clock three minutes
+    /// into a song that just began. A fresh player's position is
+    /// zero from its first sample.
+    fn replace_player(&mut self, load: impl FnOnce(&Player)) {
+        if let Some(tail) = self.tail.take() {
+            tail.player.stop();
+        }
+        let fresh = Player::connect_new(self._device.mixer());
+        load(&fresh);
+        fresh.set_volume(output_gain(self.base_volume, self.muted, 1.0));
+        if self.speed != 1.0 {
+            #[allow(clippy::cast_possible_truncation)]
+            fresh.set_speed(self.speed as f32);
+        }
+        fresh.play();
+        let old = core::mem::replace(&mut self.player, fresh);
+        old.stop();
         self.src_base_s = 0.0;
         self.out_base_s = 0.0;
     }

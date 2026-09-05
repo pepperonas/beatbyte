@@ -578,9 +578,7 @@ fn autopilot_edit(
         music.0.set_volume(0.3);
         music.0.play_file(state.audio_path.clone());
         music.0.seek_s(state.cursor_s);
-        game_clock
-            .clock
-            .start(time.elapsed_secs_f64(), state.cursor_s);
+        game_clock.begin(time.elapsed_secs_f64(), state.cursor_s);
         state.previewing = true;
         *edits_done = true;
     } else {
@@ -1487,6 +1485,19 @@ fn autopilot_key_play(
     *cursor += 1;
 }
 
+/// How much further than the frame itself song time may step before
+/// the autopilot calls it a teleport. Practice speed runs up to
+/// 150 %, and a reconcile snap corrects tens of milliseconds; half a
+/// second past the frame is neither.
+const TELEPORT_S: f64 = 0.5;
+
+/// Whether a song-time step of `advanced` seconds over a frame of
+/// `frame_s` wall seconds is a teleport. Pure — tested.
+#[must_use]
+pub fn teleported(advanced: f64, frame_s: f64) -> bool {
+    advanced > frame_s.max(0.0) * 1.5 + TELEPORT_S
+}
+
 /// Play every note event exactly on time through the real session
 /// API — for every player.
 fn autopilot_play(
@@ -1495,14 +1506,35 @@ fn autopilot_play(
     game_clock: Res<GameClock>,
     time: Res<Time>,
     fail_drill: Option<Res<FailDrill>>,
+    mut last_now: Local<Option<f64>>,
+    mut app_exit: MessageWriter<AppExit>,
 ) {
     // The fail drill plays nothing: every note is missed on purpose.
     if fail_drill.is_some() {
         return;
     }
     let Some(now) = game_clock.song_time(&time) else {
+        *last_now = None;
         return;
     };
+    // The autopilot hits by STAMP, so a clock that teleports forward
+    // is invisible to the verdict: every note before the landing
+    // point is played in that one frame, perfectly, and the run
+    // passes with a highway that stayed empty for three minutes.
+    // That is exactly how the count-in teleport shipped. A backward
+    // jump is a loop wrap or an MC handover and stays legal — and so
+    // is a long FRAME: the clock is wall time, so a one-second stall
+    // moves song time one second, which is not a teleport. Measured
+    // against the frame's own length, not against a constant.
+    if let Some(last) = *last_now
+        && teleported(now - last, time.delta_secs_f64())
+    {
+        error!(
+            "autopilot: song time jumped {last:.3} -> {now:.3} in one frame — the clock teleported"
+        );
+        deliver(&mut app_exit, AppExit::error());
+    }
+    *last_now = Some(now);
     hands.ensure(players.iter().count());
 
     for (index, mut player) in &mut players {
@@ -1740,6 +1772,24 @@ mod tests {
             source: SongSource::Builtin(0),
             has_lyrics: false,
         }
+    }
+
+    #[test]
+    fn a_teleport_is_a_jump_the_frame_cannot_explain() {
+        use super::teleported;
+        // A normal frame, a fast frame, practice at 150 %: fine.
+        assert!(!teleported(0.016, 0.016));
+        assert!(!teleported(0.025, 0.016));
+        // A one-second STALL moves song time one second: not a
+        // teleport, the clock is wall time (this fired on a real run
+        // at 26.27 -> 27.28 before the frame was taken into account).
+        assert!(!teleported(1.01, 1.0));
+        // A reconcile snap of a few dozen milliseconds: fine.
+        assert!(!teleported(0.09, 0.016));
+        // The count-in teleport: −2 → 185.6 in a 16 ms frame.
+        assert!(teleported(187.6, 0.016));
+        // Backward is never a teleport (loop wrap, MC handover).
+        assert!(!teleported(-250.0, 0.016));
     }
 
     #[test]

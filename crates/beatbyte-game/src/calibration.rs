@@ -101,7 +101,7 @@ fn start_calibration(
     // The click track IS the timeline here: the clock may follow it.
     game_clock.expect_song = true;
     music.0.set_volume(settings.music_volume);
-    game_clock.clock.start(time.elapsed_secs_f64(), 0.0);
+    game_clock.begin(time.elapsed_secs_f64(), 0.0);
 
     commands
         .spawn((CalibrationScreen, ui_kit::screen_root()))

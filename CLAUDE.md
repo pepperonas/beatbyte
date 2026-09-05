@@ -362,6 +362,28 @@ artifact, smoke-test it (neutral CWD!), then
 - **`dist/` is a build product.** It was once committed (118 MB, and
   CI shipped the stale DMG inside every artifact); it is gitignored —
   keep it that way.
+- **An occluded window returns a STALE frame, not only a black one.**
+  `screencapture -l<id>` hands back the compositor's last image of a
+  covered window: a run 60 s into a song photographed as the main
+  menu, and a whole 160-frame series came back md5-identical while
+  the log advanced. The clue is a metric that does not move at all
+  between frames. Raise the window before every capture
+  (`osascript … set frontmost of (first process whose name is
+  "beatbyte") to true`) — the capture script in the scratchpad does.
+- **The autopilot hits by STAMP, so a clock that teleports forward
+  is invisible to its verdict.** Every note before the landing point
+  is played in that one frame, perfectly, and the run passes with an
+  empty highway. That is how the count-in teleport (v0.14.8) shipped
+  under a green harness for two days. The autopilot now fails a run
+  in which song time jumps forward >0.5 s in one frame; when a
+  screenshot shows a score or combo that does not change across a
+  run, suspect the clock before the HUD.
+- **A fresh timeline follows no device position until its song is
+  anchored** (`GameClock::begin` + `anchored`). Start every new
+  timeline through `begin()`, never `clock.start()` directly: the
+  device reports whatever played last — the browser preview, the
+  previous song — for a few frames after `stop()`, and a length
+  bound cannot reject a position that lies inside the new song.
 - **A summary inside this repository is not a source.** Round six of
   the look plan built the gem from a trait table an earlier round had
   written ("dark ring, white centre") instead of from the material,

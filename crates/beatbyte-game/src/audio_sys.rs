@@ -43,9 +43,30 @@ pub struct GameClock {
     /// reconciling against it would snap the freshly-seeked clock
     /// right back (a seek storm, in the loop's case).
     pub hold_reconcile_until: f64,
+    /// Whether the running timeline has been anchored to the song
+    /// the game asked for. The clock RECONCILES only while this is
+    /// true: between a timeline's start and its anchor, whatever the
+    /// device reports belongs to something else — the browser
+    /// preview that is still winding down, the previous song of an
+    /// MC set — and reconciling against it teleports the count-in.
+    ///
+    /// Measured before this flag: a song started from the browser
+    /// read 185.6 s one frame into its count-in, the preview's
+    /// position inside a 248-second track — well within the length
+    /// bound, so `song_len_s` could not catch it. The autopilot then
+    /// played 371 notes in that frame; a human would have missed them.
+    pub anchored: bool,
 }
 
 impl GameClock {
+    /// Begin a new timeline at `at` song seconds. The clock runs free
+    /// from here and follows no device position until the song the
+    /// game asks for has been anchored.
+    pub fn begin(&mut self, mono: f64, at: f64) {
+        self.clock.start(mono, at);
+        self.anchored = false;
+    }
+
     /// The current song time given Bevy's monotonic time, if running.
     #[must_use]
     pub fn song_time(&self, time: &Time) -> Option<f64> {
@@ -100,6 +121,7 @@ pub enum ClockMove {
 /// exactly like a song does, and gating on the screen does not work —
 /// the bump can arrive a frame after the player left the browser.
 #[must_use]
+#[allow(clippy::too_many_arguments)] // every input is a fact about the frame; a struct would only rename them
 pub fn clock_move(
     expected: bool,
     plausible: bool,
@@ -108,6 +130,7 @@ pub fn clock_move(
     clock_playing: bool,
     music_active: bool,
     reconcile_held: bool,
+    anchored: bool,
 ) -> ClockMove {
     if music_generation != clock_generation {
         return if expected && plausible {
@@ -116,11 +139,14 @@ pub fn clock_move(
             ClockMove::Absorb
         };
     }
-    // The same rule on the reconcile path, and this is the one that
-    // actually bit: reconciliation SNAPS on a large drift, so a
-    // device position from someone else's playback teleports the
-    // clock just as surely as an anchor would.
-    if clock_playing && music_active && !reconcile_held && plausible {
+    // Reconciliation SNAPS on a large drift, so a device position
+    // from someone else's playback teleports the clock just as surely
+    // as an anchor would. Two guards, both needed: the length bound
+    // rejects a position that cannot be this song's, and `anchored`
+    // rejects EVERY position until the song the game asked for has
+    // arrived — a preview's position inside a long song passes the
+    // first and was teleporting the count-in.
+    if clock_playing && music_active && !reconcile_held && plausible && anchored {
         ClockMove::Reconcile
     } else {
         ClockMove::Nothing
@@ -144,10 +170,12 @@ fn sync_clock(time: Res<Time>, music: Res<Music>, mut game_clock: ResMut<GameClo
         game_clock.clock.is_playing(),
         music.0.is_active(),
         mono < game_clock.hold_reconcile_until,
+        game_clock.anchored,
     ) {
         ClockMove::Anchor => {
             game_clock.generation = generation;
             game_clock.expect_song = false;
+            game_clock.anchored = true;
             game_clock.clock.start(mono, position);
         }
         // The browser's own music is not a timeline. Adopting the
@@ -174,21 +202,21 @@ mod tests {
         // Gameplay, the editor, calibration: the game started this
         // track, so the bump IS the new song.
         assert_eq!(
-            clock_move(true, true, 7, 6, false, true, false),
+            clock_move(true, true, 7, 6, false, true, false, true),
             ClockMove::Anchor
         );
         // Nobody asked: a browser preview. Take note of the
         // generation so the NEXT bump still reads as new, and leave
         // the clock where it is.
         assert_eq!(
-            clock_move(false, true, 7, 6, false, true, false),
+            clock_move(false, true, 7, 6, false, true, false, true),
             ClockMove::Absorb
         );
         // And the race the flag alone cannot win: the preview's bump
         // arrives AFTER the game set its expectation, carrying a
         // position from inside another track. The length says no.
         assert_eq!(
-            clock_move(true, false, 7, 6, false, true, false),
+            clock_move(true, false, 7, 6, false, true, false, true),
             ClockMove::Absorb,
             "185 seconds into a 63-second song is not this song"
         );
@@ -197,21 +225,21 @@ mod tests {
     #[test]
     fn the_same_generation_reconciles_only_while_it_may() {
         assert_eq!(
-            clock_move(true, true, 6, 6, true, true, false),
+            clock_move(true, true, 6, 6, true, true, false, true),
             ClockMove::Reconcile
         );
         assert_eq!(
-            clock_move(true, true, 6, 6, true, true, true),
+            clock_move(true, true, 6, 6, true, true, true, true),
             ClockMove::Nothing,
             "held after a seek"
         );
         assert_eq!(
-            clock_move(true, true, 6, 6, false, true, false),
+            clock_move(true, true, 6, 6, false, true, false, true),
             ClockMove::Nothing,
             "a stopped clock has no drift"
         );
         assert_eq!(
-            clock_move(true, true, 6, 6, true, false, false),
+            clock_move(true, true, 6, 6, true, false, false, true),
             ClockMove::Nothing,
             "silent music reports nothing worth following"
         );
@@ -219,9 +247,45 @@ mod tests {
         // minutes inside a track this song is not. Reconciling would
         // snap the clock there and end the song at once.
         assert_eq!(
-            clock_move(true, false, 6, 6, true, true, false),
+            clock_move(true, false, 6, 6, true, true, false, true),
             ClockMove::Nothing,
             "a position that cannot be this song's is not followed"
         );
+    }
+
+    #[test]
+    fn a_fresh_timeline_follows_nothing_until_its_song_is_anchored() {
+        // The count-in: the clock is running (from −2 s), the browser
+        // preview is still winding down on the device (active, and
+        // reporting 185.6 s — inside this 248-second song, so the
+        // length bound says yes), and no song has been anchored yet.
+        // This is the frame that teleported the clock.
+        assert_eq!(
+            clock_move(false, true, 6, 6, true, true, false, false),
+            ClockMove::Nothing,
+            "the count-in follows no device position"
+        );
+        // Once THIS song has been anchored, the same frame reconciles.
+        assert_eq!(
+            clock_move(false, true, 6, 6, true, true, false, true),
+            ClockMove::Reconcile
+        );
+        // And anchoring itself does not need the flag — it is what
+        // sets it.
+        assert_eq!(
+            clock_move(true, true, 7, 6, true, true, false, false),
+            ClockMove::Anchor
+        );
+    }
+
+    #[test]
+    fn beginning_a_timeline_forgets_the_last_anchor() {
+        let mut clock = GameClock {
+            anchored: true,
+            ..GameClock::default()
+        };
+        clock.begin(10.0, -2.0);
+        assert!(!clock.anchored, "a new timeline starts unanchored");
+        assert!(clock.clock.is_playing(), "and running");
     }
 }
