@@ -14,6 +14,48 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.10] - 2026-09-05
+
+### Fixed
+
+- **`.m4a` decoded late by its encoder priming — in analysis and
+  playback alike.** Measured with a click track through the game's own
+  decoder (plan L0, `docs/audio/decode-offset.md`): FFmpeg encodes
+  +1024 frames (21.3 ms at 48 kHz, 23.2 at 44.1), Apple encodes
+  +2112 (47.9 ms), MP3/WAV/FLAC on time. Symphonia 0.5.5 parses the
+  MP4 edit list and never applies it. Both paths shifted together, so
+  gameplay was never wrong against itself — but everything timed
+  against the master (lrclib's lines, any `.lrc` from elsewhere, the
+  word alignments the plan is about) sat 21–48 ms early. 70 of the 71
+  `.m4a` files in the reference library carry the 1024.
+- **Both decode paths now skip the declared priming, sample-exactly.**
+  `beatbyte-audio` reads `iTunSMPB` or the track's `elst` itself (a
+  capped box walker over untrusted input; anything it cannot read is
+  "no priming", never an error) and `decode_file` and the music thread
+  skip the same count. ⚠️ Not rodio's `skip_duration`, which goes
+  through nanoseconds and truncates 1024 frames to 1023. Re-measured:
+  every container lags 0 on the analysis path.
+
+### Changed
+
+- **Charts record which timeline they are on** (`audio_trim`, chart
+  format v1, lenient: absent = a file from before the skip). Import,
+  `beatbyte-cli generate` and `redesign` stamp it from the decode.
+- **Your existing charts were moved once, on the next library scan**
+  (user's decision: "jetzt fixen, Charts migrieren"). Every chart file
+  without the marker — every version, not only the active one — has
+  its times moved earlier by its audio's priming and is rewritten
+  atomically, with the original copied first to
+  `<app data>/beatbyte/migrations/audio-trim/<absolute path>`. The
+  hand-judged hard/expert redesigns are moved, not regenerated. On
+  the reference library: 117 chart files moved 21.3 ms, 3 marked, 26
+  left alone (version pointers and the import ledger, not charts).
+  ⚠️ A moved chart hashes differently, so sessions recorded before
+  stay bound to the old content — correctly, they were played on it.
+- The audit example (`click_offset`) now measures the exact source the
+  music thread appends, and reports the playback path's own constant
+  latency (+430 samples, every format) apart from the container's.
+
 ## [0.14.9] - 2026-09-05
 
 ### Changed

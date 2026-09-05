@@ -283,10 +283,13 @@ public corpus, cannot regress a note.
   declared priming (FFmpeg 1024 samples = 23.2 ms, Apple 2112 =
   47.9 ms; Symphonia 0.5.5 parses the edit list and never applies it),
   MP3/WAV/FLAC on the master's timeline, analysis and playback in
-  agreement. 70 of 71 library files carry the 1024. Three fixtures
-  pin the truth as it is. Fix **proposed, not applied**: it moves the
-  timeline under every existing chart, so the migration is a decision
-  — [`docs/audio/decode-offset.md`](audio/decode-offset.md).
+  agreement. 70 of 71 library files carry the 1024. **Fixed and
+  migrated the same day (v0.14.10, user's call):** both paths skip
+  the declared priming sample-exactly, charts carry `audio_trim`,
+  and the scan moved 117 chart files 21.3 ms earlier (backups under
+  the app data dir) — [`docs/audio/decode-offset.md`](audio/decode-offset.md).
+  §11 decided: English first · separation its own switch, no cloud ·
+  character fill · per-song lyric offset in the song folder. Next: L1.
 - [ ] L1 `beatbyte-ml` skeleton · [ ] L2 aligner (EN) · [ ] L3 gating
   and fallback · [ ] L4 renderer · [ ] L5 eval harness · [ ] L6
   separation + multilingual — acceptance criteria in the plan's §9.

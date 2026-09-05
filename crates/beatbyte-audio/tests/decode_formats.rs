@@ -74,18 +74,18 @@ fn m4a_aac_decodes() {
 // priming samples (Apple: 2112, FFmpeg: 1024) and declare them in the
 // container (`iTunSMPB`, resp. an `elst` edit list) so a player skips
 // them. MP3 encoders declare theirs in the LAME/Xing header. Whether
-// the decoder honours those declarations decides whether the decoded
+// the decode honours those declarations decides whether the decoded
 // timeline is the master's timeline — which is what every lyric file
-// from outside was written against. Measured 2026-09-05, audit in
-// `docs/audio/decode-offset.md`; the plan `docs/plans/ai-song-graph-
-// upgrade.md` (L0) asked for exactly this test.
+// from outside was written against.
 //
-// These pin the truth as it IS, not as we would like it. Symphonia
+// Measured 2026-09-05 (`docs/audio/decode-offset.md`): Symphonia
 // 0.5.5 applies the LAME delay but parses the MP4 edit list without
-// using it (`ElstAtom` is `#[allow(dead_code)]` in the crate), so
-// `.m4a` decodes late by its priming. When a decoder upgrade or our
-// own fix changes that, these fail and the docs get corrected in the
-// same commit.
+// using it, so `.m4a` decoded late by its priming — 23 ms for the
+// FFmpeg encodes 70 of the 71 library files are. `beatbyte-audio`
+// reads the declaration itself now (`priming::container_priming`)
+// and both decode paths skip it. These pin that every container
+// lands on the master's timeline; the audit example measures the
+// playback path the same way.
 
 /// The click fixtures: one full-scale sample at 1, 2 and 3 s in a
 /// 4-second 44.1 kHz mono track (`examples/click_offset.rs --short`).
@@ -139,17 +139,27 @@ fn mp3_decodes_on_the_masters_timeline() {
 }
 
 #[test]
-fn m4a_from_ffmpeg_decodes_one_frame_late() {
+fn m4a_from_ffmpeg_decodes_on_the_masters_timeline() {
     // FFmpeg's AAC encoder: 1024 priming samples, declared in an
-    // `elst` edit list the demuxer ignores. 23.2 ms at 44.1 kHz. This
-    // is what 70 of the 71 `.m4a` files in the reference library
-    // declare (yt-dlp remuxes through FFmpeg).
-    assert_eq!(decode_lag("click-ffmpeg.m4a"), 1024);
+    // `elst` edit list the demuxer ignores — before the skip this
+    // measured +1024 (23.2 ms).
+    assert_eq!(decode_lag("click-ffmpeg.m4a"), 0);
 }
 
 #[test]
-fn m4a_from_apple_decodes_two_frames_late() {
+fn m4a_from_apple_decodes_on_the_masters_timeline() {
     // Apple's encoder: 2112 priming samples, declared in `iTunSMPB`
-    // (and an edit list), neither applied. 47.9 ms.
-    assert_eq!(decode_lag("click-apple.m4a"), 2112);
+    // (and an edit list) — before the skip this measured +2112
+    // (47.9 ms).
+    assert_eq!(decode_lag("click-apple.m4a"), 0);
+}
+
+#[test]
+fn the_decode_reports_what_it_skipped() {
+    // The chart a decode feeds records this, so a chart made before
+    // the skip can be told apart from one made after it.
+    let apple = decode_file(&fixture("click-apple.m4a")).expect("decodes");
+    assert_eq!(apple.priming().samples, 2112);
+    let mp3 = decode_file(&fixture("click-lame.mp3")).expect("decodes");
+    assert_eq!(mp3.priming().samples, 0);
 }

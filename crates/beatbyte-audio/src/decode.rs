@@ -11,6 +11,8 @@ use std::path::Path;
 use rodio::{Decoder, Source};
 use thiserror::Error;
 
+use crate::priming::{Priming, container_priming};
+
 /// Analysis decodes at most this many seconds of audio (memory guard;
 /// a 20-minute mono track at 48 kHz is ~220 MB of f64-free f32 data).
 pub const MAX_ANALYSIS_SECONDS: f64 = 1_200.0;
@@ -51,6 +53,10 @@ pub struct AudioData {
     sample_rate: u32,
     /// Whether decoding stopped at [`MAX_ANALYSIS_SECONDS`].
     truncated: bool,
+    /// The encoder priming the container declared and this decode
+    /// SKIPPED, so sample 0 is the master's sample 0. Zero for
+    /// containers that declare none.
+    priming: Priming,
 }
 
 impl AudioData {
@@ -61,7 +67,17 @@ impl AudioData {
             samples,
             sample_rate: sample_rate.max(1),
             truncated: false,
+            priming: Priming::default(),
         }
+    }
+
+    /// The encoder priming skipped before sample 0 — what a chart
+    /// generated from this decode records as its
+    /// timeline (`audio_trim`), so a chart from before the skip can be
+    /// told apart from one after it.
+    #[must_use]
+    pub fn priming(&self) -> Priming {
+        self.priming
     }
 
     /// The mono samples in −1.0..=1.0.
@@ -115,6 +131,7 @@ impl AudioData {
             samples: out,
             sample_rate: self.sample_rate / 2,
             truncated: self.truncated,
+            priming: self.priming,
         }
     }
 }
@@ -179,8 +196,39 @@ pub fn write_wav_mono16(path: &Path, audio: &AudioData) -> std::io::Result<()> {
     fs::write(path, wav_bytes_mono16(audio))
 }
 
+/// The frames a container's declared priming amounts to at the
+/// decoder's rate. The declaration is in the track's own timescale,
+/// which for MP4 audio is the sample rate; when a file says otherwise
+/// the count is rescaled rather than trusted blindly. Pure — tested.
+#[must_use]
+pub fn priming_frames(priming: Priming, sample_rate: u32) -> u64 {
+    if priming.timescale == 0 || priming.samples == 0 {
+        return 0;
+    }
+    if priming.timescale == sample_rate {
+        return u64::from(priming.samples);
+    }
+    u64::from(priming.samples) * u64::from(sample_rate) / u64::from(priming.timescale)
+}
+
+/// The sample rate a file decodes at, from its header alone — no
+/// samples are pulled. `None` when the file cannot be opened or is
+/// not audio.
+#[must_use]
+pub fn probe_sample_rate(path: &Path) -> Option<u32> {
+    let file = File::open(path).ok()?;
+    let decoder = Decoder::try_from(file).ok()?;
+    Some(decoder.sample_rate().get())
+}
+
 /// Decode an audio file to mono for analysis. Multi-channel input is
 /// downmixed by averaging; decoding stops at [`MAX_ANALYSIS_SECONDS`].
+///
+/// The container's declared encoder priming is skipped, so the first
+/// sample is the master's first sample — the same skip the playback
+/// path applies, and it has to be the same: analysis alone skipping
+/// would put every chart a frame ahead of the audio it is played
+/// against.
 pub fn decode_file(path: &Path) -> Result<AudioData, DecodeError> {
     let display = path.display().to_string();
     let file = File::open(path).map_err(|source| DecodeError::Open {
@@ -195,12 +243,14 @@ pub fn decode_file(path: &Path) -> Result<AudioData, DecodeError> {
     let sample_rate = decoder.sample_rate().get();
     let channels = u32::from(decoder.channels().get()).max(1);
     let max_mono_samples = (MAX_ANALYSIS_SECONDS * f64::from(sample_rate)) as usize;
+    let priming = container_priming(path);
+    let skip = priming_frames(priming, sample_rate) * u64::from(channels);
 
     let mut samples = Vec::new();
     let mut truncated = false;
     let mut frame_acc = 0.0f32;
     let mut frame_fill = 0u32;
-    for sample in decoder {
+    for sample in decoder.skip(usize::try_from(skip).unwrap_or(usize::MAX)) {
         frame_acc += sample;
         frame_fill += 1;
         if frame_fill == channels {
@@ -221,6 +271,7 @@ pub fn decode_file(path: &Path) -> Result<AudioData, DecodeError> {
         samples,
         sample_rate,
         truncated,
+        priming,
     })
 }
 

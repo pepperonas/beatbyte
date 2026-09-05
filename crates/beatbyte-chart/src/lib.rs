@@ -50,7 +50,9 @@ pub use io::{ChartIoError, load_chart_file, resolve_audio_path, save_chart_file}
 pub use lyrics::{
     LyricCue, LyricLine, LyricWord, Lyrics, cue_at, lyrics_beside, parse_lrc, word_progress,
 };
-pub use schema::{ChartDef, ChartFile, ChartNote, ChartPhrase, Provenance, SongMeta, chart_hash};
+pub use schema::{
+    AudioTrim, ChartDef, ChartFile, ChartNote, ChartPhrase, Provenance, SongMeta, chart_hash,
+};
 pub use validate::{Issue, Severity};
 
 /// The chart format version this crate reads and writes.

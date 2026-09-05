@@ -13,8 +13,106 @@ use std::fs::File;
 use std::path::Path;
 use std::time::Duration;
 
-use rodio::{Decoder, MixerDeviceSink, Player};
+use rodio::{Decoder, MixerDeviceSink, Player, Source};
 use thiserror::Error;
+
+use crate::decode::priming_frames;
+use crate::priming::container_priming;
+
+/// A source with its container's encoder priming already consumed:
+/// frame 0 out of here is the master's frame 0, exactly, and a seek
+/// to `t` lands `t` past the priming.
+///
+/// Sample-exact on purpose. rodio's own `skip_duration` converts the
+/// duration back to samples through nanoseconds and truncates —
+/// 1024 frames at 44.1 kHz come out as 1023 — and the whole point of
+/// this is that analysis and playback skip the SAME number of frames.
+pub struct SkipFrames<I> {
+    inner: I,
+    /// The skipped span, for seeks and the reported duration.
+    skipped: Duration,
+}
+
+impl<I: Source> SkipFrames<I> {
+    /// Consume `frames` frames (× channels samples) from `inner`.
+    pub fn new(mut inner: I, frames: u64) -> SkipFrames<I> {
+        let channels = u64::from(inner.channels().get());
+        let rate = f64::from(inner.sample_rate().get());
+        let samples = frames.saturating_mul(channels);
+        for _ in 0..samples {
+            if inner.next().is_none() {
+                break;
+            }
+        }
+        SkipFrames {
+            inner,
+            skipped: Duration::from_secs_f64(frames as f64 / rate.max(1.0)),
+        }
+    }
+}
+
+impl<I: Source> Iterator for SkipFrames<I> {
+    type Item = I::Item;
+
+    #[inline]
+    fn next(&mut self) -> Option<I::Item> {
+        self.inner.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+}
+
+impl<I: Source> Source for SkipFrames<I> {
+    #[inline]
+    fn current_span_len(&self) -> Option<usize> {
+        self.inner.current_span_len()
+    }
+
+    #[inline]
+    fn channels(&self) -> rodio::ChannelCount {
+        self.inner.channels()
+    }
+
+    #[inline]
+    fn sample_rate(&self) -> rodio::SampleRate {
+        self.inner.sample_rate()
+    }
+
+    #[inline]
+    fn total_duration(&self) -> Option<Duration> {
+        self.inner
+            .total_duration()
+            .map(|total| total.saturating_sub(self.skipped))
+    }
+
+    #[inline]
+    fn try_seek(&mut self, pos: Duration) -> Result<(), rodio::source::SeekError> {
+        self.inner.try_seek(pos + self.skipped)
+    }
+}
+
+/// Open a file for playback with its priming skipped: the same
+/// decoder, the same skip, as [`crate::decode::decode_file`]. This is
+/// the source the music thread appends — public so the decode-offset
+/// audit (`examples/click_offset.rs`) can measure exactly it.
+pub fn open_trimmed(
+    path: &Path,
+) -> Result<SkipFrames<Decoder<std::io::BufReader<File>>>, PlaybackError> {
+    let display = path.display().to_string();
+    let file = File::open(path).map_err(|source| PlaybackError::Open {
+        path: display.clone(),
+        source,
+    })?;
+    let decoder = Decoder::try_from(file).map_err(|source| PlaybackError::Decode {
+        path: display,
+        source,
+    })?;
+    let frames = priming_frames(container_priming(path), decoder.sample_rate().get());
+    Ok(SkipFrames::new(decoder, frames))
+}
 
 /// Errors from the playback layer.
 #[derive(Debug, Error)]
@@ -140,16 +238,8 @@ impl MusicPlayer {
     /// Load and start playing a song, replacing anything current.
     /// Returns the total duration when the decoder knows it.
     pub fn play_file(&mut self, path: &Path) -> Result<Option<Duration>, PlaybackError> {
-        let display = path.display().to_string();
-        let file = File::open(path).map_err(|source| PlaybackError::Open {
-            path: display.clone(),
-            source,
-        })?;
-        let decoder = Decoder::try_from(file).map_err(|source| PlaybackError::Decode {
-            path: display,
-            source,
-        })?;
-        let duration = rodio::Source::total_duration(&decoder);
+        let decoder = open_trimmed(path)?;
+        let duration = decoder.total_duration();
         self.replace_player(|fresh| fresh.append(decoder));
         Ok(duration)
     }
@@ -295,15 +385,7 @@ impl MusicPlayer {
     /// silence; [`MusicPlayer::tick_fade`] ramps both. Position and
     /// speed reporting swap to the NEW song immediately.
     pub fn crossfade_to_file(&mut self, path: &Path, fade_s: f32) -> Result<(), PlaybackError> {
-        let display = path.display().to_string();
-        let file = File::open(path).map_err(|source| PlaybackError::Open {
-            path: display.clone(),
-            source,
-        })?;
-        let decoder = Decoder::try_from(file).map_err(|source| PlaybackError::Decode {
-            path: display,
-            source,
-        })?;
+        let decoder = open_trimmed(path)?;
         self.begin_crossfade(fade_s, |incoming| incoming.append(decoder));
         Ok(())
     }
@@ -677,6 +759,58 @@ fn handle_command(
         MusicCommand::Shutdown => return true,
     }
     false
+}
+
+#[cfg(test)]
+mod skip_tests {
+    use std::time::Duration;
+
+    use rodio::Source;
+    use rodio::buffer::SamplesBuffer;
+
+    use super::SkipFrames;
+
+    fn ramp(channels: u16, frames: usize) -> SamplesBuffer {
+        // Sample value = frame index, so what comes out says which
+        // frame it was.
+        let samples: Vec<f32> = (0..frames)
+            .flat_map(|frame| core::iter::repeat_n(frame as f32, usize::from(channels)))
+            .collect();
+        SamplesBuffer::new(
+            core::num::NonZero::new(channels).expect("channels"),
+            core::num::NonZero::new(44_100).expect("rate"),
+            samples,
+        )
+    }
+
+    #[test]
+    fn it_skips_exactly_that_many_frames_on_every_channel() {
+        let mut mono = SkipFrames::new(ramp(1, 100), 40);
+        assert_eq!(mono.next(), Some(40.0));
+        let mut stereo = SkipFrames::new(ramp(2, 100), 40);
+        assert_eq!(stereo.next(), Some(40.0), "left of frame 40");
+        assert_eq!(stereo.next(), Some(40.0), "right of frame 40");
+        assert_eq!(stereo.next(), Some(41.0));
+    }
+
+    #[test]
+    fn the_exact_frame_count_survives_where_a_duration_would_not() {
+        // 1024 frames at 44.1 kHz: rodio's duration-based skip lands
+        // on 1023 (nanosecond truncation). This one lands on 1024.
+        let mut source = SkipFrames::new(ramp(1, 2000), 1024);
+        assert_eq!(source.next(), Some(1024.0));
+    }
+
+    #[test]
+    fn a_seek_lands_past_the_priming_and_the_duration_shrinks_by_it() {
+        let source = SkipFrames::new(ramp(1, 44_100), 1024);
+        let total = source.total_duration().expect("a buffer knows its length");
+        let expected = Duration::from_secs_f64((44_100.0 - 1024.0) / 44_100.0);
+        assert!((total.as_secs_f64() - expected.as_secs_f64()).abs() < 1e-6);
+        // Skipping more than there is: empty, not a panic.
+        let mut drained = SkipFrames::new(ramp(1, 10), 50);
+        assert_eq!(drained.next(), None);
+    }
 }
 
 #[cfg(test)]

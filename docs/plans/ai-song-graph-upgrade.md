@@ -1,7 +1,10 @@
 # AI Song Graph Upgrade: word level lyrics and better charts
 
-Status: plan, not yet implemented — **L0 done 2026-09-05**, see
-[`docs/audio/decode-offset.md`](../audio/decode-offset.md)
+Status: plan — **L0 done 2026-09-05 including the decoder fix and the
+chart migration (v0.14.10)**, see
+[`docs/audio/decode-offset.md`](../audio/decode-offset.md); §11 decided
+2026-09-05: English first · separation its own switch, no cloud ·
+character-level fill · lyric offset per song in the song folder
 Author: Martin Pfeffer
 Date: 2026-09-05
 Location in the repo: `docs/plans/ai-song-graph-upgrade.md`

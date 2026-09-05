@@ -610,6 +610,14 @@ fn import_song(source: &Path, title: &str, artist: &str) -> Result<(), String> {
     // The file's own genre tag, when it carries one - a metadata
     // probe, no second decode.
     chart.song.genre = beatbyte_audio::read_genre(&audio_dest);
+    // Which timeline these times are on: the decode skipped the
+    // container's priming, and the chart says so.
+    let priming = audio.priming();
+    chart.audio_trim = Some(beatbyte_chart::AudioTrim::declared(
+        priming.samples,
+        priming.timescale,
+        audio.sample_rate(),
+    ));
     if chart
         .validate()
         .iter()

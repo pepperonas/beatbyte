@@ -22,9 +22,93 @@ pub struct ChartFile {
     /// [`chart_hash`] deliberately does not see it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provenance: Option<Provenance>,
+    /// Which audio timeline the times in this file are on. `Some`:
+    /// the container's encoder priming was skipped by the decode
+    /// that produced (or migrated) them, so time 0 is the master's
+    /// sample 0. `None`: a file from before the skip (v0.14.9 and
+    /// earlier), whose times sit `priming` late — the reader moves
+    /// them once ([`ChartFile::retime`]). Metadata about the axis,
+    /// not the content: [`chart_hash`] does not see it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_trim: Option<AudioTrim>,
+}
+
+/// The encoder priming a chart's audio was decoded without.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AudioTrim {
+    /// Frames skipped before the master's first sample.
+    pub priming_samples: u32,
+    /// The rate those frames are counted at.
+    pub sample_rate: u32,
+}
+
+impl AudioTrim {
+    /// The marker for a decode that skipped `priming_samples` counted
+    /// at `timescale` — or declared nothing (`timescale` 0), in which
+    /// case the marker records zero at the decode's own rate, so a
+    /// WAV or MP3 chart is marked too and never re-migrated.
+    #[must_use]
+    pub fn declared(priming_samples: u32, timescale: u32, decode_rate: u32) -> AudioTrim {
+        if timescale == 0 || priming_samples == 0 {
+            AudioTrim {
+                priming_samples: 0,
+                sample_rate: decode_rate.max(1),
+            }
+        } else {
+            AudioTrim {
+                priming_samples,
+                sample_rate: timescale,
+            }
+        }
+    }
+
+    /// The skipped span in seconds; 0 when nothing was declared.
+    #[must_use]
+    pub fn seconds(&self) -> f64 {
+        if self.sample_rate == 0 {
+            0.0
+        } else {
+            f64::from(self.priming_samples) / f64::from(self.sample_rate)
+        }
+    }
 }
 
 impl ChartFile {
+    /// Move a pre-skip chart onto the trimmed timeline: every time in
+    /// it shifts earlier by `trim`'s span and the file is marked. A
+    /// chart already marked is left alone, whatever `trim` says — the
+    /// operation is idempotent, and a second call cannot double-move.
+    /// Returns whether anything changed.
+    ///
+    /// Why a shift and not a re-import: the times may be hand-judged
+    /// design work (the hard/expert redesigns), which a regeneration
+    /// would throw away. The shift is exact and its inverse is one
+    /// line, so nothing is lost either way.
+    pub fn retime(&mut self, trim: AudioTrim) -> bool {
+        if self.audio_trim.is_some() {
+            return false;
+        }
+        let shift = trim.seconds();
+        if shift > 0.0 {
+            let earlier = |t: f64| (t - shift).max(0.0);
+            self.song.offset_s -= shift;
+            if let Some(preview) = self.song.preview_start_s.as_mut() {
+                *preview = earlier(*preview);
+            }
+            for chart in &mut self.charts {
+                for note in &mut chart.notes {
+                    note.time = earlier(note.time);
+                }
+                for phrase in &mut chart.phrases {
+                    phrase.start = earlier(phrase.start);
+                    phrase.end = earlier(phrase.end);
+                }
+            }
+        }
+        self.audio_trim = Some(trim);
+        true
+    }
+
     /// Parse a chart from JSON text.
     pub fn from_json(json: &str) -> Result<ChartFile, serde_json::Error> {
         serde_json::from_str(json)
@@ -233,6 +317,10 @@ pub fn chart_hash(chart: &ChartFile) -> String {
     let mut playable = chart.clone();
     playable.provenance = None;
     playable.song.genre = None;
+    // The axis label, not the content: a WAV chart gains the marker
+    // with no time moved, and that must not orphan its sessions. A
+    // chart whose times DID move hashes differently by its times.
+    playable.audio_trim = None;
     let canonical = serde_json::to_vec(&playable).unwrap_or_default();
     format!("{:016x}", fnv1a64(&canonical))
 }
@@ -267,6 +355,7 @@ mod hash_tests {
                 phrases: Vec::new(),
             }],
             provenance: None,
+            audio_trim: None,
         }
     }
 
@@ -321,5 +410,81 @@ mod hash_tests {
             chart_hash(&edited),
             "an edited note did not change the hash"
         );
+    }
+
+    #[test]
+    fn the_timeline_marker_alone_does_not_change_a_charts_identity() {
+        // A WAV chart gains the marker with no time moved; its
+        // recorded sessions must still find it.
+        let chart = tiny_chart();
+        let mut marked = tiny_chart();
+        assert!(marked.retime(AudioTrim::declared(0, 0, 44_100)));
+        assert_eq!(marked.audio_trim.map(|t| t.priming_samples), Some(0));
+        assert_eq!(chart_hash(&chart), chart_hash(&marked));
+        // Whereas a chart whose times DID move is a different chart —
+        // its old sessions were played on the old timeline.
+        let mut moved = tiny_chart();
+        assert!(moved.retime(AudioTrim::declared(1024, 44_100, 44_100)));
+        assert_ne!(chart_hash(&chart), chart_hash(&moved));
+    }
+
+    #[test]
+    fn retime_moves_every_time_earlier_by_the_priming_once() {
+        let mut chart = tiny_chart();
+        chart.song.offset_s = 0.5;
+        chart.song.preview_start_s = Some(0.01);
+        chart.charts[0].phrases.push(ChartPhrase {
+            start: 2.0,
+            end: 3.0,
+        });
+        chart.charts[0].notes.push(ChartNote {
+            time: 0.01,
+            lane: 1,
+            len: 0.4,
+            hopo: false,
+        });
+        let trim = AudioTrim::declared(1024, 44_100, 44_100);
+        let shift = 1024.0 / 44_100.0;
+        assert!(chart.retime(trim));
+        let notes = &chart.charts[0].notes;
+        assert!(
+            (notes[0].time - (1.0 - shift)).abs() < 1e-9,
+            "a note moved earlier"
+        );
+        assert_eq!(notes[0].len, 0.0, "a length is a duration, not a position");
+        assert!((notes[1].len - 0.4).abs() < 1e-12);
+        assert_eq!(
+            notes[1].time, 0.0,
+            "clamped at the song's start, never negative"
+        );
+        assert!((chart.charts[0].phrases[0].start - (2.0 - shift)).abs() < 1e-9);
+        assert!((chart.charts[0].phrases[0].end - (3.0 - shift)).abs() < 1e-9);
+        assert!(
+            (chart.song.offset_s - (0.5 - shift)).abs() < 1e-9,
+            "beat 0 moved too"
+        );
+        assert_eq!(chart.song.preview_start_s, Some(0.0));
+        assert_eq!(chart.audio_trim, Some(trim));
+        // Idempotent: a second call, even with a different trim, is
+        // a no-op — the marker says it has been done.
+        let before = chart.clone();
+        assert!(!chart.retime(AudioTrim::declared(2112, 44_100, 44_100)));
+        assert_eq!(chart, before, "a marked chart is never moved again");
+    }
+
+    #[test]
+    fn a_file_without_the_marker_reads_as_unmarked() {
+        // Files from before v0.14.10 carry no `audio_trim`; they must
+        // parse, and read as "not yet moved".
+        let json = r#"{"format_version":1,"song":{"title":"T","artist":"A","audio":"t.wav","bpm":120.0},"charts":[]}"#;
+        let chart = ChartFile::from_json(json).expect("old file parses");
+        assert_eq!(chart.audio_trim, None);
+        // And a marked file round-trips its marker.
+        let mut marked = chart.clone();
+        marked.retime(AudioTrim::declared(1024, 44_100, 44_100));
+        let text = marked.to_json_pretty().expect("serializes");
+        assert!(text.contains("\"audio_trim\""));
+        let back = ChartFile::from_json(&text).expect("parses");
+        assert_eq!(back.audio_trim, marked.audio_trim);
     }
 }

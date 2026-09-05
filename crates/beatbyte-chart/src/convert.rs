@@ -125,6 +125,7 @@ mod tests {
                 phrases: vec![],
             }],
             provenance: None,
+            audio_trim: None,
         }
     }
 

@@ -176,6 +176,7 @@ pub fn generate_chart(analysis: &SongAnalysis, meta: &GenerateMeta) -> ChartFile
         },
         charts,
         provenance: None,
+        audio_trim: None,
     }
 }
 

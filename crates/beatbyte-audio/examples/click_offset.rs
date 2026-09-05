@@ -61,8 +61,8 @@ fn best_lag(reference: &[f32], decoded: &[f32], span: i64) -> (i64, f64) {
 /// the music thread does short of the device. Returns the mono
 /// samples the mixer produced at the reference rate.
 fn through_player(path: &Path, length_s: u32) -> Option<Vec<f32>> {
-    let file = std::fs::File::open(path).ok()?;
-    let decoder = rodio::Decoder::try_from(file).ok()?;
+    // The very source the music thread appends (priming skipped).
+    let decoder = beatbyte_audio::playback::open_trimmed(path).ok()?;
     let channels = core::num::NonZero::<u16>::MIN;
     let rate = core::num::NonZero::new(RATE)?;
     let (mixer, mut source) = rodio::mixer::mixer(channels, rate);

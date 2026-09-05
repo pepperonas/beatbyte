@@ -384,6 +384,24 @@ artifact, smoke-test it (neutral CWD!), then
   device reports whatever played last — the browser preview, the
   previous song — for a few frames after `stop()`, and a length
   bound cannot reject a position that lies inside the new song.
+- **A lossy container's timeline is not the decoder's timeline.**
+  Symphonia 0.5.5 plays AAC priming as audio (1024 frames for FFmpeg,
+  2112 for Apple); `beatbyte-audio::priming` reads the declaration
+  and BOTH decode paths skip it through the same count
+  (`decode_file`, `playback::open_trimmed`). Never let one path skip
+  without the other — that puts every chart a frame off the audio.
+  And never skip by `rodio::skip_duration`: it truncates 1024 frames
+  to 1023 through nanoseconds. Charts say which timeline they are on
+  (`audio_trim`); a chart without it is moved once by the scan.
+- **A backup keyed by folder name loses the second folder of that
+  name.** The first migration run keyed by `<song folder>/<file>`;
+  the same import existed in both scan roots, and the second original
+  was rewritten without a backup. Key by the absolute path.
+- **`serde_json` without `float_roundtrip` can move a float by one
+  ULP on load.** Seen on 2 of 970 sustain lengths after a rewrite
+  (2e-16 s). Harmless in play; remember it before treating a
+  load→save round trip as byte-identical, and before enabling the
+  feature: it would re-hash charts.
 - **A summary inside this repository is not a source.** Round six of
   the look plan built the gem from a trait table an earlier round had
   written ("dark ring, white centre") instead of from the material,

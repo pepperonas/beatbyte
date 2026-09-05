@@ -12,6 +12,8 @@
 //! - [`analysis`] — samples → [`beatbyte_core::music::SongAnalysis`]
 //! - [`clock`] — the authoritative, testable song timeline
 //! - [`playback`] — rodio wrapper (play/pause/seek/position)
+//! - [`priming`] — the encoder delay a container declares, so both
+//!   decode paths skip it
 //! - [`synth`] — deterministic signal synthesis (tests, demo material)
 //! - [`demo`] — the original, fully synthesized bundled demo song
 //!
@@ -23,6 +25,7 @@ pub mod decode;
 pub mod demo;
 pub mod eval;
 pub mod playback;
+pub mod priming;
 pub mod synth;
 
 pub use analysis::{Analyzer, AnalyzerConfig, SpectralAnalyzer};

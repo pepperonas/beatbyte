@@ -359,8 +359,8 @@ fn demo(out_dir: &Path) -> ExitCode {
 }
 
 fn analyze(song: &Path, json: Option<&Path>) -> ExitCode {
-    let analysis = match run_analysis(song) {
-        Ok(analysis) => analysis,
+    let (analysis, _) = match run_analysis(song) {
+        Ok(pair) => pair,
         Err(code) => return code,
     };
     if let Some(path) = json {
@@ -408,8 +408,8 @@ fn analyze(song: &Path, json: Option<&Path>) -> ExitCode {
 }
 
 fn generate(song: &Path, title: Option<String>, artist: &str, out: Option<PathBuf>) -> ExitCode {
-    let analysis = match run_analysis(song) {
-        Ok(analysis) => analysis,
+    let (analysis, trim) = match run_analysis(song) {
+        Ok(pair) => pair,
         Err(code) => return code,
     };
 
@@ -425,7 +425,8 @@ fn generate(song: &Path, title: Option<String>, artist: &str, out: Option<PathBu
         audio: audio_name,
     };
 
-    let chart = generate_chart(&analysis, &meta);
+    let mut chart = generate_chart(&analysis, &meta);
+    chart.audio_trim = Some(trim);
     let issues = chart.validate();
     let errors = issues
         .iter()
@@ -517,7 +518,11 @@ fn inspect(chart_path: &Path) -> ExitCode {
 }
 
 /// Decode + analyze, with human-readable failures.
-fn run_analysis(song: &Path) -> Result<beatbyte_core::SongAnalysis, ExitCode> {
+/// Decode and analyze; the chart writer also needs the decode's
+/// timeline marker, so both come back.
+fn run_analysis(
+    song: &Path,
+) -> Result<(beatbyte_core::SongAnalysis, beatbyte_chart::AudioTrim), ExitCode> {
     let audio = decode_file(song).map_err(|error| {
         eprintln!("{error}");
         ExitCode::from(2)
@@ -533,7 +538,13 @@ fn run_analysis(song: &Path) -> Result<beatbyte_core::SongAnalysis, ExitCode> {
         audio.duration_s(),
         audio.sample_rate()
     );
-    Ok(SpectralAnalyzer::default().analyze(&audio))
+    let priming = audio.priming();
+    let trim = beatbyte_chart::AudioTrim::declared(
+        priming.samples,
+        priming.timescale,
+        audio.sample_rate(),
+    );
+    Ok((SpectralAnalyzer::default().analyze(&audio), trim))
 }
 
 fn load(chart_path: &Path) -> Result<ChartFile, ExitCode> {

@@ -12,7 +12,7 @@ use std::process::ExitCode;
 
 use beatbyte_audio::{Analyzer, SpectralAnalyzer, decode_file};
 use beatbyte_chart::{
-    ChartFile, GenerateMeta, Provenance, Severity, chart_hash, generate_chart, versions,
+    AudioTrim, ChartFile, GenerateMeta, Provenance, Severity, chart_hash, generate_chart, versions,
 };
 use beatbyte_core::Difficulty;
 
@@ -84,14 +84,20 @@ fn redesign_folder(folder: &Path) -> Result<String, String> {
     let active_path = folder.join(&active_name);
     let text = std::fs::read_to_string(&active_path)
         .map_err(|error| format!("cannot read `{}`: {error}", active_path.display()))?;
-    let active =
+    let mut active =
         ChartFile::from_json(&text).map_err(|error| format!("`{active_name}`: {error}"))?;
 
     let audio_path = folder.join(&active.song.audio);
     let audio = decode_file(&audio_path)
         .map_err(|error| format!("cannot decode `{}`: {error}", audio_path.display()))?;
+    // One timeline for the merge: the fresh charts come from a decode
+    // that skipped the container's priming; an active file from
+    // before the skip is moved onto the same axis first.
+    let priming = audio.priming();
+    let trim = AudioTrim::declared(priming.samples, priming.timescale, audio.sample_rate());
+    active.retime(trim);
     let analysis = SpectralAnalyzer::default().analyze(&audio);
-    let fresh = generate_chart(
+    let mut fresh = generate_chart(
         &analysis,
         &GenerateMeta {
             title: active.song.title.clone(),
@@ -99,6 +105,7 @@ fn redesign_folder(folder: &Path) -> Result<String, String> {
             audio: active.song.audio.clone(),
         },
     );
+    fresh.audio_trim = Some(trim);
 
     let created_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -239,6 +246,7 @@ mod tests {
                 })
                 .collect(),
             provenance: None,
+            audio_trim: None,
         }
     }
 

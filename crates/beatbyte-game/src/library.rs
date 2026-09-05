@@ -178,12 +178,15 @@ pub fn scan_library(builtins: &[ChartFile]) -> SongLibrary {
         .iter()
         .map(|b| (b.song.title.to_lowercase(), b.song.artist.to_lowercase()))
         .collect();
-    let candidates = select_active_versions(
-        roots
-            .iter()
-            .flat_map(|root| find_chart_files(root))
-            .collect(),
-    );
+    let found: Vec<PathBuf> = roots
+        .iter()
+        .flat_map(|root| find_chart_files(root))
+        .collect();
+    // Every version file, not only the active one: a pointer revert
+    // must land on a chart that is on the same timeline as the
+    // audio it plays against.
+    migrate_chart_timelines(&found, &migration_backup_dir());
+    let candidates = select_active_versions(found);
     for chart_path in candidates {
         match load_entry(&chart_path) {
             Ok(Some(entry)) => {
@@ -200,6 +203,142 @@ pub fn scan_library(builtins: &[ChartFile]) -> SongLibrary {
     // Built-ins stay first; the rest sorts by title.
     entries[builtin_count..].sort_by_key(|entry| entry.title.to_lowercase());
     SongLibrary { entries }
+}
+
+/// Where the one-time migration keeps the original of every chart it
+/// rewrites: beside the settings, under `migrations/audio-trim/`.
+fn migration_backup_dir() -> Option<PathBuf> {
+    crate::config::settings_path().and_then(|settings| {
+        settings
+            .parent()
+            .map(|dir| dir.join("migrations").join("audio-trim"))
+    })
+}
+
+/// What happened to one chart file in [`migrate_chart_timelines`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Migration {
+    /// Already on the trimmed timeline: nothing to do.
+    Current,
+    /// Times moved earlier by the priming and the file rewritten.
+    Moved,
+    /// No priming declared: marked, nothing moved.
+    Marked,
+    /// Left alone — the audio could not be probed, the file could
+    /// not be parsed, or the write failed. Reported, never fatal.
+    Skipped,
+}
+
+/// Move every chart from before the priming skip (v0.14.9 and
+/// earlier, no `audio_trim`) onto the trimmed timeline its audio now
+/// plays on. Idempotent: a marked file is never touched again.
+///
+/// Rewrites the user's files, so: the original is copied to
+/// `backup_dir/<its absolute path>` first (once — an existing backup
+/// is never overwritten), the new text goes to a sibling temp file and
+/// is renamed into place, and a chart whose audio cannot be probed is
+/// left exactly as it was.
+pub fn migrate_chart_timelines(files: &[PathBuf], backup_dir: &Option<PathBuf>) -> Vec<Migration> {
+    let outcomes: Vec<Migration> = files
+        .iter()
+        .map(|path| migrate_one(path, backup_dir.as_deref()))
+        .collect();
+    let moved = outcomes.iter().filter(|m| **m == Migration::Moved).count();
+    let marked = outcomes.iter().filter(|m| **m == Migration::Marked).count();
+    let skipped = outcomes
+        .iter()
+        .filter(|m| **m == Migration::Skipped)
+        .count();
+    if moved + marked > 0 {
+        info!(
+            "audio-trim migration: {moved} chart file(s) moved onto the trimmed timeline, \
+             {marked} marked (no priming), {skipped} left alone"
+        );
+    }
+    outcomes
+}
+
+/// A file's absolute path as a relative one, to mirror it under a
+/// backup directory: `/a/b/chart.json` → `a/b/chart.json`.
+fn mirror_path(path: &std::path::Path) -> PathBuf {
+    let absolute = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    absolute
+        .components()
+        .filter(|c| {
+            !matches!(
+                c,
+                std::path::Component::RootDir | std::path::Component::Prefix(_)
+            )
+        })
+        .collect()
+}
+
+fn migrate_one(chart_path: &std::path::Path, backup_dir: Option<&std::path::Path>) -> Migration {
+    let Ok(mut chart) = load_chart_file(chart_path) else {
+        return Migration::Skipped;
+    };
+    if chart.audio_trim.is_some() {
+        return Migration::Current;
+    }
+    let Some(dir) = chart_path.parent() else {
+        return Migration::Skipped;
+    };
+    let Ok(audio_path) = resolve_audio_path(dir, &chart.song.audio) else {
+        return Migration::Skipped;
+    };
+    let Some(rate) = beatbyte_audio::decode::probe_sample_rate(&audio_path) else {
+        return Migration::Skipped;
+    };
+    let priming = beatbyte_audio::priming::container_priming(&audio_path);
+    let trim = beatbyte_chart::AudioTrim::declared(priming.samples, priming.timescale, rate);
+    let outcome = if trim.seconds() > 0.0 {
+        Migration::Moved
+    } else {
+        Migration::Marked
+    };
+    chart.retime(trim);
+
+    // The original, kept once, under its own ABSOLUTE path: two
+    // scan roots can hold a song folder of the same name (the same
+    // import in the repo and in the user directory — it happened),
+    // and a backup keyed by folder name alone would keep only the
+    // first and silently rewrite the second without one.
+    if let Some(backups) = backup_dir {
+        let keep = backups.join(mirror_path(chart_path));
+        if !keep.exists()
+            && (keep
+                .parent()
+                .is_none_or(|parent| std::fs::create_dir_all(parent).is_err())
+                || std::fs::copy(chart_path, &keep).is_err())
+        {
+            warn!(
+                "audio-trim migration: cannot back up `{}` — left alone",
+                chart_path.display()
+            );
+            return Migration::Skipped;
+        }
+    }
+    // Then the new text, atomically.
+    let Ok(json) = chart.to_json_pretty() else {
+        return Migration::Skipped;
+    };
+    let temp = chart_path.with_extension("json.migrating");
+    if std::fs::write(&temp, json).is_err() || std::fs::rename(&temp, chart_path).is_err() {
+        let _ = std::fs::remove_file(&temp);
+        warn!(
+            "audio-trim migration: cannot rewrite `{}` — left alone",
+            chart_path.display()
+        );
+        return Migration::Skipped;
+    }
+    if outcome == Migration::Moved {
+        info!(
+            "audio-trim migration: `{}` moved {:.1} ms earlier",
+            chart_path.display(),
+            trim.seconds() * 1000.0
+        );
+    }
+    outcome
 }
 
 /// Delete a file-based song's files. An entry whose chart lives in a
@@ -586,5 +725,127 @@ mod rating_tests {
     fn degenerate_durations_do_not_divide_by_zero() {
         assert_eq!(density_rating(100, 0.0), 1);
         assert_eq!(density_rating(100, -5.0), 1);
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod migration_tests {
+    use std::path::PathBuf;
+
+    use beatbyte_chart::{ChartFile, load_chart_file};
+
+    use super::{Migration, migrate_chart_timelines};
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("beatbyte-mig-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+        dir
+    }
+
+    fn fixture(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../beatbyte-audio/tests/fixtures")
+            .join(name)
+    }
+
+    /// A pre-skip chart (no `audio_trim`) over `audio`, one note at
+    /// 1.0 s, one phrase 2.0..3.0.
+    fn old_chart(dir: &std::path::Path, audio: &str) -> PathBuf {
+        let json = format!(
+            r#"{{"format_version":1,"song":{{"title":"T","artist":"A","audio":"{audio}","bpm":120.0,"offset_s":0.5}},
+                "charts":[{{"difficulty":"medium","lanes":5,"notes":[{{"time":1.0,"lane":0}}],"phrases":[{{"start":2.0,"end":3.0}}]}}]}}"#
+        );
+        let path = dir.join("chart.json");
+        std::fs::write(&path, json).expect("write chart");
+        path
+    }
+
+    #[test]
+    fn an_old_chart_over_an_m4a_moves_by_its_priming_once_with_a_backup() {
+        let dir = scratch("m4a");
+        std::fs::copy(fixture("click-ffmpeg.m4a"), dir.join("song.m4a")).expect("audio");
+        let chart = old_chart(&dir, "song.m4a");
+        let backups = Some(dir.join("backups"));
+
+        let first = migrate_chart_timelines(std::slice::from_ref(&chart), &backups);
+        assert_eq!(first, vec![Migration::Moved]);
+        let moved = load_chart_file(&chart).expect("rewritten file parses");
+        let shift = 1024.0 / 44_100.0;
+        assert!((moved.charts[0].notes[0].time - (1.0 - shift)).abs() < 1e-9);
+        assert!((moved.charts[0].phrases[0].start - (2.0 - shift)).abs() < 1e-9);
+        assert!((moved.song.offset_s - (0.5 - shift)).abs() < 1e-9);
+        assert_eq!(moved.audio_trim.map(|t| t.priming_samples), Some(1024));
+        // The original is kept, byte for byte, where the settings
+        // live — under the chart's own absolute path, so two song
+        // folders of the same name in different roots cannot share
+        // (and lose) a backup slot.
+        let kept = dir.join("backups").join(super::mirror_path(&chart));
+        let original = ChartFile::from_json(&std::fs::read_to_string(&kept).unwrap()).unwrap();
+        assert_eq!(original.charts[0].notes[0].time, 1.0);
+        assert_eq!(original.audio_trim, None);
+        // No temp file left behind.
+        assert!(!dir.join("chart.json.migrating").exists());
+
+        // Second scan: nothing to do, and the file is byte-identical.
+        let text_before = std::fs::read_to_string(&chart).unwrap();
+        let second = migrate_chart_timelines(std::slice::from_ref(&chart), &backups);
+        assert_eq!(second, vec![Migration::Current]);
+        assert_eq!(std::fs::read_to_string(&chart).unwrap(), text_before);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn two_song_folders_of_the_same_name_both_keep_their_original() {
+        // The flaw the first run had: the repo and the user directory
+        // held the same import, the backup was keyed by folder name,
+        // and the second original was rewritten without one.
+        let base = scratch("twins");
+        let backups = Some(base.join("backups"));
+        let mut charts = Vec::new();
+        for root in ["repo", "user"] {
+            let dir = base.join(root).join("same-song");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::copy(fixture("click-ffmpeg.m4a"), dir.join("song.m4a")).unwrap();
+            charts.push(old_chart(&dir, "song.m4a"));
+        }
+        let outcomes = migrate_chart_timelines(&charts, &backups);
+        assert_eq!(outcomes, vec![Migration::Moved, Migration::Moved]);
+        for chart in &charts {
+            let kept = base.join("backups").join(super::mirror_path(chart));
+            assert!(kept.is_file(), "no backup for {}", chart.display());
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_chart_over_audio_without_priming_is_marked_and_not_moved() {
+        let dir = scratch("wav");
+        std::fs::copy(fixture("tone.wav"), dir.join("song.wav")).expect("audio");
+        let chart = old_chart(&dir, "song.wav");
+        assert_eq!(
+            migrate_chart_timelines(std::slice::from_ref(&chart), &None),
+            vec![Migration::Marked]
+        );
+        let marked = load_chart_file(&chart).expect("parses");
+        assert_eq!(marked.charts[0].notes[0].time, 1.0, "nothing moved");
+        assert_eq!(marked.audio_trim.map(|t| t.priming_samples), Some(0));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_chart_whose_audio_is_missing_is_left_exactly_as_it_was() {
+        // Nothing can be probed, so nothing is guessed: the file stays
+        // untouched and comes up again next scan.
+        let dir = scratch("missing");
+        let chart = old_chart(&dir, "gone.m4a");
+        let before = std::fs::read_to_string(&chart).unwrap();
+        assert_eq!(
+            migrate_chart_timelines(std::slice::from_ref(&chart), &None),
+            vec![Migration::Skipped]
+        );
+        assert_eq!(std::fs::read_to_string(&chart).unwrap(), before);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

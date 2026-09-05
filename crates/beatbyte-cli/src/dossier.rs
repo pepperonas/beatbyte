@@ -263,6 +263,7 @@ mod tests {
                 phrases: Vec::new(),
             }],
             provenance: None,
+            audio_trim: None,
         }
     }
 

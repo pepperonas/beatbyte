@@ -50,6 +50,9 @@ pub const MAX_OFFSET_S: f64 = 60.0;
 /// Maximum sustain length in seconds.
 pub const MAX_SUSTAIN_S: f64 = 300.0;
 
+/// Highest sample rate an `audio_trim` may claim.
+pub const MAX_SAMPLE_RATE: u32 = 384_000;
+
 impl ChartFile {
     /// Validate the chart, returning every issue found. A chart with no
     /// [`Severity::Error`] issues is playable.
@@ -120,6 +123,31 @@ impl ChartFile {
                 && (!v.is_finite() || !(0.0..=MAX_SONG_LENGTH_S).contains(&v))
             {
                 err(&mut issues, name, format!("value {v} out of range"));
+            }
+        }
+
+        // The timeline marker — a priming longer than a second is not
+        // priming, and a rate outside anything a codec produces is
+        // not a rate.
+        if let Some(trim) = self.audio_trim {
+            if !(1..=MAX_SAMPLE_RATE).contains(&trim.sample_rate) {
+                err(
+                    &mut issues,
+                    "audio_trim.sample_rate",
+                    format!(
+                        "rate {} out of range (1..={MAX_SAMPLE_RATE})",
+                        trim.sample_rate
+                    ),
+                );
+            } else if trim.priming_samples > trim.sample_rate {
+                err(
+                    &mut issues,
+                    "audio_trim.priming_samples",
+                    format!(
+                        "{} samples is more than a second of priming",
+                        trim.priming_samples
+                    ),
+                );
             }
         }
 
@@ -354,6 +382,7 @@ mod tests {
                 }],
             }],
             provenance: None,
+            audio_trim: None,
         }
     }
 

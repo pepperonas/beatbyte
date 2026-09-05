@@ -38,7 +38,11 @@ charts across difficulties. Implemented by the `beatbyte-chart` crate.
 ## Conventions
 
 - **All times are seconds** (`f64`) on the song timeline; `0.0` is the
-  start of the audio file.
+  master's first sample — the audio file's first sample *after* any
+  encoder priming its container declares (`audio_trim`, below). A file
+  without `audio_trim` predates that rule (v0.14.9 and earlier): its
+  `0.0` was the first *decoded* sample, priming included, and readers
+  move it onto the trimmed timeline once.
 - Unknown fields are tolerated (forward compatibility within a format
   version); the `format_version` gate protects against incompatible
   files. Readers reject `format_version` values above what they support.
@@ -52,6 +56,8 @@ charts across difficulties. Implemented by the `beatbyte-chart` crate.
 | `format_version` | u32 | ✅ | Currently `1`. |
 | `song` | object | ✅ | Song metadata. |
 | `charts` | array | ✅ | One entry per difficulty; at least one. |
+| `provenance` | object | – | Where a chart *version* came from (ADR-0011). Metadata: not part of the chart hash. |
+| `audio_trim` | object | – | `{ "priming_samples": u32, "sample_rate": u32 }` — the encoder priming the decode skipped before time `0.0`, at the rate it is counted in. `priming_samples` ≤ `sample_rate` (a second), `sample_rate` 1–384000. Present on every chart written since v0.14.10 (zero for WAV/MP3/FLAC); absent means "times from before the skip" and the game moves them by `−priming_samples / sample_rate` once, then writes the marker. Metadata about the axis: not part of the chart hash (moved times are, by being different). |
 
 ### `song`
 
