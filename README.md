@@ -35,7 +35,7 @@
 [![SemVer](https://img.shields.io/badge/versioning-SemVer-blue)](CHANGELOG.md)
 [![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735)](CHANGELOG.md)
 [![Conventional Commits](https://img.shields.io/badge/commits-Conventional-FE5196)](https://www.conventionalcommits.org/)
-[![Tests](https://img.shields.io/badge/tests-747%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-750%20passing-brightgreen)](#testing)
 [![Clippy](https://img.shields.io/badge/clippy-%E2%80%91D%20warnings-brightgreen?logo=rust)](Cargo.toml)
 [![rustfmt](https://img.shields.io/badge/style-rustfmt-orange?logo=rust)](Cargo.toml)
 [![Rustdoc](https://img.shields.io/badge/public%20API-documented-blue)](Cargo.toml)
@@ -474,7 +474,7 @@ beatbyte-cli demo                  # render the synthesized reference tracks
 ## Testing
 
 ```bash
-cargo test --workspace          # 747 tests
+cargo test --workspace          # 750 tests
 ```
 
 | Crate | Tests | Covers |
@@ -482,7 +482,7 @@ cargo test --workspace          # 747 tests
 | `beatbyte-core` | 96 | The play-history schema, timing windows to their exact boundaries, judgment, scoring, combos, HOPO and tap rules, the hype meter and which phrase a note belongs to, the rock meter and its single fail transition, the telemetry schema |
 | `beatbyte-chart` | 94 | Format validation, untrusted-input limits, chart generation, difficulty derivation, musical quantisation, chart versions, energy-aware escalation, jack-free lane flow, burst discipline, accent chords, LRC/enhanced-LRC lyrics parsing |
 | `beatbyte-game` | 396 | UI kit contracts, settings persistence, the input tables and binding labels, the color language, library scanning, import naming, the X-plorer report decoder, texture geometry, the song ribbon, list scrolling, the instrument neck's gates and colours, hit-label placement, the rock meter's zones and fail arming, the band's beat-driven poses and placement, the hit flame's ignition, flicker and embers, the Star-Power arc's crackle, the settings rows' alphabetical order, the debug overlay's table, frame-rate colour and key, the search's held-q gesture, fuzzy scorer and ranking, the scoreboard's structured key and migration, gamepad hot-plug policy, the star-note rule and its live rim swap, the browser preview's rest-and-hush policy, Room Stage's event mapping and its drop-never-block queue, which music the clock may follow and that a fresh timeline follows none until its song is anchored, the autopilot's teleport rule, the 3D sparks' flight and the 8-bit neck's exemption from them, the Hype tube's easing, breathing and climbing band, its star crown's poses and the sparks in its charge, the mute state's one-push-per-change rule, an empty library told apart from an empty search |
-| `beatbyte-audio` | 105 | Onset detection, tempo estimation, melody contours, the song clock and its practice rate, the speed position map, the error-sound voices, real-file decoding for every advertised format, beat tracking and the kick channel, the analysis-evaluation metrics (MIREX beat scores, Rekordbox XML and ANLZ grid import, corpus pairing, synthetic corpus), the mute gate no volume write can lift |
+| `beatbyte-audio` | 108 | Onset detection, tempo estimation, melody contours, the song clock and its practice rate, the speed position map, the error-sound voices, real-file decoding for every advertised format and where each container's encoder delay lands in the decoded timeline, beat tracking and the kick channel, the analysis-evaluation metrics (MIREX beat scores, Rekordbox XML and ANLZ grid import, corpus pairing, synthetic corpus), the mute gate no volume write can lift |
 | `beatbyte-cli` | 21 | The play-history export (CSV quoting, UTC stamps, report filters), review analytics, the design dossier and the redesign rollout: section windowing, evidence thresholds, hash binding, the mastery veto, write instructions, carried difficulties |
 | `beatbyte-editor` | 19 | Every edit operation round-trips through its own inverse |
 | `beatbyte` | 15 | Documentation consistency: these numbers, the version, the badges, the links, the ADR index, the harness switches, the network claim against the code, the figures the rules document quotes, and the two synthesized reference tracks' chart fingerprints (at millisecond resolution, which the projection itself is tested for) |

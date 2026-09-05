@@ -24,3 +24,18 @@ flac -o tone.flac tone.wav
 lame -b 64 tone.wav tone.mp3
 afconvert -f m4af -d aac tone.wav tone.m4a   # macOS
 ```
+
+## Click fixtures (decode offset)
+
+`click-apple.m4a`, `click-ffmpeg.m4a`, `click-lame.mp3`: one full-scale
+sample at 1, 2 and 3 s in a 4-second 44.1 kHz mono track — again fully
+original, a few KB. They pin where a lossy container's encoder delay
+lands in the decoded timeline (`docs/audio/decode-offset.md`).
+Recreate:
+
+```bash
+cargo run -p beatbyte-audio --example click_offset -- --short --write click.wav
+afconvert -f m4af -d aac -b 64000 click.wav click-apple.m4a   # macOS: 2112 priming samples
+ffmpeg -i click.wav -c:a aac -b:a 64k click-ffmpeg.m4a          # 1024 priming samples
+lame -b 64 click.wav click-lame.mp3                             # LAME delay in the header
+```

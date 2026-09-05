@@ -270,6 +270,30 @@ project. Milestones when picked up:
 - [x] H3 **3D particles; depth of field measured and rejected** *(v0.14.3)*. The sustain-tube half of this line shipped as H2b and the text had gone stale. What was left: hit sparks in world space (`gameplay/spark3d.rs` — they arc from the struck receptor in perspective, shrink rather than fade, round neck only, capped and scaled by EFFECT INTENSITY; 5 tests, 5 mutation probes, no measurable frame cost against H4's baseline), and the lens. The lens was built and removed: at a usable aperture it does nothing (far/near sharpness 0.962 → 0.969), and wide enough to see it blurs the strike line first (612 → 475). The venue separation it was wanted for is already the stage fog's job. Bloom reviewed, left alone. The flat burst that was left unexplained here was diagnosed the next session (v0.14.4): not invisible but MISPLACED — the 3D solo neck is 1.45× wider than the flat layout it is positioned with — and it now stands down on the stage, the outro fireworks excepted.
 - [~] H4 Performance pass + packaging size check. Measured on this machine: the 3D stage holds a vsync-locked 60 fps during a full song with a 99th-percentile frame of 19.4 ms — no stalls, so it costs no notes. `BEATBYTE_FPS=1` now reports median and 99th-percentile frame times (an average would hide exactly the stutters that lose notes). Still open: a low-end GPU and the artifact size check.
 
+## AI song graph upgrade (PLANNED 2026-09-05 — docs/plans/ai-song-graph-upgrade.md)
+
+Word-level karaoke from local forced alignment (Track L), then a
+better beat grid, melody and structure for charts (Track C). The plan
+is the user's document; its five open decisions (§11) are his to make
+before L1 starts. L is first: self-contained, measurable against a
+public corpus, cannot regress a note.
+
+- [x] **L0 — m4a offset audit** *(2026-09-05)*. Click track through the
+  game's own decoder, both paths: `.m4a` decodes late by exactly its
+  declared priming (FFmpeg 1024 samples = 23.2 ms, Apple 2112 =
+  47.9 ms; Symphonia 0.5.5 parses the edit list and never applies it),
+  MP3/WAV/FLAC on the master's timeline, analysis and playback in
+  agreement. 70 of 71 library files carry the 1024. Three fixtures
+  pin the truth as it is. Fix **proposed, not applied**: it moves the
+  timeline under every existing chart, so the migration is a decision
+  — [`docs/audio/decode-offset.md`](audio/decode-offset.md).
+- [ ] L1 `beatbyte-ml` skeleton · [ ] L2 aligner (EN) · [ ] L3 gating
+  and fallback · [ ] L4 renderer · [ ] L5 eval harness · [ ] L6
+  separation + multilingual — acceptance criteria in the plan's §9.
+- [ ] C1 Beat This! A/B · [ ] C2 stems · [ ] C3 Basic Pitch ·
+  [ ] C4 structure — only after L ships, each by ear against
+  `chart-feel-good-20260826`.
+
 ## Phase 3 — Adaptive charting (DECIDED 2026-08-30, not started)
 
 The architecture is [ADR-0011](decisions/ADR-0011-adaptive-charting.md);
