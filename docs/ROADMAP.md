@@ -374,6 +374,19 @@ public corpus, cannot regress a note.
   the stamps are structurally plausible. PCO@0.1 barely moved (+4) —
   fine word placement is untouched, and that is what separation is
   for. Numbers: `docs/lyrics/evaluation.md`.
+- [x] **The imported library taken through the pipeline** *(2026-09-05,
+  `docs/lyrics/library-pass.md`)*: 70 of 71 charts redesigned, lyrics
+  fetched for 20 more songs with a length check, all 52 songs with
+  lyrics word-aligned. Verdicts: 18 same master, 12 shifted master
+  (one was 7.2 s early and had been showing every line seven seconds
+  before it was sung), 14 different edit, 8 failed to line level. The
+  browser carries `LYRICS` and `CHART` columns for the two states,
+  read off the folder — no database, and the write-up says what would
+  have to change for one to earn its place.
+- [ ] **Tune the anchor window (±4 s).** Eight songs fall back to line
+  level not because they derailed but because they scatter ~2.4 s
+  around their stamps; a tighter window may keep word timing there.
+  A corpus measurement, then a re-align of the library.
 - [ ] The cheap mid/side + band-pass vocal emphasis (the plan's own
   fallback) — still unmeasured; the blank prior from the model's own
   voice activity (`--example voice`) is the likelier lever for

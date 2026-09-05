@@ -157,6 +157,9 @@ deliberately **not** the gate's verdict: the gate judges by how well
 the unanchored pass agreed with the stamps, and the songs that need
 anchors most are exactly the ones where that pass derailed.
 
+A whole library taken through this pipeline, with the numbers it
+produced, is written up in [`library-pass.md`](library-pass.md).
+
 ## What this measurement does not say
 
 - **The first table is the hard case**, and the section above is the

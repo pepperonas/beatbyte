@@ -50,9 +50,12 @@ pub enum SortMode {
     Notes,
     /// Highest challenge rating first.
     Diff,
-    /// What is still to do first (the OPT column): songs with both
-    /// jobs open, then one, then the finished ones.
-    Polish,
+    /// The LYRICS column: songs whose words are still untimed first,
+    /// then the word-timed ones, then the ones with no lyrics.
+    Lyrics,
+    /// The CHART column: the import's own draft first, then by
+    /// generation.
+    Chart,
 }
 
 impl SortMode {
@@ -67,8 +70,9 @@ impl SortMode {
             SortMode::Length => SortMode::Notes,
             SortMode::Notes => SortMode::Diff,
             SortMode::Diff => SortMode::Best,
-            SortMode::Best => SortMode::Polish,
-            SortMode::Polish => SortMode::Standard,
+            SortMode::Best => SortMode::Lyrics,
+            SortMode::Lyrics => SortMode::Chart,
+            SortMode::Chart => SortMode::Standard,
         }
     }
 
@@ -84,7 +88,8 @@ impl SortMode {
             SortMode::Best => "BEST",
             SortMode::Notes => "NOTES",
             SortMode::Diff => "DIFF",
-            SortMode::Polish => "TO DO",
+            SortMode::Lyrics => "LYRICS",
+            SortMode::Chart => "CHART",
         }
     }
 }
@@ -104,7 +109,8 @@ impl SortMode {
             "best" => Some(SortMode::Best),
             "notes" => Some(SortMode::Notes),
             "diff" => Some(SortMode::Diff),
-            "to do" | "opt" => Some(SortMode::Polish),
+            "lyrics" | "lyr" => Some(SortMode::Lyrics),
+            "chart" => Some(SortMode::Chart),
             _ => None,
         }
     }
@@ -319,11 +325,22 @@ fn build_order(
                 )
             });
         }
-        SortMode::Polish => {
-            // The work first: a browser sorted by what is left to do
-            // is a to-do list, and a finished library sorts back to
-            // its usual order.
-            order.sort_by_key(|i| (entries[*i].polish.rank(), tie(i)));
+        SortMode::Lyrics => {
+            // Untimed words first: a browser sorted by this column is
+            // a list of what still wants aligning.
+            order.sort_by_key(|i| {
+                let polish = entries[*i].polish;
+                let rank = match (polish.has_lyrics, polish.aligned) {
+                    (true, false) => 0,
+                    (true, true) => 1,
+                    (false, _) => 2,
+                };
+                (rank, tie(i))
+            });
+        }
+        SortMode::Chart => {
+            // The import's own draft first, then by generation.
+            order.sort_by_key(|i| (entries[*i].polish.chart_version.unwrap_or(0), tie(i)));
         }
         SortMode::Notes => {
             order.sort_by_key(|i| {
@@ -554,8 +571,10 @@ const COL_LEN: f32 = 56.0;
 const COL_NOTES: f32 = 56.0;
 const COL_RATING: f32 = 62.0;
 const COL_BEST: f32 = 92.0;
-/// The OPT column: five characters of 10 px, plus room to breathe.
-const COL_POLISH: f32 = 58.0;
+/// The LYRICS column: four characters of 10 px, plus room.
+const COL_LYRICS: f32 = 52.0;
+/// The CHART column: `BASE` or `v12`.
+const COL_CHART: f32 = 46.0;
 
 fn spawn_browser(
     mut commands: Commands,
@@ -752,7 +771,8 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
                     caption(head, "LEN", SortMode::Length, Some(COL_LEN));
                     caption(head, "NOTES", SortMode::Notes, Some(COL_NOTES));
                     caption(head, "DIFF", SortMode::Diff, Some(COL_RATING));
-                    caption(head, "OPT", SortMode::Polish, Some(COL_POLISH));
+                    caption(head, "LYRICS", SortMode::Lyrics, Some(COL_LYRICS));
+                    caption(head, "CHART", SortMode::Chart, Some(COL_CHART));
                     caption(head, "BEST", SortMode::Best, Some(COL_BEST));
                 });
             parent.spawn((SongList, ui_kit::scroll_panel(ui_kit::PANEL_WIDE)));
@@ -1359,28 +1379,47 @@ fn spawn_rows_into(
                             .map_or_else(|| "-".to_owned(), |r| "*".repeat(usize::from(r))),
                         COL_RATING,
                     );
-                    // What is left to do for this song, in the OPT
+                    // The two states of a song, each in its own
                     // column — BEFORE the best score, because the
                     // captions are spawned in that order and a header
                     // over the wrong cells is worse than no header.
+                    // Amber marks work still to do, dim marks done:
+                    // the eye should land on what is left.
                     let polish = entry.polish;
-                    row.spawn((
-                        SongArtist(position),
-                        Text::new(polish.label().to_owned()),
-                        font.text(ui_kit::SMALL),
-                        TextColor(if polish.is_done() {
-                            palette::dimmed(palette::TEXT_DIM, 0.45)
-                        } else {
-                            palette::BRAND
-                        }),
-                        TextLayout::default().with_no_wrap(),
-                        Node {
-                            width: px(COL_POLISH),
-                            flex_shrink: 0.0,
-                            overflow: Overflow::clip(),
-                            ..default()
-                        },
-                    ));
+                    let mark = |row: &mut ChildSpawnerCommands,
+                                text: String,
+                                pending: bool,
+                                width: f32| {
+                        row.spawn((
+                            SongArtist(position),
+                            Text::new(text),
+                            font.text(ui_kit::SMALL),
+                            TextColor(if pending {
+                                palette::BRAND
+                            } else {
+                                palette::dimmed(palette::TEXT_DIM, 0.45)
+                            }),
+                            TextLayout::default().with_no_wrap(),
+                            Node {
+                                width: px(width),
+                                flex_shrink: 0.0,
+                                overflow: Overflow::clip(),
+                                ..default()
+                            },
+                        ));
+                    };
+                    mark(
+                        row,
+                        polish.lyrics_label().to_owned(),
+                        polish.lyrics_pending(),
+                        COL_LYRICS,
+                    );
+                    mark(
+                        row,
+                        polish.chart_label(),
+                        !polish.chart_redesigned(),
+                        COL_CHART,
+                    );
                     cell(row, font, position, best, COL_BEST);
                 });
         }
@@ -1571,7 +1610,8 @@ fn refresh_browser(
             SortMode::Notes => "NOTES",
             SortMode::Diff => "DIFF",
             SortMode::Best => "BEST",
-            SortMode::Polish => "OPT",
+            SortMode::Lyrics => "LYRICS",
+            SortMode::Chart => "CHART",
             SortMode::Standard => "",
         };
         let wanted = caption_label(base, header.0, &view);
@@ -2150,14 +2190,14 @@ mod view_tests {
     fn the_sort_cycle_visits_every_mode_and_returns() {
         let mut mode = SortMode::Standard;
         let mut seen = vec![mode];
-        for _ in 0..8 {
+        for _ in 0..9 {
             mode = mode.next();
             seen.push(mode);
         }
         assert_eq!(mode.next(), SortMode::Standard, "the cycle closes");
         seen.sort_by_key(|m| m.label());
         seen.dedup();
-        assert_eq!(seen.len(), 9, "every mode is reachable");
+        assert_eq!(seen.len(), 10, "every mode is reachable");
     }
 
     #[test]

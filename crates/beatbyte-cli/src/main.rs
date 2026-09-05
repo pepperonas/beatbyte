@@ -251,6 +251,10 @@ enum Command {
         /// this many seconds.
         #[arg(long)]
         shift: Option<f64>,
+        /// With `--anchors`: how far outside its own line a word may
+        /// still land (default 4 s).
+        #[arg(long)]
+        tolerance: Option<f64>,
     },
 }
 
@@ -367,7 +371,10 @@ fn main() -> ExitCode {
             anchors,
             jitter,
             shift,
-        } => lyrics_eval::run(corpus, out, limit, language, raw, anchors, jitter, shift),
+            tolerance,
+        } => lyrics_eval::run(
+            corpus, out, limit, language, raw, anchors, jitter, shift, tolerance,
+        ),
         #[cfg(feature = "ml")]
         Command::LyricsCheck { audio, words, out } => lyrics_eval::check(&audio, words, out),
         #[cfg(feature = "ml")]

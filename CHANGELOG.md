@@ -14,6 +14,25 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.20] - 2026-09-05
+
+### Changed
+
+- **Two columns instead of one.** The single OPT column became
+  `LYRICS` (`-` / `LINE` / `WORD`) and `CHART` (`BASE` / `v2`, `v3`…)
+  — they are separate jobs with separate fixes, and lumping them into
+  one verdict hid which of the two a song was waiting for. The chart
+  column names the generation, because "which one am I playing" is
+  the question a redesign raises. Both sort; amber is work to do, dim
+  is done, and a song with no lyrics keeps a quiet dash.
+- The whole library pass is written up in
+  **[`docs/lyrics/library-pass.md`](docs/lyrics/library-pass.md)**:
+  the before/after counts, what the aligner found across 52 songs
+  (18 same master, 12 shifted master, 14 different edit, 8 failed),
+  why there is no database and what would have to change for one to
+  earn its place, the length check and the bug that produced it, and
+  what is still open.
+
 ## [0.14.19] - 2026-09-05
 
 ### Added

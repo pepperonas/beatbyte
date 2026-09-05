@@ -30,6 +30,7 @@ pub fn run(
     anchors: bool,
     jitter_s: Option<f64>,
     shift_s: Option<f64>,
+    tolerance_s: Option<f64>,
 ) -> ExitCode {
     let Some(root) = corpus.or_else(|| std::env::var_os("BEATBYTE_LYRICS_CORPUS").map(Into::into))
     else {
@@ -84,7 +85,10 @@ pub fn run(
     let options = EvalOptions {
         gated: !raw,
         align: Options {
-            anchoring: anchors.then(Anchoring::default),
+            anchoring: anchors.then(|| Anchoring {
+                tolerance_s: tolerance_s.unwrap_or(Anchoring::default().tolerance_s),
+                ..Anchoring::default()
+            }),
         },
         stamps: anchors.then(|| StampNoise {
             shift_s: shift_s.unwrap_or(0.0),
@@ -98,9 +102,10 @@ pub fn run(
         if raw { "raw aligner" } else { "gated" },
         if anchors {
             format!(
-                ", line stamps shifted {:+.2} s jittered ±{:.2} s",
+                ", line stamps shifted {:+.2} s jittered ±{:.2} s, window ±{:.1} s",
                 shift_s.unwrap_or(0.0),
-                jitter_s.unwrap_or(0.0)
+                jitter_s.unwrap_or(0.0),
+                tolerance_s.unwrap_or(Anchoring::default().tolerance_s)
             )
         } else {
             ", no line stamps".to_owned()

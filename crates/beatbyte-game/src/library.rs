@@ -95,9 +95,11 @@ impl SongEntry {
 /// the same way it reads the title.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Polish {
-    /// The active chart is a redesigned version, not the import's
-    /// first draft.
-    pub chart_redesigned: bool,
+    /// Which chart version is active — `None` means the import's own
+    /// first draft, `Some(2)` the second generation and so on. The
+    /// browser shows the number, because "which one am I playing"
+    /// is the question a redesign raises.
+    pub chart_version: Option<u32>,
     /// A word-level alignment sits beside the audio.
     pub aligned: bool,
     /// The song has lyrics at all — without them an alignment is not
@@ -114,7 +116,40 @@ impl Polish {
     /// a list of work. Pure — tested.
     #[must_use]
     pub fn is_done(self) -> bool {
-        self.chart_redesigned && (self.aligned || !self.has_lyrics)
+        self.chart_redesigned() && (self.aligned || !self.has_lyrics)
+    }
+
+    /// Whether the active chart is a redesigned version.
+    #[must_use]
+    pub fn chart_redesigned(self) -> bool {
+        self.chart_version.is_some()
+    }
+
+    /// The LYRICS column: what the song can sing, not what it owes.
+    /// Pure — tested.
+    #[must_use]
+    pub fn lyrics_label(self) -> &'static str {
+        match (self.has_lyrics, self.aligned) {
+            (false, _) => "-",
+            (true, false) => "LINE",
+            (true, true) => "WORD",
+        }
+    }
+
+    /// The CHART column: which generation is active. Pure — tested.
+    #[must_use]
+    pub fn chart_label(self) -> String {
+        match self.chart_version {
+            None => "BASE".to_owned(),
+            Some(version) => format!("v{version}"),
+        }
+    }
+
+    /// Whether the LYRICS column marks work still to do — a song
+    /// with no lyrics owes nothing, so its dash stays quiet.
+    #[must_use]
+    pub fn lyrics_pending(self) -> bool {
+        self.has_lyrics && !self.aligned
     }
 
     /// The browser cell: what is still to do, in five characters.
@@ -126,7 +161,7 @@ impl Polish {
         // CHART and not BOTH. (The first version compared the three
         // flags directly and called it BOTH — the scan test caught
         // it.)
-        match (!self.chart_redesigned, self.has_lyrics && !self.aligned) {
+        match (!self.chart_redesigned(), self.has_lyrics && !self.aligned) {
             (true, true) => "BOTH",
             (true, false) => "CHART",
             (false, true) => "WORDS",
@@ -234,7 +269,7 @@ pub fn scan_library(builtins: &[ChartFile]) -> SongLibrary {
             // A built-in has no folder to polish: it ships as it is,
             // and the column says so rather than nagging.
             polish: Polish {
-                chart_redesigned: true,
+                chart_version: Some(1),
                 aligned: true,
                 has_lyrics: false,
             },
@@ -555,10 +590,10 @@ fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String>
     // start.
     let has_lyrics = beatbyte_chart::lyrics::lyrics_exist_beside(&audio_path, chart_path);
     let polish = Polish {
-        chart_redesigned: chart_path
+        chart_version: chart_path
             .file_name()
             .and_then(|n| n.to_str())
-            .is_some_and(beatbyte_chart::versions::is_version_file),
+            .and_then(beatbyte_chart::versions::version_number),
         aligned: beatbyte_chart::lyrics::words_path(&audio_path).is_file(),
         has_lyrics,
     };
@@ -587,13 +622,13 @@ mod polish_tests {
     #[test]
     fn a_song_is_finished_when_nothing_can_still_be_done_to_it() {
         let both = Polish {
-            chart_redesigned: false,
+            chart_version: None,
             aligned: false,
             has_lyrics: true,
         };
         assert!(!both.is_done() && both.label() == "BOTH");
         let words = Polish {
-            chart_redesigned: true,
+            chart_version: Some(2),
             ..both
         };
         assert!(!words.is_done() && words.label() == "WORDS");
@@ -603,7 +638,7 @@ mod polish_tests {
         };
         assert!(!chart.is_done() && chart.label() == "CHART");
         let done = Polish {
-            chart_redesigned: true,
+            chart_version: Some(2),
             aligned: true,
             has_lyrics: true,
         };
@@ -612,13 +647,13 @@ mod polish_tests {
         // an alignment that can never exist is not a missing job, and
         // a column that nagged forever would be noise, not a list.
         let instrumental = Polish {
-            chart_redesigned: true,
+            chart_version: Some(2),
             aligned: false,
             has_lyrics: false,
         };
         assert!(instrumental.is_done() && instrumental.label() == "OK");
         let instrumental_old_chart = Polish {
-            chart_redesigned: false,
+            chart_version: None,
             ..instrumental
         };
         assert!(!instrumental_old_chart.is_done());
@@ -626,8 +661,8 @@ mod polish_tests {
 
     #[test]
     fn the_sort_puts_the_work_first() {
-        let p = |chart, aligned| Polish {
-            chart_redesigned: chart,
+        let p = |chart: bool, aligned| Polish {
+            chart_version: chart.then_some(2),
             aligned,
             has_lyrics: true,
         };
@@ -646,10 +681,42 @@ mod polish_tests {
     }
 
     #[test]
-    fn every_label_fits_the_column() {
-        // The OPT column is 58 px of a 10 px font: six characters.
-        for label in ["OK", "BOTH", "CHART", "WORDS"] {
-            assert!(label.chars().count() <= 5, "{label} does not fit");
+    fn the_two_columns_say_what_is_there_not_what_is_owed() {
+        let p = |version, aligned, lyrics| Polish {
+            chart_version: version,
+            aligned,
+            has_lyrics: lyrics,
+        };
+        // Lyrics: none, line-timed, word-timed.
+        assert_eq!(p(None, false, false).lyrics_label(), "-");
+        assert_eq!(p(None, false, true).lyrics_label(), "LINE");
+        assert_eq!(p(None, true, true).lyrics_label(), "WORD");
+        // Only the middle one is work: a song with no lyrics owes
+        // nothing and must not glow.
+        assert!(p(None, false, true).lyrics_pending());
+        assert!(!p(None, true, true).lyrics_pending());
+        assert!(!p(None, false, false).lyrics_pending());
+        // Chart: the import's own draft, or which generation.
+        assert_eq!(p(None, true, true).chart_label(), "BASE");
+        assert_eq!(p(Some(3), true, true).chart_label(), "v3");
+        assert!(!p(None, true, true).chart_redesigned());
+        assert!(p(Some(2), true, true).chart_redesigned());
+    }
+
+    #[test]
+    fn every_label_fits_its_column() {
+        // LYRICS is 52 px and CHART 46 px of a 10 px font.
+        for label in ["-", "LINE", "WORD"] {
+            assert!(label.chars().count() <= 5, "{label} does not fit LYRICS");
+        }
+        for version in [None, Some(1), Some(12)] {
+            let label = Polish {
+                chart_version: version,
+                aligned: false,
+                has_lyrics: false,
+            }
+            .chart_label();
+            assert!(label.chars().count() <= 4, "{label} does not fit CHART");
         }
     }
 }
@@ -700,7 +767,8 @@ mod tests {
         std::fs::write(&base, MINIMAL_CHART).expect("chart");
 
         let fresh = load_entry(&base).expect("loads").expect("an entry");
-        assert!(!fresh.polish.chart_redesigned, "the import's own chart");
+        assert!(!fresh.polish.chart_redesigned(), "the import's own chart");
+        assert_eq!(fresh.polish.chart_label(), "BASE");
         assert!(!fresh.polish.aligned);
         assert_eq!(
             fresh.polish.label(),
@@ -712,7 +780,12 @@ mod tests {
         let version = root.join("chart.v2.json");
         std::fs::write(&version, MINIMAL_CHART).expect("version");
         let redesigned = load_entry(&version).expect("loads").expect("an entry");
-        assert!(redesigned.polish.chart_redesigned);
+        assert!(redesigned.polish.chart_redesigned());
+        assert_eq!(
+            redesigned.polish.chart_label(),
+            "v2",
+            "which generation is playing"
+        );
         assert!(redesigned.polish.is_done(), "no lyrics, chart done");
 
         // Lyrics arrive: now an alignment is owed.
