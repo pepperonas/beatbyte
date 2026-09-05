@@ -14,6 +14,33 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.16] - 2026-09-05
+
+### Added
+
+- **`beatbyte-cli lyrics-eval`** (plan milestone L5): the aligner
+  measured against word-level ground truth in the JamendoLyrics
+  MultiLang layout (`--corpus` or `BEATBYTE_LYRICS_CORPUS`; the corpus
+  never enters the repository) — AAE, PCO@0.1 and PCO@0.3 per song,
+  per language and over all, coverage (truth words that found a
+  partner) and the estimated-word rate, printed and written as a JSON
+  report (`--out`; `--raw` measures the aligner without the gate,
+  `--language`/`--limit` narrow the run). `beatbyte-lyrics::eval`
+  holds the metrics as pure functions with hand-worked tests, and
+  the plan's gates as constants.
+- **The regression test** `eval_gates` reads such a report from
+  `BEATBYTE_LYRICS_EVAL_REPORT` and fails below the gates (AAE
+  < 0.30 s, PCO@0.3 > 0.80, PCO@0.1 > 0.55); without the variable it
+  skips and says so. Proven both ways on a synthetic one-song corpus
+  built from the click-track fixture: the pipeline runs end to end,
+  the report fails the gates (AAE 1.0 s — there is no voice), and
+  the test reports exactly that.
+- **Not done, on purpose:** no numbers yet — the corpus is not on
+  this machine, and the plan says measure before tuning; and no
+  "three own hand-corrected fixture songs" — ground truth by ear is
+  not something this session can produce. Both are open in the
+  roadmap.
+
 ## [0.14.15] - 2026-09-05
 
 ### Added

@@ -342,8 +342,20 @@ public corpus, cannot regress a note.
   378 MB each). Vocal separation switch waits for L6.
 - [ ] Fix `BEATBYTE_AUTOPILOT_DELETE`'s arrow count (library order vs
   the browser's sorted order — the align drill shows the way).
-- [ ] L5 eval harness · [ ] L6 separation + multilingual — acceptance
-  criteria in the plan's §9.
+- [~] **L5 — eval harness** *(v0.14.16, tooling done, numbers
+  pending)*. `beatbyte-lyrics::eval` (AAE/PCO pure + hand-checked,
+  LCS word pairing with coverage, mean of songs, gates as constants,
+  JamendoLyrics MultiLang reader verified against the published
+  layout) + `beatbyte-cli lyrics-eval --corpus --out` + `eval_gates`
+  test on `BEATBYTE_LYRICS_EVAL_REPORT` (skips loudly when unset;
+  seen failing on a voiceless synthetic corpus). **Open:** run it on
+  the corpus (not on this machine — needs the user's go for a ~1 GB
+  download of `jamendolyrics/jamendolyrics` from Hugging Face, CC
+  with NC terms, local only) and report the numbers per language
+  before touching the aligner; the "three own hand-corrected fixture
+  songs" need a human ear — ask.
+- [ ] L6 separation + multilingual — acceptance criteria in the
+  plan's §9.
 - [ ] C1 Beat This! A/B · [ ] C2 stems · [ ] C3 Basic Pitch ·
   [ ] C4 structure — only after L ships, each by ear against
   `chart-feel-good-20260826`.

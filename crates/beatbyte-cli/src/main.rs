@@ -16,6 +16,8 @@ mod align;
 mod dossier;
 mod history;
 #[cfg(feature = "ml")]
+mod lyrics_eval;
+#[cfg(feature = "ml")]
 mod models;
 mod redesign;
 mod review;
@@ -200,6 +202,28 @@ enum Command {
         #[arg(long)]
         raw: bool,
     },
+    /// Measure the aligner against word-level ground truth (the
+    /// JamendoLyrics MultiLang layout): AAE, PCO@0.1, PCO@0.3 per
+    /// song, per language and over all; `--out` writes the JSON
+    /// report the regression test reads (built with `--features ml`).
+    #[cfg(feature = "ml")]
+    LyricsEval {
+        /// The corpus root (default: `BEATBYTE_LYRICS_CORPUS`).
+        #[arg(long)]
+        corpus: Option<PathBuf>,
+        /// Where to write the JSON report.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Evaluate at most this many songs.
+        #[arg(long)]
+        limit: Option<usize>,
+        /// Only songs of this language (as the corpus names it).
+        #[arg(long)]
+        language: Option<String>,
+        /// Measure the raw aligner instead of the gated pipeline.
+        #[arg(long)]
+        raw: bool,
+    },
 }
 
 /// What to do with the local models.
@@ -305,6 +329,14 @@ fn main() -> ExitCode {
             out,
             raw,
         } => align::run(&audio, &lyrics, out, raw),
+        #[cfg(feature = "ml")]
+        Command::LyricsEval {
+            corpus,
+            out,
+            limit,
+            language,
+            raw,
+        } => lyrics_eval::run(corpus, out, limit, language, raw),
         #[cfg(feature = "ml")]
         Command::Models { action } => match action {
             ModelsAction::List => models::list(),

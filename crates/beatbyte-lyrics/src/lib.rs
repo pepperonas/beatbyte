@@ -18,6 +18,8 @@
 //!   never ships worse than the line-level lyrics the player had
 //! - [`job`] — one song start to finish, with progress and cancel:
 //!   the path the CLI and the game share
+//! - [`eval`] — AAE and PCO against word-level ground truth (the
+//!   JamendoLyrics MultiLang layout), the plan's gates as constants
 //! - [`align`](mod@align) — the whole pipeline, audio in, alignment out
 //!
 //! Everything a result depends on is recorded in it: the audio's
@@ -28,6 +30,7 @@
 pub mod align;
 pub mod ctc;
 pub mod emissions;
+pub mod eval;
 pub mod gate;
 pub mod job;
 pub mod transcript;

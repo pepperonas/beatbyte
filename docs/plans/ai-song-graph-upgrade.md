@@ -13,7 +13,9 @@ two thirds of a song whose choruses drift); L4 done 2026-09-05
 ends, lead-in setting, gap countdown, per-song offset in the pause
 menu); L4b done 2026-09-05 (v0.14.15: §6 in the game — LYRICS MODEL
 row with download/stop, `K` aligns in the browser, releases carry
-`ml`; the separation switch and language row wait for L6)**, see
+`ml`; the separation switch and language row wait for L6); L5
+tooling done 2026-09-05 (v0.14.16: `lyrics-eval`, gates test — the
+corpus run and the own fixtures are open)**, see
 [`docs/audio/decode-offset.md`](../audio/decode-offset.md); §11 decided
 2026-09-05: English first · separation its own switch, no cloud ·
 character-level fill · lyric offset per song in the song folder

@@ -35,7 +35,7 @@
 [![SemVer](https://img.shields.io/badge/versioning-SemVer-blue)](CHANGELOG.md)
 [![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735)](CHANGELOG.md)
 [![Conventional Commits](https://img.shields.io/badge/commits-Conventional-FE5196)](https://www.conventionalcommits.org/)
-[![Tests](https://img.shields.io/badge/tests-837%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-844%20passing-brightgreen)](#testing)
 [![Clippy](https://img.shields.io/badge/clippy-%E2%80%91D%20warnings-brightgreen?logo=rust)](Cargo.toml)
 [![rustfmt](https://img.shields.io/badge/style-rustfmt-orange?logo=rust)](Cargo.toml)
 [![Rustdoc](https://img.shields.io/badge/public%20API-documented-blue)](Cargo.toml)
@@ -44,7 +44,7 @@
 [![Autopilot](https://img.shields.io/badge/releases-autopilot%20verified-success)](#testing)
 [![ADRs](https://img.shields.io/badge/decisions-12%20ADRs-lightgrey)](docs/decisions/README.md)
 [![MSRV](https://img.shields.io/badge/MSRV-1.95-orange?logo=rust)](Cargo.toml)
-[![Harnesses](https://img.shields.io/badge/harness%20switches-29-success)](docs/development/harness.md)
+[![Harnesses](https://img.shields.io/badge/harness%20switches-31-success)](docs/development/harness.md)
 [![Docs](https://img.shields.io/badge/docs-architecture%20%C2%B7%20ADRs%20%C2%B7%20specs-blue)](docs/)
 [![Design System](https://img.shields.io/badge/UI-one%20design%20kit-blueviolet)](docs/ui/design-system.md)
 [![3D Stage](https://img.shields.io/badge/3D%20stage-documented-blueviolet)](docs/ui/3d-stage.md)
@@ -483,7 +483,7 @@ beatbyte-cli demo                  # render the synthesized reference tracks
 ## Testing
 
 ```bash
-cargo test --workspace          # 837 tests
+cargo test --workspace          # 844 tests
 ```
 
 | Crate | Tests | Covers |
@@ -495,7 +495,7 @@ cargo test --workspace          # 837 tests
 | `beatbyte-cli` | 21 | The play-history export (CSV quoting, UTC stamps, report filters), review analytics, the design dossier and the redesign rollout: section windowing, evidence thresholds, hash binding, the mastery veto, write instructions, carried difficulties |
 | `beatbyte-editor` | 19 | Every edit operation round-trips through its own inverse |
 | `beatbyte-ml` | 14 | The model registry's well-formedness checks, SHA-256 over bytes, files and pieces, and — against a web server the test starts and an ONNX graph the test encodes by hand — the store's four refusals (wrong bytes, short reply, oversized reply, cancel) leaving nothing behind, the runtime's bit-identical repeat runs on its pinned pool, and its cache |
-| `beatbyte-lyrics` | 31 | The transcript cleanup (stamps, tags, `(x2)`, accents, letterless words), the forced sequence with its word boundaries, the CTC Viterbi on synthetic emissions (placement, the blank between equal letters, the transcript winning over the model, errors instead of panics, a song-sized sequence in bounded time), the window plan keeping every frame once, the model's frame arithmetic, spans landing on their words with estimated words timed between neighbours, the stats against source stamps, the `words.json` round trip and the LRC export, and the confidence gate (verdict from the deltas — consensus, clean drift, stamps past the end; sprinted and endless words estimated and retimed; line fallback on the source's stamp, on the line's own span for a different edit, everywhere for a failed alignment; letterless lines not voting; the confidence floor off by default), and the one-song job shared by the CLI and the game (output beside the audio, progress labels, named errors before anything is written) |
+| `beatbyte-lyrics` | 38 | The transcript cleanup (stamps, tags, `(x2)`, accents, letterless words), the forced sequence with its word boundaries, the CTC Viterbi on synthetic emissions (placement, the blank between equal letters, the transcript winning over the model, errors instead of panics, a song-sized sequence in bounded time), the window plan keeping every frame once, the model's frame arithmetic, spans landing on their words with estimated words timed between neighbours, the stats against source stamps, the `words.json` round trip and the LRC export, and the confidence gate (verdict from the deltas — consensus, clean drift, stamps past the end; sprinted and endless words estimated and retimed; line fallback on the source's stamp, on the line's own span for a different edit, everywhere for a failed alignment; letterless lines not voting; the confidence floor off by default), the one-song job shared by the CLI and the game (output beside the audio, progress labels, named errors before anything is written), and the evaluation (AAE and PCO worked out by hand, the inclusive tolerance, words paired by text with coverage telling the truth, nothing-matched as an infinite error that survives JSON, the mean of songs rather than of words, each gate at its boundary, the JamendoLyrics layout read as published, and the report gate test that skips loudly without a report) |
 | `beatbyte` | 15 | Documentation consistency: these numbers, the version, the badges, the links, the ADR index, the harness switches, the network claim against the code, the figures the rules document quotes, and the two synthesized reference tracks' chart fingerprints (at millisecond resolution, which the projection itself is tested for) |
 
 Integration tests decode real fixture files for each supported format,
