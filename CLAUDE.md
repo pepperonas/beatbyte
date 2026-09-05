@@ -424,6 +424,15 @@ artifact, smoke-test it (neutral CWD!), then
   every ~2.5 s across the target window, not once at the start
   (frames at 44 s came back fine and frames at 62 s black in the
   same run). A frame is evidence only after its luma is checked.
+- **A drill that arrows through the song browser must count rows in
+  the BROWSER's order** (`BrowserView.order`, from where
+  `BrowserCursor` sits), not in `SongLibrary.entries` order — the
+  browser is sorted, the library is scan order. The first align
+  drill pressed `K` on the wrong song and reported "no lyrics
+  beside this song" for one that had them. And **keys pressed into a
+  screen's 0.25 s entry fade are dropped**: the first model drill
+  arrowed into the void and confirmed a row it never meant to. Wait
+  ~0.8 s after the state change, as the screenshot harness does.
 - **A summary inside this repository is not a source.** Round six of
   the look plan built the gem from a trait table an earlier round had
   written ("dark ring, white centre") instead of from the material,

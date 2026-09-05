@@ -764,7 +764,7 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
             crate::prompts::device_footer(
                 parent,
                 font,
-                "UP/DOWN song  LEFT/RIGHT difficulty  S sort  F search  ENTER rock  L lyrics  Q queue MC set  P play set  E edit  DEL delete  ESC back",
+                "UP/DOWN song  LEFT/RIGHT difficulty  S sort  F search  ENTER rock  L lyrics  K align  Q queue MC set  P play set  E edit  DEL delete  ESC back",
                 "D-PAD song and difficulty  SOUTH rock  EAST back",
             );
             ui_kit::back_button(parent, font, "MAIN MENU");
@@ -951,6 +951,8 @@ struct StartDeps<'w, 's> {
     /// The in-flight lyrics lookup — bundled here because Bevy caps
     /// a system at sixteen parameters and this one is at the line.
     lookup: ResMut<'w, LyricsLookup>,
+    /// The aligner's state (`K` aligns the highlighted song).
+    smart: ResMut<'w, crate::smart_lyrics::SmartLyrics>,
 }
 
 /// The in-flight lyrics lookup. One at a time: the browser is not a
@@ -1138,6 +1140,32 @@ fn browser_input(
                 sounds.write(crate::sfx::UiSound::Confirm);
                 status.0 = format!("looking up lyrics for \"{shown}\"...");
                 start.lookup.title = shown;
+            }
+        }
+    }
+    // K aligns the highlighted song's lyrics against its own audio
+    // (plan L4b) - word and letter timing from the `.lrc` beside it,
+    // with the model from the settings screen; K again cancels. Every
+    // reason it cannot run is a line on the status row. (`A` would be
+    // the natural key and is menu LEFT: it changes the difficulty.)
+    if !searching && keys.just_pressed(KeyCode::KeyK) {
+        if start.smart.is_aligning() {
+            start.smart.cancel_align();
+            status.0 = "cancelling the alignment...".to_owned();
+        } else {
+            let (is_file, audio) = match &entry.source {
+                SongSource::Builtin(_) => (false, None),
+                SongSource::File { audio_path, .. } => (true, Some(audio_path.as_path())),
+            };
+            match start.smart.start_align(&entry.title, is_file, audio) {
+                Ok(()) => {
+                    sounds.write(crate::sfx::UiSound::Confirm);
+                    status.0 = format!("aligning \"{}\": starting", entry.title);
+                }
+                Err(reason) => {
+                    sounds.write(crate::sfx::UiSound::Error);
+                    status.0 = reason.message().to_owned();
+                }
             }
         }
     }

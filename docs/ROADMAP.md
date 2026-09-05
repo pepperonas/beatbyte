@@ -332,10 +332,18 @@ public corpus, cannot regress a note.
   autopilot 392/392 perfect with the alignment in place. **Not in
   L4:** in-game model download + "realign this song" panel (plan §6)
   — the alignment still comes from `beatbyte-cli align`; filed as L4b.
-- [ ] L4b in-game alignment (settings §6: download with progress,
-  realign with progress panel, off the main thread) · [ ] L5 eval
-  harness · [ ] L6 separation + multilingual — acceptance criteria in
-  the plan's §9.
+- [x] **L4b — in-game alignment** *(v0.14.15)*. SETTINGS > LYRICS
+  MODEL (download with %, stop, SHA-256, subtitle explains), browser
+  `K` aligns/cancels with progress on the status row, one shared
+  `align_file` job; releases build with `--features ml` (user
+  decision 2026-09-05). Drills `BEATBYTE_AUTOPILOT_ALIGN` (PASSED on
+  Aguilera: real K, file written, same verdict as the CLI) and
+  `BEATBYTE_AUTOPILOT_MODEL` (PASSED twice under a scratch HOME:
+  378 MB each). Vocal separation switch waits for L6.
+- [ ] Fix `BEATBYTE_AUTOPILOT_DELETE`'s arrow count (library order vs
+  the browser's sorted order — the align drill shows the way).
+- [ ] L5 eval harness · [ ] L6 separation + multilingual — acceptance
+  criteria in the plan's §9.
 - [ ] C1 Beat This! A/B · [ ] C2 stems · [ ] C3 Basic Pitch ·
   [ ] C4 structure — only after L ships, each by ear against
   `chart-feel-good-20260826`.

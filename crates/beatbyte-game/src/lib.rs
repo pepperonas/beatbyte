@@ -34,6 +34,7 @@ pub mod search;
 pub mod settings_ui;
 pub mod sfx;
 mod shapes;
+pub mod smart_lyrics;
 pub mod song_select;
 pub mod states;
 pub mod telemetry;
@@ -206,6 +207,7 @@ pub fn run() -> AppExit {
         menu::MenuPlugin,
         multiplayer::MultiplayerPlugin,
         song_select::SongSelectPlugin,
+        smart_lyrics::SmartLyricsPlugin,
     ))
     .add_plugins((
         about::AboutPlugin,

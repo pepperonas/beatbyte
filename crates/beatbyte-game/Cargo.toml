@@ -20,11 +20,12 @@ dirs = { workspace = true }
 ureq = { workspace = true }
 rusb = { workspace = true }
 beatbyte-ml = { workspace = true, optional = true }
+beatbyte-lyrics = { workspace = true, optional = true }
 
 [features]
 # Local ML models (ADR-0013). Off by default; nothing in the game
 # reaches for a model unless this is on AND the user asked.
-ml = ["dep:beatbyte-ml"]
+ml = ["dep:beatbyte-ml", "dep:beatbyte-lyrics"]
 
 [lints]
 workspace = true

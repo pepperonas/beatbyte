@@ -35,7 +35,7 @@
 [![SemVer](https://img.shields.io/badge/versioning-SemVer-blue)](CHANGELOG.md)
 [![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735)](CHANGELOG.md)
 [![Conventional Commits](https://img.shields.io/badge/commits-Conventional-FE5196)](https://www.conventionalcommits.org/)
-[![Tests](https://img.shields.io/badge/tests-830%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-837%20passing-brightgreen)](#testing)
 [![Clippy](https://img.shields.io/badge/clippy-%E2%80%91D%20warnings-brightgreen?logo=rust)](Cargo.toml)
 [![rustfmt](https://img.shields.io/badge/style-rustfmt-orange?logo=rust)](Cargo.toml)
 [![Rustdoc](https://img.shields.io/badge/public%20API-documented-blue)](Cargo.toml)
@@ -44,7 +44,7 @@
 [![Autopilot](https://img.shields.io/badge/releases-autopilot%20verified-success)](#testing)
 [![ADRs](https://img.shields.io/badge/decisions-12%20ADRs-lightgrey)](docs/decisions/README.md)
 [![MSRV](https://img.shields.io/badge/MSRV-1.95-orange?logo=rust)](Cargo.toml)
-[![Harnesses](https://img.shields.io/badge/harness%20switches-27-success)](docs/development/harness.md)
+[![Harnesses](https://img.shields.io/badge/harness%20switches-29-success)](docs/development/harness.md)
 [![Docs](https://img.shields.io/badge/docs-architecture%20%C2%B7%20ADRs%20%C2%B7%20specs-blue)](docs/)
 [![Design System](https://img.shields.io/badge/UI-one%20design%20kit-blueviolet)](docs/ui/design-system.md)
 [![3D Stage](https://img.shields.io/badge/3D%20stage-documented-blueviolet)](docs/ui/3d-stage.md)
@@ -174,7 +174,8 @@ judgment counts prove it does not change.*
   when its last word does, the word being sung steps to white, and a
   long instrumental gap counts down four pulses on the beat. Sources
   drift per song — the pause menu carries a lyric offset saved beside
-  the song
+  the song. The aligner runs from inside the game: download the model
+  once from SETTINGS, then `K` on a song in the browser
 - 🤖 **Automatic chart generation** — BPM & onset analysis turns any song
   into a playable chart across four difficulties (playable, not perfect —
   the built-in editor is the correction pass)
@@ -438,7 +439,7 @@ Architecture decisions are documented as ADRs in
 | Mute / unmute all audio | `M` (or click the corner badge) |
 | Debug overlay during a song (frame rate large, then a table: song clock and drift, frame time, per-player judgment state, fret heat, settings) | `L` (or `` ` ``, the key left of `1`) |
 | Menus | arrows or `W A S D` + `Enter`/`Space` confirm, `Esc` back, `Tab`/`Shift+Tab` cycle — or the **mouse** (hover, click, wheel, right-click = back). Navigation is remappable on the CONTROLS screen; `Enter`/`Esc` always work |
-| Song browser | column headers **click to sort** (again = reverse) · `S` cycles sorting · `F` (or a typed `/`) opens the **fuzzy search** — every typed word must match a word of title, artist or genre (case, accents and apostrophes ignored, a typo per word forgiven), best match first; **hold `Q` one second** to leave it with the filter kept, `Esc` clears |
+| Song browser | `L` looks lyrics up · `K` aligns them against the song's audio (needs the model from SETTINGS; `K` again cancels) · column headers **click to sort** (again = reverse) · `S` cycles sorting · `F` (or a typed `/`) opens the **fuzzy search** — every typed word must match a word of title, artist or genre (case, accents and apostrophes ignored, a typo per word forgiven), best match first; **hold `Q` one second** to leave it with the filter kept, `Esc` clears |
 
 Verify any device on the **INPUT TEST** screen (main menu): fret
 lamps, strum flash, Hype lamp, and a would-hit indicator for the
@@ -482,19 +483,19 @@ beatbyte-cli demo                  # render the synthesized reference tracks
 ## Testing
 
 ```bash
-cargo test --workspace          # 830 tests
+cargo test --workspace          # 837 tests
 ```
 
 | Crate | Tests | Covers |
 |---|---:|---|
 | `beatbyte-core` | 96 | The play-history schema, timing windows to their exact boundaries, judgment, scoring, combos, HOPO and tap rules, the hype meter and which phrase a note belongs to, the rock meter and its single fail transition, the telemetry schema |
 | `beatbyte-chart` | 104 | Format validation, untrusted-input limits, the audio-timeline marker and the one-time move onto it, chart generation, difficulty derivation, musical quantisation, chart versions, energy-aware escalation, jack-free lane flow, burst discipline, accent chords, LRC/enhanced-LRC lyrics parsing, the `words.json` reader under the same caps (character spans, real line ends, all-estimated lines shown line-timed, instrumental markers dropped as gaps, the alignment winning over the `.lrc`) and the per-song lyric offset sidecar |
-| `beatbyte-game` | 410 | UI kit contracts, settings persistence, the input tables and binding labels, the color language, library scanning, import naming, the X-plorer report decoder, texture geometry, the song ribbon, list scrolling, the instrument neck's gates and colours, hit-label placement, the rock meter's zones and fail arming, the band's beat-driven poses and placement, the hit flame's ignition, flicker and embers, the Star-Power arc's crackle, the settings rows' alphabetical order, the debug overlay's table, frame-rate colour and key, the search's held-q gesture, fuzzy scorer and ranking, the scoreboard's structured key and migration, gamepad hot-plug policy, the star-note rule and its live rim swap, the browser preview's rest-and-hush policy, Room Stage's event mapping and its drop-never-block queue, which music the clock may follow and that a fresh timeline follows none until its song is anchored, the autopilot's teleport rule, the 3D sparks' flight and the 8-bit neck's exemption from them, the Hype tube's easing, breathing and climbing band, its star crown's poses and the sparks in its charge, the mute state's one-push-per-change rule, an empty library told apart from an empty search, the chart-timeline migration (moved, marked, or left alone), the karaoke display's rules (glyph windows from character spans or an even split, the real line end and the lead-in that waits for it, the gap countdown on the beat, the pulses above the band, the colour step on the word being sung, a line-timed line standing unlit through its lead-in, the pause menu's per-song lyric offset) |
+| `beatbyte-game` | 414 | UI kit contracts, settings persistence, the input tables and binding labels, the color language, library scanning, import naming, the X-plorer report decoder, texture geometry, the song ribbon, list scrolling, the instrument neck's gates and colours, hit-label placement, the rock meter's zones and fail arming, the band's beat-driven poses and placement, the hit flame's ignition, flicker and embers, the Star-Power arc's crackle, the settings rows' alphabetical order, the debug overlay's table, frame-rate colour and key, the search's held-q gesture, fuzzy scorer and ranking, the scoreboard's structured key and migration, gamepad hot-plug policy, the star-note rule and its live rim swap, the browser preview's rest-and-hush policy, Room Stage's event mapping and its drop-never-block queue, which music the clock may follow and that a fresh timeline follows none until its song is anchored, the autopilot's teleport rule, the 3D sparks' flight and the 8-bit neck's exemption from them, the Hype tube's easing, breathing and climbing band, its star crown's poses and the sparks in its charge, the mute state's one-push-per-change rule, an empty library told apart from an empty search, the chart-timeline migration (moved, marked, or left alone), the karaoke display's rules (glyph windows from character spans or an even split, the real line end and the lead-in that waits for it, the gap countdown on the beat, the pulses above the band, the colour step on the word being sung, a line-timed line standing unlit through its lead-in, the pause menu's per-song lyric offset), the smart-lyrics rules (every reason an alignment cannot start as a readable line, a model still being checked told apart from a missing one, the LYRICS MODEL row's values and subtitles fitting their columns, a build without `ml` saying so) |
 | `beatbyte-audio` | 122 | Onset detection, tempo estimation, melody contours, the song clock and its practice rate, the speed position map, the error-sound voices, real-file decoding for every advertised format, the container's declared encoder priming and that both decode paths skip it sample-exactly, the resampler's length, passband, stopband and determinism, beat tracking and the kick channel, the analysis-evaluation metrics (MIREX beat scores, Rekordbox XML and ANLZ grid import, corpus pairing, synthetic corpus), the mute gate no volume write can lift |
 | `beatbyte-cli` | 21 | The play-history export (CSV quoting, UTC stamps, report filters), review analytics, the design dossier and the redesign rollout: section windowing, evidence thresholds, hash binding, the mastery veto, write instructions, carried difficulties |
 | `beatbyte-editor` | 19 | Every edit operation round-trips through its own inverse |
 | `beatbyte-ml` | 14 | The model registry's well-formedness checks, SHA-256 over bytes, files and pieces, and — against a web server the test starts and an ONNX graph the test encodes by hand — the store's four refusals (wrong bytes, short reply, oversized reply, cancel) leaving nothing behind, the runtime's bit-identical repeat runs on its pinned pool, and its cache |
-| `beatbyte-lyrics` | 28 | The transcript cleanup (stamps, tags, `(x2)`, accents, letterless words), the forced sequence with its word boundaries, the CTC Viterbi on synthetic emissions (placement, the blank between equal letters, the transcript winning over the model, errors instead of panics, a song-sized sequence in bounded time), the window plan keeping every frame once, the model's frame arithmetic, spans landing on their words with estimated words timed between neighbours, the stats against source stamps, the `words.json` round trip and the LRC export, and the confidence gate (verdict from the deltas — consensus, clean drift, stamps past the end; sprinted and endless words estimated and retimed; line fallback on the source's stamp, on the line's own span for a different edit, everywhere for a failed alignment; letterless lines not voting; the confidence floor off by default) |
+| `beatbyte-lyrics` | 31 | The transcript cleanup (stamps, tags, `(x2)`, accents, letterless words), the forced sequence with its word boundaries, the CTC Viterbi on synthetic emissions (placement, the blank between equal letters, the transcript winning over the model, errors instead of panics, a song-sized sequence in bounded time), the window plan keeping every frame once, the model's frame arithmetic, spans landing on their words with estimated words timed between neighbours, the stats against source stamps, the `words.json` round trip and the LRC export, and the confidence gate (verdict from the deltas — consensus, clean drift, stamps past the end; sprinted and endless words estimated and retimed; line fallback on the source's stamp, on the line's own span for a different edit, everywhere for a failed alignment; letterless lines not voting; the confidence floor off by default), and the one-song job shared by the CLI and the game (output beside the audio, progress labels, named errors before anything is written) |
 | `beatbyte` | 15 | Documentation consistency: these numbers, the version, the badges, the links, the ADR index, the harness switches, the network claim against the code, the figures the rules document quotes, and the two synthesized reference tracks' chart fingerprints (at millisecond resolution, which the projection itself is tested for) |
 
 Integration tests decode real fixture files for each supported format,
@@ -611,16 +612,20 @@ light service **on your own network**, at the address in your
 `settings.json` and nowhere else. Outbound only, no cloud, no
 account; with it off — which is how it ships — nothing is sent.
 
-**Local ML models** (builds with `--features ml` only — the default
-build does not contain this code) are the third and last thing: the
-game's learned features run on models stored on your machine, and a
-model gets there **once, when you ask for it** — with
-`beatbyte-cli models install <id>`; a settings button follows with the
-aligner — from a release asset of this repository at a URL, size and
-SHA-256 that are compiled into the build. Nothing is fetched on its own, no manifest is
-consulted, and a file that does not match its hash is refused and
-deleted. One model is registered: `wav2vec2-base-960h` (378 MB,
-Apache-2.0), the English acoustic model behind `beatbyte-cli align`.
+**Local ML models** are the third and last thing. The code exists only
+in builds with `--features ml` — **the release downloads carry it;
+`cargo run` does not** — and even there the game's learned features run
+on models stored on your machine, and a model gets there **once, when
+you ask for it**: confirm the LYRICS MODEL row in SETTINGS (or run
+`beatbyte-cli models install <id>`), and the file comes from a release
+asset of this repository at a URL, size and SHA-256 that are compiled
+into the build. Nothing is fetched on its own, no manifest is
+consulted, a download can be stopped from the same row, and a file
+that does not match its hash is refused and deleted. One model is
+registered: `wav2vec2-base-960h` (378 MB, Apache-2.0), the English
+acoustic model behind the lyric aligner (`K` in the song browser,
+`beatbyte-cli align`). Aligning a song sends nothing anywhere: the
+audio, the lyrics and the result stay beside the song.
 
 Nothing else ever goes out. There is no telemetry, no update check
 and no crash reporting.

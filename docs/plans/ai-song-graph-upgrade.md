@@ -11,8 +11,9 @@ check" waits for the stem of L6, and "delta inconsistent" became
 two thirds of a song whose choruses drift); L4 done 2026-09-05
 (v0.14.14: `words.json` read by the game, character fill, real line
 ends, lead-in setting, gap countdown, per-song offset in the pause
-menu — the §6 settings panel with download/realign is split off as
-L4b)**, see
+menu); L4b done 2026-09-05 (v0.14.15: §6 in the game — LYRICS MODEL
+row with download/stop, `K` aligns in the browser, releases carry
+`ml`; the separation switch and language row wait for L6)**, see
 [`docs/audio/decode-offset.md`](../audio/decode-offset.md); §11 decided
 2026-09-05: English first · separation its own switch, no cloud ·
 character-level fill · lyric offset per song in the song folder

@@ -3,129 +3,64 @@
 //! audio (plan milestones L2 + L3). Behind the `ml` feature; needs the
 //! aligner model installed (`models install wav2vec2-base-960h`).
 //!
-//! The confidence gate runs by default: it marks words the aligner
-//! sprinted through or got stuck on, drops lines with too many of
-//! them to line level, and judges the source's stamps against the
-//! alignment (same master, shifted master, different edit, failed).
-//! `--raw` skips it, for the evaluation harness and for looking at
-//! what the aligner itself produced.
+//! The work is [`beatbyte_lyrics::align_file`], the very function the
+//! game runs from its menu; this file only prints. The confidence
+//! gate runs by default: it marks words the aligner sprinted through
+//! or got stuck on, drops lines with too many of them to line level,
+//! and judges the source's stamps against the alignment (same master,
+//! shifted master, different edit, failed). `--raw` skips it, for the
+//! evaluation harness and for looking at what the aligner itself
+//! produced.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::atomic::AtomicBool;
 
-use beatbyte_lyrics::emissions::MODEL;
-use beatbyte_lyrics::{GateConfig, Transcript, Verdict, align, gate};
-use beatbyte_ml::{MlError, ModelStore, Runtime};
-
-/// Where the alignment goes when `--out` is not given.
-#[must_use]
-pub fn default_output(audio: &Path) -> PathBuf {
-    let stem = audio
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "song".to_owned());
-    audio.with_file_name(format!("{stem}.words.json"))
-}
+use beatbyte_lyrics::{JobError, JobStage, Verdict, align_file};
 
 /// Run the alignment and report.
 pub fn run(audio_path: &Path, lyrics_path: &Path, out: Option<PathBuf>, raw: bool) -> ExitCode {
-    let lyrics = match std::fs::read_to_string(lyrics_path) {
-        Ok(text) => text,
-        Err(error) => {
-            eprintln!("cannot read `{}`: {error}", lyrics_path.display());
-            return ExitCode::from(2);
-        }
-    };
-    let transcript = Transcript::parse(&lyrics);
-    if transcript.alignable_words() == 0 {
-        eprintln!(
-            "`{}` holds no words the model has letters for",
-            lyrics_path.display()
-        );
-        return ExitCode::from(2);
-    }
-    let Some(store) = ModelStore::default_location() else {
-        eprintln!("no config directory on this platform; models cannot be stored");
-        return ExitCode::from(2);
-    };
-    let runtime = Runtime::new();
-    let model = match runtime.load(&store, &MODEL) {
-        Ok(model) => model,
-        Err(MlError::NotInstalled { id }) => {
+    let cancel = AtomicBool::new(false);
+    let mut last_stage = None;
+    let summary = align_file(
+        audio_path,
+        lyrics_path,
+        out,
+        !raw,
+        &mut |p| {
+            // One line per stage, not one per window.
+            if last_stage != Some(p.stage) {
+                last_stage = Some(p.stage);
+                if matches!(p.stage, JobStage::Aligning(_)) && p.done == 0 {
+                    eprintln!("{}…", p.label());
+                }
+            }
+        },
+        &cancel,
+    );
+    let summary = match summary {
+        Ok(summary) => summary,
+        Err(JobError::NotInstalled { id }) => {
             eprintln!(
                 "model `{id}` is not installed — run `beatbyte-cli models install {id}` first"
             );
             return ExitCode::from(2);
         }
-        Err(error) => {
-            eprintln!("{error}");
-            return ExitCode::from(1);
-        }
-    };
-    let audio = match beatbyte_audio::decode_file(audio_path) {
-        Ok(audio) => audio,
-        Err(error) => {
+        Err(error @ (JobError::Lyrics { .. } | JobError::NoWords { .. } | JobError::NoStore)) => {
             eprintln!("{error}");
             return ExitCode::from(2);
         }
-    };
-    let audio_sha256 = match beatbyte_ml::hash::sha256_file(audio_path) {
-        Ok(hash) => hash,
-        Err(error) => {
-            eprintln!("cannot hash `{}`: {error}", audio_path.display());
+        Err(error @ JobError::Audio(_)) => {
+            eprintln!("{error}");
             return ExitCode::from(2);
         }
-    };
-    let text_source = format!(
-        "file:{}",
-        lyrics_path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default()
-    );
-    eprintln!(
-        "aligning {} words over {:.0} s of audio…",
-        transcript.alignable_words(),
-        audio.duration_s()
-    );
-    let started = std::time::Instant::now();
-    let mut outcome = match align(
-        &audio,
-        &audio_sha256,
-        &transcript,
-        &text_source,
-        &runtime,
-        &model,
-    ) {
-        Ok(outcome) => outcome,
         Err(error) => {
             eprintln!("{error}");
             return ExitCode::from(1);
         }
     };
-    let took = started.elapsed();
-    let report = (!raw).then(|| {
-        gate(
-            &mut outcome.alignment,
-            &transcript,
-            audio.duration_s(),
-            &GateConfig::default(),
-        )
-    });
-    let out_path = out.unwrap_or_else(|| default_output(audio_path));
-    let json = match outcome.alignment.to_json() {
-        Ok(json) => json,
-        Err(error) => {
-            eprintln!("cannot serialise: {error}");
-            return ExitCode::from(1);
-        }
-    };
-    if let Err(error) = std::fs::write(&out_path, json) {
-        eprintln!("cannot write `{}`: {error}", out_path.display());
-        return ExitCode::from(1);
-    }
-    let s = &outcome.stats;
-    println!("wrote {}", out_path.display());
+    let s = &summary.stats;
+    println!("wrote {}", summary.out.display());
     println!(
         "  {} words ({} estimated), mean confidence {:.2}, {} under {:.1}; {} frames in {:.1?}",
         s.words,
@@ -134,7 +69,7 @@ pub fn run(audio_path: &Path, lyrics_path: &Path, out: Option<PathBuf>, raw: boo
         s.uncertain,
         beatbyte_lyrics::align::UNCERTAIN_BELOW,
         s.frames,
-        took
+        summary.took
     );
     if let Some((lines, median, mad)) = s.source_line_delta {
         println!(
@@ -142,7 +77,7 @@ pub fn run(audio_path: &Path, lyrics_path: &Path, out: Option<PathBuf>, raw: boo
              spread (MAD) {mad:.3} s"
         );
     }
-    match report {
+    match summary.gate {
         None => println!("  raw: the confidence gate did not run"),
         Some(report) => {
             let verdict = match report.verdict {

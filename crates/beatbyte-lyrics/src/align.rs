@@ -6,13 +6,15 @@
 //! and marked; nothing is dropped, so the karaoke text stays the
 //! text the player gave.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use beatbyte_audio::decode::AudioData;
 use beatbyte_audio::resample::resample;
 use beatbyte_ml::{Loaded, MlError, Runtime};
 use thiserror::Error;
 
 use crate::ctc::{AlignError, TokenSpan, force_align};
-use crate::emissions::{FRAME_S, SAMPLE_RATE, compute};
+use crate::emissions::{FRAME_S, SAMPLE_RATE, compute_with};
 use crate::transcript::{BLANK, Transcript, WORD_BOUNDARY};
 use crate::words::{AlignedLine, AlignedWord, Alignment, SCHEMA, Source};
 
@@ -28,6 +30,36 @@ pub enum LyricsError {
     /// The alignment itself failed.
     #[error(transparent)]
     Align(#[from] AlignError),
+}
+
+impl LyricsError {
+    /// Whether this is the caller's own cancel, not a failure.
+    #[must_use]
+    pub fn is_cancelled(&self) -> bool {
+        matches!(self, LyricsError::Model(MlError::Cancelled { .. }))
+    }
+}
+
+/// Where a running alignment is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stage {
+    /// Bringing the audio to the model's rate.
+    Resampling,
+    /// Running the model, window by window (`done` of `total`).
+    Emissions,
+    /// The Viterbi over the whole song.
+    Aligning,
+}
+
+/// A progress report: the stage and, for the windowed stage, how far.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Progress {
+    /// The stage.
+    pub stage: Stage,
+    /// Windows done (emissions only; 0 otherwise).
+    pub done: usize,
+    /// Windows total (emissions only; 0 otherwise).
+    pub total: usize,
 }
 
 /// What the run found out about itself — for the CLI's report and
@@ -73,12 +105,62 @@ pub fn align(
     runtime: &Runtime,
     model: &Loaded,
 ) -> Result<AlignOutcome, LyricsError> {
+    align_with(
+        audio,
+        audio_sha256,
+        transcript,
+        text_source,
+        runtime,
+        model,
+        &mut |_| {},
+        &AtomicBool::new(false),
+    )
+}
+
+/// The cancel error for this model — the flag is the caller's, the
+/// error names what was being run.
+fn cancelled(model: &Loaded) -> LyricsError {
+    MlError::Cancelled {
+        id: model.id.to_owned(),
+    }
+    .into()
+}
+
+/// [`align`] with progress reports and a cancel flag (checked between
+/// stages and between model windows; the Viterbi itself runs to the
+/// end — seconds).
+#[allow(clippy::too_many_arguments)] // the pipeline's inputs, not an API to grow
+pub fn align_with(
+    audio: &AudioData,
+    audio_sha256: &str,
+    transcript: &Transcript,
+    text_source: &str,
+    runtime: &Runtime,
+    model: &Loaded,
+    progress: &mut dyn FnMut(Progress),
+    cancel: &AtomicBool,
+) -> Result<AlignOutcome, LyricsError> {
     let tokens = transcript.tokens();
     if tokens.is_empty() {
         return Err(LyricsError::NoWords);
     }
+    let report = |stage, done, total| Progress { stage, done, total };
+    progress(report(Stage::Resampling, 0, 0));
     let samples = resample(audio.samples(), audio.sample_rate(), SAMPLE_RATE);
-    let emissions = compute(runtime, model, &samples)?;
+    if cancel.load(Ordering::Relaxed) {
+        return Err(cancelled(model));
+    }
+    let emissions = compute_with(
+        runtime,
+        model,
+        &samples,
+        &mut |done, total| progress(report(Stage::Emissions, done, total)),
+        cancel,
+    )?;
+    if cancel.load(Ordering::Relaxed) {
+        return Err(cancelled(model));
+    }
+    progress(report(Stage::Aligning, 0, 0));
     let spans = force_align(&emissions, &tokens, BLANK)?;
     let lines = place(transcript, &spans);
     let stats = stats(&lines, transcript, emissions.frames);

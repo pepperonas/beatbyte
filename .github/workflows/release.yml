@@ -48,8 +48,11 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # `--features ml`: release builds carry the local lyric aligner
+      # (rten, pure Rust). Nothing is fetched until the player confirms
+      # the LYRICS MODEL row; `cargo run` stays dependency-free.
       - name: Build release binaries
-        run: cargo build --release --target ${{ matrix.target }} -p beatbyte -p beatbyte-cli
+        run: cargo build --release --target ${{ matrix.target }} -p beatbyte -p beatbyte-cli --features ml
 
       - name: Package (Unix)
         if: runner.os != 'Windows'

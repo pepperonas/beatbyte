@@ -166,6 +166,23 @@ impl Plugin for AutopilotPlugin {
                         .run_if(in_state(AppState::SongSelect)),
                 );
             }
+            if std::env::var_os("BEATBYTE_AUTOPILOT_ALIGN").is_some() {
+                // Alignment validation: real arrow keys to the song,
+                // real `K`, then the status row and the file on disk
+                // are the verdict. Song selection stays passive.
+                app.add_systems(
+                    PreUpdate,
+                    autopilot_align
+                        .after(bevy::input::InputSystems)
+                        .run_if(in_state(AppState::SongSelect)),
+                );
+            }
+            if std::env::var_os("BEATBYTE_AUTOPILOT_MODEL").is_some() {
+                // Model-download validation: into the settings screen,
+                // real arrow keys to the LYRICS MODEL row, real Enter,
+                // then the row's own state machine is the verdict.
+                app.add_systems(PreUpdate, autopilot_model.after(bevy::input::InputSystems));
+            }
             if std::env::var_os("BEATBYTE_AUTOPILOT_KEYS").is_some() {
                 // Keyboard-path validation: press REAL KeyCodes on
                 // ButtonInput, so InputMap resolution, gameplay_input
@@ -675,8 +692,11 @@ fn autopilot_song_select(
             }
             return;
         }
-        // Deletion mode owns the browser — never start a song.
-        if std::env::var_os("BEATBYTE_AUTOPILOT_DELETE").is_some() {
+        // Deletion and alignment modes own the browser — never start
+        // a song.
+        if std::env::var_os("BEATBYTE_AUTOPILOT_DELETE").is_some()
+            || std::env::var_os("BEATBYTE_AUTOPILOT_ALIGN").is_some()
+        {
             return;
         }
         // In drop mode, let the WHOLE batch finish before starting a
@@ -1388,6 +1408,176 @@ fn autopilot_delete(
         }
     }
     *frame += 1;
+}
+
+/// `BEATBYTE_AUTOPILOT_ALIGN=<title-substring>`: arrow down to the
+/// matching entry with real key presses, press the real `K`, and
+/// succeed once the status row reports the alignment written AND
+/// the `words.json` sits beside the song's audio. Every refusal the
+/// browser would show a player fails the run with that same line.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
+fn autopilot_align(
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    library: Res<crate::library::SongLibrary>,
+    view: Res<crate::song_select::BrowserView>,
+    cursor: Res<crate::song_select::BrowserCursor>,
+    smart: Res<crate::smart_lyrics::SmartLyrics>,
+    status: Res<crate::import::ImportStatus>,
+    time: Res<Time>,
+    mut frame: Local<u32>,
+    mut downs: Local<Option<u32>>,
+    mut waited: Local<f32>,
+    mut app_exit: MessageWriter<AppExit>,
+) {
+    let Some(target) = std::env::var("BEATBYTE_AUTOPILOT_ALIGN").ok() else {
+        return;
+    };
+    let needle = target.to_lowercase();
+    let Some(index) = library
+        .entries
+        .iter()
+        .position(|e| e.title.to_lowercase().contains(&needle))
+    else {
+        error!("autopilot: no song matching `{target}` to align");
+        deliver(&mut app_exit, AppExit::error());
+        return;
+    };
+    *waited += time.delta_secs();
+    if *waited > 240.0 {
+        error!("autopilot: alignment timed out (status: {})", status.0);
+        deliver(&mut app_exit, AppExit::error());
+        return;
+    }
+    // The browser shows the library SORTED: the arrow count is the
+    // song's row in the view minus where the cursor already sits,
+    // fixed on the first frame (the cursor moves under the presses).
+    let downs = *downs.get_or_insert_with(|| {
+        let row = view.order.iter().position(|&i| i == index).unwrap_or(0);
+        row.saturating_sub(cursor.0) as u32
+    });
+    let step = *frame / 2;
+    let pressing = (*frame).is_multiple_of(2);
+    if step < downs {
+        if pressing {
+            keys.press(KeyCode::ArrowDown);
+        } else {
+            keys.release(KeyCode::ArrowDown);
+        }
+    } else if step == downs {
+        if pressing {
+            keys.press(KeyCode::KeyK);
+        } else {
+            keys.release(KeyCode::KeyK);
+        }
+    } else if step > downs + 2 && !smart.is_aligning() {
+        // K was pressed and nothing runs: either it finished, or it
+        // was refused. The status row says which.
+        if status.0.starts_with("aligned ") {
+            let written = match &library.entries[index].source {
+                crate::library::SongSource::File { audio_path, .. } => {
+                    beatbyte_chart::lyrics::words_path(audio_path).is_file()
+                }
+                crate::library::SongSource::Builtin(_) => false,
+            };
+            if written {
+                info!("autopilot: alignment PASSED — {}", status.0);
+                deliver(&mut app_exit, AppExit::Success);
+            } else {
+                error!("autopilot: status says aligned but no words.json beside the song");
+                deliver(&mut app_exit, AppExit::error());
+            }
+        } else {
+            error!("autopilot: alignment did not run — {}", status.0);
+            deliver(&mut app_exit, AppExit::error());
+        }
+    }
+    *frame += 1;
+}
+
+/// `BEATBYTE_AUTOPILOT_MODEL=1`: open the settings screen, arrow
+/// down to the LYRICS MODEL row with real keys, press the real Enter
+/// when the row says the model is missing, and succeed once it says
+/// INSTALLED. Run under a scratch `HOME` to exercise the download
+/// itself (378 MB from the release asset); with the model already
+/// there it passes on the probe alone.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
+fn autopilot_model(
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    state: Res<State<AppState>>,
+    mut next_state: ResMut<NextState<AppState>>,
+    smart: Res<crate::smart_lyrics::SmartLyrics>,
+    time: Res<Time>,
+    mut frame: Local<u32>,
+    mut waited: Local<f32>,
+    mut settled: Local<f32>,
+    mut pressed_enter: Local<bool>,
+    mut app_exit: MessageWriter<AppExit>,
+) {
+    use crate::smart_lyrics::ModelState;
+    *waited += time.delta_secs();
+    if *waited > 600.0 {
+        error!(
+            "autopilot: model download timed out ({})",
+            smart.model_text()
+        );
+        deliver(&mut app_exit, AppExit::error());
+        return;
+    }
+    if *state.get() != AppState::Settings {
+        if *state.get() == AppState::MainMenu && *waited > 1.0 {
+            next_state.set(AppState::Settings);
+        }
+        return;
+    }
+    // Keys pressed into the screen's entry fade are dropped: the
+    // first run of this drill arrowed into the void and confirmed a
+    // row it never meant to. Wait it out, as the screenshot harness
+    // does.
+    *settled += time.delta_secs();
+    if *settled < 0.8 {
+        return;
+    }
+    // Enter is released whatever the state has become since the
+    // press (the confirm turns the row to DOWNLOADING in the same
+    // frame).
+    if keys.pressed(KeyCode::Enter) {
+        keys.release(KeyCode::Enter);
+        if !*pressed_enter {
+            *pressed_enter = true;
+            info!("autopilot: confirmed the LYRICS MODEL row");
+        }
+        return;
+    }
+    match &smart.model {
+        ModelState::NotInBuild => {
+            error!("autopilot: this build has no aligner (build with --features ml)");
+            deliver(&mut app_exit, AppExit::error());
+        }
+        ModelState::Installed => {
+            info!("autopilot: model PASSED — {}", smart.model_text());
+            deliver(&mut app_exit, AppExit::Success);
+        }
+        ModelState::Failed(reason) => {
+            error!("autopilot: model download failed — {reason}");
+            deliver(&mut app_exit, AppExit::error());
+        }
+        ModelState::Missing | ModelState::Damaged if !*pressed_enter => {
+            let downs = crate::settings_ui::Row::LyricsModel.index() as u32;
+            let step = *frame / 2;
+            let pressing = (*frame).is_multiple_of(2);
+            if step < downs {
+                if pressing {
+                    keys.press(KeyCode::ArrowDown);
+                } else {
+                    keys.release(KeyCode::ArrowDown);
+                }
+            } else if pressing {
+                keys.press(KeyCode::Enter);
+            }
+            *frame += 1;
+        }
+        _ => {}
+    }
 }
 
 fn autopilot_reset(mut hands: ResMut<AutopilotHands>) {

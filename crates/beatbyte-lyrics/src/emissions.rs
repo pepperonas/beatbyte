@@ -12,6 +12,8 @@
 //! Viterbi then runs ONCE over the whole thing, so no word can drift
 //! at a window edge.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use beatbyte_ml::{Input, Loaded, MlError, ModelSpec, Runtime};
 
 use crate::ctc::Emissions;
@@ -95,11 +97,40 @@ pub fn frames_for(samples: usize) -> usize {
 /// Run the whole song (16 kHz mono) through the model and stitch the
 /// windows into one emission matrix of log-probabilities.
 pub fn compute(runtime: &Runtime, model: &Loaded, samples: &[f32]) -> Result<Emissions, MlError> {
+    compute_with(
+        runtime,
+        model,
+        samples,
+        &mut |_, _| {},
+        &AtomicBool::new(false),
+    )
+}
+
+/// [`compute`] with a progress report `(windows done, windows total)`
+/// after each window and a cancel flag checked before each one — the
+/// model run is the long part of an alignment, and a job the player
+/// started from a menu must be able to say where it is and stop.
+pub fn compute_with(
+    runtime: &Runtime,
+    model: &Loaded,
+    samples: &[f32],
+    progress: &mut dyn FnMut(usize, usize),
+    cancel: &AtomicBool,
+) -> Result<Emissions, MlError> {
     let vocab = VOCAB.len();
     let mut log_probs: Vec<f32> = Vec::new();
-    for window in window_plan(samples.len()) {
+    let plan = window_plan(samples.len());
+    let total = plan.len();
+    progress(0, total);
+    for (done, window) in plan.into_iter().enumerate() {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(MlError::Cancelled {
+                id: model.id.to_owned(),
+            });
+        }
         let slice = &samples[window.start..window.end];
         if frames_for(slice.len()) == 0 {
+            progress(done + 1, total);
             continue;
         }
         let normalised = normalise(slice);
@@ -141,6 +172,7 @@ pub fn compute(runtime: &Runtime, model: &Loaded, samples: &[f32]) -> Result<Emi
             let row = &logits.data[f * vocab..(f + 1) * vocab];
             log_probs.extend(log_softmax(row));
         }
+        progress(done + 1, total);
     }
     let frames = log_probs.len() / vocab;
     Ok(Emissions {

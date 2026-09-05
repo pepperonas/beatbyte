@@ -14,6 +14,47 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.15] - 2026-09-05
+
+### Added
+
+- **Smart lyrics from inside the game** (plan §6, milestone L4b).
+  SETTINGS gains a **LYRICS MODEL** row: `ENTER > GET 377 MB` fetches
+  the aligner model from this repository's release asset, off the main
+  thread with a live percentage, stoppable from the same row, verified
+  by SHA-256 before it counts as installed; the line under the list
+  says what the model is and, after a failure, why. In the song
+  browser **`K` aligns the highlighted song** (`L` fetched its lyrics;
+  `A` would have been the natural key and is menu LEFT) against its
+  own audio with the same code `beatbyte-cli align` runs — progress on
+  the status row (`listening 3/5`), `K` again cancels, the verdict
+  lands on the status row and `words.json` beside the song; every
+  reason it cannot run is a readable line (no lyrics yet, model not
+  downloaded, still checking, already running, built-in song). A
+  game built without `ml` says NOT IN THIS BUILD on the row instead
+  of hiding it. The model's standing is checked at boot (a hash of a
+  file already on disk; nothing is fetched).
+- **Release builds now carry the aligner** (`--features ml`): the
+  DMG, AppImage and Windows archives can download the model and
+  align songs; `cargo run` stays dependency-free. **What leaves your
+  machine changes by one opt-in path** — the README section says so,
+  and its test pins the wording.
+- `beatbyte-lyrics::job::align_file` — one song start to finish with
+  progress and cancel, the path the CLI and the game share (the
+  model windows report progress and honour a cancel flag).
+- Harness: `BEATBYTE_AUTOPILOT_ALIGN=<title>` (real keys to the song,
+  real `K`, passes on the status row AND the file) and
+  `BEATBYTE_AUTOPILOT_MODEL=1` (real keys to the row, real Enter,
+  passes on INSTALLED — under a scratch `HOME` it downloads).
+
+### Fixed
+
+- The `BEATBYTE_AUTOPILOT_DELETE`-style arrow count assumed the
+  browser lists songs in library order; it lists them sorted. The new
+  align drill counts rows in the browser's own order from where the
+  cursor sits (the delete drill still counts the old way and hits
+  only when the orders agree — filed).
+
 ## [0.14.14] - 2026-09-05
 
 ### Added

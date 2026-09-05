@@ -46,14 +46,22 @@ pub(crate) enum Row {
     LyricsSize,
     LyricsOffset,
     LyricsLeadIn,
+    LyricsModel,
     Controls,
 }
 
 impl Row {
+    /// Where a row sits in the list (for a drill that has to arrow
+    /// down to it with real keys).
+    #[must_use]
+    pub(crate) fn index(self) -> usize {
+        Row::ALL.iter().position(|row| *row == self).unwrap_or(0)
+    }
+
     /// Every row, in the order the screen shows them: **alphabetical
     /// by label**, and kept that way by a test — a new row goes where
     /// its name falls, not at the end of the list.
-    const ALL: [Row; 28] = [
+    const ALL: [Row; 29] = [
         Row::BeatPulse,
         Row::Controls,
         Row::FxIntensity,
@@ -64,6 +72,7 @@ impl Row {
         Row::LatencyOffset,
         Row::Lyrics,
         Row::LyricsLeadIn,
+        Row::LyricsModel,
         Row::LyricsOffset,
         Row::LyricsSize,
         Row::MusicVolume,
@@ -107,6 +116,7 @@ impl Row {
             Row::LyricsSize => "LYRICS SIZE",
             Row::LyricsOffset => "LYRICS OFFSET",
             Row::LyricsLeadIn => "LYRICS LEAD-IN",
+            Row::LyricsModel => "LYRICS MODEL",
             Row::TapMode => "TAP MODE (NO STRUM)",
             Row::NoteStyle => "NOTE STYLE",
             Row::Fullscreen => "FULLSCREEN",
@@ -155,6 +165,9 @@ impl Row {
             .to_owned(),
             Row::LyricsOffset => format!("{:+.0} ms", settings.lyrics_offset_ms),
             Row::LyricsLeadIn => format!("{:.2} s", settings.lyrics_lead_in_ms / 1000.0),
+            // The live value comes from `SmartLyrics` in the refresh;
+            // this is what a build without the resource would show.
+            Row::LyricsModel => "CHECKING...".to_owned(),
             Row::TapMode => on_off(settings.tap_mode),
             Row::NoteStyle => if settings.round_gems {
                 "ROUND"
@@ -247,6 +260,9 @@ impl Row {
                 settings.lyrics_lead_in_ms =
                     (settings.lyrics_lead_in_ms + 250.0 * direction).clamp(0.0, 4000.0);
             }
+            // An ACTION row like the export: confirm downloads or
+            // cancels; stepping left/right does nothing.
+            Row::LyricsModel => {}
             Row::TapMode => settings.tap_mode = !settings.tap_mode,
             Row::NoteStyle => settings.round_gems = !settings.round_gems,
             Row::Fullscreen => settings.fullscreen = !settings.fullscreen,
@@ -291,7 +307,7 @@ impl Row {
 /// Press Start 2P advances a full em, and the panel is
 /// [`ui_kit::PANEL_WIDTH`] wide minus its padding — a test pins
 /// that this fits.
-const SUBTITLE_CHARS: usize = 56;
+pub(crate) const SUBTITLE_CHARS: usize = 56;
 
 /// Shorten a path to fit, keeping the END.
 ///
@@ -493,6 +509,7 @@ fn settings_input(
         (&Interaction, &mut BackgroundColor, &mut BorderColor),
         With<ui_kit::BackButton>,
     >,
+    mut smart: ResMut<crate::smart_lyrics::SmartLyrics>,
 ) {
     let nav = MenuNav::read(&map, &keys, pads.iter());
     let count = Row::ALL.len();
@@ -541,6 +558,13 @@ fn settings_input(
         }
         return;
     }
+    if row == Row::LyricsModel && (nav.confirm || clicked) {
+        // The one explicit action that fetches anything (README):
+        // nothing is downloaded until this row is confirmed.
+        smart.confirm_model_row();
+        sounds.write(crate::sfx::UiSound::Confirm);
+        return;
+    }
     if row == Row::Controls && (nav.confirm || nav.right || clicked) {
         sounds.write(crate::sfx::UiSound::Confirm);
         next_state.set(AppState::Controls);
@@ -564,6 +588,7 @@ fn settings_input(
     }
 }
 
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn refresh_settings(
     settings: Res<Settings>,
     cursor: Res<SettingsCursor>,
@@ -572,7 +597,11 @@ fn refresh_settings(
     mut values: Query<(&SettingValue, &mut Text, &mut TextColor), Without<SettingLabel>>,
     export_note: Res<ExportNote>,
     mut subtitles: SubtitleText,
+    mut smart: ResMut<crate::smart_lyrics::SmartLyrics>,
 ) {
+    // The model's standing is looked up the first time the screen
+    // asks (a hash of the file, off the main thread); idempotent.
+    smart.probe_model();
     for (row, mut background, mut border) in &mut rows {
         let style = ui_kit::styled_row(
             ui_kit::state_for(row.0 == cursor.0, false),
@@ -589,7 +618,12 @@ fn refresh_settings(
         .label;
     }
     if let Ok(mut text) = subtitles.single_mut() {
-        let wanted = Row::ALL[cursor.0.min(Row::ALL.len() - 1)].subtitle();
+        let row = Row::ALL[cursor.0.min(Row::ALL.len() - 1)];
+        let wanted = if row == Row::LyricsModel {
+            smart.model_subtitle()
+        } else {
+            row.subtitle()
+        };
         if text.0 != wanted {
             text.0 = wanted;
         }
@@ -600,6 +634,7 @@ fn refresh_settings(
         // asked, not in a log nobody reads.
         let wanted = match Row::ALL[value.0] {
             Row::ExportHistory if !export_note.0.is_empty() => export_note.0.clone(),
+            Row::LyricsModel => smart.model_text(),
             row => row.value(&settings),
         };
         if text.0 != wanted {
@@ -780,7 +815,7 @@ mod tests {
             );
         }
         // And nothing is listed twice or left out.
-        assert_eq!(Row::ALL.len(), 28);
+        assert_eq!(Row::ALL.len(), 29);
     }
 
     #[test]
