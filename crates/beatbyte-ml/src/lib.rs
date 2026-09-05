@@ -31,7 +31,7 @@ pub mod runtime;
 pub mod store;
 
 pub use error::MlError;
-pub use registry::{ModelSpec, REGISTRY, spec};
+pub use registry::{ModelSpec, REGISTRY, WAV2VEC2_BASE_960H, spec};
 pub use runtime::{Input, Loaded, Output, Runtime, THREADS};
 pub use store::{ModelStore, Progress, Status};
 

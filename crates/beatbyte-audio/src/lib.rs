@@ -14,6 +14,7 @@
 //! - [`playback`] — rodio wrapper (play/pause/seek/position)
 //! - [`priming`] — the encoder delay a container declares, so both
 //!   decode paths skip it
+//! - [`resample`] — windowed-sinc rate conversion (the models want 16 kHz)
 //! - [`synth`] — deterministic signal synthesis (tests, demo material)
 //! - [`demo`] — the original, fully synthesized bundled demo song
 //!
@@ -26,6 +27,7 @@ pub mod demo;
 pub mod eval;
 pub mod playback;
 pub mod priming;
+pub mod resample;
 pub mod synth;
 
 pub use analysis::{Analyzer, AnalyzerConfig, SpectralAnalyzer};

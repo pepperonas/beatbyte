@@ -11,6 +11,8 @@ use beatbyte_audio::{Analyzer, SpectralAnalyzer, decode_file};
 use beatbyte_chart::{ChartFile, GenerateMeta, Severity, generate_chart};
 use clap::{Parser, Subcommand};
 
+#[cfg(feature = "ml")]
+mod align;
 mod dossier;
 mod history;
 #[cfg(feature = "ml")]
@@ -179,6 +181,21 @@ enum Command {
         #[command(subcommand)]
         action: ModelsAction,
     },
+    /// Word- and letter-level timing for known lyrics, force-aligned
+    /// against the song's own audio (built with `--features ml`;
+    /// needs `models install wav2vec2-base-960h`). Writes
+    /// `<audio stem>.words.json` beside the audio.
+    #[cfg(feature = "ml")]
+    Align {
+        /// The song (wav/ogg/flac/mp3/m4a).
+        audio: PathBuf,
+        /// The lyrics: an `.lrc` (stamps are stripped and, if present,
+        /// compared against) or plain text.
+        lyrics: PathBuf,
+        /// Where to write the alignment instead of beside the audio.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
 }
 
 /// What to do with the local models.
@@ -277,6 +294,8 @@ fn main() -> ExitCode {
             },
         ),
         Command::Demo { out_dir } => demo(&out_dir),
+        #[cfg(feature = "ml")]
+        Command::Align { audio, lyrics, out } => align::run(&audio, &lyrics, out),
         #[cfg(feature = "ml")]
         Command::Models { action } => match action {
             ModelsAction::List => models::list(),

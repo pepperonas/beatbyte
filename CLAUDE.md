@@ -78,7 +78,11 @@ tech writer, release manager. Operate accordingly:
   fetch), a download happens only on the user's explicit action and
   is verified against a pinned size + SHA-256 before it exists. No
   model weights in the repository, not even toy ones: the ML tests
-  hand-encode their ONNX graph.
+  hand-encode their ONNX graph. `beatbyte-lyrics` sits on `ml` and
+  `audio` (no Bevy, no chart): transcript → emissions → one Viterbi
+  → `words.json`; its Viterbi is pure and pinned on synthetic
+  emissions, and a self-check (align the model's own greedy words)
+  is the way to tell a pipeline bug from a hard mix.
 - **No copyrighted assets, music, or trademarks — ever.** All assets
   original, generated, CC0, or OFL (fonts: Press Start 2P and Bebas
   Neue, each bundled with its license). No song ships with the game;

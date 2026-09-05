@@ -7,9 +7,9 @@
 //! `docs/development/asset-licenses.md` the moment a model is added,
 //! not when it is first used.
 //!
-//! The registry is empty in milestone L1: the crate is the runtime,
-//! and the aligner (L2) registers the first real model together with
-//! its licence. Tests build their own [`ModelSpec`]s.
+//! Every entry's licence is also recorded in
+//! `docs/development/asset-licenses.md`. Tests build their own
+//! [`ModelSpec`]s.
 
 /// One model the build knows how to fetch, verify and load.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,8 +31,25 @@ pub struct ModelSpec {
     pub purpose: &'static str,
 }
 
+/// The English CTC acoustic model the lyric aligner runs on
+/// (`beatbyte-lyrics`): `facebook/wav2vec2-base-960h` (Apache-2.0),
+/// as the ONNX export published by Xenova for Transformers.js
+/// (repository `Xenova/wav2vec2-base-960h`, `onnx/model.onnx`,
+/// repo revision a19f851), re-hosted unchanged as a release asset of
+/// this project so the URL, size and hash are pinned here. 32-token
+/// character vocabulary, 16 kHz input, 20 ms frames.
+pub const WAV2VEC2_BASE_960H: ModelSpec = ModelSpec {
+    id: "wav2vec2-base-960h",
+    file: "model.onnx",
+    url: "https://github.com/pepperonas/beatbyte/releases/download/models-v1/wav2vec2-base-960h.onnx",
+    bytes: 377_887_594,
+    sha256: "e46614273f03ff4b87923a965e417fa72004825522cb007c9c25633b8475490d",
+    licence: "Apache-2.0",
+    purpose: "English CTC acoustic model for word-level lyric alignment",
+};
+
 /// Every model this build can install.
-pub const REGISTRY: &[ModelSpec] = &[];
+pub const REGISTRY: &[ModelSpec] = &[WAV2VEC2_BASE_960H];
 
 /// Look a model up by id.
 #[must_use]

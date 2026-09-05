@@ -299,9 +299,20 @@ public corpus, cannot regress a note.
   MatMul graph and a local web server; four store refusals seen
   failing under mutation; 21 runs bit-identical. README network
   section + `docs_stay_true.rs` name the third outbound path.
-- [ ] L2 aligner (EN) · [ ] L3 gating and fallback · [ ] L4 renderer ·
-  [ ] L5 eval harness · [ ] L6 separation + multilingual — acceptance
-  criteria in the plan's §9.
+- [x] **L2 — aligner, English** *(v0.14.12)*. `beatbyte-lyrics`: own
+  CTC Viterbi (self-check: 42 greedy words, all Δ 0.00 s), 60/50-s
+  windows stitched on frame boundaries, character spans kept,
+  `words.json` + LRC export, `beatbyte-cli align`. `wav2vec2-rs`
+  evaluated and set aside (MPL-2.0; candle/`ort` backends). On the
+  raw mix: Gotye lines median −0.02 s (56 % within 1 s), Rasmus
+  drifts (−18 s) — separation (L6) and gating (L3) are the next
+  steps, as planned. ⚠️ Registry URL points at release `models-v1`,
+  which must be created (378 MB asset) before `models install` works.
+- [ ] L3 gating and fallback · [ ] L4 renderer · [ ] L5 eval harness ·
+  [ ] L6 separation + multilingual — acceptance criteria in the
+  plan's §9. L3 gains a case from L2: stamps beyond the audio's
+  length / a delta that grows = a different edit, not a failed
+  alignment.
 - [ ] C1 Beat This! A/B · [ ] C2 stems · [ ] C3 Basic Pitch ·
   [ ] C4 structure — only after L ships, each by ear against
   `chart-feel-good-20260826`.

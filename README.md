@@ -35,7 +35,7 @@
 [![SemVer](https://img.shields.io/badge/versioning-SemVer-blue)](CHANGELOG.md)
 [![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735)](CHANGELOG.md)
 [![Conventional Commits](https://img.shields.io/badge/commits-Conventional-FE5196)](https://www.conventionalcommits.org/)
-[![Tests](https://img.shields.io/badge/tests-781%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-806%20passing-brightgreen)](#testing)
 [![Clippy](https://img.shields.io/badge/clippy-%E2%80%91D%20warnings-brightgreen?logo=rust)](Cargo.toml)
 [![rustfmt](https://img.shields.io/badge/style-rustfmt-orange?logo=rust)](Cargo.toml)
 [![Rustdoc](https://img.shields.io/badge/public%20API-documented-blue)](Cargo.toml)
@@ -65,7 +65,7 @@
 [![Bevy](https://img.shields.io/badge/Bevy-0.19-blueviolet)](https://bevy.org/)
 [![Audio](https://img.shields.io/badge/audio-rodio%20%2B%20Symphonia-9cf)](crates/beatbyte-audio)
 [![USB](https://img.shields.io/badge/guitar%20driver-libusb%20(rusb)-9cf)](crates/beatbyte-game/src/xplorer.rs)
-[![Workspace](https://img.shields.io/badge/workspace-8%20crates-informational)](#development)
+[![Workspace](https://img.shields.io/badge/workspace-9%20crates-informational)](#development)
 [![Toolchain](https://img.shields.io/badge/build%20deps-Rust%20only-informational)](#building-from-source)
 [![Made with Rust](https://img.shields.io/badge/made%20with-%F0%9F%A6%80%20Rust-red)](https://www.rust-lang.org/)
 
@@ -412,6 +412,7 @@ The repository is a Cargo workspace:
 | `beatbyte-cli` | `beatbyte` command line: analyze, generate, validate. |
 | `beatbyte-editor` | The chart editor’s invertible edit operations (undo/redo). |
 | `beatbyte-ml` | Local ML runtime (ADR-0013): a compiled-in registry of pinned models, a verified download store and a deterministic inference session. Linked only behind the `ml` feature; the default build never touches it. |
+| `beatbyte-lyrics` | Word- and character-level karaoke timing: known lyric text force-aligned against the song's own audio (CTC Viterbi over `wav2vec2-base-960h` emissions, windowed and stitched), written as `words.json` beside the audio. Behind `ml`. |
 | `apps/beatbyte` | The shippable game binary. |
 
 Architecture decisions are documented as ADRs in
@@ -475,7 +476,7 @@ beatbyte-cli demo                  # render the synthesized reference tracks
 ## Testing
 
 ```bash
-cargo test --workspace          # 781 tests
+cargo test --workspace          # 806 tests
 ```
 
 | Crate | Tests | Covers |
@@ -483,10 +484,11 @@ cargo test --workspace          # 781 tests
 | `beatbyte-core` | 96 | The play-history schema, timing windows to their exact boundaries, judgment, scoring, combos, HOPO and tap rules, the hype meter and which phrase a note belongs to, the rock meter and its single fail transition, the telemetry schema |
 | `beatbyte-chart` | 97 | Format validation, untrusted-input limits, the audio-timeline marker and the one-time move onto it, chart generation, difficulty derivation, musical quantisation, chart versions, energy-aware escalation, jack-free lane flow, burst discipline, accent chords, LRC/enhanced-LRC lyrics parsing |
 | `beatbyte-game` | 400 | UI kit contracts, settings persistence, the input tables and binding labels, the color language, library scanning, import naming, the X-plorer report decoder, texture geometry, the song ribbon, list scrolling, the instrument neck's gates and colours, hit-label placement, the rock meter's zones and fail arming, the band's beat-driven poses and placement, the hit flame's ignition, flicker and embers, the Star-Power arc's crackle, the settings rows' alphabetical order, the debug overlay's table, frame-rate colour and key, the search's held-q gesture, fuzzy scorer and ranking, the scoreboard's structured key and migration, gamepad hot-plug policy, the star-note rule and its live rim swap, the browser preview's rest-and-hush policy, Room Stage's event mapping and its drop-never-block queue, which music the clock may follow and that a fresh timeline follows none until its song is anchored, the autopilot's teleport rule, the 3D sparks' flight and the 8-bit neck's exemption from them, the Hype tube's easing, breathing and climbing band, its star crown's poses and the sparks in its charge, the mute state's one-push-per-change rule, an empty library told apart from an empty search, the chart-timeline migration (moved, marked, or left alone) |
-| `beatbyte-audio` | 118 | Onset detection, tempo estimation, melody contours, the song clock and its practice rate, the speed position map, the error-sound voices, real-file decoding for every advertised format, the container's declared encoder priming and that both decode paths skip it sample-exactly, beat tracking and the kick channel, the analysis-evaluation metrics (MIREX beat scores, Rekordbox XML and ANLZ grid import, corpus pairing, synthetic corpus), the mute gate no volume write can lift |
+| `beatbyte-audio` | 122 | Onset detection, tempo estimation, melody contours, the song clock and its practice rate, the speed position map, the error-sound voices, real-file decoding for every advertised format, the container's declared encoder priming and that both decode paths skip it sample-exactly, the resampler's length, passband, stopband and determinism, beat tracking and the kick channel, the analysis-evaluation metrics (MIREX beat scores, Rekordbox XML and ANLZ grid import, corpus pairing, synthetic corpus), the mute gate no volume write can lift |
 | `beatbyte-cli` | 21 | The play-history export (CSV quoting, UTC stamps, report filters), review analytics, the design dossier and the redesign rollout: section windowing, evidence thresholds, hash binding, the mastery veto, write instructions, carried difficulties |
 | `beatbyte-editor` | 19 | Every edit operation round-trips through its own inverse |
 | `beatbyte-ml` | 14 | The model registry's well-formedness checks, SHA-256 over bytes, files and pieces, and — against a web server the test starts and an ONNX graph the test encodes by hand — the store's four refusals (wrong bytes, short reply, oversized reply, cancel) leaving nothing behind, the runtime's bit-identical repeat runs on its pinned pool, and its cache |
+| `beatbyte-lyrics` | 21 | The transcript cleanup (stamps, tags, `(x2)`, accents, letterless words), the forced sequence with its word boundaries, the CTC Viterbi on synthetic emissions (placement, the blank between equal letters, the transcript winning over the model, errors instead of panics, a song-sized sequence in bounded time), the window plan keeping every frame once, the model's frame arithmetic, spans landing on their words with estimated words timed between neighbours, the stats against source stamps, the `words.json` round trip and the LRC export |
 | `beatbyte` | 15 | Documentation consistency: these numbers, the version, the badges, the links, the ADR index, the harness switches, the network claim against the code, the figures the rules document quotes, and the two synthesized reference tracks' chart fingerprints (at millisecond resolution, which the projection itself is tested for) |
 
 Integration tests decode real fixture files for each supported format,
@@ -611,7 +613,8 @@ model gets there **once, when you ask for it** — with
 aligner — from a release asset of this repository at a URL, size and
 SHA-256 that are compiled into the build. Nothing is fetched on its own, no manifest is
 consulted, and a file that does not match its hash is refused and
-deleted. This build registers no models yet.
+deleted. One model is registered: `wav2vec2-base-960h` (378 MB,
+Apache-2.0), the English acoustic model behind `beatbyte-cli align`.
 
 Nothing else ever goes out. There is no telemetry, no update check
 and no crash reporting.

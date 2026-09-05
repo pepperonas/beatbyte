@@ -2,7 +2,9 @@
 
 Status: plan — **L0 done 2026-09-05 including the decoder fix and the
 chart migration (v0.14.10); L1 done 2026-09-05 (v0.14.11, ADR-0013:
-`rten`, `beatbyte-ml`, `beatbyte-cli models`)**, see
+`rten`, `beatbyte-ml`, `beatbyte-cli models`); L2 done 2026-09-05
+(v0.14.12, `beatbyte-lyrics`, `beatbyte-cli align`, measured on the
+raw mix — see CHANGELOG)**, see
 [`docs/audio/decode-offset.md`](../audio/decode-offset.md); §11 decided
 2026-09-05: English first · separation its own switch, no cloud ·
 character-level fill · lyric offset per song in the song folder

@@ -1,0 +1,19 @@
+[package]
+name = "beatbyte-lyrics"
+description = "BeatByte's karaoke pipeline: known lyric text force-aligned against the song's own audio into word and character timings."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+beatbyte-ml = { workspace = true }
+beatbyte-audio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

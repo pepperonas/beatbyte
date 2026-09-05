@@ -14,6 +14,49 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.12] - 2026-09-05
+
+### Added
+
+- **`beatbyte-lyrics`, the word-level aligner** (plan milestone L2).
+  Known lyric text — an `.lrc` with its stamps stripped, or plain
+  text — is force-aligned against the song's own audio: 16 kHz
+  (a windowed-sinc resampler joins `beatbyte-audio`), 60-second
+  windows with a 50-second hop through `wav2vec2-base-960h`, only each
+  window's centre kept so the seams fall on frame boundaries, and ONE
+  CTC Viterbi over the whole song (~150 lines the project owns; the
+  `wav2vec2-rs` crate the plan named was evaluated and set aside:
+  MPL-2.0, and its backends are candle and `ort`, both ruled out by
+  ADR-0013). Every letter gets its own span; a word without letters
+  (a number) keeps its place, timed between its neighbours and
+  marked `estimated`. Output: `<song>.words.json` (schema
+  `beatbyte.lyrics/1`, per-word confidence, per-character spans,
+  provenance down to the model hash) and an enhanced-LRC export.
+- **`beatbyte-cli align <audio> <lyrics>`** (behind `ml`; needs
+  `models install wav2vec2-base-960h`, now registered: 378 MB,
+  Apache-2.0, fetched from a release asset of this repository and
+  verified by SHA-256). Reports words, confidence, uncertain words,
+  and — when the lyrics carried line stamps — the median and spread
+  of aligned-minus-source, the master-offset signal of plan §1.2.
+
+### Measured, on the raw mix (no separation yet — that is L6)
+
+- The Viterbi is right: force-aligning the model's *own* greedy words
+  over 30 s of a real song lands all 42 of them within 0.00 s of
+  where greedy saw them. A 4:08 song aligns in ~25 s (four threads).
+- Against lrclib's line stamps, median delta / lines within 1 s /
+  worst line: Gotye −0.02 s / 56 % / 13 s · Aguilera −1.34 s
+  (consistent) / 58 % / 5.7 s · The Rasmus −18.5 s / 8 % / 26 s. A
+  vocal-forward mix aligns, a dense rock mix drifts — the gap
+  separation (L6) and per-line gating (L3) exist to close. Blondie's
+  lrclib stamps run to 272 s in a 248-second file: a different edit,
+  a case §1.2's "consistent vs inconsistent delta" does not name and
+  L3 must (stamps beyond the audio's length, a delta that grows).
+- Per-word confidence on the mix is low even where timing is right
+  (0.01–0.16), because the model spells what it hears ("WANE THAT A")
+  and is scored on what is written ("wanna take her"). Timing and
+  confidence are separate questions; the stats report both.
+
 ## [0.14.11] - 2026-09-05
 
 ### Added

@@ -13,6 +13,7 @@ beatbyte-core = { workspace = true }
 beatbyte-chart = { workspace = true }
 beatbyte-audio = { workspace = true }
 beatbyte-ml = { workspace = true, optional = true }
+beatbyte-lyrics = { workspace = true, optional = true }
 clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -21,7 +22,7 @@ dirs = { workspace = true }
 [features]
 # Local ML models (ADR-0013): the `models` subcommand. Off by default;
 # the default build stays offline and free of the inference crates.
-ml = ["dep:beatbyte-ml"]
+ml = ["dep:beatbyte-ml", "dep:beatbyte-lyrics"]
 
 [lints]
 workspace = true
