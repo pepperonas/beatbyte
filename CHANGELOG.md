@@ -14,6 +14,52 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.18] - 2026-09-05
+
+### Added
+
+- **The source's line stamps now anchor the alignment**, and on the
+  corpus that ends the failure the last release measured: **not one of
+  the 79 songs is lost any more** (was 20), AAE mean 5.30 s → **0.64 s**,
+  median 1.88 → 0.45 s, PCO@0.3 55.9 → 65.9 %, songs meeting the 0.30 s
+  gate on their own 20 → 28. Measured with the stamps deliberately made
+  imperfect (±0.5 s of deterministic wobble), because a corpus
+  annotation is exact and an lrclib stamp is not. Numbers and method:
+  [`docs/lyrics/evaluation.md`](docs/lyrics/evaluation.md).
+  - Each line's words are confined to the room between its own stamp
+    and the next, plus four seconds either side, with a constant shift
+    taken from the unanchored first pass when that pass agreed with
+    itself. Two passes over the same emissions — one extra Viterbi,
+    seconds against the model's minutes.
+  - Whether the stamps may be trusted at all is decided
+    **structurally** (enough of them, rising, spanning the file) and
+    deliberately NOT by the gate's verdict: the gate judges by how well
+    the unanchored pass agreed with the stamps, and the songs that need
+    anchors most are the ones where that pass derailed.
+  - An anchored pass that turns out impossible is never fatal — the
+    plain alignment stands.
+  - Honest limits: PCO@0.1 gains only four points (anchoring places the
+    LINE, it does not teach the model to hear words), and the share of
+    words the gate marks estimated rises 12.5 → 32.4 % — inside a
+    bounded window the path more often has to sprint, and the gate says
+    so instead of pretending.
+- **A stamp grid that stops far short of the audio is a different
+  edit** — the mirror of the rule that caught stamps running past the
+  end. Found on a real library song: an 8:37 remix handed the
+  4-minute original's stamps. The gate used to "fall back" onto them
+  and cram all 83 lines into the first 45 % of the song, leaving 4:41
+  unsung; now the aligned times stand and the lines span the whole
+  track. A long instrumental outro is not caught by this (the rule
+  needs both a share below half and more than a minute of tail).
+- `cargo run -p beatbyte-lyrics --example voice -- <audio> [from to]`:
+  where the model hears something speech-like, second by second — and,
+  given a range, what it greedily hears there. The evidence behind the
+  diagnosis, and the way to ask "does anybody sing here at all?"
+  without listening.
+- `beatbyte-cli lyrics-eval --anchors [--jitter s] [--shift s]` hands
+  the corpus's line annotations to the aligner as a source's stamps,
+  so the game's real case is measurable.
+
 ## [0.14.17] - 2026-09-05
 
 ### Added

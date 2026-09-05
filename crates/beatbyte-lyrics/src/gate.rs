@@ -76,6 +76,16 @@ pub struct GateConfig {
     /// Source stamps beyond the audio's length plus this are a
     /// different edit.
     pub edit_slack_s: f64,
+    /// Stamps that stop before this share of the audio — and leave
+    /// more than [`GateConfig::min_tail_s`] unstamped — describe a
+    /// SHORTER edit. Measured on the library: a 4-minute original's
+    /// stamps were handed to an 8:37 remix, and falling back to them
+    /// would have crammed every line into the first 45 % of the song
+    /// and left the rest silent.
+    pub min_span_share: f64,
+    /// How much unstamped tail it takes for the rule above to mean
+    /// anything; below this it is an ordinary instrumental outro.
+    pub min_tail_s: f64,
     /// A delta that changes by more than this across the compared
     /// span — and is explained by a straight line, not by noise — is
     /// a different edit.
@@ -94,6 +104,8 @@ impl Default for GateConfig {
             line_outlier_s: 1.5,
             drift_residual_s: 0.75,
             edit_slack_s: 2.0,
+            min_span_share: 0.5,
+            min_tail_s: 60.0,
             edit_drift_s: 1.0,
         }
     }
@@ -306,6 +318,15 @@ pub fn verdict_of(pairs: &[(f64, f64)], audio_duration_s: f64, config: &GateConf
     if last_stamp > audio_duration_s + config.edit_slack_s {
         return judged(Verdict::DifferentEdit, None, None, None);
     }
+    // ...and the other way round: a stamp grid that gives up less
+    // than half way through a much longer file is a shorter edit,
+    // not a song with a long outro.
+    if audio_duration_s.is_finite()
+        && last_stamp < audio_duration_s * config.min_span_share
+        && audio_duration_s - last_stamp > config.min_tail_s
+    {
+        return judged(Verdict::DifferentEdit, None, None, None);
+    }
     let mut deltas: Vec<f64> = pairs.iter().map(|p| p.1).collect();
     deltas.sort_by(f64::total_cmp);
     let median = deltas[deltas.len() / 2];
@@ -475,20 +496,41 @@ mod tests {
     fn the_verdict_reads_the_deltas() {
         let c = cfg();
         assert_eq!(verdict_of(&[], 200.0, &c).verdict, Verdict::NoReference);
+        // Stamps that stop less than half way through a much longer
+        // file are a SHORTER edit - measured on the library: a
+        // 4-minute original's stamps handed to an 8:37 remix. Falling
+        // back to them would leave the last 4:41 unsung.
+        let short: Vec<(f64, f64)> = (0..10).map(|i| (i as f64 * 25.0, 0.1)).collect();
+        assert_eq!(
+            verdict_of(&short, 517.0, &c).verdict,
+            Verdict::DifferentEdit
+        );
+        // An ordinary instrumental outro is not that: the same
+        // stamps under a song only a little longer.
+        assert_eq!(verdict_of(&short, 260.0, &c).verdict, Verdict::SameMaster);
+        // Nor is a short song with a short tail - the absolute rule
+        // keeps the share rule from firing on small numbers.
+        let tiny: Vec<(f64, f64)> = (0..10).map(|i| (i as f64 * 2.0, 0.1)).collect();
+        assert_eq!(verdict_of(&tiny, 50.0, &c).verdict, Verdict::SameMaster);
+        // And a genuinely long outro is not a shorter edit either:
+        // last word at 6:40 of an 8:20 track, 100 s of instrumental
+        // after it. The share has to stay generous enough for that.
+        let outro: Vec<(f64, f64)> = (0..20).map(|i| (i as f64 * 20.0 + 20.0, 0.1)).collect();
+        assert_eq!(verdict_of(&outro, 500.0, &c).verdict, Verdict::SameMaster);
         // Consistent, small: same master.
         let same: Vec<(f64, f64)> = (0..10).map(|i| (i as f64 * 10.0, 0.1)).collect();
-        assert_eq!(verdict_of(&same, 200.0, &c).verdict, Verdict::SameMaster);
+        assert_eq!(verdict_of(&same, 100.0, &c).verdict, Verdict::SameMaster);
         // Consistent, large: shifted master, offset reported.
         let shifted: Vec<(f64, f64)> = (0..10).map(|i| (i as f64 * 10.0, -2.4)).collect();
         assert!(matches!(
-            verdict_of(&shifted, 200.0, &c).verdict,
+            verdict_of(&shifted, 100.0, &c).verdict,
             Verdict::ShiftedMaster { offset_s } if (offset_s + 2.4).abs() < 1e-9
         ));
         // Inconsistent: failed.
         let noisy: Vec<(f64, f64)> = (0..10)
             .map(|i| (i as f64 * 10.0, if i % 2 == 0 { -8.0 } else { 6.0 }))
             .collect();
-        assert_eq!(verdict_of(&noisy, 200.0, &c).verdict, Verdict::Failed);
+        assert_eq!(verdict_of(&noisy, 100.0, &c).verdict, Verdict::Failed);
         // Stamps past the end of the file: a different edit — the
         // Blondie case, 272 s of stamps in a 248-second file.
         let long: Vec<(f64, f64)> = (0..10).map(|i| (i as f64 * 30.0, 0.0)).collect();
@@ -499,7 +541,7 @@ mod tests {
             .map(|i| (i as f64 * 20.0, -0.4 * i as f64))
             .collect();
         assert_eq!(
-            verdict_of(&growing, 250.0, &c).verdict,
+            verdict_of(&growing, 200.0, &c).verdict,
             Verdict::DifferentEdit
         );
         // A small tilt inside a consistent band is NOT a drift: 0.3 s
@@ -507,14 +549,14 @@ mod tests {
         let tilted: Vec<(f64, f64)> = (0..10)
             .map(|i| (i as f64 * 20.0, 0.1 + 0.0017 * i as f64 * 20.0))
             .collect();
-        assert_eq!(verdict_of(&tilted, 250.0, &c).verdict, Verdict::SameMaster);
+        assert_eq!(verdict_of(&tilted, 200.0, &c).verdict, Verdict::SameMaster);
         // A majority that agrees carries the song even when a third
         // of the lines wander (the stacked-chorus pop case): same
         // master, and the wanderers are the per-line business.
         let mostly: Vec<(f64, f64)> = (0..12)
             .map(|i| (i as f64 * 15.0, if i % 3 == 2 { -5.0 } else { -1.0 }))
             .collect();
-        let j = verdict_of(&mostly, 200.0, &c);
+        let j = verdict_of(&mostly, 180.0, &c);
         assert_eq!(j.verdict, Verdict::SameMaster);
         assert!((j.consensus.unwrap_or(0.0) - 8.0 / 12.0).abs() < 1e-6);
         // A delta that wanders WITHOUT being a straight line is the
@@ -525,7 +567,7 @@ mod tests {
                 (t, -5.0 - 0.15 * t + if i % 2 == 0 { 4.0 } else { -4.0 })
             })
             .collect();
-        assert_eq!(verdict_of(&lost, 250.0, &c).verdict, Verdict::Failed);
+        assert_eq!(verdict_of(&lost, 240.0, &c).verdict, Verdict::Failed);
     }
 
     #[test]
@@ -549,7 +591,7 @@ mod tests {
             line(30.0, vec![word("cd", 30.0, 30.5, 0.5, 2)]),
         ]);
         let t = Transcript::parse("[00:10.00]ab\n[00:20.00]♪\n[00:30.00]cd");
-        let report = gate(&mut a, &t, 200.0, &cfg());
+        let report = gate(&mut a, &t, 40.0, &cfg());
         assert_eq!(report.lines_compared, 2);
         assert_eq!(report.verdict, Verdict::SameMaster);
     }
@@ -637,7 +679,7 @@ mod tests {
             line(30.1, vec![word("ij", 30.1, 30.6, 0.5, 2)]),
         ]);
         let t = Transcript::parse("[00:10.00]ab cd\n[00:20.00]ef gh\n[00:30.00]ij");
-        let report = gate(&mut a, &t, 200.0, &cfg());
+        let report = gate(&mut a, &t, 40.0, &cfg());
         assert_eq!(report.verdict, Verdict::SameMaster);
         assert_eq!(report.lines_fallen_back, 1);
         let l = &a.lines[1];
@@ -658,7 +700,7 @@ mod tests {
             line(150.0, vec![word("gh", 150.0, 150.5, 0.5, 2)]),
         ]);
         let t = Transcript::parse("[00:10.00]ab\n[00:20.00]cd\n[00:30.00]ef\n[00:40.00]gh");
-        let report = gate(&mut a, &t, 200.0, &cfg());
+        let report = gate(&mut a, &t, 50.0, &cfg());
         assert_eq!(report.verdict, Verdict::Failed);
         assert_eq!(report.lines_fallen_back, 4);
         // The source's stamps as they are — the median of a failed

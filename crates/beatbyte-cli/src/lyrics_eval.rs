@@ -11,20 +11,25 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
 
+use beatbyte_lyrics::align::{Anchoring, Options};
 use beatbyte_lyrics::emissions::MODEL;
 use beatbyte_lyrics::eval::{
-    Aggregate, JamendoCorpus, REPORT_SCHEMA, Report, SongScore, aggregate, by_language,
-    evaluate_song,
+    Aggregate, EvalOptions, JamendoCorpus, REPORT_SCHEMA, Report, SongScore, StampNoise, aggregate,
+    by_language, evaluate_song,
 };
 use beatbyte_ml::{MlError, ModelStore, Runtime};
 
 /// Run the evaluation and report.
+#[allow(clippy::too_many_arguments)] // one flag per measured condition
 pub fn run(
     corpus: Option<PathBuf>,
     out: Option<PathBuf>,
     limit: Option<usize>,
     language: Option<String>,
     raw: bool,
+    anchors: bool,
+    jitter_s: Option<f64>,
+    shift_s: Option<f64>,
 ) -> ExitCode {
     let Some(root) = corpus.or_else(|| std::env::var_os("BEATBYTE_LYRICS_CORPUS").map(Into::into))
     else {
@@ -76,17 +81,36 @@ pub fn run(
         eprintln!("no songs to evaluate in `{}`", root.display());
         return ExitCode::from(2);
     }
+    let options = EvalOptions {
+        gated: !raw,
+        align: Options {
+            anchoring: anchors.then(Anchoring::default),
+        },
+        stamps: anchors.then(|| StampNoise {
+            shift_s: shift_s.unwrap_or(0.0),
+            jitter_s: jitter_s.unwrap_or(0.0),
+        }),
+    };
     eprintln!(
-        "evaluating {} song(s) from `{}` ({})…",
+        "evaluating {} song(s) from `{}` ({}{})…",
         songs.len(),
         root.display(),
-        if raw { "raw aligner" } else { "gated" }
+        if raw { "raw aligner" } else { "gated" },
+        if anchors {
+            format!(
+                ", line stamps shifted {:+.2} s jittered ±{:.2} s",
+                shift_s.unwrap_or(0.0),
+                jitter_s.unwrap_or(0.0)
+            )
+        } else {
+            ", no line stamps".to_owned()
+        }
     );
     let cancel = AtomicBool::new(false);
     let mut scores: Vec<SongScore> = Vec::new();
     for (index, song) in songs.iter().enumerate() {
         let started = std::time::Instant::now();
-        match evaluate_song(song, &runtime, &model, !raw, &cancel) {
+        match evaluate_song(song, &runtime, &model, &options, &cancel) {
             Ok(score) => {
                 println!(
                     "{:>3}/{} {:<40} {:<8} AAE {:>6.3} s  PCO@0.1 {:>5.1}%  PCO@0.3 {:>5.1}%  \

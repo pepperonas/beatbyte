@@ -13,10 +13,46 @@ use beatbyte_audio::resample::resample;
 use beatbyte_ml::{Loaded, MlError, Runtime};
 use thiserror::Error;
 
-use crate::ctc::{AlignError, TokenSpan, force_align};
+use crate::ctc::{AlignError, Emissions, TokenSpan, force_align_in_windows};
 use crate::emissions::{FRAME_S, SAMPLE_RATE, compute_with};
 use crate::transcript::{BLANK, Transcript, WORD_BOUNDARY};
 use crate::words::{AlignedLine, AlignedWord, Alignment, SCHEMA, Source};
+
+/// How the source's own line stamps constrain the alignment.
+///
+/// Measured on JamendoLyrics (`docs/lyrics/evaluation.md`), the
+/// aligner's failure is a slide through a long instrumental: one in
+/// four songs is lost that way, and the songs that are sung through
+/// land at 0.28 s median error. A stamp per line — which lrclib gives
+/// the game for nearly every song — bounds where each line's words
+/// may sit, so a slide cannot travel past the next line.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Anchoring {
+    /// How far outside its own line a word may still land. Wide
+    /// enough to absorb an ordinary master difference, far narrower
+    /// than the slides being prevented.
+    pub tolerance_s: f64,
+    /// Below this share of stamped lines the stamps are not a grid
+    /// and anchoring is skipped.
+    pub min_stamped_share: f64,
+}
+
+impl Default for Anchoring {
+    fn default() -> Anchoring {
+        Anchoring {
+            tolerance_s: 4.0,
+            min_stamped_share: 0.5,
+        }
+    }
+}
+
+/// What an alignment run may do beyond the plain forced alignment.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Options {
+    /// Constrain the second pass to the source's line stamps.
+    /// `None` = the plain alignment, exactly as before.
+    pub anchoring: Option<Anchoring>,
+}
 
 /// Why an alignment was not produced.
 #[derive(Debug, Error)]
@@ -93,6 +129,143 @@ pub struct AlignOutcome {
     pub alignment: Alignment,
     /// What the run found out about itself.
     pub stats: Stats,
+    /// Whether the source's line stamps constrained the result.
+    pub anchored: bool,
+}
+
+/// Whether a source's line stamps can be believed enough to anchor
+/// to at all — a structural question, answered before any alignment:
+/// there must be enough of them, they must rise, and they must fit
+/// inside this audio.
+///
+/// ⚠️ Deliberately NOT the gate's verdict. The gate judges by how
+/// well an unanchored pass agreed with the stamps, and the songs that
+/// need anchors most are exactly the ones where that pass derailed —
+/// gating anchors on agreement would withhold them from the only
+/// songs they could save. Pure — tested.
+#[must_use]
+pub fn stamps_are_usable(transcript: &Transcript, audio_len_s: f64, config: &Anchoring) -> bool {
+    let stamps: Vec<f64> = transcript
+        .lines
+        .iter()
+        .filter_map(|line| line.source_start_s)
+        .collect();
+    if transcript.lines.is_empty() {
+        return false;
+    }
+    let share = stamps.len() as f64 / transcript.lines.len() as f64;
+    if share < config.min_stamped_share || stamps.len() < 2 {
+        return false;
+    }
+    let rising = stamps.windows(2).all(|w| w[1] >= w[0]);
+    let last = stamps.last().copied().unwrap_or(0.0);
+    // A stamp past the end of the file is a different edit, not a
+    // late line (measured: one library song stamps to 272 s in 248 s
+    // of audio).
+    rising && last <= audio_len_s
+}
+
+/// The frame window each token may occupy, from the source's line
+/// stamps shifted by `shift_s`. A line's tokens may sit between its
+/// own stamp and the next one, plus the tolerance at both ends; a
+/// line without a stamp inherits the room between its stamped
+/// neighbours. `None` when the stamps cannot carry it. Pure — tested.
+#[must_use]
+pub fn token_windows(
+    transcript: &Transcript,
+    shift_s: f64,
+    config: &Anchoring,
+    frames: usize,
+) -> Option<Vec<(usize, usize)>> {
+    let count = transcript.lines.len();
+    if count == 0 || frames == 0 {
+        return None;
+    }
+    // Every line's anchor: its own stamp, or the nearest one before
+    // it (a line with no stamp of its own must not be freer than the
+    // line it follows).
+    let mut starts: Vec<Option<f64>> = transcript
+        .lines
+        .iter()
+        .map(|line| line.source_start_s.map(|s| s + shift_s))
+        .collect();
+    let mut carry: Option<f64> = None;
+    for start in &mut starts {
+        match *start {
+            Some(value) => carry = Some(value),
+            None => *start = carry,
+        }
+    }
+    let mut carry: Option<f64> = None;
+    let mut ends: Vec<Option<f64>> = vec![None; count];
+    for index in (0..count).rev() {
+        // A line's room ends where the NEXT stamped line begins.
+        ends[index] = carry;
+        if let Some(stamp) = transcript.lines[index].source_start_s {
+            carry = Some(stamp + shift_s);
+        }
+    }
+    let to_frame = |seconds: f64| -> usize {
+        let frame = (seconds / FRAME_S).floor();
+        frame.clamp(0.0, frames as f64) as usize
+    };
+    let mut windows: Vec<(usize, usize)> = Vec::new();
+    for (index, line) in transcript.lines.iter().enumerate() {
+        let from = starts[index].map_or(0.0, |s| s - config.tolerance_s);
+        let to = ends[index].map_or(f64::INFINITY, |e| e + config.tolerance_s);
+        let mut window = (
+            to_frame(from),
+            if to.is_finite() { to_frame(to) } else { frames },
+        );
+        // A window has to hold its own line: one frame per token,
+        // plus one between two equal ones. Widened forward, since a
+        // line that starts late is likelier than one that started
+        // before its stamp.
+        let tokens: usize = line
+            .words
+            .iter()
+            .map(|word| word.tokens.len() + usize::from(!word.tokens.is_empty()))
+            .sum();
+        if window.1.saturating_sub(window.0) < tokens {
+            window.1 = (window.0 + tokens).min(frames);
+            if window.1.saturating_sub(window.0) < tokens {
+                window.0 = window.1.saturating_sub(tokens);
+            }
+        }
+        for word in &line.words {
+            if word.tokens.is_empty() {
+                continue;
+            }
+            if !windows.is_empty() {
+                windows.push(window); // the boundary before this word
+            }
+            windows.extend(std::iter::repeat_n(window, word.tokens.len()));
+        }
+    }
+    (windows.len() == transcript.tokens().len()).then_some(windows)
+}
+
+/// The constant the source's stamps are off by, from a first pass:
+/// the median of the line deltas that agree with each other. `0.0`
+/// when there is no agreement — a derailed pass says nothing about
+/// the shift, and the stamps are then taken as they are. Pure —
+/// tested.
+#[must_use]
+pub fn shift_from(lines: &[AlignedLine], transcript: &Transcript) -> f64 {
+    let pairs: Vec<(f64, f64)> = lines
+        .iter()
+        .zip(&transcript.lines)
+        .filter(|(line, _)| line.words.iter().any(|w| !w.estimated))
+        .filter_map(|(line, source)| source.source_start_s.map(|s| (s, line.start - s)))
+        .collect();
+    let judged =
+        crate::gate::verdict_of(&pairs, f64::INFINITY, &crate::gate::GateConfig::default());
+    match judged.verdict {
+        crate::gate::Verdict::SameMaster | crate::gate::Verdict::ShiftedMaster { .. } => {
+            judged.median.unwrap_or(0.0)
+        }
+        _ => 0.0,
+    }
 }
 
 /// Align `transcript` against `audio`. `audio_sha256` and
@@ -112,6 +285,7 @@ pub fn align(
         text_source,
         runtime,
         model,
+        &Options::default(),
         &mut |_| {},
         &AtomicBool::new(false),
     )
@@ -137,6 +311,7 @@ pub fn align_with(
     text_source: &str,
     runtime: &Runtime,
     model: &Loaded,
+    options: &Options,
     progress: &mut dyn FnMut(Progress),
     cancel: &AtomicBool,
 ) -> Result<AlignOutcome, LyricsError> {
@@ -161,8 +336,13 @@ pub fn align_with(
         return Err(cancelled(model));
     }
     progress(report(Stage::Aligning, 0, 0));
-    let spans = force_align(&emissions, &tokens, BLANK)?;
-    let lines = place(transcript, &spans);
+    let (lines, anchored) = align_emissions(
+        &emissions,
+        &tokens,
+        transcript,
+        audio.duration_s(),
+        options.anchoring.as_ref(),
+    )?;
     let stats = stats(&lines, transcript, emissions.frames);
     let alignment = Alignment {
         schema: SCHEMA.to_owned(),
@@ -183,7 +363,47 @@ pub fn align_with(
         gate: None,
         lines,
     };
-    Ok(AlignOutcome { alignment, stats })
+    Ok(AlignOutcome {
+        alignment,
+        stats,
+        anchored,
+    })
+}
+
+/// The alignment itself, over emissions that are already computed:
+/// the plain pass, and — when the source's stamps can carry it — a
+/// second pass constrained to them. Returns the lines and whether the
+/// stamps constrained them.
+///
+/// The two passes cost one extra Viterbi over the same emissions,
+/// which is seconds against the model's minutes; the first pass earns
+/// its keep by measuring how far the source's master is off.
+///
+/// **An anchored pass that turns out impossible is never fatal**: the
+/// plain result stands, and the caller is told nothing was anchored.
+pub fn align_emissions(
+    emissions: &Emissions,
+    tokens: &[u8],
+    transcript: &Transcript,
+    audio_len_s: f64,
+    anchoring: Option<&Anchoring>,
+) -> Result<(Vec<AlignedLine>, bool), LyricsError> {
+    let spans = force_align_in_windows(emissions, tokens, BLANK, &[])?;
+    let lines = place(transcript, &spans);
+    let Some(config) = anchoring else {
+        return Ok((lines, false));
+    };
+    if !stamps_are_usable(transcript, audio_len_s, config) {
+        return Ok((lines, false));
+    }
+    let shift = shift_from(&lines, transcript);
+    let Some(windows) = token_windows(transcript, shift, config, emissions.frames) else {
+        return Ok((lines, false));
+    };
+    match force_align_in_windows(emissions, tokens, BLANK, &windows) {
+        Ok(spans) => Ok((place(transcript, &spans), true)),
+        Err(_) => Ok((lines, false)),
+    }
 }
 
 /// Hand the token spans back to the words they belong to, in order,
@@ -338,6 +558,105 @@ fn stats(lines: &[AlignedLine], transcript: &Transcript, frames: usize) -> Stats
         uncertain: aligned.iter().filter(|w| w.conf < UNCERTAIN_BELOW).count(),
         frames,
         source_line_delta,
+    }
+}
+
+#[cfg(test)]
+mod anchor_tests {
+    use super::*;
+    use crate::transcript::Transcript;
+
+    fn stamped(text: &str) -> Transcript {
+        Transcript::parse(text)
+    }
+
+    #[test]
+    fn stamps_are_judged_structurally_not_by_how_well_a_pass_agreed() {
+        let config = Anchoring::default();
+        let good = stamped("[00:10.00]one two\n[00:20.00]three four\n[00:30.00]five six");
+        assert!(stamps_are_usable(&good, 200.0, &config));
+        // Past the end of the audio: a different edit, not late lines.
+        assert!(!stamps_are_usable(&good, 25.0, &config));
+        // Going backwards is not a grid.
+        let jumbled = stamped("[00:30.00]one\n[00:10.00]two\n[00:20.00]three");
+        assert!(!stamps_are_usable(&jumbled, 200.0, &config));
+        // Too few stamped lines to be a grid at all.
+        let sparse = stamped("[00:10.00]one\nplain\nplain\nplain\nplain");
+        assert!(!stamps_are_usable(&sparse, 200.0, &config));
+        // No stamps, no anchoring.
+        assert!(!stamps_are_usable(&stamped("one\ntwo"), 200.0, &config));
+    }
+
+    #[test]
+    fn a_lines_words_may_only_sit_between_its_own_stamp_and_the_next() {
+        let transcript = stamped("[00:10.00]ab cd\n[00:20.00]ef gh");
+        let config = Anchoring {
+            tolerance_s: 1.0,
+            ..Anchoring::default()
+        };
+        let frames = (60.0 / FRAME_S) as usize;
+        let windows = token_windows(&transcript, 0.0, &config, frames).expect("windows");
+        assert_eq!(windows.len(), transcript.tokens().len());
+        let frame = |seconds: f64| (seconds / FRAME_S) as usize;
+        // Line 1: from 9 s (10 − tolerance) to 21 s (the next stamp
+        // + tolerance).
+        assert_eq!(windows[0], (frame(9.0), frame(21.0)));
+        // Line 2 starts at 19 s and runs to the end of the audio.
+        let last = windows.last().copied().expect("a window");
+        assert_eq!(last, (frame(19.0), frames));
+        // A shift moves the whole grid.
+        let shifted = token_windows(&transcript, 2.0, &config, frames).expect("windows");
+        assert_eq!(shifted[0], (frame(11.0), frame(23.0)));
+    }
+
+    #[test]
+    fn a_window_too_small_for_its_line_is_widened_rather_than_left_impossible() {
+        // Two stamps 0.05 s apart with a whole line between them:
+        // the tokens cannot fit, so the window has to grow or the
+        // alignment would be impossible for a reason the source
+        // caused, not the audio.
+        let transcript = stamped("[00:10.00]abcdefghij klmnopqrst\n[00:10.05]xy");
+        let config = Anchoring {
+            tolerance_s: 0.0,
+            ..Anchoring::default()
+        };
+        let frames = (60.0 / FRAME_S) as usize;
+        let windows = token_windows(&transcript, 0.0, &config, frames).expect("windows");
+        let first = transcript.lines[0]
+            .words
+            .iter()
+            .map(|w| w.tokens.len() + 1)
+            .sum::<usize>();
+        assert!(
+            windows[0].1 - windows[0].0 >= first,
+            "the line's own tokens must fit: {:?} for {first}",
+            windows[0]
+        );
+    }
+
+    #[test]
+    fn the_shift_comes_from_agreement_and_is_zero_without_it() {
+        let transcript = stamped("[00:10.00]ab\n[00:20.00]cd\n[00:30.00]ef\n[00:40.00]gh");
+        let line = |start: f64| AlignedLine {
+            start,
+            end: start + 0.5,
+            text: "x".to_owned(),
+            words: vec![AlignedWord {
+                text: "x".to_owned(),
+                start,
+                end: start + 0.5,
+                conf: 0.5,
+                estimated: false,
+                chars: vec![[start, start + 0.5]],
+            }],
+        };
+        // Every line 2 s late and agreeing: that is the shift.
+        let agreeing: Vec<AlignedLine> = [12.0, 22.0, 32.0, 42.0].into_iter().map(line).collect();
+        assert!((shift_from(&agreeing, &transcript) - 2.0).abs() < 1e-9);
+        // A derailed pass agrees on nothing and must not invent a
+        // shift - the stamps are then taken as they are.
+        let derailed: Vec<AlignedLine> = [1.0, 90.0, 15.0, 200.0].into_iter().map(line).collect();
+        assert!(shift_from(&derailed, &transcript).abs() < 1e-9);
     }
 }
 

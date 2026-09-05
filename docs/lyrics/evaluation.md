@@ -111,12 +111,57 @@ difference; a player can.
 
 Nothing here is an argument for turning the gate off in the game.
 
+## With the source's line stamps: no song is lost any more
+
+The numbers above deliberately withhold the one thing the game almost
+always has. JamendoLyrics' lyrics carry no stamps, but the corpus does
+ship `annotations/lines` — the same shape lrclib hands the game — so
+the real case can be measured instead of guessed at. The stamps are
+handed to the aligner **made imperfect on purpose** (a deterministic
+wobble of up to ±0.5 s per line), because a corpus annotation is exact
+and an lrclib stamp is not; measuring against ground truth smuggled in
+through the back door would prove nothing.
+
+Each line's words are then confined to the room between its own stamp
+and the next, plus four seconds at each end, with a constant shift
+taken from the unanchored pass when that pass agreed with itself.
+
+| | Songs | AAE mean | AAE median | PCO@0.1 | PCO@0.3 | lost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| no stamps | 79 | 5.30 s | 1.88 s | 45.5 % | 55.9 % | **20** |
+| **with line stamps** | 79 | **0.64 s** | **0.45 s** | **49.5 %** | **65.9 %** | **0** |
+
+Per language, with stamps: English 0.65 s / 46.8 %, German 0.69 s /
+49.8 %, Spanish 0.54 s / 51.7 %, French 0.68 s / 49.7 % — the same
+everywhere, as before.
+
+**Not one song of the 79 is lost.** The mean error falls by a factor
+of eight, PCO@0.3 gains ten points, and the songs that meet the 0.30 s
+gate on their own go from 20 to 28. This is the measured answer to the
+question the first table raised, and it needed no model, no download
+and no new dependency: the slide cannot travel past the next stamp.
+
+Two honest qualifications. First, **PCO@0.1 gains only four points**
+(45.5 → 49.5 %): anchoring puts the LINE where it belongs, it does not
+teach the model to hear the individual words, and fine placement is
+still where the aligner is weak. Second, **the share of words the gate
+marks estimated rises from 12.5 % to 32.4 %** — inside a bounded window
+the path more often has to sprint through words, and the gate says so
+rather than pretending. A line in the right place with an honest
+line-level fill beats a line thirty seconds out with a confident wrong
+one, but it is not the same as knowing every word.
+
+Anchoring engages only when the stamps are structurally plausible for
+the file — enough of them, rising, and spanning it. That check is
+deliberately **not** the gate's verdict: the gate judges by how well
+the unanchored pass agreed with the stamps, and the songs that need
+anchors most are exactly the ones where that pass derailed.
+
 ## What this measurement does not say
 
-- **The corpus is the hard case.** Its lyrics carry no line stamps at
-  all. In the game they usually do (lrclib), and the gate uses them —
-  a source stamp per line is exactly the anchor a sliding alignment
-  lacks here. These numbers are therefore a floor, not the experience.
+- **The first table is the hard case**, and the section above is the
+  ordinary one: the corpus's lyrics carry no line stamps, the game's
+  almost always do.
 - **No separation.** Everything above is the aligner on the full mix.
   Removing the instruments is the plan's own next milestone.
 - **Nothing was tuned.** No threshold was touched, no window changed.
@@ -125,24 +170,24 @@ Nothing here is an argument for turning the gate off in the game.
 
 In order of expected effect on the twenty lost songs:
 
-1. **Vocal separation** (L6, planned): a stem where the instrumental
-   passages really are quiet removes the mechanism above at its root.
+1. **Line stamps as anchors — done, measured above.** Not one song
+   lost, mean error down by a factor of eight, at no cost in
+   downloads or dependencies. It is on in the game whenever the
+   source's stamps are plausible.
+2. **Vocal separation** (L6, planned): a stem where the instrumental
+   passages really are quiet removes the mechanism above at its root
+   — and it is the only lever left for PCO@0.1, which anchoring
+   barely moved.
    ⚠️ The runtime can carry it — `rten` implements `STFT`, `LSTM`,
    `ConvTranspose` and the rest — but as of 2026-09-05 no separator
    has been found whose *weights* may ship in an MIT project:
    open-unmix `umxl` is CC BY-NC-SA 4.0, `umxhq` states no weight
    licence, and Demucs licenses its code MIT while saying nothing
    about its models.
-2. **Line stamps as anchors** (not in the plan): when the source has
-   line stamps — the common case in the game — constraining the
-   Viterbi to a window around each line would stop a slide from
-   propagating past it. Cheap, local, and it uses data already in
-   hand. It is also *measurable* here: JamendoLyrics carries
-   `annotations/lines` beside the word annotations, which is the same
-   shape lrclib hands the game, so the game's real case can be
-   measured rather than guessed at.
 3. **A blank prior in low-energy frames**: nudging the blank
-   probability where nothing voice-like is present, which is the
-   classic remedy for exactly this failure.
-
-None of these were implemented in this round, on purpose.
+   probability where nothing voice-like is present, the classic
+   remedy for this failure. The model already knows where the singing
+   is — `cargo run -p beatbyte-lyrics --example voice -- <audio>`
+   prints it per second — the aligner simply does not use it yet.
+   This is the remaining lever for songs whose source has no stamps
+   at all.

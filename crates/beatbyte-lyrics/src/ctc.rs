@@ -73,6 +73,12 @@ pub enum AlignError {
         /// The vocabulary size.
         vocab: usize,
     },
+    /// The frame windows leave no path that spells the transcript.
+    #[error("the anchored alignment has no path: {reason}")]
+    Infeasible {
+        /// What is wrong with the windows.
+        reason: String,
+    },
 }
 
 /// The most probable path spelling `tokens` through `emissions`, as
@@ -82,8 +88,36 @@ pub fn force_align(
     tokens: &[u8],
     blank: u8,
 ) -> Result<Vec<TokenSpan>, AlignError> {
+    force_align_in_windows(emissions, tokens, blank, &[])
+}
+
+/// [`force_align`] with a frame window per token: token `i` may only
+/// occupy frames in `windows[i] = (first, one past last)`. An empty
+/// `windows` means no constraint at all — the plain forced alignment.
+///
+/// This is what a source's line stamps buy. Measured on the corpus,
+/// the aligner's failure mode is a slide through a long instrumental:
+/// the path finds it cheaper to spend words in the guitars than to
+/// stay blank, and everything after moves with it. A window per line
+/// cannot stop the model from mishearing, but it stops a slide from
+/// propagating past the next stamp.
+///
+/// A window that cannot hold its tokens is not silently ignored —
+/// the alignment fails with [`AlignError::Infeasible`] and the
+/// caller falls back to the unconstrained path.
+pub fn force_align_in_windows(
+    emissions: &Emissions,
+    tokens: &[u8],
+    blank: u8,
+    windows: &[(usize, usize)],
+) -> Result<Vec<TokenSpan>, AlignError> {
     if tokens.is_empty() {
         return Err(AlignError::Empty);
+    }
+    if !windows.is_empty() && windows.len() != tokens.len() {
+        return Err(AlignError::Infeasible {
+            reason: format!("{} windows for {} tokens", windows.len(), tokens.len()),
+        });
     }
     if let Some(&bad) = tokens
         .iter()
@@ -119,9 +153,41 @@ pub fn force_align(
     let mut cur = vec![f32::NEG_INFINITY; states];
     let mut back = vec![0u8; frames * states];
 
+    // A state's window: the blank states before and after token i
+    // share its window, so a blank may sit wherever its neighbours
+    // may. Without windows every state may sit anywhere.
+    let window_of = |s: usize| -> (usize, usize) {
+        if windows.is_empty() {
+            return (0, frames);
+        }
+        let token = s / 2;
+        if s.is_multiple_of(2) {
+            // A blank between token s/2-1 and token s/2 (or at either
+            // end): the union of what its neighbours allow.
+            let before = token.checked_sub(1).map(|t| windows[t]);
+            let after = windows.get(token).copied();
+            match (before, after) {
+                (Some(b), Some(a)) => (b.0.min(a.0), b.1.max(a.1)),
+                (Some(b), None) => (b.0, frames),
+                (None, Some(a)) => (0, a.1),
+                (None, None) => (0, frames),
+            }
+        } else {
+            windows[token]
+        }
+    };
+    let allowed = |s: usize, t: usize| {
+        let (from, to) = window_of(s);
+        t >= from && t < to
+    };
+
     let first = emissions.frame(0);
-    prev[0] = first[usize::from(blank)];
-    prev[1] = first[usize::from(tokens[0])];
+    if allowed(0, 0) {
+        prev[0] = first[usize::from(blank)];
+    }
+    if allowed(1, 0) {
+        prev[1] = first[usize::from(tokens[0])];
+    }
 
     for t in 1..frames {
         let row = emissions.frame(t);
@@ -144,11 +210,12 @@ pub fn force_align(
             }
             // Tokens still to emit after this state, at one frame each.
             let tokens_after = tokens.len() - s.div_ceil(2);
-            let value = if best == f32::NEG_INFINITY || tokens_after + 1 > remaining {
-                f32::NEG_INFINITY
-            } else {
-                best + emit
-            };
+            let value =
+                if best == f32::NEG_INFINITY || tokens_after + 1 > remaining || !allowed(s, t) {
+                    f32::NEG_INFINITY
+                } else {
+                    best + emit
+                };
             cur[s] = value;
             back[t * states + s] = from;
         }
@@ -162,7 +229,12 @@ pub fn force_align(
         states - 2
     };
     if prev[last_state] == f32::NEG_INFINITY {
-        return Err(AlignError::TooShort { frames, needed });
+        if windows.is_empty() {
+            return Err(AlignError::TooShort { frames, needed });
+        }
+        return Err(AlignError::Infeasible {
+            reason: format!("{needed} tokens do not fit their {} windows", windows.len()),
+        });
     }
 
     // Walk back: which state each frame was in.
@@ -316,6 +388,40 @@ mod tests {
         for (i, span) in spans.iter().enumerate() {
             assert_eq!((span.start, span.end), (i, i + 1));
         }
+    }
+
+    #[test]
+    fn a_window_holds_a_token_where_the_model_would_not_put_it() {
+        // The model is sure of A at frames 0..3 and of B at 6..9.
+        // Unconstrained, that is where they land.
+        let em = synthetic(4, &[(1, 3), (0, 3), (2, 3), (0, 3)]);
+        let free = force_align(&em, &[1, 2], 0).expect("aligns");
+        assert_eq!((free[0].start, free[1].start), (0, 6));
+        // Windowed away from those frames, the path has to go where
+        // it is allowed - and says so with a low score, because a
+        // forced alignment reports, it does not argue.
+        let spans = force_align_in_windows(&em, &[1, 2], 0, &[(3, 6), (9, 12)]).expect("aligns");
+        assert!(spans[0].start >= 3 && spans[0].end <= 6, "{spans:?}");
+        assert!(spans[1].start >= 9, "{spans:?}");
+        assert!(spans[0].score < 0.2, "the model did not hear A there");
+        // An empty window list is exactly the unconstrained path.
+        assert_eq!(force_align_in_windows(&em, &[1, 2], 0, &[]), Ok(free));
+    }
+
+    #[test]
+    fn an_impossible_window_fails_instead_of_being_ignored() {
+        let em = synthetic(4, &[(1, 3), (0, 3), (2, 3), (0, 3)]);
+        // Two tokens, one frame of room each, but in the wrong order:
+        // no monotone path exists.
+        let out = force_align_in_windows(&em, &[1, 2], 0, &[(8, 9), (1, 2)]);
+        assert!(matches!(out, Err(AlignError::Infeasible { .. })), "{out:?}");
+        // A window list of the wrong length is refused up front.
+        let out = force_align_in_windows(&em, &[1, 2], 0, &[(0, 12)]);
+        assert!(matches!(out, Err(AlignError::Infeasible { .. })), "{out:?}");
+        // A window too small for its own token: three tokens, all
+        // squeezed into one frame.
+        let out = force_align_in_windows(&em, &[1, 2, 1], 0, &[(0, 1), (0, 1), (0, 1)]);
+        assert!(matches!(out, Err(AlignError::Infeasible { .. })), "{out:?}");
     }
 
     #[test]

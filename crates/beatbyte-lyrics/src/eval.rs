@@ -304,6 +304,50 @@ pub struct CorpusSong {
     pub lyrics: PathBuf,
     /// The word annotations, in order.
     pub words: Vec<TruthWord>,
+    /// The line annotations: one start per line, in order — the same
+    /// shape lrclib hands the game, so the game's real case can be
+    /// measured instead of guessed at. Empty when the corpus has no
+    /// line file for this song.
+    pub line_starts: Vec<f64>,
+}
+
+/// How the line stamps handed to the aligner are made imperfect, so
+/// the measurement is about a REAL source and not about ground truth
+/// smuggled in through the back door.
+///
+/// A corpus line annotation is exact; an lrclib stamp is not. Against
+/// the library's own files the deltas ran to a median of a few tenths
+/// with a spread of about 0.7 s, and whole songs sit on another
+/// master. Both are reproduced here, deterministically per song and
+/// line, so a run can be repeated.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct StampNoise {
+    /// A constant offset added to every stamp, seconds.
+    pub shift_s: f64,
+    /// The largest per-line wobble either way, seconds.
+    pub jitter_s: f64,
+}
+
+/// The noisy stamp for line `index` of `song`. Deterministic: the
+/// same song, line and settings always give the same stamp. Pure —
+/// tested.
+#[must_use]
+pub fn noisy_stamp(song: &str, index: usize, exact: f64, noise: &StampNoise) -> f64 {
+    if noise.jitter_s <= 0.0 {
+        return (exact + noise.shift_s).max(0.0);
+    }
+    // splitmix64 over the song's name and the line, so the wobble is
+    // a property of the pair and not of the order things ran in.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in song.as_bytes().iter().chain(&index.to_le_bytes()) {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    hash ^= hash >> 30;
+    hash = hash.wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    hash ^= hash >> 27;
+    let unit = (hash >> 11) as f64 / (1u64 << 53) as f64; // 0..1
+    (exact + noise.shift_s + (unit * 2.0 - 1.0) * noise.jitter_s).max(0.0)
 }
 
 /// The JamendoLyrics MultiLang corpus on disk.
@@ -381,12 +425,20 @@ impl JamendoCorpus {
                     continue;
                 }
             };
+            let line_starts = std::fs::read_to_string(
+                root.join("annotations")
+                    .join("lines")
+                    .join(format!("{stem}.csv")),
+            )
+            .map(|text| parse_line_starts(&text))
+            .unwrap_or_default();
             songs.push(CorpusSong {
                 name: stem,
                 language: language.clone(),
                 audio,
                 lyrics,
                 words,
+                line_starts,
             });
         }
         Ok(JamendoCorpus {
@@ -395,6 +447,25 @@ impl JamendoCorpus {
             skipped,
         })
     }
+}
+
+/// The starts of `annotations/lines/<song>.csv`
+/// (`start_time,end_time,lyrics_line`), in file order. Rows without a
+/// usable start are skipped rather than guessed at. Pure — tested.
+#[must_use]
+pub fn parse_line_starts(text: &str) -> Vec<f64> {
+    let mut rows = text.lines().filter(|l| !l.trim().is_empty());
+    let header = csv_split(rows.next().unwrap_or_default());
+    let Some(column) = header.iter().position(|h| h == "start_time") else {
+        return Vec::new();
+    };
+    rows.filter_map(|row| {
+        csv_split(row)
+            .get(column)
+            .and_then(|f| f.trim().parse::<f64>().ok())
+            .filter(|t| t.is_finite() && *t >= 0.0)
+    })
+    .collect()
 }
 
 /// The word list and the annotation CSV, zipped: one truth word per
@@ -459,21 +530,54 @@ fn read_word_annotations(word_list: &Path, annotations: &Path) -> Result<Vec<Tru
     parse_word_annotations(&words, &csv)
 }
 
+/// What one evaluation run does.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct EvalOptions {
+    /// Run the confidence gate (what the game ships) or measure the
+    /// raw aligner.
+    pub gated: bool,
+    /// What the aligner is allowed to do.
+    pub align: crate::align::Options,
+    /// Hand the corpus's line annotations to the aligner as if they
+    /// were a source's line stamps, made imperfect by this much.
+    /// `None` = the aligner gets no stamps at all, which is the hard
+    /// case JamendoLyrics itself presents.
+    pub stamps: Option<StampNoise>,
+}
+
+/// Give `transcript` the corpus's line starts, one per line, made
+/// imperfect. Lines beyond the annotation's count keep no stamp.
+fn attach_line_stamps(
+    transcript: &mut crate::transcript::Transcript,
+    song: &CorpusSong,
+    noise: &StampNoise,
+) {
+    for (index, line) in transcript.lines.iter_mut().enumerate() {
+        line.source_start_s = song
+            .line_starts
+            .get(index)
+            .map(|exact| noisy_stamp(&song.name, index, *exact, noise));
+    }
+}
+
 /// Align one corpus song and score it — the whole pipeline the game
-/// runs (`gated`), or the raw aligner. The predictions are the
-/// aligned words' onsets, in transcript order.
+/// runs, or the raw aligner. The predictions are the aligned words'
+/// onsets, in transcript order.
 pub fn evaluate_song(
     song: &CorpusSong,
     runtime: &beatbyte_ml::Runtime,
     model: &beatbyte_ml::Loaded,
-    gated: bool,
+    options: &EvalOptions,
     cancel: &std::sync::atomic::AtomicBool,
 ) -> Result<SongScore, String> {
     let lyrics = std::fs::read_to_string(&song.lyrics)
         .map_err(|e| format!("cannot read `{}`: {e}", song.lyrics.display()))?;
-    let transcript = crate::transcript::Transcript::parse(&lyrics);
+    let mut transcript = crate::transcript::Transcript::parse(&lyrics);
     if transcript.alignable_words() == 0 {
         return Err("no alignable words".to_owned());
+    }
+    if let Some(noise) = &options.stamps {
+        attach_line_stamps(&mut transcript, song, noise);
     }
     let audio = beatbyte_audio::decode_file(&song.audio).map_err(|e| e.to_string())?;
     let mut outcome = crate::align::align_with(
@@ -483,11 +587,12 @@ pub fn evaluate_song(
         &format!("corpus:{}", song.name),
         runtime,
         model,
+        &options.align,
         &mut |_| {},
         cancel,
     )
     .map_err(|e| e.to_string())?;
-    if gated {
+    if options.gated {
         crate::gate::gate(
             &mut outcome.alignment,
             &transcript,

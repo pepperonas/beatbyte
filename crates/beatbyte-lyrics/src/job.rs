@@ -14,7 +14,7 @@ use std::time::Duration;
 use beatbyte_ml::{MlError, ModelStore, Runtime};
 use thiserror::Error;
 
-use crate::align::{LyricsError, Progress, Stats, align_with};
+use crate::align::{Anchoring, LyricsError, Options, Progress, Stats, align_with};
 use crate::emissions::MODEL;
 use crate::gate::{GateConfig, GateReport, gate};
 use crate::transcript::Transcript;
@@ -191,6 +191,12 @@ pub fn align_file(
         &text_source,
         &runtime,
         &model,
+        &Options {
+            // The game's lyrics almost always carry line stamps, and
+            // the measurement says that is what keeps an alignment
+            // from sliding through an instrumental.
+            anchoring: Some(Anchoring::default()),
+        },
         &mut |p: Progress| {
             progress(JobProgress {
                 stage: JobStage::Aligning(p.stage),

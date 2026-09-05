@@ -237,6 +237,20 @@ enum Command {
         /// Measure the raw aligner instead of the gated pipeline.
         #[arg(long)]
         raw: bool,
+        /// Hand the corpus's line annotations to the aligner as a
+        /// source's line stamps — the game's real case, which the
+        /// corpus itself does not present.
+        #[arg(long)]
+        anchors: bool,
+        /// With `--anchors`: wobble each stamp by up to this many
+        /// seconds, so the measurement is about a real source rather
+        /// than about ground truth handed in through the back door.
+        #[arg(long)]
+        jitter: Option<f64>,
+        /// With `--anchors`: put every stamp on another master by
+        /// this many seconds.
+        #[arg(long)]
+        shift: Option<f64>,
     },
 }
 
@@ -350,7 +364,10 @@ fn main() -> ExitCode {
             limit,
             language,
             raw,
-        } => lyrics_eval::run(corpus, out, limit, language, raw),
+            anchors,
+            jitter,
+            shift,
+        } => lyrics_eval::run(corpus, out, limit, language, raw, anchors, jitter, shift),
         #[cfg(feature = "ml")]
         Command::LyricsCheck { audio, words, out } => lyrics_eval::check(&audio, words, out),
         #[cfg(feature = "ml")]
