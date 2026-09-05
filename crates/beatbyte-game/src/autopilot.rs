@@ -2004,6 +2004,7 @@ mod tests {
             preview_start_s: None,
             source: SongSource::Builtin(0),
             has_lyrics: false,
+            polish: crate::library::Polish::default(),
         }
     }
 

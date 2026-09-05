@@ -14,6 +14,44 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.19] - 2026-09-05
+
+### Added
+
+- **An OPT column in the song browser**, and the data model behind
+  it. Every song now carries what has already been done to it and
+  what has not — `OK`, `CHART`, `WORDS` or `BOTH` — sortable like any
+  other column, and sorting by it turns the browser into a to-do
+  list: the work floats to the top, finished rows go quiet.
+  - **No database, and deliberately none.** A song is a FOLDER —
+    audio, chart versions, the active pointer, the lyrics, the
+    alignment — so copying a song copies everything it knows about
+    itself, no migration can corrupt it, and any of it can be read in
+    a text editor. The scan reads these two facts (is the active
+    chart a redesigned version, does a `words.json` sit beside the
+    audio) exactly the way it reads the title. A server process for
+    71 rows that change only when a file changes would cost the
+    player an install and buy nothing.
+  - A song with **no lyrics owes no alignment**: it reads `OK` once
+    its chart is redesigned, rather than nagging forever for
+    something that cannot exist. (The first version of the label
+    compared the three flags directly and called an untouched
+    instrumental `BOTH`; the scan-level test caught it.)
+  - Built-ins carry no debt: they ship as they are.
+- **The lyrics lookup now sends the song's own length**, so lrclib
+  answers about THIS recording. ⚠️ Measured, not guessed: a library
+  song — an 8:37 remix — had been handed the 4-minute original's
+  lyrics, because the catalogue has the words under that name and
+  nothing checked the length; every stamp was then wrong.
+
+### Changed
+
+- The whole imported library was taken through the pipeline: 70 of 71
+  charts redesigned (one legacy folder has no `chart.json`), lyrics
+  fetched for 20 more songs with the length check above (5 rejected
+  because only an entry of another length existed — exactly the case
+  the check is for), and every song with lyrics word-aligned.
+
 ## [0.14.18] - 2026-09-05
 
 ### Added

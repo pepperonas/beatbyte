@@ -208,6 +208,7 @@ mod tests {
             preview_start_s: preview,
             source: SongSource::Builtin(0),
             has_lyrics: false,
+            polish: crate::library::Polish::default(),
         }
     }
 
@@ -340,6 +341,7 @@ mod tests {
                         audio_path: std::path::PathBuf::from("none.m4a"),
                     },
                     has_lyrics: false,
+                    polish: crate::library::Polish::default(),
                 })
                 .collect();
             app.insert_resource(SongLibrary { entries });

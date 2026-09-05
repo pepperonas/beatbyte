@@ -50,6 +50,9 @@ pub enum SortMode {
     Notes,
     /// Highest challenge rating first.
     Diff,
+    /// What is still to do first (the OPT column): songs with both
+    /// jobs open, then one, then the finished ones.
+    Polish,
 }
 
 impl SortMode {
@@ -64,7 +67,8 @@ impl SortMode {
             SortMode::Length => SortMode::Notes,
             SortMode::Notes => SortMode::Diff,
             SortMode::Diff => SortMode::Best,
-            SortMode::Best => SortMode::Standard,
+            SortMode::Best => SortMode::Polish,
+            SortMode::Polish => SortMode::Standard,
         }
     }
 
@@ -80,6 +84,7 @@ impl SortMode {
             SortMode::Best => "BEST",
             SortMode::Notes => "NOTES",
             SortMode::Diff => "DIFF",
+            SortMode::Polish => "TO DO",
         }
     }
 }
@@ -99,6 +104,7 @@ impl SortMode {
             "best" => Some(SortMode::Best),
             "notes" => Some(SortMode::Notes),
             "diff" => Some(SortMode::Diff),
+            "to do" | "opt" => Some(SortMode::Polish),
             _ => None,
         }
     }
@@ -312,6 +318,12 @@ fn build_order(
                     tie(i),
                 )
             });
+        }
+        SortMode::Polish => {
+            // The work first: a browser sorted by what is left to do
+            // is a to-do list, and a finished library sorts back to
+            // its usual order.
+            order.sort_by_key(|i| (entries[*i].polish.rank(), tie(i)));
         }
         SortMode::Notes => {
             order.sort_by_key(|i| {
@@ -542,6 +554,8 @@ const COL_LEN: f32 = 56.0;
 const COL_NOTES: f32 = 56.0;
 const COL_RATING: f32 = 62.0;
 const COL_BEST: f32 = 92.0;
+/// The OPT column: five characters of 10 px, plus room to breathe.
+const COL_POLISH: f32 = 58.0;
 
 fn spawn_browser(
     mut commands: Commands,
@@ -738,6 +752,7 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
                     caption(head, "LEN", SortMode::Length, Some(COL_LEN));
                     caption(head, "NOTES", SortMode::Notes, Some(COL_NOTES));
                     caption(head, "DIFF", SortMode::Diff, Some(COL_RATING));
+                    caption(head, "OPT", SortMode::Polish, Some(COL_POLISH));
                     caption(head, "BEST", SortMode::Best, Some(COL_BEST));
                 });
             parent.spawn((SongList, ui_kit::scroll_panel(ui_kit::PANEL_WIDE)));
@@ -1132,9 +1147,13 @@ fn browser_input(
                 let (artist, title) = (entry.artist.clone(), entry.title.clone());
                 let audio = audio_path.clone();
                 let shown = title.clone();
+                // The song's own length goes with the question: the
+                // catalogue must answer about THIS recording, not
+                // about whatever else carries the title.
+                let seconds = entry.duration_s;
                 start.lookup.task = Some(LyricsTask(
                     bevy::tasks::AsyncComputeTaskPool::get().spawn(async move {
-                        crate::lyrics_fetch::fetch_and_cache(&artist, &title, &audio)
+                        crate::lyrics_fetch::fetch_and_cache(&artist, &title, seconds, &audio)
                     }),
                 ));
                 sounds.write(crate::sfx::UiSound::Confirm);
@@ -1340,6 +1359,28 @@ fn spawn_rows_into(
                             .map_or_else(|| "-".to_owned(), |r| "*".repeat(usize::from(r))),
                         COL_RATING,
                     );
+                    // What is left to do for this song, in the OPT
+                    // column — BEFORE the best score, because the
+                    // captions are spawned in that order and a header
+                    // over the wrong cells is worse than no header.
+                    let polish = entry.polish;
+                    row.spawn((
+                        SongArtist(position),
+                        Text::new(polish.label().to_owned()),
+                        font.text(ui_kit::SMALL),
+                        TextColor(if polish.is_done() {
+                            palette::dimmed(palette::TEXT_DIM, 0.45)
+                        } else {
+                            palette::BRAND
+                        }),
+                        TextLayout::default().with_no_wrap(),
+                        Node {
+                            width: px(COL_POLISH),
+                            flex_shrink: 0.0,
+                            overflow: Overflow::clip(),
+                            ..default()
+                        },
+                    ));
                     cell(row, font, position, best, COL_BEST);
                 });
         }
@@ -1530,6 +1571,7 @@ fn refresh_browser(
             SortMode::Notes => "NOTES",
             SortMode::Diff => "DIFF",
             SortMode::Best => "BEST",
+            SortMode::Polish => "OPT",
             SortMode::Standard => "",
         };
         let wanted = caption_label(base, header.0, &view);
@@ -1771,6 +1813,7 @@ mod view_tests {
             preview_start_s: None,
             source: SongSource::Builtin(0),
             has_lyrics: false,
+            polish: crate::library::Polish::default(),
         }
     }
 
@@ -2107,14 +2150,14 @@ mod view_tests {
     fn the_sort_cycle_visits_every_mode_and_returns() {
         let mut mode = SortMode::Standard;
         let mut seen = vec![mode];
-        for _ in 0..7 {
+        for _ in 0..8 {
             mode = mode.next();
             seen.push(mode);
         }
         assert_eq!(mode.next(), SortMode::Standard, "the cycle closes");
         seen.sort_by_key(|m| m.label());
         seen.dedup();
-        assert_eq!(seen.len(), 8, "every mode is reachable");
+        assert_eq!(seen.len(), 9, "every mode is reachable");
     }
 
     #[test]

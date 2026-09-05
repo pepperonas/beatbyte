@@ -76,15 +76,36 @@ pub fn cache_path(audio_path: &Path) -> PathBuf {
     audio_path.with_extension("lrc")
 }
 
+/// How far a catalogue entry's length may be from the song's before
+/// its stamps are for a different edit.
+///
+/// ⚠️ Measured, not guessed. A library song — an 8:37 remix — was
+/// handed the 4-minute original's lyrics, because the catalogue has
+/// the words under that name and nothing checked the length. Every
+/// stamp was then wrong, and the fallback crammed the whole sheet
+/// into the first 45 % of the track. lrclib matches its own
+/// `duration` parameter within two seconds; this is the tolerance
+/// for the search fallback, wide enough for a fade difference and
+/// far too narrow for another edit.
+pub const DURATION_TOLERANCE_S: f64 = 12.0;
+
 /// Ask lrclib for a track's lyrics.
+///
+/// `duration_s` is the song's own length. It is sent along, so the
+/// catalogue answers about THIS recording rather than about whatever
+/// else carries the title.
 ///
 /// Blocking — call it off the frame thread (the browser runs it on
 /// the async compute pool, like an import).
 #[must_use]
-pub fn fetch(artist: &str, title: &str) -> Outcome {
-    let response = ureq::get("https://lrclib.net/api/get")
+pub fn fetch(artist: &str, title: &str, duration_s: Option<f64>) -> Outcome {
+    let mut request = ureq::get("https://lrclib.net/api/get")
         .query("artist_name", artist.trim())
-        .query("track_name", title.trim())
+        .query("track_name", title.trim());
+    if let Some(seconds) = duration_s.filter(|s| s.is_finite() && *s > 0.0) {
+        request = request.query("duration", &format!("{:.0}", seconds));
+    }
+    let response = request
         .timeout(std::time::Duration::from_secs(TIMEOUT_S))
         .call();
     match response {
@@ -119,8 +140,13 @@ pub fn classify(body: &str) -> Outcome {
 /// Fetch and, on success, cache the raw `.lrc` beside the audio so
 /// the next start picks it up through the ordinary file path.
 #[must_use]
-pub fn fetch_and_cache(artist: &str, title: &str, audio_path: &Path) -> Outcome {
-    let outcome = fetch(artist, title);
+pub fn fetch_and_cache(
+    artist: &str,
+    title: &str,
+    duration_s: Option<f64>,
+    audio_path: &Path,
+) -> Outcome {
+    let outcome = fetch(artist, title, duration_s);
     if let Outcome::Synced(lyrics) = &outcome {
         // Written from the parsed model rather than the raw body:
         // it is the same content, minus whatever the response
@@ -165,6 +191,19 @@ fn warn(message: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_catalogue_entry_of_another_length_is_another_edit() {
+        // The rule, as a rule: within the tolerance the entry is
+        // this recording, outside it the stamps belong to a
+        // different edit and are worse than none. (Measured on the
+        // library: an 8:37 remix was handed the 4-minute original.)
+        let fits = |ours: f64, theirs: f64| (ours - theirs).abs() <= DURATION_TOLERANCE_S;
+        assert!(fits(360.0, 361.0), "a fade's difference");
+        assert!(fits(360.0, 348.1));
+        assert!(!fits(517.0, 239.0), "an 8:37 remix is not a 4:00 original");
+        assert!(!fits(200.0, 220.0));
+    }
 
     #[test]
     fn every_response_shape_becomes_a_visible_state() {

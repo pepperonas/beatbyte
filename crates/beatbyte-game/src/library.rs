@@ -51,6 +51,9 @@ pub struct SongEntry {
     pub preview_start_s: Option<f64>,
     /// Where the audio lives.
     pub source: SongSource,
+    /// What has already been done for this song and what has not
+    /// (the browser's OPT column).
+    pub polish: Polish,
     /// Whether karaoke lyrics sit beside this song.
     ///
     /// Existence only — a stat, not a parse: the browser rebuilds
@@ -78,6 +81,69 @@ impl SongEntry {
         let notes = self.note_count(difficulty)?;
         let duration = self.duration_s?;
         Some(density_rating(notes, duration))
+    }
+}
+
+/// How far a song has been taken: the two things that can be done to
+/// a track after it is imported, as facts read off the disk.
+///
+/// There is no database behind this and there should not be. A song
+/// is a FOLDER — audio, chart versions, the active pointer, the
+/// lyrics, the alignment — so copying a song copies everything it
+/// knows about itself, no migration can corrupt it, and a player can
+/// read any of it in a text editor. The scan reads these two facts
+/// the same way it reads the title.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Polish {
+    /// The active chart is a redesigned version, not the import's
+    /// first draft.
+    pub chart_redesigned: bool,
+    /// A word-level alignment sits beside the audio.
+    pub aligned: bool,
+    /// The song has lyrics at all — without them an alignment is not
+    /// something MISSING, it is something that does not apply.
+    pub has_lyrics: bool,
+}
+
+impl Polish {
+    /// Whether everything that CAN be done for this song has been.
+    ///
+    /// A song with no lyrics is finished once its chart is
+    /// redesigned: holding it back for an alignment that can never
+    /// exist would make the column a permanent accusation instead of
+    /// a list of work. Pure — tested.
+    #[must_use]
+    pub fn is_done(self) -> bool {
+        self.chart_redesigned && (self.aligned || !self.has_lyrics)
+    }
+
+    /// The browser cell: what is still to do, in five characters.
+    /// Pure — tested.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        // What is OWED, not what is missing: a song with no lyrics
+        // owes no alignment, so an untouched instrumental reads
+        // CHART and not BOTH. (The first version compared the three
+        // flags directly and called it BOTH — the scan test caught
+        // it.)
+        match (!self.chart_redesigned, self.has_lyrics && !self.aligned) {
+            (true, true) => "BOTH",
+            (true, false) => "CHART",
+            (false, true) => "WORDS",
+            (false, false) => "OK",
+        }
+    }
+
+    /// Sort key: unfinished first, and among those the ones with the
+    /// most left to do. Pure — tested.
+    #[must_use]
+    pub fn rank(self) -> u8 {
+        match self.label() {
+            "BOTH" => 0,
+            "CHART" => 1,
+            "WORDS" => 2,
+            _ => 3,
+        }
     }
 }
 
@@ -165,6 +231,13 @@ pub fn scan_library(builtins: &[ChartFile]) -> SongLibrary {
             // Filled in by the caller: only the game knows which
             // built-in carries lyrics, and it is loaded, not scanned.
             has_lyrics: false,
+            // A built-in has no folder to polish: it ships as it is,
+            // and the column says so rather than nagging.
+            polish: Polish {
+                chart_redesigned: true,
+                aligned: true,
+                has_lyrics: false,
+            },
         })
         .collect();
     let builtin_count = entries.len();
@@ -481,7 +554,16 @@ fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String>
     // same places `beatbyte_chart::lyrics::lyrics_beside` reads at
     // start.
     let has_lyrics = beatbyte_chart::lyrics::lyrics_exist_beside(&audio_path, chart_path);
+    let polish = Polish {
+        chart_redesigned: chart_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(beatbyte_chart::versions::is_version_file),
+        aligned: beatbyte_chart::lyrics::words_path(&audio_path).is_file(),
+        has_lyrics,
+    };
     Ok(Some(SongEntry {
+        polish,
         title: chart.song.title.clone(),
         artist: chart.song.artist.clone(),
         bpm: chart.song.bpm,
@@ -496,6 +578,80 @@ fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String>
             audio_path,
         },
     }))
+}
+
+#[cfg(test)]
+mod polish_tests {
+    use super::Polish;
+
+    #[test]
+    fn a_song_is_finished_when_nothing_can_still_be_done_to_it() {
+        let both = Polish {
+            chart_redesigned: false,
+            aligned: false,
+            has_lyrics: true,
+        };
+        assert!(!both.is_done() && both.label() == "BOTH");
+        let words = Polish {
+            chart_redesigned: true,
+            ..both
+        };
+        assert!(!words.is_done() && words.label() == "WORDS");
+        let chart = Polish {
+            aligned: true,
+            ..both
+        };
+        assert!(!chart.is_done() && chart.label() == "CHART");
+        let done = Polish {
+            chart_redesigned: true,
+            aligned: true,
+            has_lyrics: true,
+        };
+        assert!(done.is_done() && done.label() == "OK");
+        // A song with NO lyrics is finished once its chart is done:
+        // an alignment that can never exist is not a missing job, and
+        // a column that nagged forever would be noise, not a list.
+        let instrumental = Polish {
+            chart_redesigned: true,
+            aligned: false,
+            has_lyrics: false,
+        };
+        assert!(instrumental.is_done() && instrumental.label() == "OK");
+        let instrumental_old_chart = Polish {
+            chart_redesigned: false,
+            ..instrumental
+        };
+        assert!(!instrumental_old_chart.is_done());
+    }
+
+    #[test]
+    fn the_sort_puts_the_work_first() {
+        let p = |chart, aligned| Polish {
+            chart_redesigned: chart,
+            aligned,
+            has_lyrics: true,
+        };
+        let mut ranks = [
+            p(true, true),
+            p(false, false),
+            p(true, false),
+            p(false, true),
+        ];
+        ranks.sort_by_key(|x| x.rank());
+        assert_eq!(
+            ranks.map(Polish::label),
+            ["BOTH", "CHART", "WORDS", "OK"],
+            "most left to do first, finished last"
+        );
+    }
+
+    #[test]
+    fn every_label_fits_the_column() {
+        // The OPT column is 58 px of a 10 px font: six characters.
+        for label in ["OK", "BOTH", "CHART", "WORDS"] {
+            assert!(label.chars().count() <= 5, "{label} does not fit");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -524,6 +680,56 @@ mod tests {
         std::fs::write(audio.with_extension("lrc"), "[00:01.00]la").expect("lyrics");
         let with = load_entry(&chart).expect("loads").expect("an entry");
         assert!(with.has_lyrics, "a .lrc beside the audio marks the song");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_scan_reads_what_has_been_done_to_a_song_off_the_disk() {
+        // Through `load_entry`, so the FOLDER is the data model: a
+        // redesigned chart is a version file, an alignment is a
+        // `words.json` beside the audio. (The first version of this
+        // test checked the two files itself and stayed green while
+        // the scanner reported a constant.)
+        let root = std::env::temp_dir().join(format!("bb-polish-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("temp dir");
+        let audio = root.join("song.wav");
+        std::fs::write(&audio, b"not really audio").expect("audio");
+        let base = root.join("chart.json");
+        std::fs::write(&base, MINIMAL_CHART).expect("chart");
+
+        let fresh = load_entry(&base).expect("loads").expect("an entry");
+        assert!(!fresh.polish.chart_redesigned, "the import's own chart");
+        assert!(!fresh.polish.aligned);
+        assert_eq!(
+            fresh.polish.label(),
+            "CHART",
+            "no lyrics: only the chart is owed"
+        );
+
+        // A redesigned version, loaded as the active chart.
+        let version = root.join("chart.v2.json");
+        std::fs::write(&version, MINIMAL_CHART).expect("version");
+        let redesigned = load_entry(&version).expect("loads").expect("an entry");
+        assert!(redesigned.polish.chart_redesigned);
+        assert!(redesigned.polish.is_done(), "no lyrics, chart done");
+
+        // Lyrics arrive: now an alignment is owed.
+        std::fs::write(audio.with_extension("lrc"), "[00:01.00]la").expect("lyrics");
+        let with_lyrics = load_entry(&version).expect("loads").expect("an entry");
+        assert_eq!(with_lyrics.polish.label(), "WORDS");
+        assert!(!with_lyrics.polish.is_done());
+
+        // ...and it arrives.
+        std::fs::write(
+            audio.with_extension("words.json"),
+            r#"{"schema":"beatbyte.lyrics/1","lines":[]}"#,
+        )
+        .expect("alignment");
+        let done = load_entry(&version).expect("loads").expect("an entry");
+        assert!(done.polish.aligned && done.polish.is_done());
+        assert_eq!(done.polish.label(), "OK");
 
         let _ = std::fs::remove_dir_all(&root);
     }
