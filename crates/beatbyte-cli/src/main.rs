@@ -202,6 +202,20 @@ enum Command {
         #[arg(long)]
         raw: bool,
     },
+    /// A song with a click on every aligned word, so an alignment can
+    /// be judged by ear: writes `<audio stem>.check.wav` and prints
+    /// the word sheet (built with `--features ml`).
+    #[cfg(feature = "ml")]
+    LyricsCheck {
+        /// The song.
+        audio: PathBuf,
+        /// Its alignment (default: `<audio stem>.words.json`).
+        #[arg(long)]
+        words: Option<PathBuf>,
+        /// Where to write the check track.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
     /// Measure the aligner against word-level ground truth (the
     /// JamendoLyrics MultiLang layout): AAE, PCO@0.1, PCO@0.3 per
     /// song, per language and over all; `--out` writes the JSON
@@ -337,6 +351,8 @@ fn main() -> ExitCode {
             language,
             raw,
         } => lyrics_eval::run(corpus, out, limit, language, raw),
+        #[cfg(feature = "ml")]
+        Command::LyricsCheck { audio, words, out } => lyrics_eval::check(&audio, words, out),
         #[cfg(feature = "ml")]
         Command::Models { action } => match action {
             ModelsAction::List => models::list(),

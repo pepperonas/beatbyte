@@ -20,6 +20,8 @@
 //!   the path the CLI and the game share
 //! - [`eval`] — AAE and PCO against word-level ground truth (the
 //!   JamendoLyrics MultiLang layout), the plan's gates as constants
+//! - [`check`] — the same alignment as a CLICK TRACK, so a person can
+//!   judge it by ear (the fixture set's correction loop)
 //! - [`align`](mod@align) — the whole pipeline, audio in, alignment out
 //!
 //! Everything a result depends on is recorded in it: the audio's
@@ -28,6 +30,7 @@
 //! player.
 
 pub mod align;
+pub mod check;
 pub mod ctc;
 pub mod emissions;
 pub mod eval;

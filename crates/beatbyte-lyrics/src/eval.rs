@@ -92,16 +92,33 @@ fn null_is_infinite<'de, D: serde::Deserializer<'de>>(d: D) -> Result<f64, D::Er
     Ok(Option::<f64>::deserialize(d)?.unwrap_or(f64::INFINITY))
 }
 
+/// A song whose average onset error passes this has not been
+/// mis-timed, it has been LOST: measured on the corpus, such songs
+/// are minutes out, and they drag a mean far past anything the
+/// per-song picture supports. Counted, so the bimodality cannot
+/// hide behind an average.
+pub const DERAILED_AAE_S: f64 = 5.0;
+
 /// Scores over a set of songs — the mean of the per-song numbers
 /// (the field's convention: every song weighs the same, a long song
-/// does not drown a short one).
+/// does not drown a short one), plus the median and the derailed
+/// count, because on real music the distribution has two humps and
+/// a mean alone describes neither.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Aggregate {
     /// Songs in the set.
     pub songs: usize,
-    /// Mean AAE, seconds.
+    /// Mean AAE, seconds — the plan's gated number.
     #[serde(deserialize_with = "null_is_infinite")]
     pub aae_s: f64,
+    /// Median AAE over the songs, seconds. Reported, never gated:
+    /// the gate is the plan's, and swapping the statistic under it
+    /// would be moving the goalposts.
+    #[serde(default, deserialize_with = "null_is_infinite")]
+    pub aae_median_s: f64,
+    /// Songs whose AAE passes [`DERAILED_AAE_S`].
+    #[serde(default)]
+    pub derailed: usize,
     /// Mean PCO@0.1.
     pub pco_01: f64,
     /// Mean PCO@0.3.
@@ -238,9 +255,13 @@ pub fn aggregate(scores: &[SongScore]) -> Aggregate {
             scores.iter().map(f).sum::<f64>() / n
         }
     };
+    let mut errors: Vec<f64> = scores.iter().map(|s| s.aae_s).collect();
+    errors.sort_by(f64::total_cmp);
     Aggregate {
         songs: scores.len(),
         aae_s: mean(|s| s.aae_s),
+        aae_median_s: errors.get(errors.len() / 2).copied().unwrap_or(0.0),
+        derailed: scores.iter().filter(|s| s.aae_s > DERAILED_AAE_S).count(),
         pco_01: mean(|s| s.pco_01),
         pco_03: mean(|s| s.pco_03),
         coverage: mean(|s| s.coverage),
@@ -634,12 +655,45 @@ mod tests {
         // The mean of songs (0.30), not the mean over words (0.40):
         // a long song does not drown a short one.
         assert!((all.aae_s - 0.30).abs() < 1e-9, "{}", all.aae_s);
+        // Two humps: one song at 0.10 and one at 6.0 average to 3.05,
+        // which describes neither — the median and the derailed count
+        // do. (Reported; the gate stays on the mean, as the plan set
+        // it: swapping the statistic under a gate is moving it.)
+        let lost = SongScore {
+            song: "lost".into(),
+            aae_s: 6.0,
+            ..bad.clone()
+        };
+        let near = SongScore {
+            song: "near".into(),
+            aae_s: 0.20,
+            ..good.clone()
+        };
+        // Deliberately out of order: the median sorts, it does not
+        // take whatever sits in the middle of the list.
+        let humps = aggregate(&[lost, good.clone(), near]);
+        // Mean 2.10 describes neither hump; the median is the middle
+        // song, exactly.
+        assert!((humps.aae_s - 2.10).abs() < 1e-9, "{}", humps.aae_s);
+        assert!(
+            (humps.aae_median_s - 0.20).abs() < 1e-9,
+            "{}",
+            humps.aae_median_s
+        );
+        assert_eq!(humps.derailed, 1, "one song was lost, not mis-timed");
+        // 0.50 s is mis-timed, not lost: the count is about songs the
+        // aligner LOST, and it must not creep down onto bad-but-real
+        // alignments.
+        assert_eq!(aggregate(&[good.clone(), bad.clone()]).derailed, 0);
+        assert!(bad.aae_s < DERAILED_AAE_S && bad.aae_s > 0.3);
         assert!(!all.passes_gates(), "AAE must be BELOW 0.30");
         // Each gate on its own, at its boundary: exactly the gate
         // value is NOT inside it.
         let at_gate = |aae_s, pco_01, pco_03| Aggregate {
             songs: 1,
             aae_s,
+            aae_median_s: aae_s,
+            derailed: 0,
             pco_01,
             pco_03,
             coverage: 1.0,

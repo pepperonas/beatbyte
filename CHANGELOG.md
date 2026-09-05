@@ -14,6 +14,45 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.17] - 2026-09-05
+
+### Added
+
+- **The first real measurement of the aligner**, on all 79 songs of
+  JamendoLyrics MultiLang —
+  **[`docs/lyrics/evaluation.md`](docs/lyrics/evaluation.md)**. AAE
+  mean 5.30 s / median 1.88 s, PCO@0.1 45.5 %, PCO@0.3 55.9 %,
+  coverage 100 %: a **FAIL on all three of the plan's gates**, and the
+  regression test says so with the numbers. Nothing was tuned to
+  produce them — the plan's rule for this round was measure first.
+  - The distribution has **two humps**: per-song AAE runs from 0.05 s
+    to 38 s, twenty songs meet the 0.30 s gate on their own and twenty
+    are *lost* (over 5 s). Without the lost ones the rest read AAE
+    1.42 s, PCO@0.1 57.3 %.
+  - **The predictor is the longest instrumental passage**, not the
+    language: songs sung through (gap < 10 s) land at AAE median
+    **0.28 s** and PCO@0.1 **59.1 %** — inside the plan's targets —
+    while songs with over 25 s of instrumental lose 45 % of their
+    number. German scores slightly *better* than English with an
+    English-only model, because a given transcript constrains the path
+    more than the phone set does.
+  - **The gate costs 1.7 points of PCO@0.1** against the raw aligner
+    and buys honesty on screen, not accuracy in the metric. Measured
+    both ways, stated plainly.
+- The evaluation aggregate now reports an **AAE median** and a **lost
+  count** beside the mean, because on real music a mean describes
+  neither hump. The gates stay on the mean, as the plan set them:
+  swapping the statistic under a gate would be moving it.
+- **`beatbyte-cli lyrics-check <audio>`** writes `<audio>.check.wav` —
+  the song with a short tick on every aligned word, ducked so the tick
+  carries through a loud mix — and prints a word sheet marking every
+  word the pipeline could not vouch for. Ground truth has to be
+  corrected by ear, and a table of times is not something a person can
+  check; a tick that lands beside the word is audible in one pass.
+  This is the correction loop for the own fixture set
+  ([`docs/lyrics/fixtures.md`](docs/lyrics/fixtures.md), which now
+  says what to record).
+
 ## [0.14.16] - 2026-09-05
 
 ### Added

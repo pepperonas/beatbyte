@@ -342,18 +342,20 @@ public corpus, cannot regress a note.
   378 MB each). Vocal separation switch waits for L6.
 - [ ] Fix `BEATBYTE_AUTOPILOT_DELETE`'s arrow count (library order vs
   the browser's sorted order — the align drill shows the way).
-- [~] **L5 — eval harness** *(v0.14.16, tooling done, numbers
-  pending)*. `beatbyte-lyrics::eval` (AAE/PCO pure + hand-checked,
-  LCS word pairing with coverage, mean of songs, gates as constants,
-  JamendoLyrics MultiLang reader verified against the published
-  layout) + `beatbyte-cli lyrics-eval --corpus --out` + `eval_gates`
-  test on `BEATBYTE_LYRICS_EVAL_REPORT` (skips loudly when unset;
-  seen failing on a voiceless synthetic corpus). **Open:** run it on
-  the corpus (not on this machine — needs the user's go for a ~1 GB
-  download of `jamendolyrics/jamendolyrics` from Hugging Face, CC
-  with NC terms, local only) and report the numbers per language
-  before touching the aligner; the "three own hand-corrected fixture
-  songs" need a human ear — ask.
+- [x] **L5 — eval harness AND the first measurement** *(v0.14.16 /
+  v0.14.17)*. `beatbyte-lyrics::eval` + `beatbyte-cli lyrics-eval`
+  + the `eval_gates` regression test; **measured on all 79
+  JamendoLyrics songs** (see `docs/lyrics/evaluation.md`): AAE mean
+  5.30 s / median 1.88 s, PCO@0.1 45.5 %, PCO@0.3 55.9 %, coverage
+  100 % — **FAIL on all three gates**, and the reason is one thing:
+  20 of 79 songs are LOST in long instrumental passages. Songs whose
+  singing is continuous (gap < 10 s) land at AAE median 0.28 s and
+  PCO@0.1 59 % — inside the plan's targets. Language barely matters
+  (German ≥ English with an English-only model). Nothing was tuned.
+- [ ] **Own fixture set** (plan §L5, needs the user): three short
+  clips of Martin's own voice + their words, then a click-track
+  correction loop — `docs/lyrics/fixtures.md` has the instructions.
+  Until then a clone without the corpus measures nothing.
 - [ ] L6 separation + multilingual — acceptance criteria in the
   plan's §9.
 - [ ] C1 Beat This! A/B · [ ] C2 stems · [ ] C3 Basic Pitch ·

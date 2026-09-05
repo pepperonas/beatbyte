@@ -7,7 +7,7 @@
 //! `--corpus` or `BEATBYTE_LYRICS_CORPUS` says where it is. Behind the
 //! `ml` feature; needs the aligner model installed.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
 
@@ -156,12 +156,50 @@ pub fn run(
     ExitCode::SUCCESS
 }
 
+/// `lyrics-check`: the alignment as a click track plus a word sheet.
+pub fn check(audio_path: &Path, words: Option<PathBuf>, out: Option<PathBuf>) -> ExitCode {
+    let words_path = words.unwrap_or_else(|| beatbyte_chart::lyrics::words_path(audio_path));
+    let json = match std::fs::read_to_string(&words_path) {
+        Ok(json) => json,
+        Err(error) => {
+            eprintln!("cannot read `{}`: {error}", words_path.display());
+            return ExitCode::from(2);
+        }
+    };
+    let alignment = match beatbyte_lyrics::Alignment::from_json(&json) {
+        Ok(alignment) => alignment,
+        Err(error) => {
+            eprintln!("`{}` is not an alignment: {error}", words_path.display());
+            return ExitCode::from(2);
+        }
+    };
+    let audio = match beatbyte_audio::decode_file(audio_path) {
+        Ok(audio) => audio,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::from(2);
+        }
+    };
+    let track = beatbyte_lyrics::check::check_track(&audio, &alignment);
+    let out = out.unwrap_or_else(|| audio_path.with_extension("check.wav"));
+    if let Err(error) = beatbyte_audio::decode::write_wav_mono16(&out, &track) {
+        eprintln!("cannot write `{}`: {error}", out.display());
+        return ExitCode::from(1);
+    }
+    print!("{}", beatbyte_lyrics::check::word_sheet(&alignment));
+    println!("wrote {} — a click on every word", out.display());
+    ExitCode::SUCCESS
+}
+
 fn print_aggregate(label: &str, agg: &Aggregate) {
     println!(
-        "{:<8} {:>3} song(s)  AAE {:>6.3} s  PCO@0.1 {:>5.1}%  PCO@0.3 {:>5.1}%  cov {:>5.1}%  est {:>4.1}%",
+        "{:<8} {:>3} song(s)  AAE mean {:>7.3} s  median {:>6.3} s  lost {:>2}  PCO@0.1 {:>5.1}%  \
+         PCO@0.3 {:>5.1}%  cov {:>5.1}%  est {:>4.1}%",
         label,
         agg.songs,
         agg.aae_s,
+        agg.aae_median_s,
+        agg.derailed,
         agg.pco_01 * 100.0,
         agg.pco_03 * 100.0,
         agg.coverage * 100.0,
