@@ -510,6 +510,7 @@ fn the_network_claim_matches_what_the_code_actually_does() {
     let reaches_out = [
         "crates/beatbyte-game/src/lyrics_fetch.rs",
         "crates/beatbyte-game/src/room_stage.rs",
+        "crates/beatbyte-ml/src/store.rs",
     ]
     .iter()
     .any(|path| repo().join(path).is_file());
@@ -519,6 +520,10 @@ fn the_network_claim_matches_what_the_code_actually_does() {
     let room_stage = repo()
         .join("crates/beatbyte-game/src/room_stage.rs")
         .is_file();
+    // The third: the ML model store downloads a model on request
+    // (ADR-0013). Behind a feature, one time, to a pinned URL — and
+    // the section has to say all three of those things.
+    let model_store = repo().join("crates/beatbyte-ml/src/store.rs").is_file();
 
     if reaches_out {
         assert!(
@@ -551,6 +556,24 @@ fn the_network_claim_matches_what_the_code_actually_does() {
                 !readme.contains("lyrics%20lookup%20only"),
                 "the badge still says the lyrics lookup is the only \
                  request the game makes"
+            );
+        }
+        if model_store {
+            let section = readme
+                .split("### What leaves your machine")
+                .nth(1)
+                .unwrap_or_default();
+            assert!(
+                section.contains("models install"),
+                "the section must name the command that downloads a model"
+            );
+            assert!(
+                section.contains("--features ml"),
+                "the section must say the download code exists only behind the feature"
+            );
+            assert!(
+                section.contains("SHA-256"),
+                "the section must say a download is verified against a pinned hash"
             );
         }
     } else {

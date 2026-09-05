@@ -1,0 +1,20 @@
+[package]
+name = "beatbyte-ml"
+description = "BeatByte's local ML runtime: a registry of pinned models, a verified download store and a deterministic inference session cache. No domain logic."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rten = { workspace = true }
+rten-tensor = { workspace = true }
+sha2 = { workspace = true }
+ureq = { workspace = true }
+thiserror = { workspace = true }
+dirs = { workspace = true }
+
+[lints]
+workspace = true

@@ -35,14 +35,14 @@
 [![SemVer](https://img.shields.io/badge/versioning-SemVer-blue)](CHANGELOG.md)
 [![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735)](CHANGELOG.md)
 [![Conventional Commits](https://img.shields.io/badge/commits-Conventional-FE5196)](https://www.conventionalcommits.org/)
-[![Tests](https://img.shields.io/badge/tests-767%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-781%20passing-brightgreen)](#testing)
 [![Clippy](https://img.shields.io/badge/clippy-%E2%80%91D%20warnings-brightgreen?logo=rust)](Cargo.toml)
 [![rustfmt](https://img.shields.io/badge/style-rustfmt-orange?logo=rust)](Cargo.toml)
 [![Rustdoc](https://img.shields.io/badge/public%20API-documented-blue)](Cargo.toml)
 [![Unsafe](https://img.shields.io/badge/unsafe-1%20audited%20block-yellow)](crates/beatbyte-game/src/lib.rs)
 [![Deterministic](https://img.shields.io/badge/engine-deterministic-blueviolet)](#how-your-music-becomes-a-playable-track)
 [![Autopilot](https://img.shields.io/badge/releases-autopilot%20verified-success)](#testing)
-[![ADRs](https://img.shields.io/badge/decisions-11%20ADRs-lightgrey)](docs/decisions/README.md)
+[![ADRs](https://img.shields.io/badge/decisions-12%20ADRs-lightgrey)](docs/decisions/README.md)
 [![MSRV](https://img.shields.io/badge/MSRV-1.95-orange?logo=rust)](Cargo.toml)
 [![Harnesses](https://img.shields.io/badge/harness%20switches-26-success)](docs/development/harness.md)
 [![Docs](https://img.shields.io/badge/docs-architecture%20%C2%B7%20ADRs%20%C2%B7%20specs-blue)](docs/)
@@ -65,7 +65,7 @@
 [![Bevy](https://img.shields.io/badge/Bevy-0.19-blueviolet)](https://bevy.org/)
 [![Audio](https://img.shields.io/badge/audio-rodio%20%2B%20Symphonia-9cf)](crates/beatbyte-audio)
 [![USB](https://img.shields.io/badge/guitar%20driver-libusb%20(rusb)-9cf)](crates/beatbyte-game/src/xplorer.rs)
-[![Workspace](https://img.shields.io/badge/workspace-7%20crates-informational)](#development)
+[![Workspace](https://img.shields.io/badge/workspace-8%20crates-informational)](#development)
 [![Toolchain](https://img.shields.io/badge/build%20deps-Rust%20only-informational)](#building-from-source)
 [![Made with Rust](https://img.shields.io/badge/made%20with-%F0%9F%A6%80%20Rust-red)](https://www.rust-lang.org/)
 
@@ -411,6 +411,7 @@ The repository is a Cargo workspace:
 | `beatbyte-game` | Bevy plugins: gameplay, rendering, UI, effects. |
 | `beatbyte-cli` | `beatbyte` command line: analyze, generate, validate. |
 | `beatbyte-editor` | The chart editor’s invertible edit operations (undo/redo). |
+| `beatbyte-ml` | Local ML runtime (ADR-0013): a compiled-in registry of pinned models, a verified download store and a deterministic inference session. Linked only behind the `ml` feature; the default build never touches it. |
 | `apps/beatbyte` | The shippable game binary. |
 
 Architecture decisions are documented as ADRs in
@@ -474,7 +475,7 @@ beatbyte-cli demo                  # render the synthesized reference tracks
 ## Testing
 
 ```bash
-cargo test --workspace          # 767 tests
+cargo test --workspace          # 781 tests
 ```
 
 | Crate | Tests | Covers |
@@ -485,6 +486,7 @@ cargo test --workspace          # 767 tests
 | `beatbyte-audio` | 118 | Onset detection, tempo estimation, melody contours, the song clock and its practice rate, the speed position map, the error-sound voices, real-file decoding for every advertised format, the container's declared encoder priming and that both decode paths skip it sample-exactly, beat tracking and the kick channel, the analysis-evaluation metrics (MIREX beat scores, Rekordbox XML and ANLZ grid import, corpus pairing, synthetic corpus), the mute gate no volume write can lift |
 | `beatbyte-cli` | 21 | The play-history export (CSV quoting, UTC stamps, report filters), review analytics, the design dossier and the redesign rollout: section windowing, evidence thresholds, hash binding, the mastery veto, write instructions, carried difficulties |
 | `beatbyte-editor` | 19 | Every edit operation round-trips through its own inverse |
+| `beatbyte-ml` | 14 | The model registry's well-formedness checks, SHA-256 over bytes, files and pieces, and — against a web server the test starts and an ONNX graph the test encodes by hand — the store's four refusals (wrong bytes, short reply, oversized reply, cancel) leaving nothing behind, the runtime's bit-identical repeat runs on its pinned pool, and its cache |
 | `beatbyte` | 15 | Documentation consistency: these numbers, the version, the badges, the links, the ADR index, the harness switches, the network claim against the code, the figures the rules document quotes, and the two synthesized reference tracks' chart fingerprints (at millisecond resolution, which the projection itself is tested for) |
 
 Integration tests decode real fixture files for each supported format,
@@ -600,6 +602,16 @@ write an address: while a song plays it posts the beats you hit to a
 light service **on your own network**, at the address in your
 `settings.json` and nowhere else. Outbound only, no cloud, no
 account; with it off — which is how it ships — nothing is sent.
+
+**Local ML models** (builds with `--features ml` only — the default
+build does not contain this code) are the third and last thing: the
+game's learned features run on models stored on your machine, and a
+model gets there **once, when you ask for it** — with
+`beatbyte-cli models install <id>`; a settings button follows with the
+aligner — from a release asset of this repository at a URL, size and
+SHA-256 that are compiled into the build. Nothing is fetched on its own, no manifest is
+consulted, and a file that does not match its hash is refused and
+deleted. This build registers no models yet.
 
 Nothing else ever goes out. There is no telemetry, no update check
 and no crash reporting.

@@ -12,6 +12,11 @@ rust-version.workspace = true
 beatbyte-game = { workspace = true }
 bevy = { workspace = true }
 
+[features]
+# `cargo run --release -p beatbyte --features ml` builds the game with
+# the local ML runtime (ADR-0013). The default is the offline game.
+ml = ["beatbyte-game/ml"]
+
 [dev-dependencies]
 # For the documentation-consistency tests: the gameplay rules document
 # quotes concrete numbers, and those numbers live here.

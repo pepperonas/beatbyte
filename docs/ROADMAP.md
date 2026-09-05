@@ -290,9 +290,18 @@ public corpus, cannot regress a note.
   the app data dir) — [`docs/audio/decode-offset.md`](audio/decode-offset.md).
   §11 decided: English first · separation its own switch, no cloud ·
   character fill · per-song lyric offset in the song folder. Next: L1.
-- [ ] L1 `beatbyte-ml` skeleton · [ ] L2 aligner (EN) · [ ] L3 gating
-  and fallback · [ ] L4 renderer · [ ] L5 eval harness · [ ] L6
-  separation + multilingual — acceptance criteria in the plan's §9.
+- [x] **L1 — `beatbyte-ml` skeleton** *(v0.14.11, ADR-0013)*. Runtime
+  `rten` (pure Rust, per-run pinned thread pool), compiled-in registry
+  (empty until L2 registers the aligner with its licence), store with
+  `.part` + size cap + SHA-256 before rename, session cache, `ml`
+  feature on game/cli/app (default off), `beatbyte-cli models
+  {list,install,verify,remove}`. 14 tests against a hand-encoded
+  MatMul graph and a local web server; four store refusals seen
+  failing under mutation; 21 runs bit-identical. README network
+  section + `docs_stay_true.rs` name the third outbound path.
+- [ ] L2 aligner (EN) · [ ] L3 gating and fallback · [ ] L4 renderer ·
+  [ ] L5 eval harness · [ ] L6 separation + multilingual — acceptance
+  criteria in the plan's §9.
 - [ ] C1 Beat This! A/B · [ ] C2 stems · [ ] C3 Basic Pitch ·
   [ ] C4 structure — only after L ships, each by ear against
   `chart-feel-good-20260826`.

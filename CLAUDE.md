@@ -72,6 +72,13 @@ tech writer, release manager. Operate accordingly:
 - **Crate layering**: core knows nothing of Bevy or audio; chart knows
   nothing of Bevy; audio knows nothing of Bevy except nothing (it is
   engine-free); game is the only crate that touches Bevy. Keep it so.
+  `beatbyte-ml` (ADR-0013) knows nothing of audio, charts or Bevy —
+  registry, store, runtime, floats in and out — and is linked only
+  behind the `ml` feature; its registry is compiled in (no manifest
+  fetch), a download happens only on the user's explicit action and
+  is verified against a pinned size + SHA-256 before it exists. No
+  model weights in the repository, not even toy ones: the ML tests
+  hand-encode their ONNX graph.
 - **No copyrighted assets, music, or trademarks — ever.** All assets
   original, generated, CC0, or OFL (fonts: Press Start 2P and Bebas
   Neue, each bundled with its license). No song ships with the game;

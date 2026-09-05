@@ -7,11 +7,12 @@ members = [
     "crates/beatbyte-game",
     "crates/beatbyte-cli",
     "crates/beatbyte-editor",
+    "crates/beatbyte-ml",
     "apps/beatbyte",
 ]
 
 [workspace.package]
-version = "0.14.10"
+version = "0.14.11"
 edition = "2024"
 license = "MIT"
 authors = ["Martin Pfeffer"]
@@ -23,12 +24,13 @@ categories = ["games"]
 
 [workspace.dependencies]
 # Internal crates
-beatbyte-core = { path = "crates/beatbyte-core", version = "0.14.10" }
-beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.14.10" }
-beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.14.10" }
-beatbyte-game = { path = "crates/beatbyte-game", version = "0.14.10" }
-beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.14.10" }
-beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.14.10" }
+beatbyte-core = { path = "crates/beatbyte-core", version = "0.14.11" }
+beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.14.11" }
+beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.14.11" }
+beatbyte-game = { path = "crates/beatbyte-game", version = "0.14.11" }
+beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.14.11" }
+beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.14.11" }
+beatbyte-ml = { path = "crates/beatbyte-ml", version = "0.14.11" }
 
 # Engine ("wav" lets bevy_audio play our procedurally generated SFX;
 # "serialize" gives input types serde for the persisted bindings table)
@@ -54,6 +56,14 @@ clap = { version = "4", features = ["derive"] }
 
 # Platform config/data directories (settings, scores)
 dirs = "6"
+
+# Local ML inference (ADR-0013): pure-Rust ONNX runtime, behind the
+# `ml` feature of the game and the CLI. Only the ONNX loader: the
+# `.rten` format and its flatbuffers dependency are not needed.
+rten = { version = "0.26", default-features = false, features = ["onnx_format"] }
+rten-tensor = "0.26"
+# Integrity of downloaded model files.
+sha2 = "0.11"
 
 # HTTP for the lyrics lookup. Same crate and major version the
 # proven implementation in inspector-rust uses; blocking by design

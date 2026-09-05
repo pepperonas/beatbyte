@@ -13,6 +13,8 @@ use clap::{Parser, Subcommand};
 
 mod dossier;
 mod history;
+#[cfg(feature = "ml")]
+mod models;
 mod redesign;
 mod review;
 
@@ -169,6 +171,37 @@ enum Command {
         #[arg(long, default_value = "songs/builtin")]
         out_dir: PathBuf,
     },
+    /// Local ML models: list, install, verify, remove (built with
+    /// `--features ml`). `install` is the one command here that
+    /// reaches the network — once, to the URL this build pins.
+    #[cfg(feature = "ml")]
+    Models {
+        #[command(subcommand)]
+        action: ModelsAction,
+    },
+}
+
+/// What to do with the local models.
+#[cfg(feature = "ml")]
+#[derive(Subcommand)]
+enum ModelsAction {
+    /// Every model this build knows, and whether it is installed.
+    List,
+    /// Download and verify a model.
+    Install {
+        /// The model's id (see `list`).
+        id: String,
+    },
+    /// Re-hash an installed model against the registry.
+    Verify {
+        /// The model's id.
+        id: String,
+    },
+    /// Delete an installed model.
+    Remove {
+        /// The model's id.
+        id: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -244,6 +277,13 @@ fn main() -> ExitCode {
             },
         ),
         Command::Demo { out_dir } => demo(&out_dir),
+        #[cfg(feature = "ml")]
+        Command::Models { action } => match action {
+            ModelsAction::List => models::list(),
+            ModelsAction::Install { id } => models::install(&id),
+            ModelsAction::Verify { id } => models::verify(&id),
+            ModelsAction::Remove { id } => models::remove(&id),
+        },
     }
 }
 

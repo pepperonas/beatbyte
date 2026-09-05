@@ -14,6 +14,31 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.11] - 2026-09-05
+
+### Added
+
+- **`beatbyte-ml`, the local ML runtime** (plan milestone L1,
+  [ADR-0013](docs/decisions/ADR-0013-local-ml-runtime.md)): a
+  compiled-in registry of pinned models (id, file, a URL the project
+  controls, exact size, SHA-256, licence — empty until the aligner
+  registers the first one), a store that streams a download to a
+  `.part` file, caps it at the registered size, hashes it as it
+  arrives and renames it into place only when size and hash match,
+  and a runtime (`rten` 0.26, pure Rust, CPU) that runs models on a
+  thread pool pinned to a constant — 21 repeat runs of a MatMul graph
+  came back bit-identical, and so did a second pool. Floats in, floats
+  out; the inference crate's types stay inside.
+- **`--features ml`** on the game, the CLI and the app, **off by
+  default**: the default build contains none of this code and no new
+  dependency. With it, `beatbyte-cli models {list,install,verify,
+  remove}` is the explicit way to fetch a model; nothing is fetched
+  otherwise.
+- **The README's "What leaves your machine" names the third outbound
+  path** and `docs_stay_true.rs` pins that it does — a build with `ml`
+  can download a model, once, on request, from a pinned URL, verified
+  by SHA-256. Said loudly, per the plan's constraint 9.
+
 ## [0.14.10] - 2026-09-05
 
 ### Fixed
