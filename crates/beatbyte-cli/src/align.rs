@@ -1,13 +1,20 @@
 //! `beatbyte-cli align <audio> <lyrics>` — word- and letter-level
 //! timing for known lyrics, written as `<audio>.words.json` beside the
-//! audio (plan milestone L2). Behind the `ml` feature; needs the
+//! audio (plan milestones L2 + L3). Behind the `ml` feature; needs the
 //! aligner model installed (`models install wav2vec2-base-960h`).
+//!
+//! The confidence gate runs by default: it marks words the aligner
+//! sprinted through or got stuck on, drops lines with too many of
+//! them to line level, and judges the source's stamps against the
+//! alignment (same master, shifted master, different edit, failed).
+//! `--raw` skips it, for the evaluation harness and for looking at
+//! what the aligner itself produced.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use beatbyte_lyrics::emissions::MODEL;
-use beatbyte_lyrics::{Transcript, align};
+use beatbyte_lyrics::{GateConfig, Transcript, Verdict, align, gate};
 use beatbyte_ml::{MlError, ModelStore, Runtime};
 
 /// Where the alignment goes when `--out` is not given.
@@ -21,7 +28,7 @@ pub fn default_output(audio: &Path) -> PathBuf {
 }
 
 /// Run the alignment and report.
-pub fn run(audio_path: &Path, lyrics_path: &Path, out: Option<PathBuf>) -> ExitCode {
+pub fn run(audio_path: &Path, lyrics_path: &Path, out: Option<PathBuf>, raw: bool) -> ExitCode {
     let lyrics = match std::fs::read_to_string(lyrics_path) {
         Ok(text) => text,
         Err(error) => {
@@ -82,7 +89,7 @@ pub fn run(audio_path: &Path, lyrics_path: &Path, out: Option<PathBuf>) -> ExitC
         audio.duration_s()
     );
     let started = std::time::Instant::now();
-    let outcome = match align(
+    let mut outcome = match align(
         &audio,
         &audio_sha256,
         &transcript,
@@ -97,6 +104,14 @@ pub fn run(audio_path: &Path, lyrics_path: &Path, out: Option<PathBuf>) -> ExitC
         }
     };
     let took = started.elapsed();
+    let report = (!raw).then(|| {
+        gate(
+            &mut outcome.alignment,
+            &transcript,
+            audio.duration_s(),
+            &GateConfig::default(),
+        )
+    });
     let out_path = out.unwrap_or_else(|| default_output(audio_path));
     let json = match outcome.alignment.to_json() {
         Ok(json) => json,
@@ -126,6 +141,28 @@ pub fn run(audio_path: &Path, lyrics_path: &Path, out: Option<PathBuf>) -> ExitC
             "  against the source's {lines} line stamps: aligned − source median {median:+.3} s, \
              spread (MAD) {mad:.3} s"
         );
+    }
+    match report {
+        None => println!("  raw: the confidence gate did not run"),
+        Some(report) => {
+            let verdict = match report.verdict {
+                Verdict::NoReference => "no line stamps to compare against".to_owned(),
+                Verdict::SameMaster => "same master as the source".to_owned(),
+                Verdict::ShiftedMaster { offset_s } => {
+                    format!("same edit, another master: source is {offset_s:+.2} s off")
+                }
+                Verdict::DifferentEdit => {
+                    "a different edit: the source's stamps are not this file's".to_owned()
+                }
+                Verdict::Failed => {
+                    "alignment FAILED — every line falls back to the source's stamps".to_owned()
+                }
+            };
+            println!(
+                "  gate: {verdict}; {} words marked estimated, {} lines at line level",
+                report.words_estimated, report.lines_fallen_back
+            );
+        }
     }
     ExitCode::SUCCESS
 }

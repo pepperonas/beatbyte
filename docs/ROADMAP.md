@@ -306,13 +306,22 @@ public corpus, cannot regress a note.
   evaluated and set aside (MPL-2.0; candle/`ort` backends). On the
   raw mix: Gotye lines median −0.02 s (56 % within 1 s), Rasmus
   drifts (−18 s) — separation (L6) and gating (L3) are the next
-  steps, as planned. ⚠️ Registry URL points at release `models-v1`,
-  which must be created (378 MB asset) before `models install` works.
-- [ ] L3 gating and fallback · [ ] L4 renderer · [ ] L5 eval harness ·
-  [ ] L6 separation + multilingual — acceptance criteria in the
-  plan's §9. L3 gains a case from L2: stamps beyond the audio's
-  length / a delta that grows = a different edit, not a failed
-  alignment.
+  steps, as planned. Release `models-v1` published 2026-09-05
+  (model + NOTICE + Apache-2.0 + SHA256SUMS); `models install`
+  verified from it: 378 MB in 14 s, hash intact.
+- [x] **L3 — gating and fallback** *(v0.14.13)*. `gate.rs`: verdict
+  on the source (no reference / same master / shifted master /
+  different edit / failed) from per-line deltas — consensus majority
+  within 1.5 s, clean drift = different edit, stamps past the end =
+  different edit; sprinted (one frame per letter) and >5 s words
+  estimated + retimed; >30 % estimated or an outlier line → line
+  level on the source stamp (own span when the source is no
+  reference; every line when failed). Confidence floor off by
+  default (not discriminative on the mix). 7 tests, 9 mutations seen
+  to bite; four real songs each judged as their data deserves.
+  Thresholds are assumptions until L5 calibrates them.
+- [ ] L4 renderer · [ ] L5 eval harness · [ ] L6 separation +
+  multilingual — acceptance criteria in the plan's §9.
 - [ ] C1 Beat This! A/B · [ ] C2 stems · [ ] C3 Basic Pitch ·
   [ ] C4 structure — only after L ships, each by ear against
   `chart-feel-good-20260826`.

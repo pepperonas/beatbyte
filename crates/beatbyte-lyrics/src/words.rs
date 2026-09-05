@@ -75,6 +75,10 @@ pub struct Alignment {
     /// A constant shift applied at display time, in milliseconds
     /// (per song; 0 when nothing has been adjusted).
     pub offset_ms: i32,
+    /// What the confidence gate decided, when it ran (absent in a
+    /// raw alignment). See [`crate::gate`](mod@crate::gate).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gate: Option<crate::gate::GateReport>,
     /// The lines.
     pub lines: Vec<AlignedLine>,
 }
@@ -139,6 +143,7 @@ mod tests {
                 aligner: "wav2vec2-base-960h@sha256:e466".to_owned(),
             },
             offset_ms: 0,
+            gate: None,
             lines: vec![AlignedLine {
                 start: 44.12,
                 end: 45.24,

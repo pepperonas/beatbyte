@@ -14,6 +14,8 @@
 //! - [`emissions`] — windows of 16 kHz audio through the acoustic
 //!   model (via `beatbyte-ml`), stitched into one emission matrix
 //! - [`words`] — the `words.json` schema and its enhanced-LRC export
+//! - [`gate`](mod@gate) — confidence gating and fallback: a result
+//!   never ships worse than the line-level lyrics the player had
 //! - [`align`](mod@align) — the whole pipeline, audio in, alignment out
 //!
 //! Everything a result depends on is recorded in it: the audio's
@@ -24,10 +26,12 @@
 pub mod align;
 pub mod ctc;
 pub mod emissions;
+pub mod gate;
 pub mod transcript;
 pub mod words;
 
 pub use align::{AlignOutcome, align};
+pub use gate::{GateConfig, GateReport, Verdict, gate};
 pub use transcript::Transcript;
 pub use words::{AlignedLine, AlignedWord, Alignment};
 

@@ -195,6 +195,10 @@ enum Command {
         /// Where to write the alignment instead of beside the audio.
         #[arg(long)]
         out: Option<PathBuf>,
+        /// Skip the confidence gate: write what the aligner produced,
+        /// with no word marked estimated and no line-level fallback.
+        #[arg(long)]
+        raw: bool,
     },
 }
 
@@ -295,7 +299,12 @@ fn main() -> ExitCode {
         ),
         Command::Demo { out_dir } => demo(&out_dir),
         #[cfg(feature = "ml")]
-        Command::Align { audio, lyrics, out } => align::run(&audio, &lyrics, out),
+        Command::Align {
+            audio,
+            lyrics,
+            out,
+            raw,
+        } => align::run(&audio, &lyrics, out, raw),
         #[cfg(feature = "ml")]
         Command::Models { action } => match action {
             ModelsAction::List => models::list(),

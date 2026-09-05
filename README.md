@@ -35,7 +35,7 @@
 [![SemVer](https://img.shields.io/badge/versioning-SemVer-blue)](CHANGELOG.md)
 [![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735)](CHANGELOG.md)
 [![Conventional Commits](https://img.shields.io/badge/commits-Conventional-FE5196)](https://www.conventionalcommits.org/)
-[![Tests](https://img.shields.io/badge/tests-806%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-813%20passing-brightgreen)](#testing)
 [![Clippy](https://img.shields.io/badge/clippy-%E2%80%91D%20warnings-brightgreen?logo=rust)](Cargo.toml)
 [![rustfmt](https://img.shields.io/badge/style-rustfmt-orange?logo=rust)](Cargo.toml)
 [![Rustdoc](https://img.shields.io/badge/public%20API-documented-blue)](Cargo.toml)
@@ -412,7 +412,7 @@ The repository is a Cargo workspace:
 | `beatbyte-cli` | `beatbyte` command line: analyze, generate, validate. |
 | `beatbyte-editor` | The chart editor’s invertible edit operations (undo/redo). |
 | `beatbyte-ml` | Local ML runtime (ADR-0013): a compiled-in registry of pinned models, a verified download store and a deterministic inference session. Linked only behind the `ml` feature; the default build never touches it. |
-| `beatbyte-lyrics` | Word- and character-level karaoke timing: known lyric text force-aligned against the song's own audio (CTC Viterbi over `wav2vec2-base-960h` emissions, windowed and stitched), written as `words.json` beside the audio. Behind `ml`. |
+| `beatbyte-lyrics` | Word- and character-level karaoke timing: known lyric text force-aligned against the song's own audio (CTC Viterbi over `wav2vec2-base-960h` emissions, windowed and stitched), gated so it never ships worse than the line-level lyrics (per word, per line, and a verdict on the source's stamps), written as `words.json` beside the audio. Behind `ml`. |
 | `apps/beatbyte` | The shippable game binary. |
 
 Architecture decisions are documented as ADRs in
@@ -476,7 +476,7 @@ beatbyte-cli demo                  # render the synthesized reference tracks
 ## Testing
 
 ```bash
-cargo test --workspace          # 806 tests
+cargo test --workspace          # 813 tests
 ```
 
 | Crate | Tests | Covers |
@@ -488,7 +488,7 @@ cargo test --workspace          # 806 tests
 | `beatbyte-cli` | 21 | The play-history export (CSV quoting, UTC stamps, report filters), review analytics, the design dossier and the redesign rollout: section windowing, evidence thresholds, hash binding, the mastery veto, write instructions, carried difficulties |
 | `beatbyte-editor` | 19 | Every edit operation round-trips through its own inverse |
 | `beatbyte-ml` | 14 | The model registry's well-formedness checks, SHA-256 over bytes, files and pieces, and — against a web server the test starts and an ONNX graph the test encodes by hand — the store's four refusals (wrong bytes, short reply, oversized reply, cancel) leaving nothing behind, the runtime's bit-identical repeat runs on its pinned pool, and its cache |
-| `beatbyte-lyrics` | 21 | The transcript cleanup (stamps, tags, `(x2)`, accents, letterless words), the forced sequence with its word boundaries, the CTC Viterbi on synthetic emissions (placement, the blank between equal letters, the transcript winning over the model, errors instead of panics, a song-sized sequence in bounded time), the window plan keeping every frame once, the model's frame arithmetic, spans landing on their words with estimated words timed between neighbours, the stats against source stamps, the `words.json` round trip and the LRC export |
+| `beatbyte-lyrics` | 28 | The transcript cleanup (stamps, tags, `(x2)`, accents, letterless words), the forced sequence with its word boundaries, the CTC Viterbi on synthetic emissions (placement, the blank between equal letters, the transcript winning over the model, errors instead of panics, a song-sized sequence in bounded time), the window plan keeping every frame once, the model's frame arithmetic, spans landing on their words with estimated words timed between neighbours, the stats against source stamps, the `words.json` round trip and the LRC export, and the confidence gate (verdict from the deltas — consensus, clean drift, stamps past the end; sprinted and endless words estimated and retimed; line fallback on the source's stamp, on the line's own span for a different edit, everywhere for a failed alignment; letterless lines not voting; the confidence floor off by default) |
 | `beatbyte` | 15 | Documentation consistency: these numbers, the version, the badges, the links, the ADR index, the harness switches, the network claim against the code, the figures the rules document quotes, and the two synthesized reference tracks' chart fingerprints (at millisecond resolution, which the projection itself is tested for) |
 
 Integration tests decode real fixture files for each supported format,

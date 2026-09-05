@@ -14,6 +14,47 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.13] - 2026-09-05
+
+### Added
+
+- **The confidence gate** (plan milestone L3, `beatbyte-lyrics::gate`,
+  on by default in `beatbyte-cli align`, `--raw` skips it). An
+  alignment must never ship a worse experience than the line-level
+  lyrics the player already had, so three questions are asked in
+  order. *Is the source's timeline this file's?* Stamps past the end
+  of the audio, or a delta that grows cleanly along the song, are a
+  **different edit**: aligned times are kept, the source cannot serve
+  as a fallback. *Do aligned and source agree up to a constant?* When
+  a majority of lines sit within 1.5 s of the median delta there is a
+  consensus (the median is the master shift; beyond 1.5 s it is
+  reported as **another master**); when no majority exists the
+  alignment **failed** and every line falls back to the source's own
+  stamps. *Which words are not to be trusted?* A word the Viterbi
+  sprinted through (one frame per letter — no acoustic evidence) or
+  held for over 5 s is kept, marked `estimated`, and timed between
+  its trusted neighbours; a line with more than 30 % of them, or one
+  whose delta is an outlier against the consensus, falls back to
+  line level on the source's stamp — per line, never per song. The
+  per-word confidence floor exists but defaults to off: on a full mix
+  the model's probabilities are low even where the timing is right
+  (0.01–0.16 on a correctly aligned song). `words.json` gains an
+  additive `gate` block (verdict, lines compared, consensus, median,
+  MAD, counts). Lines without aligned letters (`♪`) do not vote.
+- Measured on the four songs of L2, each verdict as the data
+  deserves: Gotye same master (61 % consensus, 18 of 43 lines to line
+  level — the intro pulled early, the overlapping outro); Aguilera
+  same master at −1.34 s (68 %, the stacked choruses fall back
+  line by line — a MAD threshold would have discarded the good
+  two thirds); Rasmus **failed** (9 %, the delta wanders −5 → −44 s
+  without being a line, the model lost the vocal in the rock mix)
+  and falls back whole to stamps that fit the file; Blondie
+  **different edit** (stamps to 272 s in 248 s of audio). Every
+  threshold is a `GateConfig` field with a default that is an
+  assumption; the corpus harness (L5) is where they get calibrated.
+- `models install` verified end to end against the published release
+  `models-v1`: 378 MB in 14 s, SHA-256 checked, `verify` intact.
+
 ## [0.14.12] - 2026-09-05
 
 ### Added

@@ -98,6 +98,7 @@ pub fn align(
             ),
         },
         offset_ms: 0,
+        gate: None,
         lines,
     };
     Ok(AlignOutcome { alignment, stats })
