@@ -208,11 +208,17 @@ Lauper (0.39), Nirvana (0.49) and Bon Jovi (0.16) sing English. It is
 loudness: a dense mix buries the voice, and the eight songs that
 already failed to align sit there.
 
+**22 of the 52 read below the floor of 1.0.** Their alignments may no
+longer claim a shift against the source's stamps, and their word
+times are marked estimated — those songs sing by the line, which is
+what the pipeline actually knows about them.
+
 ⚠️ **The measure has a known confound**: a song with long
 instrumental passages produces fewer letters a second even when its
-vocal is perfectly legible. The floor is placed with that in mind,
-against measured word error rather than at the elbow of this
-distribution.
+vocal is perfectly legible. That is why the floor was placed against
+measured word error on the corpus rather than at the elbow of this
+distribution — see
+[`evaluation.md`](evaluation.md#where-the-floor-sits-and-why-that-number).
 
 ## What is still open
 

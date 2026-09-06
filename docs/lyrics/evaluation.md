@@ -274,7 +274,7 @@ deserved.
 reads 0.65 letters a second and aligns to within a second;
 *Color Out — Falling Star* reads 1.74 and is 18 s out. The claim is
 only the negative one: below the floor an alignment carries no
-information worth setting against a human's stamps. Sixteen of the
+information worth setting against a human's stamps. Seventeen of the
 79 corpus songs are below it, and their median error is fifteen
 seconds — that is not timing, it is noise with a verdict attached.
 

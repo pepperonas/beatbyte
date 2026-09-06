@@ -394,10 +394,26 @@ public corpus, cannot regress a note.
   not see; when it agrees, a tighter third pass runs. PCO@0.1 48.8 →
   50.3 % on time and 47.4 → 48.0 % when the source is 3 s off,
   uncertain words 30.2 → 25.8 %, nothing lost.
+- [x] **An alignment is only evidence if the model heard the song**
+  *(v0.14.26)*. A user-reported bug: Böhse Onkelz' *Mexico* ran 3.3 s
+  early under a confident "shifted master, 85 % agreement". The
+  anchored pass centres its windows on the shift it is meant to test,
+  so on a mix the model cannot read the words land in the windows and
+  the consensus measures the window. The gate now reads the model's
+  own greedy letter rate off the emissions it already has, and below
+  **1.0 letters a second** an alignment may neither claim a shift nor
+  pass its word times off as knowledge. The floor is measured, not
+  chosen: median word error on the corpus is 15.46 s below it and
+  0.78 s above. Word confidence was the obvious measure and the data
+  rejected it.
 - [ ] The cheap mid/side + band-pass vocal emphasis (the plan's own
   fallback) — still unmeasured; the blank prior from the model's own
   voice activity (`--example voice`) is the likelier lever for
-  sources with no stamps at all.
+  sources with no stamps at all. The legibility measure now in the
+  gate is the same signal, and it says how much there is to gain:
+  **22 of this library's 52 songs and 17 of the corpus's 79 read
+  below 1.0 letters a second**, which is exactly the population a
+  vocal emphasis would move.
 - [ ] C1 Beat This! A/B · [ ] C2 stems · [ ] C3 Basic Pitch ·
   [ ] C4 structure — only after L ships, each by ear against
   `chart-feel-good-20260826`.
