@@ -56,6 +56,10 @@ pub enum SortMode {
     /// The CHART column: the import's own draft first, then by
     /// generation.
     Chart,
+    /// The AUDIO column: the files the loudness pass judged poor
+    /// first, then fair, then good, the unmeasured last — a list of
+    /// what still wants a better file.
+    Audio,
 }
 
 impl SortMode {
@@ -72,7 +76,8 @@ impl SortMode {
             SortMode::Diff => SortMode::Best,
             SortMode::Best => SortMode::Lyrics,
             SortMode::Lyrics => SortMode::Chart,
-            SortMode::Chart => SortMode::Standard,
+            SortMode::Chart => SortMode::Audio,
+            SortMode::Audio => SortMode::Standard,
         }
     }
 
@@ -90,6 +95,7 @@ impl SortMode {
             SortMode::Diff => "DIFF",
             SortMode::Lyrics => "LYRICS",
             SortMode::Chart => "CHART",
+            SortMode::Audio => "AUDIO",
         }
     }
 }
@@ -111,6 +117,7 @@ impl SortMode {
             "diff" => Some(SortMode::Diff),
             "lyrics" | "lyr" => Some(SortMode::Lyrics),
             "chart" => Some(SortMode::Chart),
+            "audio" => Some(SortMode::Audio),
             _ => None,
         }
     }
@@ -243,6 +250,16 @@ fn build_order(
         SortMode::Chart => {
             // The import's own draft first, then by generation.
             order.sort_by_key(|i| (entries[*i].polish.chart_version.unwrap_or(0), tie(i)));
+        }
+        SortMode::Audio => {
+            // The poor files first: a browser sorted by this column
+            // is a list of what still wants a better file.
+            order.sort_by_key(|i| {
+                (
+                    crate::loudness::audio_rank(entries[*i].loudness.as_ref()),
+                    tie(i),
+                )
+            });
         }
         SortMode::Notes => {
             order.sort_by_key(|i| {
@@ -511,6 +528,10 @@ const COL_BEST: f32 = 92.0;
 const COL_LYRICS: f32 = 52.0;
 /// The CHART column: `BASE` or `v12`.
 const COL_CHART: f32 = 46.0;
+/// The AUDIO column: `OK`, `FAIR`, `POOR` or `-` — the loudness
+/// pass's verdict on the file, in words (a mark that is only a
+/// colour is unreadable to a player who cannot tell colours apart).
+const COL_AUDIO: f32 = 52.0;
 
 fn spawn_browser(mut commands: Commands, font: Res<UiFont>, mut view: ResMut<BrowserView>) {
     // The search is not open when the screen is entered: coming back
@@ -637,6 +658,7 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
                     caption(head, "DIFF", SortMode::Diff, Some(COL_RATING));
                     caption(head, "CHART", SortMode::Chart, Some(COL_CHART));
                     caption(head, "LYRICS", SortMode::Lyrics, Some(COL_LYRICS));
+                    caption(head, "AUDIO", SortMode::Audio, Some(COL_AUDIO));
                     caption(head, "BEST", SortMode::Best, Some(COL_BEST));
                 });
             parent.spawn((SongList, ui_kit::scroll_panel(ui_kit::PANEL_WIDE)));
@@ -1210,6 +1232,15 @@ fn spawn_rows_into(
                     let polish = entry.polish;
                     spawn_chart_mark(row, polish.chart_mark());
                     spawn_lyrics_mark(row, polish.lyrics_mark());
+                    // The file's quality, in a word; the detail line
+                    // under the list says why.
+                    cell(
+                        row,
+                        font,
+                        position,
+                        crate::loudness::audio_label(entry.loudness.as_ref()).to_owned(),
+                        COL_AUDIO,
+                    );
                     cell(row, font, position, best, COL_BEST);
                 });
         }
@@ -1497,6 +1528,7 @@ fn refresh_browser(
             SortMode::Best => "BEST",
             SortMode::Lyrics => "LYRICS",
             SortMode::Chart => "CHART",
+            SortMode::Audio => "AUDIO",
             SortMode::Standard => "",
         };
         let wanted = caption_label(base, header.0, &view);
@@ -1755,6 +1787,7 @@ mod column_tests {
             "\"DIFF\"",
             "\"CHART\"",
             "\"LYRICS\"",
+            "\"AUDIO\"",
             "\"BEST\"",
         ];
         let heads: Vec<usize> = captions
@@ -1769,9 +1802,12 @@ mod column_tests {
         // comes before the lyrics mark, and both before the score.
         let chart = at("spawn_chart_mark(row,");
         let lyrics = at("spawn_lyrics_mark(row,");
+        let audio = at("crate::loudness::audio_label(entry.loudness");
         let best = at("cell(row, font, position, best, COL_BEST)");
         assert!(chart < lyrics, "the row must draw CHART before LYRICS");
-        assert!(lyrics < best, "both marks come before the score");
+        assert!(lyrics < audio, "the AUDIO word comes after the lyrics mark");
+        assert!(audio < best, "all three come before the score");
+        assert!(source.contains("caption(head, \"AUDIO\", SortMode::Audio, Some(COL_AUDIO))"));
         // And the columns each mark is measured in are the ones its
         // caption reserves.
         assert!(source.contains("caption(head, \"CHART\", SortMode::Chart, Some(COL_CHART))"));
@@ -1866,6 +1902,39 @@ mod view_tests {
             2,
             "the untagged song is last"
         );
+    }
+
+    #[test]
+    fn audio_sorts_the_poor_files_first_and_the_unmeasured_last() {
+        use crate::loudness::LoudnessMark;
+        use beatbyte_audio::quality::Verdict;
+        let mark = |verdict: Verdict| {
+            Some(LoudnessMark {
+                gain_db: 0.0,
+                peak_limited: false,
+                verdict,
+                issue: None,
+            })
+        };
+        let mut good = entry("Good", "a", None, 100.0);
+        good.loudness = mark(Verdict::Good);
+        let mut poor = entry("Poor", "b", None, 100.0);
+        poor.loudness = mark(Verdict::Poor);
+        let mut fair = entry("Fair", "c", None, 100.0);
+        fair.loudness = mark(Verdict::Fair);
+        let unmeasured = entry("Unknown", "d", None, 100.0);
+        let entries = vec![good, unmeasured, fair, poor];
+        let order = build_order(
+            &entries,
+            SortMode::Audio,
+            false,
+            Difficulty::Medium,
+            "",
+            |_| None,
+        );
+        let titles: Vec<&str> = order.iter().map(|i| entries[*i].title.as_str()).collect();
+        assert_eq!(titles, vec!["Poor", "Fair", "Good", "Unknown"]);
+        assert_eq!(SortMode::from_label("AUDIO"), Some(SortMode::Audio));
     }
 
     #[test]
@@ -2136,14 +2205,14 @@ mod view_tests {
     fn the_sort_cycle_visits_every_mode_and_returns() {
         let mut mode = SortMode::Standard;
         let mut seen = vec![mode];
-        for _ in 0..9 {
+        for _ in 0..10 {
             mode = mode.next();
             seen.push(mode);
         }
         assert_eq!(mode.next(), SortMode::Standard, "the cycle closes");
         seen.sort_by_key(|m| m.label());
         seen.dedup();
-        assert_eq!(seen.len(), 10, "every mode is reachable");
+        assert_eq!(seen.len(), 11, "every mode is reachable");
     }
 
     #[test]

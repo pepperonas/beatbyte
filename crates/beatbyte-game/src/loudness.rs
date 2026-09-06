@@ -89,6 +89,31 @@ pub fn quality_marker(mark: Option<&LoudnessMark>) -> String {
     }
 }
 
+/// The AUDIO column's word: the verdict, or `-` for a song without a
+/// measurement. Words, not colours — the list must read without
+/// them. Pure — tested.
+#[must_use]
+pub fn audio_label(mark: Option<&LoudnessMark>) -> &'static str {
+    match mark.map(|m| m.verdict) {
+        None => "-",
+        Some(Verdict::Good) => "OK",
+        Some(Verdict::Fair) => "FAIR",
+        Some(Verdict::Poor) => "POOR",
+    }
+}
+
+/// The AUDIO column's sort key: poor first, then fair, good, and the
+/// unmeasured last. Pure — tested.
+#[must_use]
+pub fn audio_rank(mark: Option<&LoudnessMark>) -> u8 {
+    match mark.map(|m| m.verdict) {
+        Some(Verdict::Poor) => 0,
+        Some(Verdict::Fair) => 1,
+        Some(Verdict::Good) => 2,
+        None => 3,
+    }
+}
+
 /// One line for an import's status: the warning a poor or fair file
 /// earns, or nothing.
 #[must_use]
@@ -136,6 +161,23 @@ mod tests {
         assert!((song_gain_for(&memory, &settings) - 1.0).abs() < 1e-6);
         let nowhere = SongAudio::File(std::path::PathBuf::from("/no/such/song.m4a"));
         assert!((song_gain_for(&nowhere, &settings) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn the_column_word_and_rank_follow_the_verdict() {
+        assert_eq!(audio_label(None), "-");
+        assert_eq!(audio_label(Some(&mark(Verdict::Good, 0.0))), "OK");
+        assert_eq!(audio_label(Some(&mark(Verdict::Fair, 0.0))), "FAIR");
+        assert_eq!(audio_label(Some(&mark(Verdict::Poor, 0.0))), "POOR");
+        assert!(
+            audio_rank(Some(&mark(Verdict::Poor, 0.0)))
+                < audio_rank(Some(&mark(Verdict::Fair, 0.0)))
+        );
+        assert!(
+            audio_rank(Some(&mark(Verdict::Fair, 0.0)))
+                < audio_rank(Some(&mark(Verdict::Good, 0.0)))
+        );
+        assert!(audio_rank(Some(&mark(Verdict::Good, 0.0))) < audio_rank(None));
     }
 
     #[test]

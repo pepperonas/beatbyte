@@ -14,6 +14,20 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.34] - 2026-09-06
+
+### Added
+
+- **The song list shows each file's audio quality.** A new AUDIO
+  column between LYRICS and BEST carries the loudness pass's verdict
+  in a word — `OK`, `FAIR`, `POOR`, or `-` for a song not yet
+  measured — so a poor file is visible in the list, not only in the
+  detail line under it (which still names the reason). The column
+  sorts like every other (click its caption, or `S`): poor first,
+  then fair, good, the unmeasured last — a list of what still wants
+  a better file. Words rather than a colour, so the column reads to
+  a player who cannot tell colours apart.
+
 ## [0.14.33] - 2026-09-06
 
 ### Added

@@ -60,9 +60,11 @@ read the signal (`beatbyte-audio::quality`):
 The verdict is the worst issue; every threshold is a named constant
 and the verdict function is pinned at each of them. A **poor** or
 **fair** file is still imported (the user's call) — the import line
-says `"Song" imported - audio poor: spectrum ends at 11.0 kHz`, and
-the song browser's detail line carries `!! spectrum ends at 11.0 kHz`
-(`!` for fair) for as long as the sidecar says so.
+says `"Song" imported - audio poor: spectrum ends at 11.0 kHz`; the
+song list's AUDIO column shows the verdict in a word (`OK`, `FAIR`,
+`POOR`, `-` unmeasured; sortable, poor first) and the detail line
+under the list carries `!! spectrum ends at 11.0 kHz` (`!` for fair)
+for as long as the sidecar says so.
 
 ## The sidecar
 
