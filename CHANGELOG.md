@@ -14,6 +14,35 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.32] - 2026-09-06
+
+### Added
+
+- **Repeated sections are charted identically.** The generator read
+  every chorus afresh, and the same music came out as two different
+  charts at minute one and minute three. The analysis now finds the
+  song's repeated spans from its own self-similarity (beat-wise
+  chroma and spectral envelope centred on the song, the
+  self-similarity matrix's diagonals scanned for runs of at least
+  eight bars, aligned to bars; `SongAnalysis.repeats`), and the
+  generator copies the master notes of each repeat's first
+  occurrence onto its second before the difficulties derive — one
+  reading of the chorus on every difficulty. Measured on the
+  library (70 folders): 62 songs have repeats, 1.85 a song on
+  average covering 36 % of the beats, and before the copy their
+  expert charts agreed with themselves on 25 % of the repeated
+  notes (0.00–0.46, no song above a half) — identical music charted
+  as two charts; after the copy 0.85–1.00 at expert (46 of the 62 at
+  1.00, mean 0.99 — the difficulties are thinned from the master
+  under a song-wide budget, so a note at a span's edge can still fall
+  either way), the reference tracks 0.89–1.00 on every level. The
+  two synthesized reference tracks are loop-based, so their
+  fingerprints moved once with this and are re-recorded. `analyze`
+  lists the repeats, `redesign` prints each folder's consistency.
+  Pure, deterministic, no model; the synthetic A-B-A-C pin finds
+  exactly the planted chorus and nothing in appended silence (the
+  first real run matched a rip's silent tail with itself at 1.00).
+
 ## [0.14.31] - 2026-09-06
 
 ### Added

@@ -138,6 +138,7 @@ mod tests {
 
     fn analysis() -> SongAnalysis {
         SongAnalysis {
+            repeats: Vec::new(),
             bpm: 120.0,
             bpm_confidence: 0.9,
             alt_bpm: Some(60.0),

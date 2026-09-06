@@ -44,6 +44,23 @@ impl MelodyNote {
     }
 }
 
+/// Two spans of the song that are the same music: `beats` beats
+/// starting at beat index `first_beat` and again at `second_beat`
+/// (indices into [`SongAnalysis::beats`]). Found by the structure
+/// stage from the song's self-similarity; the generator charts the
+/// second occurrence as a copy of the first.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Repeat {
+    /// Beat index where the first occurrence starts.
+    pub first_beat: usize,
+    /// Beat index where the second occurrence starts.
+    pub second_beat: usize,
+    /// Length of both occurrences, in beats.
+    pub beats: usize,
+    /// Mean per-beat similarity along the pair, 0–1.
+    pub similarity: f32,
+}
+
 /// The result of analyzing a song.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SongAnalysis {
@@ -75,6 +92,12 @@ pub struct SongAnalysis {
     /// found — consumers must treat that as "fall back to onsets".
     #[serde(default)]
     pub melody: Vec<MelodyNote>,
+    /// Repeated spans (the same music twice), non-overlapping,
+    /// ascending by first occurrence; beat indices into `beats`, so
+    /// a stage that replaces the grid recomputes them. Empty when no
+    /// structure stage ran or nothing repeats.
+    #[serde(default)]
+    pub repeats: Vec<Repeat>,
 }
 
 impl SongAnalysis {
@@ -101,6 +124,7 @@ mod tests {
 
     fn analysis() -> SongAnalysis {
         SongAnalysis {
+            repeats: Vec::new(),
             bpm: 120.0,
             bpm_confidence: 0.9,
             alt_bpm: Some(60.0),

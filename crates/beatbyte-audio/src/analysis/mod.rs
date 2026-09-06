@@ -7,6 +7,7 @@ pub mod beats;
 pub mod envelope;
 pub mod melody;
 pub mod onset;
+pub mod structure;
 pub mod tempo;
 
 use beatbyte_core::music::SongAnalysis;
@@ -28,6 +29,8 @@ pub struct AnalyzerConfig {
     pub melody: MelodyConfig,
     /// How the beat grid is produced.
     pub grid: GridConfig,
+    /// How repeated sections are found.
+    pub structure: structure::StructureConfig,
 }
 
 /// An analysis implementation. The trait keeps the pipeline
@@ -93,6 +96,10 @@ impl Analyzer for SpectralAnalyzer {
         };
 
         let melody = melody::extract_melody(&prepared, &self.config.melody);
+        // Repeated sections, on this grid. The analyzer knows no
+        // downbeats; a stage that adds them (or replaces the grid)
+        // recomputes the repeats — they are beat indices.
+        let repeats = structure::find_repeats(&prepared, &beats, &[], &self.config.structure);
 
         let energy_window = prepared.sample_rate() as usize / 10; // 100 ms
         let energy_hop = energy_window / 2; // 50 ms
@@ -110,6 +117,7 @@ impl Analyzer for SpectralAnalyzer {
             energy_hop_s,
             duration_s,
             melody,
+            repeats,
         }
     }
 }

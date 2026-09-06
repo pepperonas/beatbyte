@@ -14,7 +14,7 @@
 
 use beatbyte_core::Difficulty;
 use beatbyte_core::lane::LANE_COUNT;
-use beatbyte_core::music::SongAnalysis;
+use beatbyte_core::music::{Repeat, SongAnalysis};
 
 use crate::grid::{BeatGrid, SNAP_TOLERANCE_S};
 use crate::schema::{ChartDef, ChartFile, ChartNote, ChartPhrase, SongMeta};
@@ -278,7 +278,115 @@ fn build_master(analysis: &SongAnalysis, grid_origin_s: f64) -> Vec<MasterNote> 
         previous_lane = Some(lane);
     }
     break_jacks(&mut master);
-    master
+    unify_repeats(master, analysis)
+}
+
+/// Repeated sections charted identically (C4): for every repeat the
+/// analysis found, the master notes of the FIRST occurrence are
+/// copied onto the SECOND, beat by beat — each note keeps its
+/// position inside its beat, its lane, its strength and its tail
+/// (scaled to the target beat) — replacing whatever the second
+/// occurrence had. A human charter charts a chorus once and pastes
+/// it; a generator that reads each chorus afresh charts the same
+/// music two ways, which is the most audible "generated" tell. Runs
+/// on the master, so every difficulty inherits one reading.
+/// Repeats the grid cannot hold (beat indices past the grid) are
+/// skipped; repeats never overlap (the finder guarantees it), so the
+/// order of application does not matter.
+fn unify_repeats(master: Vec<MasterNote>, analysis: &SongAnalysis) -> Vec<MasterNote> {
+    let beats = &analysis.beats;
+    if analysis.repeats.is_empty() || beats.len() < 2 {
+        return master;
+    }
+    let grid = BeatGrid::from_beats(beats);
+    let mut out = master;
+    for repeat in &analysis.repeats {
+        let (a, b, len) = (repeat.first_beat, repeat.second_beat, repeat.beats);
+        if len == 0 || a + len >= beats.len() || b + len > beats.len() || b < a + len {
+            continue;
+        }
+        let span_a = beats[a]..beats[a + len];
+        let span_b = beats[b]..beats.get(b + len).copied().unwrap_or(analysis.duration_s);
+        // The template: the first occurrence's notes as (beat within
+        // the span, position within that beat, the note).
+        let template: Vec<(usize, f64, MasterNote)> = out
+            .iter()
+            .filter(|n| span_a.contains(&n.time_s))
+            .map(|n| {
+                let j = beats[a..=a + len].partition_point(|t| *t <= n.time_s) - 1;
+                let from = beats[a + j];
+                let to = beats[a + j + 1];
+                ((n.time_s - from) / (to - from).max(f64::EPSILON), j, *n)
+            })
+            .map(|(frac, j, n)| (j, frac, n))
+            .collect();
+        out.retain(|n| !span_b.contains(&n.time_s));
+        for (j, frac, n) in template {
+            let from = beats[b + j];
+            let to = beats.get(b + j + 1).copied().unwrap_or(span_b.end);
+            let source_beat = beats[a + j + 1] - beats[a + j];
+            let target_beat = to - from;
+            let raw = from + frac * target_beat;
+            // Land exactly on the target beat's subdivision — the
+            // fraction carries float noise, the grid does not.
+            let time_s = grid.quantize(raw, SNAP_TOLERANCE_S).unwrap_or(raw);
+            out.push(MasterNote {
+                time_s,
+                strength: n.strength,
+                lane: n.lane,
+                held_s: n.held_s * (target_beat / source_beat.max(f64::EPSILON)),
+                pitched: n.pitched,
+            });
+        }
+    }
+    out.sort_by(|x, y| {
+        x.time_s
+            .partial_cmp(&y.time_s)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    out
+}
+
+/// How identically a chart plays its repeated sections: over every
+/// repeat, the share of the second occurrence's notes that have a
+/// note of the same lane at the same position within the same beat
+/// (±`tolerance_s`) in the first occurrence. `None` without repeats
+/// or without notes in any second occurrence. Pure — the measure
+/// the C4 pin and the library numbers use.
+#[must_use]
+pub fn repeat_consistency(
+    notes: &[ChartNote],
+    beats: &[f64],
+    repeats: &[Repeat],
+    duration_s: f64,
+    tolerance_s: f64,
+) -> Option<f64> {
+    let (mut matched, mut total) = (0usize, 0usize);
+    for repeat in repeats {
+        let (a, b, len) = (repeat.first_beat, repeat.second_beat, repeat.beats);
+        if len == 0 || a + len >= beats.len() || b + len > beats.len() {
+            continue;
+        }
+        let end_b = beats.get(b + len).copied().unwrap_or(duration_s);
+        for note in notes
+            .iter()
+            .filter(|n| n.time >= beats[b] && n.time < end_b)
+        {
+            total += 1;
+            let j = beats[b..].partition_point(|t| *t <= note.time) - 1;
+            let frac = (note.time - beats[b + j])
+                / (end_b.min(beats.get(b + j + 1).copied().unwrap_or(end_b)) - beats[b + j])
+                    .max(f64::EPSILON);
+            let expected = beats[a + j] + frac * (beats[a + j + 1] - beats[a + j]);
+            if notes
+                .iter()
+                .any(|m| m.lane == note.lane && (m.time - expected).abs() <= tolerance_s)
+            {
+                matched += 1;
+            }
+        }
+    }
+    (total > 0).then(|| matched as f64 / total as f64)
 }
 
 /// Rewrite machine-gun jacks into trills, at the master level so
@@ -1120,6 +1228,7 @@ mod tests {
         }
         let beats: Vec<f64> = (0..136).map(|i| 1.0 + i as f64 * beat).collect();
         SongAnalysis {
+            repeats: Vec::new(),
             downbeats: Vec::new(),
             bpm: 120.0,
             bpm_confidence: 0.8,
@@ -1190,6 +1299,125 @@ mod tests {
         let mut flat = analysis;
         flat.beats.clear();
         assert!(generate_chart(&flat, &meta()).grid.is_none());
+    }
+
+    /// A steady 120 BPM song with two eight-bar spans of DIFFERENT
+    /// onsets that the analysis declares the same music: without the
+    /// copy they chart differently, with it the second is the first.
+    fn repeating_analysis(with_repeat: bool) -> SongAnalysis {
+        let beats: Vec<f64> = (0..160).map(|i| f64::from(i) * 0.5).collect();
+        let mut onsets = Vec::new();
+        let pattern = |beat: usize, salt: usize| -> Vec<(f64, f32, f32)> {
+            // Eighths with a lane-driving brightness that differs per span.
+            let t = beat as f64 * 0.5;
+            let b = ((beat * 7 + salt) % 10) as f32 / 10.0;
+            vec![(t, 0.9, b), (t + 0.25, 0.5, 1.0 - b)]
+        };
+        for beat in 8..40 {
+            for (time_s, strength, brightness) in pattern(beat, 1) {
+                onsets.push(Onset {
+                    time_s,
+                    strength,
+                    brightness,
+                });
+            }
+        }
+        for beat in 72..104 {
+            for (time_s, strength, brightness) in pattern(beat, 5) {
+                onsets.push(Onset {
+                    time_s,
+                    strength,
+                    brightness,
+                });
+            }
+        }
+        SongAnalysis {
+            bpm: 120.0,
+            bpm_confidence: 1.0,
+            alt_bpm: None,
+            beats,
+            downbeats: Vec::new(),
+            onsets,
+            energy: vec![0.8; 1600],
+            energy_hop_s: 0.05,
+            duration_s: 80.0,
+            melody: Vec::new(),
+            repeats: if with_repeat {
+                vec![Repeat {
+                    first_beat: 8,
+                    second_beat: 72,
+                    beats: 32,
+                    similarity: 0.95,
+                }]
+            } else {
+                Vec::new()
+            },
+        }
+    }
+
+    #[test]
+    fn a_repeated_section_is_charted_as_a_copy_of_its_first_occurrence() {
+        let plain = repeating_analysis(false);
+        let unified = repeating_analysis(true);
+        let before = generate_chart(&plain, &meta());
+        let after = generate_chart(&unified, &meta());
+        let repeat = unified.repeats.clone();
+        for def in &after.charts {
+            let consistency = repeat_consistency(
+                &def.notes,
+                &unified.beats,
+                &repeat,
+                unified.duration_s,
+                0.001,
+            )
+            .expect("notes in the second occurrence");
+            assert!(
+                (consistency - 1.0).abs() < 1e-12,
+                "{:?}: {consistency}",
+                def.difficulty
+            );
+            // …and the first occurrence is untouched by the copy.
+            let plain_def = before
+                .charts
+                .iter()
+                .find(|d| d.difficulty == def.difficulty)
+                .expect("same difficulty");
+            let first = |d: &ChartDef| -> Vec<(f64, u8)> {
+                d.notes
+                    .iter()
+                    .filter(|n| n.time >= 4.0 && n.time < 20.0)
+                    .map(|n| (n.time, n.lane))
+                    .collect()
+            };
+            assert_eq!(first(def), first(plain_def), "{:?}", def.difficulty);
+        }
+        // Without the claim the two spans chart differently — the
+        // metric sees it, which is what makes the copy measurable.
+        let expert = before
+            .charts
+            .iter()
+            .find(|d| d.difficulty == Difficulty::Expert)
+            .expect("expert");
+        let loose =
+            repeat_consistency(&expert.notes, &plain.beats, &repeat, 80.0, 0.001).expect("notes");
+        assert!(loose < 0.9, "{loose}");
+        // Every copied note still sits on the grid.
+        let grid = after.grid.as_ref().expect("grid");
+        for def in &after.charts {
+            for note in &def.notes {
+                let snapped = grid.quantize(note.time, SNAP_TOLERANCE_S).expect("usable");
+                assert!((snapped - note.time).abs() < 1e-9, "{}", note.time);
+            }
+        }
+        // A repeat the grid cannot hold is skipped, not a panic.
+        let mut beyond = repeating_analysis(true);
+        beyond.repeats[0].second_beat = 150;
+        let chart = generate_chart(&beyond, &meta());
+        assert!(!chart.charts.is_empty());
+        assert_eq!(
+            repeat_consistency(&[], &beyond.beats, &beyond.repeats, 80.0, 0.001),
+            None
+        );
     }
 
     #[test]
@@ -1360,6 +1588,7 @@ mod tests {
         // live mix's reverb and crowd cut almost every sustain.
         let tail = |breaker_strength: f32| {
             let analysis = SongAnalysis {
+                repeats: Vec::new(),
                 bpm: 120.0,
                 bpm_confidence: 0.8,
                 alt_bpm: None,
@@ -1424,6 +1653,7 @@ mod tests {
             })
             .collect();
         SongAnalysis {
+            repeats: Vec::new(),
             bpm: 120.0,
             bpm_confidence: 0.8,
             alt_bpm: None,
@@ -1572,6 +1802,7 @@ mod tests {
             })
             .collect();
         let analysis = SongAnalysis {
+            repeats: Vec::new(),
             bpm: 120.0,
             bpm_confidence: 0.9,
             alt_bpm: None,
@@ -1752,6 +1983,7 @@ mod tests {
         }
         let beats: Vec<f64> = (0..118).map(|i| 1.0 + f64::from(i) * beat).collect();
         SongAnalysis {
+            repeats: Vec::new(),
             downbeats: Vec::new(),
             bpm: 120.0,
             bpm_confidence: 0.9,
@@ -1914,6 +2146,7 @@ mod tests {
             .collect();
         let beats: Vec<f64> = (0..118).map(|i| 1.0 + f64::from(i) * 0.5).collect();
         let analysis = SongAnalysis {
+            repeats: Vec::new(),
             downbeats: Vec::new(),
             bpm: 120.0,
             bpm_confidence: 0.9,
@@ -1996,6 +2229,7 @@ mod tests {
             }
         }
         let analysis = SongAnalysis {
+            repeats: Vec::new(),
             downbeats: Vec::new(),
             bpm: 120.0,
             bpm_confidence: 0.9,
@@ -2038,6 +2272,7 @@ mod tests {
             .collect();
         let beats: Vec<f64> = (0..118).map(|i| 1.0 + f64::from(i) * 0.5).collect();
         SongAnalysis {
+            repeats: Vec::new(),
             downbeats: Vec::new(),
             bpm: 120.0,
             bpm_confidence: 0.9,
@@ -2201,6 +2436,7 @@ mod tests {
             })
             .collect();
         let a = SongAnalysis {
+            repeats: Vec::new(),
             bpm: 120.0,
             bpm_confidence: 0.8,
             alt_bpm: None,
@@ -2236,6 +2472,7 @@ mod tests {
     #[test]
     fn empty_analysis_produces_valid_empty_charts() {
         let a = SongAnalysis {
+            repeats: Vec::new(),
             bpm: 120.0,
             bpm_confidence: 0.0,
             alt_bpm: None,

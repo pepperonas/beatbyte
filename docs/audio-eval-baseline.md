@@ -583,3 +583,91 @@ beatbyte-cli models install beat-this-mel
 beatbyte-cli models install beat-this          # or beat-this-small
 cargo run --release -p beatbyte-meter --example corpus -- <anlz-root> <audio-root> [--all]
 ```
+
+# Repeated sections charted identically (Phase 3c, 2026-09-06)
+
+A human charter charts a chorus once and pastes it. The generator
+read every chorus afresh, and because its lane choice carries a
+per-note hash and its thinning is a global budget, the same music at
+minute one and minute three came out as two different charts — the
+single most audible "generated" tell (plan, C4).
+
+## What was built
+
+`beatbyte-audio::analysis::structure` finds the pairs of beat spans
+that are the same music: per beat, a chroma vector and a 20-band log
+spectral envelope, both centred and scaled over the song's sounding
+beats (a silent tail otherwise drags the average away from the music
+— and matched itself at 1.00); the diagonals of the self-similarity
+matrix scanned for runs above a floor of 0.6 (smoothed over four
+beats, then grown back to the raw floor), at least eight bars long,
+snapped to bar lines, the longest and most similar non-overlapping
+pairs kept. `SongAnalysis.repeats` carries them; the meter recomputes
+them when it replaces the grid (they are beat indices). The generator
+then copies the master notes of every repeat's first occurrence onto
+its second, beat by beat, before the difficulties derive — so every
+difficulty inherits one reading of the chorus.
+
+## On real songs
+
+What the stage claims, on the analyzer's grid (beat spans as clock
+times; similarity is the mean cosine along the pair):
+
+| Song | repeats | coverage | the pairs |
+|---|---:|---:|---|
+| Nirvana – Smells Like Teen Spirit | 2 | 65 % | 0:18–1:30 = 1:32–2:44 (verse + chorus, both times); 3:44–4:02 = 4:04–4:22 |
+| Toto – Africa | 1 | 50 % | 0:36–1:43 = 1:43–2:51 |
+| Metallica – The Unforgiven | 3 | 42 % | 1:00–1:52 = 2:16–3:07; 1:53–2:09 = 3:09–3:24; the outro loop 5:13–5:26 = 5:26–5:40 |
+| Journey – Don't Stop Believin' | 2 | 40 % | 0:20–0:36 = 0:36–0:52; 1:20–1:54 = 2:31–3:05 |
+| Böhse Onkelz – Mexico | 1 | 15 % | 0:38–0:59 = 2:25–2:47 (the first chorus and the last) |
+
+Under 0.2 s a song. The synthetic pin: an A-B-A-C song where A is an
+eight-bar riff finds exactly A = A at the right beats (and nothing
+with the silence appended to it).
+
+## What it changes, measured on the reference tracks
+
+The two synthesized reference tracks are loop-based, and the stage
+finds their repeats (the demo song: 7.5–33.8 s = 37.5–63.7 s, 56
+beats, 0.97; the groove song: 5.2–36.5 s = 36.5–67.8 s, 48 beats —
+groove + pad bridge, twice, 0.98). `repeat_consistency` — the share
+of the second occurrence's notes that the first occurrence has at
+the same beat position and lane — before and after the copy:
+
+| | easy | medium | hard | expert | notes (expert) |
+|---|---:|---:|---:|---:|---:|
+| demo, before | 0.54 | 0.56 | 0.86 | 0.86 | 352 |
+| demo, after | **1.00** | **1.00** | **1.00** | **1.00** | 352 |
+| groove, before | 0.25 | 0.39 | 0.31 | 0.40 | 185 |
+| groove, after | **0.89** | **0.97** | **0.97** | **1.00** | 177 |
+
+That is the tell, in numbers: identical music charted with a quarter
+to half of its notes in common. After the copy expert is identical by
+construction; the lower difficulties are thinned from the master
+under a song-wide budget, so a note at the edge of a span can still
+fall one way in one occurrence and the other way in the other (three
+in forty on the groove song's easy). The rock gate's fingerprints
+moved once with this and are re-recorded.
+
+## On the library
+
+`redesign --all` with the stage in place, 70 folders: 62 songs have
+at least one repeat (1.85 a song on average, at most 5), covering
+36 % of their beats on average (9–79 %). The expert consistency of
+those repeats BEFORE the copy — how much the second occurrence
+already agreed with the first — was **0.25 on average (median 0.24,
+range 0.00–0.46); not one song above a half.** That is what "the
+same chorus playing differently at minute one and minute three"
+measures as. After the rollover the same measure reads **0.99 on
+average (median 1.00; 46 of 62 songs at 1.00, 58 at 0.95 or above,
+the lowest 0.85)** — the copy is at the master, and expert is thinned
+from it under a song-wide budget and spacing, so a note at a span's
+edge can still fall either way. The second pass writes nothing.
+
+## Reproducing
+
+```text
+cargo run --release -p beatbyte-audio --example repeats -- <audio>…
+beatbyte-cli analyze <audio>          # lists the repeats
+beatbyte-cli redesign <library> --all # prints each folder's consistency before
+```

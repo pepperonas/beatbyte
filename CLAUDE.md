@@ -534,6 +534,14 @@ artifact, smoke-test it (neutral CWD!), then
   run that should have written none — one layer under the ULP bug
   fixed the same morning. A move under a microsecond is not a move.
   The proof that an idempotent step is idempotent is the second run.
+- **Silence repeats itself perfectly.** The first run of the
+  structure stage on *Mexico* reported "2:49–3:45 repeats at
+  3:45–4:42, similarity 1.00" — the rip's 115 s of digital silence,
+  centred on a song mean the silence had dragged toward itself.
+  Silent beats (RMS under −60 dBFS) get no features and match
+  nothing, and the centring runs over SOUNDING beats only; both are
+  pinned. Any feature that is normalised against a song-wide
+  statistic has to ask what the statistic was computed over.
 - **A policy measured on one genre is a hypothesis on the next.**
   The corpus (house, pop, DJ grids) said "take the model's grid";
   the first rock folders of the rollover said the model hears

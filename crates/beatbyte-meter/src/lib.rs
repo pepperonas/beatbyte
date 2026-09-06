@@ -30,6 +30,7 @@ pub mod peaks;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use beatbyte_audio::analysis::structure;
 use beatbyte_audio::decode::AudioData;
 use beatbyte_audio::resample::resample;
 use beatbyte_ml::{BEAT_THIS, BEAT_THIS_MEL, BEAT_THIS_SMALL, Input, Loaded, MlError, ModelSpec};
@@ -295,6 +296,8 @@ pub struct Applied {
     pub beats: usize,
     /// Downbeats the analysis carries now.
     pub downbeats: usize,
+    /// Repeated sections the analysis carries now.
+    pub repeats: usize,
 }
 
 impl Applied {
@@ -303,8 +306,8 @@ impl Applied {
     pub fn summary(&self) -> String {
         match self.outcome {
             Outcome::Adopted => format!(
-                "`{}` heard {} beats; {} downbeats on the grid ({:?})",
-                self.model, self.beats, self.downbeats, self.policy
+                "`{}` heard {} beats; {} downbeats on the grid ({:?}); {} repeated sections",
+                self.model, self.beats, self.downbeats, self.policy, self.repeats
             ),
             Outcome::Disagreement {
                 tracker_bpm,
@@ -343,6 +346,21 @@ pub fn refine(
     let runtime = Runtime::new();
     let meter = track(&runtime, &store, size, audio)?;
     let outcome = apply(analysis, &meter, policy);
+    if outcome == Outcome::Adopted {
+        // The repeats are beat indices into a grid that just changed:
+        // find them again on the model's grid, with its bars.
+        let prepared = if audio.sample_rate() >= 32_000 {
+            audio.clone().downsample_half()
+        } else {
+            audio.clone()
+        };
+        analysis.repeats = structure::find_repeats(
+            &prepared,
+            &analysis.beats,
+            &analysis.downbeats,
+            &structure::StructureConfig::default(),
+        );
+    }
     Ok(Some(Applied {
         model: meter.model,
         sha256: meter.sha256,
@@ -350,5 +368,6 @@ pub fn refine(
         outcome,
         beats: meter.beats.len(),
         downbeats: analysis.downbeats.len(),
+        repeats: analysis.repeats.len(),
     }))
 }

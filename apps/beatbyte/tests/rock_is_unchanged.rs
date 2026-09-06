@@ -143,8 +143,11 @@ fn fingerprint(audio: &beatbyte_audio::decode::AudioData, title: &str) -> u64 {
 /// and `solder-groove` did not.
 fn recorded(song: &str) -> Option<u64> {
     match (song, std::env::consts::OS) {
-        ("circuit-breaker", "macos") => Some(5_812_058_801_453_186_571),
-        ("solder-groove", "macos") => Some(1_801_622_057_206_307_207),
+        // Re-recorded 2026-09-06 (v0.14.32): both tracks are loop-based
+        // and the structure stage charts their repeats as copies —
+        // measured in docs/audio-eval-baseline.md ("Repeated sections").
+        ("circuit-breaker", "macos") => Some(3_713_935_677_105_960_954),
+        ("solder-groove", "macos") => Some(15_611_240_773_374_240_841),
         _ => None,
     }
 }

@@ -456,11 +456,14 @@ public corpus, cannot regress a note.
   `redesign`'s "already current" check had never fired (serde's
   one-ULP float drift) — 25 real hard/expert rollovers kept, 46
   byte-identical ones reverted.
-- [ ] **Corpus numbers for the stem condition** (`lyrics-eval
-  --vocals-dir`): running at the time of writing; go into
-  `evaluation.md` under "With a vocal stem" with the same six
-  conditions as the mix. Until then the stem's gain is measured on
-  the library, not the corpus.
+- [x] **Corpus numbers for the stem condition** *(2026-09-06,
+  `evaluation.md` "With a vocal stem")*: on the 79 songs the plan's
+  three gates pass with a stem and only with a stem (AAE 0.174 s,
+  PCO@0.3 90.6 %, PCO@0.1 77.8 % against 0.650 s / 65.8 % / 49.4 %
+  on the mix); six seconds of stamp error costs the stem 6 ms and no
+  song where the mix derails 24; every song legible (17 cross the
+  floor upward, none down); the plain pass on a stem has the best
+  fine placement (median 0.082 s, PCO@0.3 94.3 %).
 - [ ] **The lookup should ask with the sound's length**, not the
   container's (a rip with a silent tail matched the wrong entries).
 - [ ] **A text for the five songs no catalogue entry fits**: manual
@@ -502,8 +505,25 @@ public corpus, cannot regress a note.
   Driver proven on a hand-encoded pair; nine mutation probes red.
   Off without the models; the built-in tracker and the rock gate
   untouched.
-- [ ] C2 stems · [ ] C3 Basic Pitch · [ ] C4 structure — each by ear
-  against `chart-feel-good-20260826`.
+- [x] **C4 — repeated sections charted identically** *(v0.14.32,
+  2026-09-06)*. `beatbyte-audio::analysis::structure`: per-beat
+  chroma + spectral envelope centred on the song's sounding beats,
+  the self-similarity diagonals scanned for ≥ 8-bar runs, snapped to
+  bars, the longest non-overlapping pairs kept → `SongAnalysis.repeats`
+  (recomputed by the meter when it replaces the grid). The generator
+  copies each repeat's first occurrence onto its second at the master
+  level, so every difficulty inherits one reading; `repeat_consistency`
+  measures it and `redesign` prints it per folder. Synthetic A-B-A-C
+  pin finds exactly the planted chorus (and nothing in appended
+  silence — the first real run matched a rip's silent tail with
+  itself at 1.00). On real songs the pairs read as verse+chorus 1 =
+  verse+chorus 2 (Teen Spirit, Africa, The Unforgiven). Library: 62
+  of 70 folders have repeats (36 % of the beats); expert consistency
+  before the copy 0.25 mean, 0.46 max — the tell in numbers; rolled
+  over, rock-gate fingerprints re-recorded. Ten mutation probes seen
+  red; autopilot on two rolled-over songs. Ear gate open.
+- [ ] C2 stems · [ ] C3 Basic Pitch — each by ear against
+  `chart-feel-good-20260826`.
 
 ## Phase 3 — Adaptive charting (DECIDED 2026-08-30, not started)
 

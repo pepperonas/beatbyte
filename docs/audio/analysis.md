@@ -51,7 +51,16 @@ Melody Extraction (lead transcription)
     │    transient smears rejected by their decaying salience and by
     │    the loneliness rule (riffs are runs, blips are drums)
     ▼
-SongAnalysis { bpm, beats[], downbeats[], onsets[], melody[{time, end, midi}], duration }
+Structure (repeated sections)
+    │  per beat: chroma (12) + log spectral envelope (20 bands),
+    │  centred and scaled over the song's SOUNDING beats (silence
+    │  matches nothing), unit length; the self-similarity matrix's
+    │  diagonals scanned for runs ≥ 0.6 (smoothed over 4 beats, grown
+    │  back to the raw floor) at least 8 bars long, snapped to bars;
+    │  the longest × most similar non-overlapping pairs are the
+    │  repeats. Recomputed by the meter when it replaces the grid.
+    ▼
+SongAnalysis { bpm, beats[], downbeats[], repeats[], onsets[], melody[{time, end, midi}], duration }
 ```
 
 ## Design rules
@@ -64,6 +73,12 @@ SongAnalysis { bpm, beats[], downbeats[], onsets[], melody[{time, end, midi}], d
 
 ## Known limitations (deliberately documented)
 
+- **Repeats are claims of sameness, not sections**: the structure
+  stage says "these two spans are the same music" and the generator
+  charts the second as a copy of the first. It names no verse or
+  chorus and finds no boundary between different music; a song whose
+  choruses differ in arrangement gets no repeat and is charted as
+  before.
 - **Bars without a model**: the built-in analyzer knows no downbeat;
   a chart from it counts four beats from the first one, and the
   corpus says that is a bar line about three times in four on loop

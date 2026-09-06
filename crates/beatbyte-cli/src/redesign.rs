@@ -142,6 +142,32 @@ fn redesign_folder(folder: &Path) -> Result<String, String> {
     active.retime(trim);
     let mut analysis = SpectralAnalyzer::default().analyze(&audio);
     crate::meter(&mut analysis, &audio);
+    // How identically the repeated sections play, before and after —
+    // the measure behind "charted identically" (C4), per folder.
+    if !analysis.repeats.is_empty() {
+        let consistency = |chart: &ChartFile| {
+            chart
+                .charts
+                .iter()
+                .find(|d| d.difficulty == Difficulty::Expert)
+                .and_then(|d| {
+                    beatbyte_chart::repeat_consistency(
+                        &d.notes,
+                        &analysis.beats,
+                        &analysis.repeats,
+                        analysis.duration_s,
+                        0.001,
+                    )
+                })
+        };
+        let covered: usize = analysis.repeats.iter().map(|r| 2 * r.beats).sum();
+        eprintln!(
+            "repeats: {} covering {:.0} % of the beats; expert consistency {} before",
+            analysis.repeats.len(),
+            100.0 * covered as f64 / analysis.beats.len().max(1) as f64,
+            consistency(&active).map_or("n/a".to_owned(), |c| format!("{c:.2}"))
+        );
+    }
     let mut fresh = generate_chart(
         &analysis,
         &GenerateMeta {

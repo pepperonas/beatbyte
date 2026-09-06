@@ -596,6 +596,30 @@ fn analyze(song: &Path, json: Option<&Path>) -> ExitCode {
         }
     );
     println!("  onsets        {:>8}", analysis.onsets.len());
+    let covered: usize = analysis.repeats.iter().map(|r| 2 * r.beats).sum();
+    println!(
+        "  repeats       {:>8}   ({:.0} % of the beats are the same music twice)",
+        analysis.repeats.len(),
+        100.0 * covered as f64 / analysis.beats.len().max(1) as f64
+    );
+    for r in &analysis.repeats {
+        let at = |i: usize| {
+            analysis
+                .beats
+                .get(i)
+                .copied()
+                .unwrap_or(analysis.duration_s)
+        };
+        println!(
+            "                {:>7.1} s – {:>6.1} s  =  {:>6.1} s – {:>6.1} s   ({} beats, {:.2})",
+            at(r.first_beat),
+            at(r.first_beat + r.beats),
+            at(r.second_beat),
+            at(r.second_beat + r.beats),
+            r.beats,
+            r.similarity
+        );
+    }
     let held: Vec<f64> = analysis
         .melody
         .iter()
