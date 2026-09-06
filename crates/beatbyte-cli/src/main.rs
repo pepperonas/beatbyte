@@ -15,6 +15,7 @@ use clap::{Parser, Subcommand};
 mod align;
 mod dossier;
 mod history;
+mod loudness;
 #[cfg(feature = "ml")]
 mod lyrics_eval;
 #[cfg(feature = "ml")]
@@ -126,6 +127,21 @@ enum Command {
         /// Treat the path as a directory of song folders.
         #[arg(long)]
         all: bool,
+    },
+    /// Measure a song's loudness and audio quality the way the game
+    /// levels it (EBU R128 integrated loudness, true peak, loudness
+    /// range; bandwidth, clipping, bitrate) and, with `--write`, put
+    /// the sidecar beside the audio so the game applies the gain.
+    Loudness {
+        /// A chart, a song folder, an audio file — or, with `--all`,
+        /// a directory of song folders.
+        path: PathBuf,
+        /// Treat the path as a directory of song folders.
+        #[arg(long)]
+        all: bool,
+        /// Write `<audio>.loudness.json` beside each audio file.
+        #[arg(long)]
+        write: bool,
     },
     /// Set a song's genre (display metadata; hash-neutral, so
     /// recorded sessions survive).
@@ -366,6 +382,13 @@ fn main() -> ExitCode {
                 redesign::run_redesign_all(&chart)
             } else {
                 redesign::run_redesign(&chart)
+            }
+        }
+        Command::Loudness { path, all, write } => {
+            if all {
+                loudness::run_all(&path, write)
+            } else {
+                loudness::run(&path, write)
             }
         }
         Command::SetGenre { chart, genre } => set_genre(&chart, &genre),
@@ -732,6 +755,30 @@ fn inspect(chart_path: &Path) -> ExitCode {
     println!("  offset      {:.3} s", chart.song.offset_s);
     if let Some(duration) = chart.song.duration_s {
         println!("  duration    {duration:.1} s");
+    }
+    if let Some(folder) = chart_path.parent()
+        && let Ok(audio) = beatbyte_chart::resolve_audio_path(folder, &chart.song.audio)
+        && let Some(report) = beatbyte_audio::loudness::read_report(&audio)
+    {
+        let m = &report.measurement;
+        println!(
+            "  loudness    {} LUFS, {:.1} dBTP, gain {:+.1} dB{}; audio {}{}",
+            m.integrated_lufs
+                .map_or("n/a".to_owned(), |l| format!("{l:.1}")),
+            m.true_peak_dbtp,
+            report.gain_db(),
+            if report.peak_limited() {
+                " (peak-limited)"
+            } else {
+                ""
+            },
+            report.quality.verdict.label(),
+            report
+                .quality
+                .issues
+                .first()
+                .map_or(String::new(), |i| format!(" — {}", i.what))
+        );
     }
     for def in &chart.charts {
         let sustains = def.notes.iter().filter(|n| n.len > 0.0).count();

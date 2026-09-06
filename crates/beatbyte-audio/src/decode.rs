@@ -291,6 +291,95 @@ pub fn decode_file(path: &Path) -> Result<AudioData, DecodeError> {
     })
 }
 
+/// A decode that keeps the channels: what the loudness meter and the
+/// quality checks read, because they must see the signal the player
+/// plays — a mono average of a wide stereo mix reads up to 3 dB too
+/// quiet. Same priming skip and same length cap as [`decode_file`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct Channels {
+    /// Interleaved samples, `channels` per frame.
+    pub interleaved: Vec<f32>,
+    /// Channels per frame (1 = mono, 2 = stereo, …).
+    pub channels: usize,
+    /// Sample rate in hertz.
+    pub sample_rate: u32,
+    /// Whether decoding stopped at [`MAX_ANALYSIS_SECONDS`].
+    pub truncated: bool,
+}
+
+impl Channels {
+    /// Frames (samples per channel).
+    #[must_use]
+    pub fn frames(&self) -> usize {
+        self.interleaved.len() / self.channels.max(1)
+    }
+
+    /// Seconds decoded.
+    #[must_use]
+    pub fn duration_s(&self) -> f64 {
+        self.frames() as f64 / f64::from(self.sample_rate.max(1))
+    }
+
+    /// One channel's samples.
+    #[must_use]
+    pub fn plane(&self, channel: usize) -> Vec<f32> {
+        let c = self.channels.max(1);
+        self.interleaved
+            .iter()
+            .skip(channel.min(c - 1))
+            .step_by(c)
+            .copied()
+            .collect()
+    }
+
+    /// The channels averaged into one.
+    #[must_use]
+    pub fn mono(&self) -> Vec<f32> {
+        let c = self.channels.max(1);
+        self.interleaved
+            .chunks(c)
+            .map(|frame| frame.iter().sum::<f32>() / c as f32)
+            .collect()
+    }
+}
+
+/// Decode an audio file keeping its channels (see [`Channels`]).
+pub fn decode_file_channels(path: &Path) -> Result<Channels, DecodeError> {
+    let display = path.display().to_string();
+    let file = File::open(path).map_err(|source| DecodeError::Open {
+        path: display.clone(),
+        source,
+    })?;
+    let decoder = Decoder::try_from(file).map_err(|source| DecodeError::Decode {
+        path: display.clone(),
+        source,
+    })?;
+    let sample_rate = decoder.sample_rate().get();
+    let channels = usize::from(decoder.channels().get()).max(1);
+    let max_frames = (MAX_ANALYSIS_SECONDS * f64::from(sample_rate)) as usize;
+    let priming = container_priming(path);
+    let skip = priming_frames(priming, sample_rate) * channels as u64;
+    let mut interleaved = Vec::new();
+    let mut truncated = false;
+    for sample in decoder.skip(usize::try_from(skip).unwrap_or(usize::MAX)) {
+        interleaved.push(sample);
+        if interleaved.len() >= max_frames * channels {
+            truncated = true;
+            break;
+        }
+    }
+    interleaved.truncate(interleaved.len() / channels * channels);
+    if interleaved.is_empty() {
+        return Err(DecodeError::Empty { path: display });
+    }
+    Ok(Channels {
+        interleaved,
+        channels,
+        sample_rate,
+        truncated,
+    })
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {

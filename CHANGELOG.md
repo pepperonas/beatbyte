@@ -14,6 +14,34 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.33] - 2026-09-06
+
+### Added
+
+- **Every song plays at the same level, and every import is checked
+  for what its file can resolve** (`docs/audio/loudness.md`). The
+  library's files sit 20.9 dB apart (−27.0 to −6.1 LUFS, mean −12.5,
+  sd 4.6); the game now levels them to −16 LUFS integrated under a
+  −1 dBTP ceiling — measured per EBU R128 / BS.1770-4 on the channels
+  the player plays (a second decode path that keeps them), true peak
+  4× oversampled, no limiter: a quiet song rises as far as its peaks
+  allow (seven of seventy are peak-limited, the quietest at −18.4).
+  In play the spread is 2.4 dB (sd 0.4). The gain rides beside MUSIC
+  VOLUME; the new setting **LOUDNESS MATCH** (on) switches it off.
+  Written once beside the audio as `<audio>.loudness.json` — by the
+  import, and by `beatbyte-cli loudness <song|folder> [--all]
+  [--write]`, which prints the table and the library's spread;
+  `inspect` shows the line. The quality checks read the signal, not
+  the container: where the spectrum ends (a cliff of 20 dB inside
+  500 Hz), clipping, sample rate, lossy bitrate, true peak, DC. A
+  poor or fair file is imported and warned about (the user's call):
+  the import line says why, the song browser's detail line carries
+  `!!`/`!` with the reason. On the library: 48 good, 18 fair, 4 poor
+  — the four are the video rips, their spectra ending at 9.9, 11.9,
+  12.1 and 13.4 kHz. The meter is pinned on the standard's
+  calibration signals (−20.0 / −23.0 LUFS at 48 and 44.1 kHz); the
+  verdict at every threshold.
+
 ## [0.14.32] - 2026-09-06
 
 ### Added

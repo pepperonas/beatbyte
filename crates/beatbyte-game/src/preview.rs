@@ -174,6 +174,10 @@ pub fn drive_preview(
                 }
             }
             music.0.set_volume(settings.music_volume);
+            music.0.set_song_gain(crate::loudness::song_gain(
+                entry.loudness.as_ref(),
+                settings.normalize_loudness,
+            ));
             music.0.seek_s(at);
             info!(
                 "preview: \"{}\" from {at:.1}s",
@@ -198,6 +202,7 @@ mod tests {
 
     fn entry(preview: Option<f64>, duration: Option<f64>) -> SongEntry {
         SongEntry {
+            loudness: None,
             title: "T".to_owned(),
             artist: "A".to_owned(),
             bpm: 120.0,
@@ -325,6 +330,7 @@ mod tests {
                 .add_systems(Update, drive_preview);
             let entries = (0..3)
                 .map(|i| SongEntry {
+                    loudness: None,
                     title: format!("Song {i}"),
                     artist: "A".to_owned(),
                     bpm: 120.0,

@@ -506,6 +506,7 @@ fn autopilot_edit(
     music: Res<crate::audio_sys::Music>,
     mut game_clock: ResMut<crate::audio_sys::GameClock>,
     clicks: Res<crate::editor_ui::AuditionClicks>,
+    settings: Res<crate::config::Settings>,
     mut app_exit: MessageWriter<AppExit>,
 ) {
     let Some(mut state) = state else {
@@ -651,6 +652,10 @@ fn autopilot_edit(
         // and let phase 2 assert the metronome overlay.
         music.0.set_volume(0.3);
         music.0.play_file(state.audio_path.clone());
+        music.0.set_song_gain(crate::loudness::song_gain_for(
+            &crate::boot::SongAudio::File(state.audio_path.clone()),
+            &settings,
+        ));
         music.0.seek_s(state.cursor_s);
         game_clock.begin(time.elapsed_secs_f64(), state.cursor_s);
         state.previewing = true;
@@ -2017,6 +2022,7 @@ mod tests {
 
     fn entry(title: &str) -> SongEntry {
         SongEntry {
+            loudness: None,
             title: title.to_owned(),
             artist: "Tests".to_owned(),
             bpm: 120.0,

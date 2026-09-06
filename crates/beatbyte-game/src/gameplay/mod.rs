@@ -532,10 +532,12 @@ fn setup_gameplay(
 }
 
 /// Start the music the moment the count-in ends; run the banner.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn run_count_in(
     mut commands: Commands,
     pending: Option<Res<PendingMusic>>,
     music: Res<Music>,
+    settings: Res<crate::config::Settings>,
     mut game_clock: ResMut<GameClock>,
     time: Res<Time>,
     font: Res<crate::ui::UiFont>,
@@ -580,6 +582,18 @@ fn run_count_in(
                 music.0.crossfade_file(path.clone(), fade_s);
             }
         }
+        // Loudness matching: the song's own gain, from its sidecar.
+        let gain = crate::loudness::song_gain_for(&pending.0, &settings);
+        info!(
+            "loudness: song gain {:+.1} dB ({})",
+            20.0 * f64::from(gain).max(1e-9).log10(),
+            if settings.normalize_loudness {
+                "matching on"
+            } else {
+                "matching off"
+            }
+        );
+        music.0.set_song_gain(gain);
         // The clock may follow THIS generation: the game asked for it.
         game_clock.expect_song = true;
         commands.remove_resource::<PendingMusic>();

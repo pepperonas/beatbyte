@@ -524,6 +524,16 @@ public corpus, cannot regress a note.
   red; autopilot on two rolled-over songs. Ear gate open.
 - [ ] C2 stems · [ ] C3 Basic Pitch — each by ear against
   `chart-feel-good-20260826`.
+- [x] **Loudness matching + audio-quality warnings** *(v0.14.33,
+  2026-09-06, user: "gleiche die lautstärke der tracks an … prüfe
+  auf audio qualität")*. Playback, not the graph: EBU R128 meter on
+  the played channels (`beatbyte-audio::loudness`, pinned on the
+  standard's calibration signals), gain to −16 LUFS under −1 dBTP
+  with no limiter, `<audio>.loudness.json` sidecar written by the
+  import and `beatbyte-cli loudness`, LOUDNESS MATCH setting,
+  quality verdict from the signal (`quality`) in the import line and
+  the browser. Library: 20.9 dB spread → 2.4 dB; 48 good / 18 fair
+  / 4 poor (the video rips). `docs/audio/loudness.md`.
 
 ## Phase 3 — Adaptive charting (DECIDED 2026-08-30, not started)
 

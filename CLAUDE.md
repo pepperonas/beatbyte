@@ -534,6 +534,17 @@ artifact, smoke-test it (neutral CWD!), then
   run that should have written none — one layer under the ULP bug
   fixed the same morning. A move under a microsecond is not a move.
   The proof that an idempotent step is idempotent is the second run.
+- **Loudness is measured on the channels the player plays.** The
+  analysis decode averages to mono; a wide stereo mix read that way
+  is up to 3 dB quieter than what comes out of the speakers, and the
+  whole point of the level is what is heard. `decode_file_channels`
+  exists for that; never feed the meter the mono path.
+- **A container's bitrate is not evidence of quality; the spectrum's
+  end is.** Four video rips in the library sit at 233–389 kbps AAC
+  and end at 9.9–13.4 kHz. And **modern masters reconstruct a few
+  tenths over 0 dBTP between samples as a matter of course** — the
+  first pass flagged 42 of 70 files for it; that is a note, a full dB
+  over is a flag.
 - **Silence repeats itself perfectly.** The first run of the
   structure stage on *Mexico* reported "2:49–3:45 repeats at
   3:45–4:42, similarity 1.00" — the rip's 115 s of digital silence,

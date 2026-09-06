@@ -348,8 +348,12 @@ fn start_next_import(
     status.0 = format!("importing \"{}\"...", crate::ui::font_safe(&title));
     info!("import: \"{title}\" by {artist} from {}", source.display());
     queue.current = Some(title.clone());
-    let task = AsyncComputeTaskPool::get()
-        .spawn(async move { import_song(&source, &title, &artist).map(|()| title) });
+    let task = AsyncComputeTaskPool::get().spawn(async move {
+        import_song(&source, &title, &artist).map(|warning| match warning {
+            Some(warning) => format!("{title}\u{1f}{warning}"),
+            None => title,
+        })
+    });
     commands.insert_resource(ImportTask(task));
 }
 
@@ -376,7 +380,13 @@ fn poll_import(
     queue.done += 1;
     queue.current = None;
     match result {
-        Ok(title) => {
+        Ok(outcome) => {
+            // A quality warning rides behind a unit separator: the
+            // title is what the log and the index know the song by.
+            let (title, warning) = match outcome.split_once('\u{1f}') {
+                Some((title, warning)) => (title.to_owned(), Some(warning.to_owned())),
+                None => (outcome, None),
+            };
             queue.ok += 1;
             // Only a SUCCESSFUL import burns the fingerprint - a
             // failed one stays retryable.
@@ -390,7 +400,13 @@ fn poll_import(
             // that made a real report ("import stopped working") take
             // an hour to answer.
             info!("import: \"{title}\" done");
-            status.0 = format!("\"{}\" imported", crate::ui::font_safe(&title));
+            status.0 = match &warning {
+                Some(warning) => {
+                    warn!("import: \"{title}\": {warning}");
+                    format!("\"{}\" imported - {warning}", crate::ui::font_safe(&title))
+                }
+                None => format!("\"{}\" imported", crate::ui::font_safe(&title)),
+            };
             if let (Some(builtins), Some(mut library)) = (builtins, library) {
                 *library = crate::boot::scan_with_builtins(&builtins.0);
             }
@@ -581,7 +597,8 @@ fn update_import_panel(
 }
 
 /// Copy, analyze, chart and save — the blocking part, off-thread.
-fn import_song(source: &Path, title: &str, artist: &str) -> Result<(), String> {
+/// Returns the audio-quality warning, if the file earned one.
+fn import_song(source: &Path, title: &str, artist: &str) -> Result<Option<String>, String> {
     let file_name = source
         .file_name()
         .ok_or_else(|| "file has no name".to_owned())?;
@@ -641,7 +658,30 @@ fn import_song(source: &Path, title: &str, artist: &str) -> Result<(), String> {
     if let Some((pointer_path, text)) = pointer {
         std::fs::write(pointer_path, text).map_err(|e| format!("cannot write pointer: {e}"))?;
     }
-    Ok(())
+    // Loudness and quality: measured on the channels the player
+    // plays, written beside the audio so the game levels the song
+    // from its first play. A failed measurement is a warning, not a
+    // failed import — the chart is on disk.
+    let measured_by = format!("beatbyte {}", env!("CARGO_PKG_VERSION"));
+    match beatbyte_audio::loudness::measure_file(&audio_dest, &measured_by) {
+        Ok(report) => {
+            if let Err(error) = beatbyte_audio::loudness::write_report(&audio_dest, &report) {
+                warn!("import: cannot write the loudness sidecar: {error}");
+            }
+            info!(
+                "import: loudness {} LUFS, {:.1} dBTP, gain {:+.1} dB, audio {}",
+                report
+                    .measurement
+                    .integrated_lufs
+                    .map_or("n/a".to_owned(), |l| format!("{l:.1}")),
+                report.measurement.true_peak_dbtp,
+                report.gain_db(),
+                report.quality.verdict.label()
+            );
+            Ok(crate::loudness::import_warning(&report))
+        }
+        Err(error) => Ok(Some(format!("loudness not measured: {error}"))),
+    }
 }
 
 /// Where a freshly generated chart may be written (ADR-0011).

@@ -89,6 +89,12 @@ pub struct Settings {
     /// its hook plays. On by default — a seventy-song library is a
     /// list of names without it (optimization plan P4).
     pub song_preview: bool,
+    /// Loudness matching: every song plays at the same level (−16
+    /// LUFS integrated, under a −1 dBTP ceiling) from the measurement
+    /// beside its audio. On by default; off plays the files as they
+    /// are.
+    #[serde(default = "default_true")]
+    pub normalize_loudness: bool,
     /// Tap mode: notes hit on fret press alone, no strum required.
     /// ON by default — the first real playtest showed keyboard
     /// players press frets and nothing happens (receptors light up,
@@ -155,6 +161,7 @@ impl Default for Settings {
             room_lights: false,
             room_stage_url: "http://127.0.0.1:5006".to_owned(),
             song_preview: true,
+            normalize_loudness: true,
             tap_mode: true,
             perspective: true,
             stage_3d: true,
@@ -238,6 +245,10 @@ fn default_fx_intensity() -> f32 {
 /// No extra UI scaling, the default.
 fn default_ui_scale() -> f32 {
     1.0
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn clean(value: f32, min: f32, max: f32, fallback: f32) -> f32 {

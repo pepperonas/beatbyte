@@ -155,6 +155,11 @@ pub struct MusicPlayer {
     /// The volume the game asked for; during a fade both players are
     /// driven from it through the crossfade gains.
     base_volume: f32,
+    /// The playing song's own gain (loudness normalisation: the
+    /// factor that brings it to the game's level), multiplied into
+    /// the output beside the volume the game asked for. Unity for a
+    /// song without a measurement.
+    song_gain: f32,
     /// Global silence, held HERE rather than folded into
     /// `base_volume` by each caller. It used to be the caller's job
     /// (`set_volume(v * muted_factor)`), and the browser's song
@@ -190,6 +195,24 @@ struct TailFade {
     player: Player,
     started: std::time::Instant,
     fade_s: f32,
+    /// The outgoing song's own gain — it keeps its level while it
+    /// fades, whatever the incoming song's gain is.
+    song_gain: f32,
+}
+
+/// The most a song's own gain may amplify or attenuate (a factor;
+/// ±24 dB), so a broken sidecar can neither deafen nor silence.
+pub const SONG_GAIN_RANGE: (f32, f32) = (0.063, 15.85);
+
+/// Clamp a song gain into [`SONG_GAIN_RANGE`]; a non-finite value
+/// is unity. Pure — tested.
+#[must_use]
+pub fn clamp_song_gain(gain: f32) -> f32 {
+    if gain.is_finite() {
+        gain.clamp(SONG_GAIN_RANGE.0, SONG_GAIN_RANGE.1)
+    } else {
+        1.0
+    }
 }
 
 /// The gain actually handed to an output player: the volume the game
@@ -228,6 +251,7 @@ impl MusicPlayer {
             player,
             tail: None,
             base_volume: 1.0,
+            song_gain: 1.0,
             muted: false,
             speed: 1.0,
             src_base_s: 0.0,
@@ -272,7 +296,11 @@ impl MusicPlayer {
         }
         let fresh = Player::connect_new(self._device.mixer());
         load(&fresh);
-        fresh.set_volume(output_gain(self.base_volume, self.muted, 1.0));
+        fresh.set_volume(output_gain(
+            self.base_volume * self.song_gain,
+            self.muted,
+            1.0,
+        ));
         if self.speed != 1.0 {
             #[allow(clippy::cast_possible_truncation)]
             fresh.set_speed(self.speed as f32);
@@ -370,13 +398,25 @@ impl MusicPlayer {
         self.apply_gain();
     }
 
+    /// The playing song's own gain (a factor, see
+    /// [`clamp_song_gain`]) — loudness normalisation, applied beside
+    /// the volume, never instead of it. Call it after starting a
+    /// song; a crossfade's outgoing tail keeps the gain it had.
+    pub fn set_song_gain(&mut self, gain: f32) {
+        self.song_gain = clamp_song_gain(gain);
+        self.apply_gain();
+    }
+
     /// Push the current gain to the live player. Skipped during a
     /// fade, where `tick_fade` reapplies both sides every 2 ms tick
     /// anyway.
     fn apply_gain(&self) {
         if self.tail.is_none() {
-            self.player
-                .set_volume(output_gain(self.base_volume, self.muted, 1.0));
+            self.player.set_volume(output_gain(
+                self.base_volume * self.song_gain,
+                self.muted,
+                1.0,
+            ));
         }
     }
 
@@ -419,7 +459,11 @@ impl MusicPlayer {
             player: outgoing,
             started: std::time::Instant::now(),
             fade_s,
+            song_gain: self.song_gain,
         });
+        // The incoming song's gain is the caller's next call; until
+        // then it is unity, and it starts at silence anyway.
+        self.song_gain = 1.0;
         // The map re-bases on the NEW song's zero.
         self.src_base_s = 0.0;
         self.out_base_s = 0.0;
@@ -440,10 +484,16 @@ impl MusicPlayer {
             self.apply_gain();
             return;
         }
-        tail.player
-            .set_volume(output_gain(self.base_volume, self.muted, out_gain));
-        self.player
-            .set_volume(output_gain(self.base_volume, self.muted, in_gain));
+        tail.player.set_volume(output_gain(
+            self.base_volume * tail.song_gain,
+            self.muted,
+            out_gain,
+        ));
+        self.player.set_volume(output_gain(
+            self.base_volume * self.song_gain,
+            self.muted,
+            in_gain,
+        ));
     }
 }
 
@@ -482,6 +532,7 @@ enum MusicCommand {
     Stop,
     SeekS(f64),
     Volume(f32),
+    SongGain(f32),
     Mute(bool),
     Speed(f64),
     Shutdown,
@@ -591,6 +642,12 @@ impl MusicHandle {
     /// nothing that starts a song can undo it by accident.
     pub fn set_muted(&self, muted: bool) {
         let _ = self.commands.send(MusicCommand::Mute(muted));
+    }
+
+    /// The playing song's own gain (loudness normalisation); see
+    /// [`MusicPlayer::set_song_gain`]. Send it right after the song.
+    pub fn set_song_gain(&self, gain: f32) {
+        let _ = self.commands.send(MusicCommand::SongGain(gain));
     }
 
     /// Change the playback speed (practice mode; 1.0 = normal, pitch
@@ -754,6 +811,7 @@ fn handle_command(
             let _ = player.seek_s(position_s);
         }
         MusicCommand::Volume(volume) => player.set_volume(volume),
+        MusicCommand::SongGain(gain) => player.set_song_gain(gain),
         MusicCommand::Mute(muted) => player.set_muted(muted),
         MusicCommand::Speed(speed) => player.set_speed(speed),
         MusicCommand::Shutdown => return true,
@@ -815,7 +873,7 @@ mod skip_tests {
 
 #[cfg(test)]
 mod gain_tests {
-    use super::output_gain;
+    use super::{SONG_GAIN_RANGE, clamp_song_gain, output_gain};
 
     #[test]
     fn mute_beats_every_volume_a_caller_can_ask_for() {
@@ -834,6 +892,11 @@ mod gain_tests {
 
     #[test]
     fn unmuted_passes_the_volume_through_the_fade() {
+        // A song's gain rides on the volume and is clamped to ±24 dB.
+        assert!((output_gain(0.8 * clamp_song_gain(0.5), false, 1.0) - 0.4).abs() < 1e-6);
+        assert!((clamp_song_gain(100.0) - SONG_GAIN_RANGE.1).abs() < 1e-6);
+        assert!((clamp_song_gain(0.0) - SONG_GAIN_RANGE.0).abs() < 1e-6);
+        assert!((clamp_song_gain(f32::NAN) - 1.0).abs() < 1e-6);
         assert!((output_gain(0.8, false, 1.0) - 0.8).abs() < 1e-6);
         assert!((output_gain(0.8, false, 0.5) - 0.4).abs() < 1e-6);
         // A negative volume is a caller mistake, not an inverted

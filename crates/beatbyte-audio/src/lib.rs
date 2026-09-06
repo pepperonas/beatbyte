@@ -25,15 +25,18 @@ pub mod clock;
 pub mod decode;
 pub mod demo;
 pub mod eval;
+pub mod loudness;
 pub mod playback;
 pub mod priming;
+pub mod quality;
 pub mod resample;
 pub mod synth;
 
 pub use analysis::{Analyzer, AnalyzerConfig, SpectralAnalyzer};
 pub use clock::SongClock;
 pub use decode::{
-    AudioData, DecodeError, decode_file, read_genre, wav_bytes_mono16, write_wav_mono16,
+    AudioData, Channels, DecodeError, decode_file, decode_file_channels, read_genre,
+    wav_bytes_mono16, write_wav_mono16,
 };
 pub use playback::{MusicPlayer, PlaybackError};
 

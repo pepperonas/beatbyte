@@ -54,6 +54,9 @@ pub struct SongEntry {
     /// What has already been done for this song and what has not
     /// (the browser's OPT column).
     pub polish: Polish,
+    /// The loudness sidecar's gist (gain, verdict, worst issue), when
+    /// one sits beside the audio — read once at scan time.
+    pub loudness: Option<crate::loudness::LoudnessMark>,
     /// Whether karaoke lyrics sit beside this song.
     ///
     /// Existence only — a stat, not a parse: the browser rebuilds
@@ -318,6 +321,7 @@ pub fn scan_library(builtins: &[ChartFile]) -> SongLibrary {
         .iter()
         .enumerate()
         .map(|(index, chart)| SongEntry {
+            loudness: None,
             title: chart.song.title.clone(),
             artist: chart.song.artist.clone(),
             preview_start_s: chart.song.preview_start_s,
@@ -667,8 +671,10 @@ fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String>
         ),
         has_lyrics,
     };
+    let loudness = crate::loudness::LoudnessMark::beside(&audio_path);
     Ok(Some(SongEntry {
         polish,
+        loudness,
         title: chart.song.title.clone(),
         artist: chart.song.artist.clone(),
         bpm: chart.song.bpm,

@@ -205,6 +205,7 @@ fn editor_input(
     keys: Res<ButtonInput<KeyCode>>,
     state: Option<ResMut<EditorState>>,
     music: Res<Music>,
+    settings: Res<crate::config::Settings>,
     mut game_clock: ResMut<GameClock>,
     time: Res<Time>,
     mut highlight: Query<&mut Transform, With<LaneHighlight>>,
@@ -411,6 +412,10 @@ fn editor_input(
             state.dirty_view = true;
         } else {
             music.0.play_file(state.audio_path.clone());
+            music.0.set_song_gain(crate::loudness::song_gain_for(
+                &crate::boot::SongAudio::File(state.audio_path.clone()),
+                &settings,
+            ));
             game_clock.expect_song = true;
             music.0.seek_s(state.cursor_s);
             game_clock.begin(time.elapsed_secs_f64(), state.cursor_s);

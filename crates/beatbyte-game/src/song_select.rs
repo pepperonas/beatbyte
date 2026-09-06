@@ -1578,8 +1578,14 @@ fn detail_line(
     let notes = entry
         .note_count(difficulty)
         .map_or_else(|| "-".to_owned(), |n| n.to_string());
+    let quality = crate::loudness::quality_marker(entry.loudness.as_ref());
+    let quality = if quality.is_empty() {
+        quality
+    } else {
+        format!("   {quality}")
+    };
     format!(
-        "{}/{count}   {:.0} BPM{duration}   <{}>   {rating}   {notes} notes   {best}",
+        "{}/{count}   {:.0} BPM{duration}   <{}>   {rating}   {notes} notes   {best}{quality}",
         cursor + 1,
         entry.bpm,
         difficulty.display_name().to_uppercase()
@@ -1782,6 +1788,7 @@ mod view_tests {
 
     fn entry(title: &str, artist: &str, genre: Option<&str>, len: f64) -> SongEntry {
         SongEntry {
+            loudness: None,
             title: title.to_owned(),
             artist: artist.to_owned(),
             bpm: 120.0,

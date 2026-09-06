@@ -19,6 +19,7 @@ pub mod history;
 pub mod import;
 mod input_test;
 pub mod library;
+pub mod loudness;
 pub mod lyrics_fetch;
 pub mod mc;
 pub mod menu;

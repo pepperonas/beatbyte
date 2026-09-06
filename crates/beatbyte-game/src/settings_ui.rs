@@ -27,6 +27,8 @@ pub(crate) enum Row {
     BeatPulse,
     BackdropMotion,
     HitLabels,
+    /// Loudness matching on/off.
+    LoudnessMatch,
     NoFail,
     /// Room Stage: the game's events drive lights on the LAN.
     RoomLights,
@@ -61,7 +63,7 @@ impl Row {
     /// Every row, in the order the screen shows them: **alphabetical
     /// by label**, and kept that way by a test — a new row goes where
     /// its name falls, not at the end of the list.
-    const ALL: [Row; 29] = [
+    const ALL: [Row; 30] = [
         Row::BeatPulse,
         Row::Controls,
         Row::FxIntensity,
@@ -70,6 +72,7 @@ impl Row {
         Row::HighContrast,
         Row::HitLabels,
         Row::LatencyOffset,
+        Row::LoudnessMatch,
         Row::Lyrics,
         Row::LyricsLeadIn,
         Row::LyricsModel,
@@ -105,6 +108,7 @@ impl Row {
             Row::BeatPulse => "BEAT PULSE",
             Row::BackdropMotion => "STAGE MOTION",
             Row::HitLabels => "HIT LABELS",
+            Row::LoudnessMatch => "LOUDNESS MATCH",
             Row::NoFail => "NO FAIL",
             Row::RoomLights => "ROOM LIGHTS",
             Row::ReducedFlashing => "REDUCED FLASHING",
@@ -139,6 +143,7 @@ impl Row {
             Row::BeatPulse => on_off(settings.beat_pulse),
             Row::BackdropMotion => on_off(settings.backdrop_motion),
             Row::HitLabels => on_off(settings.hit_labels),
+            Row::LoudnessMatch => on_off(settings.normalize_loudness),
             Row::NoFail => on_off(settings.no_fail),
             Row::RoomLights => on_off(settings.room_lights),
             Row::SongPreview => on_off(settings.song_preview),
@@ -232,6 +237,7 @@ impl Row {
             Row::BeatPulse => settings.beat_pulse = !settings.beat_pulse,
             Row::BackdropMotion => settings.backdrop_motion = !settings.backdrop_motion,
             Row::HitLabels => settings.hit_labels = !settings.hit_labels,
+            Row::LoudnessMatch => settings.normalize_loudness = !settings.normalize_loudness,
             Row::NoFail => settings.no_fail = !settings.no_fail,
             Row::RoomLights => settings.room_lights = !settings.room_lights,
             Row::SongPreview => settings.song_preview = !settings.song_preview,
@@ -288,6 +294,7 @@ impl Row {
             | Row::BeatPulse
             | Row::BackdropMotion
             | Row::HitLabels
+            | Row::LoudnessMatch
             | Row::NoFail
             | Row::RoomLights
             | Row::SongPreview
@@ -815,7 +822,7 @@ mod tests {
             );
         }
         // And nothing is listed twice or left out.
-        assert_eq!(Row::ALL.len(), 29);
+        assert_eq!(Row::ALL.len(), 30);
     }
 
     #[test]
@@ -825,6 +832,7 @@ mod tests {
             Row::Particles,
             Row::ScreenShake,
             Row::BeatPulse,
+            Row::LoudnessMatch,
             Row::BackdropMotion,
             Row::HitLabels,
             Row::NoFail,
