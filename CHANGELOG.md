@@ -54,6 +54,13 @@ the manifest ever carries a version this file does not describe.
   it — across this library it does not separate the songs that
   aligned from the ones that only appeared to.
 
+- **The library re-aligned with the rule.** Verdicts moved from
+  20 / 15 / 9 / 8 (same master / shifted / another edit / failed) to
+  10 / 13 / 9 / 20, and the songs that sing word by word from 44 to
+  28. Only two songs' lines actually moved, both back onto the human's
+  stamps: *Mexico* by 3.3 s and Moby's *Lift Me Up* by 3.1 s. The
+  rest is honesty rather than motion.
+
 - **The LYRICS mark told the wrong story about a failed alignment.**
   It read "a `words.json` exists", but a failed alignment writes one
   too, with every line fallen back to its stamp. Such a song was

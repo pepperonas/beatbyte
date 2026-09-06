@@ -213,6 +213,31 @@ longer claim a shift against the source's stamps, and their word
 times are marked estimated — those songs sing by the line, which is
 what the pipeline actually knows about them.
 
+Re-aligning the whole library with the rule in place:
+
+| Verdict | before | after |
+| --- | ---: | ---: |
+| same master | 20 | 10 |
+| shifted master | 15 | 13 |
+| different edit | 9 | 9 |
+| **failed → the source's stamps** | **8** | **20** |
+| | | |
+| songs singing word by word | 44 | 28 |
+
+Only **two** songs' lines actually moved on screen, and both moved
+back onto the human's stamps: *Mexico* (18.02 → 21.69 s, the 3.3 s
+the bug report described) and Moby's *Lift Me Up* (9.6 → 12.7 s).
+The rest of the change is honesty rather than motion — a song at
+0.03 letters a second was already showing its lines at the right
+times, it was just claiming to know where each word sat inside them.
+
+⚠️ A song judged a **different edit** keeps its own span, and with
+every word now estimated that span can start earlier than before:
+Ozzy's *Crazy Train* moved from 6.38 s to 0.46 s, because the old
+figure was the gate's own repair of a 5.3-second-long "All" rather
+than a measurement. 0.46 s is where the raw aligner puts the opening
+"All aboard!", which is also where it belongs.
+
 ⚠️ **The measure has a known confound**: a song with long
 instrumental passages produces fewer letters a second even when its
 vocal is perfectly legible. That is why the floor was placed against
