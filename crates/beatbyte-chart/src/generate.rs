@@ -16,6 +16,7 @@ use beatbyte_core::Difficulty;
 use beatbyte_core::lane::LANE_COUNT;
 use beatbyte_core::music::SongAnalysis;
 
+use crate::grid::{BeatGrid, SNAP_TOLERANCE_S};
 use crate::schema::{ChartDef, ChartFile, ChartNote, ChartPhrase, SongMeta};
 use crate::{FORMAT_VERSION, validate::BPM_RANGE};
 
@@ -177,6 +178,9 @@ pub fn generate_chart(analysis: &SongAnalysis, meta: &GenerateMeta) -> ChartFile
         charts,
         provenance: None,
         audio_trim: None,
+        // The tracked beats, so the highway, the editor and the next
+        // redesign all count on the grid the notes were placed on.
+        grid: Some(BeatGrid::from_beats(&analysis.beats)).filter(BeatGrid::is_usable),
     }
 }
 
@@ -239,12 +243,15 @@ const BURST_GAP_S: f64 = 0.13;
 /// the full neck, true-length tails.
 fn build_master(analysis: &SongAnalysis, grid_origin_s: f64) -> Vec<MasterNote> {
     let kept = select_candidates(analysis, grid_origin_s);
-    let beat = analysis.beat_interval_s();
+    let grid = BeatGrid::from_beats(&analysis.beats);
+    let average = analysis.beat_interval_s();
+    let beat_at = |time_s: f64| grid.beat_length_at(time_s).unwrap_or(average);
     let lanes = LANE_COUNT as i32;
     let mut contour = ContourMapper::new(lanes);
     let mut master: Vec<MasterNote> = Vec::new();
     let mut previous_lane: Option<i32> = None;
     for selected in &kept {
+        let beat = beat_at(selected.time_s);
         let mut lane = if let Some(pitch) = selected.pitch {
             contour.lane(selected.time_s, pitch.midi, beat, analysis)
         } else {
@@ -640,7 +647,11 @@ fn derive_notes(
         if profile.sustains && note.held_s > 0.0 {
             let min_gap_ok = note.pitched || gap_to_next >= profile.sustain_min_gap_s;
             if min_gap_ok {
-                let candidate = note.held_s.min(gap_to_next - trailing_gap_s(analysis.bpm));
+                let local_bpm = 60.0
+                    / BeatGrid::from_beats(&analysis.beats)
+                        .beat_length_at(note.time_s)
+                        .unwrap_or(analysis.beat_interval_s());
+                let candidate = note.held_s.min(gap_to_next - trailing_gap_s(local_bpm));
                 if candidate > 0.25 {
                     len = candidate;
                 }
@@ -800,7 +811,13 @@ fn melody_range(analysis: &SongAnalysis) -> (f32, f32) {
 
 /// Quantize, filter and thin the candidate stream at MASTER density.
 fn select_candidates(analysis: &SongAnalysis, grid_origin_s: f64) -> Vec<Selected> {
-    let beat = analysis.beat_interval_s();
+    let average = analysis.beat_interval_s();
+    // The TRACKED grid, where there is one: a live drummer's beat is
+    // not the song's average beat, and a hit snapped to the average
+    // grid lands on the wrong subdivision by the second minute
+    // (measured: 1.6 s apart by the end of a live recording).
+    let grid = BeatGrid::from_beats(&analysis.beats);
+    let beat_at = |time_s: f64| grid.beat_length_at(time_s).unwrap_or(average);
 
     let mut kept: Vec<Selected> = Vec::new();
     // While a strong melody note is HELD, the lead owns the highway:
@@ -815,14 +832,19 @@ fn select_candidates(analysis: &SongAnalysis, grid_origin_s: f64) -> Vec<Selecte
         if candidate.pitch.is_none() && candidate.time_s < hold_until {
             continue;
         }
+        let beat = beat_at(candidate.time_s);
         if let Some(pitch) = candidate.pitch {
             let held = pitch.end_s - candidate.time_s;
             if held >= (beat * 0.5).max(0.3) && candidate.strength >= 0.35 {
                 hold_until = (candidate.time_s + held.min(beat * 4.0)).min(pitch.end_s)
-                    - trailing_gap_s(analysis.bpm);
+                    - trailing_gap_s(60.0 / beat);
             }
         }
-        let time_s = quantize_musical(candidate.time_s, grid_origin_s, beat, SNAP_TOLERANCE_S);
+        let time_s = grid
+            .quantize(candidate.time_s, SNAP_TOLERANCE_S)
+            .unwrap_or_else(|| {
+                quantize_musical(candidate.time_s, grid_origin_s, average, SNAP_TOLERANCE_S)
+            });
         if time_s < 0.0 || time_s > analysis.duration_s {
             continue;
         }
@@ -851,18 +873,6 @@ fn select_candidates(analysis: &SongAnalysis, grid_origin_s: f64) -> Vec<Selecte
     }
     kept
 }
-
-/// How far a hit may sit from a subdivision and still be the same
-/// musical event.
-///
-/// An absolute time, deliberately NOT a fraction of the beat. Human
-/// micro-timing and onset-detector scatter are both well under 60 ms
-/// regardless of tempo; a hit further than that from every
-/// subdivision is a different note, not a mistimed one. Expressing it
-/// as a fraction of the beat is a trap: a quarter of a beat at 120
-/// BPM is a whole sixteenth, so adjacent sixteenths collapse onto the
-/// beat and a sixteenth-note run disappears (measured).
-const SNAP_TOLERANCE_S: f64 = 0.055;
 
 /// Subdivisions a hit may be snapped to, coarsest first.
 ///
@@ -1003,12 +1013,23 @@ fn place_phrases(analysis: &SongAnalysis, notes: &[ChartNote]) -> Vec<ChartPhras
     if bar <= 0.0 || notes.is_empty() {
         return Vec::new();
     }
+    // The bars as tracked — a phrase that starts on a bar line has to
+    // know where the bars are; without a grid, the constant bar.
+    let grid = BeatGrid::from_beats(&analysis.beats);
+    let bars: Vec<f64> = if grid.is_usable() {
+        grid.bar_starts()
+    } else {
+        let count = (analysis.duration_s / bar).max(0.0) as usize;
+        (0..count).map(|i| i as f64 * bar).collect()
+    };
     let mut phrases = Vec::new();
-    // A phrase candidate every 8 bars, lasting 2 bars.
-    let stride = bar * 8.0;
-    let mut start = stride; // never in the very first bars
-    while start + bar * 2.0 < analysis.duration_s {
-        let end = start + bar * 2.0;
+    // A phrase candidate every 8 bars, lasting 2 bars, never in the
+    // very first bars.
+    let mut index = 8;
+    while let (Some(&start), Some(&end)) = (bars.get(index), bars.get(index + 2)) {
+        if end >= analysis.duration_s {
+            break;
+        }
         let count = notes
             .iter()
             .filter(|n| n.time >= start && n.time <= end)
@@ -1016,7 +1037,7 @@ fn place_phrases(analysis: &SongAnalysis, notes: &[ChartNote]) -> Vec<ChartPhras
         if count >= 4 {
             phrases.push(ChartPhrase { start, end });
         }
-        start += stride;
+        index += 8;
     }
     phrases
 }
@@ -1116,6 +1137,54 @@ mod tests {
             artist: "BeatByte".into(),
             audio: "synth.ogg".into(),
         }
+    }
+
+    /// The fixture with a drifting grid: intervals grow from 0.45 s
+    /// to 0.55 s over the song, as a live drummer's do.
+    fn drifting_analysis() -> SongAnalysis {
+        let mut a = analysis();
+        let mut t = 1.0;
+        a.beats = (0..136)
+            .map(|i| {
+                let here = t;
+                t += 0.45 + 0.10 * f64::from(i) / 135.0;
+                here
+            })
+            .collect();
+        a
+    }
+
+    #[test]
+    fn the_chart_carries_the_tracked_grid_and_every_note_sits_on_it() {
+        let analysis = drifting_analysis();
+        let chart = generate_chart(&analysis, &meta());
+        let grid = chart.grid.as_ref().expect("a tracked grid");
+        assert_eq!(grid.beats.len(), analysis.beats.len());
+        assert!(grid.downbeats.is_empty(), "no stage knows downbeats yet");
+        // Every note of every difficulty is on a subdivision of ITS
+        // local beat — the average grid would miss by a quarter beat
+        // late in the song.
+        for def in &chart.charts {
+            for note in &def.notes {
+                let snapped = grid.quantize(note.time, SNAP_TOLERANCE_S).expect("usable");
+                assert!(
+                    (snapped - note.time).abs() < 1e-9,
+                    "{:?} note at {} is off its local grid",
+                    def.difficulty,
+                    note.time
+                );
+            }
+        }
+        // And the tempo the track plays against is the grid's, so a
+        // beat is exactly one beat in.
+        let track = chart.to_track(Difficulty::Medium).expect("a track");
+        let beats_in = track.tempo.beats_at(grid.beats[100]);
+        assert!((beats_in - 100.0).abs() < 1e-6, "{beats_in}");
+        // A song whose analysis tracked nothing keeps the constant
+        // grid, as before.
+        let mut flat = analysis;
+        flat.beats.clear();
+        assert!(generate_chart(&flat, &meta()).grid.is_none());
     }
 
     #[test]

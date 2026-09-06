@@ -31,6 +31,13 @@ pub struct ChartFile {
     /// not the content: [`chart_hash`] does not see it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio_trim: Option<AudioTrim>,
+    /// The beat grid as the analysis tracked it (v0.14.30). `None`
+    /// on charts from before it: the constant grid `bpm`/`offset_s`
+    /// describe is then the grid, as it always was. Content, not
+    /// metadata: [`chart_hash`] sees it — a chart that gained its
+    /// tracked grid is a different chart to play against.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grid: Option<crate::grid::BeatGrid>,
 }
 
 /// The encoder priming a chart's audio was decoded without.
@@ -104,9 +111,62 @@ impl ChartFile {
                     phrase.end = earlier(phrase.end);
                 }
             }
+            if let Some(grid) = self.grid.as_mut() {
+                grid.shift(-shift);
+            }
         }
         self.audio_trim = Some(trim);
         true
+    }
+
+    /// The tempo map this chart plays against: the tracked grid when
+    /// the chart carries one, else the constant `bpm` from `offset_s`.
+    #[must_use]
+    pub fn tempo_map(&self) -> beatbyte_core::timing::TempoMap {
+        self.grid
+            .as_ref()
+            .and_then(crate::grid::BeatGrid::tempo_map)
+            .unwrap_or_else(|| {
+                beatbyte_core::timing::TempoMap::constant(self.song.bpm, self.song.offset_s)
+            })
+    }
+
+    /// The beat length at a song time: local on a tracked grid,
+    /// `60 / bpm` without one.
+    #[must_use]
+    pub fn beat_length_at(&self, time_s: f64) -> f64 {
+        self.grid
+            .as_ref()
+            .and_then(|g| g.beat_length_at(time_s))
+            .unwrap_or(60.0 / self.song.bpm.max(f64::EPSILON))
+    }
+
+    /// Every beat with whether it starts a bar, for a highway's
+    /// lines: the tracked grid's, or the constant grid laid from
+    /// `offset_s` to `duration_s` (four beats a bar).
+    #[must_use]
+    pub fn beat_marks(&self) -> Vec<(f64, bool)> {
+        if let Some(marks) = self
+            .grid
+            .as_ref()
+            .filter(|g| g.is_usable())
+            .map(|g| g.marks())
+        {
+            return marks;
+        }
+        let bpm = self.song.bpm.clamp(20.0, 400.0);
+        let beat_s = 60.0 / bpm;
+        let start = self.song.offset_s;
+        let end = self.song.duration_s.unwrap_or(start + 240.0);
+        let count = ((end - start) / beat_s).max(0.0) as usize;
+        (0..count)
+            .map(|i| {
+                (
+                    start + i as f64 * beat_s,
+                    i.is_multiple_of(crate::grid::BEATS_PER_BAR),
+                )
+            })
+            .collect()
     }
 
     /// Parse a chart from JSON text.
@@ -356,6 +416,7 @@ mod hash_tests {
             }],
             provenance: None,
             audio_trim: None,
+            grid: None,
         }
     }
 
@@ -486,5 +547,39 @@ mod hash_tests {
         assert!(text.contains("\"audio_trim\""));
         let back = ChartFile::from_json(&text).expect("parses");
         assert_eq!(back.audio_trim, marked.audio_trim);
+    }
+
+    #[test]
+    fn beat_marks_come_from_the_grid_when_there_is_one_and_from_the_constant_otherwise() {
+        let mut chart = tiny_chart();
+        chart.song.bpm = 120.0;
+        chart.song.offset_s = 1.0;
+        chart.song.duration_s = Some(5.0);
+        // Constant: eight beats from 1.0 s, a bar every fourth.
+        let marks = chart.beat_marks();
+        assert_eq!(marks.len(), 8);
+        assert!((marks[0].0 - 1.0).abs() < 1e-9 && marks[0].1);
+        assert!(!marks[1].1 && marks[4].1);
+        // With a grid: the grid's beats, drifting ones included.
+        chart.grid = Some(crate::grid::BeatGrid::from_beats(&[
+            1.0, 1.5, 2.1, 2.8, 3.6,
+        ]));
+        let marks = chart.beat_marks();
+        assert_eq!(
+            marks.iter().map(|m| m.0).collect::<Vec<_>>(),
+            vec![1.0, 1.5, 2.1, 2.8, 3.6]
+        );
+        assert!(marks[0].1 && marks[4].1 && !marks[2].1);
+        // The tempo map follows the grid, the beat length is local,
+        // and a JSON round trip keeps all of it.
+        assert!((chart.beat_length_at(2.9) - 0.8).abs() < 1e-9);
+        assert!((chart.tempo_map().beats_at(2.8) - 3.0).abs() < 1e-9);
+        let back = ChartFile::from_json(&chart.to_json_pretty().expect("json")).expect("parses");
+        assert_eq!(back.grid, chart.grid);
+        assert_ne!(
+            chart_hash(&back),
+            chart_hash(&tiny_chart()),
+            "the grid is content"
+        );
     }
 }

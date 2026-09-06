@@ -38,6 +38,7 @@
 pub mod convert;
 pub mod escalation;
 pub mod generate;
+pub mod grid;
 pub mod io;
 pub mod lyrics;
 pub mod schema;

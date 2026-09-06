@@ -512,14 +512,18 @@ pub fn spawn_fret_lines(
     if !settings.round_gems || super::stage3d::active(&settings) {
         return;
     }
-    let bpm = song.chart.song.bpm.clamp(20.0, 400.0);
-    let bar_s = 240.0 / bpm;
-    let start = song.chart.song.offset_s;
-    let end = song.chart.song.duration_s.unwrap_or(start + 240.0);
+    // The bars as the chart's grid has them — tracked where the
+    // analysis tracked it, so a live drummer's bar lines stay on the
+    // drummer; the constant grid where there is none.
+    let bars: Vec<f64> = song
+        .chart
+        .beat_marks()
+        .into_iter()
+        .filter_map(|(t, on_bar)| on_bar.then_some(t))
+        .collect();
     for index in players.iter() {
         let origin = layout.origin(index.0);
-        let mut t = start;
-        while t < end {
+        for &t in &bars {
             commands.spawn((
                 GameplayScreen,
                 FretLine { time_s: t },
@@ -531,7 +535,6 @@ pub fn spawn_fret_lines(
                 },
                 Transform::from_xyz(origin, 2000.0, -8.0),
             ));
-            t += bar_s;
         }
     }
 }

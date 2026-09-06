@@ -467,6 +467,19 @@ public corpus, cannot regress a note.
   (the single's text duplicated for an extended mix, a plain text for
   a remix). And plain texts for the eleven without lyrics — the
   aligner needs words, not stamps.
+- [x] **C0 — the tracked grid reaches the chart** *(v0.14.30,
+  2026-09-06)*. Found while assessing Track C: the analysis had
+  tracked a time-varying grid since Phase 2, and the generator, the
+  highway, the phrases, the editor and the sustain ticks all still
+  counted on the constant `bpm` — measured 1.61 s apart by the end of
+  a live recording (Hotel California 1977, 140.6–152.0 BPM local),
+  0.19–0.36 s on studio songs. The chart now carries `grid`
+  (`docs/chart-format/chart-format-v1.md`); notes snap to the local
+  beat's subdivisions, bar lines follow the drummer, the track's
+  tempo map is the grid's, and `redesign` moves carried difficulties
+  onto it (≤ 55 ms). No model, no ear gate: a hit moves toward the
+  audio or not at all. Library rolled over; numbers in
+  `docs/audio-eval-baseline.md` ("The grid reaches the chart").
 - [ ] C1 Beat This! A/B · [ ] C2 stems · [ ] C3 Basic Pitch ·
   [ ] C4 structure — only after L ships, each by ear against
   `chart-feel-good-20260826`.

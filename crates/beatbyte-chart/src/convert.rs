@@ -2,7 +2,7 @@
 //! tracks: per-lane notes are grouped into note events (chords), and
 //! the tempo/phrase data becomes domain types.
 
-use beatbyte_core::{Difficulty, Lane, LaneSet, NoteEvent, NoteKind, Phrase, TempoMap, Track};
+use beatbyte_core::{Difficulty, Lane, LaneSet, NoteEvent, NoteKind, Phrase, Track};
 use thiserror::Error;
 
 use crate::schema::{ChartDef, ChartFile};
@@ -40,7 +40,7 @@ impl ChartFile {
         let chart = self
             .chart_for(difficulty)
             .ok_or(ConvertError::MissingDifficulty(difficulty))?;
-        let tempo = TempoMap::constant(self.song.bpm, self.song.offset_s);
+        let tempo = self.tempo_map();
         let events = group_notes(chart)?;
         let phrases = chart
             .phrases
@@ -126,6 +126,7 @@ mod tests {
             }],
             provenance: None,
             audio_trim: None,
+            grid: None,
         }
     }
 

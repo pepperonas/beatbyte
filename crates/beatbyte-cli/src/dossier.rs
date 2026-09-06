@@ -264,6 +264,7 @@ mod tests {
             }],
             provenance: None,
             audio_trim: None,
+            grid: None,
         }
     }
 

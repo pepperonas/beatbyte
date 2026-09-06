@@ -54,10 +54,9 @@ pub struct EditorState {
 
 impl EditorState {
     fn tempo(&self) -> TempoMap {
-        TempoMap::constant(
-            self.session.chart().song.bpm,
-            self.session.chart().song.offset_s,
-        )
+        // The chart's own grid: the editor snaps to the beats the
+        // notes were placed on, tracked ones included.
+        self.session.chart().tempo_map()
     }
 
     /// Snap a time to the current grid.

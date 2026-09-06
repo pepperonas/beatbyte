@@ -2708,10 +2708,10 @@ pub fn spawn_fret_bars(
     if !active(&settings) {
         return;
     }
-    let bpm = song.chart.song.bpm.clamp(20.0, 400.0);
-    let beat_s = 60.0 / bpm;
-    let start = song.chart.song.offset_s;
-    let end = song.chart.song.duration_s.unwrap_or(start + 240.0);
+    // Every beat as the chart's grid has it — tracked where the
+    // analysis tracked it, so the frets stay on a live drummer; the
+    // constant grid where there is none.
+    let marks = song.chart.beat_marks();
     // Heavier than the first pass: a bar line is what gives the neck
     // its ruled, instrument-like surface, and at 0.045 deep it read as
     // a scratch rather than a fret.
@@ -2719,10 +2719,7 @@ pub fn spawn_fret_bars(
     for index in &players {
         let origin = layout.origin(index.0) * WORLD_PER_PIXEL;
         let width = layout.bed_width() * WORLD_PER_PIXEL * 1.18 * neck_spread(&layout);
-        let mut t = start;
-        let mut beat = 0usize;
-        while t < end {
-            let downbeat = beat.is_multiple_of(4);
+        for &(t, downbeat) in &marks {
             // Its own material, because each bar fades by its own
             // distance — sharing one handle made every bar in the song
             // pile into a solid white wedge at the horizon.
@@ -2749,8 +2746,6 @@ pub fn spawn_fret_bars(
                 )),
                 RenderLayers::layer(STAGE_LAYER),
             ));
-            t += beat_s;
-            beat += 1;
         }
     }
 }

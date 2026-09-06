@@ -59,6 +59,7 @@ impl ChartFile {
     #[must_use]
     pub fn validate(&self) -> Vec<Issue> {
         let mut issues = Vec::new();
+        crate::validate::grid_issues(self, &mut issues);
         let err = |issues: &mut Vec<Issue>, location: &str, message: String| {
             issues.push(Issue {
                 severity: Severity::Error,
@@ -339,6 +340,57 @@ fn audio_path_problem(audio: &str) -> Option<String> {
     None
 }
 
+/// The grid's limits: a chart is untrusted input, and a grid of a
+/// hundred million beats or one that runs backwards must fail here,
+/// not in a highway system.
+pub fn grid_issues(chart: &ChartFile, issues: &mut Vec<Issue>) {
+    let Some(grid) = chart.grid.as_ref() else {
+        return;
+    };
+    let cap = crate::grid::MAX_GRID_BEATS;
+    if grid.beats.len() > cap || grid.downbeats.len() > cap {
+        issues.push(Issue {
+            severity: Severity::Error,
+            location: "grid".to_owned(),
+            message: format!(
+                "the beat grid holds {} beats and {} downbeats; the maximum is {cap}",
+                grid.beats.len(),
+                grid.downbeats.len()
+            ),
+        });
+        return;
+    }
+    let horizon = MAX_SONG_LENGTH_S + MAX_OFFSET_S;
+    for (what, times) in [("beat", &grid.beats), ("downbeat", &grid.downbeats)] {
+        if times
+            .iter()
+            .any(|t| !t.is_finite() || *t < -MAX_OFFSET_S || *t > horizon)
+        {
+            issues.push(Issue {
+                severity: Severity::Error,
+                location: format!("grid.{what}s"),
+                message: format!(
+                    "a grid {what} lies outside −{MAX_OFFSET_S}…{horizon} s or is not a number"
+                ),
+            });
+        }
+        if times.windows(2).any(|w| w[1] <= w[0]) {
+            issues.push(Issue {
+                severity: Severity::Error,
+                location: format!("grid.{what}s"),
+                message: format!("the grid's {what}s do not rise"),
+            });
+        }
+    }
+    if grid.beats.len() == 1 {
+        issues.push(Issue {
+            severity: Severity::Error,
+            location: "grid.beats".to_owned(),
+            message: "a grid of one beat has no interval".to_owned(),
+        });
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -383,6 +435,7 @@ mod tests {
             }],
             provenance: None,
             audio_trim: None,
+            grid: None,
         }
     }
 
@@ -588,5 +641,42 @@ mod tests {
         let mut chart = valid_chart();
         chart.charts.clear();
         assert!(errors(&chart).iter().any(|i| i.location == "charts"));
+    }
+
+    #[test]
+    fn a_grid_that_runs_backwards_or_past_every_limit_is_refused() {
+        use crate::grid::{BeatGrid, MAX_GRID_BEATS};
+        let mut chart = valid_chart();
+        chart.grid = Some(BeatGrid::from_beats(&[0.0, 0.5, 1.0, 1.5]));
+        let grid_errors = |chart: &ChartFile| {
+            chart
+                .validate()
+                .into_iter()
+                .filter(|i| i.severity == Severity::Error && i.location.starts_with("grid"))
+                .count()
+        };
+        assert_eq!(grid_errors(&chart), 0, "a rising grid is valid");
+        chart.grid = Some(BeatGrid {
+            beats: vec![1.0, 0.5, 2.0],
+            downbeats: vec![],
+        });
+        assert!(grid_errors(&chart) > 0, "beats must rise");
+        chart.grid = Some(BeatGrid {
+            beats: vec![0.0; MAX_GRID_BEATS + 1],
+            downbeats: vec![],
+        });
+        assert!(grid_errors(&chart) > 0, "the cap holds");
+        chart.grid = Some(BeatGrid {
+            beats: vec![1.0, f64::NAN],
+            downbeats: vec![],
+        });
+        assert!(grid_errors(&chart) > 0, "a beat must be a number");
+        chart.grid = Some(BeatGrid {
+            beats: vec![1.0],
+            downbeats: vec![],
+        });
+        assert!(grid_errors(&chart) > 0, "one beat is no interval");
+        chart.grid = None;
+        assert_eq!(grid_errors(&chart), 0);
     }
 }

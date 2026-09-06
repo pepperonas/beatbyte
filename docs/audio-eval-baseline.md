@@ -366,3 +366,77 @@ cargo run -p beatbyte-audio --example phase_real  <same args>   # phase, before/
 
 **Phase 2 ends here.** Phase 3 has a precise target for the first
 time: sub-beat alignment, worth 0.16 of the remaining 0.16.
+
+---
+
+# The grid reaches the chart (Phase 3a, 2026-09-06)
+
+Phase 2 gave the analysis a tracked grid. The chart never got it:
+format v1 stores one `bpm` and one `offset_s`, and the generator
+quantised every note to that constant grid, the highway drew its
+lines from it, the phrases counted from it, the editor snapped to it
+and the sustain ticks were scored on it. Measured on the library
+(`beatbyte-cli analyze --json`, the tracked beats against the constant
+grid laid from the first beat at the median tempo):
+
+| Song | local tempo | tracked − constant, max | at the end |
+|---|---|---:|---:|
+| Eagles — Hotel California (live 1977) | 140.6–152.0 BPM | **1.61 s** | +1.49 s |
+| Böhse Onkelz — Mexico | 106–120 BPM | 0.36 s | +0.24 s |
+| Manowar — Warriors of the World (live) | 84–91 BPM | 0.24 s | −0.18 s |
+| Toto — Africa | 89–95 BPM | 0.19 s | +0.17 s |
+
+More than three beats on the live recording; a third to two thirds of
+a beat on studio songs. Every note was snapped to a subdivision of the
+wrong grid (within the 55 ms tolerance of *some* eighth, which is
+always available), and the bar lines ran ahead of the drummer.
+
+## What was built
+
+`ChartFile.grid` (`docs/chart-format/chart-format-v1.md`): the tracked
+beats to a tenth of a millisecond, and the downbeats once a stage
+knows them. Notes are quantised to the subdivisions of the LOCAL beat
+(`BeatGrid::quantize`), tails and hold windows use the local beat, the
+phrases count bars on the grid, the track's tempo map is one change
+per beat (a beat is exactly one beat in), the highway's lines and bars
+follow the grid, the lyric countdown counts the local beat, the editor
+snaps to it. A chart without a grid behaves exactly as before.
+`redesign` carries the fresh grid and moves the carried difficulties
+onto it within the snap tolerance.
+
+## The rollout, counted
+
+70 charts rolled over; the legacy folder skipped as always. The
+carried easy and medium — the ear-approved readings — kept every
+note, lane and tail:
+
+| | notes | moved > 1 ms | moved > 20 ms | median | mean | max |
+|---|---:|---:|---:|---:|---:|---:|
+| easy | 15 872 | 97 % | 53 % | 21.7 ms | 23.4 ms | 55.0 ms |
+| medium | 30 423 | 97 % | 54 % | 21.8 ms | 23.4 ms | 55.0 ms |
+
+Hard and expert were regenerated on the grid (note counts change by a
+few percent per song, as a regeneration does). The two synthesized
+reference tracks' fingerprints moved once with it — their notes sit
+on the grid's subdivisions and their phrases on its bars now — and
+are re-recorded (`apps/beatbyte/tests/rock_is_unchanged.rs`), the
+projection rounding to the microsecond before the millisecond so an
+eighth at an exact half-millisecond cannot flip under float noise.
+Autopilot on two rolled-over songs at expert: Hotel
+California 1580/1580 perfect, Africa 908/908 perfect, no miss, no
+overstrum. A second `redesign --all` writes nothing.
+
+⚠️ It did not, the first time. `snap_notes` recomputed `a + k · step`
+for a note already on the grid and got the stored float back a few
+ULPs off, called that a move, and rewrote every chart on every run —
+the same mechanism as the currency check earlier that day, one layer
+down. A snap under a microsecond is not a move (`SNAP_NOISE_S`), and
+the proof is the run that writes nothing.
+
+## What it does not claim
+
+The ear has not judged it. A hit moved by 22 ms toward the drummer is
+the intended direction and below what a hit window notices; whether
+the medium readings still *feel* as approved is the user's call, and
+every folder keeps its previous version one pointer away.
+

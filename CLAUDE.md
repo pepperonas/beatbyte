@@ -514,6 +514,20 @@ artifact, smoke-test it (neutral CWD!), then
   seconds). The browser now re-resolves a vanished version from the
   folder's pointer; still, batch edits to `songs/imported/` while the
   game runs are edits the user sees.
+- **A chart's constant `bpm` is not its grid.** The analysis tracked a
+  time-varying grid since Phase 2; the generator, the highway, the
+  phrases and the editor kept counting on the constant one — 1.61 s
+  apart by the end of a live recording, and nobody saw it because
+  every hit is within 55 ms of SOME eighth of any grid. When a stage
+  produces a better version of a quantity, check who still consumes
+  the old one (`grep` the field), not just who produces it.
+- **A snap that recomputes a position moves it by float noise, and
+  float noise rewrites files.** `a + k · step` is not the stored
+  float; `snap_notes` moved every already-snapped note by ~1e-15 s,
+  the hash changed, and `redesign --all` wrote seventy versions on a
+  run that should have written none — one layer under the ULP bug
+  fixed the same morning. A move under a microsecond is not a move.
+  The proof that an idempotent step is idempotent is the second run.
 - **A summary inside this repository is not a source.** Round six of
   the look plan built the gem from a trait table an earlier round had
   written ("dark ring, white centre") instead of from the material,

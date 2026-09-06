@@ -581,8 +581,8 @@ pub fn update_lyrics(
         }
     }
 
-    // The gap countdown: on the beat grid, off the same clock.
-    let beat_s = 60.0 / song.chart.song.bpm.max(1.0);
+    // The gap countdown: on the beat grid, off the same clock — the
+    // LOCAL beat at the line, where the chart tracks one.
     let countdown = match (cue.phase, cue.active, cue.upcoming) {
         // Idle: the countdown belongs to the next line.
         (Phase::Idle, None, Some(next)) => Some(next),
@@ -596,7 +596,12 @@ pub fn update_lyrics(
         let gap_from = next
             .checked_sub(1)
             .map_or(0.0, |previous| sung_end(&lyrics.lines[previous]));
-        countdown_lit(position, line.start, gap_from, beat_s)
+        countdown_lit(
+            position,
+            line.start,
+            gap_from,
+            song.chart.beat_length_at(line.start),
+        )
     });
     for (pulse, mut sprite, mut transform, mut visibility) in &mut pulses {
         match countdown {

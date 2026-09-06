@@ -14,6 +14,35 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.30] - 2026-09-06
+
+### Added
+
+- **The chart carries the beat grid the analysis tracked.** Format v1
+  stored one `bpm` and one `offset_s`, and everything downstream —
+  the note quantiser, the fret lines, the phrases, the editor's snap,
+  the sustain ticks — counted on that constant grid while the
+  analysis had been tracking a time-varying one since Phase 2.
+  Measured on the library, the two part ways by up to 1.61 s on a
+  live recording (Hotel California 1977, local tempo 140.6–152.0
+  BPM) and by 0.19–0.36 s on studio songs. A chart now has `grid`
+  (`beats`, and `downbeats` once a stage knows them; times to a
+  tenth of a millisecond, capped and validated as untrusted input):
+  notes are snapped to the subdivisions of the LOCAL beat, the
+  highway's lines and bars follow it, the lyric countdown counts the
+  local beat, the editor snaps to it, and the track's tempo map is
+  built from it, one change per beat. `bpm` and `offset_s` stay as
+  the median and the first beat; a chart without a grid behaves as
+  before. The two synthesized reference tracks' fingerprints moved
+  once with it (notes on the grid's subdivisions, phrases on its
+  bars) and are re-recorded for macOS; the Linux values follow from
+  CI's log.
+- **`redesign` moves the carried difficulties onto the grid.** Easy
+  and medium keep every note, lane and tail they had and are snapped
+  onto the tracked grid within the 55 ms tolerance — what a hit is
+  does not change, where it sits inside the beat does, toward the
+  audio.
+
 ## [0.14.29] - 2026-09-06
 
 ### Added

@@ -57,6 +57,7 @@ charts across difficulties. Implemented by the `beatbyte-chart` crate.
 | `song` | object | ✅ | Song metadata. |
 | `charts` | array | ✅ | One entry per difficulty; at least one. |
 | `provenance` | object | – | Where a chart *version* came from (ADR-0011). Metadata: not part of the chart hash. |
+| `grid` | object | – | `{ "beats": [f64…], "downbeats": [f64…] }` — the beat grid as the analysis TRACKED it (v0.14.30): song seconds of every beat, rising, to a tenth of a millisecond; `downbeats` the bar starts once a stage knows them (empty otherwise: a bar is then every fourth beat from the first). At most 100 000 of each, within −60 s … song length + 60 s. Content, not metadata: part of the chart hash. Absent on charts from before it — the constant grid `bpm`/`offset_s` describe is then the grid. Notes are quantised to subdivisions of the local beat; the highway, the lyric countdown, the editor's snap and the track's tempo map (one change per beat) all read it. |
 | `audio_trim` | object | – | `{ "priming_samples": u32, "sample_rate": u32 }` — the encoder priming the decode skipped before time `0.0`, at the rate it is counted in. `priming_samples` ≤ `sample_rate` (a second), `sample_rate` 1–384000. Present on every chart written since v0.14.10 (zero for WAV/MP3/FLAC); absent means "times from before the skip" and the game moves them by `−priming_samples / sample_rate` once, then writes the marker. Metadata about the axis: not part of the chart hash (moved times are, by being different). |
 
 ### `song`
@@ -66,7 +67,7 @@ charts across difficulties. Implemented by the `beatbyte-chart` crate.
 | `title` | string | ✅ | Non-empty. |
 | `artist` | string | – (default `"Unknown"`) | |
 | `audio` | string | ✅ | Relative path to the audio file, resolved against the chart's directory. No absolute paths, no `..`, no `:`. |
-| `bpm` | f64 | ✅ | 20–400. Format v1 is constant-tempo; the domain model already supports tempo maps for a future version. |
+| `bpm` | f64 | ✅ | 20–400. The song's median tempo, for display and for readers without `grid`; the tempo the track plays against is `grid`'s when the chart carries one. |
 | `offset_s` | f64 | – (default `0`) | Song time of musical beat 0 (audio lead-in). ±60 s. |
 | `preview_start_s` | f64 | – | Song-browser preview start. |
 | `duration_s` | f64 | – | Total song length. |

@@ -40,6 +40,20 @@ pub fn merged_redesign(
         ));
     }
     let mut merged = active.clone();
+    // The tracked grid is the fresh analysis's, like hard and expert.
+    // The carried difficulties were placed on whatever grid their
+    // version had — the constant one, before v0.14.30 — and are moved
+    // onto the tracked grid by at most the snap tolerance: what they
+    // are (lane, tail, which hits) does not change, where a hit sits
+    // inside the beat does, by up to 55 ms, toward the audio.
+    merged.grid = fresh.grid.clone();
+    if let Some(grid) = merged.grid.as_ref() {
+        for chart in &mut merged.charts {
+            if !REDESIGNED.contains(&chart.difficulty) {
+                grid.snap_notes(&mut chart.notes, beatbyte_chart::grid::SNAP_TOLERANCE_S);
+            }
+        }
+    }
     for difficulty in REDESIGNED {
         let Some(new_chart) = fresh.chart_for(difficulty) else {
             return Err(format!(
@@ -270,6 +284,7 @@ mod tests {
                 .collect(),
             provenance: None,
             audio_trim: None,
+            grid: None,
         }
     }
 
@@ -297,6 +312,43 @@ mod tests {
         let mut changed = fresh.clone();
         changed.charts[0].notes[1].lane = 4;
         assert!(!is_current(&loaded, &changed));
+    }
+
+    #[test]
+    fn the_merge_takes_the_fresh_grid_and_moves_the_carried_notes_onto_it() {
+        use beatbyte_chart::grid::BeatGrid;
+        // The active version was placed on a constant 0.5 s grid; the
+        // fresh analysis tracked a grid that has drifted 40 ms by the
+        // fourth beat — inside the snap tolerance, so the beat wins.
+        let mut active = chart_file(120.0, |_| 0);
+        active.charts[1].notes = vec![note(1.0, 0), note(2.5, 1)]; // medium
+        let mut fresh = chart_file(120.0, |_| 3);
+        fresh.grid = Some(BeatGrid::from_beats(&[1.0, 1.5, 2.02, 2.54, 3.08]));
+        let merged = merged_redesign(&active, &fresh, 7).expect("merges");
+        assert_eq!(merged.grid, fresh.grid, "the grid is the analysis's");
+        let medium = merged.chart_for(Difficulty::Medium).expect("medium");
+        // 1.0 sits on the grid; 2.5 was a beat on the constant grid and
+        // is 40 ms off the tracked beat at 2.54 — moved onto it, lane kept.
+        assert!((medium.notes[0].time - 1.0).abs() < 1e-9);
+        assert!(
+            (medium.notes[1].time - 2.54).abs() < 1e-9,
+            "{:?}",
+            medium.notes[1]
+        );
+        assert_eq!(medium.notes[1].lane, 1);
+        // Hard came from the fresh generation untouched.
+        assert_eq!(
+            merged.chart_for(Difficulty::Hard).expect("hard").notes,
+            fresh.chart_for(Difficulty::Hard).expect("hard").notes
+        );
+        // A fresh generation without a grid leaves the carried notes
+        // where they were.
+        let plain = chart_file(120.0, |_| 3);
+        let merged = merged_redesign(&active, &plain, 7).expect("merges");
+        assert!(merged.grid.is_none());
+        assert!(
+            (merged.chart_for(Difficulty::Medium).expect("m").notes[1].time - 2.5).abs() < 1e-9
+        );
     }
 
     #[test]

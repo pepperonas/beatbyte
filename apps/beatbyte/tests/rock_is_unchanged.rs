@@ -81,8 +81,12 @@ fn fnv1a(bytes: &[u8]) -> u64 {
 fn projection(chart: &ChartFile) -> String {
     let mut out = String::new();
     // Millisecond rounding, so libm's last bits cannot move the
-    // fingerprint but a real retiming certainly does.
-    let ms = |seconds: f64| (seconds * 1000.0).round() as i64;
+    // fingerprint but a real retiming certainly does. Rounded to the
+    // microsecond FIRST: notes on the tracked grid sit on eighths of
+    // a beat, which at the demo's tempo are exact half-milliseconds,
+    // and a nanosecond either side of .5 rounds to different
+    // milliseconds — the very noise the projection exists to ignore.
+    let ms = |seconds: f64| ((seconds * 1_000_000.0).round() / 1000.0).round() as i64;
     out.push_str(&format!(
         "bpm={} offset={}\n",
         ms(chart.song.bpm),
@@ -128,15 +132,19 @@ fn fingerprint(audio: &beatbyte_audio::decode::AudioData, title: &str) -> u64 {
 
 /// The recorded fingerprint for this platform, if one has been taken.
 ///
-/// `circuit-breaker` agrees across macOS and Linux; `solder-groove`
-/// does not, and both values below are measured rather than derived.
-/// A platform with no entry is not silently blessed — see
-/// [`check`].
+/// Moved once on 2026-09-06 (v0.14.30): notes are quantised to the
+/// tracked grid's subdivisions and the phrases count bars on it, so
+/// both charts changed — on purpose, with the table in
+/// `docs/audio-eval-baseline.md` ("The grid reaches the chart") as
+/// the reason. The macOS values are measured; the Linux values were
+/// not measurable here and are recorded from CI's log by the next
+/// commit (an unrecorded platform prints its value, see [`check`]).
+/// Before that day `circuit-breaker` agreed across macOS and Linux
+/// and `solder-groove` did not.
 fn recorded(song: &str) -> Option<u64> {
     match (song, std::env::consts::OS) {
-        ("circuit-breaker", "macos" | "linux") => Some(9_619_993_056_299_140_922),
-        ("solder-groove", "macos") => Some(8_006_722_771_110_525_229),
-        ("solder-groove", "linux") => Some(4_651_134_946_397_381_867),
+        ("circuit-breaker", "macos") => Some(5_812_058_801_453_186_571),
+        ("solder-groove", "macos") => Some(1_801_622_057_206_307_207),
         _ => None,
     }
 }
