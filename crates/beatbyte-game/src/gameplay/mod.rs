@@ -365,6 +365,7 @@ impl Plugin for GameplayPlugin {
                     feedback::animate_feedback,
                     // Grouped: the tuple would exceed Bevy's cap.
                     (
+                        hud::mark_hype_steps,
                         hud::update_huds,
                         hud::pop_streak,
                         hud::pop_multiplier,
@@ -406,6 +407,7 @@ impl Plugin for GameplayPlugin {
             )
             .init_resource::<PauseCursor>()
             .init_resource::<hud::HypeTubeState>()
+            .init_resource::<hud::HypeSteps>()
             .init_resource::<lyrics::LyricDisplay>()
             .init_resource::<PracticeState>()
             .add_systems(

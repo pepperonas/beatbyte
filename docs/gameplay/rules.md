@@ -50,6 +50,13 @@ Chords score per lane (a 3-lane Perfect chord = 150 base points).
 - Charts define special **phrases**; hitting every note event inside a
   phrase earns **25%** meter. A miss inside the phrase breaks it
   (overstrums don't).
+- The moment a phrase completes, the meter shows the step: the solo
+  tube lights white-hot for 0.35 s and its star crown swells for
+  0.25 s (a multiplayer bar thickens instead); a partial or broken
+  phrase shows nothing. Age-driven, so phrases in quick succession
+  restart the flash rather than stack it. Under REDUCED FLASHING the
+  light stays off and only the crown's (halved) swell remains — the
+  fill's own rise is the step.
 - Activation requires **≥50%** meter and doubles the multiplier
   (up to ×8).
 - A full meter drains over **32 beats** of song time.

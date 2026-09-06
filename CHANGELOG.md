@@ -14,6 +14,25 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.35] - 2026-09-06
+
+### Added
+
+- **A completed Star-Power phrase shows on the meter.** The moment
+  every note of a special phrase is hit and the Hype meter is
+  credited its step (`docs/gameplay/rules.md`), the solo tube lights
+  white-hot for 0.35 s on the tint channel its breathing already
+  uses — column, meniscus, glass and halos together — and its star
+  crown swells with the counters' pop for 0.25 s; a multiplayer bar
+  thickens instead. Nothing on a hit inside a phrase, a broken
+  phrase or the activation. Age-driven: phrases in quick succession
+  restart the flash rather than stack it, and nothing can hang.
+  Under REDUCED FLASHING the light stays off and only a halved
+  swell remains. The Star-Power logic is untouched; the trigger is
+  the core's own `PhraseCompleted` event, read from the same
+  feedback stream as the sparks and the sounds, and each credited
+  step is logged.
+
 ## [0.14.34] - 2026-09-06
 
 ### Added

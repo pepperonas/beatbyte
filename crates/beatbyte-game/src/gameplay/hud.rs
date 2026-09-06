@@ -3,6 +3,7 @@
 //! World-space text follows the highway layout for any player count —
 //! the same code serves solo and four-player splits.
 
+use beatbyte_core::SessionEvent;
 use bevy::prelude::*;
 use bevy::sprite::Anchor;
 
@@ -182,6 +183,79 @@ pub fn gauge_angle(meter: f32) -> f32 {
 pub fn pop_scale(age: f32) -> f32 {
     let t = (age / 0.2).clamp(0.0, 1.0);
     1.0 + 0.4 * (1.0 - t) * (1.0 - t)
+}
+
+/// How long the phrase-complete flash lasts on the Hype meter.
+pub const STEP_FLASH_S: f32 = 0.35;
+/// How long the crown (and a multiplayer bar) swells for it.
+pub const STEP_POP_S: f32 = 0.25;
+
+/// Seconds since each player last completed a special phrase — the
+/// one moment the Hype meter is handed a whole step at once, and
+/// the moment the tube flashes and its crown pops for. Age-driven,
+/// so a second phrase inside the window simply restarts it: nothing
+/// stacks, nothing can hang. `INFINITY` is "never".
+#[derive(Resource, Debug, Clone, PartialEq)]
+pub struct HypeSteps {
+    ages: Vec<f32>,
+}
+
+impl Default for HypeSteps {
+    fn default() -> Self {
+        HypeSteps {
+            ages: vec![f32::INFINITY; crate::multiplayer::MAX_PLAYERS],
+        }
+    }
+}
+
+impl HypeSteps {
+    /// A player just completed a phrase: restart their flash.
+    pub fn mark(&mut self, player: usize) {
+        if let Some(age) = self.ages.get_mut(player) {
+            *age = 0.0;
+        }
+    }
+
+    /// Advance every flash by a frame.
+    pub fn tick(&mut self, dt: f32) {
+        for age in &mut self.ages {
+            *age += dt.max(0.0);
+        }
+    }
+
+    /// Seconds since the player's last completed phrase.
+    #[must_use]
+    pub fn age(&self, player: usize) -> f32 {
+        self.ages.get(player).copied().unwrap_or(f32::INFINITY)
+    }
+}
+
+/// The meter's brightening for a completed phrase, 0..1: full at the
+/// moment the step is credited, gone after [`STEP_FLASH_S`], a
+/// quadratic fall like the counters' pop. Nothing under reduced
+/// flashing — that setting is for people for whom a flash is not a
+/// signal; the fill's own rise still shows the step. Pure — tested.
+#[must_use]
+pub fn step_flash(age: f32, reduced: bool) -> f32 {
+    if reduced || !age.is_finite() || age < 0.0 || age >= STEP_FLASH_S {
+        return 0.0;
+    }
+    let t = age / STEP_FLASH_S;
+    (1.0 - t) * (1.0 - t)
+}
+
+/// The crown's swell for a completed phrase: the counters' pop
+/// (~1.4× settling within [`STEP_POP_S`]), halved under reduced
+/// flashing so the step is still handed to the eye without the
+/// flash. Pure — tested.
+#[must_use]
+pub fn step_pop(age: f32, reduced: bool) -> f32 {
+    if !age.is_finite() || age < 0.0 || age >= STEP_POP_S {
+        return 1.0;
+    }
+    let t = age / STEP_POP_S;
+    let swell = if reduced { 0.2 } else { 0.4 };
+    1.0 + swell * (1.0 - t) * (1.0 - t)
 }
 
 /// Digits the counter reserves. Six is beyond any real score; the
@@ -944,6 +1018,8 @@ const STAR_SPIN: f32 = 0.9;
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn update_huds(
     players: Query<(&PlayerIndex, &PlayerSession)>,
+    steps: Res<HypeSteps>,
+    effects: Res<crate::gameplay::fx::EffectSettings>,
     mut texts: ParamSet<(
         Query<(&ScoreText, &mut TextSpan)>,
         Query<(&ComboText, &mut Text2d)>,
@@ -982,6 +1058,7 @@ pub fn update_huds(
     mut beads: Query<(&StreakBead, Has<BulbRim>, &mut Sprite)>,
     mut boxes: Query<&mut Sprite, (With<MultiplierBox>, Without<StreakBead>)>,
 ) {
+    let reduced = effects.reduced_flashing;
     for (index, player) in &players {
         let perf = player.session.performance();
 
@@ -1024,6 +1101,9 @@ pub fn update_huds(
         for (fill, mut transform) in &mut fills {
             if fill.0 == index.0 {
                 transform.scale.x = perf.hype_meter() as f32;
+                // A completed phrase thickens the bar for a moment:
+                // the multiplayer highways have no crown to pop.
+                transform.scale.y = step_pop(steps.age(index.0), reduced);
             }
         }
         for (fill, mut transform, mut sprite) in &mut meters {
@@ -1119,6 +1199,39 @@ pub fn update_huds(
                 text.0 = line.to_owned();
             }
         }
+    }
+}
+
+/// Note each completed special phrase — the event the core emits
+/// only when EVERY event of the phrase was hit (a broken phrase
+/// never completes) and the meter is credited its step — and age
+/// the flashes. Reads the same feedback stream the sparks and the
+/// sounds read; the Star-Power logic itself is untouched.
+pub fn mark_hype_steps(
+    time: Res<Time>,
+    mut feedback: MessageReader<crate::gameplay::SessionFeedback>,
+    mut steps: ResMut<HypeSteps>,
+) {
+    steps.tick(time.delta_secs());
+    for message in feedback.read() {
+        if let Some(phrase_index) = credited_step(&message.event) {
+            steps.mark(message.player_index);
+            info!(
+                "hype: phrase {phrase_index} complete for player {} — one step credited",
+                message.player_index
+            );
+        }
+    }
+}
+
+/// The one event that credits a Hype step: a phrase every event of
+/// which was hit. A broken phrase, a hit inside a phrase, the
+/// activation itself — none of them. Pure — tested.
+#[must_use]
+pub fn credited_step(event: &SessionEvent) -> Option<usize> {
+    match event {
+        SessionEvent::PhraseCompleted { phrase_index } => Some(*phrase_index),
+        _ => None,
     }
 }
 
@@ -1225,6 +1338,7 @@ pub fn animate_hype_tube(
     >,
     mut column: Local<f32>,
     mut state: ResMut<HypeTubeState>,
+    steps: Res<HypeSteps>,
 ) {
     let Some((_, player)) = players.iter().find(|(index, _)| index.0 == 0) else {
         return;
@@ -1237,7 +1351,11 @@ pub fn animate_hype_tube(
     let dt = time.delta_secs();
     *column = approach(*column, meter, FILL_RATE, dt);
     let filled = column.clamp(0.0, 1.0);
-    let glow = charge_glow(ready, active, seconds, settings.reduced_flashing)
+    // A completed phrase lights the whole column white-hot for a
+    // third of a second — the same tint channel the breathing uses,
+    // so the flash rides the meniscus, the glass and the halos too.
+    let step = step_flash(steps.age(0), settings.reduced_flashing);
+    let glow = charge_glow(ready, active, seconds, settings.reduced_flashing).max(step)
         * settings.intensity.clamp(0.0, 1.0);
     *state = HypeTubeState {
         column: filled,
@@ -1367,6 +1485,7 @@ pub fn animate_hype_ornaments(
         &mut Visibility,
     )>,
     mut spin: Local<f32>,
+    steps: Res<HypeSteps>,
 ) {
     let Some((_, player)) = players.iter().find(|(index, _)| index.0 == 0) else {
         return;
@@ -1379,6 +1498,9 @@ pub fn animate_hype_ornaments(
     let filled = state.column;
     let glow = state.glow;
     let (scale, turn) = star_pose(ready, active, glow, settings.reduced_flashing, dt);
+    // The crown swells on a completed phrase: the step, handed to
+    // the eye where the power is shown.
+    let scale = scale * step_pop(steps.age(0), settings.reduced_flashing);
     if turn > 0.0 {
         *spin += turn;
     } else {
@@ -1829,7 +1951,11 @@ mod gauge_tests {
         );
     }
 
-    use super::{gauge_angle, pop_scale, ready_glow};
+    use super::{
+        HypeSteps, STEP_FLASH_S, STEP_POP_S, credited_step, gauge_angle, pop_scale, ready_glow,
+        step_flash, step_pop,
+    };
+    use beatbyte_core::SessionEvent;
 
     #[test]
     fn the_ready_breath_stays_a_glow_and_never_a_strobe() {
@@ -1858,6 +1984,65 @@ mod gauge_tests {
         // off the dial.
         assert_eq!(gauge_angle(1.7), gauge_angle(1.0));
         assert_eq!(gauge_angle(-0.3), gauge_angle(0.0));
+    }
+
+    #[test]
+    fn a_completed_phrase_flashes_the_meter_and_pops_the_crown_then_lets_go() {
+        // Full at the step, gone after the window, falling in between.
+        assert!((step_flash(0.0, false) - 1.0).abs() < 1e-6);
+        assert!(step_flash(0.1, false) > 0.0 && step_flash(0.1, false) < 1.0);
+        assert!(step_flash(0.1, false) > step_flash(0.2, false));
+        assert_eq!(step_flash(STEP_FLASH_S, false), 0.0);
+        assert_eq!(
+            step_flash(f32::INFINITY, false),
+            0.0,
+            "never completed: no flash"
+        );
+        assert_eq!(step_flash(-1.0, false), 0.0);
+        // Reduced flashing: no flash at all, but the crown still pops
+        // — smaller.
+        assert_eq!(step_flash(0.0, true), 0.0);
+        assert!((step_pop(0.0, false) - 1.4).abs() < 1e-6);
+        assert!((step_pop(0.0, true) - 1.2).abs() < 1e-6);
+        assert!((step_pop(STEP_POP_S, false) - 1.0).abs() < 1e-6);
+        assert!((step_pop(f32::INFINITY, true) - 1.0).abs() < 1e-6);
+        // The ages: nothing until a mark, then a restart per phrase —
+        // two phrases in a row do not stack, they restart.
+        let mut steps = HypeSteps::default();
+        assert_eq!(steps.age(0), f32::INFINITY);
+        steps.tick(1.0);
+        assert_eq!(steps.age(0), f32::INFINITY, "never marked stays never");
+        steps.mark(1);
+        steps.tick(0.1);
+        assert!((steps.age(1) - 0.1).abs() < 1e-6);
+        assert_eq!(
+            steps.age(0),
+            f32::INFINITY,
+            "another player's phrase is theirs"
+        );
+        steps.mark(1);
+        assert_eq!(steps.age(1), 0.0, "a second phrase restarts the flash");
+        steps.mark(99);
+        assert_eq!(steps.age(99), f32::INFINITY, "an unknown player is ignored");
+        // Only a COMPLETED phrase is a step — not a hit inside one,
+        // not a broken one, not the activation.
+        assert_eq!(
+            credited_step(&SessionEvent::PhraseCompleted { phrase_index: 3 }),
+            Some(3)
+        );
+        assert_eq!(
+            credited_step(&SessionEvent::PhraseBroken { phrase_index: 3 }),
+            None
+        );
+        assert_eq!(credited_step(&SessionEvent::HypeActivated), None);
+        assert_eq!(
+            credited_step(&SessionEvent::NoteHit {
+                event_index: 0,
+                judgment: beatbyte_core::Judgment::Perfect,
+                offset_s: 0.0
+            }),
+            None
+        );
     }
 
     #[test]
