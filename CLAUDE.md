@@ -453,6 +453,18 @@ artifact, smoke-test it (neutral CWD!), then
   a mutation made the code always pick one of them: nothing tested
   the CHOICE. Where behaviour hinges on a condition, lift the choice
   into its own pure function and pin that — the branches will follow.
+- **A forced alignment always returns a path, and a path is not
+  evidence.** On a mix the model cannot read, the anchored pass —
+  which centres each line's window on the shift it is meant to
+  test — simply places the words inside those windows. The deltas
+  then reproduce the guess and the "consensus" measures the window,
+  so a song the model heard as one letter in six seconds came back
+  "shifted master, 85 % agreement, −3.34 s" and ran three seconds
+  early on screen. Any statistic computed from a fit against the
+  thing that produced the fit will confirm it. Ask the input a
+  question the fit cannot answer about itself — here, the model's own
+  greedy letter rate — and set the threshold against measured error,
+  not against the elbow of a distribution (`docs/lyrics/evaluation.md`).
 - **A summary inside this repository is not a source.** Round six of
   the look plan built the gem from a trait table an earlier round had
   written ("dark ring, white centre") instead of from the material,
