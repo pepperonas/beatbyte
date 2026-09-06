@@ -549,6 +549,10 @@ mod ml {
             Verdict::ShiftedMaster { offset_s } => format!("source {offset_s:+.2} s off"),
             Verdict::DifferentEdit => "a different edit, aligned times kept".to_owned(),
             Verdict::Failed => "FAILED, line-level fallback".to_owned(),
+            Verdict::Stretched { scale, offset_s } => format!(
+                "another edit, stamps mapped by {scale:.3}·t {offset_s:+.1} s, {} unsung line(s) dropped",
+                gate.lines_unsung
+            ),
         };
         format!(
             "{verdict}; {} lines at line level - words.json beside the song",

@@ -5,7 +5,7 @@
 //! skipped with a log line, never a crash. Audio references resolve
 //! through the chart crate's traversal-safe path logic.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use beatbyte_chart::{ChartFile, Severity, load_chart_file, resolve_audio_path};
 use beatbyte_core::Difficulty;
@@ -281,6 +281,32 @@ pub fn live_scan_roots() -> Vec<PathBuf> {
         .filter(|root| root.is_dir())
         .map(|root| std::fs::canonicalize(&root).unwrap_or(root))
         .collect()
+}
+
+/// Where a song's chart is NOW, when the path the scan recorded is
+/// gone: the folder's pointer is read again and resolved against the
+/// files that exist. `None` when the folder itself is gone or holds
+/// no chart.
+///
+/// Versions come and go under a running game — a redesign rolls a
+/// folder over, a revert deletes the version it undid — and an entry
+/// that still names the old file turned every Enter into "cannot
+/// load" until a rescan (reported: eleven such lines in two seconds,
+/// one per press). Pure over the folder — tested.
+#[must_use]
+pub fn reresolve_chart(stale: &Path) -> Option<PathBuf> {
+    let dir = stale.parent()?;
+    let names: Vec<String> = std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(Result::ok)
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    let pointer = std::fs::read_to_string(dir.join(beatbyte_chart::versions::POINTER_FILE)).ok();
+    let active = dir.join(beatbyte_chart::versions::resolve_active(
+        pointer.as_deref(),
+        &names,
+    ));
+    (active.is_file() && active != stale).then_some(active)
 }
 
 /// Build the library: built-in songs first (in the given order), then
@@ -1228,5 +1254,41 @@ mod migration_tests {
         );
         assert_eq!(std::fs::read_to_string(&chart).unwrap(), before);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_vanished_version_is_resolved_again_from_the_folders_pointer() {
+        let dir = std::env::temp_dir().join(format!("bb-reresolve-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        std::fs::write(dir.join("chart.json"), "{}").expect("base");
+        std::fs::write(dir.join("chart.v2.json"), "{}").expect("v2");
+        std::fs::write(
+            dir.join(beatbyte_chart::versions::POINTER_FILE),
+            "{\"active\": \"chart.v2.json\"}\n",
+        )
+        .expect("pointer");
+        // The scan had recorded v3; it was deleted and the pointer
+        // moved back to v2.
+        assert_eq!(
+            super::reresolve_chart(&dir.join("chart.v3.json")),
+            Some(dir.join("chart.v2.json"))
+        );
+        // A path that still exists is not "re"-resolved to itself.
+        assert_eq!(super::reresolve_chart(&dir.join("chart.v2.json")), None);
+        // A pointer at a file that does not exist falls back to the
+        // base chart, as the scan itself would.
+        std::fs::write(
+            dir.join(beatbyte_chart::versions::POINTER_FILE),
+            "{\"active\": \"chart.v9.json\"}\n",
+        )
+        .expect("pointer");
+        assert_eq!(
+            super::reresolve_chart(&dir.join("chart.v3.json")),
+            Some(dir.join("chart.json"))
+        );
+        // No folder, nothing.
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(super::reresolve_chart(&dir.join("chart.v3.json")), None);
     }
 }

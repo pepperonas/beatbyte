@@ -14,10 +14,13 @@ use std::time::Duration;
 use beatbyte_ml::{MlError, ModelStore, Runtime};
 use thiserror::Error;
 
-use crate::align::{Anchoring, LyricsError, Options, Progress, Stats, align_with};
+use crate::align::{
+    Anchoring, LyricsError, NO_SEPARATOR, Options, Progress, Provenance, Stats, align_with,
+};
 use crate::emissions::MODEL;
-use crate::gate::{GateConfig, GateReport, gate};
+use crate::gate::{GateConfig, GateReport, gate, prefer};
 use crate::transcript::Transcript;
+use crate::words::Alignment;
 
 /// Where a job is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,6 +95,14 @@ pub enum JobError {
     /// The audio could not be decoded.
     #[error("{0}")]
     Audio(String),
+    /// The vocal stem could not be decoded.
+    #[error("cannot decode the stem `{path}`: {reason}")]
+    Vocals {
+        /// The file.
+        path: PathBuf,
+        /// Why.
+        reason: String,
+    },
     /// The alignment failed.
     #[error(transparent)]
     Align(LyricsError),
@@ -119,6 +130,55 @@ pub struct Summary {
     pub gate: Option<GateReport>,
     /// Wall-clock time of the alignment itself.
     pub took: Duration,
+    /// How many Viterbi passes the alignment cost (see
+    /// [`crate::align::AlignOutcome::passes`]).
+    pub passes: u8,
+    /// When the source's stamps were retimed: the map they needed, if
+    /// any, and how many lines lay beyond the sound.
+    pub warp: Option<(Option<crate::align::Warp>, usize)>,
+    /// Where the song's sound ends, seconds — the length every rule
+    /// judged against.
+    pub sounding_end_s: f64,
+    /// Whether the result was written. `false` only under
+    /// [`JobOptions::keep_better`], when the alignment already beside
+    /// the audio outranked the new one and was kept.
+    pub written: bool,
+}
+
+/// What a job may do beyond aligning the song's own audio.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct JobOptions {
+    /// Where to write the alignment (default: beside the audio).
+    pub out: Option<PathBuf>,
+    /// Run the confidence gate (what the game wants); `false` writes
+    /// the raw alignment.
+    pub gated: bool,
+    /// Listen to this file instead of the song — a vocal stem an
+    /// external separator wrote from the song, on the song's own
+    /// timeline. The song still supplies the hash, the length the
+    /// stem is checked against, and the length the gate judges by.
+    pub vocals: Option<PathBuf>,
+    /// With `vocals`: what produced the stem, recorded as provenance.
+    pub separator: String,
+    /// Write only when the new alignment outranks the one already at
+    /// `out` by [`prefer`]; otherwise keep that file and report
+    /// `written: false`. A file that is not a gated alignment (raw,
+    /// unreadable) never outranks anything.
+    pub keep_better: bool,
+    /// Run the plain forced alignment only, without confining the
+    /// words to the source's line stamps — for looking at what the
+    /// model heard where, when the stamps themselves are in question.
+    pub no_anchors: bool,
+}
+
+/// Whether the alignment already at `existing` outranks `new` — the
+/// keep-better decision, from the files alone. Pure over its inputs;
+/// tested through [`prefer`] and the job.
+#[must_use]
+pub fn existing_outranks(existing: Option<&Alignment>, new: &GateReport) -> bool {
+    existing
+        .and_then(|alignment| alignment.gate.as_ref())
+        .is_some_and(|old| !prefer(new, old))
 }
 
 /// Where a song's alignment goes: `<audio stem>.words.json` beside
@@ -141,6 +201,28 @@ pub fn align_file(
     lyrics_path: &Path,
     out: Option<PathBuf>,
     gated: bool,
+    progress: &mut dyn FnMut(JobProgress),
+    cancel: &AtomicBool,
+) -> Result<Summary, JobError> {
+    align_file_with(
+        audio_path,
+        lyrics_path,
+        &JobOptions {
+            out,
+            gated,
+            ..JobOptions::default()
+        },
+        progress,
+        cancel,
+    )
+}
+
+/// [`align_file`] with every option: a vocal stem to listen to, its
+/// provenance, and the keep-better rule.
+pub fn align_file_with(
+    audio_path: &Path,
+    lyrics_path: &Path,
+    options: &JobOptions,
     progress: &mut dyn FnMut(JobProgress),
     cancel: &AtomicBool,
 ) -> Result<Summary, JobError> {
@@ -173,6 +255,17 @@ pub fn align_file(
     progress(report(JobStage::Decoding));
     let audio = beatbyte_audio::decode_file(audio_path)
         .map_err(|error| JobError::Audio(error.to_string()))?;
+    let heard = match &options.vocals {
+        Some(path) => {
+            Some(
+                beatbyte_audio::decode_file(path).map_err(|error| JobError::Vocals {
+                    path: path.clone(),
+                    reason: error.to_string(),
+                })?,
+            )
+        }
+        None => None,
+    };
     let audio_sha256 = beatbyte_ml::hash::sha256_file(audio_path).map_err(|error| {
         JobError::Audio(format!("cannot hash `{}`: {error}", audio_path.display()))
     })?;
@@ -183,19 +276,28 @@ pub fn align_file(
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default()
     );
+    let separator = if heard.is_some() {
+        options.separator.as_str()
+    } else {
+        NO_SEPARATOR
+    };
     let started = std::time::Instant::now();
     let mut outcome = align_with(
         &audio,
+        heard.as_ref(),
         &audio_sha256,
         &transcript,
-        &text_source,
+        &Provenance {
+            text: &text_source,
+            separator,
+        },
         &runtime,
         &model,
         &Options {
             // The game's lyrics almost always carry line stamps, and
             // the measurement says that is what keeps an alignment
             // from sliding through an instrumental.
-            anchoring: Some(Anchoring::default()),
+            anchoring: (!options.no_anchors).then(Anchoring::default),
         },
         &mut |p: Progress| {
             progress(JobProgress {
@@ -215,16 +317,43 @@ pub fn align_file(
     })?;
     let took = started.elapsed();
     progress(report(JobStage::Finishing));
-    let gate_report = gated.then(|| {
+    let sounding_end_s = audio.sounding_end_s(crate::align::SOUNDING_FLOOR);
+    let warp_summary = outcome.warp.as_ref().map(|w| (w.warp, w.unsung.len()));
+    let gate_report = options.gated.then(|| {
         gate(
             &mut outcome.alignment,
             &transcript,
-            audio.duration_s(),
+            // The sound's end, not the container's: a stamp in a
+            // tail of digital silence is past the song.
+            sounding_end_s,
             Some(outcome.evidence),
+            outcome.warp.as_ref(),
             &GateConfig::default(),
         )
     });
-    let out = out.unwrap_or_else(|| default_output(audio_path));
+    let out = options
+        .out
+        .clone()
+        .unwrap_or_else(|| default_output(audio_path));
+    if options.keep_better
+        && let Some(new) = &gate_report
+    {
+        let existing = std::fs::read_to_string(&out)
+            .ok()
+            .and_then(|json| Alignment::from_json(&json).ok());
+        if existing_outranks(existing.as_ref(), new) {
+            return Ok(Summary {
+                out,
+                stats: outcome.stats,
+                gate: gate_report,
+                took,
+                passes: outcome.passes,
+                warp: warp_summary,
+                sounding_end_s,
+                written: false,
+            });
+        }
+    }
     let json = outcome
         .alignment
         .to_json()
@@ -245,6 +374,10 @@ pub fn align_file(
         stats: outcome.stats,
         gate: gate_report,
         took,
+        passes: outcome.passes,
+        warp: warp_summary,
+        sounding_end_s,
+        written: true,
     })
 }
 
@@ -274,6 +407,50 @@ mod tests {
             "listening 3/5"
         );
         assert_eq!(p(JobStage::Finishing, 0, 0), "checking");
+    }
+
+    #[test]
+    fn keep_better_keeps_a_file_only_when_it_is_a_gated_alignment_that_outranks() {
+        use crate::gate::Verdict;
+        let gated = |verdict, letters_per_s| GateReport {
+            verdict,
+            lines_compared: 0,
+            consensus: None,
+            median_delta_s: None,
+            mad_s: None,
+            words_estimated: 0,
+            lines_fallen_back: 0,
+            lines_unsung: 0,
+            letters_per_s,
+        };
+        let file = |gate: Option<GateReport>| Alignment {
+            schema: crate::words::SCHEMA.to_owned(),
+            audio_sha256: String::new(),
+            pipeline_version: crate::PIPELINE_VERSION,
+            language: "en".to_owned(),
+            source: crate::words::Source {
+                text: String::new(),
+                separator: NO_SEPARATOR.to_owned(),
+                aligner: String::new(),
+            },
+            offset_ms: 0,
+            gate,
+            lines: vec![],
+        };
+        let new = gated(Verdict::SameMaster, Some(1.5));
+        // No file, or a raw file: nothing outranks the new result.
+        assert!(!existing_outranks(None, &new));
+        assert!(!existing_outranks(Some(&file(None)), &new));
+        // A failed alignment beside the audio does not outrank.
+        assert!(!existing_outranks(
+            Some(&file(Some(gated(Verdict::Failed, Some(9.0))))),
+            &new
+        ));
+        // One of the same standing that heard more of the song does.
+        assert!(existing_outranks(
+            Some(&file(Some(gated(Verdict::SameMaster, Some(2.0))))),
+            &new
+        ));
     }
 
     #[test]

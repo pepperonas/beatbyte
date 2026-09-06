@@ -104,6 +104,22 @@ impl AudioData {
         self.samples.len() as f64 / f64::from(self.sample_rate)
     }
 
+    /// Where the sound ends: one past the last sample whose magnitude
+    /// exceeds `floor` (linear, so `0.001` is −60 dBFS), in seconds.
+    /// The whole length when nothing does. A container's tail of
+    /// digital silence — a video's black end, a rip that kept the
+    /// gap to the next track — is not the song, and every length
+    /// rule (a catalogue's duration match, an alignment's "beyond the
+    /// end") wants the song.
+    #[must_use]
+    pub fn sounding_end_s(&self, floor: f32) -> f64 {
+        let last = self.samples.iter().rposition(|s| s.abs() > floor);
+        match last {
+            Some(index) => (index + 1) as f64 / f64::from(self.sample_rate),
+            None => self.duration_s(),
+        }
+    }
+
     /// Halve the sample rate with a half-band FIR low-pass (anti-alias)
     /// — analysis quality is unaffected below ~10 kHz and memory/FFT
     /// cost halve. Returns `self` unchanged if the rate is already low.
@@ -279,6 +295,20 @@ pub fn decode_file(path: &Path) -> Result<AudioData, DecodeError> {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_sound_ends_at_the_last_audible_sample_not_at_the_container() {
+        // Ten seconds, a blip at 3.0 s, digital silence after it.
+        let mut samples = vec![0.0f32; 10 * 1000];
+        samples[3000] = 0.5;
+        samples[3001] = -0.2;
+        let audio = AudioData::from_mono(samples, 1000);
+        assert!((audio.sounding_end_s(0.001) - 3.002).abs() < 1e-9);
+        // Under the floor is silence; nothing above it is the whole file.
+        let quiet = AudioData::from_mono(vec![0.0005; 2000], 1000);
+        assert!((quiet.sounding_end_s(0.001) - 2.0).abs() < 1e-9);
+        assert!((audio.sounding_end_s(0.9) - 10.0).abs() < 1e-9);
+    }
 
     fn write_wav(path: &Path, channels: u16, sample_rate: u32, frames: &[f32]) {
         let spec = hound::WavSpec {

@@ -312,6 +312,19 @@ So the twenty-two songs below the floor are not a tuning problem.
 They need the voice actually separated from the mix, which is
 milestone L6 and blocked on weights this project may ship.
 
+## With a vocal stem
+
+The library's third round (`library-pass.md`) aligned every song on a
+vocal stem a local separator made, and the rules that round produced
+(the pushed-window check, the warp, the parked word, the sound's end)
+are in the pipeline the corpus measures. The corpus run for the stem
+condition — `lyrics-eval --vocals-dir` over the same 79 songs, on
+time, three seconds off, raw and six seconds off, against the mix on
+the same code — was started on 2026-09-06 and takes hours; its numbers
+go here when it finishes, and not before. Until then the stem's gain
+is measured on the library (27 songs from line level to word level),
+not on ground truth.
+
 ## What this measurement does not say
 
 - **The first table is the hard case**, and the section above is the

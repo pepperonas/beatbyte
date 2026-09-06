@@ -267,12 +267,82 @@ measured word error on the corpus rather than at the elbow of this
 distribution — see
 [`evaluation.md`](evaluation.md#where-the-floor-sits-and-why-that-number).
 
+## The third round: every song with lyrics sings word by word (2026-09-06)
+
+Run with the vocal stems and the rules they made necessary
+([`optimizing-a-library.md`](optimizing-a-library.md)): every song
+with lyrics separated by demucs on this machine, aligned on the stem
+with `--keep-better`, then the songs the first pass left unconfirmed
+taken through one more pass each as the rules were found. Counted on
+disk afterwards:
+
+| | after round two | after round three |
+| --- | ---: | ---: |
+| songs singing word by word | 33 | **60** |
+| songs singing by the line | 27 | **0** |
+| songs without lyrics | 11 | 11 |
+| alignments computed on a stem | 0 | 59 |
+
+The gate's verdicts, as stored:
+
+| Verdict | Songs | Note |
+| --- | ---: | --- |
+| same master | 29 | |
+| shifted master | 21 | four of them with the album's last lines dropped as unsung |
+| stretched | 5 | *Mexico* (1.0388 · t − 10.88 s, 24 of 39 lines sung), *Hotel California* live 1977 (1.0095 · t + 1.69 s), *Terpentin*, *Easy Lover* (0.9599 · t), *An Tagen wie diesen* (1.0987 · t) |
+| different edit | 5 | the aligned times stand; see below |
+| failed | 0 | |
+
+What moved the twenty-seven songs, in the order the rules were found:
+
+1. **The stem.** Twenty-three songs had failed on the mix because the
+   model could not read it (0.03–0.9 letters a second); on the stem
+   nineteen of them read 1.9–11.8 and aligned outright.
+2. **Stamps from another edit** (*Mexico*, the case that opened the
+   round): the sheet of the 254 s studio version on a 168 s recording
+   with 115 s of digital silence appended; mapped, the unsung tail
+   dropped, judged in sync by ear.
+3. **A held final word parked at the next line's onset** ("sein",
+   14 s late): the parked-word rule.
+4. **Texts with more verses than the recording** on a source that
+   otherwise agreed to within a tenth of a second (*Life Is a
+   Flower*, *Maria*, *Through the Fire and Flames*, *For You*): the
+   lines past the sound's end dropped instead of the whole source
+   being called another edit.
+5. **A coarse drift** (*Fettes Brot*, *Easy Lover*): the map accepted
+   with a wider window; and the map tried before the raw stamps are
+   judged usable at all.
+6. **A second of tempo breath** over four minutes with 98 % of the
+   lines agreeing (*For You*) is not another edit: the drift rule's
+   threshold raised to 2.5 s.
+
+### The five that stand on their own
+
+| Song | Why the text does not fit | What plays |
+| --- | --- | --- |
+| Cyndi Lauper — Girls Just Want to Have Fun | a 7:08 extended mix; the catalogue has only the single's 54 lines (227–232 s), which it sings with growing instrumental gaps (deltas 0 → 168 s) | the plain pass on the stem (2.7 letters/s): each line where the model heard it, 16 at line level |
+| My Mine — Hypnotic Tango | a 7:03 extended mix, catalogue texts 145–370 s | the mix alignment (the stem read no better) |
+| Annie — Two of Hearts (Skatebård remix) | 8:36; the text is the original's and the remix sings it twice (+81 s, then +222 s) | the plain pass, first half in the first run, second half in the second |
+| Ozzy Osbourne — Crazy Train | a 3:46 cut; every catalogue text is the 4:50 album version's | the plain pass, 12 lines at line level |
+| Apollo 440 — Ain't Talkin' 'Bout Dub | a 3:57 cut; the catalogue's 3:55 entries carry the 4:30 version's stamps | the plain pass |
+
+None of these has a right text in the catalogue. A text made for the
+recording — or, for the extended mixes, the single's text duplicated
+where the mix repeats it — is the remaining lever, and it is manual.
+
+### The eleven without lyrics
+
+Unchanged: five instrumentals and phonk tracks with no catalogue
+entry, three with plain words only, and three the lookup could not
+match. A plain text can be aligned (the aligner needs words, not
+stamps); nobody has fetched one by hand yet.
+
 ## What is still open
 
-- **Eight songs have no word timing** and sing at line level. The
-  measured lever for them is vocal separation (plan milestone L6),
-  which is blocked on model-weight licences, not on the runtime —
-  see [`evaluation.md`](evaluation.md).
+- ~~**Eight songs have no word timing** and sing at line level.~~
+  Closed in the third round: with a vocal stem made locally every
+  song with lyrics sings word by word (the separator is a tool on
+  this machine, not a model the game ships — ADR-0014).
 - **Five songs have words in the catalogue but no timing**, and five
   have no entry at all. The untimed five are alignable in principle —
   a forced alignment needs a text, not stamps — but without an anchor

@@ -77,8 +77,10 @@ impl Plugin for AutopilotPlugin {
         if let Ok(raw) = std::env::var("BEATBYTE_SHOT_STATE") {
             match shot_state(&raw) {
                 Some(target) => {
-                    app.insert_resource(ShotState(target))
-                        .add_systems(Update, (enter_shot_state, quit_after_shot));
+                    app.insert_resource(ShotState(target)).add_systems(
+                        Update,
+                        (enter_shot_state, reopen_shot_search, quit_after_shot),
+                    );
                     if let Some(dir) = std::env::var_os("BEATBYTE_SHOT_DIR") {
                         let dir = std::path::PathBuf::from(dir);
                         if std::fs::create_dir_all(&dir).is_ok() {
@@ -303,6 +305,27 @@ fn enter_shot_state(
         view.filter = raw.to_lowercase();
     }
     next.set(target.0);
+}
+
+/// `BEATBYTE_SHOT_SEARCH` wants the search OPEN in the picture, and
+/// the browser closes the field whenever it is entered (a field that
+/// swallows every letter read as a broken screen when a player came
+/// back from a song). So the field is opened again on the first
+/// frame the browser is on screen — the filter it typed survived
+/// the entry, only the open state did not.
+fn reopen_shot_search(
+    target: Res<ShotState>,
+    state: Res<State<AppState>>,
+    mut view: ResMut<crate::song_select::BrowserView>,
+    mut done: Local<bool>,
+) {
+    if *done || *state.get() != target.0 || target.0 != AppState::SongSelect {
+        return;
+    }
+    if std::env::var_os("BEATBYTE_SHOT_SEARCH").is_some() {
+        view.searching = true;
+    }
+    *done = true;
 }
 
 /// Leave once the screen has been on display long enough to be

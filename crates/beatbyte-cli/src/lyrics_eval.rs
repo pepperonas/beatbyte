@@ -31,6 +31,7 @@ pub fn run(
     jitter_s: Option<f64>,
     shift_s: Option<f64>,
     tolerance_s: Option<f64>,
+    vocals_dir: Option<PathBuf>,
 ) -> ExitCode {
     let Some(root) = corpus.or_else(|| std::env::var_os("BEATBYTE_LYRICS_CORPUS").map(Into::into))
     else {
@@ -94,12 +95,17 @@ pub fn run(
             shift_s: shift_s.unwrap_or(0.0),
             jitter_s: jitter_s.unwrap_or(0.0),
         }),
+        vocals_dir,
     };
     eprintln!(
-        "evaluating {} song(s) from `{}` ({}{})…",
+        "evaluating {} song(s) from `{}` ({}{}{})…",
         songs.len(),
         root.display(),
         if raw { "raw aligner" } else { "gated" },
+        match &options.vocals_dir {
+            Some(dir) => format!(", listening to the stems under `{}`", dir.display()),
+            None => ", on the mix".to_owned(),
+        },
         if anchors {
             format!(
                 ", line stamps shifted {:+.2} s jittered ±{:.2} s, window ±{:.1} s",

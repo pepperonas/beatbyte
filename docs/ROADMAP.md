@@ -356,8 +356,10 @@ public corpus, cannot regress a note.
   clips of Martin's own voice + their words, then a click-track
   correction loop — `docs/lyrics/fixtures.md` has the instructions.
   Until then a clone without the corpus measures nothing.
-- [ ] **L6 separation + multilingual — the runtime is ready, the
-  LICENCES are the blocker** (researched 2026-09-05). `rten`
+- [~] **L6 separation + multilingual — the runtime is ready, the
+  LICENCES are the blocker** (researched 2026-09-05; **the aligner
+  accepts a stem since v0.14.29 — ADR-0014 — so a person's own
+  separator does the job the game may not ship**). `rten`
   implements everything a separator needs (`STFT`, `DFT`, `LSTM`,
   `GRU`, `ConvTranspose`, `BatchNormalization`,
   `InstanceNormalization`, `Attention`), so the pure-Rust decision of
@@ -429,6 +431,42 @@ public corpus, cannot regress a note.
   the vocal-favouring one. The cheap fallback is exhausted; real
   separation (L6) is the only lever left, and it is blocked on
   weights we may ship, not on the runtime.
+- [x] **The library sings word by word — every song with lyrics**
+  *(v0.14.29, 2026-09-06, `docs/lyrics/library-pass.md` round three,
+  `docs/lyrics/optimizing-a-library.md`, ADR-0014)*. The lever the
+  plan reserved for L6 turned out usable today without shipping a
+  model: a vocal stem made locally (demucs via pipx, ~40 s a song,
+  measured at lag 0 against `beatbyte-cli decode`) and an aligner
+  that takes it (`align --vocals`). What the stems then exposed was
+  fixed in the pipeline itself, each rule from a real song: an
+  anchored pass pushed against the evidence gets a wider window
+  (*Mexico*'s "shifted −3.65 s, 85 %" on stamps ten seconds late);
+  stamps from another edit are mapped by a robust linear fit and the
+  unsung tail dropped (`stretched`; five songs); a held final word
+  parked at the next line's onset is retimed; texts with more verses
+  than the recording keep their verdict and lose the tail; a
+  disagreeing text that ends a minute before the sound is another
+  edit's, not a failure; every length rule judges against the sound's
+  end (*Mexico*: 168 s of music in 283 s of file). Library: **60 of
+  60** songs with lyrics word level (was 33), 0 at line level (was
+  27), 5 standing on their own aligned times because no catalogue
+  text fits (two 7-minute extended mixes, a remix that sings the text
+  twice, two radio cuts of album-length texts). The user judged
+  *Mexico* in sync by ear. Also found and fixed on the way:
+  `redesign`'s "already current" check had never fired (serde's
+  one-ULP float drift) — 25 real hard/expert rollovers kept, 46
+  byte-identical ones reverted.
+- [ ] **Corpus numbers for the stem condition** (`lyrics-eval
+  --vocals-dir`): running at the time of writing; go into
+  `evaluation.md` under "With a vocal stem" with the same six
+  conditions as the mix. Until then the stem's gain is measured on
+  the library, not the corpus.
+- [ ] **The lookup should ask with the sound's length**, not the
+  container's (a rip with a silent tail matched the wrong entries).
+- [ ] **A text for the five songs no catalogue entry fits**: manual
+  (the single's text duplicated for an extended mix, a plain text for
+  a remix). And plain texts for the eleven without lyrics — the
+  aligner needs words, not stamps.
 - [ ] C1 Beat This! A/B · [ ] C2 stems · [ ] C3 Basic Pitch ·
   [ ] C4 structure — only after L ships, each by ear against
   `chart-feel-good-20260826`.

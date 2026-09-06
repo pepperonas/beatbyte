@@ -553,6 +553,18 @@ pub struct EvalOptions {
     /// `None` = the aligner gets no stamps at all, which is the hard
     /// case JamendoLyrics itself presents.
     pub stamps: Option<StampNoise>,
+    /// Listen to vocal stems instead of the mixes: for each song
+    /// `<dir>/<song name>/vocals.wav`, the layout a separator writes
+    /// per input. A song without a stem is an error for that song,
+    /// never a silent fall-back to the mix — a measurement that mixed
+    /// the two conditions would describe neither.
+    pub vocals_dir: Option<std::path::PathBuf>,
+}
+
+/// Where a song's vocal stem sits under `vocals_dir`. Pure — tested.
+#[must_use]
+pub fn stem_path(vocals_dir: &Path, song_name: &str) -> std::path::PathBuf {
+    vocals_dir.join(song_name).join("vocals.wav")
 }
 
 /// Give `transcript` the corpus's line starts, one per line, made
@@ -590,11 +602,30 @@ pub fn evaluate_song(
         attach_line_stamps(&mut transcript, song, noise);
     }
     let audio = beatbyte_audio::decode_file(&song.audio).map_err(|e| e.to_string())?;
+    let heard = match &options.vocals_dir {
+        Some(dir) => {
+            let stem = stem_path(dir, &song.name);
+            Some(
+                beatbyte_audio::decode_file(&stem)
+                    .map_err(|e| format!("no stem: cannot decode `{}`: {e}", stem.display()))?,
+            )
+        }
+        None => None,
+    };
+    let separator = if heard.is_some() {
+        "external"
+    } else {
+        crate::align::NO_SEPARATOR
+    };
     let mut outcome = crate::align::align_with(
         &audio,
+        heard.as_ref(),
         "",
         &transcript,
-        &format!("corpus:{}", song.name),
+        &crate::align::Provenance {
+            text: &format!("corpus:{}", song.name),
+            separator,
+        },
         runtime,
         model,
         &options.align,
@@ -606,8 +637,9 @@ pub fn evaluate_song(
         crate::gate::gate(
             &mut outcome.alignment,
             &transcript,
-            audio.duration_s(),
+            audio.sounding_end_s(crate::align::SOUNDING_FLOOR),
             Some(outcome.evidence),
+            outcome.warp.as_ref(),
             &crate::gate::GateConfig::default(),
         );
     }
@@ -901,5 +933,13 @@ mod tests {
             corpus.skipped
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_stem_sits_in_the_song_s_own_folder_under_the_separator_s_name() {
+        assert_eq!(
+            stem_path(Path::new("/stems/htdemucs"), "Artist_-_Song"),
+            PathBuf::from("/stems/htdemucs/Artist_-_Song/vocals.wav")
+        );
     }
 }

@@ -42,7 +42,7 @@ pub mod words;
 
 pub use align::{AlignOutcome, align};
 pub use gate::{GateConfig, GateReport, Verdict, gate};
-pub use job::{JobError, JobProgress, JobStage, Summary, align_file};
+pub use job::{JobError, JobOptions, JobProgress, JobStage, Summary, align_file, align_file_with};
 pub use transcript::Transcript;
 pub use words::{AlignedLine, AlignedWord, Alignment};
 

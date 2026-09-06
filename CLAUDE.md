@@ -465,6 +465,55 @@ artifact, smoke-test it (neutral CWD!), then
   question the fit cannot answer about itself — here, the model's own
   greedy letter rate — and set the threshold against measured error,
   not against the elbow of a distribution (`docs/lyrics/evaluation.md`).
+- **A currency check that compares a generated chart with a loaded
+  one is dead code.** `serde_json` (without `float_roundtrip`) moves a
+  float by one ULP on load; a fresh generation never hashes like the
+  file read back, so `redesign --all` wrote a new version of EVERY
+  song on every run — 46 of 70 byte-identical to their parent but for
+  the provenance — and nobody noticed because a rollover looks like
+  work. Compare what a reader would GET: send the fresh chart through
+  save → load before hashing (`redesign::is_current`). The proof that
+  such a check works is a second run that writes nothing.
+- **A legible, agreeing, anchored alignment can still be wrong.** An
+  anchored window that cannot hold the truth places the words at its
+  own edge, and on a legible stem that reads as evidence: *Mexico*
+  came back "shifted master −3.65 s, 85 % agreement" from stamps that
+  were ten seconds late (another edit; the plain pass put the verse
+  where the model heard it). Two tells, both now checked: the pass
+  sits in the outer 15 % of its window, or its confidence collapses
+  to under half the plain pass's. And a held final word ("sein") the
+  model cannot hear gets **parked** at the next line's onset, 14 s
+  late — a gap over 2 s inside a line is a parked word. When a user
+  says the lyrics are off, run the plain pass and the `voice` probe
+  on the stem before believing any verdict.
+- **A container's length is not the song's.** *Mexico* is 283 s of
+  file and 168 s of music; the tail is digital silence. The catalogue
+  lookup matched the wrong entries by the container's length, the
+  text had fifteen verses the recording never sings, and a stamp in
+  the silence is "past the end". `AudioData::sounding_end_s` is what
+  every length rule now uses (the lookup still asks with the
+  container's length — open).
+- **Never pattern-match a background job you started from the same
+  shell.** `grep '[q]ueue.sh'` matched MY OWN zsh (its command line
+  also contained the restart), and the kill loop took the tool call
+  down with it (exit 144). Kill by exact process name (`pkill -x`) or
+  walk the PID's parents; never by a substring the current command
+  line also carries.
+- **Restarting an eval after a code change means restarting the
+  QUEUE.** A running `lyrics-eval` keeps the binary it started with;
+  three rebuilds during one run measured three different pipelines
+  under one report name. Rebuild, then kill and restart the queue,
+  then leave the code alone until it finishes.
+- **The autopilot's clock-teleport rule false-fails under load.** With
+  `redesign --all` and a separator saturating the CPU, a run reported
+  "song time jumped 4.515 → 5.505 in one frame" on a chart that had
+  not changed. Re-run on a quiet machine before believing it.
+- **Files under a running game are live.** Deleting chart versions
+  and moving pointers while the user played turned every Enter on that
+  song into "cannot load" until a rescan (eleven error lines in two
+  seconds). The browser now re-resolves a vanished version from the
+  folder's pointer; still, batch edits to `songs/imported/` while the
+  game runs are edits the user sees.
 - **A summary inside this repository is not a source.** Round six of
   the look plan built the gem from a trait table an earlier round had
   written ("dark ring, white centre") instead of from the material,

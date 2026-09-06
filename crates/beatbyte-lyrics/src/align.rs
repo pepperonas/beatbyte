@@ -82,6 +82,18 @@ pub enum LyricsError {
     /// The alignment itself failed.
     #[error(transparent)]
     Align(#[from] AlignError),
+    /// The audio handed in to listen to is not the song on the
+    /// song's timeline (see [`HEARD_LENGTH_TOLERANCE_S`]).
+    #[error(
+        "the stem is {heard_s:.3} s long where the song is {song_s:.3} s — not this song on \
+         this timeline (a separator fed the container instead of the decoded song?)"
+    )]
+    HeardMismatch {
+        /// The song's length, seconds.
+        song_s: f64,
+        /// The stem's length, seconds.
+        heard_s: f64,
+    },
 }
 
 impl LyricsError {
@@ -146,15 +158,230 @@ pub struct AlignOutcome {
     /// What the run found out about itself.
     pub stats: Stats,
     /// How many Viterbi passes the result cost: 1 when the source's
-    /// stamps could not be used at all, 2 when they constrained a
-    /// second pass, 3 when that pass then agreed on an offset the
-    /// first one could not see and a tighter third was worth it.
+    /// stamps could not be used at all (or every anchored pass
+    /// saturated its window and the plain pass stands), 2 when they
+    /// constrained a second pass, one more when that pass sat at its
+    /// windows' edge and a wider window was tried, one more when a
+    /// pass then agreed on an offset the first one could not see and
+    /// a tighter pass was worth it.
     pub passes: u8,
     /// How much of the song the model heard at all — measured on the
     /// same emissions, so it costs nothing. The gate needs it: an
     /// alignment on a mix the model cannot read is a path, not
     /// evidence. See [`crate::evidence`].
     pub evidence: Evidence,
+    /// When the source's stamps turned out to belong to another edit
+    /// of this performance and a linear map put them onto this
+    /// recording: the map, the retimed transcript the anchoring ran
+    /// against, and the lines the map put beyond the sound. The gate
+    /// judges against the retimed stamps and drops the unsung lines.
+    pub warp: Option<WarpResult>,
+}
+
+/// A linear map from a source's line stamps onto this recording —
+/// the stamps were made on another EDIT of the same performance: a
+/// longer intro, a tempo a few percent off, verses this cut does not
+/// have. Measured on the case that found it (Böhse Onkelz, *Mexico*):
+/// stamps from a 254 s studio version on a 168 s recording, aligned
+/// ≈ 1.0396 · stamp − 10.83 s over the first twenty-four lines with a
+/// mean residual of 0.37 s, the remaining fifteen lines never sung.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Warp {
+    /// The tempo ratio, this recording over the source's.
+    pub scale: f64,
+    /// Seconds added after scaling.
+    pub offset_s: f64,
+}
+
+/// What retiming the source's stamps produced: a map, when the
+/// stamps needed one; and the lines the sound does not hold, which
+/// a plain constant shift can reveal as well (a text whose last
+/// verses lie past where this recording ends).
+#[derive(Debug, Clone, PartialEq)]
+pub struct WarpResult {
+    /// The map — `None` when the stamps sat a constant off the song
+    /// and only the unsung lines were taken away.
+    pub warp: Option<Warp>,
+    /// The transcript with every stamp mapped (or left as it was);
+    /// unsung lines carry no stamp.
+    pub retimed: Transcript,
+    /// Indices of the lines the map put beyond the sound (or before
+    /// it): text this recording does not sing.
+    pub unsung: Vec<usize>,
+}
+
+/// Fewest stamped, placed lines a warp may be fitted on.
+pub const WARP_MIN_LINES: usize = 8;
+/// The median residual, seconds, the better-heard half must stay
+/// under for the fit to count. Up to [`WARP_TIGHT_RESIDUAL_S`] the
+/// mapped stamps are as good as a source's own; above it the map is
+/// coarse — a jump of a bar at one point and a slow drift after it
+/// (France Gall, Fettes Brot in the library) — and the anchored
+/// windows are kept at least twice the residual wide.
+pub const WARP_MAX_RESIDUAL_S: f64 = 2.0;
+/// A map whose residual is under this places lines to within the
+/// tight window.
+pub const WARP_TIGHT_RESIDUAL_S: f64 = 0.75;
+/// Tempo ratios outside this are not the same performance.
+pub const WARP_SCALE_RANGE: (f64, f64) = (0.9, 1.1);
+/// Share of the in-sound lines the map must place within
+/// [`WARP_EXPLAINED_S`] for it to count.
+pub const WARP_MIN_SHARE: f64 = 0.6;
+/// How far a line may sit from where the map puts it and still be
+/// explained by it.
+pub const WARP_EXPLAINED_S: f64 = 3.0;
+/// A line the map puts closer than this to the sound's end — or
+/// before its start — is not sung in this recording.
+pub const UNSUNG_MARGIN_S: f64 = 0.5;
+
+impl Warp {
+    /// Where the map puts a source stamp.
+    #[must_use]
+    pub fn apply(self, stamp_s: f64) -> f64 {
+        self.scale * stamp_s + self.offset_s
+    }
+
+    /// The transcript's stamps mapped onto this recording. A line the
+    /// map puts beyond the sound (or before it) loses its stamp — it
+    /// is not sung here — and is reported. Pure — tested.
+    #[must_use]
+    pub fn retime(self, transcript: &Transcript, sounding_end_s: f64) -> (Transcript, Vec<usize>) {
+        let mut retimed = transcript.clone();
+        let mut unsung = Vec::new();
+        for (index, line) in retimed.lines.iter_mut().enumerate() {
+            let Some(stamp) = line.source_start_s else {
+                continue;
+            };
+            let mapped = self.apply(stamp);
+            if mapped < 0.0 || mapped > sounding_end_s - UNSUNG_MARGIN_S {
+                line.source_start_s = None;
+                unsung.push(index);
+            } else {
+                line.source_start_s = Some(mapped);
+            }
+        }
+        (retimed, unsung)
+    }
+}
+
+/// The transcript with the lines a constant shift puts beyond the
+/// sound (or before it) stripped of their stamp, and their indices:
+/// a text with more verses than this recording sings, on a source
+/// that otherwise agrees with the song. Pure — tested.
+#[must_use]
+pub fn trim_unsung(
+    transcript: &Transcript,
+    shift_s: f64,
+    sounding_end_s: f64,
+) -> (Transcript, Vec<usize>) {
+    let mut trimmed = transcript.clone();
+    let mut unsung = Vec::new();
+    for (index, line) in trimmed.lines.iter_mut().enumerate() {
+        let Some(stamp) = line.source_start_s else {
+            continue;
+        };
+        let placed = stamp + shift_s;
+        if placed < 0.0 || placed > sounding_end_s - UNSUNG_MARGIN_S {
+            line.source_start_s = None;
+            unsung.push(index);
+        }
+    }
+    (trimmed, unsung)
+}
+
+/// Fit a [`Warp`] from a plain pass against the source's stamps:
+/// least squares over the better-heard half of the stamped lines,
+/// accepted only when it explains them — the residual small, the
+/// tempo ratio plausible, and most of the lines that land inside
+/// the sound sitting where the map puts them. `None` is the usual
+/// answer: a derailed pass has no line to fit, and stamps that
+/// merely sit on another master agree on a constant and never get
+/// here. Pure — tested.
+#[must_use]
+pub fn fit_warp(
+    lines: &[AlignedLine],
+    transcript: &Transcript,
+    sounding_end_s: f64,
+) -> Option<(Warp, f64)> {
+    let points: Vec<(f64, f64, f64)> = lines
+        .iter()
+        .zip(&transcript.lines)
+        .filter(|(line, _)| line.words.iter().any(|w| !w.estimated))
+        .filter_map(|(line, source)| {
+            source.source_start_s.map(|stamp| {
+                (
+                    stamp,
+                    line.start,
+                    pass_confidence(std::slice::from_ref(line)),
+                )
+            })
+        })
+        .collect();
+    if points.len() < WARP_MIN_LINES {
+        return None;
+    }
+    let mut confs: Vec<f64> = points.iter().map(|p| p.2).collect();
+    confs.sort_by(f64::total_cmp);
+    let median_conf = confs[confs.len() / 2];
+    let heard: Vec<(f64, f64)> = points
+        .iter()
+        .filter(|p| p.2 >= median_conf)
+        .map(|p| (p.0, p.1))
+        .collect();
+    if heard.len() < WARP_MIN_LINES / 2 {
+        return None;
+    }
+    // Theil–Sen, not least squares: the better-heard half still
+    // carries lines the plain pass lost (on Mexico, four of twenty,
+    // one of them 77 s out), and one such line drags a least-squares
+    // slope from 1.04 to 1.00 and the residual past the limit. The
+    // median of the pairwise slopes shrugs them off.
+    let mut slopes: Vec<f64> = Vec::with_capacity(heard.len() * heard.len() / 2);
+    for (i, a) in heard.iter().enumerate() {
+        for b in &heard[i + 1..] {
+            if (b.0 - a.0).abs() > 1e-9 {
+                slopes.push((b.1 - a.1) / (b.0 - a.0));
+            }
+        }
+    }
+    if slopes.is_empty() {
+        return None;
+    }
+    slopes.sort_by(f64::total_cmp);
+    let scale = slopes[slopes.len() / 2];
+    let mut offsets: Vec<f64> = heard.iter().map(|p| p.1 - scale * p.0).collect();
+    offsets.sort_by(f64::total_cmp);
+    let warp = Warp {
+        scale,
+        offset_s: offsets[offsets.len() / 2],
+    };
+    if warp.scale < WARP_SCALE_RANGE.0 || warp.scale > WARP_SCALE_RANGE.1 {
+        return None;
+    }
+    let mut residuals: Vec<f64> = heard
+        .iter()
+        .map(|p| (p.1 - warp.apply(p.0)).abs())
+        .collect();
+    residuals.sort_by(f64::total_cmp);
+    let residual_s = residuals[residuals.len() / 2];
+    if residual_s > WARP_MAX_RESIDUAL_S {
+        return None;
+    }
+    let in_sound: Vec<&(f64, f64, f64)> = points
+        .iter()
+        .filter(|p| {
+            let mapped = warp.apply(p.0);
+            mapped >= 0.0 && mapped <= sounding_end_s - UNSUNG_MARGIN_S
+        })
+        .collect();
+    if in_sound.is_empty() {
+        return None;
+    }
+    let explained = in_sound
+        .iter()
+        .filter(|p| (p.1 - warp.apply(p.0)).abs() <= WARP_EXPLAINED_S)
+        .count();
+    (explained as f64 / in_sound.len() as f64 >= WARP_MIN_SHARE).then_some((warp, residual_s))
 }
 
 /// Whether a source's line stamps can be believed enough to anchor
@@ -323,15 +550,59 @@ pub fn align(
 ) -> Result<AlignOutcome, LyricsError> {
     align_with(
         audio,
+        None,
         audio_sha256,
         transcript,
-        text_source,
+        &Provenance {
+            text: text_source,
+            separator: NO_SEPARATOR,
+        },
         runtime,
         model,
         &Options::default(),
         &mut |_| {},
         &AtomicBool::new(false),
     )
+}
+
+/// The `separator` a result records when the model listened to the
+/// mix itself.
+pub const NO_SEPARATOR: &str = "none";
+
+/// How far, in seconds, a stem's length may differ from the song's
+/// before it is refused as not being this song on this timeline.
+///
+/// A separator returns the length it was given; a stem that is
+/// longer by a container's encoder priming (23 ms for FFmpeg's AAC,
+/// 48 ms for Apple's, at 44.1 kHz) was decoded from the container by
+/// a tool that did not skip it — and every word would then sit that
+/// far early. The tolerance is set under the smaller priming so that
+/// case is caught by construction, and above the padding a decoder
+/// may keep or drop at the tail.
+pub const HEARD_LENGTH_TOLERANCE_S: f64 = 0.015;
+
+/// Where the inputs of an alignment came from, recorded verbatim in
+/// the result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Provenance<'a> {
+    /// The lyric text's origin (`lrclib`, `file:<name>`, …).
+    pub text: &'a str,
+    /// What produced the audio the model listened to
+    /// ([`NO_SEPARATOR`] for the mix itself).
+    pub separator: &'a str,
+}
+
+/// Refuse a stem that is not the song on the song's timeline. Pure —
+/// tested.
+pub fn check_heard_matches(song: &AudioData, heard: &AudioData) -> Result<(), LyricsError> {
+    let difference_s = (song.duration_s() - heard.duration_s()).abs();
+    if difference_s > HEARD_LENGTH_TOLERANCE_S {
+        return Err(LyricsError::HeardMismatch {
+            song_s: song.duration_s(),
+            heard_s: heard.duration_s(),
+        });
+    }
+    Ok(())
 }
 
 /// The cancel error for this model — the flag is the caller's, the
@@ -349,9 +620,10 @@ fn cancelled(model: &Loaded) -> LyricsError {
 #[allow(clippy::too_many_arguments)] // the pipeline's inputs, not an API to grow
 pub fn align_with(
     audio: &AudioData,
+    heard: Option<&AudioData>,
     audio_sha256: &str,
     transcript: &Transcript,
-    text_source: &str,
+    provenance: &Provenance,
     runtime: &Runtime,
     model: &Loaded,
     options: &Options,
@@ -362,9 +634,13 @@ pub fn align_with(
     if tokens.is_empty() {
         return Err(LyricsError::NoWords);
     }
+    if let Some(heard) = heard {
+        check_heard_matches(audio, heard)?;
+    }
+    let listened = heard.unwrap_or(audio);
     let report = |stage, done, total| Progress { stage, done, total };
     progress(report(Stage::Resampling, 0, 0));
-    let samples = resample(audio.samples(), audio.sample_rate(), SAMPLE_RATE);
+    let samples = resample(listened.samples(), listened.sample_rate(), SAMPLE_RATE);
     if cancel.load(Ordering::Relaxed) {
         return Err(cancelled(model));
     }
@@ -379,13 +655,17 @@ pub fn align_with(
         return Err(cancelled(model));
     }
     progress(report(Stage::Aligning, 0, 0));
-    let (lines, passes) = align_emissions(
+    let anchored = align_emissions(
         &emissions,
         &tokens,
         transcript,
         audio.duration_s(),
+        // The SONG's sound, not the stem's: a stem is silent wherever
+        // nobody sings, and that is not where the recording ends.
+        audio.sounding_end_s(SOUNDING_FLOOR),
         options.anchoring.as_ref(),
     )?;
+    let (lines, passes, warp) = (anchored.lines, anchored.passes, anchored.warp);
     let stats = stats(&lines, transcript, emissions.frames);
     let alignment = Alignment {
         schema: SCHEMA.to_owned(),
@@ -393,8 +673,8 @@ pub fn align_with(
         pipeline_version: crate::PIPELINE_VERSION,
         language: "en".to_owned(),
         source: Source {
-            text: text_source.to_owned(),
-            separator: "none".to_owned(),
+            text: provenance.text.to_owned(),
+            separator: provenance.separator.to_owned(),
             aligner: format!(
                 "{}@sha256:{} {}",
                 model.id,
@@ -411,7 +691,23 @@ pub fn align_with(
         stats,
         passes,
         evidence: crate::evidence::measure(&emissions, usize::from(BLANK), FRAME_S),
+        warp,
     })
+}
+
+/// Linear amplitude under which a sample is silence for
+/// [`AudioData::sounding_end_s`] (−60 dBFS).
+pub const SOUNDING_FLOOR: f32 = 0.001;
+
+/// What the anchored alignment produced.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Anchored {
+    /// The lines.
+    pub lines: Vec<AlignedLine>,
+    /// How many Viterbi passes they cost.
+    pub passes: u8,
+    /// The warp, when the source's stamps needed one.
+    pub warp: Option<WarpResult>,
 }
 
 /// The alignment itself, over emissions that are already computed:
@@ -430,61 +726,256 @@ pub fn align_emissions(
     tokens: &[u8],
     transcript: &Transcript,
     audio_len_s: f64,
+    sounding_end_s: f64,
     anchoring: Option<&Anchoring>,
-) -> Result<(Vec<AlignedLine>, u8), LyricsError> {
+) -> Result<Anchored, LyricsError> {
     let spans = force_align_in_windows(emissions, tokens, BLANK, &[])?;
     let lines = place(transcript, &spans);
-    let Some(config) = anchoring else {
-        return Ok((lines, 1));
+    let plain = |lines| Anchored {
+        lines,
+        passes: 1,
+        warp: None,
     };
-    if !stamps_are_usable(transcript, audio_len_s, config) {
-        return Ok((lines, 1));
+    let Some(config) = anchoring else {
+        return Ok(plain(lines));
+    };
+    let agreed = shift_from(&lines, transcript);
+    // Stamps that sit a constant off the song may still run past
+    // where it ends: a text with the album's last verses on a
+    // recording that stops before them. Those lines are not sung
+    // here; without their stamps the rest anchors as any agreeing
+    // source does, and the gate drops them. (Four library songs
+    // were "a different edit" for this alone, with their other lines
+    // agreeing to within a tenth of a second.)
+    if let Some(shift) = agreed {
+        let (trimmed, unsung) = trim_unsung(transcript, shift, sounding_end_s);
+        if !unsung.is_empty() && stamps_are_usable(&trimmed, audio_len_s, config) {
+            let (anchored, passes) = anchor(emissions, tokens, &trimmed, lines, config, 0.0);
+            return Ok(Anchored {
+                lines: anchored,
+                passes,
+                warp: Some(WarpResult {
+                    warp: None,
+                    retimed: trimmed,
+                    unsung,
+                }),
+            });
+        }
     }
+    // Stamps that agree with the plain pass on nothing constant may
+    // still agree on a LINE: another edit of the same performance,
+    // a few percent off in tempo and seconds off at the start, with
+    // verses this recording never sings. Then the stamps are mapped
+    // onto this recording first and the anchoring runs against the
+    // mapped ones, which are as good as any other source's. Tried
+    // BEFORE the raw stamps are judged usable: a text whose last
+    // stamps run past the file (Easy Lover: 295 s of stamps on a
+    // 287 s file, the song 4 % faster than its sheet) is exactly what
+    // the map exists for, and the mapped stamps are what is judged.
+    if agreed.is_none()
+        && let Some((warp, residual_s)) = fit_warp(&lines, transcript, sounding_end_s)
+    {
+        let (retimed, unsung) = warp.retime(transcript, sounding_end_s);
+        if stamps_are_usable(&retimed, audio_len_s, config) {
+            // A coarse map leaves lines a second or two off where it
+            // puts them; a window narrower than that would push them.
+            let floor_s = if residual_s > WARP_TIGHT_RESIDUAL_S {
+                2.0 * residual_s
+            } else {
+                0.0
+            };
+            let (anchored, passes) =
+                anchor(emissions, tokens, &retimed, lines.clone(), config, floor_s);
+            return Ok(Anchored {
+                lines: anchored,
+                passes,
+                warp: Some(WarpResult {
+                    warp: Some(warp),
+                    retimed,
+                    unsung,
+                }),
+            });
+        }
+    }
+    if !stamps_are_usable(transcript, audio_len_s, config) {
+        return Ok(plain(lines));
+    }
+    let (anchored, passes) = anchor(emissions, tokens, transcript, lines, config, 0.0);
+    Ok(Anchored {
+        lines: anchored,
+        passes,
+        warp: None,
+    })
+}
+
+/// The anchored passes over a plain pass `lines`, against
+/// `transcript`'s stamps: the shift the plain pass agreed on decides
+/// the window, an anchored pass pushed against the evidence gets one
+/// wider window, and a pass that then agrees on an offset gets a
+/// tighter one. `floor_s` is the narrowest any window may be — for
+/// stamps a coarse map placed, wider than the tight default. Returns
+/// the lines and the passes they cost in total (the plain one
+/// included).
+fn anchor(
+    emissions: &Emissions,
+    tokens: &[u8],
+    transcript: &Transcript,
+    lines: Vec<AlignedLine>,
+    config: &Anchoring,
+    floor_s: f64,
+) -> (Vec<AlignedLine>, u8) {
     // What the first pass agreed on decides BOTH the offset and how
     // tight the windows may be: a known offset is removed, so the
     // stamps become as good as ground truth and the window can close
     // in; an unknown one has to fit inside the window instead.
     let agreed = shift_from(&lines, transcript);
-    let Some(anchored) = anchored_pass(emissions, tokens, transcript, agreed, config) else {
-        return Ok((lines, 1));
+    let applied = agreed.unwrap_or(0.0);
+    let tolerance = tolerance_for(agreed, config).max(floor_s);
+    let plain_conf = pass_confidence(&lines);
+    let Some(mut anchored) = anchored_pass(emissions, tokens, transcript, applied, tolerance)
+    else {
+        return (lines, 1);
     };
+    let mut anchored_conf = pass_confidence(&anchored);
+    let mut passes = 2;
+    // A window that cannot hold the truth does not report that: it
+    // places the words at its own edge, and on legible audio the
+    // result then looks like evidence (Mexico: stamps ten seconds
+    // late, a ±4 s window, "shifted master −3.65 s, 85 % agreement").
+    // Two signs give it away — the pass sits at its windows' edge,
+    // or its words' confidence collapses against the plain pass's
+    // (Mexico: 0.005 against 0.032, the model heard the verse ten
+    // seconds earlier and the window would not let it say so). Then
+    // the window is opened wider, once; if the evidence still says
+    // pushed, the stamps are not this recording's and the plain pass
+    // stands for the gate to judge.
+    if window_saturated(&anchored, transcript, applied, tolerance)
+        || pushed_against_evidence(anchored_conf, plain_conf)
+    {
+        let wider = tolerance * WIDER_BY;
+        let opened = anchored_pass(emissions, tokens, transcript, applied, wider)
+            .map(|opened| (pass_confidence(&opened), opened));
+        match opened {
+            Some((conf, opened)) if !pushed_against_evidence(conf, plain_conf) => {
+                anchored = opened;
+                anchored_conf = conf;
+                passes += 1;
+            }
+            _ => return (lines, 1),
+        }
+    }
     // A song whose FIRST pass derailed never agreed on an offset, so
     // it got the wide window — even though the anchored pass then
     // places it well. Ask that pass: it no longer derails, and if it
     // agrees, the offset is known after all and the window can close
-    // in. Only for the songs that needed it, and only once.
+    // in. Only for the songs that needed it, and only once — and a
+    // tighter pass that is pushed against the pass it came from
+    // would mean the offset was the window's, not the song's; then
+    // the wider result stands.
     if agreed.is_none()
         && let Some(from_anchored) = shift_from(&anchored, transcript)
-        && let Some(tighter) =
-            anchored_pass(emissions, tokens, transcript, Some(from_anchored), config)
     {
-        return Ok((tighter, 3));
+        let tight = config.known_shift_tolerance_s.max(floor_s);
+        if let Some(tighter) = anchored_pass(emissions, tokens, transcript, from_anchored, tight)
+            && !window_saturated(&tighter, transcript, from_anchored, tight)
+            && !pushed_against_evidence(pass_confidence(&tighter), anchored_conf)
+        {
+            return (tighter, passes + 1);
+        }
     }
-    Ok((anchored, 2))
+    (anchored, passes)
+}
+
+/// Below this share of the plain pass's confidence an anchored pass
+/// counts as pushed against the evidence rather than placed by it.
+/// Measured on the one known case (0.005 against 0.032 = 17 %); a
+/// pass the window merely tidied keeps most of it.
+pub const PUSHED_SHARE: f64 = 0.5;
+
+/// The confidence an alignment carries as a whole: the geometric
+/// mean of its aligned words' confidence (words without letters do
+/// not count; no words, no confidence). The geometric mean, so a
+/// pass that placed half its words well and lost the rest does not
+/// score as if it had placed them all. Pure — tested.
+#[must_use]
+pub fn pass_confidence(lines: &[AlignedLine]) -> f64 {
+    let confs: Vec<f64> = lines
+        .iter()
+        .flat_map(|line| line.words.iter())
+        .filter(|word| !word.estimated && !word.chars.is_empty())
+        .map(|word| f64::from(word.conf).max(1e-6))
+        .collect();
+    if confs.is_empty() {
+        return 0.0;
+    }
+    (confs.iter().map(|c| c.ln()).sum::<f64>() / confs.len() as f64).exp()
+}
+
+/// Whether a constrained pass lost too much of the evidence an
+/// unconstrained one had found (see [`PUSHED_SHARE`]). A plain pass
+/// with no confidence at all pushes nothing. Pure — tested.
+#[must_use]
+pub fn pushed_against_evidence(constrained: f64, plain: f64) -> bool {
+    plain > 0.0 && constrained < plain * PUSHED_SHARE
+}
+
+/// How much wider the anchored window is opened, once, when the
+/// first anchored pass sat at its edge.
+pub const WIDER_BY: f64 = 3.0;
+
+/// The outer share of an anchored window that counts as its edge:
+/// a pass whose median line lands there was pushed, not placed.
+/// Measured on the one known case (−3.65 s in a ±4 s window = 91 %);
+/// a stamp jitter of ±0.5 s in a ±4 s window stays well inside.
+pub const EDGE_SHARE: f64 = 0.85;
+
+/// Whether an anchored pass was pushed to its windows' edge rather
+/// than placed inside them: the median of the lines' distance from
+/// their (shifted) stamps lies in the outer [`EDGE_SHARE`] of the
+/// window. Lines without a stamp or without aligned letters do not
+/// vote; fewer than two votes say nothing. Pure — tested.
+#[must_use]
+pub fn window_saturated(
+    lines: &[AlignedLine],
+    transcript: &Transcript,
+    applied_shift_s: f64,
+    tolerance_s: f64,
+) -> bool {
+    let mut deltas: Vec<f64> = lines
+        .iter()
+        .zip(&transcript.lines)
+        .filter(|(line, _)| line.words.iter().any(|w| !w.estimated))
+        .filter_map(|(line, source)| {
+            source
+                .source_start_s
+                .map(|s| line.start - (s + applied_shift_s))
+        })
+        .collect();
+    if deltas.len() < 2 {
+        return false;
+    }
+    deltas.sort_by(f64::total_cmp);
+    let median = deltas[deltas.len() / 2];
+    median.abs() >= tolerance_s * EDGE_SHARE
 }
 
 /// One anchored pass: windows from the source's stamps shifted by
-/// `agreed` (or unshifted when nothing was agreed), as wide as
-/// [`tolerance_for`] allows. `None` when the stamps cannot carry
-/// windows or the constrained path does not exist — the caller then
-/// keeps what it had.
+/// `shift_s`, `tolerance_s` wide at both ends. `None` when the stamps
+/// cannot carry windows or the constrained path does not exist — the
+/// caller then keeps what it had.
 fn anchored_pass(
     emissions: &Emissions,
     tokens: &[u8],
     transcript: &Transcript,
-    agreed: Option<f64>,
-    config: &Anchoring,
+    shift_s: f64,
+    tolerance_s: f64,
 ) -> Option<Vec<AlignedLine>> {
     let narrowed = Anchoring {
-        tolerance_s: tolerance_for(agreed, config),
-        ..*config
+        tolerance_s,
+        min_stamped_share: 0.0,
+        known_shift_tolerance_s: tolerance_s,
     };
-    let windows = token_windows(
-        transcript,
-        agreed.unwrap_or(0.0),
-        &narrowed,
-        emissions.frames,
-    )?;
+    let windows = token_windows(transcript, shift_s, &narrowed, emissions.frames)?;
     force_align_in_windows(emissions, tokens, BLANK, &windows)
         .ok()
         .map(|spans| place(transcript, &spans))
@@ -735,18 +1226,21 @@ mod anchor_tests {
         let transcript = Transcript::parse("[00:01.00]a\n[00:02.20]b");
         let tokens = transcript.tokens();
         let config = Anchoring::default();
-        let (_, passes) =
-            align_emissions(&emissions, &tokens, &transcript, 5.0, Some(&config)).expect("aligns");
+        let passes = align_emissions(&emissions, &tokens, &transcript, 5.0, 5.0, Some(&config))
+            .expect("aligns")
+            .passes;
         assert_eq!(passes, 2, "stamps that agree need no second opinion");
         // Without anchoring at all it is one pass, whatever the
         // stamps say.
-        let (_, passes) =
-            align_emissions(&emissions, &tokens, &transcript, 5.0, None).expect("aligns");
+        let passes = align_emissions(&emissions, &tokens, &transcript, 5.0, 5.0, None)
+            .expect("aligns")
+            .passes;
         assert_eq!(passes, 1);
         // Stamps this audio cannot carry (they run past its end) are
         // refused before any anchored pass.
-        let (_, passes) =
-            align_emissions(&emissions, &tokens, &transcript, 1.5, Some(&config)).expect("aligns");
+        let passes = align_emissions(&emissions, &tokens, &transcript, 1.5, 1.5, Some(&config))
+            .expect("aligns")
+            .passes;
         assert_eq!(passes, 1, "stamps past the end anchor nothing");
     }
 
@@ -844,12 +1338,258 @@ mod anchor_tests {
         let derailed: Vec<AlignedLine> = [1.0, 90.0, 15.0, 200.0].into_iter().map(line).collect();
         assert_eq!(shift_from(&derailed, &transcript), None);
     }
+
+    #[test]
+    fn a_pass_pushed_to_its_windows_edge_is_saturated_and_one_placed_inside_is_not() {
+        let transcript = stamped(
+            "[00:10.00]ab
+[00:20.00]cd
+[00:30.00]ef
+[00:40.00]gh",
+        );
+        let line = |start: f64| AlignedLine {
+            start,
+            end: start + 0.5,
+            text: "x".to_owned(),
+            words: vec![AlignedWord {
+                text: "x".to_owned(),
+                start,
+                end: start + 0.5,
+                conf: 0.5,
+                estimated: false,
+                chars: vec![[start, start + 0.5]],
+            }],
+        };
+        let at = |delta: f64| -> Vec<AlignedLine> {
+            [10.0, 20.0, 30.0, 40.0]
+                .into_iter()
+                .map(|s| line(s + delta))
+                .collect()
+        };
+        // The known case: every line −3.65 s from its stamp in a
+        // ±4 s window is the window's edge, not the song.
+        assert!(window_saturated(&at(-3.65), &transcript, 0.0, 4.0));
+        // Three seconds off in the same window — the source's master
+        // condition the anchor width was tuned on — is placed, not
+        // pushed.
+        assert!(!window_saturated(&at(-3.0), &transcript, 0.0, 4.0));
+        assert!(!window_saturated(&at(0.4), &transcript, 0.0, 4.0));
+        // The distance is measured from the SHIFTED stamps: lines at
+        // stamp + 6 in a window centred on an applied shift of 6 are
+        // inside it.
+        assert!(!window_saturated(&at(6.0), &transcript, 6.0, 1.0));
+        assert!(window_saturated(&at(6.9), &transcript, 6.0, 1.0));
+        // One outlier does not saturate a placed pass — the median
+        // votes — and fewer than two votes say nothing.
+        let mut placed = at(0.2);
+        placed[3].start = 43.9;
+        assert!(!window_saturated(&placed, &transcript, 0.0, 4.0));
+        assert!(!window_saturated(&at(-3.9)[..1], &transcript, 0.0, 4.0));
+        // The wider retry can hold what the first window could not.
+        const {
+            assert!(WIDER_BY * 4.0 > 10.0);
+        }
+    }
+
+    #[test]
+    fn a_pass_whose_confidence_collapses_against_the_plain_one_was_pushed() {
+        let word = |conf: f32, estimated: bool| AlignedWord {
+            text: "x".to_owned(),
+            start: 0.0,
+            end: 0.5,
+            conf,
+            estimated,
+            chars: if estimated { vec![] } else { vec![[0.0, 0.5]] },
+        };
+        let line = |words: Vec<AlignedWord>| AlignedLine {
+            start: 0.0,
+            end: 0.5,
+            text: "x".to_owned(),
+            words,
+        };
+        // The geometric mean: 0.25 and 1.0 give 0.5, an estimated
+        // word does not vote, and no words is no confidence.
+        let lines = vec![
+            line(vec![word(0.25, false), word(0.9, true)]),
+            line(vec![word(1.0, false)]),
+        ];
+        assert!((pass_confidence(&lines) - 0.5).abs() < 1e-9);
+        assert_eq!(pass_confidence(&[]), 0.0);
+        assert_eq!(pass_confidence(&[line(vec![word(0.9, true)])]), 0.0);
+        // The measured case: the anchored pass at 0.005 against the
+        // plain pass at 0.032 was pushed; a pass that kept most of it
+        // was placed; and a plain pass with nothing to lose pushes
+        // nothing.
+        assert!(pushed_against_evidence(0.0053, 0.0315));
+        assert!(!pushed_against_evidence(0.03, 0.0315));
+        assert!(!pushed_against_evidence(0.0, 0.0));
+    }
+
+    /// A stamped transcript of `n` lines, ten seconds apart from 20 s.
+    fn stamped_lines(n: usize) -> Transcript {
+        let text: Vec<String> = (0..n)
+            .map(|i| {
+                let t = 20.0 + 10.0 * i as f64;
+                format!("[{:02}:{:05.2}]ab cd", (t / 60.0) as u32, t % 60.0)
+            })
+            .collect();
+        Transcript::parse(&text.join("\n"))
+    }
+
+    /// A placed line at `start` with confidence `conf`.
+    fn placed(start: f64, conf: f32) -> AlignedLine {
+        let word = |text: &str, s: f64| AlignedWord {
+            text: text.to_owned(),
+            start: s,
+            end: s + 0.3,
+            conf,
+            estimated: false,
+            chars: vec![[s, s + 0.3]],
+        };
+        AlignedLine {
+            start,
+            end: start + 0.8,
+            text: "ab cd".to_owned(),
+            words: vec![word("ab", start), word("cd", start + 0.5)],
+        }
+    }
+
+    #[test]
+    fn a_warp_is_fitted_through_the_outliers_and_tells_the_unsung_lines_apart() {
+        // Thirty lines stamped for another edit. This recording
+        // sings the first twenty at 1.04 · t − 10.8 (with up to
+        // ±0.3 s of wobble), the plain pass lost four of them by
+        // tens of seconds, and the last ten lie beyond the sound.
+        let transcript = stamped_lines(30);
+        let truth = Warp {
+            scale: 1.04,
+            offset_s: -10.8,
+        };
+        let mut lines: Vec<AlignedLine> = (0..30)
+            .map(|i| {
+                let stamp = 20.0 + 10.0 * i as f64;
+                let wobble = 0.3 * ((i % 3) as f64 - 1.0);
+                match i {
+                    5 | 11 | 14 | 19 => placed(truth.apply(stamp) - 40.0, 0.2),
+                    0..=19 => placed(truth.apply(stamp) + wobble, 0.2),
+                    // Beyond the sound the pass put junk, quietly.
+                    _ => placed(199.0 + i as f64 * 0.1, 0.01),
+                }
+            })
+            .collect();
+        let sounding_end = truth.apply(20.0 + 10.0 * 19.0) + 3.0;
+        let (warp, residual) = fit_warp(&lines, &transcript, sounding_end).expect("a warp");
+        assert!((warp.scale - 1.04).abs() < 0.01, "scale {}", warp.scale);
+        assert!(
+            residual <= WARP_TIGHT_RESIDUAL_S,
+            "a wobble of ±0.3 s is a tight fit: {residual}"
+        );
+        assert!(
+            (warp.offset_s + 10.8).abs() < 0.8,
+            "offset {}",
+            warp.offset_s
+        );
+        let (retimed, unsung) = warp.retime(&transcript, sounding_end);
+        assert_eq!(unsung, (20..30).collect::<Vec<_>>());
+        assert!(retimed.lines[3].source_start_s.is_some());
+        assert!(retimed.lines[25].source_start_s.is_none());
+        // Stamps that merely wobble around the truth are placed, not
+        // warped away: the fit stays near identity.
+        let on_time: Vec<AlignedLine> = (0..30)
+            .map(|i| placed(20.0 + 10.0 * i as f64 + 0.2, 0.3))
+            .collect();
+        let (near, _) = fit_warp(&on_time, &transcript, 400.0).expect("fits");
+        assert!((near.scale - 1.0).abs() < 1e-6 && (near.offset_s - 0.2).abs() < 1e-6);
+        // A coarse map — a bar's jump after the third line and a slow
+        // drift after it (France Gall) — is accepted with its
+        // residual, which the caller turns into a wider window.
+        let jumpy: Vec<AlignedLine> = (0..30)
+            .map(|i| {
+                let stamp = 20.0 + 10.0 * i as f64;
+                // Five seconds more every ten lines, and a wobble.
+                let jumps = 5.0 * f64::from(u8::try_from(i / 10).unwrap_or(0));
+                let wobble = 0.5 * ((i % 3) as f64 - 1.0);
+                placed(stamp + jumps + wobble + 0.01 * stamp, 0.3)
+            })
+            .collect();
+        let (coarse, residual) = fit_warp(&jumpy, &transcript, 400.0).expect("a coarse fit");
+        assert!(
+            residual > WARP_TIGHT_RESIDUAL_S && residual <= WARP_MAX_RESIDUAL_S,
+            "{residual}"
+        );
+        assert!((coarse.scale - 1.05).abs() < 0.02, "{}", coarse.scale);
+        // A derailed pass fits nothing.
+        for (i, line) in lines.iter_mut().enumerate() {
+            line.start = (i as f64 * 37.0) % 250.0;
+            for word in &mut line.words {
+                word.start = line.start;
+                word.end = line.start + 0.3;
+            }
+        }
+        assert_eq!(fit_warp(&lines, &transcript, 400.0), None);
+        // Too few lines fit nothing either.
+        let few: Vec<AlignedLine> = (0..5)
+            .map(|i| placed(20.0 + 10.0 * i as f64, 0.3))
+            .collect();
+        assert_eq!(fit_warp(&few, &stamped_lines(5), 400.0), None);
+        // A tempo ratio outside the same performance is refused.
+        let doubled: Vec<AlignedLine> = (0..30)
+            .map(|i| placed(2.0 * (20.0 + 10.0 * i as f64), 0.3))
+            .collect();
+        assert_eq!(fit_warp(&doubled, &transcript, 1000.0), None);
+    }
+
+    #[test]
+    fn under_a_constant_shift_the_lines_past_the_sound_lose_their_stamp() {
+        // Ten lines at 20, 30 … 110 s, the song sitting 5 s late
+        // against them, and the sound ending at 90 s: the stamps at
+        // 90 s and beyond land past 95 − margin.
+        let transcript = stamped_lines(10);
+        let (trimmed, unsung) = trim_unsung(&transcript, 5.0, 90.0);
+        assert_eq!(unsung, vec![7, 8, 9]);
+        assert!(trimmed.lines[6].source_start_s.is_some());
+        assert!(trimmed.lines[7].source_start_s.is_none());
+        // The kept stamps are left AS THEY WERE — the gate still sees
+        // the shift and calls it a shifted master.
+        assert_eq!(
+            trimmed.lines[0].source_start_s,
+            transcript.lines[0].source_start_s
+        );
+        // A shift the other way puts early lines before the start.
+        let (_, early) = trim_unsung(&transcript, -25.0, 500.0);
+        assert_eq!(early, vec![0]);
+        // No line past the sound: nothing to trim.
+        assert!(trim_unsung(&transcript, 0.0, 500.0).1.is_empty());
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::transcript::tokens_of;
+
+    #[test]
+    fn a_stem_the_length_of_the_song_is_accepted_and_a_primed_one_is_not() {
+        let song = AudioData::from_mono(vec![0.0; 44_100 * 10], 44_100);
+        // The same length, and a tail padding of a few hundred samples
+        // a decoder may keep or drop: this song, this timeline.
+        assert!(check_heard_matches(&song, &song).is_ok());
+        let padded = AudioData::from_mono(vec![0.0; 44_100 * 10 + 300], 44_100);
+        assert!(check_heard_matches(&song, &padded).is_ok());
+        // Longer by the smaller AAC priming (1024 samples = 23 ms):
+        // decoded from the container by a tool that did not skip it,
+        // so every word would sit 23 ms early. Refused by construction.
+        let primed = AudioData::from_mono(vec![0.0; 44_100 * 10 + 1024], 44_100);
+        let err = check_heard_matches(&song, &primed).expect_err("primed stem");
+        assert!(matches!(err, LyricsError::HeardMismatch { .. }), "{err}");
+        // A different song altogether.
+        let other = AudioData::from_mono(vec![0.0; 44_100 * 12], 44_100);
+        assert!(check_heard_matches(&song, &other).is_err());
+        // The tolerance itself sits under that priming.
+        const {
+            assert!(HEARD_LENGTH_TOLERANCE_S < 1024.0 / 44_100.0);
+        }
+    }
 
     fn span(token: u8, start: usize, end: usize, score: f32) -> TokenSpan {
         TokenSpan {

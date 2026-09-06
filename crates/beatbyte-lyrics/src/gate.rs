@@ -76,6 +76,14 @@ pub struct GateConfig {
     /// What the floor says is that BELOW it an alignment carries no
     /// information worth setting against a human's stamps.
     pub min_letters_per_s: f32,
+    /// A word that starts this long after the word before it, inside
+    /// its own line, was not placed but parked: a weak final word
+    /// (a held "sein") that the model cannot hear is put by the
+    /// Viterbi where the next letters are — the onset of the NEXT
+    /// line, thirteen seconds late in the case that found this. Lines
+    /// do not pause that long between two words; the word is marked
+    /// estimated and retimed to follow its predecessor.
+    pub max_gap_s: f64,
     /// |median delta| beyond this is a shifted master.
     pub master_shift_s: f64,
     /// No more than this share of the compared lines within
@@ -102,7 +110,12 @@ pub struct GateConfig {
     pub min_tail_s: f64,
     /// A delta that changes by more than this across the compared
     /// span — and is explained by a straight line, not by noise — is
-    /// a different edit.
+    /// a different edit. Set above a master's ordinary tempo
+    /// tolerance: one song in the library drifted 0.7 s over 220 s
+    /// with 98 % of its lines agreeing, which is the same
+    /// performance, not another edit (and calling it one kept a
+    /// worse alignment beside the song, because the verdict ranks
+    /// below a confirmed one).
     pub edit_drift_s: f64,
 }
 
@@ -111,6 +124,7 @@ impl Default for GateConfig {
         GateConfig {
             word_conf_floor: 0.0,
             min_letters_per_s: 1.0,
+            max_gap_s: 2.0,
             max_word_s: 5.0,
             sprint_slack_frames: 0,
             line_fallback_share: 0.30,
@@ -121,7 +135,7 @@ impl Default for GateConfig {
             edit_slack_s: 2.0,
             min_span_share: 0.5,
             min_tail_s: 60.0,
-            edit_drift_s: 1.0,
+            edit_drift_s: 2.5,
         }
     }
 }
@@ -149,6 +163,18 @@ pub enum Verdict {
     /// Fewer than half the lines agree on a delta: the alignment
     /// failed. Every line falls back to the source's stamps.
     Failed,
+    /// The source's stamps belong to another edit of this
+    /// performance and were mapped onto this recording by
+    /// `scale · t + offset` before anchoring; lines the map put
+    /// beyond the sound were dropped as unsung. Aligned times are
+    /// kept; the mapped stamps serve as the fallback.
+    Stretched {
+        /// The tempo ratio, this recording over the source's.
+        scale: f64,
+        /// Seconds added after scaling (the map's offset plus what
+        /// the aligned lines still sat off the mapped stamps by).
+        offset_s: f64,
+    },
 }
 
 /// What the gate did, for the report and the file.
@@ -169,6 +195,10 @@ pub struct GateReport {
     pub words_estimated: usize,
     /// Lines that fell back to line level.
     pub lines_fallen_back: usize,
+    /// Lines dropped as unsung: the source's text this recording
+    /// does not sing (see [`Verdict::Stretched`]).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub lines_unsung: usize,
     /// Letters per second in the model's own greedy reading of this
     /// audio, when it was measured — the fact that says whether the
     /// alignment is evidence at all. `None` for a gate run without it
@@ -177,19 +207,46 @@ pub struct GateReport {
     pub letters_per_s: Option<f32>,
 }
 
+fn is_zero(n: &usize) -> bool {
+    *n == 0
+}
+
 /// Apply the gate to an alignment in place. `audio_duration_s` is the
-/// length of the file the alignment was computed on.
+/// length of the file the alignment was computed on. With `warp`,
+/// the source's stamps are judged AS MAPPED onto this recording, the
+/// verdict says so, and the lines the map put beyond the sound are
+/// dropped from the alignment.
 pub fn gate(
     alignment: &mut Alignment,
     transcript: &Transcript,
     audio_duration_s: f64,
     evidence: Option<Evidence>,
+    warp: Option<&crate::align::WarpResult>,
     config: &GateConfig,
 ) -> GateReport {
     // 1 + 2: the verdict, from the deltas against the source stamps.
     // A line without aligned letters (`♪`, a number) has a guessed
     // start, not an aligned one — it says nothing about the source.
-    let stamps: Vec<Option<f64>> = transcript.lines.iter().map(|l| l.source_start_s).collect();
+    let stamps_source = warp.map_or(transcript, |w| &w.retimed);
+    let stamps: Vec<Option<f64>> = stamps_source
+        .lines
+        .iter()
+        .map(|l| l.source_start_s)
+        .collect();
+    // 0: the lines this recording does not sing carry no evidence
+    // and get none; they are dropped once every index-based step
+    // below is done.
+    if let Some(warp) = warp {
+        for &index in &warp.unsung {
+            if let Some(line) = alignment.lines.get_mut(index) {
+                for word in &mut line.words {
+                    word.estimated = true;
+                    word.conf = 0.0;
+                    word.chars.clear();
+                }
+            }
+        }
+    }
     let pairs: Vec<(f64, f64)> = alignment
         .lines
         .iter()
@@ -199,6 +256,19 @@ pub fn gate(
         .collect();
     let judged = verdict_of(&pairs, audio_duration_s, config);
     let (mut verdict, median, mad) = (judged.verdict, judged.median, judged.mad);
+    if let Some(map) = warp.and_then(|w| w.warp) {
+        verdict = match verdict {
+            Verdict::SameMaster => Verdict::Stretched {
+                scale: map.scale,
+                offset_s: map.offset_s,
+            },
+            Verdict::ShiftedMaster { offset_s } => Verdict::Stretched {
+                scale: map.scale,
+                offset_s: map.offset_s + offset_s,
+            },
+            other => other,
+        };
+    }
 
     // 2b: an alignment is only evidence if the model heard the song.
     //
@@ -223,20 +293,42 @@ pub fn gate(
     // knowledge, so every word is marked estimated and the song sings
     // by the line.
     let illegible = evidence.is_some_and(|e| !e.is_legible(config.min_letters_per_s));
-    if illegible && matches!(verdict, Verdict::SameMaster | Verdict::ShiftedMaster { .. }) {
+    if illegible
+        && matches!(
+            verdict,
+            Verdict::SameMaster | Verdict::ShiftedMaster { .. } | Verdict::Stretched { .. }
+        )
+    {
         verdict = Verdict::Failed;
     }
 
     // 3a: words.
     let mut words_estimated = 0usize;
     for line in &mut alignment.lines {
+        // Where the last word that was PLACED ended — a sprinted or
+        // endless word still started where it was placed, so it
+        // anchors the gap rule; a parked one does not.
+        let mut anchor_end: Option<f64> = None;
+        let mut parked = false;
         for word in &mut line.words {
-            if !word.estimated && (illegible || word_is_suspect(word, config)) {
+            let had_letters = !word.estimated;
+            let parked_here = had_letters && word_is_parked(word, anchor_end, config);
+            if had_letters && (illegible || parked_here || word_is_suspect(word, config)) {
                 word.estimated = true;
                 word.conf = 0.0;
                 word.chars.clear();
                 words_estimated += 1;
             }
+            if had_letters && !parked_here {
+                anchor_end = Some(word.end);
+            }
+            parked |= parked_here;
+        }
+        // A parked word had stretched the line to wherever it was
+        // put; the line ends where its placed words end, and the
+        // parked ones are retimed after them below.
+        if parked && let Some(end) = anchor_end {
+            line.end = end.max(line.start);
         }
     }
 
@@ -244,7 +336,10 @@ pub fn gate(
     let mut lines_fallen_back = 0usize;
     let source_is_reference = matches!(
         verdict,
-        Verdict::SameMaster | Verdict::ShiftedMaster { .. } | Verdict::Failed
+        Verdict::SameMaster
+            | Verdict::ShiftedMaster { .. }
+            | Verdict::Stretched { .. }
+            | Verdict::Failed
     );
     // The shift the source's stamps need to land on this master. A
     // failed alignment's median says nothing: its stamps are used as
@@ -307,6 +402,18 @@ pub fn gate(
     for line in &mut alignment.lines {
         retime_estimated_within(line);
     }
+    // The unsung lines, last: everything above worked by index.
+    let mut lines_unsung = 0;
+    if let Some(warp) = warp {
+        let mut unsung: Vec<usize> = warp.unsung.clone();
+        unsung.sort_unstable();
+        for index in unsung.into_iter().rev() {
+            if index < alignment.lines.len() {
+                alignment.lines.remove(index);
+                lines_unsung += 1;
+            }
+        }
+    }
 
     let report = GateReport {
         verdict,
@@ -315,11 +422,51 @@ pub fn gate(
         median_delta_s: median,
         mad_s: mad,
         words_estimated,
-        lines_fallen_back,
+        lines_fallen_back: lines_fallen_back.saturating_sub(lines_unsung),
+        lines_unsung,
         letters_per_s: evidence.map(|e| e.letters_per_s),
     };
     alignment.gate = Some(report.clone());
     report
+}
+
+/// A verdict's standing when two alignments of the same song are
+/// compared: a failed one is worth least, one that could not be
+/// judged against the source (no stamps, or stamps from another
+/// edit) sits in the middle, and one the source confirmed ranks
+/// highest. Pure — tested.
+#[must_use]
+pub fn verdict_rank(verdict: Verdict) -> u8 {
+    match verdict {
+        Verdict::Failed => 0,
+        Verdict::NoReference | Verdict::DifferentEdit => 1,
+        Verdict::SameMaster | Verdict::ShiftedMaster { .. } | Verdict::Stretched { .. } => 2,
+    }
+}
+
+/// Whether a new alignment should replace the one already beside the
+/// audio, from the two gate reports alone: the verdict's standing
+/// first, then how much of the song the model heard (letters per
+/// second in its own greedy reading — the measure the gate itself
+/// trusts). A tie keeps the old file: nothing is rewritten for
+/// nothing. A report without a legibility figure counts as having
+/// heard nothing, so a measured result always outranks an unmeasured
+/// one of the same standing. Pure — tested.
+#[must_use]
+pub fn prefer(new: &GateReport, old: &GateReport) -> bool {
+    let (rank_new, rank_old) = (verdict_rank(new.verdict), verdict_rank(old.verdict));
+    if rank_new != rank_old {
+        return rank_new > rank_old;
+    }
+    new.letters_per_s.unwrap_or(0.0) > old.letters_per_s.unwrap_or(0.0)
+}
+
+/// A word parked long after the word before it (see
+/// [`GateConfig::max_gap_s`]). `anchor_end` is where the last placed
+/// word of the same line ended, if any. Pure — tested.
+#[must_use]
+pub fn word_is_parked(word: &AlignedWord, anchor_end: Option<f64>, config: &GateConfig) -> bool {
+    anchor_end.is_some_and(|end| word.start - end > config.max_gap_s)
 }
 
 /// A word the alignment does not vouch for.
@@ -425,6 +572,21 @@ pub fn verdict_of(pairs: &[(f64, f64)], audio_duration_s: f64, config: &GateConf
         }
     }
     if consensus <= config.consensus_share {
+        // No agreement AND the text ends a full minute before the
+        // sound does: the words are another edit's — the single's
+        // sheet on a seven-minute extended mix — and its stamps would
+        // be wrong from the first line. The aligned times stand, as
+        // for any other edit. With the text spanning the sound, the
+        // same disagreement is a failed alignment and the stamps are
+        // the better answer.
+        if audio_duration_s.is_finite() && audio_duration_s - last_stamp > config.min_tail_s {
+            return judged(
+                Verdict::DifferentEdit,
+                Some(median),
+                Some(mad),
+                Some(consensus),
+            );
+        }
         return judged(Verdict::Failed, Some(median), Some(mad), Some(consensus));
     }
     if median.abs() > config.master_shift_s {
@@ -600,6 +762,15 @@ mod tests {
             .map(|i| (i as f64 * 20.0, 0.1 + 0.0017 * i as f64 * 20.0))
             .collect();
         assert_eq!(verdict_of(&tilted, 200.0, &c).verdict, Verdict::SameMaster);
+        // Nor is a second across the span on a shifted master (the
+        // library's For You: 0.7 s over 220 s, 98 % agreeing).
+        let breathing: Vec<(f64, f64)> = (0..12)
+            .map(|i| (i as f64 * 20.0, 6.5 + 0.005 * i as f64 * 20.0))
+            .collect();
+        assert!(matches!(
+            verdict_of(&breathing, 260.0, &c).verdict,
+            Verdict::ShiftedMaster { .. }
+        ));
         // A majority that agrees carries the song even when a third
         // of the lines wander (the stacked-chorus pop case): same
         // master, and the wanderers are the per-line business.
@@ -641,7 +812,7 @@ mod tests {
             line(30.0, vec![word("cd", 30.0, 30.5, 0.5, 2)]),
         ]);
         let t = Transcript::parse("[00:10.00]ab\n[00:20.00]♪\n[00:30.00]cd");
-        let report = gate(&mut a, &t, 40.0, None, &cfg());
+        let report = gate(&mut a, &t, 40.0, None, None, &cfg());
         assert_eq!(report.lines_compared, 2);
         assert_eq!(report.verdict, Verdict::SameMaster);
     }
@@ -663,7 +834,7 @@ mod tests {
             ],
         )]);
         let t = Transcript::parse("cd ab ef loooong gh ij kl");
-        let report = gate(&mut a, &t, 200.0, None, &cfg());
+        let report = gate(&mut a, &t, 200.0, None, None, &cfg());
         assert_eq!(report.verdict, Verdict::NoReference);
         assert_eq!(report.words_estimated, 2);
         assert_eq!(
@@ -694,7 +865,7 @@ mod tests {
             ],
         )]);
         let t = Transcript::parse("ab cd ef remember");
-        gate(&mut a, &t, 200.0, None, &cfg());
+        gate(&mut a, &t, 200.0, None, None, &cfg());
         let last = &a.lines[0].words[3];
         assert!(last.estimated);
         assert!((last.start - 11.2).abs() < 1e-9);
@@ -729,7 +900,7 @@ mod tests {
             line(30.1, vec![word("ij", 30.1, 30.6, 0.5, 2)]),
         ]);
         let t = Transcript::parse("[00:10.00]ab cd\n[00:20.00]ef gh\n[00:30.00]ij");
-        let report = gate(&mut a, &t, 40.0, None, &cfg());
+        let report = gate(&mut a, &t, 40.0, None, None, &cfg());
         assert_eq!(report.verdict, Verdict::SameMaster);
         assert_eq!(report.lines_fallen_back, 1);
         let l = &a.lines[1];
@@ -781,7 +952,7 @@ mod tests {
         // Heard: a consistent −3.3 s IS a shifted master, and the
         // aligned times stand.
         let mut a = make();
-        let report = gate(&mut a, &t, 40.0, Some(heard), &cfg());
+        let report = gate(&mut a, &t, 40.0, Some(heard), None, &cfg());
         assert!(
             matches!(report.verdict, Verdict::ShiftedMaster { offset_s } if (offset_s + 3.3).abs() < 1e-6),
             "{:?}",
@@ -792,7 +963,7 @@ mod tests {
         // Not heard: the same numbers prove nothing. The verdict is
         // failed, and every line goes back to the human's stamps.
         let mut a = make();
-        let report = gate(&mut a, &t, 40.0, Some(deaf), &cfg());
+        let report = gate(&mut a, &t, 40.0, Some(deaf), None, &cfg());
         assert_eq!(report.verdict, Verdict::Failed);
         assert!(
             (a.lines[0].start - 10.0).abs() < 1e-9,
@@ -806,7 +977,7 @@ mod tests {
         // words are still not knowledge.
         let mut a = make();
         let bare = Transcript::parse("ab cd\nef gh\nij");
-        let report = gate(&mut a, &bare, 40.0, Some(deaf), &cfg());
+        let report = gate(&mut a, &bare, 40.0, Some(deaf), None, &cfg());
         assert_eq!(report.verdict, Verdict::NoReference);
         assert!(
             a.lines.iter().all(|l| l.words.iter().all(|w| w.estimated)),
@@ -836,7 +1007,7 @@ mod tests {
             voiced_share: 0.01,
             letters_per_s: 0.1,
         };
-        let report = gate(&mut a, &t, 40.0, Some(deaf), &cfg());
+        let report = gate(&mut a, &t, 40.0, Some(deaf), None, &cfg());
         assert_eq!(report.verdict, Verdict::DifferentEdit);
         assert!(
             a.lines[0].start < 40.0 && a.lines[2].start < 40.0,
@@ -857,7 +1028,7 @@ mod tests {
             line(150.0, vec![word("gh", 150.0, 150.5, 0.5, 2)]),
         ]);
         let t = Transcript::parse("[00:10.00]ab\n[00:20.00]cd\n[00:30.00]ef\n[00:40.00]gh");
-        let report = gate(&mut a, &t, 50.0, None, &cfg());
+        let report = gate(&mut a, &t, 50.0, None, None, &cfg());
         assert_eq!(report.verdict, Verdict::Failed);
         assert_eq!(report.lines_fallen_back, 4);
         // The source's stamps as they are — the median of a failed
@@ -890,7 +1061,7 @@ mod tests {
             line(90.0, vec![word("gh", 90.0, 90.5, 0.5, 2)]),
         ]);
         let t = Transcript::parse("[00:10.00]ab\n[02:30.00]cd ef\n[05:00.00]gh");
-        let report = gate(&mut a, &t, 200.0, None, &cfg());
+        let report = gate(&mut a, &t, 200.0, None, None, &cfg());
         assert_eq!(report.verdict, Verdict::DifferentEdit);
         assert_eq!(report.lines_fallen_back, 1);
         let l = &a.lines[1];
@@ -918,13 +1089,264 @@ mod tests {
         };
         let t = Transcript::parse("ab cd ef gh");
         let mut off = make();
-        assert_eq!(gate(&mut off, &t, 100.0, None, &cfg()).words_estimated, 0);
+        assert_eq!(
+            gate(&mut off, &t, 100.0, None, None, &cfg()).words_estimated,
+            0
+        );
         let mut on = make();
         let strict = GateConfig {
             word_conf_floor: 0.5,
             ..cfg()
         };
-        assert_eq!(gate(&mut on, &t, 100.0, None, &strict).words_estimated, 1);
+        assert_eq!(
+            gate(&mut on, &t, 100.0, None, None, &strict).words_estimated,
+            1
+        );
         assert!(on.lines[0].words[0].estimated && !on.lines[0].words[1].estimated);
+    }
+
+    fn report(verdict: Verdict, letters_per_s: Option<f32>) -> GateReport {
+        GateReport {
+            verdict,
+            lines_compared: 0,
+            consensus: None,
+            median_delta_s: None,
+            mad_s: None,
+            words_estimated: 0,
+            lines_fallen_back: 0,
+            lines_unsung: 0,
+            letters_per_s,
+        }
+    }
+
+    #[test]
+    fn a_confirmed_verdict_outranks_an_unjudged_one_which_outranks_a_failure() {
+        assert!(verdict_rank(Verdict::SameMaster) > verdict_rank(Verdict::DifferentEdit));
+        assert_eq!(
+            verdict_rank(Verdict::ShiftedMaster { offset_s: 3.0 }),
+            verdict_rank(Verdict::SameMaster)
+        );
+        assert_eq!(
+            verdict_rank(Verdict::NoReference),
+            verdict_rank(Verdict::DifferentEdit)
+        );
+        assert!(verdict_rank(Verdict::DifferentEdit) > verdict_rank(Verdict::Failed));
+        // Mapped stamps are as good as a shifted master's.
+        assert_eq!(
+            verdict_rank(Verdict::Stretched {
+                scale: 1.04,
+                offset_s: -10.8
+            }),
+            verdict_rank(Verdict::SameMaster)
+        );
+    }
+
+    #[test]
+    fn under_a_warp_the_verdict_is_stretched_and_the_unsung_lines_are_dropped() {
+        use crate::align::{Warp, WarpResult};
+        use crate::transcript::Transcript;
+        // Four lines stamped for another edit: the recording sings
+        // three of them at 1.04·t − 10.8 and ends before the fourth.
+        let transcript =
+            Transcript::parse("[00:20.00]ab cd\n[00:30.00]ef gh\n[00:40.00]ij kl\n[03:00.00]mn op");
+        let warp = Warp {
+            scale: 1.04,
+            offset_s: -10.8,
+        };
+        let (retimed, unsung) = warp.retime(&transcript, 40.0);
+        assert_eq!(unsung, vec![3]);
+        let word = |text: &str, start: f64| AlignedWord {
+            text: text.to_owned(),
+            start,
+            end: start + 0.4,
+            conf: 0.5,
+            estimated: false,
+            chars: vec![[start, start + 0.4]],
+        };
+        let line = |start: f64, a: &str, b: &str| AlignedLine {
+            start,
+            end: start + 1.0,
+            text: format!("{a} {b}"),
+            words: vec![word(a, start), word(b, start + 0.5)],
+        };
+        let mut alignment = Alignment {
+            schema: crate::words::SCHEMA.to_owned(),
+            audio_sha256: String::new(),
+            pipeline_version: crate::PIPELINE_VERSION,
+            language: "en".to_owned(),
+            source: crate::words::Source {
+                text: String::new(),
+                separator: "none".to_owned(),
+                aligner: String::new(),
+            },
+            offset_ms: 0,
+            gate: None,
+            lines: vec![
+                line(warp.apply(20.0) + 0.1, "ab", "cd"),
+                line(warp.apply(30.0) - 0.1, "ef", "gh"),
+                line(warp.apply(40.0), "ij", "kl"),
+                // Placed at the end: junk.
+                line(39.0, "mn", "op"),
+            ],
+        };
+        let result = WarpResult {
+            warp: Some(warp),
+            retimed,
+            unsung,
+        };
+        // Judged against the SOUND's end, not the container's: the
+        // fourth line is unsung because the recording stops at 40 s.
+        let report = gate(
+            &mut alignment,
+            &transcript,
+            40.0,
+            None,
+            Some(&result),
+            &GateConfig::default(),
+        );
+        assert!(
+            matches!(report.verdict, Verdict::Stretched { scale, .. } if (scale - 1.04).abs() < 1e-9),
+            "{:?}",
+            report.verdict
+        );
+        assert_eq!(report.lines_unsung, 1);
+        assert_eq!(alignment.lines.len(), 3, "the unsung line is gone");
+        assert_eq!(alignment.lines[2].text, "ij kl");
+        assert_eq!(report.lines_fallen_back, 0);
+        // And the file says so.
+        let json = alignment.to_json().expect("json");
+        assert!(!json.contains("mn op"));
+    }
+
+    #[test]
+    fn a_better_verdict_replaces_regardless_of_legibility() {
+        // The stem alignment heard less but the source confirmed it;
+        // the mix alignment heard more and failed.
+        let new = report(Verdict::SameMaster, Some(0.9));
+        let old = report(Verdict::Failed, Some(2.5));
+        assert!(prefer(&new, &old));
+        assert!(!prefer(&old, &new));
+    }
+
+    #[test]
+    fn at_equal_standing_the_one_the_model_heard_more_of_wins_and_a_tie_keeps_the_old() {
+        let heard_more = report(Verdict::SameMaster, Some(3.1));
+        let heard_less = report(Verdict::ShiftedMaster { offset_s: 1.0 }, Some(1.2));
+        assert!(prefer(&heard_more, &heard_less));
+        assert!(!prefer(&heard_less, &heard_more));
+        // Exactly equal: nothing is rewritten for nothing.
+        assert!(!prefer(&heard_less, &heard_less.clone()));
+        // Unmeasured counts as nothing heard: a measured result of
+        // the same standing replaces it, never the other way round.
+        let unmeasured = report(Verdict::SameMaster, None);
+        assert!(prefer(&heard_less, &unmeasured));
+        assert!(!prefer(&unmeasured, &heard_less));
+    }
+
+    #[test]
+    fn a_word_parked_long_after_its_line_is_retimed_to_follow_its_predecessor() {
+        use crate::transcript::Transcript;
+        // "Wieder Weltmeister sein": the held "sein" was put at the
+        // next line's onset, fourteen seconds after "Weltmeister".
+        let transcript =
+            Transcript::parse("Wieder Weltmeister Weltmeister sein\nSiegesgewiss fahren wir");
+        let word = |text: &str, start: f64, end: f64| AlignedWord {
+            text: text.to_owned(),
+            start,
+            end,
+            conf: 0.4,
+            estimated: false,
+            chars: vec![[start, end]],
+        };
+        let mut alignment = Alignment {
+            schema: crate::words::SCHEMA.to_owned(),
+            audio_sha256: String::new(),
+            pipeline_version: crate::PIPELINE_VERSION,
+            language: "en".to_owned(),
+            source: crate::words::Source {
+                text: String::new(),
+                separator: "none".to_owned(),
+                aligner: String::new(),
+            },
+            offset_ms: 0,
+            gate: None,
+            lines: vec![
+                AlignedLine {
+                    start: 55.58,
+                    end: 73.22,
+                    text: "Wieder Weltmeister Weltmeister sein".to_owned(),
+                    words: vec![
+                        word("Wieder", 55.58, 55.86),
+                        word("Weltmeister,", 55.92, 57.24),
+                        word("Weltmeister", 57.34, 59.16),
+                        word("sein", 73.04, 73.22),
+                    ],
+                },
+                AlignedLine {
+                    start: 73.24,
+                    end: 77.56,
+                    text: "Siegesgewiss fahren wir".to_owned(),
+                    words: vec![
+                        word("Siegesgewiss", 73.24, 74.5),
+                        word("fahren", 74.6, 75.9),
+                        word("wir", 76.0, 77.56),
+                    ],
+                },
+            ],
+        };
+        let report = gate(
+            &mut alignment,
+            &transcript,
+            300.0,
+            None,
+            None,
+            &GateConfig::default(),
+        );
+        let sein = &alignment.lines[0].words[3];
+        assert!(sein.estimated, "the parked word is not vouched for");
+        assert_eq!(report.words_estimated, 1);
+        // Retimed to follow "Weltmeister", not left at the next line.
+        assert!(
+            (sein.start - 59.16).abs() < 1e-9,
+            "starts at {}",
+            sein.start
+        );
+        assert!(sein.end < 62.0, "ends at {}", sein.end);
+        assert!(
+            alignment.lines[0].end < 62.0,
+            "the line ends with its last word"
+        );
+        // The line that pauses under the limit keeps every word.
+        assert!(alignment.lines[1].words.iter().all(|w| !w.estimated));
+        // A pause under the limit, inside a line, is not parking.
+        let ok = word("later", 59.16 + GateConfig::default().max_gap_s - 0.1, 62.0);
+        assert!(!word_is_parked(&ok, Some(59.16), &GateConfig::default()));
+        assert!(word_is_parked(
+            &word("late", 62.0, 62.3),
+            Some(59.16),
+            &GateConfig::default()
+        ));
+        // The first word of a line has nothing to be parked after.
+        assert!(!word_is_parked(
+            &word("late", 62.0, 62.3),
+            None,
+            &GateConfig::default()
+        ));
+    }
+
+    #[test]
+    fn disagreeing_stamps_on_a_text_that_ends_long_before_the_sound_are_another_edit() {
+        // The single's 54 lines on a seven-minute extended mix: the
+        // deltas scatter, the last stamp sits at 228 s in 427 s.
+        let scattered: Vec<(f64, f64)> = (0..20)
+            .map(|i| (20.0 + 11.0 * i as f64, ((i * 37) % 60) as f64 - 30.0))
+            .collect();
+        let judged = verdict_of(&scattered, 427.0, &GateConfig::default());
+        assert_eq!(judged.verdict, Verdict::DifferentEdit, "{judged:?}");
+        assert!(judged.consensus.is_some_and(|c| c <= 0.5));
+        // The same disagreement on a text that spans the sound is a
+        // failed alignment, and the stamps are the fallback.
+        let judged = verdict_of(&scattered, 240.0, &GateConfig::default());
+        assert_eq!(judged.verdict, Verdict::Failed);
     }
 }

@@ -14,6 +14,116 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.29] - 2026-09-06
+
+### Added
+
+- **The aligner listens to a vocal stem.** `beatbyte-cli align --vocals
+  <stem.wav> --separator <label>` computes the emissions from a stem an
+  external separator wrote from the song (demucs on this machine), on
+  the song's own timeline — the song still supplies the hash, the
+  length the stem is checked against (a stem longer by one AAC priming
+  is refused) and the length the gate judges by. The provenance
+  records the separator. `lyrics-eval --vocals-dir` measures the same
+  condition on the corpus. On *Mexico* the mix reads 0.18 letters a
+  second and the stem 2.34.
+- **`beatbyte-cli decode`** writes a song exactly as the game hears it
+  (mono, 16-bit, priming skipped) — the reference for any tool that
+  must stay on the game's timeline, and the way to measure whether it
+  did (the `timeline` example: demucs through ffmpeg measured at lag 0
+  on the library's m4a class and the corpus's mp3s).
+- **`align --keep-better`** replaces the alignment beside the audio
+  only when the new one outranks it — verdict standing first, then how
+  much of the song the model heard — so a library pass can never
+  regress a song. **`--no-anchors`** runs the plain forced alignment,
+  for looking at what the model heard where when the stamps themselves
+  are in question.
+- **Stamps from another edit are mapped, not fought.** When the
+  source's stamps agree with the plain pass on no constant but on a
+  LINE (a Theil–Sen fit over the better-heard half: small residual,
+  tempo ratio within ±10 %, most in-sound lines explained), they are
+  mapped by `scale · t + offset` before anchoring, lines the map puts
+  beyond the sound's end are dropped as unsung, and the verdict says
+  **`stretched`**. *Mexico*'s lrclib text — the 254 s studio version's
+  stamps on a 168 s recording — maps by 1.0388 · t − 10.88 s; 24 of
+  its 39 lines are sung, and the automatic result matches the
+  hand-made fix line for line (max 0.00 s at the starts).
+- **A text with more verses than the recording, on a source that
+  otherwise agrees.** When the stamps sit a constant off the song and
+  the last of them fall past where the sound ends, those lines lose
+  their stamp before anchoring and are dropped as unsung, and the
+  verdict is the shifted or same master it always was — not "a
+  different edit" for the sake of three lines the recording never
+  sings (four library songs, their other lines agreeing to within a
+  tenth of a second).
+- **A coarse map still anchors.** A warp whose residual is under two
+  seconds (a bar's jump at one point, a slow drift after it) is
+  accepted with the windows kept twice as wide as its residual; and
+  the map is tried before the raw stamps are judged usable, so a
+  sheet whose last stamps run past a file that plays four percent
+  faster than it (Easy Lover) is mapped instead of refused.
+- **Disagreeing stamps on a text that ends a minute before the sound
+  does are another edit's**, not a failed alignment: the single's
+  sheet on a seven-minute extended mix would be wrong from its first
+  line as a fallback; the aligned times stand instead.
+- **The gate's parked-word rule.** A word that starts more than 2 s
+  after its predecessor inside a line was not placed but parked — a
+  held "sein" the model cannot hear lands where the next letters are,
+  the next line's onset, 14 s late — and is retimed to follow its
+  predecessor; the line ends where its placed words end.
+- **The game's browser closes the search on Esc or with a button.**
+  The held-q gesture is gone: q is a plain letter again, typed on the
+  press. Esc (or the CLOSE button beside the status line) leaves the
+  field and KEEPS the filter; the next Esc — or the same button, now
+  reading CLEAR — empties it; the one after that goes back.
+
+- **The library, taken through it:** 60 of 60 songs with lyrics now
+  sing word by word (was 33), none at line level (was 27); verdicts
+  29 same master, 21 shifted, 5 stretched, 5 standing on their own
+  aligned times because no catalogue text fits the recording. The
+  round is written up in `docs/lyrics/library-pass.md`; the
+  procedure — what the pipeline does by itself and what remains for a
+  person — in `docs/lyrics/optimizing-a-library.md`; the decision to
+  take a stem from a local tool rather than ship a separator in
+  ADR-0014.
+
+### Fixed
+
+- **`redesign` never said "already current".** `serde_json` moves a
+  float by one ULP on load, so a fresh generation never hashed like
+  the active file read back from disk, and every `redesign --all`
+  wrote a new version of every song — 46 of 70 byte-identical to their
+  parent but for the provenance. The check now compares what a reader
+  would get; a second run writes nothing.
+- **An anchored pass pushed against the evidence is caught.** A window
+  that cannot hold the truth places the words at its own edge, and on
+  a legible stem that looked like evidence ("shifted master −3.65 s,
+  85 % agreement" on stamps ten seconds late). A pass in the outer
+  15 % of its window, or whose confidence falls under half the plain
+  pass's, gets one wider window; if still pushed, the plain pass stands
+  for the gate to judge. The tighter third pass is held to the same
+  rule.
+- **Every length rule judges against the sound's end**, not the
+  container's: a stamp inside a tail of digital silence is past the
+  song (`AudioData::sounding_end_s`, −60 dBFS).
+- **`BEATBYTE_SHOT_SEARCH` photographs the open field** as its
+  documentation always claimed: the browser closes the search on
+  entry, and the harness now reopens it on the browser's first frame.
+- **A chart version that vanished under a running game** (a rollover
+  or a revert moved the folder's pointer) no longer fails every press
+  of Enter with "cannot load" until a rescan: the browser re-resolves
+  the folder's active version from its pointer and loads that.
+
+### Changed
+
+- `align` reports the passes an alignment cost, where the sound ends,
+  and the map the stamps needed, if any.
+- The gate's drift rule needs 2.5 s of drift across a song (was 1 s)
+  before it calls the source another edit: a second of tempo breath
+  over four minutes with 98 % of the lines agreeing is the same
+  performance — and, ranked as "a different edit", it had kept a
+  worse alignment beside the song.
+
 ## [0.14.28] - 2026-09-06
 
 ### Changed

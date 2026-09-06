@@ -16,17 +16,40 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
 
-use beatbyte_lyrics::{JobError, JobStage, Verdict, align_file};
+use beatbyte_lyrics::{JobError, JobOptions, JobStage, Verdict, align_file_with};
+
+/// The command's switches.
+pub struct Args {
+    /// Where to write the alignment instead of beside the audio.
+    pub out: Option<PathBuf>,
+    /// Skip the confidence gate.
+    pub raw: bool,
+    /// A vocal stem to listen to instead of the song.
+    pub vocals: Option<PathBuf>,
+    /// What produced that stem (provenance).
+    pub separator: String,
+    /// Write only when the new alignment outranks the existing one.
+    pub keep_better: bool,
+    /// The plain forced alignment, no line-stamp anchoring.
+    pub no_anchors: bool,
+}
 
 /// Run the alignment and report.
-pub fn run(audio_path: &Path, lyrics_path: &Path, out: Option<PathBuf>, raw: bool) -> ExitCode {
+pub fn run(audio_path: &Path, lyrics_path: &Path, args: Args) -> ExitCode {
     let cancel = AtomicBool::new(false);
     let mut last_stage = None;
-    let summary = align_file(
+    let options = JobOptions {
+        out: args.out,
+        gated: !args.raw,
+        vocals: args.vocals,
+        separator: args.separator,
+        keep_better: args.keep_better,
+        no_anchors: args.no_anchors,
+    };
+    let summary = align_file_with(
         audio_path,
         lyrics_path,
-        out,
-        !raw,
+        &options,
         &mut |p| {
             // One line per stage, not one per window.
             if last_stage != Some(p.stage) {
@@ -50,7 +73,7 @@ pub fn run(audio_path: &Path, lyrics_path: &Path, out: Option<PathBuf>, raw: boo
             eprintln!("{error}");
             return ExitCode::from(2);
         }
-        Err(error @ JobError::Audio(_)) => {
+        Err(error @ (JobError::Audio(_) | JobError::Vocals { .. })) => {
             eprintln!("{error}");
             return ExitCode::from(2);
         }
@@ -60,17 +83,42 @@ pub fn run(audio_path: &Path, lyrics_path: &Path, out: Option<PathBuf>, raw: boo
         }
     };
     let s = &summary.stats;
-    println!("wrote {}", summary.out.display());
+    if summary.written {
+        println!("wrote {}", summary.out.display());
+    } else {
+        println!(
+            "kept {} — the alignment already there outranks this one",
+            summary.out.display()
+        );
+    }
+    if let Some(vocals) = &options.vocals {
+        println!("  listened to {} ({})", vocals.display(), options.separator);
+    }
     println!(
-        "  {} words ({} estimated), mean confidence {:.2}, {} under {:.1}; {} frames in {:.1?}",
+        "  {} words ({} estimated), mean confidence {:.2}, {} under {:.1}; {} frames in {:.1?}, \
+         {} pass(es)",
         s.words,
         s.estimated,
         s.mean_conf,
         s.uncertain,
         beatbyte_lyrics::align::UNCERTAIN_BELOW,
         s.frames,
-        summary.took
+        summary.took,
+        summary.passes
     );
+    println!("  sound ends at {:.2} s", summary.sounding_end_s);
+    match summary.warp {
+        Some((Some(warp), unsung)) => println!(
+            "  the source's stamps were mapped by {:.4} · t {:+.2} s; {unsung} line(s) beyond the sound",
+            warp.scale, warp.offset_s
+        ),
+        Some((None, unsung)) => {
+            println!(
+                "  the source's stamps agree; {unsung} line(s) lie beyond the sound and were dropped"
+            );
+        }
+        None => {}
+    }
     if let Some((lines, median, mad)) = s.source_line_delta {
         println!(
             "  against the source's {lines} line stamps: aligned − source median {median:+.3} s, \
@@ -92,6 +140,18 @@ pub fn run(audio_path: &Path, lyrics_path: &Path, out: Option<PathBuf>, raw: boo
                 Verdict::Failed => {
                     "alignment FAILED — every line falls back to the source's stamps".to_owned()
                 }
+                Verdict::Stretched { scale, offset_s } => format!(
+                    "another edit of this performance: the source's stamps map by \
+                     {scale:.4} · t {offset_s:+.2} s; {} unsung line(s) dropped",
+                    report.lines_unsung
+                ),
+            };
+            let verdict = if report.lines_unsung > 0
+                && !matches!(report.verdict, Verdict::Stretched { .. })
+            {
+                format!("{verdict}; {} unsung line(s) dropped", report.lines_unsung)
+            } else {
+                verdict
             };
             println!(
                 "  gate: {verdict}; {} words marked estimated, {} lines at line level",

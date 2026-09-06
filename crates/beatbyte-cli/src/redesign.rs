@@ -64,6 +64,29 @@ pub fn merged_redesign(
     Ok(merged)
 }
 
+/// Whether `merged` would change anything the active file does not
+/// already say — decided on what a reader would GET, not on what the
+/// generator produced. Pure — tested.
+///
+/// ⚠️ The active chart was loaded from disk, the merged one carries
+/// freshly generated numbers, and the reader moves a float by one
+/// ULP on load (`serde_json` without `float_roundtrip`; 197 of a
+/// chart's lines came back different on one round trip). Compared
+/// as generated, the two never hash alike, and this check was dead
+/// for as long as it existed: every `redesign --all` wrote a new
+/// version of every song, most of them byte-identical to their
+/// parent but for the provenance. So the merged chart is sent
+/// through the same save → load path first; what survives that is
+/// what the game will play.
+#[must_use]
+pub fn is_current(active: &ChartFile, merged: &ChartFile) -> bool {
+    let as_read = merged
+        .to_json_pretty()
+        .ok()
+        .and_then(|json| ChartFile::from_json(&json).ok());
+    as_read.is_some_and(|merged| chart_hash(&merged) == chart_hash(active))
+}
+
 /// One song folder: resolve the active version, regenerate, merge,
 /// validate, write the next sibling, move the pointer. Every failure
 /// is a message, never a partial write.
@@ -112,7 +135,7 @@ fn redesign_folder(folder: &Path) -> Result<String, String> {
         .map(|d| u64::try_from(d.as_millis()).unwrap_or(0))
         .unwrap_or(0);
     let merged = merged_redesign(&active, &fresh, created_ms)?;
-    if chart_hash(&merged) == chart_hash(&active) {
+    if is_current(&active, &merged) {
         return Ok(
             "already current (hard + expert match the generator) — nothing written".to_owned(),
         );
@@ -248,6 +271,32 @@ mod tests {
             provenance: None,
             audio_trim: None,
         }
+    }
+
+    #[test]
+    fn a_chart_is_current_when_a_reader_would_get_the_same_file_back() {
+        // A time that does not survive a save → load round trip: the
+        // reader returns it one ULP off (measured on a real chart,
+        // where 197 lines changed). The active file is what a reader
+        // got; the fresh generation is the exact number.
+        let drifting = 12.584_606_736_510_647_f64;
+        let mut fresh = chart_file(120.0, |_| 0);
+        fresh.charts[0].notes[0].time = drifting;
+        let loaded =
+            ChartFile::from_json(&fresh.to_json_pretty().expect("json")).expect("reads back");
+        assert_ne!(
+            loaded.charts[0].notes[0].time.to_bits(),
+            drifting.to_bits(),
+            "the fixture must drift, or it proves nothing"
+        );
+        // As generated, the two never hash alike — the dead check.
+        assert_ne!(chart_hash(&fresh), chart_hash(&loaded));
+        // As read, they are the same chart.
+        assert!(is_current(&loaded, &fresh));
+        // And a real change is still seen.
+        let mut changed = fresh.clone();
+        changed.charts[0].notes[1].lane = 4;
+        assert!(!is_current(&loaded, &changed));
     }
 
     #[test]

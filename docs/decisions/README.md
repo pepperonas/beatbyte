@@ -20,6 +20,7 @@ contradicted** — if a decision is reversed, the ADR says so.
 | [0011](ADR-0011-adaptive-charting.md) | Adaptive charting: AI designs offline, telemetry decides what to redesign | Accepted |
 | [0012](ADR-0012-note-style-boundary.md) | The 8-bit look is data behind the style boundary, not a second renderer | Accepted |
 | [0013](ADR-0013-local-ml-runtime.md) | Local ML inference: a pure-Rust runtime, models fetched once on explicit action | Accepted |
+| [0014](ADR-0014-vocal-stems-as-local-input.md) | Vocal separation as a local tool the aligner accepts, not a model the game ships | Accepted |
 
 ## The gap at 0009
 

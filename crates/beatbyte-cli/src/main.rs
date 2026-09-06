@@ -175,6 +175,19 @@ enum Command {
         #[arg(long, default_value = "songs/builtin")]
         out_dir: PathBuf,
     },
+    /// Decode a song exactly as the game hears it — mono, 16-bit, the
+    /// container's encoder priming skipped so sample 0 is the
+    /// master's — and write it as WAV. The reference for any external
+    /// tool that must stay on the game's timeline (a vocal separator,
+    /// a DAW), and the way to measure whether it did.
+    Decode {
+        /// The song (wav/ogg/flac/mp3/m4a).
+        audio: PathBuf,
+        /// Where to write the WAV (default: `<audio stem>.decoded.wav`
+        /// beside the audio).
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
     /// Local ML models: list, install, verify, remove (built with
     /// `--features ml`). `install` is the one command here that
     /// reaches the network — once, to the URL this build pins.
@@ -201,6 +214,27 @@ enum Command {
         /// with no word marked estimated and no line-level fallback.
         #[arg(long)]
         raw: bool,
+        /// Listen to this file instead of the song: a vocal stem an
+        /// external separator wrote from the song, on the song's own
+        /// timeline (`beatbyte-cli decode` is the reference for it).
+        /// The song itself still supplies the hash and the length the
+        /// result is checked against.
+        #[arg(long)]
+        vocals: Option<PathBuf>,
+        /// With `--vocals`: what produced the stem, recorded as the
+        /// result's provenance (e.g. `demucs:htdemucs`).
+        #[arg(long, default_value = "external")]
+        separator: String,
+        /// Write only when the new alignment outranks the one already
+        /// beside the audio (verdict first, then how much of the song
+        /// the model heard); otherwise keep the file and say so.
+        #[arg(long)]
+        keep_better: bool,
+        /// The plain forced alignment: do not confine the words to the
+        /// source's line stamps. A diagnostic — the game always
+        /// anchors — for when the stamps themselves are in question.
+        #[arg(long)]
+        no_anchors: bool,
     },
     /// A song with a click on every aligned word, so an alignment can
     /// be judged by ear: writes `<audio stem>.check.wav` and prints
@@ -255,6 +289,11 @@ enum Command {
         /// still land (default 4 s).
         #[arg(long)]
         tolerance: Option<f64>,
+        /// Listen to vocal stems instead of the mixes: for each song
+        /// `<dir>/<song>/vocals.wav` (the layout a separator writes
+        /// per input). A song without a stem is skipped, and said.
+        #[arg(long)]
+        vocals_dir: Option<PathBuf>,
     },
 }
 
@@ -354,13 +393,29 @@ fn main() -> ExitCode {
             },
         ),
         Command::Demo { out_dir } => demo(&out_dir),
+        Command::Decode { audio, out } => decode(&audio, out),
         #[cfg(feature = "ml")]
         Command::Align {
             audio,
             lyrics,
             out,
             raw,
-        } => align::run(&audio, &lyrics, out, raw),
+            vocals,
+            separator,
+            keep_better,
+            no_anchors,
+        } => align::run(
+            &audio,
+            &lyrics,
+            align::Args {
+                out,
+                raw,
+                vocals,
+                separator,
+                keep_better,
+                no_anchors,
+            },
+        ),
         #[cfg(feature = "ml")]
         Command::LyricsEval {
             corpus,
@@ -372,8 +427,9 @@ fn main() -> ExitCode {
             jitter,
             shift,
             tolerance,
+            vocals_dir,
         } => lyrics_eval::run(
-            corpus, out, limit, language, raw, anchors, jitter, shift, tolerance,
+            corpus, out, limit, language, raw, anchors, jitter, shift, tolerance, vocals_dir,
         ),
         #[cfg(feature = "ml")]
         Command::LyricsCheck { audio, words, out } => lyrics_eval::check(&audio, words, out),
@@ -1068,5 +1124,30 @@ fn set_genre(chart_path: &Path, genre: &str) -> ExitCode {
         eprintln!("no chart files found in `{}`", folder.display());
         return ExitCode::from(1);
     }
+    ExitCode::SUCCESS
+}
+
+/// `decode`: the song as the game hears it, as a WAV.
+fn decode(audio_path: &Path, out: Option<PathBuf>) -> ExitCode {
+    let audio = match decode_file(audio_path) {
+        Ok(audio) => audio,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::from(1);
+        }
+    };
+    let out = out.unwrap_or_else(|| audio_path.with_extension("decoded.wav"));
+    if let Err(error) = beatbyte_audio::decode::write_wav_mono16(&out, &audio) {
+        eprintln!("cannot write `{}`: {error}", out.display());
+        return ExitCode::from(1);
+    }
+    let priming = audio.priming();
+    println!(
+        "wrote {} — {:.3} s mono at {} Hz, {} priming sample(s) skipped",
+        out.display(),
+        audio.duration_s(),
+        audio.sample_rate(),
+        priming.samples
+    );
     ExitCode::SUCCESS
 }
