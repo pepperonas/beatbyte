@@ -55,10 +55,30 @@ The gate's verdict for each song, as stored in its `words.json`:
 
 | Verdict | Songs | What it means, and what the game does |
 | --- | ---: | --- |
-| same master | 18 | Alignment and source agree. Word timing from the alignment. |
-| shifted master | 12 | Same edit, different master — the source's stamps are seconds off. The alignment's times are used and the shift is reported. `Big Enough`'s lyrics were **7.2 s early**; every line had been showing seven seconds before it was sung. |
-| different edit | 14 | The source's stamps belong to another recording. The alignment stands; the stamps are not used as a fallback. |
+| same master | 20 | Alignment and source agree. Word timing from the alignment. |
+| shifted master | 15 | Same edit, different master — the source's stamps are seconds off. The alignment's times are used and the shift is reported. `Big Enough`'s lyrics were **7.2 s early**; every line had been showing seven seconds before it was sung. |
+| different edit | 9 | The source's stamps belong to another recording. The alignment stands; the stamps are not used as a fallback. |
 | failed | 8 | No consensus between alignment and stamps. Every line falls back to the source's own stamps — line-level karaoke rather than a confident wrong fill. |
+
+Words the gate cannot vouch for, averaged over the songs that did not
+fail: **32.9 %** — close to the 30.2 % the corpus predicts for the
+same settings.
+
+### A second pass over the library
+
+Those numbers are after a second round. The first said 18 / 12 / **14**
+/ 8, and the fourteen "different edit" songs were worth another look:
+their lyrics had been fetched **before** the length check existed. Asking
+the catalogue again, this time for an entry of *this* song's length,
+found a better one for nine of them; re-aligning moved **five** into
+usable verdicts (two same master, three shifted master). Four stayed on
+another edit — for those the catalogue simply has no entry matching the
+recording, and a duration-matched text is still the better basis than
+the one that was there.
+
+The same round re-aligned every song with the anchor window that now
+follows what is known about the source (see
+[`evaluation.md`](evaluation.md)); the eight failures stayed eight.
 
 The eight failures are dense rock mixes (Nirvana, Bon Jovi, Van
 Halen, Green Day among them), which is exactly the failure the corpus
@@ -162,7 +182,8 @@ aligned, and the browser's title+artist dedupe hides the duplicate.
   repeats a verse the original's sheet contains once will leave that
   repeat unsung: no aligner can place a line twice, and the fix is a
   text that matches the edit.
-- **The anchor window (±4 s) has not been tuned.** Nirvana's case
-  suggests a tighter window might keep word timing where the current
-  one gives up; that is a corpus measurement, not a guess, and it
-  would mean re-aligning the library afterwards.
+- **The anchor window has been tuned** — and the measurement said the
+  opposite of the obvious, so the width now follows whether the
+  source's offset is known. It did not rescue the eight failures.
+  What might, per the same document, is a third pass that reads the
+  offset off the wide-anchored result instead of the unanchored one.

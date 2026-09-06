@@ -14,6 +14,31 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.23] - 2026-09-06
+
+### Changed
+
+- **A second pass over the imported library**, with the length check
+  and the new anchor window. The fourteen songs whose lyrics belonged
+  to another edit had been fetched *before* the length check existed;
+  asking the catalogue again for an entry of each song's own length
+  found a better one for nine, and re-aligning moved five into usable
+  verdicts. Every song with lyrics was then re-aligned with the
+  window that follows what is known about the source.
+
+  | verdict | before | after |
+  | --- | ---: | ---: |
+  | same master | 18 | **20** |
+  | shifted master | 12 | **15** |
+  | different edit | 14 | **9** |
+  | failed | 8 | 8 |
+
+  Words the gate cannot vouch for, over the songs that did not fail:
+  32.9 % — close to the 30.2 % the corpus predicts. The four songs
+  still on another edit have no matching entry in the catalogue at
+  all; the eight failures are the dense mixes that need separation.
+  Written up in `docs/lyrics/library-pass.md`.
+
 ## [0.14.22] - 2026-09-06
 
 ### Changed
