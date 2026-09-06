@@ -581,6 +581,17 @@ artifact, smoke-test it (neutral CWD!), then
   included.** Stop one run by PID, found with the bracket trick
   (`ps -eo pid,command | grep '[r]edesign songs'`), which matches
   neither the grep nor the shell that carries the pattern.
+- **The input layer judges a same-frame fret change BEFORE the
+  strum** (`gameplay/input.rs` sends the five fret edges, then the
+  strum, all stamped with the frame's time). Any hit rule that
+  punishes "strum after the fret already hit" therefore punishes the
+  natural motion on every HOPO: with the chain alive the press hit
+  the note and the strum matched nothing — hit plus overstrum, streak
+  gone, and the autopilot never saw it because it strums only pending
+  notes. The session now absorbs the one strum that lands inside the
+  window of a fret-hit note (0.14.36). When a judgment rule is added,
+  ask what the SAME-FRAME ordering does to it, and pin it with inputs
+  in that order.
 - **A summary inside this repository is not a source.** Round six of
   the look plan built the gem from a trait table an earlier round had
   written ("dark ring, white centre") instead of from the material,

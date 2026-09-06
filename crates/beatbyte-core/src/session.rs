@@ -18,7 +18,11 @@
 //!   any active sustain. The unmatched note (if any) stays pending.
 //! - **HOPO** (hammer-on/pull-off): while the chain is alive (previous
 //!   event hit, nothing broken since), pressing a matching fret hits the
-//!   event without strumming. Strumming a HOPO always works too.
+//!   event without strumming. Strumming a HOPO always works too — and
+//!   because the natural motion changes the fret first and lands the
+//!   pick after, a strum inside the window of a note that was just
+//!   hit by fretting is that note's strum: absorbed once, never an
+//!   overstrum.
 //! - **Sustains**: hold the frets to earn points per musical beat.
 //!   Releasing early simply ends the tail; releasing within the final
 //!   grace period counts as completed.
@@ -154,6 +158,11 @@ pub struct TrackSession {
     scan_from: usize,
     /// Whether the HOPO chain is alive (previous event hit, no break).
     hopo_chain: bool,
+    /// The event most recently hit by fretting alone (a hammer-on, a
+    /// pull-off, a tap-mode press) whose strum may still land: one
+    /// strum inside that note's window is absorbed instead of counted
+    /// as an overstrum. Cleared by the next strum, hit or rewind.
+    fret_hit: Option<usize>,
     /// Tap mode: every note is hittable on fret press alone (no strum
     /// required) — keyboard-friendly play. Strums still work.
     tap_mode: bool,
@@ -201,6 +210,7 @@ impl TrackSession {
             states,
             scan_from: 0,
             hopo_chain: false,
+            fret_hit: None,
             tap_mode: false,
             sustain: None,
             event_phrase,
@@ -322,6 +332,7 @@ impl TrackSession {
         self.clock_s = self.clock_s.min(time_s);
         self.sustain = None;
         self.hopo_chain = false;
+        self.fret_hit = None;
         for progress in &mut self.phrases {
             progress.hits = 0;
             progress.broken = false;
@@ -424,6 +435,15 @@ impl TrackSession {
         match candidate {
             Some(index) => self.hit(index, time_s, events),
             None => {
+                // The strum of a note the player just fretted: the
+                // pick landing after the fret change, not an extra
+                // strum. One per note, inside that note's window.
+                if let Some(index) = self.fret_hit.take() {
+                    let event = self.track.events()[index];
+                    if (time_s - event.time_s).abs() <= self.windows.good_s {
+                        return;
+                    }
+                }
                 let failed = self.performance.register_overstrum();
                 self.hopo_chain = false;
                 if failed {
@@ -449,6 +469,7 @@ impl TrackSession {
         });
         if let Some(index) = candidate {
             self.hit(index, time_s, events);
+            self.fret_hit = Some(index);
         }
     }
 
@@ -485,6 +506,9 @@ impl TrackSession {
         let judgment = self.windows.judge(offset_s).unwrap_or(Judgment::Good);
 
         self.states[index] = NoteState::Hit(judgment);
+        // Whatever strum was still owed to an earlier fretted note
+        // is void: this hit is the newer one (a fret hit re-arms it).
+        self.fret_hit = None;
         // A hit can only fill the meter; the return is the fail
         // transition and cannot be true here.
         let _ = self
@@ -967,6 +991,131 @@ mod tests {
         assert!(matches!(s.note_state(2), Some(NoteState::Pending)));
     }
 
+    /// Strum at `time_s` and return what the session said.
+    fn strum(session: &mut TrackSession, time_s: f64) -> Vec<SessionEvent> {
+        let mut events = Vec::new();
+        session.handle(
+            GameInput {
+                time_s,
+                kind: InputKind::Strum,
+            },
+            &mut events,
+        );
+        events
+    }
+
+    /// Press a fret WITHOUT strumming (a hammer-on) and return what
+    /// the session said.
+    fn hammer(session: &mut TrackSession, time_s: f64, lane: Lane) -> Vec<SessionEvent> {
+        let mut events = Vec::new();
+        session.handle(
+            GameInput {
+                time_s,
+                kind: InputKind::FretDown(lane),
+            },
+            &mut events,
+        );
+        events
+    }
+
+    #[test]
+    fn overstrum_kills_the_hopo_chain() {
+        let mut s = session(track(vec![tap(1.0, Lane::One), hopo(1.5, Lane::Two)]));
+        play(&mut s, 1.0, Lane::One);
+        // A strum into nothing (no note within the window).
+        assert!(strum(&mut s, 1.2).contains(&SessionEvent::Overstrum));
+        // The HOPO now needs a strum: the fret press alone hits nothing.
+        assert!(hammer(&mut s, 1.5, Lane::Two).is_empty());
+        assert!(matches!(s.note_state(1), Some(NoteState::Pending)));
+        assert!(
+            strum(&mut s, 1.52)
+                .iter()
+                .any(|e| matches!(e, SessionEvent::NoteHit { event_index: 1, .. }))
+        );
+    }
+
+    #[test]
+    fn a_fretted_hopo_keeps_the_chain_alive_for_the_next_one() {
+        let mut s = session(track(vec![
+            tap(1.0, Lane::One),
+            hopo(1.25, Lane::Two),
+            hopo(1.5, Lane::Three),
+        ]));
+        play(&mut s, 1.0, Lane::One);
+        assert!(
+            hammer(&mut s, 1.25, Lane::Two)
+                .iter()
+                .any(|e| matches!(e, SessionEvent::NoteHit { event_index: 1, .. }))
+        );
+        assert!(
+            hammer(&mut s, 1.5, Lane::Three)
+                .iter()
+                .any(|e| matches!(e, SessionEvent::NoteHit { event_index: 2, .. })),
+            "the second HOPO of a run must hit on its fret press"
+        );
+        assert_eq!(s.performance().streak(), 3);
+    }
+
+    #[test]
+    fn the_strum_of_a_hopo_you_just_fretted_is_its_strum_not_an_overstrum() {
+        // The natural motion strums every note: the fret changes,
+        // then the pick lands. With the chain alive the fret press
+        // already hit the HOPO; the strum that follows inside the
+        // note's window is that note's strum and must not count
+        // against the player.
+        let mut s = session(track(vec![tap(1.0, Lane::One), hopo(1.25, Lane::Two)]));
+        play(&mut s, 1.0, Lane::One);
+        assert!(
+            hammer(&mut s, 1.25, Lane::Two)
+                .iter()
+                .any(|e| matches!(e, SessionEvent::NoteHit { event_index: 1, .. }))
+        );
+        let events = strum(&mut s, 1.27);
+        assert!(
+            !events.contains(&SessionEvent::Overstrum),
+            "the strum for a fretted HOPO must be absorbed; got {events:?}"
+        );
+        assert_eq!(s.performance().overstrums(), 0);
+        assert_eq!(s.performance().streak(), 2);
+        // One strum per note: the next one is an overstrum as ever.
+        assert!(strum(&mut s, 1.29).contains(&SessionEvent::Overstrum));
+    }
+
+    #[test]
+    fn a_strum_outside_the_fretted_hopo_s_window_is_still_an_overstrum() {
+        let mut s = session(track(vec![tap(1.0, Lane::One), hopo(1.25, Lane::Two)]));
+        play(&mut s, 1.0, Lane::One);
+        hammer(&mut s, 1.25, Lane::Two);
+        // 150 ms after the note: past the Good window, not its strum.
+        assert!(strum(&mut s, 1.40).contains(&SessionEvent::Overstrum));
+        assert_eq!(s.performance().overstrums(), 1);
+    }
+
+    #[test]
+    fn a_second_strum_on_a_note_you_strummed_is_an_overstrum() {
+        // Absorption is for the strum a FRET hit still owes; a note hit
+        // by strumming owes none, so strumming it again is the
+        // overstrum it always was.
+        let mut s = session(track(vec![tap(1.0, Lane::One)]));
+        play(&mut s, 1.0, Lane::One);
+        assert!(strum(&mut s, 1.02).contains(&SessionEvent::Overstrum));
+        assert_eq!(s.performance().overstrums(), 1);
+    }
+
+    #[test]
+    fn a_pulled_off_hopo_absorbs_its_strum_too() {
+        let mut s = session(track(vec![tap(1.0, Lane::Three), hopo(1.25, Lane::One)]));
+        hammer(&mut s, 0.9, Lane::One);
+        play(&mut s, 1.0, Lane::Three);
+        assert!(
+            release(&mut s, 1.25, Lane::Three)
+                .iter()
+                .any(|e| matches!(e, SessionEvent::NoteHit { event_index: 1, .. }))
+        );
+        assert!(!strum(&mut s, 1.26).contains(&SessionEvent::Overstrum));
+        assert_eq!(s.performance().overstrums(), 0);
+    }
+
     #[test]
     fn sustain_awards_points_over_time_and_completes() {
         // 2-beat sustain at 120 BPM = 1.0 s long, 25 points/beat.
@@ -1435,6 +1584,23 @@ mod tap_mode_tests {
         assert_eq!(s.performance().counts().total(), 0, "chord incomplete");
         press(&mut s, Lane::Three, 1.0);
         assert_eq!(s.performance().counts().perfect, 1);
+    }
+
+    #[test]
+    fn tap_mode_absorbs_the_strum_of_a_note_just_hit_by_fretting() {
+        let mut s = session(vec![NoteEvent::tap(1.0, LaneSet::single(Lane::Two))]);
+        s.set_tap_mode(true);
+        press(&mut s, Lane::Two, 1.0);
+        let mut out = Vec::new();
+        s.handle(
+            GameInput {
+                time_s: 1.02,
+                kind: InputKind::Strum,
+            },
+            &mut out,
+        );
+        assert!(!out.contains(&SessionEvent::Overstrum), "got {out:?}");
+        assert_eq!(s.performance().overstrums(), 0);
     }
 
     #[test]

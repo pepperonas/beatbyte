@@ -1831,9 +1831,10 @@ fn autopilot_play(
             }
             hands.held[slot] = event.lanes;
             // In tap mode the fret presses above already hit the
-            // note — strumming on top would be an overstrum. Only
-            // strum while the event is still pending (which also
-            // stays correct for HOPOs in classic mode).
+            // note (the session would absorb one strum on top, but
+            // there is nothing to gain). Only strum while the event
+            // is still pending (which also stays correct for HOPOs
+            // in classic mode).
             if matches!(
                 player.session.note_state(event_index),
                 Some(NoteState::Pending)

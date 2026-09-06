@@ -305,6 +305,19 @@ mod tests {
     }
 
     #[test]
+    fn a_hopo_flag_survives_the_file_round_trip() {
+        let mut chart = ChartFile::from_json(minimal_json()).unwrap();
+        chart.charts[0].notes[0].hopo = true;
+        let json = chart.to_json_pretty().unwrap();
+        assert!(json.contains("\"hopo\": true"), "{json}");
+        let back = ChartFile::from_json(&json).unwrap();
+        assert!(
+            back.charts[0].notes[0].hopo,
+            "the flag must come back from disk"
+        );
+    }
+
+    #[test]
     fn compact_serialization_skips_defaults() {
         let chart = ChartFile::from_json(minimal_json()).unwrap();
         let json = chart.to_json_pretty().unwrap();

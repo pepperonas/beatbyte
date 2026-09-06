@@ -27,7 +27,12 @@ Chords score per lane (a 3-lane Perfect chord = 150 base points).
   window.
 - **HOPO notes**: while the chain is alive (previous event hit, nothing
   broken since), a matching fret press (hammer-on) or a release exposing
-  a lower held fret (pull-off) hits without strumming.
+  a lower held fret (pull-off) hits without strumming. Strumming a HOPO
+  always works too — and the strum that lands inside the window of a
+  note just hit by fretting (the natural fret-then-pick motion; same
+  in tap mode) is that note's strum, absorbed once, never an overstrum.
+  A miss or an overstrum kills the chain; a HOPO hit by fretting keeps
+  it alive for the next one.
 - **Note skipping**: aiming past a note hits the matching later note;
   the skipped one misses when its window expires.
 

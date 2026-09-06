@@ -36,7 +36,10 @@ renderer.
   counts; chords: exact match), earliest-matching-note selection,
   note skipping, overstrum semantics.
 - HOPO hammer-ons (fret press) and pull-offs (fret release exposing a
-  lower held fret), gated on a live chain.
+  lower held fret), gated on a live chain; the one strum that lands
+  inside the window of a note just hit by fretting is absorbed, not
+  an overstrum (0.14.36 — the input layer judges a same-frame fret
+  change before the strum, so the natural motion needs it).
 - Sustains scored per musical beat via the `TempoMap`, early-release
   grace, overstrum kills the tail.
 - Special phrases → Hype meter (gain per completed phrase, activation

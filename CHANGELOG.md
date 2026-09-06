@@ -14,6 +14,26 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.36] - 2026-09-06
+
+### Fixed
+
+- **Strumming a hammer-on no longer costs an overstrum.** The rules
+  said a HOPO may always be strummed, but the engine judged the
+  natural motion — fret change first, pick a moment later — as a
+  hit AND an overstrum: with the chain alive the fret press had
+  already hit the note, so the strum that followed matched nothing.
+  The input layer makes it worse than a race: a fret change and a
+  strum in the same frame are always judged fret-first, so every
+  HOPO strummed within one frame of its fret change broke the
+  streak. Now the one strum that lands inside the window of a note
+  just hit by fretting (hammer-on, pull-off, or a tap-mode press) is
+  that note's strum and is absorbed; a second strum, or one outside
+  the window, is an overstrum as before. Found by the HOPO audit
+  (`docs/gameplay/rules.md` now states the rule); seven new core
+  tests, three of which were red on the old engine, and a chart test
+  that the flag survives the file round trip.
+
 ## [0.14.35] - 2026-09-06
 
 ### Added
