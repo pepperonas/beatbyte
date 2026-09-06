@@ -14,6 +14,27 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.28] - 2026-09-06
+
+### Changed
+
+- **The plan's cheap vocal emphasis is refuted, not pending.** It was
+  carried as the no-download lever for the songs the model cannot
+  read; both halves are now answered with numbers. The mid/side half
+  is already in effect — `decode_file` averages the channels, so
+  every analysis here has always run on the mid channel. The
+  band-pass half makes the model read *less*: over five songs from
+  the bottom of the distribution and one legible control, 0.03 →
+  0.02, 0.18 → 0.13, 0.16 → 0.01, 0.49 → 0.34, 0.75 → 0.77, control
+  2.03 → 1.63. A rock mix keeps its guitar and snare inside the
+  voice's own band, so the filter removes context rather than
+  instruments.
+
+  The experiment is gone from the tree; the measurement is in
+  `docs/lyrics/evaluation.md` and the roadmap item is closed. The
+  twenty-two songs below the floor need real separation (L6), which
+  is blocked on weights this project may ship.
+
 ## [0.14.27] - 2026-09-06
 
 ### Fixed

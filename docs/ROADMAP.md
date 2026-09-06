@@ -406,14 +406,29 @@ public corpus, cannot regress a note.
   chosen: median word error on the corpus is 15.46 s below it and
   0.78 s above. Word confidence was the obvious measure and the data
   rejected it.
-- [ ] The cheap mid/side + band-pass vocal emphasis (the plan's own
-  fallback) — still unmeasured; the blank prior from the model's own
-  voice activity (`--example voice`) is the likelier lever for
-  sources with no stamps at all. The legibility measure now in the
-  gate is the same signal, and it says how much there is to gain:
-  **22 of this library's 52 songs and 17 of the corpus's 79 read
-  below 1.0 letters a second**, which is exactly the population a
-  vocal emphasis would move.
+- [x] **The cheap vocal emphasis — measured and REFUTED** *(2026-09-06)*.
+  The plan's own fallback, tried against the population the
+  legibility measure identifies (22 of this library's 52 songs and 17
+  of the corpus's 79 read below 1.0 letters a second). A 200–3500 Hz
+  band-pass makes the model read **less**, not more:
+
+  | song | plain | band-passed |
+  | --- | ---: | ---: |
+  | Onkelz — Danke für nichts | 0.03 | 0.02 |
+  | Onkelz — Mexico | 0.18 | 0.13 |
+  | Bon Jovi — Livin' on a Prayer | 0.16 | 0.01 |
+  | Nirvana — Smells Like Teen Spirit | 0.49 | 0.34 |
+  | Iron Maiden — Fear of the Dark | 0.75 | 0.77 |
+  | Toto — Africa (legible control) | 2.03 | 1.63 |
+
+  Clear in hindsight: wav2vec2 is trained on full-band speech, and
+  guitar and snare live in 200–3500 Hz along with the voice — the
+  filter removes context, not instruments. **And the mid/side half is
+  already applied**: `decode_file` averages the channels, so every
+  analysis in this project already runs on the mid channel, which is
+  the vocal-favouring one. The cheap fallback is exhausted; real
+  separation (L6) is the only lever left, and it is blocked on
+  weights we may ship, not on the runtime.
 - [ ] C1 Beat This! A/B · [ ] C2 stems · [ ] C3 Basic Pitch ·
   [ ] C4 structure — only after L ships, each by ear against
   `chart-feel-good-20260826`.

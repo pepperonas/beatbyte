@@ -25,7 +25,11 @@ use beatbyte_lyrics::transcript::{BLANK, VOCAB};
 use beatbyte_ml::{ModelStore, Runtime};
 
 fn main() {
-    let Some(path) = std::env::args().nth(1) else {
+    let positional: Vec<String> = std::env::args()
+        .skip(1)
+        .filter(|a| !a.starts_with("--"))
+        .collect();
+    let Some(path) = positional.first().cloned() else {
         eprintln!("usage: voice <audio>");
         std::process::exit(2);
     };
@@ -52,7 +56,7 @@ fn main() {
     )
     .expect("the model runs");
     // `voice <audio> <from> <to>`: what the model hears there.
-    let range: Option<(f64, f64)> = match (std::env::args().nth(2), std::env::args().nth(3)) {
+    let range: Option<(f64, f64)> = match (positional.get(1).cloned(), positional.get(2).cloned()) {
         (Some(from), Some(to)) => match (from.parse::<f64>(), to.parse::<f64>()) {
             (Ok(from), Ok(to)) if to > from => Some((from, to)),
             _ => {
@@ -91,7 +95,7 @@ fn main() {
     // model heard at all. This is the evidence a confidence gate needs
     // and cannot get from the alignment itself: a forced alignment
     // always returns a path, even when every frame says "blank".
-    if std::env::args().nth(2).as_deref() == Some("summary") {
+    if positional.get(1).map(String::as_str) == Some("summary") {
         let blank = usize::from(BLANK);
         let mut voiced = 0usize;
         let mut letters = 0usize;

@@ -289,6 +289,29 @@ letter rate is not.
 anchor window's width looks like the window's edge — but real shifts
 of 7 s, 10 s, 32 s and 81 s exist in this library and are correct.
 
+### The cheap fallback does not work, and that is measured too
+
+The plan carries a no-download fallback for exactly the songs below
+the floor: mid/side plus a band-pass to favour the voice. Both halves
+are now answered.
+
+**The mid/side half is already in effect.** `decode_file` averages
+the channels, so every analysis here has always run on the mid
+channel — the one that favours a centred vocal. There is nothing
+left to take.
+
+**The band-pass half makes things worse.** A 200–3500 Hz pass over
+five songs from the bottom of the distribution and one legible
+control: 0.03 → 0.02, 0.18 → 0.13, 0.16 → 0.01, 0.49 → 0.34,
+0.75 → 0.77, and the control 2.03 → 1.63. The model is trained on
+full-band speech, and a rock mix keeps its guitar and snare inside
+the voice's own band — the filter removes context rather than
+instruments.
+
+So the twenty-two songs below the floor are not a tuning problem.
+They need the voice actually separated from the mix, which is
+milestone L6 and blocked on weights this project may ship.
+
 ## What this measurement does not say
 
 - **The first table is the hard case**, and the section above is the
