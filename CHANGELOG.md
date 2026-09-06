@@ -14,6 +14,29 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.24] - 2026-09-06
+
+### Changed
+
+- **A third pass for the songs that needed it.** A song whose
+  unanchored first pass derailed never agreed on the source's offset,
+  so it kept the wide window — even though the anchored pass then
+  placed it well. That pass is now asked in turn: if it agrees, the
+  offset is known after all and a third, tighter pass runs. Only for
+  the songs that needed it, only once.
+
+  | | source on time | source 3 s off |
+  | --- | --- | --- |
+  | two passes | PCO@0.1 48.8 %, PCO@0.3 66.1 %, uncertain 30.2 % | 47.4 %, 62.0 %, 29.5 % |
+  | **three passes** | **50.3 %, 67.9 %, 25.8 %** | **48.0 %, 62.8 %, 27.0 %** |
+
+  Better on every number in both conditions, no song lost. It closes
+  most of the gap to a fixed tight window (51.7 %) without taking on
+  that window's failure when the source is off.
+- The alignment now reports **how many passes it cost** (1, 2 or 3)
+  rather than a bare "anchored" flag — the number is what makes the
+  behaviour observable, and the tests pin it.
+
 ## [0.14.23] - 2026-09-06
 
 ### Changed

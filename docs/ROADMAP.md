@@ -389,11 +389,11 @@ public corpus, cannot regress a note.
   now depends on whether the first pass agreed on the offset. Better
   than the old fixed ±4 s in both conditions, never losing a song.
   Numbers in `docs/lyrics/evaluation.md`.
-- [ ] **A third pass for the derailed songs.** The adaptive window
-  reaches 48.8 % where a fixed ±1 s reaches 51.7 %, because a song
-  whose unanchored pass derailed never agrees and so never gets the
-  tight window. Estimating the offset from the WIDE-ANCHORED pass —
-  which no longer derails — would license it. One more Viterbi.
+- [x] **A third pass for the derailed songs** *(v0.14.24)*. The
+  wide-anchored pass is asked for the offset the unanchored one could
+  not see; when it agrees, a tighter third pass runs. PCO@0.1 48.8 →
+  50.3 % on time and 47.4 → 48.0 % when the source is 3 s off,
+  uncertain words 30.2 → 25.8 %, nothing lost.
 - [ ] The cheap mid/side + band-pass vocal emphasis (the plan's own
   fallback) — still unmeasured; the blank prior from the model's own
   voice activity (`--example voice`) is the likelier lever for

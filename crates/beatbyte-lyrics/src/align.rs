@@ -144,8 +144,11 @@ pub struct AlignOutcome {
     pub alignment: Alignment,
     /// What the run found out about itself.
     pub stats: Stats,
-    /// Whether the source's line stamps constrained the result.
-    pub anchored: bool,
+    /// How many Viterbi passes the result cost: 1 when the source's
+    /// stamps could not be used at all, 2 when they constrained a
+    /// second pass, 3 when that pass then agreed on an offset the
+    /// first one could not see and a tighter third was worth it.
+    pub passes: u8,
 }
 
 /// Whether a source's line stamps can be believed enough to anchor
@@ -370,7 +373,7 @@ pub fn align_with(
         return Err(cancelled(model));
     }
     progress(report(Stage::Aligning, 0, 0));
-    let (lines, anchored) = align_emissions(
+    let (lines, passes) = align_emissions(
         &emissions,
         &tokens,
         transcript,
@@ -400,14 +403,14 @@ pub fn align_with(
     Ok(AlignOutcome {
         alignment,
         stats,
-        anchored,
+        passes,
     })
 }
 
 /// The alignment itself, over emissions that are already computed:
 /// the plain pass, and — when the source's stamps can carry it — a
-/// second pass constrained to them. Returns the lines and whether the
-/// stamps constrained them.
+/// second constrained to them, and sometimes a third. Returns the
+/// lines and how many passes they cost.
 ///
 /// The two passes cost one extra Viterbi over the same emissions,
 /// which is seconds against the model's minutes; the first pass earns
@@ -421,36 +424,63 @@ pub fn align_emissions(
     transcript: &Transcript,
     audio_len_s: f64,
     anchoring: Option<&Anchoring>,
-) -> Result<(Vec<AlignedLine>, bool), LyricsError> {
+) -> Result<(Vec<AlignedLine>, u8), LyricsError> {
     let spans = force_align_in_windows(emissions, tokens, BLANK, &[])?;
     let lines = place(transcript, &spans);
     let Some(config) = anchoring else {
-        return Ok((lines, false));
+        return Ok((lines, 1));
     };
     if !stamps_are_usable(transcript, audio_len_s, config) {
-        return Ok((lines, false));
+        return Ok((lines, 1));
     }
     // What the first pass agreed on decides BOTH the offset and how
     // tight the windows may be: a known offset is removed, so the
     // stamps become as good as ground truth and the window can close
     // in; an unknown one has to fit inside the window instead.
     let agreed = shift_from(&lines, transcript);
+    let Some(anchored) = anchored_pass(emissions, tokens, transcript, agreed, config) else {
+        return Ok((lines, 1));
+    };
+    // A song whose FIRST pass derailed never agreed on an offset, so
+    // it got the wide window — even though the anchored pass then
+    // places it well. Ask that pass: it no longer derails, and if it
+    // agrees, the offset is known after all and the window can close
+    // in. Only for the songs that needed it, and only once.
+    if agreed.is_none()
+        && let Some(from_anchored) = shift_from(&anchored, transcript)
+        && let Some(tighter) =
+            anchored_pass(emissions, tokens, transcript, Some(from_anchored), config)
+    {
+        return Ok((tighter, 3));
+    }
+    Ok((anchored, 2))
+}
+
+/// One anchored pass: windows from the source's stamps shifted by
+/// `agreed` (or unshifted when nothing was agreed), as wide as
+/// [`tolerance_for`] allows. `None` when the stamps cannot carry
+/// windows or the constrained path does not exist — the caller then
+/// keeps what it had.
+fn anchored_pass(
+    emissions: &Emissions,
+    tokens: &[u8],
+    transcript: &Transcript,
+    agreed: Option<f64>,
+    config: &Anchoring,
+) -> Option<Vec<AlignedLine>> {
     let narrowed = Anchoring {
         tolerance_s: tolerance_for(agreed, config),
         ..*config
     };
-    let Some(windows) = token_windows(
+    let windows = token_windows(
         transcript,
         agreed.unwrap_or(0.0),
         &narrowed,
         emissions.frames,
-    ) else {
-        return Ok((lines, false));
-    };
-    match force_align_in_windows(emissions, tokens, BLANK, &windows) {
-        Ok(spans) => Ok((place(transcript, &spans), true)),
-        Err(_) => Ok((lines, false)),
-    }
+    )?;
+    force_align_in_windows(emissions, tokens, BLANK, &windows)
+        .ok()
+        .map(|spans| place(transcript, &spans))
 }
 
 /// Hand the token spans back to the words they belong to, in order,
@@ -654,6 +684,63 @@ mod anchor_tests {
         // A shift moves the whole grid.
         let shifted = token_windows(&transcript, 2.0, &config, frames).expect("windows");
         assert_eq!(shifted[0], (frame(11.0), frame(23.0)));
+    }
+
+    /// Emissions where each `(token, frames)` in the plan is nearly
+    /// certain over those frames — the same shape the CTC tests use.
+    fn synthetic(vocab: usize, plan: &[(u8, usize)]) -> Emissions {
+        let mut log_probs = Vec::new();
+        let hot = 0.9f32.ln();
+        let cold = ((1.0 - 0.9) / (vocab as f32 - 1.0)).ln();
+        for &(token, frames) in plan {
+            for _ in 0..frames {
+                for v in 0..vocab {
+                    log_probs.push(if v == usize::from(token) { hot } else { cold });
+                }
+            }
+        }
+        Emissions {
+            frames: log_probs.len() / vocab,
+            vocab,
+            log_probs,
+        }
+    }
+
+    #[test]
+    fn a_derailed_first_pass_gets_a_second_opinion_before_the_window_closes() {
+        // Two words the model is sure of, seconds apart, and stamps
+        // that are RIGHT. The unanchored pass finds them, so it
+        // agrees straight away: two passes, no third needed.
+        let vocab = 32usize;
+        let (a, b) = (
+            crate::transcript::token_of('A').expect("A"),
+            crate::transcript::token_of('B').expect("B"),
+        );
+        let frame = |seconds: f64| (seconds / FRAME_S) as usize;
+        let plan = vec![
+            (BLANK, frame(1.0)),
+            (a, 10),
+            (BLANK, frame(1.0)),
+            (b, 10),
+            (BLANK, frame(1.0)),
+        ];
+        let emissions = synthetic(vocab, &plan);
+        let transcript = Transcript::parse("[00:01.00]a\n[00:02.20]b");
+        let tokens = transcript.tokens();
+        let config = Anchoring::default();
+        let (_, passes) =
+            align_emissions(&emissions, &tokens, &transcript, 5.0, Some(&config)).expect("aligns");
+        assert_eq!(passes, 2, "stamps that agree need no second opinion");
+        // Without anchoring at all it is one pass, whatever the
+        // stamps say.
+        let (_, passes) =
+            align_emissions(&emissions, &tokens, &transcript, 5.0, None).expect("aligns");
+        assert_eq!(passes, 1);
+        // Stamps this audio cannot carry (they run past its end) are
+        // refused before any anchored pass.
+        let (_, passes) =
+            align_emissions(&emissions, &tokens, &transcript, 1.5, Some(&config)).expect("aligns");
+        assert_eq!(passes, 1, "stamps past the end anchor nothing");
     }
 
     #[test]

@@ -180,12 +180,22 @@ songs in the test library sit on another master, and a fixed ±1 s
 would have degraded exactly those. The second condition was run
 because they exist.
 
-It does not reach ±1 s on the on-time case (48.8 % against 51.7 %),
-and the reason is visible in the mechanism: a song whose unanchored
-pass derailed never agrees, so it never gets the tight window — even
-though the anchored pass would then place it well. The next lever is a
-**third pass**: estimate the offset from the *wide-anchored* result,
-which no longer derails, and let that license the tight window.
+That still did not reach ±1 s on the on-time case (48.8 % against
+51.7 %), and the mechanism said why: a song whose unanchored pass
+derailed never agrees, so it never gets the tight window — even though
+the anchored pass would then place it well. So the anchored pass is
+now asked in turn:
+
+| | source on time | source 3 s off |
+| --- | --- | --- |
+| two passes | PCO@0.1 48.8 %, PCO@0.3 66.1 %, uncertain 30.2 % | 47.4 %, 62.0 %, 29.5 % |
+| **three passes** | **50.3 %, 67.9 %, 25.8 %** | **48.0 %, 62.8 %, 27.0 %** |
+
+Better on every number in both conditions, no song lost, and the
+share of words the gate cannot vouch for falls by four points. It
+closes most of the gap to a fixed tight window without taking on that
+window's failure when the source is off. The third pass runs only for
+the songs whose first pass could not see the offset.
 
 Anchoring engages only when the stamps are structurally plausible for
 the file — enough of them, rising, and spanning it. That check is
