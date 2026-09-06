@@ -184,6 +184,36 @@ in the library twice; its proper folder
 (`cyndi-lauper---girls-just-want-to-have-fun-m4a`) is redesigned and
 aligned, and the browser's title+artist dedupe hides the duplicate.
 
+## What the model could not hear
+
+The pass above trusted every alignment it produced. It should not
+have: on a mix the model cannot read, a forced alignment still
+returns a path, and the anchored pass then reproduces whatever shift
+it was centred on. *Mexico* came back "shifted master, 85 %
+agreement" and ran 3.3 s early on screen. The mechanism, the measure
+that catches it and the two deliberate exceptions are in
+[`evaluation.md`](evaluation.md#an-alignment-is-only-evidence-if-the-model-heard-the-song).
+
+Measured over all 52 songs with lyrics, as letters per second in the
+model's own greedy reading:
+
+| | letters/s |
+| --- | ---: |
+| lowest (Dragonforce, Onkelz, MGMT) | 0.00 – 0.03 |
+| median | 1.23 |
+| highest | 8.70 |
+
+The bottom of that range is not a language problem alone — Cyndi
+Lauper (0.39), Nirvana (0.49) and Bon Jovi (0.16) sing English. It is
+loudness: a dense mix buries the voice, and the eight songs that
+already failed to align sit there.
+
+⚠️ **The measure has a known confound**: a song with long
+instrumental passages produces fewer letters a second even when its
+vocal is perfectly legible. The floor is placed with that in mind,
+against measured word error rather than at the elbow of this
+distribution.
+
 ## What is still open
 
 - **Eight songs have no word timing** and sing at line level. The

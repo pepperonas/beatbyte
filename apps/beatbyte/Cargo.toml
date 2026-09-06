@@ -25,6 +25,9 @@ beatbyte-core = { workspace = true }
 # the real analysis and generation on them, and hashes the result.
 beatbyte-audio = { workspace = true }
 beatbyte-chart = { workspace = true }
+# For the lyrics-evaluation check: the document quotes the legibility
+# floor, and the floor lives in the gate's config.
+beatbyte-lyrics = { workspace = true }
 serde_json = { workspace = true }
 
 [lints]

@@ -250,6 +250,34 @@ source's stamps: the verdict is `Failed`, every line falls back to the
 stamps a human made, and the song sings by the line. The file records
 the measurement, so a song can say why it fell back.
 
+### Where the floor sits, and why that number
+
+Not at the elbow of the library's distribution — against **measured
+word error**. The corpus knows every word's true onset, so the raw
+aligner was run over all 79 songs with the legibility of each
+recorded beside its score:
+
+| Floor | songs below | median AAE below | songs above | median AAE above |
+| ---: | ---: | ---: | ---: | ---: |
+| 0.8 | 14 | 13.57 s | 65 | 0.94 s |
+| **1.0** | **17** | **15.46 s** | **62** | **0.78 s** |
+| 1.2 | 18 | 13.57 s | 61 | 0.76 s |
+| 1.6 | 22 | 10.62 s | 57 | 0.71 s |
+| 2.0 | 24 | 10.62 s | 55 | 0.62 s |
+
+**1.0** is where the contrast is widest: a factor of twenty. Raising
+it further buys a little accuracy above and demotes many more songs
+below — and each demoted song loses word-level karaoke it may have
+deserved.
+
+⚠️ **It is a floor, not a predictor.** *Songwriterz — Back In Time*
+reads 0.65 letters a second and aligns to within a second;
+*Color Out — Falling Star* reads 1.74 and is 18 s out. The claim is
+only the negative one: below the floor an alignment carries no
+information worth setting against a human's stamps. Sixteen of the
+79 corpus songs are below it, and their median error is fifteen
+seconds — that is not timing, it is noise with a verdict attached.
+
 ⚠️ **Word confidence does not work for this.** It was the obvious
 candidate and the measurement rejected it: across this library the
 median word confidence of the songs that aligned well overlaps the

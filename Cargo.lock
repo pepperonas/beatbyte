@@ -427,6 +427,7 @@ dependencies = [
  "beatbyte-chart",
  "beatbyte-core",
  "beatbyte-game",
+ "beatbyte-lyrics",
  "bevy",
  "serde_json",
 ]

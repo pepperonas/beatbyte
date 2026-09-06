@@ -36,6 +36,15 @@ the manifest ever carries a version this file does not describe.
   its word times are not treated as knowledge: the song sings by the
   line, off the stamps a human made.
 
+  **The floor is 1.0, and it is measured, not chosen.** On the
+  79-song corpus, where every word's true onset is known, the raw
+  aligner's median error is **15.46 s below that line and 0.78 s
+  above it** — a factor of twenty. It is a floor rather than a
+  predictor: a quiet song at 0.65 aligned to within a second and a
+  legible one at 1.74 was 18 s out; the claim is only that below the
+  line an alignment carries nothing worth setting against a human's
+  stamps.
+
   Two deliberate exceptions: a source whose stamps belong to another
   recording is still not a fallback (that verdict is decided from the
   stamps against the file, not from the acoustics), and a song

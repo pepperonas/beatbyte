@@ -376,6 +376,22 @@ fn no_document_still_promises_an_unreleased_section() {
 }
 
 #[test]
+fn the_lyrics_evaluation_quotes_the_floor_it_measured() {
+    // `docs/lyrics/evaluation.md` places the legibility floor from a
+    // corpus measurement and prints the number in a table. A document
+    // that quotes a constant goes wrong the moment the constant
+    // moves, and this one would go wrong quietly: the prose about
+    // "where the contrast is widest" reads just as well beside the
+    // wrong figure.
+    let floor = beatbyte_lyrics::gate::GateConfig::default().min_letters_per_s;
+    let doc = read("docs/lyrics/evaluation.md");
+    assert!(
+        doc.contains(&format!("| **{floor:.1}** |")),
+        "the evaluation's table does not mark {floor:.1} as the chosen floor"
+    );
+}
+
+#[test]
 fn the_rules_document_quotes_the_real_numbers() {
     // `docs/gameplay/rules.md` states the multiplier thresholds, the
     // meter a phrase awards and the activation threshold as figures.

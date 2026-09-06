@@ -66,10 +66,15 @@ pub struct GateConfig {
     /// Letters per second the model must produce in its own greedy
     /// reading before its alignment may outvote the source's stamps.
     ///
-    /// Measured across this library: songs the aligner placed well
-    /// read 2.0 to 4.4 letters a second; the ones it only appeared to
-    /// place read 0.18 (Mexico) and 0.75 (Iron Maiden). See
-    /// [`crate::evidence`].
+    /// **1.0, and the number is measured.** On the 79-song corpus,
+    /// where every word's true onset is known, the raw aligner's
+    /// median error is 15.46 s below this floor and 0.78 s above it —
+    /// a factor of twenty. See `docs/lyrics/evaluation.md`.
+    ///
+    /// It is a floor, not a predictor: a quiet song at 0.65 aligned
+    /// to within a second, and a legible one at 1.74 was 18 s out.
+    /// What the floor says is that BELOW it an alignment carries no
+    /// information worth setting against a human's stamps.
     pub min_letters_per_s: f32,
     /// |median delta| beyond this is a shifted master.
     pub master_shift_s: f64,
@@ -105,7 +110,7 @@ impl Default for GateConfig {
     fn default() -> GateConfig {
         GateConfig {
             word_conf_floor: 0.0,
-            min_letters_per_s: 1.2,
+            min_letters_per_s: 1.0,
             max_word_s: 5.0,
             sprint_slack_frames: 0,
             line_fallback_share: 0.30,
