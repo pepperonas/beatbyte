@@ -116,6 +116,28 @@ first-draft chart, and a redesigned chart can have no words at all.
 Both columns sort: by `LYRICS` the untimed songs float to the top, by
 `CHART` the first drafts do.
 
+## Asking the catalogue better
+
+The first pass asked once, with the names exactly as the import left
+them and the song's length as a hard filter, and 19 songs came back
+empty. Eight of those nineteen were our question's fault:
+
+| Why it missed | Songs |
+| --- | --- |
+| a download's furniture in the names (`- OFFICIAL VIDEO`, a channel as the artist, a fullwidth comma) | MANOWAR, and two others |
+| our rip is seconds off every catalogue entry, and `get` matches within two | Bloodhound Gang (15 s), Metallica (20 s), and three more |
+
+The lookup now asks in three steps — the names as they are, then
+without the furniture, then a **search** judged by our own length
+rule, which is the larger of 12 s and 8 % of the song. One absolute
+number cannot hold both ends: 15 s on a 245-second rip is the same
+recording, 278 s on a 517-second remix is a different sheet.
+
+All eight were then aligned. Three sing word by word; Bloodhound
+Gang's sheet arrived **8.70 s off** and the aligner put it right —
+which is exactly the case the anchoring exists for; three the model
+cannot read fell back to their stamps.
+
 ## There is no database, and there should not be
 
 A song is a **folder**:
@@ -251,6 +273,11 @@ distribution — see
   measured lever for them is vocal separation (plan milestone L6),
   which is blocked on model-weight licences, not on the runtime —
   see [`evaluation.md`](evaluation.md).
+- **Five songs have words in the catalogue but no timing**, and five
+  have no entry at all. The untimed five are alignable in principle —
+  a forced alignment needs a text, not stamps — but without an anchor
+  they are the pipeline's hard case, and four of the five read below
+  the legibility floor anyway.
 - **Nine songs' lyrics belong to another edit.** Their alignment
   stands on its own, which is the honest outcome, but a remix that
   repeats a verse the original's sheet contains once will leave that

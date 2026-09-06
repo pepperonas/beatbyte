@@ -89,6 +89,102 @@ pub fn cache_path(audio_path: &Path) -> PathBuf {
 /// far too narrow for another edit.
 pub const DURATION_TOLERANCE_S: f64 = 12.0;
 
+/// …and how far as a SHARE of the song's own length.
+///
+/// A fixed number cannot do this job alone, and the library shows
+/// both ends of why. Our rip of *The Bad Touch* is 245 s while every
+/// one of the catalogue's twenty entries sits near 260 — fifteen
+/// seconds, six per cent, plainly the same recording ripped with a
+/// different tail. The Annie remix that started this rule is 517 s
+/// against the original's 239 — two hundred and seventy-eight
+/// seconds, more than half, and its words are genuinely a different
+/// sheet. One absolute threshold either lets the remix through or
+/// turns away the rip.
+pub const DURATION_TOLERANCE_SHARE: f64 = 0.08;
+
+/// Whether a catalogue entry is this recording, by length.
+///
+/// Pure — tested against the two cases above, which are the reason
+/// it takes the larger of an absolute and a relative allowance.
+#[must_use]
+pub fn duration_fits(ours_s: f64, theirs_s: f64) -> bool {
+    if !ours_s.is_finite() || !theirs_s.is_finite() || ours_s <= 0.0 || theirs_s <= 0.0 {
+        return false;
+    }
+    let allowance = DURATION_TOLERANCE_S.max(ours_s * DURATION_TOLERANCE_SHARE);
+    (ours_s - theirs_s).abs() <= allowance
+}
+
+/// The artist and title to ask a catalogue with, cleaned of what a
+/// download put there.
+///
+/// Imported files carry the uploader's furniture: `- OFFICIAL VIDEO`,
+/// `(Official Music Video)`, `[HD]`, a `- Topic` channel as the
+/// artist. lrclib's `get` matches the names closely, so a title with
+/// any of that attached can only ever miss — three songs in this
+/// library never had a chance.
+///
+/// ⚠️ What it must NOT strip is a real subtitle. `Two of Hearts -
+/// Skatebård Remix` is a different recording from `Two of Hearts`,
+/// and asking for the wrong one is the mistake this whole area of
+/// the code exists to prevent. So only known furniture goes, never a
+/// generic `- something`. Pure — tested.
+#[must_use]
+pub fn clean_query(artist: &str, title: &str) -> (String, String) {
+    const FURNITURE: [&str; 12] = [
+        "official video",
+        "official music video",
+        "official audio",
+        "official lyric video",
+        "official visualizer",
+        "music video",
+        "lyric video",
+        "audio only",
+        "hd",
+        "hq",
+        "4k",
+        "remastered audio",
+    ];
+    // Fullwidth punctuation comes in from filename-safe renaming.
+    let unwiden = |text: &str| text.replace('，', ",").replace('：', ":");
+    let strip_furniture = |text: &str| {
+        let mut out = text.to_owned();
+        loop {
+            let lower = out.to_lowercase();
+            let cut = FURNITURE.iter().find_map(|word| {
+                // Only where it is bracketed or trails after a dash:
+                // the words alone can be part of a real title.
+                for (open, close) in [('(', ')'), ('[', ']')] {
+                    let needle = format!("{open}{word}{close}");
+                    if let Some(at) = lower.find(&needle) {
+                        return Some((at, at + needle.len()));
+                    }
+                }
+                let tail = format!("- {word}");
+                lower
+                    .rfind(&tail)
+                    .filter(|at| at + tail.len() == lower.len())
+                    .map(|at| (at, lower.len()))
+            });
+            let Some((from, to)) = cut else { break };
+            out.replace_range(from..to, "");
+            out = out
+                .trim()
+                .trim_end_matches(['-', '–', '|'])
+                .trim()
+                .to_owned();
+        }
+        out
+    };
+    let artist = unwiden(artist);
+    let artist = artist
+        .trim()
+        .trim_end_matches("- Topic")
+        .trim_end_matches("- topic")
+        .trim();
+    (strip_furniture(artist), strip_furniture(&unwiden(title)))
+}
+
 /// Ask lrclib for a track's lyrics.
 ///
 /// `duration_s` is the song's own length. It is sent along, so the
@@ -99,28 +195,143 @@ pub const DURATION_TOLERANCE_S: f64 = 12.0;
 /// the async compute pool, like an import).
 #[must_use]
 pub fn fetch(artist: &str, title: &str, duration_s: Option<f64>) -> Outcome {
+    let first = get(artist, title, duration_s);
+    if matches!(first, Outcome::Synced(_) | Outcome::Failed(_)) {
+        return first;
+    }
+    // The names a download left behind: ask again without the
+    // uploader's furniture, but only if cleaning changed anything.
+    let (clean_artist, clean_title) = clean_query(artist, title);
+    if (clean_artist.as_str(), clean_title.as_str()) != (artist.trim(), title.trim())
+        && !clean_artist.is_empty()
+        && !clean_title.is_empty()
+    {
+        let second = get(&clean_artist, &clean_title, duration_s);
+        if matches!(second, Outcome::Synced(_)) {
+            return second;
+        }
+    }
+    // Still nothing timed. `get` matches a length within two seconds
+    // of its own, which turns away a rip of the same recording; the
+    // search returns every entry and lets us judge the length by our
+    // own rule.
+    match search(&clean_artist, &clean_title, duration_s) {
+        Outcome::NotFound => first,
+        other => other,
+    }
+}
+
+/// One `get` call. The 404 reading is the source app's, kept: an
+/// empty catalogue entry is not a broken lookup.
+fn get(artist: &str, title: &str, duration_s: Option<f64>) -> Outcome {
     let mut request = ureq::get("https://lrclib.net/api/get")
         .query("artist_name", artist.trim())
         .query("track_name", title.trim());
     if let Some(seconds) = duration_s.filter(|s| s.is_finite() && *s > 0.0) {
-        request = request.query("duration", &format!("{:.0}", seconds));
+        request = request.query("duration", &format!("{seconds:.0}"));
     }
-    let response = request
+    match request
         .timeout(std::time::Duration::from_secs(TIMEOUT_S))
-        .call();
-    match response {
+        .call()
+    {
         Ok(raw) => match raw.into_string() {
             Ok(body) => classify(&body),
             Err(error) => Outcome::Failed(format!("cannot read the reply: {error}")),
         },
-        // The source app's reading, kept: a 404 is an empty
-        // catalogue entry, not a broken lookup.
         Err(ureq::Error::Status(404, _)) => Outcome::NotFound,
         Err(error) => Outcome::Failed(format!("{error}")),
     }
 }
 
-/// Turn a response body into an outcome. Pure — tested against
+/// The search fallback: every entry under these names, judged by our
+/// own length rule rather than the catalogue's two seconds.
+fn search(artist: &str, title: &str, duration_s: Option<f64>) -> Outcome {
+    if artist.trim().is_empty() || title.trim().is_empty() {
+        return Outcome::NotFound;
+    }
+    let response = ureq::get("https://lrclib.net/api/search")
+        .query("artist_name", artist.trim())
+        .query("track_name", title.trim())
+        .timeout(std::time::Duration::from_secs(TIMEOUT_S))
+        .call();
+    match response {
+        Ok(raw) => match raw.into_string() {
+            Ok(body) => pick_from_search(&body, duration_s),
+            Err(error) => Outcome::Failed(format!("cannot read the reply: {error}")),
+        },
+        Err(ureq::Error::Status(404, _)) => Outcome::NotFound,
+        Err(error) => Outcome::Failed(format!("{error}")),
+    }
+}
+
+/// Choose from a search result: the timed entry whose length is
+/// closest to ours, among those our own rule accepts.
+///
+/// Pure — tested against synthetic bodies. Real lyrics are
+/// copyrighted and never enter this repository, so the fixtures
+/// carry the shape and not the words.
+#[must_use]
+pub fn pick_from_search(body: &str, duration_s: Option<f64>) -> Outcome {
+    let Ok(entries) = serde_json::from_str::<Vec<serde_json::Value>>(body) else {
+        return Outcome::NotFound;
+    };
+    let mut best: Option<(f64, &serde_json::Value)> = None;
+    let mut saw_words = false;
+    for entry in &entries {
+        let timed = entry
+            .get("syncedLyrics")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.trim().is_empty());
+        if entry
+            .get("plainLyrics")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.trim().is_empty())
+        {
+            saw_words = true;
+        }
+        if !timed {
+            continue;
+        }
+        let theirs = entry.get("duration").and_then(serde_json::Value::as_f64);
+        // Without a length of our own there is nothing to compare, so
+        // the first timed entry wins; with one, only entries our rule
+        // accepts are candidates and the closest of them is chosen.
+        let distance = match (duration_s, theirs) {
+            (Some(ours), Some(theirs)) => {
+                if !duration_fits(ours, theirs) {
+                    continue;
+                }
+                (ours - theirs).abs()
+            }
+            (Some(_), None) => continue,
+            (None, _) => 0.0,
+        };
+        if best.as_ref().is_none_or(|(d, _)| distance < *d) {
+            best = Some((distance, entry));
+        }
+        if duration_s.is_none() {
+            break;
+        }
+    }
+    match best {
+        Some((_, entry)) => {
+            let text = entry
+                .get("syncedLyrics")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let lyrics = beatbyte_chart::lyrics::parse_lrc(text);
+            if lyrics.lines.is_empty() {
+                Outcome::NotFound
+            } else {
+                Outcome::Synced(lyrics)
+            }
+        }
+        None if saw_words => Outcome::PlainOnly,
+        None => Outcome::NotFound,
+    }
+}
+
+/// Turn a `get` response body into an outcome. Pure — tested against
 /// synthetic bodies (real lyrics are copyrighted and never enter
 /// this repository).
 #[must_use]
@@ -194,15 +405,125 @@ mod tests {
 
     #[test]
     fn a_catalogue_entry_of_another_length_is_another_edit() {
-        // The rule, as a rule: within the tolerance the entry is
+        // The rule, as a rule: within the allowance the entry is
         // this recording, outside it the stamps belong to a
-        // different edit and are worse than none. (Measured on the
-        // library: an 8:37 remix was handed the 4-minute original.)
-        let fits = |ours: f64, theirs: f64| (ours - theirs).abs() <= DURATION_TOLERANCE_S;
-        assert!(fits(360.0, 361.0), "a fade's difference");
-        assert!(fits(360.0, 348.1));
-        assert!(!fits(517.0, 239.0), "an 8:37 remix is not a 4:00 original");
-        assert!(!fits(200.0, 220.0));
+        // different edit and are worse than none. Both ends are from
+        // the library, and one absolute number cannot hold them
+        // both.
+        assert!(duration_fits(360.0, 361.0), "a fade's difference");
+        assert!(duration_fits(360.0, 348.1));
+        assert!(
+            duration_fits(245.0, 260.5),
+            "our rip of The Bad Touch against the catalogue's twenty \
+             entries: 15 s on 245 is the same recording"
+        );
+        assert!(
+            duration_fits(285.0, 305.0),
+            "Whiskey In The Jar, 20 s on 285"
+        );
+        assert!(
+            !duration_fits(517.0, 239.0),
+            "an 8:37 remix is not a 4:00 original"
+        );
+        assert!(
+            !duration_fits(379.0, 234.0),
+            "The Power Of Love's long version is not the single"
+        );
+        assert!(
+            !duration_fits(428.0, 238.0),
+            "nor a 7-minute mix a 4-minute one"
+        );
+        // A short song gets the absolute allowance, not a share of
+        // almost nothing.
+        assert!(duration_fits(60.0, 70.0));
+        assert!(!duration_fits(60.0, 80.0));
+        // Nothing to compare is not a match.
+        assert!(!duration_fits(f64::NAN, 200.0));
+        assert!(!duration_fits(200.0, 0.0));
+    }
+
+    #[test]
+    fn a_downloads_furniture_comes_off_the_query_but_a_subtitle_does_not() {
+        // Three songs in this library could never be found: the
+        // uploader's words were part of the title, and lrclib's `get`
+        // matches names closely.
+        assert_eq!(
+            clean_query("MANOWAR", "Warriors Of The World United - OFFICIAL VIDEO"),
+            (
+                "MANOWAR".to_owned(),
+                "Warriors Of The World United".to_owned()
+            )
+        );
+        assert_eq!(
+            clean_query("Aerosmith - Topic", "Dream On (Official Music Video)"),
+            ("Aerosmith".to_owned(), "Dream On".to_owned())
+        );
+        assert_eq!(
+            clean_query("Ede， Deckert", "Immer"),
+            ("Ede, Deckert".to_owned(), "Immer".to_owned()),
+            "fullwidth punctuation comes from filename-safe renaming"
+        );
+        assert_eq!(clean_query("A", "B [HD]"), ("A".to_owned(), "B".to_owned()));
+
+        // ...and what must survive, because asking for the wrong
+        // recording is the mistake this whole area exists to prevent.
+        assert_eq!(
+            clean_query("Annie", "Two of Hearts - Skatebård Remix"),
+            (
+                "Annie".to_owned(),
+                "Two of Hearts - Skatebård Remix".to_owned()
+            )
+        );
+        assert_eq!(
+            clean_query("Manu Chao", "Bongo Bong - Je ne t'aime plus"),
+            (
+                "Manu Chao".to_owned(),
+                "Bongo Bong - Je ne t'aime plus".to_owned()
+            )
+        );
+        // A title that IS the furniture word keeps it: only a
+        // bracketed or trailing occurrence is furniture.
+        assert_eq!(
+            clean_query("Sigur Rós", "Video"),
+            ("Sigur Rós".to_owned(), "Video".to_owned())
+        );
+    }
+
+    #[test]
+    fn the_search_picks_the_closest_entry_our_rule_accepts() {
+        // Synthetic bodies: the shape of a search result, never real
+        // lyrics.
+        let body = r#"[
+          {"duration": 500.0, "syncedLyrics": "[00:01.00]far", "plainLyrics": "far"},
+          {"duration": 262.0, "syncedLyrics": "[00:02.00]near", "plainLyrics": "near"},
+          {"duration": 258.0, "syncedLyrics": "[00:03.00]nearest", "plainLyrics": "nearest"},
+          {"duration": 259.0, "syncedLyrics": "", "plainLyrics": "untimed"}
+        ]"#;
+        let Outcome::Synced(picked) = pick_from_search(body, Some(255.0)) else {
+            panic!("a fitting timed entry exists");
+        };
+        assert_eq!(picked.lines[0].text, "nearest", "the closest length wins");
+
+        // Every entry too far away: the words exist, the timing for
+        // THIS recording does not.
+        assert_eq!(
+            pick_from_search(body, Some(120.0)),
+            Outcome::PlainOnly,
+            "an entry we may not use is not 'nothing found'"
+        );
+        // Nothing at all.
+        assert_eq!(pick_from_search("[]", Some(255.0)), Outcome::NotFound);
+        assert_eq!(pick_from_search("not json", Some(255.0)), Outcome::NotFound);
+        // Without a length of our own the first timed entry is taken:
+        // there is nothing to judge lengths against.
+        let Outcome::Synced(any) = pick_from_search(body, None) else {
+            panic!("a timed entry exists");
+        };
+        assert_eq!(any.lines[0].text, "far");
+        // An entry without a length cannot be judged, so it is not a
+        // candidate when we do have one.
+        let no_len = r#"[{"syncedLyrics": "[00:01.00]x", "plainLyrics": "x"}]"#;
+        assert_eq!(pick_from_search(no_len, Some(200.0)), Outcome::PlainOnly);
     }
 
     #[test]

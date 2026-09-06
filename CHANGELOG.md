@@ -14,6 +14,58 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.27] - 2026-09-06
+
+### Fixed
+
+- **Eight songs could never find their lyrics, and it was our
+  question's fault.** The lookup asked the catalogue once, with the
+  names exactly as the import left them and the song's length as a
+  hard filter. Three songs carried a download's furniture in the
+  title (`- OFFICIAL VIDEO`, a YouTube channel as the artist, a
+  fullwidth comma from filename-safe renaming) and could only ever
+  miss; five more were turned away because our rip is a handful of
+  seconds off every catalogue entry — lrclib's `duration` matches
+  within two.
+
+  The lookup now takes three steps: the names as they are, then the
+  names without the furniture, then a **search** — which the length
+  constant has described since it was written, and which was never
+  built — judged by our own rule and picking the closest entry that
+  passes it.
+
+  That rule is now **relative as well as absolute**: the larger of
+  12 s and 8 % of the song. One number could not do the job. Our rip
+  of *The Bad Touch* is 245 s against the catalogue's 260 — the same
+  recording with a different tail — while the Annie remix that
+  created this rule is 517 s against the original's 239. A threshold
+  that lets the first through and turns the second away has to scale
+  with the song.
+
+  ⚠️ What is *not* stripped is a real subtitle. `Two of Hearts -
+  Skatebård Remix` is a different recording from `Two of Hearts`, and
+  asking for the wrong one is the mistake this area of the code
+  exists to prevent — only known furniture goes, never a generic
+  `- something`.
+
+  Result on the library: **8 of the 18 songs without lyrics now have
+  them** (Bloodhound Gang, Fergie, Huey Lewis, Manfred Mann's Earth
+  Band, MANOWAR, Metallica, Subway To Sally, The KLF). Five more have
+  words without timing and five are genuinely absent. All eight were
+  aligned: three sing word by word, Bloodhound Gang's source came in
+  8.70 s off and the aligner put it right, and three that the model
+  cannot read fell back to their stamps.
+
+  The library now stands at **33 songs singing word by word, 27 by
+  the line, 11 with no lyrics at all** — from 28 / 24 / 19.
+
+### Added
+
+- `cargo run -p beatbyte-game --example fetch_missing_lyrics` asks
+  once for every song in the library that has none, through the same
+  code path as the browser's `L` key, and writes the same file.
+  `--dry-run` shows what it would find.
+
 ## [0.14.26] - 2026-09-06
 
 ### Fixed
