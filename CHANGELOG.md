@@ -14,6 +14,43 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.26] - 2026-09-06
+
+### Fixed
+
+- **Lyrics ran seconds early on songs the model cannot hear.** Böhse
+  Onkelz' *Mexico* showed every line 3.3 s ahead of the singing, with
+  a confident verdict beside it: "shifted master, 39 lines, 85 %
+  agreement". Every number was an artefact of the pipeline agreeing
+  with itself. The model reads this mix at **0.18 letters a second**
+  (2.0 to 4.4 on songs that align well), so nothing in the audio
+  prefers one position over another; the anchored pass then centres
+  its windows on the shift the previous pass guessed, the words land
+  inside those windows, and the "consensus" measures the window
+  rather than the song.
+
+  The gate now asks what the alignment cannot answer about itself —
+  **did the model hear anything?** — measured on the emissions it has
+  already computed, as letters per second in the model's own greedy
+  reading. Below the floor an alignment may not claim a shift, and
+  its word times are not treated as knowledge: the song sings by the
+  line, off the stamps a human made.
+
+  Two deliberate exceptions: a source whose stamps belong to another
+  recording is still not a fallback (that verdict is decided from the
+  stamps against the file, not from the acoustics), and a song
+  without stamps has nothing to fall back to.
+
+  ⚠️ Word confidence was the obvious measure and the data rejected
+  it — across this library it does not separate the songs that
+  aligned from the ones that only appeared to.
+
+- **The LYRICS mark told the wrong story about a failed alignment.**
+  It read "a `words.json` exists", but a failed alignment writes one
+  too, with every line fallen back to its stamp. Such a song was
+  marked word-level while it sang by the line. The mark now reads the
+  file: `WORD` only when the alignment actually stands.
+
 ## [0.14.25] - 2026-09-06
 
 ### Changed

@@ -15,6 +15,7 @@ use thiserror::Error;
 
 use crate::ctc::{AlignError, Emissions, TokenSpan, force_align_in_windows};
 use crate::emissions::{FRAME_S, SAMPLE_RATE, compute_with};
+use crate::evidence::Evidence;
 use crate::transcript::{BLANK, Transcript, WORD_BOUNDARY};
 use crate::words::{AlignedLine, AlignedWord, Alignment, SCHEMA, Source};
 
@@ -149,6 +150,11 @@ pub struct AlignOutcome {
     /// second pass, 3 when that pass then agreed on an offset the
     /// first one could not see and a tighter third was worth it.
     pub passes: u8,
+    /// How much of the song the model heard at all — measured on the
+    /// same emissions, so it costs nothing. The gate needs it: an
+    /// alignment on a mix the model cannot read is a path, not
+    /// evidence. See [`crate::evidence`].
+    pub evidence: Evidence,
 }
 
 /// Whether a source's line stamps can be believed enough to anchor
@@ -404,6 +410,7 @@ pub fn align_with(
         alignment,
         stats,
         passes,
+        evidence: crate::evidence::measure(&emissions, usize::from(BLANK), FRAME_S),
     })
 }
 

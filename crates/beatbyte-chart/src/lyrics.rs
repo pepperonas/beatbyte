@@ -438,6 +438,25 @@ pub fn words_path(audio_path: &std::path::Path) -> std::path::PathBuf {
     audio_path.with_extension("words.json")
 }
 
+/// Whether an alignment beside the audio actually sings word by
+/// word, rather than having fallen back to its lines.
+///
+/// The browser needs the difference and the file name cannot give it:
+/// a `words.json` exists either way. When the gate could not vouch
+/// for an alignment it spreads each line's words evenly and marks
+/// them estimated, and the reader drops those words — so a file whose
+/// every line came back wordless is a line-timed song wearing a
+/// word-level file name. Calling that "word level" in the list would
+/// be a mark that states the wrong fact.
+///
+/// Parses the file, which the scan can afford: it already parses
+/// every chart, and those are larger.
+#[must_use]
+pub fn alignment_is_word_level(words_file: &std::path::Path) -> bool {
+    load_words_file(words_file)
+        .is_some_and(|lyrics| lyrics.lines.iter().any(|line| !line.words.is_empty()))
+}
+
 /// Where a song's own lyric offset lives:
 /// `<audio stem>.lyrics-offset.json` beside the audio.
 #[must_use]
@@ -888,6 +907,46 @@ mod tests {
             2,
             "one aligned anchor keeps the words"
         );
+    }
+
+    #[test]
+    fn a_words_file_that_sings_by_the_line_is_not_word_level() {
+        // The browser marks these two states differently, so the
+        // difference has to be readable from the file — and it is not
+        // the file's NAME: a failed alignment writes a `words.json`
+        // like any other.
+        let dir = std::env::temp_dir().join(format!("bb-wordlevel-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+
+        let fell_back = dir.join("a.words.json");
+        std::fs::write(
+            &fell_back,
+            r#"{"schema":"beatbyte.lyrics/1","lines":[
+              {"start": 10.0, "end": 12.0, "text": "ab cd", "words": [
+                {"text": "ab", "start": 10.0, "end": 11.0, "estimated": true},
+                {"text": "cd", "start": 11.0, "end": 12.0, "estimated": true}]}]}"#,
+        )
+        .expect("write");
+        assert!(!alignment_is_word_level(&fell_back));
+
+        let aligned = dir.join("b.words.json");
+        std::fs::write(
+            &aligned,
+            r#"{"schema":"beatbyte.lyrics/1","lines":[
+              {"start": 10.0, "end": 12.0, "text": "ab cd", "words": [
+                {"text": "ab", "start": 10.0, "end": 11.0},
+                {"text": "cd", "start": 11.0, "end": 12.0, "estimated": true}]}]}"#,
+        )
+        .expect("write");
+        assert!(alignment_is_word_level(&aligned), "one anchor is enough");
+
+        // A file that is not there, or not ours, claims nothing.
+        assert!(!alignment_is_word_level(&dir.join("missing.words.json")));
+        let junk = dir.join("c.words.json");
+        std::fs::write(&junk, "not json").expect("write");
+        assert!(!alignment_is_word_level(&junk));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

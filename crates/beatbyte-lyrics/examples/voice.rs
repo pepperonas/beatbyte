@@ -87,6 +87,40 @@ fn main() {
         println!("{from:.1}-{to:.1} s: {}", heard.replace('|', " "));
         return;
     }
+    // `voice <audio> summary`: one line per song — how much of it the
+    // model heard at all. This is the evidence a confidence gate needs
+    // and cannot get from the alignment itself: a forced alignment
+    // always returns a path, even when every frame says "blank".
+    if std::env::args().nth(2).as_deref() == Some("summary") {
+        let blank = usize::from(BLANK);
+        let mut voiced = 0usize;
+        let mut letters = 0usize;
+        let mut previous = usize::MAX;
+        for f in 0..emissions.frames {
+            let row = emissions.frame(f);
+            if f64::from(row[blank]).exp() < 0.5 {
+                voiced += 1;
+            }
+            let best = row
+                .iter()
+                .enumerate()
+                .max_by(|a, b| a.1.total_cmp(b.1))
+                .map_or(0, |(index, _)| index);
+            if best != previous && best != blank {
+                letters += 1;
+            }
+            previous = best;
+        }
+        let seconds = emissions.frames as f64 * FRAME_S;
+        println!(
+            "voiced {:.4}  letters/s {:.2}  ({} frames, {:.0} s)",
+            voiced as f64 / emissions.frames as f64,
+            letters as f64 / seconds,
+            emissions.frames,
+            seconds
+        );
+        return;
+    }
     let per_second = (1.0 / FRAME_S) as usize;
     for (second, frames) in emissions
         .log_probs

@@ -83,6 +83,13 @@ pub struct SongScore {
     pub pco_03: f64,
     /// Share of predicted words the pipeline marked estimated.
     pub estimated_rate: f64,
+    /// Letters per second in the model's own greedy reading of this
+    /// song — how legible its vocal was, independent of any
+    /// transcript. Reported so a threshold on it can be placed
+    /// against measured word error rather than guessed.
+    /// See [`crate::evidence`].
+    #[serde(default)]
+    pub letters_per_s: f32,
 }
 
 /// serde_json writes a non-finite float as `null`; read it back as
@@ -241,6 +248,9 @@ pub fn score(song: &str, language: &str, pred: &[PredWord], truth: &[TruthWord])
         } else {
             pred.iter().filter(|w| w.estimated).count() as f64 / pred.len() as f64
         },
+        // Filled in by the caller, which has the emissions: `score`
+        // itself sees only words and stays pure.
+        letters_per_s: 0.0,
     }
 }
 
@@ -597,6 +607,7 @@ pub fn evaluate_song(
             &mut outcome.alignment,
             &transcript,
             audio.duration_s(),
+            Some(outcome.evidence),
             &crate::gate::GateConfig::default(),
         );
     }
@@ -609,7 +620,9 @@ pub fn evaluate_song(
             estimated: w.estimated,
         })
         .collect();
-    Ok(score(&song.name, &song.language, &pred, &song.words))
+    let mut scored = score(&song.name, &song.language, &pred, &song.words);
+    scored.letters_per_s = outcome.evidence.letters_per_s;
+    Ok(scored)
 }
 
 /// A minimal quote-aware CSV split (the metadata's titles may carry
@@ -744,6 +757,7 @@ mod tests {
             pco_01: 0.9,
             pco_03: 0.95,
             estimated_rate: 0.05,
+            letters_per_s: 2.0,
         };
         let bad = SongScore {
             song: "b".into(),

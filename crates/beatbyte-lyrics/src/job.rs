@@ -220,6 +220,7 @@ pub fn align_file(
             &mut outcome.alignment,
             &transcript,
             audio.duration_s(),
+            Some(outcome.evidence),
             &GateConfig::default(),
         )
     });

@@ -632,7 +632,13 @@ fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String>
             .file_name()
             .and_then(|n| n.to_str())
             .and_then(beatbyte_chart::versions::version_number),
-        aligned: beatbyte_chart::lyrics::words_path(&audio_path).is_file(),
+        // Not "a words.json exists" — "it sings word by word". A
+        // failed alignment writes the same file with every line
+        // fallen back to its stamps, and marking that WORD in the
+        // list would state the wrong fact about the song.
+        aligned: beatbyte_chart::lyrics::alignment_is_word_level(
+            &beatbyte_chart::lyrics::words_path(&audio_path),
+        ),
         has_lyrics,
     };
     Ok(Some(SongEntry {
@@ -869,10 +875,31 @@ mod tests {
         assert_eq!(with_lyrics.polish.label(), "WORDS");
         assert!(!with_lyrics.polish.is_done());
 
-        // ...and it arrives.
+        // An alignment arrives, but a failed one: every line fell
+        // back to its stamp. The file exists and the song still sings
+        // by the line, so nothing has been done for it yet.
         std::fs::write(
             audio.with_extension("words.json"),
-            r#"{"schema":"beatbyte.lyrics/1","lines":[]}"#,
+            r#"{"schema":"beatbyte.lyrics/1","lines":[
+              {"start":1.0,"end":2.0,"text":"la la","words":[
+                {"text":"la","start":1.0,"end":1.5,"estimated":true},
+                {"text":"la","start":1.5,"end":2.0,"estimated":true}]}]}"#,
+        )
+        .expect("fallen-back alignment");
+        let fell_back = load_entry(&version).expect("loads").expect("an entry");
+        assert!(
+            !fell_back.polish.aligned,
+            "a words.json that sings by the line is not word level"
+        );
+        assert_eq!(fell_back.polish.label(), "WORDS", "still owed");
+
+        // ...and now a real one.
+        std::fs::write(
+            audio.with_extension("words.json"),
+            r#"{"schema":"beatbyte.lyrics/1","lines":[
+              {"start":1.0,"end":2.0,"text":"la la","words":[
+                {"text":"la","start":1.0,"end":1.5},
+                {"text":"la","start":1.5,"end":2.0}]}]}"#,
         )
         .expect("alignment");
         let done = load_entry(&version).expect("loads").expect("an entry");

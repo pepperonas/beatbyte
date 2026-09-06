@@ -206,6 +206,61 @@ anchors most are exactly the ones where that pass derailed.
 A whole library taken through this pipeline, with the numbers it
 produced, is written up in [`library-pass.md`](library-pass.md).
 
+## An alignment is only evidence if the model heard the song
+
+The anchored pass has a failure mode that looks exactly like success,
+and a real song walked into it.
+
+Böhse Onkelz' *Mexico* is a loud German rock mix under an English
+character model. Over six seconds of singing the model's greedy
+reading is the single letter `I`; over the whole song it produces
+**0.18 letters a second**, against 2.0 to 4.4 for the songs the
+aligner places well. There is nothing in those emissions to prefer one
+position over another.
+
+The alignment came back anyway — they always do — and the gate read
+it as a **shifted master: 39 lines compared, 85 % of them agreeing on
+−3.34 s, a scatter of 0.36 s.** Every one of those numbers is an
+artefact of the pipeline talking to itself:
+
+1. The unanchored pass, with nothing to hold on to, derails and its
+   median delta is noise. Here it was about −3.3 s.
+2. The anchored pass centres each line's window on *that* number.
+3. With no acoustic preference, the words land inside their windows —
+   so the deltas reproduce the guess, and "consensus" measures the
+   window rather than the audio.
+
+The lyrics then ran three and a bit seconds early on screen, with a
+confident verdict beside them.
+
+So the gate now asks a question the alignment cannot answer about
+itself: **did the model hear anything at all?** Both measures are read
+off the emissions the aligner has already computed, so they cost
+nothing:
+
+| Measure | What it is |
+| --- | --- |
+| voiced share | frames where the model is surer it heard a letter than nothing (`p(blank) < 0.5`) |
+| **letters per second** | letters in the model's own greedy reading, after the CTC collapse |
+
+The second is the sharper one — it counts what the model would
+*write*, not merely where it hesitated — and it is the one the gate
+uses. Below `min_letters_per_s` the alignment may not outvote the
+source's stamps: the verdict is `Failed`, every line falls back to the
+stamps a human made, and the song sings by the line. The file records
+the measurement, so a song can say why it fell back.
+
+⚠️ **Word confidence does not work for this.** It was the obvious
+candidate and the measurement rejected it: across this library the
+median word confidence of the songs that aligned well overlaps the
+ones that did not (Mexico 0.013 sits between two `same master` songs
+at 0.004 and 0.013). Confidence is relative to a mix; the greedy
+letter rate is not.
+
+⚠️ **Nor does the size of the claimed shift.** A shift near the
+anchor window's width looks like the window's edge — but real shifts
+of 7 s, 10 s, 32 s and 81 s exist in this library and are correct.
+
 ## What this measurement does not say
 
 - **The first table is the hard case**, and the section above is the

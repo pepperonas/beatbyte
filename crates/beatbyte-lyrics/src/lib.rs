@@ -34,6 +34,7 @@ pub mod check;
 pub mod ctc;
 pub mod emissions;
 pub mod eval;
+pub mod evidence;
 pub mod gate;
 pub mod job;
 pub mod transcript;
