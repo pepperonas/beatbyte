@@ -383,10 +383,17 @@ public corpus, cannot regress a note.
   browser carries `LYRICS` and `CHART` columns for the two states,
   read off the folder — no database, and the write-up says what would
   have to change for one to earn its place.
-- [ ] **Tune the anchor window (±4 s).** Eight songs fall back to line
-  level not because they derailed but because they scatter ~2.4 s
-  around their stamps; a tighter window may keep word timing there.
-  A corpus measurement, then a re-align of the library.
+- [x] **The anchor window follows what is known** *(v0.14.21)*. Swept
+  over 26 songs in two conditions: tight (±1 s) wins on stamps that
+  are on time and LOSES a song when they are 3 s off, so the width
+  now depends on whether the first pass agreed on the offset. Better
+  than the old fixed ±4 s in both conditions, never losing a song.
+  Numbers in `docs/lyrics/evaluation.md`.
+- [ ] **A third pass for the derailed songs.** The adaptive window
+  reaches 48.8 % where a fixed ±1 s reaches 51.7 %, because a song
+  whose unanchored pass derailed never agrees and so never gets the
+  tight window. Estimating the offset from the WIDE-ANCHORED pass —
+  which no longer derails — would license it. One more Viterbi.
 - [ ] The cheap mid/side + band-pass vocal emphasis (the plan's own
   fallback) — still unmeasured; the blank prior from the model's own
   voice activity (`--example voice`) is the likelier lever for

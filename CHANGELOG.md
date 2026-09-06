@@ -14,6 +14,35 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.21] - 2026-09-06
+
+### Changed
+
+- **The anchor window now follows what is known.** Measured on 26
+  corpus songs, twice over, because the obvious answer was wrong:
+
+  | window | source on time | source 3 s off |
+  | --- | --- | --- |
+  | fixed ±1 s | PCO@0.1 **51.7 %**, 0 lost | 38.4 %, **1 lost** |
+  | fixed ±4 s (the old default) | 46.7 %, 0 lost | 45.4 %, 0 lost |
+  | **by agreement** | **48.8 %**, 0 lost | **47.4 %**, 0 lost |
+
+  A tight window beats a wide one on every number when the source's
+  stamps are on time — and loses to it, badly, when they are three
+  seconds off, because a window that cannot hold the truth forces
+  words somewhere they are not. So the width follows the first pass:
+  once it has AGREED on the source's offset, the offset is removed
+  and the window closes to ±1 s; while the offset is unknown it stays
+  ±4 s and holds what nobody has seen. Better than the old default in
+  both conditions, never losing a song.
+
+  ⚠️ Had the first sweep alone decided this, the change would have
+  degraded the twelve songs in the test library that sit on another
+  master. The second condition existed only because those twelve do.
+- `shift_from` returns `Option` rather than `0.0`: an agreed offset of
+  zero and no agreement at all are different facts, and the window
+  width hangs on the difference.
+
 ## [0.14.20] - 2026-09-05
 
 ### Changed

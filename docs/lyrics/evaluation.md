@@ -151,6 +151,42 @@ rather than pretending. A line in the right place with an honest
 line-level fill beats a line thirty seconds out with a confident wrong
 one, but it is not the same as knowing every word.
 
+### How wide the window is: measured, and the obvious answer was wrong
+
+The window each line's words are confined to started at ±4 s. Sweeping
+it over 26 corpus songs said the opposite of what shipped:
+
+| window | source on time | source 3 s off |
+| --- | --- | --- |
+| ±1 s | AAE 0.573 s, PCO@0.1 **51.7 %**, 0 lost | AAE 1.818 s, PCO@0.1 38.4 %, **1 lost** |
+| ±2 s | AAE 0.585 s, PCO@0.1 49.5 %, 0 lost | — |
+| ±4 s | AAE 0.627 s, PCO@0.1 46.7 %, 0 lost | AAE 0.998 s, PCO@0.1 45.4 %, 0 lost |
+| **by agreement** | AAE 0.601 s, PCO@0.1 **48.8 %**, 0 lost | AAE 0.972 s, PCO@0.1 **47.4 %**, 0 lost |
+
+On stamps that are on time, tighter is better on every number, and the
+share of words the gate cannot vouch for falls from 34.4 % to 17.3 %.
+Put the same stamps three seconds off and it reverses — a window that
+cannot hold the truth forces words somewhere they are not, and a song
+is lost outright.
+
+So the width follows what is known. Once the unanchored pass has
+**agreed** on the source's offset, that offset is removed and the
+window closes to ±1 s; while it is unknown the window stays ±4 s and
+holds an offset nobody has seen. That beats the old fixed ±4 s in both
+conditions without ever losing a song.
+
+⚠️ The first sweep alone would have made this change wrong. Twelve
+songs in the test library sit on another master, and a fixed ±1 s
+would have degraded exactly those. The second condition was run
+because they exist.
+
+It does not reach ±1 s on the on-time case (48.8 % against 51.7 %),
+and the reason is visible in the mechanism: a song whose unanchored
+pass derailed never agrees, so it never gets the tight window — even
+though the anchored pass would then place it well. The next lever is a
+**third pass**: estimate the offset from the *wide-anchored* result,
+which no longer derails, and let that license the tight window.
+
 Anchoring engages only when the stamps are structurally plausible for
 the file — enough of them, rising, and spanning it. That check is
 deliberately **not** the gate's verdict: the gate judges by how well

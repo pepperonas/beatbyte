@@ -28,10 +28,24 @@ use crate::words::{AlignedLine, AlignedWord, Alignment, SCHEMA, Source};
 /// may sit, so a slide cannot travel past the next line.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Anchoring {
-    /// How far outside its own line a word may still land. Wide
-    /// enough to absorb an ordinary master difference, far narrower
-    /// than the slides being prevented.
+    /// How far outside its own line a word may still land when the
+    /// source's offset is NOT known — wide enough to absorb an
+    /// ordinary master difference, far narrower than the slides being
+    /// prevented.
+    ///
+    /// ⚠️ Measured, and the measurement overturned the obvious
+    /// answer. On a corpus whose stamps are on time, a tight window
+    /// beats a wide one on every number (PCO@0.1 51.7 % at ±1 s
+    /// against 46.7 % at ±4 s). Put the same stamps three seconds off
+    /// and it reverses: 38.4 % against 45.4 %, and a song is lost —
+    /// because a window that cannot hold the truth forces words
+    /// somewhere they are not. So the width follows what is KNOWN:
+    /// see [`Anchoring::known_shift_tolerance_s`].
     pub tolerance_s: f64,
+    /// The window once the first pass has AGREED on the source's
+    /// offset. The offset is then removed, so the stamps are as good
+    /// as the corpus's own and the window can close in.
+    pub known_shift_tolerance_s: f64,
     /// Below this share of stamped lines the stamps are not a grid
     /// and anchoring is skipped.
     pub min_stamped_share: f64,
@@ -41,6 +55,7 @@ impl Default for Anchoring {
     fn default() -> Anchoring {
         Anchoring {
             tolerance_s: 4.0,
+            known_shift_tolerance_s: 1.0,
             min_stamped_share: 0.5,
         }
     }
@@ -245,13 +260,32 @@ pub fn token_windows(
     (windows.len() == transcript.tokens().len()).then_some(windows)
 }
 
-/// The constant the source's stamps are off by, from a first pass:
-/// the median of the line deltas that agree with each other. `0.0`
-/// when there is no agreement — a derailed pass says nothing about
-/// the shift, and the stamps are then taken as they are. Pure —
-/// tested.
+/// How wide the anchored pass's windows may be, given what the first
+/// pass agreed on: the tight window once the offset is known and
+/// removed, the wide one while it is not. Pure — tested.
+///
+/// ⚠️ The whole point of the distinction. Measured on the corpus, a
+/// ±1 s window beats ±4 s on every number when the stamps are on
+/// time — and loses to it, badly, when they are three seconds off.
+/// Choosing by agreement gets both.
 #[must_use]
-pub fn shift_from(lines: &[AlignedLine], transcript: &Transcript) -> f64 {
+pub fn tolerance_for(agreed_shift_s: Option<f64>, config: &Anchoring) -> f64 {
+    if agreed_shift_s.is_some() {
+        config.known_shift_tolerance_s
+    } else {
+        config.tolerance_s
+    }
+}
+
+/// The constant the source's stamps are off by, from a first pass:
+/// the median of the line deltas that agree with each other.
+///
+/// `None` when there is no agreement — a derailed pass says nothing
+/// about the shift, and the caller must then both take the stamps as
+/// they are AND leave the window wide enough for an offset it cannot
+/// see. Pure — tested.
+#[must_use]
+pub fn shift_from(lines: &[AlignedLine], transcript: &Transcript) -> Option<f64> {
     let pairs: Vec<(f64, f64)> = lines
         .iter()
         .zip(&transcript.lines)
@@ -262,9 +296,9 @@ pub fn shift_from(lines: &[AlignedLine], transcript: &Transcript) -> f64 {
         crate::gate::verdict_of(&pairs, f64::INFINITY, &crate::gate::GateConfig::default());
     match judged.verdict {
         crate::gate::Verdict::SameMaster | crate::gate::Verdict::ShiftedMaster { .. } => {
-            judged.median.unwrap_or(0.0)
+            judged.median
         }
-        _ => 0.0,
+        _ => None,
     }
 }
 
@@ -396,8 +430,21 @@ pub fn align_emissions(
     if !stamps_are_usable(transcript, audio_len_s, config) {
         return Ok((lines, false));
     }
-    let shift = shift_from(&lines, transcript);
-    let Some(windows) = token_windows(transcript, shift, config, emissions.frames) else {
+    // What the first pass agreed on decides BOTH the offset and how
+    // tight the windows may be: a known offset is removed, so the
+    // stamps become as good as ground truth and the window can close
+    // in; an unknown one has to fit inside the window instead.
+    let agreed = shift_from(&lines, transcript);
+    let narrowed = Anchoring {
+        tolerance_s: tolerance_for(agreed, config),
+        ..*config
+    };
+    let Some(windows) = token_windows(
+        transcript,
+        agreed.unwrap_or(0.0),
+        &narrowed,
+        emissions.frames,
+    ) else {
         return Ok((lines, false));
     };
     match force_align_in_windows(emissions, tokens, BLANK, &windows) {
@@ -610,6 +657,48 @@ mod anchor_tests {
     }
 
     #[test]
+    fn the_window_closes_in_only_when_the_offset_is_known() {
+        // The rule the measurement forced: a tight window is better
+        // ONLY once the offset has been agreed and removed. Without
+        // agreement the window has to be able to hold an offset
+        // nobody has seen.
+        let config = Anchoring::default();
+        assert!(
+            config.known_shift_tolerance_s < config.tolerance_s,
+            "the known-offset window is the tighter one"
+        );
+        let transcript = stamped("[00:10.00]ab\n[00:20.00]cd\n[00:30.00]ef");
+        let frames = (60.0 / FRAME_S) as usize;
+        let frame = |seconds: f64| (seconds / FRAME_S) as usize;
+        let tight = Anchoring {
+            tolerance_s: config.known_shift_tolerance_s,
+            ..config
+        };
+        // The choice itself: agreement buys the tight window, and
+        // nothing else does.
+        assert!(
+            (tolerance_for(Some(2.0), &config) - config.known_shift_tolerance_s).abs() < 1e-9,
+            "an agreed offset closes the window in"
+        );
+        assert!(
+            (tolerance_for(Some(0.0), &config) - config.known_shift_tolerance_s).abs() < 1e-9,
+            "an agreed offset of zero is still an agreement"
+        );
+        assert!(
+            (tolerance_for(None, &config) - config.tolerance_s).abs() < 1e-9,
+            "without agreement the window must hold an offset nobody saw"
+        );
+        let known = token_windows(&transcript, 0.0, &tight, frames).expect("windows");
+        let unknown = token_windows(&transcript, 0.0, &config, frames).expect("windows");
+        assert_eq!(known[0].0, frame(9.0), "±1 s around the first stamp");
+        assert_eq!(unknown[0].0, frame(6.0), "±4 s when the offset is unknown");
+        assert!(
+            known[0].1 < unknown[0].1,
+            "and the tight window ends sooner too"
+        );
+    }
+
+    #[test]
     fn a_window_too_small_for_its_line_is_widened_rather_than_left_impossible() {
         // Two stamps 0.05 s apart with a whole line between them:
         // the tokens cannot fit, so the window has to grow or the
@@ -652,11 +741,14 @@ mod anchor_tests {
         };
         // Every line 2 s late and agreeing: that is the shift.
         let agreeing: Vec<AlignedLine> = [12.0, 22.0, 32.0, 42.0].into_iter().map(line).collect();
-        assert!((shift_from(&agreeing, &transcript) - 2.0).abs() < 1e-9);
+        assert!((shift_from(&agreeing, &transcript).expect("agreed") - 2.0).abs() < 1e-9);
         // A derailed pass agrees on nothing and must not invent a
-        // shift - the stamps are then taken as they are.
+        // shift. It must also not be MISTAKEN for an agreed shift of
+        // zero: the window width hangs on the difference, and a tight
+        // window around stamps that are secretly off is worse than no
+        // window at all (measured: PCO@0.1 38.4 % against 45.4 %).
         let derailed: Vec<AlignedLine> = [1.0, 90.0, 15.0, 200.0].into_iter().map(line).collect();
-        assert!(shift_from(&derailed, &transcript).abs() < 1e-9);
+        assert_eq!(shift_from(&derailed, &transcript), None);
     }
 }
 
