@@ -14,6 +14,51 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.31] - 2026-09-06
+
+### Added
+
+- **Bar lines from the music: the Beat This! meter** (`beatbyte-meter`,
+  ADR-0015). The chart's bars had never been measured — the analyzer
+  tracks beats and every consumer counted four from the first one.
+  In an `ml` build with the model pair installed (`beatbyte-cli
+  models install beat-this-mel` and `beat-this`, 83 MB; or
+  `beat-this-small`, 11 MB — *Beat This!*, ISMIR 2024, MIT, re-hosted
+  as `models-v1` assets and pinned by size and SHA-256), an import or
+  a `redesign` runs the model through the game's own runtime and
+  takes its grid — beats and downbeats, tempo from its median
+  interval — **when the model reads the same grid as the built-in
+  tracker** (tempo within 5 %; every corpus win is within 2 %).
+  Where it does not, the chart keeps the tracker's grid, takes
+  nothing from the model — a downbeat at the wrong level is a
+  half-bar, not a bar — and says so. On the user's library that is
+  41 folders on the model's grid and 23 kept: mostly a metrical
+  level apart (double time on fast rock, 3:2 on a shuffle, a 3:4),
+  the two nearest 6 % and 11 % off, all on charts the ear had
+  approved at the tracker's level. Measured on the Rekordbox corpus against the DJ's grids:
+  beat F 0.840 → 0.935 and downbeat F 0.736 (bars in fours) → 0.933
+  on loop house, 0.851 → 0.949 and 0.694 → 0.856 over all eleven
+  paired tracks, with the tracker's three outright losses (0.245,
+  0.606, 0.880) recovered to 0.96–1.00. Without the models nothing changes; a model
+  that fails is a line on stderr and the analyzer's grid. `analyze`
+  reports the downbeat count and where it came from; `models list`
+  shows the three new entries. The analysis JSON carries `downbeats`.
+  The chart format needed nothing new: `grid.downbeats` was reserved
+  for this and is now validated (every downbeat sits on a beat); the
+  phrases start on real bars. The eval harness scores a downbeat
+  sequence (`downbeat_f`), and the meter's corpus example
+  (`cargo run -p beatbyte-meter --example corpus`) is the A/B.
+- **`redesign` accepts another reading of the same grid.** Its guard
+  against merging two different beat grids compared tempos to 0.1
+  BPM — the tracker against itself. The meter reads the same grid
+  0.1–0.9 BPM differently (a median interval against an
+  autocorrelation) and was refused on the first folders of the
+  rollover; the guard is a ratio now (5 % — the same number the meter
+  adopts within, so an import and a rollover decide alike), which a
+  change of metrical level (a third, a half, double) still trips.
+  Carried difficulties are moved onto the fresh grid note by note as
+  before.
+
 ## [0.14.30] - 2026-09-06
 
 ### Added

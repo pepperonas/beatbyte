@@ -21,6 +21,7 @@ contradicted** — if a decision is reversed, the ADR says so.
 | [0012](ADR-0012-note-style-boundary.md) | The 8-bit look is data behind the style boundary, not a second renderer | Accepted |
 | [0013](ADR-0013-local-ml-runtime.md) | Local ML inference: a pure-Rust runtime, models fetched once on explicit action | Accepted |
 | [0014](ADR-0014-vocal-stems-as-local-input.md) | Vocal separation as a local tool the aligner accepts, not a model the game ships | Accepted |
+| [0015](ADR-0015-beat-this-as-the-meter.md) | Beat This! as the meter (beats + downbeats), through the runtime we already have; the model's grid over the tracker's, by the corpus | Accepted |
 
 ## The gap at 0009
 

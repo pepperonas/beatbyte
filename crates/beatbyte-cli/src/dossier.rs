@@ -274,6 +274,7 @@ mod tests {
             bpm_confidence: 0.9,
             alt_bpm: None,
             beats: vec![0.0, 0.5, 1.0],
+            downbeats: Vec::new(),
             onsets: vec![
                 Onset {
                     time_s: 0.5,

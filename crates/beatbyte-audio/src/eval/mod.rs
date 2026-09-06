@@ -92,8 +92,13 @@ pub struct Scores {
     pub cmlt: f64,
     /// Allowed-metrical-level, total (double/half/offbeat count).
     pub amlt: f64,
-    /// Fraction of reference downbeats hit.
+    /// Whether bar 1 lands on a reference downbeat: the analysis's
+    /// first downbeat when it has any, else its first beat (the only
+    /// candidate a downbeat-less pipeline offers).
     pub downbeat_accuracy: f64,
+    /// Downbeat F-measure at ±70 ms over the analysis's downbeat
+    /// sequence; 0 when it has none.
+    pub downbeat_f: f64,
     /// Fraction of reference boundaries hit within ±0.5 s.
     pub boundary_hit: f64,
     /// Fraction of hit boundaries that landed exactly on a bar line.
@@ -251,13 +256,19 @@ pub fn evaluate(analysis: &SongAnalysis, truth: &GroundTruth) -> Scores {
         beat_f: f_measure(beats, &truth.beats),
         cmlt: continuity_total(beats, &truth.beats),
         amlt: amlt(beats, &truth.beats),
+        downbeat_f: f_measure(&analysis.downbeats, &truth.downbeats),
         downbeat_accuracy: if truth.downbeats.is_empty() {
             0.0
         } else {
-            // The pipeline has no downbeat stage; the only candidate
+            // Without a downbeat stage the only candidate for bar 1
             // is the grid's first beat, so this measures "does bar 1
             // land on a real downbeat" rather than a full sequence.
-            let first = beats.first().copied().unwrap_or(0.0);
+            let first = analysis
+                .downbeats
+                .first()
+                .or(beats.first())
+                .copied()
+                .unwrap_or(0.0);
             f64::from(
                 truth
                     .downbeats

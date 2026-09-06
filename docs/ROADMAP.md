@@ -480,9 +480,30 @@ public corpus, cannot regress a note.
   onto it (≤ 55 ms). No model, no ear gate: a hit moves toward the
   audio or not at all. Library rolled over; numbers in
   `docs/audio-eval-baseline.md` ("The grid reaches the chart").
-- [ ] C1 Beat This! A/B · [ ] C2 stems · [ ] C3 Basic Pitch ·
-  [ ] C4 structure — only after L ships, each by ear against
-  `chart-feel-good-20260826`.
+- [x] **C1 — Beat This! as the meter** *(v0.14.31, 2026-09-06,
+  ADR-0015)*. `beatbyte-meter`: the ONNX pair through the game's own
+  `rten` runtime (not the `beat-this` crate — that would have carried
+  a second runtime and a second audio stack), three registry entries
+  re-hosted on `models-v1`, `SongAnalysis.downbeats`, the chart's
+  `grid.downbeats` filled and validated, phrases on real bars,
+  `downbeat_f` in the harness. A/B on the Rekordbox corpus
+  (`docs/audio-eval-baseline.md`, "Downbeats from a model"): loop
+  house beat F 0.840 → 0.935, downbeat F 0.736 (fours) → 0.933; all
+  11 paired tracks 0.851 → 0.949 and 0.694 → 0.856; three tracker
+  losses (0.245, 0.606, 0.880) recovered to 0.96–1.00. Policy = the
+  model's whole grid, because the hybrid inherits every level error
+  (0.244, 0.623, 0.887) — **adopted only where the model reads the
+  tracker's grid** (tempo within 5 %): the library rollover put 41
+  folders on the model's grid and kept 23 on the tracker's — mostly
+  a metrical level apart (double time on fast rock, 3:2, 3:4), all
+  ear-approved at the tracker's level (pure decision, ratios
+  pinned; second run writes nothing). Pinned download proven from
+  `models-v1`. **Ear gate open** on the 41.
+  Driver proven on a hand-encoded pair; nine mutation probes red.
+  Off without the models; the built-in tracker and the rock gate
+  untouched.
+- [ ] C2 stems · [ ] C3 Basic Pitch · [ ] C4 structure — each by ear
+  against `chart-feel-good-20260826`.
 
 ## Phase 3 — Adaptive charting (DECIDED 2026-08-30, not started)
 
@@ -761,6 +782,13 @@ four-to-the-floor, which the kick channel already in the signal
 resolves, and an ONNX runtime is heavy freight for a
 one-binary-per-platform project; bit-identical chart output is the
 rock gate.
+*Superseded on the runtime and the model, 2026-09-06 (user's call, C1):*
+the runtime arrived anyway for the lyrics (`rten`, ADR-0013, behind
+`ml`), and with it in the tree the Beat This! pair costs one small
+crate — measured on the corpus, its grid beats the tracker on the
+tracks the tracker lost and supplies the downbeats the tracker never
+had (`beatbyte-meter`, ADR-0015). The rock gate stands: the built-in
+tracker is unchanged and the reference tracks never see a model.
 
 **Found on the way, not yet fixed:** chart generation is
 reproducible per platform but not across platforms — a libm

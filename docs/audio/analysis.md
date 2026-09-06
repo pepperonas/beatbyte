@@ -24,8 +24,19 @@ Tempo Estimation
     │  parabolic peak interpolation (sub-BPM resolution)
     ▼
 Beat Grid
-    │  phase chosen to maximize onset support, beats laid across the
-    │  full duration
+    │  tracked (dynamic programming over a kick-weighted flux, Ellis
+    │  2007; Phase 2) and extended across the full duration; the
+    │  constant-tempo grid remains available (`GridMode`)
+    ▼
+Meter (optional — `beatbyte-meter`, `ml` builds with the model installed)
+    │  Beat This! (ISMIR 2024) through the pinned runtime: 22 050 Hz
+    │  mono → log-mel (128 bands, 50 fps) → beat + downbeat logits
+    │  in 1500-frame chunks stitched keep-first → peak picking,
+    │  downbeats snapped onto beats. Where it reads the same grid as
+    │  the tracker (tempo within 5 %) its grid REPLACES the
+    │  tracked one (beats, downbeats, tempo from its median interval)
+    │  — the corpus's choice, ADR-0015; a level apart, the tracked
+    │  grid stays and nothing of the model is taken.
     ▼
 Melody Extraction (lead transcription)
     │  STFT (Hann 2048, hop 512 — pitch needs longer windows)
@@ -40,7 +51,7 @@ Melody Extraction (lead transcription)
     │    transient smears rejected by their decaying salience and by
     │    the loneliness rule (riffs are runs, blips are drums)
     ▼
-SongAnalysis { bpm, beats[], onsets[], melody[{time, end, midi}], duration }
+SongAnalysis { bpm, beats[], downbeats[], onsets[], melody[{time, end, midi}], duration }
 ```
 
 ## Design rules
@@ -53,10 +64,16 @@ SongAnalysis { bpm, beats[], onsets[], melody[{time, end, midi}], duration }
 
 ## Known limitations (deliberately documented)
 
-- **Constant tempo assumption**: format v1 charts carry one BPM. Rubato
-  and live drummers will drift against the grid; the generator falls
-  back to onset times (not grid positions) so notes stay on the music
-  even when the grid is imperfect.
+- **Bars without a model**: the built-in analyzer knows no downbeat;
+  a chart from it counts four beats from the first one, and the
+  corpus says that is a bar line about three times in four on loop
+  house and less elsewhere (`docs/audio-eval-baseline.md`). With the
+  meter model installed the bars are measured.
+- **Tempo**: format v1 charts carry one `bpm` for display and for
+  readers without `grid`; since v0.14.30 the chart's `grid` is the
+  tracked one and every consumer follows it. Notes still quantise to
+  the LOCAL beat's subdivisions and fall back to onset times outside
+  it, so a hit stays on the music even where the grid is imperfect.
 - **Octave errors**: 87 vs 174 BPM is genuinely ambiguous; the prior
   prefers the danceable octave, and the CLI reports the alternative.
 - **No pitch/instrument separation**: lane assignment is driven by

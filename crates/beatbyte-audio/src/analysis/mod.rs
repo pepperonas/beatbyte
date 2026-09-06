@@ -100,6 +100,7 @@ impl Analyzer for SpectralAnalyzer {
         let energy_hop_s = energy_hop as f64 / f64::from(prepared.sample_rate());
 
         SongAnalysis {
+            downbeats: Vec::new(),
             bpm,
             bpm_confidence,
             alt_bpm,

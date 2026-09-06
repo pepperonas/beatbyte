@@ -48,8 +48,58 @@ pub const WAV2VEC2_BASE_960H: ModelSpec = ModelSpec {
     purpose: "English CTC acoustic model for word-level lyric alignment",
 };
 
+/// The Beat This! log-mel front end (Foscarin, Schlüter & Widmer,
+/// ISMIR 2024 — code and published weights MIT, Institute of
+/// Computational Perception, JKU Linz), as the ONNX export of the
+/// `beat-this-rs` port (`danigb/beat-this-rs`,
+/// `models/mel_spectrogram.onnx` at commit 089b509), re-hosted
+/// unchanged as a release asset of this project. 22 050 Hz mono in,
+/// 128 log-mel bands at 50 frames a second out. Needed by both beat
+/// models below (`beatbyte-meter`).
+pub const BEAT_THIS_MEL: ModelSpec = ModelSpec {
+    id: "beat-this-mel",
+    file: "model.onnx",
+    url: "https://github.com/pepperonas/beatbyte/releases/download/models-v1/beat-this-mel.onnx",
+    bytes: 270_742,
+    sha256: "fdd59e65c515331308e4c8841edf99972deca646bdf6197744c2a5b7755e3de9",
+    licence: "MIT",
+    purpose: "log-mel front end shared by the Beat This! beat trackers",
+};
+
+/// Beat This!, the small model (checkpoint `small1`, 8 MB in the
+/// paper's Table 2 as "smaller model"), as `models/beat_this_small.onnx`
+/// of `danigb/beat-this-rs` at commit 089b509, re-hosted unchanged.
+/// Mel frames in, beat and downbeat logits per frame out.
+pub const BEAT_THIS_SMALL: ModelSpec = ModelSpec {
+    id: "beat-this-small",
+    file: "model.onnx",
+    url: "https://github.com/pepperonas/beatbyte/releases/download/models-v1/beat-this-small.onnx",
+    bytes: 10_555_592,
+    sha256: "a5f8d39d989f31859454ba27afe61c5317ca95e4d9373e6853e5361b8937172f",
+    licence: "MIT",
+    purpose: "Beat This! beat + downbeat tracker, small model (small1)",
+};
+
+/// Beat This!, the main model (checkpoint `final0`, "Our system" in
+/// the paper's Table 2), as the `beat_this.onnx` asset of the
+/// `model-large` release of `danigb/beat-this-rs`, re-hosted unchanged.
+pub const BEAT_THIS: ModelSpec = ModelSpec {
+    id: "beat-this",
+    file: "model.onnx",
+    url: "https://github.com/pepperonas/beatbyte/releases/download/models-v1/beat-this.onnx",
+    bytes: 83_162_650,
+    sha256: "5f810debe53459b559127fb55bbad40035bb47cc567b20e501670f968c770f02",
+    licence: "MIT",
+    purpose: "Beat This! beat + downbeat tracker, main model (final0)",
+};
+
 /// Every model this build can install.
-pub const REGISTRY: &[ModelSpec] = &[WAV2VEC2_BASE_960H];
+pub const REGISTRY: &[ModelSpec] = &[
+    WAV2VEC2_BASE_960H,
+    BEAT_THIS_MEL,
+    BEAT_THIS_SMALL,
+    BEAT_THIS,
+];
 
 /// Look a model up by id.
 #[must_use]

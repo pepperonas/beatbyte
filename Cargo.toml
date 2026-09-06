@@ -9,11 +9,12 @@ members = [
     "crates/beatbyte-editor",
     "crates/beatbyte-ml",
     "crates/beatbyte-lyrics",
+    "crates/beatbyte-meter",
     "apps/beatbyte",
 ]
 
 [workspace.package]
-version = "0.14.30"
+version = "0.14.31"
 edition = "2024"
 license = "MIT"
 authors = ["Martin Pfeffer"]
@@ -25,14 +26,15 @@ categories = ["games"]
 
 [workspace.dependencies]
 # Internal crates
-beatbyte-core = { path = "crates/beatbyte-core", version = "0.14.30" }
-beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.14.30" }
-beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.14.30" }
-beatbyte-game = { path = "crates/beatbyte-game", version = "0.14.30" }
-beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.14.30" }
-beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.14.30" }
-beatbyte-ml = { path = "crates/beatbyte-ml", version = "0.14.30" }
-beatbyte-lyrics = { path = "crates/beatbyte-lyrics", version = "0.14.30" }
+beatbyte-core = { path = "crates/beatbyte-core", version = "0.14.31" }
+beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.14.31" }
+beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.14.31" }
+beatbyte-game = { path = "crates/beatbyte-game", version = "0.14.31" }
+beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.14.31" }
+beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.14.31" }
+beatbyte-ml = { path = "crates/beatbyte-ml", version = "0.14.31" }
+beatbyte-lyrics = { path = "crates/beatbyte-lyrics", version = "0.14.31" }
+beatbyte-meter = { path = "crates/beatbyte-meter", version = "0.14.31" }
 
 # Engine ("wav" lets bevy_audio play our procedurally generated SFX;
 # "serialize" gives input types serde for the persisted bindings table)
@@ -62,7 +64,9 @@ dirs = "6"
 # Local ML inference (ADR-0013): pure-Rust ONNX runtime, behind the
 # `ml` feature of the game and the CLI. Only the ONNX loader: the
 # `.rten` format and its flatbuffers dependency are not needed.
-rten = { version = "0.26", default-features = false, features = ["onnx_format"] }
+# `fft` carries the STFT operator the Beat This! mel front end is
+# built from (beatbyte-meter); it costs one small pure-Rust dependency.
+rten = { version = "0.26", default-features = false, features = ["onnx_format", "fft"] }
 rten-tensor = "0.26"
 # Integrity of downloaded model files.
 sha2 = "0.11"

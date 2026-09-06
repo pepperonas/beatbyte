@@ -440,3 +440,146 @@ the intended direction and below what a hit window notices; whether
 the medium readings still *feel* as approved is the user's call, and
 every folder keeps its previous version one pointer away.
 
+# Downbeats from a model (Phase 3b, 2026-09-06)
+
+The chart's bar lines had never been measured. Phase 2 gave the
+analysis a tracked grid; nothing gave it bars, so every consumer —
+the phrases, the highway, the editor — counted four beats from the
+first one. The corpus has the DJ's downbeats, so the question was
+answerable: how often is "every fourth beat from the first" a bar
+line, and what does a model do instead?
+
+## What was built
+
+`beatbyte-meter` (ADR-0015) runs the *Beat This!* pair (ISMIR 2024,
+MIT) through the game's own runtime — the mel front end and the
+beat model, chunked as the reference does, its minimal peak picker,
+downbeats snapped onto beats — and folds the answer into the
+analysis under a **policy**: only the model's downbeats placed on the
+tracker's beats (`Downbeats`), or the model's whole grid (`Grid`).
+The corpus example (`cargo run --release -p beatbyte-meter --example
+corpus -- <anlz-root> <audio-root> [--all]`) scores every condition on
+the same decode, against the same truth, with the same MIREX
+metrics as Phase 2 plus a downbeat F-measure at ±70 ms
+(`Scores::downbeat_f`).
+
+## Loop house, the Phase 2 corpus
+
+Seven tracks, the DJ's grids as truth. *F/C/A* = beat F-measure /
+CMLt / AMLt; *D* = downbeat F. "fours" is what shipped: the tracker's
+grid with a bar every fourth beat. "hybrid" is the tracker's beats
+with the full model's downbeats snapped onto them.
+
+| Track | BPM | ours F | ours C | fours D | small F | small D | full F | full C | full A | full D | hybrid D |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Groovemasta et al. | 120.0 | 1.000 | 1.000 | 1.000 | 1.000 | 0.995 | 0.997 | 0.993 | 0.995 | 0.995 | 0.995 |
+| Lime – Angel Eyes | 121.8 | 1.000 | 1.000 | 1.000 | 0.996 | 0.998 | 0.996 | 0.993 | 0.994 | 0.998 | 0.998 |
+| Ross – Coming Up | 121.9 | 0.748 | 0.798 | 0.000 | 0.751 | 0.690 | 0.758 | 0.803 | 0.995 | 0.746 | 0.741 |
+| Zsak – I Want Your Soul | 123.0 | 0.245 | 0.246 | 0.244 | 1.000 | 1.000 | **1.000** | 1.000 | 1.000 | **1.000** | 0.244 |
+| Ross – Buscame | 124.4 | 1.000 | 1.000 | 1.000 | 0.993 | 0.915 | 0.991 | 0.988 | 0.988 | 0.984 | 0.984 |
+| BICEP / OPAL (Four Tet Rmx) | 127.0 | 0.889 | 0.994 | 0.905 | 0.826 | 0.883 | 0.850 | 0.855 | 0.987 | 0.880 | 0.833 |
+| Vera – Love Comes Easy | 128.8 | 1.000 | 1.000 | 1.000 | 0.992 | 0.997 | 0.953 | 0.975 | 0.997 | 0.930 | 0.997 |
+| **mean** | | 0.840 | 0.863 | 0.736 | 0.937 | 0.925 | **0.935** | 0.944 | 0.994 | **0.933** | 0.827 |
+
+Read it in three parts. Where the tracker was right it stays within a
+frame of the model (four tracks at 1.000 against 0.95–1.00: the
+model's 20 ms frames against a grid fitted to the audio). Where it
+had locked onto the wrong level (Zsak, F 0.245 with AMLt 1.000 — the
+Phase 2 finding that survived the kick channel) the model is at
+1.000, and the hybrid inherits the tracker's error whole: 0.244,
+because no downbeat placed on the wrong beats is a bar line. And
+where the music is genuinely hard (Ross – Coming Up, BICEP) both are
+partial and the model's downbeats are still worth 0.75–0.88 against
+0.00–0.90 by counting.
+
+The full model over the small one: a hair better on beats and
+downbeats on average, worse on one track (Vera); it costs 19–32 s a
+song against 12–21 s under load. Both are registered; the driver
+prefers the full one when both are installed.
+
+## Every track with a grid (`--all`)
+
+Eleven tracks pair (of 29 files in the folder; the rest have no
+Rekordbox analysis or are not music). The seven above plus a pop
+record and three more house tracks:
+
+| Track | BPM | ours F | ours C | ours A | fours D | small F | small D | full F | full C | full A | full D | hybrid D |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Magou – Pas Jolie | 118.0 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.972 | 0.972 |
+| Huey Lewis – The Power of Love | 118.5 | 0.999 | 1.000 | 1.000 | 0.000 | 0.993 | 0.000 | 0.971 | 0.989 | 0.991 | 0.000 | 0.000 |
+| Krystal Klear – Essentia | 128.0 | 0.880 | 0.881 | 0.888 | 0.880 | 0.894 | 0.905 | 0.965 | 0.953 | 0.953 | 0.961 | 0.887 |
+| BICEP – Glue | 130.0 | 0.606 | 0.605 | 0.633 | 0.606 | 0.931 | 0.926 | **0.956** | 0.932 | 0.932 | **0.950** | 0.623 |
+| **mean of 11** | | 0.851 | 0.866 | 0.956 | 0.694 | 0.943 | 0.846 | **0.949** | 0.953 | 0.985 | **0.856** | 0.752 |
+
+Same picture, wider: two more tracks the tracker had lost (Glue
+0.606, Essentia 0.880) are at 0.956 and 0.965 on the model, and the
+hybrid again keeps the tracker's errors (0.623, 0.887). One honest
+zero: on *The Power of Love* every condition scores 0.000 on
+downbeats while every one of them is at 0.97–1.00 on beats — the
+model and the DJ agree on the beats and disagree on which of them
+is the "one". Whether the DJ set the phrase on a half-bar or the
+model hears a rock "one" on the backbeat is a listening question;
+it is not evidence for the tracker, whose fours land on the same
+wrong beat.
+
+**Decision: the model's grid** (`Policy::Grid`, the shipped default
+in `ml` builds with the models installed). Both means say so — beat
+F 0.851 → 0.949, downbeat F 0.694 → 0.856 over the hybrid's 0.752 —
+and the mechanism says why: the tracker's failures are phase and
+level errors, and downbeats cannot repair either. On every one of
+the eleven the model's tempo is within 2 % of the tracker's (the
+model reads 120.00 or 125.00 — its beats sit on 20 ms frames, so a
+median interval is quantised; the shipped tempo is the mean of the
+steady intervals, which cancels that).
+
+## What the library said: the level
+
+The corpus has no rock with truth; the user's library is mostly
+rock. The rollover with the model adopted its grid on 41 of 64
+folders and kept the tracker's on 23; a look at five of the kept
+ones shows a disagreement the corpus never exercised — not the
+phase, the **metrical level**:
+
+| Song | tracker BPM | model BPM | ratio | tracker bar | model bar | bar ratio | model beats/bar |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Böhse Onkelz – Keine Amnestie für MTV | 112.51 | 230.77 | 2.05 | 2.133 s | 1.060 s | 0.50 | 4.08 |
+| Böhse Onkelz – So sind wir | 95.34 | 187.50 | 1.97 | 2.517 s | 1.260 s | 0.50 | 3.94 |
+| Böhse Onkelz – Terpentin | 104.17 | 214.29 | 2.06 | 2.304 s | 1.140 s | 0.49 | 4.07 |
+| Böhse Onkelz – Mexico | 112.51 | 166.67 | 1.48 | 2.133 s | 1.420 s | 0.67 | 3.94 |
+| Christina Aguilera – Genie in a Bottle | 117.19 | 88.24 | 0.75 | 2.048 s | 2.720 s | 1.33 | 4.00 |
+
+On fast rock the model hears double time in 4/4 (bars of 1.06 s
+where the tracker's fours make 2.13 s); on the shuffle it hears a
+3:2 and on the pop song a 3:4. Both readings are internally
+consistent — the model puts four of its beats in each of its bars —
+and the charts on the tracker's level are the ones the user's ear
+approved. Nothing here says which level is *right*; what is certain
+is that a downbeat at the other level is a half-bar or a bar and a
+half, so neither policy is safe across a level.
+
+The 23 ratios, model over tracker: 2.00–2.03 on nine songs, 1.99
+and 1.97, 1.41–1.51 on three, 0.75–0.76 on three, 0.50–0.52 on
+four, 0.82 on one, and 1.11 and 1.06 on the two nearest (Sniff 'n'
+the Tears, Tom Petty). Nothing between 1.06 and 1.41; the 41 adopted
+songs are all within 5 %, the corpus's eleven within 2 %.
+
+**Rule (`merge::apply`, shipped):** the model's answer is adopted
+when its tempo is within 5 % of the tracker's — the same number
+`redesign` merges charts within, so an import and a rollover decide
+alike — and otherwise the chart keeps the tracker's grid, takes
+nothing from the model and says so (`meter: … not a reading of the
+same grid`). The decision is a pure function with these ratios
+pinned. The library after the rollover: the model's grid on the 41
+songs where the two agree, the tracker's on the 23, the previous
+version of every folder one pointer away, a second `redesign --all`
+writing nothing, and the ear decides there as it did for the tracked
+grid. A rock corpus with downbeat truth is what would settle the
+level question.
+
+## Reproducing
+
+```text
+beatbyte-cli models install beat-this-mel
+beatbyte-cli models install beat-this          # or beat-this-small
+cargo run --release -p beatbyte-meter --example corpus -- <anlz-root> <audio-root> [--all]
+```

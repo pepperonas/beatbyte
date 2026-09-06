@@ -93,6 +93,33 @@ impl BeatGrid {
         }
     }
 
+    /// The same grid with downbeats: rounded like the beats, ascending,
+    /// without duplicates, and only those that sit on a beat (within
+    /// one precision step) — a downbeat that is not a beat is not a
+    /// bar line. Given none, the grid keeps counting bars in fours.
+    #[must_use]
+    pub fn with_downbeats(mut self, downbeats: &[f64]) -> BeatGrid {
+        let mut out: Vec<f64> = downbeats
+            .iter()
+            .copied()
+            .filter(|t| t.is_finite())
+            .map(|t| (t / BEAT_PRECISION_S).round() / (1.0 / BEAT_PRECISION_S))
+            .filter(|t| {
+                let i = self.beats.partition_point(|b| b < t);
+                let near = |j: usize| {
+                    self.beats
+                        .get(j)
+                        .is_some_and(|b| (b - t).abs() <= BEAT_PRECISION_S)
+                };
+                near(i) || (i > 0 && near(i - 1))
+            })
+            .collect();
+        out.sort_by(f64::total_cmp);
+        out.dedup();
+        self.downbeats = out;
+        self
+    }
+
     /// Whether the grid can place anything: two beats make an
     /// interval.
     #[must_use]
@@ -326,6 +353,27 @@ mod tests {
         // The tolerance never exceeds half a step: a point between
         // two eighths keeps its distance from both.
         assert_eq!(BeatGrid::default().quantize(1.0, 0.055), None);
+    }
+
+    #[test]
+    fn downbeats_are_kept_only_where_they_sit_on_a_beat() {
+        let grid = BeatGrid::from_beats(&[0.0, 0.5, 1.0, 1.5, 2.0]).with_downbeats(&[
+            0.0,
+            1.000_04, // within a precision step of 1.0
+            1.25,     // between beats: dropped
+            2.0,
+            2.0,      // duplicate
+            f64::NAN, // not a number
+            9.0,      // past the grid
+        ]);
+        assert_eq!(grid.downbeats, vec![0.0, 1.0, 2.0]);
+        assert_eq!(grid.bar_starts(), vec![0.0, 1.0, 2.0]);
+        assert_eq!(
+            BeatGrid::from_beats(&[0.0, 0.5])
+                .with_downbeats(&[])
+                .downbeats,
+            Vec::<f64>::new()
+        );
     }
 
     #[test]

@@ -55,6 +55,12 @@ pub struct SongAnalysis {
     pub alt_bpm: Option<f64>,
     /// Beat grid: song time of every estimated beat, ascending.
     pub beats: Vec<f64>,
+    /// Song time of every downbeat (bar start), ascending, each one
+    /// a member of `beats`. Empty when no stage knew them (the
+    /// spectral analyzer alone does not; a model may) — consumers
+    /// then count bars from the first beat.
+    #[serde(default)]
+    pub downbeats: Vec<f64>,
     /// Detected onsets, ascending by time.
     pub onsets: Vec<Onset>,
     /// Normalized RMS energy envelope (0.0–1.0), sampled every
@@ -99,6 +105,7 @@ mod tests {
             bpm_confidence: 0.9,
             alt_bpm: Some(60.0),
             beats: vec![0.0, 0.5, 1.0],
+            downbeats: Vec::new(),
             onsets: vec![],
             energy: vec![0.0, 0.5, 1.0],
             energy_hop_s: 0.1,

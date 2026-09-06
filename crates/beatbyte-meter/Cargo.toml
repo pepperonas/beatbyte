@@ -1,0 +1,18 @@
+[package]
+name = "beatbyte-meter"
+description = "BeatByte's beat and downbeat tracking with a local model: the Beat This! ONNX pair through beatbyte-ml's pinned runtime — audio in, bar lines out."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+beatbyte-ml = { workspace = true }
+beatbyte-audio = { workspace = true }
+beatbyte-core = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

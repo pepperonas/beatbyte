@@ -9,8 +9,8 @@ file wins over habit; the roadmap wins over improvisation.
 
 **BeatByte** — an original 8-bit five-lane rhythm game in **Rust + Bevy
 0.19** (repo `pepperonas/beatbyte`, MIT, © 2026 Martin Pfeffer, public).
-Cargo workspace: `crates/beatbyte-{core,chart,audio,editor,cli,game}` +
-`apps/beatbyte` (thin launcher; all logic lives in the crates). UI
+Cargo workspace: `crates/beatbyte-{core,chart,audio,editor,cli,game,ml,lyrics,meter}`
++ `apps/beatbyte` (thin launcher; all logic lives in the crates). UI
 language is English; the game is fully keyboard/gamepad driven.
 
 ## Autonomous execution protocol
@@ -83,6 +83,12 @@ tech writer, release manager. Operate accordingly:
   → `words.json`; its Viterbi is pure and pinned on synthetic
   emissions, and a self-check (align the model's own greedy words)
   is the way to tell a pipeline bug from a hard mix.
+  `beatbyte-meter` sits on `ml`, `audio` and `core` (no Bevy, no
+  chart): audio → the Beat This! pair → beats and downbeats into a
+  `SongAnalysis` under a policy the corpus chose (ADR-0015); its
+  chunking, peak picking and merge are pure and pinned, and the
+  driver is proven on a hand-encoded ONNX pair through the real
+  runtime. It never fetches: `installed()` decides from the store.
 - **No copyrighted assets, music, or trademarks — ever.** All assets
   original, generated, CC0, or OFL (fonts: Press Start 2P and Bebas
   Neue, each bundled with its license). No song ships with the game;
@@ -528,6 +534,34 @@ artifact, smoke-test it (neutral CWD!), then
   run that should have written none — one layer under the ULP bug
   fixed the same morning. A move under a microsecond is not a move.
   The proof that an idempotent step is idempotent is the second run.
+- **A policy measured on one genre is a hypothesis on the next.**
+  The corpus (house, pop, DJ grids) said "take the model's grid";
+  the first rock folders of the rollover said the model hears
+  double time there (230.8 vs 112.5 BPM) on charts the ear had
+  approved at the tracker's level — the "sweep inverts in another
+  condition" lesson, one row down. The rule that shipped adopts the
+  model only at the tracker's level and says so; measure the
+  library's condition (here: tempo ratio per song) before the
+  corpus's verdict touches it.
+- **A guard tuned to one reading refuses the next reading of the
+  same thing.** `redesign` protected the merge with "tempos within
+  0.1 BPM" — the tracker against itself, where only float noise
+  differs. The meter reads the same grid 0.1–0.9 BPM differently (a
+  median interval against an autocorrelation) and the first library
+  rollover with it refused two folders in three. A guard against a
+  DIFFERENT grid has to name what a different grid is (another
+  metrical level: a third, a half, double — a 5 % ratio), not the
+  noise of one method. Pin both sides: the other level refused, the
+  other reading accepted.
+- **Two `cargo` runs in one target directory serialise on its lock**,
+  so a CLI rebuild waits behind a Bevy release build. Build the CLI
+  into its own directory (`CARGO_TARGET_DIR=<scratchpad>/target-cli`)
+  when a game build is in flight — and remember the rule about not
+  editing a crate that IS in the in-flight build's graph.
+- **`pkill -x beatbyte-cli` kills every CLI, the eval queue's job
+  included.** Stop one run by PID, found with the bracket trick
+  (`ps -eo pid,command | grep '[r]edesign songs'`), which matches
+  neither the grep nor the shell that carries the pattern.
 - **A summary inside this repository is not a source.** Round six of
   the look plan built the gem from a trait table an earlier round had
   written ("dark ring, white centre") instead of from the material,

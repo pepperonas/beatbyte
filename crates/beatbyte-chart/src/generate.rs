@@ -180,7 +180,8 @@ pub fn generate_chart(analysis: &SongAnalysis, meta: &GenerateMeta) -> ChartFile
         audio_trim: None,
         // The tracked beats, so the highway, the editor and the next
         // redesign all count on the grid the notes were placed on.
-        grid: Some(BeatGrid::from_beats(&analysis.beats)).filter(BeatGrid::is_usable),
+        grid: Some(BeatGrid::from_beats(&analysis.beats).with_downbeats(&analysis.downbeats))
+            .filter(BeatGrid::is_usable),
     }
 }
 
@@ -1015,7 +1016,7 @@ fn place_phrases(analysis: &SongAnalysis, notes: &[ChartNote]) -> Vec<ChartPhras
     }
     // The bars as tracked — a phrase that starts on a bar line has to
     // know where the bars are; without a grid, the constant bar.
-    let grid = BeatGrid::from_beats(&analysis.beats);
+    let grid = BeatGrid::from_beats(&analysis.beats).with_downbeats(&analysis.downbeats);
     let bars: Vec<f64> = if grid.is_usable() {
         grid.bar_starts()
     } else {
@@ -1119,6 +1120,7 @@ mod tests {
         }
         let beats: Vec<f64> = (0..136).map(|i| 1.0 + i as f64 * beat).collect();
         SongAnalysis {
+            downbeats: Vec::new(),
             bpm: 120.0,
             bpm_confidence: 0.8,
             alt_bpm: None,
@@ -1160,7 +1162,10 @@ mod tests {
         let chart = generate_chart(&analysis, &meta());
         let grid = chart.grid.as_ref().expect("a tracked grid");
         assert_eq!(grid.beats.len(), analysis.beats.len());
-        assert!(grid.downbeats.is_empty(), "no stage knows downbeats yet");
+        assert!(
+            grid.downbeats.is_empty(),
+            "the analyzer alone knows no downbeats"
+        );
         // Every note of every difficulty is on a subdivision of ITS
         // local beat — the average grid would miss by a quarter beat
         // late in the song.
@@ -1185,6 +1190,33 @@ mod tests {
         let mut flat = analysis;
         flat.beats.clear();
         assert!(generate_chart(&flat, &meta()).grid.is_none());
+    }
+
+    #[test]
+    fn downbeats_from_a_meter_reach_the_grid_and_the_phrases_start_on_them() {
+        // A 3/4 song, as a meter would report it: every third beat a
+        // bar. The bars are no longer counted in fours.
+        let mut analysis = drifting_analysis();
+        analysis.downbeats = analysis.beats.iter().copied().step_by(3).collect();
+        let chart = generate_chart(&analysis, &meta());
+        let grid = chart.grid.as_ref().expect("a tracked grid");
+        assert_eq!(grid.downbeats.len(), analysis.downbeats.len());
+        assert_eq!(grid.bar_starts(), grid.downbeats);
+        for def in &chart.charts {
+            for phrase in &def.phrases {
+                assert!(
+                    grid.downbeats
+                        .iter()
+                        .any(|d| (d - phrase.start).abs() < 1e-9),
+                    "phrase at {} does not start on a bar",
+                    phrase.start
+                );
+            }
+        }
+        // A downbeat the meter put between beats is not a bar line.
+        analysis.downbeats = vec![analysis.beats[4] + 0.2];
+        let chart = generate_chart(&analysis, &meta());
+        assert!(chart.grid.as_ref().expect("grid").downbeats.is_empty());
     }
 
     #[test]
@@ -1332,6 +1364,7 @@ mod tests {
                 bpm_confidence: 0.8,
                 alt_bpm: None,
                 beats: (0..20).map(|i| f64::from(i) * 0.5).collect(),
+                downbeats: Vec::new(),
                 onsets: vec![
                     Onset {
                         time_s: 1.0,
@@ -1395,6 +1428,7 @@ mod tests {
             bpm_confidence: 0.8,
             alt_bpm: None,
             beats: (0..40).map(|i| f64::from(i) * 0.5).collect(),
+            downbeats: Vec::new(),
             onsets,
             energy: vec![0.8; 400],
             energy_hop_s: 0.05,
@@ -1545,6 +1579,7 @@ mod tests {
             // easy 2 notes and medium 4 — big enough for easy to
             // reach the third note, which is the whole point.
             beats: (0..6).map(|i| f64::from(i) * 0.5).collect(),
+            downbeats: Vec::new(),
             onsets: vec![],
             energy: vec![0.8; 80],
             energy_hop_s: 0.05,
@@ -1717,6 +1752,7 @@ mod tests {
         }
         let beats: Vec<f64> = (0..118).map(|i| 1.0 + f64::from(i) * beat).collect();
         SongAnalysis {
+            downbeats: Vec::new(),
             bpm: 120.0,
             bpm_confidence: 0.9,
             alt_bpm: None,
@@ -1878,6 +1914,7 @@ mod tests {
             .collect();
         let beats: Vec<f64> = (0..118).map(|i| 1.0 + f64::from(i) * 0.5).collect();
         let analysis = SongAnalysis {
+            downbeats: Vec::new(),
             bpm: 120.0,
             bpm_confidence: 0.9,
             alt_bpm: None,
@@ -1959,6 +1996,7 @@ mod tests {
             }
         }
         let analysis = SongAnalysis {
+            downbeats: Vec::new(),
             bpm: 120.0,
             bpm_confidence: 0.9,
             alt_bpm: None,
@@ -2000,6 +2038,7 @@ mod tests {
             .collect();
         let beats: Vec<f64> = (0..118).map(|i| 1.0 + f64::from(i) * 0.5).collect();
         SongAnalysis {
+            downbeats: Vec::new(),
             bpm: 120.0,
             bpm_confidence: 0.9,
             alt_bpm: None,
@@ -2166,6 +2205,7 @@ mod tests {
             bpm_confidence: 0.8,
             alt_bpm: None,
             beats: (0..80).map(|i| i as f64 * 0.5).collect(),
+            downbeats: Vec::new(),
             onsets,
             energy: vec![0.8; 900],
             energy_hop_s: 0.05,
@@ -2200,6 +2240,7 @@ mod tests {
             bpm_confidence: 0.0,
             alt_bpm: None,
             beats: vec![],
+            downbeats: Vec::new(),
             onsets: vec![],
             energy: vec![],
             energy_hop_s: 0.05,

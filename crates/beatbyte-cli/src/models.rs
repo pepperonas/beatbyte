@@ -36,9 +36,9 @@ pub fn list() -> ExitCode {
             Status::Damaged { .. } => "DAMAGED — install again".to_owned(),
         };
         println!(
-            "{:<28} {:>9} MB  {:<12} {}  [{}]",
+            "{:<28} {:>9.1} MB  {:<12} {}  [{}]",
             model.id,
-            model.bytes / 1_000_000,
+            model.bytes as f64 / 1e6,
             model.licence,
             state,
             model.purpose

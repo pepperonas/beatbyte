@@ -586,6 +586,15 @@ fn analyze(song: &Path, json: Option<&Path>) -> ExitCode {
         println!("  alt bpm       {alt:>8.1}   (the other plausible octave)");
     }
     println!("  beats         {:>8}", analysis.beats.len());
+    println!(
+        "  downbeats     {:>8}   {}",
+        analysis.downbeats.len(),
+        if analysis.downbeats.is_empty() {
+            "(no meter model: bars counted in fours from the first beat)"
+        } else {
+            "(from the local meter model)"
+        }
+    );
     println!("  onsets        {:>8}", analysis.onsets.len());
     let held: Vec<f64> = analysis
         .melody
@@ -740,7 +749,30 @@ fn run_analysis(
         priming.timescale,
         audio.sample_rate(),
     );
-    Ok((SpectralAnalyzer::default().analyze(&audio), trim))
+    let mut analysis = SpectralAnalyzer::default().analyze(&audio);
+    meter(&mut analysis, &audio);
+    Ok((analysis, trim))
+}
+
+/// Fold the local beat/downbeat model into an analysis when this
+/// build carries the runtime AND the user has installed the model
+/// pair (`models install beat-this-mel` + `beat-this`); otherwise the
+/// analysis stays the analyzer's. Says on stderr what it did.
+#[cfg(feature = "ml")]
+pub(crate) fn meter(analysis: &mut beatbyte_core::SongAnalysis, audio: &beatbyte_audio::AudioData) {
+    match beatbyte_meter::refine(analysis, audio, beatbyte_meter::DEFAULT_POLICY) {
+        Ok(Some(applied)) => eprintln!("meter: {}", applied.summary()),
+        Ok(None) => {}
+        Err(error) => eprintln!("meter: {error}; charting without downbeats"),
+    }
+}
+
+/// Without the `ml` feature there is no model to fold in.
+#[cfg(not(feature = "ml"))]
+pub(crate) fn meter(
+    _analysis: &mut beatbyte_core::SongAnalysis,
+    _audio: &beatbyte_audio::AudioData,
+) {
 }
 
 fn load(chart_path: &Path) -> Result<ChartFile, ExitCode> {
@@ -1001,7 +1033,8 @@ fn run_dossier(
             return ExitCode::from(1);
         }
     };
-    let analysis = SpectralAnalyzer::default().analyze(&audio);
+    let mut analysis = SpectralAnalyzer::default().analyze(&audio);
+    meter(&mut analysis, &audio);
 
     // Evidence, straight from the telemetry — same code path as
     // `review`, so the two cannot disagree.

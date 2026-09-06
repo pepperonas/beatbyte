@@ -71,7 +71,10 @@ is the master's. Two facts come from the decode and both matter later:
 
 Regenerates hard and expert on the current generator as a new sibling
 version and moves the pointer; easy and medium are carried from the
-active version, note for note. It says "already current" for a folder
+active version, note for note, and moved onto the fresh grid. In an
+`ml` build with the meter models installed the grid — beats and bar
+lines — comes from the model (ADR-0015); the `meter:` line on stderr
+says so, and a chart whose `grid.downbeats` is non-empty came that way. It says "already current" for a folder
 whose hard and expert already match the generator and writes nothing.
 
 ⚠️ That check was dead until 2026-09-06 — `serde_json` moves a float by
@@ -199,11 +202,16 @@ possible, the two probes below answer the question the numbers cannot:
 
 ## Using the AI further, honestly
 
-The three models the plan names — a separator, a multilingual aligner,
-a beat tracker — are each blocked on the same thing: weights this
-project may ship. The pipeline is built so that when one becomes
-available it is a registry entry and a download on the user's action,
-verified against a pinned hash, nothing else. Until then the honest
+Of the three models the plan names, the beat tracker is in (*Beat
+This!*, MIT — `beatbyte-meter`, ADR-0015): with `beatbyte-cli models
+install beat-this-mel` and `beat-this` on the machine, step 1 below
+takes the song's beats and bar lines from the model instead of the
+built-in tracker, and says so on stderr (`meter: … heard N beats; M
+downbeats`). The separator and the multilingual aligner are each
+blocked on the same thing: weights this project may ship. The
+pipeline is built so that when one becomes available it is a registry
+entry and a download on the user's action, verified against a pinned
+hash, nothing else. Until then the honest
 path for a library is the one above: the game's own aligner on a stem
 a person made locally, with the pipeline saying exactly which songs it
 could not vouch for and why.

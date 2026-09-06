@@ -19,10 +19,15 @@ use beatbyte_core::Difficulty;
 /// The two difficulties the rollout regenerates.
 const REDESIGNED: [Difficulty; 2] = [Difficulty::Hard, Difficulty::Expert];
 
-/// Tempo drift between the active chart and the fresh analysis above
-/// which the redesign refuses: mixing readings from two different
-/// beat grids is not a redesign, it is a collision.
-const BPM_TOLERANCE: f64 = 0.1;
+/// Tempo ratio between the active chart and the fresh analysis
+/// beyond which the redesign refuses: mixing readings from two
+/// different beat grids is not a redesign, it is a collision. Two
+/// readings of the SAME grid differ by well under this — the
+/// tracker's autocorrelation against the meter's median interval
+/// (ADR-0015) measured ≤ 0.9 BPM apart on the library — while a
+/// different metrical level differs by a third or more, and the
+/// carried notes are moved onto the fresh grid note by note anyway.
+const BPM_RATIO_TOLERANCE: f64 = 0.05;
 
 /// The active version's song block and easy/medium, the fresh
 /// generation's hard/expert, provenance binding the result to its
@@ -32,7 +37,9 @@ pub fn merged_redesign(
     fresh: &ChartFile,
     created_ms: u64,
 ) -> Result<ChartFile, String> {
-    if (active.song.bpm - fresh.song.bpm).abs() > BPM_TOLERANCE {
+    if active.song.bpm <= 0.0
+        || (fresh.song.bpm / active.song.bpm - 1.0).abs() > BPM_RATIO_TOLERANCE
+    {
         return Err(format!(
             "the fresh analysis reads {:.2} BPM where the active chart says {:.2} — \
              two different beat grids cannot merge",
@@ -133,7 +140,8 @@ fn redesign_folder(folder: &Path) -> Result<String, String> {
     let priming = audio.priming();
     let trim = AudioTrim::declared(priming.samples, priming.timescale, audio.sample_rate());
     active.retime(trim);
-    let analysis = SpectralAnalyzer::default().analyze(&audio);
+    let mut analysis = SpectralAnalyzer::default().analyze(&audio);
+    crate::meter(&mut analysis, &audio);
     let mut fresh = generate_chart(
         &analysis,
         &GenerateMeta {
@@ -398,12 +406,25 @@ mod tests {
     #[test]
     fn diverging_beat_grids_refuse_to_merge() {
         let active = chart_file(120.0, |_| 0);
-        let fresh = chart_file(121.5, |_| 3);
-        let error = merged_redesign(&active, &fresh, 7).expect_err("the merge must refuse");
-        assert!(error.contains("beat grids"), "{error}");
-        // ...while measurement noise passes.
-        let close = chart_file(120.05, |_| 3);
-        assert!(merged_redesign(&active, &close, 7).is_ok());
+        // Another metrical level — half, double, a third off — is a
+        // different grid.
+        for level in [60.0, 180.0, 240.0, 127.0] {
+            let fresh = chart_file(level, |_| 3);
+            let error = merged_redesign(&active, &fresh, 7).expect_err("the merge must refuse");
+            assert!(error.contains("beat grids"), "{error}");
+        }
+        // ...while another READING of the same grid passes: the
+        // meter's median interval against the tracker's tempo
+        // (measured ≤ 0.9 BPM apart), and measurement noise.
+        for reading in [120.05, 120.9, 119.1] {
+            let close = chart_file(reading, |_| 3);
+            assert!(merged_redesign(&active, &close, 7).is_ok(), "{reading}");
+        }
+        let zero = chart_file(0.0, |_| 0);
+        assert!(
+            merged_redesign(&zero, &active, 7).is_err(),
+            "no tempo is no grid"
+        );
     }
 
     #[test]

@@ -129,6 +129,7 @@ mod tests {
     /// 120 BPM (bar = 2 s), energy per second so bars map 2:1.
     fn analysis(energy: Vec<f32>, duration_s: f64) -> SongAnalysis {
         SongAnalysis {
+            downbeats: Vec::new(),
             bpm: 120.0,
             bpm_confidence: 1.0,
             alt_bpm: None,

@@ -389,6 +389,25 @@ pub fn grid_issues(chart: &ChartFile, issues: &mut Vec<Issue>) {
             message: "a grid of one beat has no interval".to_owned(),
         });
     }
+    // A bar line is a beat: every downbeat must sit on one (within
+    // the grid's own precision).
+    let precision = crate::grid::BEAT_PRECISION_S;
+    let off_beat = grid.downbeats.iter().any(|d| {
+        let i = grid.beats.partition_point(|b| b < d);
+        let near = |j: usize| {
+            grid.beats
+                .get(j)
+                .is_some_and(|b| (b - d).abs() <= precision)
+        };
+        !(near(i) || (i > 0 && near(i - 1)))
+    });
+    if off_beat {
+        issues.push(Issue {
+            severity: Severity::Error,
+            location: "grid.downbeats".to_owned(),
+            message: "a grid downbeat does not sit on a beat".to_owned(),
+        });
+    }
 }
 
 #[cfg(test)]
@@ -676,6 +695,16 @@ mod tests {
             downbeats: vec![],
         });
         assert!(grid_errors(&chart) > 0, "one beat is no interval");
+        chart.grid = Some(BeatGrid {
+            beats: vec![0.0, 0.5, 1.0, 1.5],
+            downbeats: vec![0.0, 1.0],
+        });
+        assert_eq!(grid_errors(&chart), 0, "downbeats on beats are valid");
+        chart.grid = Some(BeatGrid {
+            beats: vec![0.0, 0.5, 1.0, 1.5],
+            downbeats: vec![0.0, 1.2],
+        });
+        assert!(grid_errors(&chart) > 0, "a downbeat must sit on a beat");
         chart.grid = None;
         assert_eq!(grid_errors(&chart), 0);
     }

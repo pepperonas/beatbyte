@@ -598,7 +598,18 @@ fn import_song(source: &Path, title: &str, artist: &str) -> Result<(), String> {
     }
 
     let audio = beatbyte_audio::decode_file(&audio_dest).map_err(|e| e.to_string())?;
-    let analysis = SpectralAnalyzer::default().analyze(&audio);
+    #[allow(unused_mut)] // mutated only under `ml`
+    let mut analysis = SpectralAnalyzer::default().analyze(&audio);
+    // The local beat/downbeat model, when this build carries the
+    // runtime and the user has installed the pair: bar lines from the
+    // music rather than counted in fours. Never a reason to fail an
+    // import — without it the chart is exactly what it was.
+    #[cfg(feature = "ml")]
+    match beatbyte_meter::refine(&mut analysis, &audio, beatbyte_meter::DEFAULT_POLICY) {
+        Ok(Some(applied)) => bevy::log::info!("meter: {}", applied.summary()),
+        Ok(None) => {}
+        Err(error) => bevy::log::warn!("meter: {error}; charting without downbeats"),
+    }
     let mut chart = generate_chart(
         &analysis,
         &GenerateMeta {
