@@ -315,23 +315,74 @@ milestone L6 and blocked on weights this project may ship.
 ## With a vocal stem
 
 The library's third round (`library-pass.md`) aligned every song on a
-vocal stem a local separator made, and the rules that round produced
-(the pushed-window check, the warp, the parked word, the sound's end)
-are in the pipeline the corpus measures. The corpus run for the stem
-condition — `lyrics-eval --vocals-dir` over the same 79 songs, on
-time, three seconds off, raw and six seconds off, against the mix on
-the same code — was started on 2026-09-06 and takes hours; its numbers
-go here when it finishes, and not before. Until then the stem's gain
-is measured on the library (27 songs from line level to word level),
-not on ground truth.
+vocal stem a local separator made (ADR-0014), and the rules that
+round produced — the pushed-window check, the warp, the parked word,
+the sound's end — are in the pipeline the corpus measures. Here is
+the stem condition on the same 79 songs, same code, same truth:
+`lyrics-eval --vocals-dir` with demucs' `htdemucs` vocals (on the
+game's timeline, lag 0 measured), against the mix. "On time" is the
+anchored pass with the corpus's line stamps wobbled by ±0.5 s as
+above; "3 s / 6 s off" moves every stamp by that much, the condition
+twelve songs in the real library are actually in; "raw" is the plain
+pass with no stamps at all.
+
+| Condition | AAE mean | AAE median | PCO@0.1 | PCO@0.3 | derailed | estimated | legible (≥ 1.0) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| mix, on time | 0.650 s | 0.444 s | 49.4 % | 65.8 % | 0 | 35 % | 62 / 79 |
+| mix, 6 s off | 2.787 s | 0.506 s | 42.8 % | 52.6 % | **24** | 40 % | 62 / 79 |
+| **stem, on time** | **0.174 s** | **0.111 s** | **77.8 %** | **90.6 %** | 0 | 14 % | **79 / 79** |
+| stem, 3 s off | 0.174 s | 0.111 s | 77.8 % | 90.6 % | 0 | 14 % | 79 / 79 |
+| stem, 6 s off | 0.180 s | 0.121 s | 77.9 % | 90.6 % | 0 | 14 % | 79 / 79 |
+| stem, raw (no stamps) | 0.195 s | **0.082 s** | **83.3 %** | **94.3 %** | 0 | 0 % | 79 / 79 |
+
+Per language on the stem, on time: English 0.226 s / 88.2 %, German
+0.118 s / 95.0 %, Spanish 0.151 s / 90.2 %, French 0.202 s / 88.8 %
+(AAE / PCO@0.3) — the German rock mix that read at 0.18 letters a
+second is the language the stem serves best.
+
+What the table says, in order of weight:
+
+1. **The plan's gates pass with a stem, and only with a stem.** AAE
+   0.174 s against the 0.30 s gate, PCO@0.3 90.6 % against 0.80,
+   PCO@0.1 77.8 % against 0.55 — all three, where the mix fails all
+   three (0.650 s, 65.8 %, 49.4 %). Separation was the plan's own
+   prediction for this; the measurement confirms it by a factor of
+   nearly four on the mean error.
+2. **The stem makes the stamps almost irrelevant.** Six seconds of
+   stamp error costs the stem 6 ms of mean error and no song; the
+   same error on the mix derails 24 songs. The warp and the
+   agreement rules were built on the library for exactly this case
+   and they hold on the corpus.
+3. **The model hears every song.** Legibility rises from a median of
+   3.1 to 4.7 letters a second; 68 of 79 songs read more, 17 cross
+   the floor upward and none downward; 74 of 79 have a smaller error.
+   The 17 songs the mix could not vouch for are the corpus's version
+   of the library's 27.
+4. **The plain pass on a stem is the best fine placement of all**
+   (median 0.082 s, PCO@0.3 94.3 %, nothing estimated) and a slightly
+   worse mean (0.195 s: a few songs a line or two out, with no stamp
+   to hold them). On a stem the stamps buy robustness, not accuracy —
+   which is the right thing for stamps of unknown quality to buy.
+
+The plan's own gate test agrees:
+`BEATBYTE_LYRICS_EVAL_REPORT=<stems-ontime.json> cargo test -p
+beatbyte-lyrics --test eval_gates` passes on the stem report and fails
+on the mix report with "AAE 0.650 s is not under 0.3".
+
+What it does not say: the separator is not in the tree (its weights'
+licence, ADR-0014), so this is the condition a user creates by hand
+with a local tool, not the one the game ships. The six runs shared
+one binary and one pipeline — the queue was restarted after the last
+code change and the lyrics crates did not change while it ran.
 
 ## What this measurement does not say
 
 - **The first table is the hard case**, and the section above is the
   ordinary one: the corpus's lyrics carry no line stamps, the game's
   almost always do.
-- **No separation.** Everything above is the aligner on the full mix.
-  Removing the instruments is the plan's own next milestone.
+- **No separation in the game.** The first tables are the aligner on
+  the full mix; the stem section is a condition a local tool creates,
+  and the game does not ship the tool.
 - **Nothing was tuned.** No threshold was touched, no window changed.
 
 ## Where this points
