@@ -514,10 +514,10 @@ fn settings_input(
     let nav = MenuNav::read(&map, &keys, pads.iter());
     let count = Row::ALL.len();
     if nav.up {
-        cursor.0 = (cursor.0 + count - 1) % count;
+        cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, -1);
     }
     if nav.down {
-        cursor.0 = (cursor.0 + 1) % count;
+        cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, 1);
     }
     if nav.up || nav.down {
         sounds.write(crate::sfx::UiSound::Navigate);
@@ -534,9 +534,9 @@ fn settings_input(
     // accident while browsing them (user report, 2026-09-01).
     for event in wheel.read() {
         if event.y > 0.0 {
-            cursor.0 = (cursor.0 + count - 1) % count;
+            cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, -1);
         } else if event.y < 0.0 {
-            cursor.0 = (cursor.0 + 1) % count;
+            cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, 1);
         }
         if event.y != 0.0 {
             sounds.write(crate::sfx::UiSound::Navigate);

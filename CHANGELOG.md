@@ -14,6 +14,20 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.22] - 2026-09-06
+
+### Changed
+
+- **Menu lists stop at their ends.** Every list in the game — main
+  menu, song browser, settings, controls, the about screen, the pause
+  menu — used to wrap from the last row to the first. A list is a
+  list, not a carousel: holding a direction now ends somewhere
+  instead of going round, so a long library no longer feels
+  bottomless. Arrow keys, gamepad and mouse wheel all go through one
+  `ui_kit::step_cursor`, so they stop the same way. Value steppers
+  keep their cycle — a stage theme has no first and last, it has a
+  ring.
+
 ## [0.14.21] - 2026-09-06
 
 ### Changed

@@ -440,6 +440,19 @@ artifact, smoke-test it (neutral CWD!), then
   screen's 0.25 s entry fade are dropped**: the first model drill
   arrowed into the void and confirmed a row it never meant to. Wait
   ~0.8 s after the state change, as the screenshot harness does.
+- **A sweep in one condition can invert in another.** Tuning the
+  aligner's anchor window on corpus stamps that were on time said
+  ±1 s beats ±4 s on every metric. Run with the stamps three seconds
+  off — the condition twelve songs in the real library are actually
+  in — and it reverses, losing a song outright. Before a measured
+  number changes a default, ask which condition the real data is in
+  and measure THAT one too; a single-condition sweep is a hypothesis,
+  not a result.
+- **Pin the decision, not only the branches.** A test that checked
+  the tight window and the wide window separately stayed green while
+  a mutation made the code always pick one of them: nothing tested
+  the CHOICE. Where behaviour hinges on a condition, lift the choice
+  into its own pure function and pin that — the branches will follow.
 - **A summary inside this repository is not a source.** Round six of
   the look plan built the gem from a trait table an earlier round had
   written ("dark ring, white centre") instead of from the material,

@@ -1067,10 +1067,10 @@ fn browser_input(
         return;
     }
     if nav.up {
-        cursor.0 = (cursor.0 + count - 1) % count;
+        cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, -1);
     }
     if nav.down {
-        cursor.0 = (cursor.0 + 1) % count;
+        cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, 1);
     }
     if nav.up || nav.down {
         sounds.write(crate::sfx::UiSound::Navigate);
@@ -1079,9 +1079,9 @@ fn browser_input(
     // clicking the already-selected row starts it.
     for event in pointer_in.wheel.read() {
         if event.y > 0.0 {
-            cursor.0 = (cursor.0 + count - 1) % count;
+            cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, -1);
         } else if event.y < 0.0 {
-            cursor.0 = (cursor.0 + 1) % count;
+            cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, 1);
         }
         if event.y != 0.0 {
             sounds.write(crate::sfx::UiSound::Navigate);

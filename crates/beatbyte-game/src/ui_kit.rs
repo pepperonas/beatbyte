@@ -330,6 +330,28 @@ pub fn whole_rows_height(row_h: f32, gap: f32, rows: usize, ceiling: f32) -> Opt
     Some(content + 2.0 * (PANEL_PAD + PANEL_BORDER))
 }
 
+/// Move a list cursor by `delta`, stopping at the ends.
+///
+/// A menu list is a list, not a carousel: pressing DOWN on the last
+/// row must not land on the first. Wrapping made long lists feel
+/// bottomless — you could hold a direction forever and never learn
+/// where the list ended. Every list cursor in the game goes through
+/// here, so they all stop the same way.
+///
+/// Value steppers are a different thing and keep their cycle: a
+/// stage theme has no first and last, it has a ring.
+///
+/// Pure — tested.
+#[must_use]
+pub fn step_cursor(cursor: usize, count: usize, delta: i32) -> usize {
+    if count == 0 {
+        return 0;
+    }
+    let last = count - 1;
+    let moved = cursor as i64 + i64::from(delta);
+    moved.clamp(0, last as i64) as usize
+}
+
 /// Keep a list's cursor row in view — the ONE implementation every
 /// scrolling screen uses.
 ///
@@ -671,6 +693,36 @@ pub fn footer(parent: &mut ChildSpawnerCommands, font: &UiFont, hint: &str) {
             ..default()
         },
     ));
+}
+
+#[cfg(test)]
+mod cursor_tests {
+    use super::step_cursor;
+
+    #[test]
+    fn a_list_has_ends_and_they_hold() {
+        // Down the middle: ordinary movement.
+        assert_eq!(step_cursor(0, 5, 1), 1);
+        assert_eq!(step_cursor(3, 5, -1), 2);
+        // The ends are ends: DOWN on the last row stays on the last
+        // row, UP on the first stays on the first. A menu list is a
+        // list, not a carousel — holding a direction has to end
+        // somewhere or the list feels bottomless.
+        assert_eq!(step_cursor(4, 5, 1), 4, "the last row is the last");
+        assert_eq!(step_cursor(0, 5, -1), 0, "the first row is the first");
+        // A single row, and none at all.
+        assert_eq!(step_cursor(0, 1, 1), 0);
+        assert_eq!(step_cursor(0, 1, -1), 0);
+        assert_eq!(
+            step_cursor(0, 0, 1),
+            0,
+            "an empty list has no row to move to"
+        );
+        // A cursor left past the end by a shrinking list still lands
+        // inside it.
+        assert_eq!(step_cursor(99, 5, 1), 4);
+        assert_eq!(step_cursor(99, 5, -1), 4);
+    }
 }
 
 #[cfg(test)]

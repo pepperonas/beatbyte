@@ -508,10 +508,10 @@ fn about_input(
     let nav = MenuNav::read(&map, &keys, pads.iter());
     let count = state.row_count();
     if nav.up {
-        state.cursor = (state.cursor + count - 1) % count;
+        state.cursor = crate::ui_kit::step_cursor(state.cursor, count, -1);
     }
     if nav.down {
-        state.cursor = (state.cursor + 1) % count;
+        state.cursor = crate::ui_kit::step_cursor(state.cursor, count, 1);
     }
     if nav.up || nav.down {
         sounds.write(crate::sfx::UiSound::Navigate);
@@ -525,9 +525,9 @@ fn about_input(
     // The wheel scrolls the rows, like the song list.
     for event in wheel.read() {
         if event.y > 0.0 {
-            state.cursor = (state.cursor + count - 1) % count;
+            state.cursor = crate::ui_kit::step_cursor(state.cursor, count, -1);
         } else if event.y < 0.0 {
-            state.cursor = (state.cursor + 1) % count;
+            state.cursor = crate::ui_kit::step_cursor(state.cursor, count, 1);
         }
         if event.y != 0.0 {
             sounds.write(crate::sfx::UiSound::Navigate);

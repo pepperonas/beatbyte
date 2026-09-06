@@ -1255,11 +1255,11 @@ fn pause_menu_input(
     let count = PAUSE_ROWS.len();
     let mut moved = false;
     if nav.up {
-        cursor.0 = (cursor.0 + count - 1) % count;
+        cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, -1);
         moved = true;
     }
     if nav.down {
-        cursor.0 = (cursor.0 + 1) % count;
+        cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, 1);
         moved = true;
     }
     let pointer = crate::ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
@@ -1271,10 +1271,10 @@ fn pause_menu_input(
     // while browsing the pause menu (user report, 2026-09-01).
     for event in wheel.read() {
         if event.y > 0.0 {
-            cursor.0 = (cursor.0 + count - 1) % count;
+            cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, -1);
             moved = true;
         } else if event.y < 0.0 {
-            cursor.0 = (cursor.0 + 1) % count;
+            cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, 1);
             moved = true;
         }
     }
