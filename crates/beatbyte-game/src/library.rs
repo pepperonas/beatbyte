@@ -83,6 +83,42 @@ impl SongEntry {
         Some(density_rating(notes, duration))
     }
 }
+/// What the LYRICS column says about one song.
+///
+/// Three states, because there are three: a song with no words owes
+/// nothing, a song with words the aligner has not placed sings by the
+/// line, and an aligned song sings word by word.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LyricsMark {
+    /// No lyrics beside the audio.
+    None,
+    /// Lyrics with the source's own line stamps only.
+    Line,
+    /// A word-level alignment sits beside the audio.
+    Word,
+}
+
+/// What the CHART column says about one song: the import's own first
+/// draft, or the generation the redesign has reached.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChartMark {
+    /// The chart the import wrote, never regenerated.
+    Draft,
+    /// A redesigned generation is active; `2` is the first of them.
+    Redesigned(u32),
+}
+
+impl ChartMark {
+    /// How many bars the browser draws — one for the draft, one more
+    /// per generation, and never more than fit the column.
+    #[must_use]
+    pub fn bars(self) -> u32 {
+        match self {
+            Self::Draft => 1,
+            Self::Redesigned(version) => version.clamp(2, 4),
+        }
+    }
+}
 
 /// How far a song has been taken: the two things that can be done to
 /// a track after it is imported, as facts read off the disk.
@@ -125,23 +161,25 @@ impl Polish {
         self.chart_version.is_some()
     }
 
-    /// The LYRICS column: what the song can sing, not what it owes.
-    /// Pure — tested.
+    /// The LYRICS column, as the mark the browser draws. Pure —
+    /// tested; the drawing reads this and decides nothing itself.
     #[must_use]
-    pub fn lyrics_label(self) -> &'static str {
+    pub fn lyrics_mark(self) -> LyricsMark {
         match (self.has_lyrics, self.aligned) {
-            (false, _) => "-",
-            (true, false) => "LINE",
-            (true, true) => "WORD",
+            (false, _) => LyricsMark::None,
+            (true, false) => LyricsMark::Line,
+            (true, true) => LyricsMark::Word,
         }
     }
 
-    /// The CHART column: which generation is active. Pure — tested.
+    /// The CHART column, as the mark the browser draws: how many
+    /// generations this song's chart has been through, and whether
+    /// any of them was a redesign. Pure — tested.
     #[must_use]
-    pub fn chart_label(self) -> String {
+    pub fn chart_mark(self) -> ChartMark {
         match self.chart_version {
-            None => "BASE".to_owned(),
-            Some(version) => format!("v{version}"),
+            None => ChartMark::Draft,
+            Some(version) => ChartMark::Redesigned(version.max(2)),
         }
     }
 
@@ -617,7 +655,7 @@ fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String>
 
 #[cfg(test)]
 mod polish_tests {
-    use super::Polish;
+    use super::{ChartMark, LyricsMark, Polish};
 
     #[test]
     fn a_song_is_finished_when_nothing_can_still_be_done_to_it() {
@@ -681,50 +719,87 @@ mod polish_tests {
     }
 
     #[test]
-    fn the_two_columns_say_what_is_there_not_what_is_owed() {
+    fn the_two_marks_say_what_is_there_not_what_is_owed() {
         let p = |version, aligned, lyrics| Polish {
             chart_version: version,
             aligned,
             has_lyrics: lyrics,
         };
         // Lyrics: none, line-timed, word-timed.
-        assert_eq!(p(None, false, false).lyrics_label(), "-");
-        assert_eq!(p(None, false, true).lyrics_label(), "LINE");
-        assert_eq!(p(None, true, true).lyrics_label(), "WORD");
+        assert_eq!(p(None, false, false).lyrics_mark(), LyricsMark::None);
+        assert_eq!(p(None, false, true).lyrics_mark(), LyricsMark::Line);
+        assert_eq!(p(None, true, true).lyrics_mark(), LyricsMark::Word);
         // Only the middle one is work: a song with no lyrics owes
         // nothing and must not glow.
         assert!(p(None, false, true).lyrics_pending());
         assert!(!p(None, true, true).lyrics_pending());
         assert!(!p(None, false, false).lyrics_pending());
         // Chart: the import's own draft, or which generation.
-        assert_eq!(p(None, true, true).chart_label(), "BASE");
-        assert_eq!(p(Some(3), true, true).chart_label(), "v3");
+        assert_eq!(p(None, true, true).chart_mark(), ChartMark::Draft);
+        assert_eq!(
+            p(Some(3), true, true).chart_mark(),
+            ChartMark::Redesigned(3)
+        );
         assert!(!p(None, true, true).chart_redesigned());
         assert!(p(Some(2), true, true).chart_redesigned());
     }
 
     #[test]
-    fn every_label_fits_its_column() {
-        // LYRICS is 52 px and CHART 46 px of a 10 px font.
-        for label in ["-", "LINE", "WORD"] {
-            assert!(label.chars().count() <= 5, "{label} does not fit LYRICS");
-        }
-        for version in [None, Some(1), Some(12)] {
-            let label = Polish {
+    fn the_marks_are_two_independent_facts() {
+        // The point of two marks rather than one verdict: a song can
+        // sing perfectly off a first-draft chart, and a redesigned
+        // chart can have no words at all. Neither may imply the
+        // other.
+        let sings = Polish {
+            chart_version: None,
+            aligned: true,
+            has_lyrics: true,
+        };
+        assert_eq!(sings.lyrics_mark(), LyricsMark::Word);
+        assert_eq!(sings.chart_mark(), ChartMark::Draft);
+        let played = Polish {
+            chart_version: Some(2),
+            aligned: false,
+            has_lyrics: false,
+        };
+        assert_eq!(played.lyrics_mark(), LyricsMark::None);
+        assert_eq!(played.chart_mark(), ChartMark::Redesigned(2));
+    }
+
+    #[test]
+    fn every_mark_fits_its_column() {
+        // A bar is 3 px wide with 2 px between, so four bars are
+        // 18 px in a 46 px column. The cap is what keeps it true for
+        // a song that has been redesigned a dozen times.
+        for version in [None, Some(1), Some(2), Some(4), Some(12)] {
+            let bars = Polish {
                 chart_version: version,
                 aligned: false,
                 has_lyrics: false,
             }
-            .chart_label();
-            assert!(label.chars().count() <= 4, "{label} does not fit CHART");
+            .chart_mark()
+            .bars();
+            assert!((1..=4).contains(&bars), "{version:?} draws {bars} bars");
         }
+        // A draft is one bar and a redesign is always more than one:
+        // the count alone must separate them, not only the colour.
+        let draft = ChartMark::Draft.bars();
+        for version in 2..=12 {
+            assert!(
+                ChartMark::Redesigned(version).bars() > draft,
+                "v{version} must not look like a first draft"
+            );
+        }
+        // A version below the first redesign cannot exist on disk,
+        // but if it ever did it must not read as a draft.
+        assert_eq!(ChartMark::Redesigned(1).bars(), 2);
     }
 }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use super::{find_chart_files, load_entry};
+    use super::{ChartMark, find_chart_files, load_entry};
 
     #[test]
     fn a_song_is_marked_when_a_lyrics_file_sits_beside_it() {
@@ -768,7 +843,7 @@ mod tests {
 
         let fresh = load_entry(&base).expect("loads").expect("an entry");
         assert!(!fresh.polish.chart_redesigned(), "the import's own chart");
-        assert_eq!(fresh.polish.chart_label(), "BASE");
+        assert_eq!(fresh.polish.chart_mark(), ChartMark::Draft);
         assert!(!fresh.polish.aligned);
         assert_eq!(
             fresh.polish.label(),
@@ -782,8 +857,8 @@ mod tests {
         let redesigned = load_entry(&version).expect("loads").expect("an entry");
         assert!(redesigned.polish.chart_redesigned());
         assert_eq!(
-            redesigned.polish.chart_label(),
-            "v2",
+            redesigned.polish.chart_mark(),
+            ChartMark::Redesigned(2),
             "which generation is playing"
         );
         assert!(redesigned.polish.is_done(), "no lyrics, chart done");

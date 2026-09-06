@@ -14,6 +14,60 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.25] - 2026-09-06
+
+### Changed
+
+- **The song browser's two states are marks now, not words.** `LYRICS`
+  and `CHART` said `WORD` and `v3`; at a glance down seventy rows that
+  is reading, not seeing. Each column draws a shape instead:
+
+  | Column | Mark | Reads |
+  | --- | --- | --- |
+  | `LYRICS` | nothing | no lyrics — nothing is owed |
+  | | dim microphone | lyrics with line stamps only |
+  | | lit microphone with two waves | every word placed by the aligner |
+  | `CHART` | one dim bar | the import's own first draft |
+  | | two to four lit rising bars | a redesigned generation, one per generation |
+
+  Lit means the pass has been through. The waves and the bar count
+  carry the same message as the colour on purpose — a mark that is
+  only a colour says nothing to a player who cannot tell those two
+  apart. They stay two independent facts: a song can sing word by
+  word off a first-draft chart.
+
+  The leading microphone that used to sit before every title is gone:
+  it said "this song has lyrics", which is exactly the first state of
+  the LYRICS mark, and one fact does not need two marks.
+
+- **`CHART` now comes before `LYRICS`** — the chart is what you play;
+  the words ride on it.
+
+- **The library re-aligned with the third pass.** All 52 songs with
+  lyrics went through again: the verdict tally did not move
+  (20 same master / 15 shifted / 9 another edit / 8 failed), and the
+  words the gate cannot vouch for fell from **32.9 % to 24.2 %**. The
+  third pass sharpens what the aligner already understood; it does not
+  rescue the dense mixes, and the docs now say so.
+
+### Fixed
+
+- **The browser's column captions sat off the values they named.**
+  The header lives outside the scrolling panel, and it had been typed
+  with its own spacing: a gap of 8 against the rows' 16, and even
+  padding against a row whose accent stripe is a LEFT border only. The
+  gap error grew one column at a time and the stripe added a constant
+  three pixels, so the drift was worst at the right edge. Both now
+  come from the row's own constants (`ui_kit::CELL_GAP` and
+  `column_header_padding()`), asymmetric on purpose. Measured on
+  screen: every one of the nine columns within a single device pixel
+  of its caption, against 7 to 9 before.
+
+- A list that wrapped is now pinned at the source, not only in its
+  helper: a test reads every screen and fails on any cursor that moves
+  by wrapping instead of through `step_cursor`. The one ring left is
+  the stage theme, where a value cycle is right.
+
 ## [0.14.24] - 2026-09-06
 
 ### Changed

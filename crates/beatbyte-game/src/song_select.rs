@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use crate::controls::MenuNav;
 
 use crate::boot::{BuiltinSongs, LoadedSong, SongAudio};
-use crate::library::{SongEntry, SongLibrary, SongSource};
+use crate::library::{ChartMark, LyricsMark, SongEntry, SongLibrary, SongSource};
 use crate::palette;
 use crate::scores::ScoreBoard;
 use crate::states::AppState;
@@ -727,8 +727,12 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
             parent
                 .spawn(Node {
                     width: px(ui_kit::PANEL_WIDE),
-                    padding: UiRect::horizontal(px(ui_kit::PANEL_PAD + 14.0)),
-                    column_gap: px(8.0),
+                    // The captions live outside the scrolling panel,
+                    // so they must be inset and spaced EXACTLY like
+                    // the rows inside it — from the same constants,
+                    // never a second set of numbers that agree today.
+                    padding: ui_kit::column_header_padding(),
+                    column_gap: px(ui_kit::CELL_GAP),
                     ..default()
                 })
                 .with_children(|head| {
@@ -771,8 +775,8 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
                     caption(head, "LEN", SortMode::Length, Some(COL_LEN));
                     caption(head, "NOTES", SortMode::Notes, Some(COL_NOTES));
                     caption(head, "DIFF", SortMode::Diff, Some(COL_RATING));
-                    caption(head, "LYRICS", SortMode::Lyrics, Some(COL_LYRICS));
                     caption(head, "CHART", SortMode::Chart, Some(COL_CHART));
+                    caption(head, "LYRICS", SortMode::Lyrics, Some(COL_LYRICS));
                     caption(head, "BEST", SortMode::Best, Some(COL_BEST));
                 });
             parent.spawn((SongList, ui_kit::scroll_panel(ui_kit::PANEL_WIDE)));
@@ -1332,7 +1336,6 @@ fn spawn_rows_into(
             panel
                 .spawn((SongRow(position), Button, ui_kit::row()))
                 .with_children(|row| {
-                    spawn_mic(row, entry.has_lyrics);
                     row.spawn((
                         SongTitle(position),
                         Text::new(font.safe(&clip_chars(&entry.title, 32))),
@@ -1383,43 +1386,12 @@ fn spawn_rows_into(
                     // column — BEFORE the best score, because the
                     // captions are spawned in that order and a header
                     // over the wrong cells is worse than no header.
-                    // Amber marks work still to do, dim marks done:
-                    // the eye should land on what is left.
+                    // Lit means the AI pass has been through; dim
+                    // means it has not. Two marks, two facts: a song
+                    // can have perfect lyrics and a first-draft chart.
                     let polish = entry.polish;
-                    let mark = |row: &mut ChildSpawnerCommands,
-                                text: String,
-                                pending: bool,
-                                width: f32| {
-                        row.spawn((
-                            SongArtist(position),
-                            Text::new(text),
-                            font.text(ui_kit::SMALL),
-                            TextColor(if pending {
-                                palette::BRAND
-                            } else {
-                                palette::dimmed(palette::TEXT_DIM, 0.45)
-                            }),
-                            TextLayout::default().with_no_wrap(),
-                            Node {
-                                width: px(width),
-                                flex_shrink: 0.0,
-                                overflow: Overflow::clip(),
-                                ..default()
-                            },
-                        ));
-                    };
-                    mark(
-                        row,
-                        polish.lyrics_label().to_owned(),
-                        polish.lyrics_pending(),
-                        COL_LYRICS,
-                    );
-                    mark(
-                        row,
-                        polish.chart_label(),
-                        !polish.chart_redesigned(),
-                        COL_CHART,
-                    );
+                    spawn_chart_mark(row, polish.chart_mark());
+                    spawn_lyrics_mark(row, polish.lyrics_mark());
                     cell(row, font, position, best, COL_BEST);
                 });
         }
@@ -1475,7 +1447,8 @@ pub fn prepare_song(entry: &SongEntry, builtins: &BuiltinSongs) -> Result<Loaded
 
 /// Width the microphone reserves, so titles line up whether a song
 /// has lyrics or not.
-const MIC_W: f32 = 14.0;
+/// Every mark in a row is this tall, so they sit on one baseline.
+const MARK_H: f32 = 14.0;
 
 /// Draw the lyrics marker at the head of a row: a microphone, built
 /// from nodes.
@@ -1488,52 +1461,127 @@ const MIC_W: f32 = 14.0;
 /// stem and a base.
 ///
 /// A song WITHOUT lyrics keeps the same space empty, so the titles
-/// stay on one left edge — a marker that shifts the whole column is
-/// harder to scan than no marker.
-fn spawn_mic(row: &mut ChildSpawnerCommands, has_lyrics: bool) {
+/// The microphone, drawn from boxes: the 8-bit face has no symbol
+/// glyphs, so every mark in this list is node art.
+fn spawn_mic_shape(parent: &mut ChildSpawnerCommands, tint: Color) {
+    parent
+        .spawn(Node {
+            width: px(7.0),
+            height: px(MARK_H),
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            row_gap: px(1.0),
+            ..default()
+        })
+        .with_children(|mic| {
+            // Head: a capsule.
+            mic.spawn((
+                Node {
+                    width: px(5.0),
+                    height: px(7.0),
+                    border_radius: BorderRadius::all(px(2.5)),
+                    ..default()
+                },
+                BackgroundColor(tint),
+            ));
+            // Stem.
+            mic.spawn((
+                Node {
+                    width: px(1.0),
+                    height: px(2.0),
+                    ..default()
+                },
+                BackgroundColor(tint),
+            ));
+            // Base.
+            mic.spawn((
+                Node {
+                    width: px(7.0),
+                    height: px(1.0),
+                    ..default()
+                },
+                BackgroundColor(tint),
+            ));
+        });
+}
+
+/// The LYRICS mark: an empty slot when there are no words, a dim
+/// microphone when they only have line stamps, and a lit microphone
+/// with two waves once every word has been placed.
+///
+/// The waves matter: colour alone would carry the whole message, and
+/// a mark that is only a colour is unreadable to a player who cannot
+/// tell these two apart.
+fn spawn_lyrics_mark(row: &mut ChildSpawnerCommands, mark: LyricsMark) {
     let mut slot = row.spawn(Node {
-        width: px(MIC_W),
-        height: px(14.0),
+        width: px(COL_LYRICS),
+        height: px(MARK_H),
         flex_shrink: 0.0,
-        flex_direction: FlexDirection::Column,
         align_items: AlignItems::Center,
-        justify_content: JustifyContent::Center,
-        row_gap: px(1.0),
+        column_gap: px(2.0),
         ..default()
     });
-    if !has_lyrics {
+    if mark == LyricsMark::None {
         return;
     }
-    let tint = palette::dimmed(palette::BRAND, 0.85);
-    slot.with_children(|mic| {
-        // Head: a capsule.
-        mic.spawn((
-            Node {
-                width: px(5.0),
-                height: px(7.0),
-                border_radius: BorderRadius::all(px(2.5)),
-                ..default()
-            },
-            BackgroundColor(tint),
-        ));
-        // Stem.
-        mic.spawn((
-            Node {
-                width: px(1.0),
-                height: px(2.0),
-                ..default()
-            },
-            BackgroundColor(tint),
-        ));
-        // Base.
-        mic.spawn((
-            Node {
-                width: px(7.0),
-                height: px(1.0),
-                ..default()
-            },
-            BackgroundColor(tint),
-        ));
+    let lit = mark == LyricsMark::Word;
+    let tint = if lit {
+        palette::BRAND
+    } else {
+        palette::dimmed(palette::TEXT_DIM, 0.5)
+    };
+    slot.with_children(|mark_row| {
+        spawn_mic_shape(mark_row, tint);
+        if !lit {
+            return;
+        }
+        // Two waves leaving the microphone: the word-by-word state.
+        for height in [5.0, 9.0] {
+            mark_row.spawn((
+                Node {
+                    width: px(2.0),
+                    height: px(height),
+                    border_radius: BorderRadius::all(px(1.0)),
+                    ..default()
+                },
+                BackgroundColor(tint),
+            ));
+        }
+    });
+}
+
+/// The CHART mark: a rising graph. One dim bar for the import's own
+/// first draft, one lit bar per generation once a redesign is active
+/// — so the mark says both "has the AI been here" and "how often".
+fn spawn_chart_mark(row: &mut ChildSpawnerCommands, mark: ChartMark) {
+    let lit = mark != ChartMark::Draft;
+    let tint = if lit {
+        palette::BRAND
+    } else {
+        palette::dimmed(palette::TEXT_DIM, 0.5)
+    };
+    row.spawn(Node {
+        width: px(COL_CHART),
+        height: px(MARK_H),
+        flex_shrink: 0.0,
+        align_items: AlignItems::FlexEnd,
+        column_gap: px(2.0),
+        padding: UiRect::bottom(px(3.0)),
+        ..default()
+    })
+    .with_children(|bars| {
+        for step in 0..mark.bars() {
+            bars.spawn((
+                Node {
+                    width: px(3.0),
+                    #[allow(clippy::cast_precision_loss)] // 1..=4 bars
+                    height: px(3.0 + 3.0 * step as f32),
+                    ..default()
+                },
+                BackgroundColor(tint),
+            ));
+        }
     });
 }
 
@@ -1834,6 +1882,60 @@ fn follow_selection(
         return;
     };
     ui_kit::follow_list(cursor.0, view.order.len(), row, &mut scroll, &mut node);
+}
+
+#[cfg(test)]
+mod column_tests {
+    /// The captions and the cells are two lists written far apart in
+    /// this file, and a header over the wrong values is worse than no
+    /// header at all — it states a fact about the wrong song. So the
+    /// two orders are pinned against each other.
+    ///
+    /// It has been wrong twice: the OPT cell was once spawned after
+    /// the score while its caption came before it, and the two marks
+    /// were swapped in the header alone.
+    #[test]
+    fn the_captions_and_the_cells_are_spawned_in_one_order() {
+        let source = include_str!("song_select.rs");
+        let at = |needle: &str| {
+            source
+                .find(needle)
+                .unwrap_or_else(|| panic!("the browser no longer contains `{needle}`"))
+        };
+        // The header, in the order the captions are spawned.
+        let captions = [
+            "\"TITLE\"",
+            "\"ARTIST\"",
+            "\"GENRE\"",
+            "\"LEN\"",
+            "\"NOTES\"",
+            "\"DIFF\"",
+            "\"CHART\"",
+            "\"LYRICS\"",
+            "\"BEST\"",
+        ];
+        let heads: Vec<usize> = captions
+            .iter()
+            .map(|c| at(&format!("caption(head, {c}")))
+            .collect();
+        assert!(
+            heads.windows(2).all(|w| w[0] < w[1]),
+            "the captions are not spawned in the documented order: {heads:?}"
+        );
+        // The row, in the order the cells are spawned. The chart mark
+        // comes before the lyrics mark, and both before the score.
+        let chart = at("spawn_chart_mark(row,");
+        let lyrics = at("spawn_lyrics_mark(row,");
+        let best = at("cell(row, font, position, best, COL_BEST)");
+        assert!(chart < lyrics, "the row must draw CHART before LYRICS");
+        assert!(lyrics < best, "both marks come before the score");
+        // And the columns each mark is measured in are the ones its
+        // caption reserves.
+        assert!(source.contains("caption(head, \"CHART\", SortMode::Chart, Some(COL_CHART))"));
+        assert!(source.contains("caption(head, \"LYRICS\", SortMode::Lyrics, Some(COL_LYRICS))"));
+        assert!(source.contains("width: px(COL_CHART)"));
+        assert!(source.contains("width: px(COL_LYRICS)"));
+    }
 }
 
 #[cfg(test)]

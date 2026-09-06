@@ -56,6 +56,33 @@ const ROW_PAD_X: f32 = 14.0;
 const ROW_PAD_Y: f32 = 7.0;
 /// Width of the accent bar on a row's left edge.
 const ACCENT_WIDTH: f32 = 3.0;
+
+/// The gap between the CELLS inside one row (the gap BETWEEN rows is
+/// [`ROW_GAP`]).
+///
+/// Public because a column HEADER over a list must use the same gap
+/// and the same inset, or the captions drift away from the values
+/// they name — one column at a time, so the drift is worst at the
+/// right edge where nobody is looking for a layout bug. (Seen: the
+/// browser's header was typed with its own gap of 8 and its own
+/// padding, and the LEN caption ended up two columns off.)
+pub const CELL_GAP: f32 = 16.0;
+
+/// The padding a column header needs to sit over the rows it names,
+/// when the header lives OUTSIDE the scrolling panel — as a list's
+/// captions do, so they do not scroll away.
+///
+/// It is **asymmetric**, and that is the whole point: a row carries
+/// the panel's border and padding, then its own padding, and on its
+/// left an accent stripe that is a BORDER. The stripe pushes the
+/// left inset out by three pixels and leaves the right one alone, so
+/// a header padded evenly puts every caption after the flexible
+/// title three pixels off — measured, not guessed.
+#[must_use]
+pub fn column_header_padding() -> UiRect {
+    let shared = PANEL_BORDER + PANEL_PAD + ROW_PAD_X;
+    UiRect::left(px(shared + ACCENT_WIDTH)).with_right(px(shared))
+}
 /// Padding inside the panel frame.
 pub const PANEL_PAD: f32 = 16.0;
 
@@ -543,7 +570,7 @@ pub fn row() -> impl Bundle {
             width: percent(100),
             justify_content: JustifyContent::SpaceBetween,
             align_items: AlignItems::Center,
-            column_gap: px(16),
+            column_gap: px(CELL_GAP),
             padding: UiRect::axes(px(ROW_PAD_X), px(ROW_PAD_Y)),
             border: UiRect::left(px(ACCENT_WIDTH)),
             border_radius: BorderRadius::all(px(3)),
@@ -696,8 +723,105 @@ pub fn footer(parent: &mut ChildSpawnerCommands, font: &UiFont, hint: &str) {
 }
 
 #[cfg(test)]
+mod layout_tests {
+    use super::{
+        ACCENT_WIDTH, CELL_GAP, PANEL_BORDER, PANEL_PAD, ROW_PAD_X, column_header_padding,
+    };
+    use bevy::prelude::*;
+
+    fn left_right(rect: UiRect) -> (f32, f32) {
+        let val = |v: Val| match v {
+            Val::Px(px) => px,
+            other => panic!("the header padding must be pixels, got {other:?}"),
+        };
+        (val(rect.left), val(rect.right))
+    }
+
+    #[test]
+    fn a_column_header_is_inset_exactly_like_the_rows_it_names() {
+        let (left, right) = left_right(column_header_padding());
+        // A row sits inside the panel (border + padding), then adds
+        // its own padding. Both edges carry that much.
+        assert_eq!(right, PANEL_BORDER + PANEL_PAD + ROW_PAD_X);
+        // The accent stripe is a LEFT border on the row, so it moves
+        // the left edge only. Padding the header evenly is what put
+        // every caption after the flexible title three pixels off the
+        // values it named — measured on screen at 1 device pixel
+        // after this, at 7 to 9 before.
+        assert_eq!(left - right, ACCENT_WIDTH, "the stripe is left-only");
+    }
+
+    #[test]
+    fn the_header_and_the_rows_share_one_gap() {
+        // Not a tautology: it fails the moment someone types a second
+        // number for either side. The browser's header carried its
+        // own gap of 8 against the row's 16, and the drift grew one
+        // column at a time — worst at the right edge, where nobody
+        // looks for a layout bug.
+        let row_gap = CELL_GAP;
+        assert!(row_gap > 0.0);
+        let source = include_str!("song_select.rs");
+        assert!(
+            source.contains("column_gap: px(ui_kit::CELL_GAP)"),
+            "the browser header must take the row's gap from the kit"
+        );
+        assert!(
+            source.contains("padding: ui_kit::column_header_padding()"),
+            "the browser header must take its inset from the kit"
+        );
+    }
+}
+
+#[cfg(test)]
 mod cursor_tests {
     use super::step_cursor;
+
+    /// Every list cursor in the game goes through `step_cursor`, and
+    /// this is what says so. A pure test of the helper cannot see a
+    /// screen that quietly kept its own modulo — and a screen that
+    /// does is exactly the bug the helper exists to prevent.
+    ///
+    /// The ONE modulo left is a value stepper (the stage theme), and
+    /// it is allowed to cycle: a ring has no first and last.
+    #[test]
+    fn no_screen_wraps_its_own_list() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut offenders = Vec::new();
+        let mut stack = vec![root];
+        while let Some(dir) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().is_none_or(|e| e != "rs") {
+                    continue;
+                }
+                let Ok(text) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+                for (number, line) in text.lines().enumerate() {
+                    let code = line.split("//").next().unwrap_or("");
+                    if code.contains("% count") && !code.contains("direction") {
+                        offenders.push(format!(
+                            "{}:{}: {}",
+                            path.file_name().unwrap_or_default().to_string_lossy(),
+                            number + 1,
+                            code.trim()
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "these move a cursor by wrapping instead of `step_cursor`: {offenders:#?}"
+        );
+    }
 
     #[test]
     fn a_list_has_ends_and_they_hold() {

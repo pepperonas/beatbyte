@@ -60,9 +60,11 @@ The gate's verdict for each song, as stored in its `words.json`:
 | different edit | 9 | The source's stamps belong to another recording. The alignment stands; the stamps are not used as a fallback. |
 | failed | 8 | No consensus between alignment and stamps. Every line falls back to the source's own stamps — line-level karaoke rather than a confident wrong fill. |
 
-Words the gate cannot vouch for, averaged over the songs that did not
-fail: **32.9 %** — close to the 30.2 % the corpus predicts for the
-same settings.
+Words the gate cannot vouch for, averaged over the 44 songs that did
+not fail: **24.2 %**, down from 32.9 % before the third alignment pass
+— the corpus predicted the same direction (25.8 % against 30.2 %).
+The verdict tally did not move: the third pass sharpens the songs the
+aligner already understood rather than rescuing the ones it did not.
 
 ### A second pass over the library
 
@@ -90,18 +92,29 @@ precise enough to be trusted word by word, and the gate says so.
 ## The two columns
 
 The browser carries the two states as separate columns, because they
-are separate jobs with separate fixes:
+are separate jobs with separate fixes — and each draws a **mark**,
+not a word, so a glance down the list answers "what has the AI been
+through" without reading:
 
-| Column | Values | Reads |
+| Column | Mark | Reads |
 | --- | --- | --- |
-| `LYRICS` | `-` / `LINE` / `WORD` | no lyrics · lyrics with line timing · word- and character-timed |
-| `CHART` | `BASE` / `v2`, `v3`… | the import's own first draft · which redesigned generation is active |
+| `LYRICS` | nothing | no lyrics beside the audio — nothing is owed |
+| | dim microphone | lyrics with the source's line stamps only |
+| | lit microphone with two waves | every word placed by the aligner |
+| `CHART` | one dim bar | the import's own first draft |
+| | two to four lit rising bars | a redesigned generation, one bar per generation |
 
-Amber marks work still to do, dim marks done. A song with **no
-lyrics owes nothing** — its dash stays quiet rather than glowing
-forever for something that cannot exist. Both columns sort: by
-`LYRICS` the untimed songs float to the top, by `CHART` the first
-drafts do.
+**Lit means the pass has been through; dim means it has not.** The
+waves and the bar count carry the same message as the colour, on
+purpose: a mark that is only a colour says nothing to a player who
+cannot tell those two apart. The marks are node art — the 8-bit face
+has no symbol glyphs, so the microphone is drawn from boxes the way
+every other shape in this list is.
+
+The two are **independent**: a song can sing word by word off a
+first-draft chart, and a redesigned chart can have no words at all.
+Both columns sort: by `LYRICS` the untimed songs float to the top, by
+`CHART` the first drafts do.
 
 ## There is no database, and there should not be
 
@@ -177,13 +190,16 @@ aligned, and the browser's title+artist dedupe hides the duplicate.
   measured lever for them is vocal separation (plan milestone L6),
   which is blocked on model-weight licences, not on the runtime —
   see [`evaluation.md`](evaluation.md).
-- **Fourteen songs' lyrics belong to another edit.** Their alignment
+- **Nine songs' lyrics belong to another edit.** Their alignment
   stands on its own, which is the honest outcome, but a remix that
   repeats a verse the original's sheet contains once will leave that
   repeat unsung: no aligner can place a line twice, and the fix is a
   text that matches the edit.
 - **The anchor window has been tuned** — and the measurement said the
   opposite of the obvious, so the width now follows whether the
-  source's offset is known. It did not rescue the eight failures.
-  What might, per the same document, is a third pass that reads the
-  offset off the wide-anchored result instead of the unanchored one.
+  source's offset is known. It did not rescue the eight failures, and
+  neither did the third pass that reads the offset off the
+  wide-anchored result: the whole library was re-aligned with it and
+  the tally stayed 20 / 15 / 9 / 8. What it bought was precision on
+  the songs that already worked (uncertain words 32.9 % → 24.2 %),
+  which is worth having but is not the missing lever.
