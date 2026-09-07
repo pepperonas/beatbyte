@@ -1,7 +1,7 @@
 //! Two monitors on the PA stacks: the left one shows the tempo in
-//! BPM, the right one the level in dBFS — both **measured at the
-//! laptop**, from its audio input, by [`beatbyte_audio::listen`].
-//! Nothing here reads the chart.
+//! BPM, the right one the level — both **measured at the laptop**,
+//! from its audio input, by [`beatbyte_audio::listen`]. Nothing here
+//! reads the chart.
 //!
 //! The one rule: **no measurement, no monitor.** A machine without
 //! an input device, a device that will not open, a permission that
@@ -11,13 +11,16 @@
 //! not exist. They are spawned the frame the listener first reports
 //! a measurement and despawned the frame it stops.
 //!
-//! Drawn in the house's own way — no text in 3D exists, and none is
-//! needed: a dark screen plate on each amp head's face, three
-//! seven-segment cells of thin emissive bars, driven by visibility
-//! alone. A cell's bars change only when its digit changes, so a
-//! steady readout costs nothing per frame. The tempo cell is blank
-//! while no tempo is heard (a quiet room has no BPM); the level
-//! always has a value, so it always shows one.
+//! Drawn the way the reference rig draws its readouts — the R4's LED
+//! matrix and the dB-Analyse page: a dot-matrix panel standing on
+//! each amp head, three 5×7 digits of emissive dots, big enough to
+//! read from the camera (the first cut, seven-segment cells on the
+//! head's face, was reported too small). The level is shown the way
+//! the dB-Analyse shows it, **dBFS + 100** — a positive, phone-
+//! comparable figure, the reference's convention since its
+//! recalibration — never as the negative dBFS the meter measures.
+//! Dots change by visibility alone, a digit only when it changes.
+//! The tempo panel is blank while no tempo is heard.
 
 use bevy::camera::visibility::RenderLayers;
 use bevy::light::NotShadowCaster;
@@ -41,7 +44,7 @@ pub struct Ears(pub Option<Listener>);
 pub enum Readout {
     /// Tempo, on the left stack.
     Bpm,
-    /// Level in dBFS, on the right stack.
+    /// Level, on the right stack.
     Db,
 }
 
@@ -63,66 +66,78 @@ pub enum Cell {
     Blank,
     /// A digit 0–9.
     Digit(u8),
-    /// The minus sign (the middle bar).
-    Minus,
 }
 
 /// Cells per monitor.
 pub const CELLS: usize = 3;
-/// Bars per cell (the classic seven: a top, b upper right, c lower
-/// right, d bottom, e lower left, f upper left, g middle).
-pub const BARS: usize = 7;
+/// Dot columns per cell.
+pub const COLS: usize = 5;
+/// Dot rows per cell.
+pub const ROWS: usize = 7;
+/// Blank columns between cells.
+pub const CELL_GAP_COLS: usize = 2;
+/// Dot columns across the panel.
+pub const PANEL_COLS: usize = CELLS * COLS + (CELLS - 1) * CELL_GAP_COLS;
 
-/// The screen plate's size: wide enough for three cells, no taller
-/// than the amp head's free band above the knobs.
-pub const SCREEN: Vec3 = Vec3::new(0.60, 0.17, 0.012);
-/// Where the screen sits on the head's face, above its centre.
-pub const SCREEN_RISE: f32 = 0.115;
-/// How far the screen stands off the head's face.
-pub const SCREEN_OFF: f32 = 0.020;
-/// A cell's size.
-pub const CELL: Vec2 = Vec2::new(0.10, 0.125);
-/// The gap between cells.
-pub const CELL_GAP: f32 = 0.03;
-/// A bar's thickness.
-pub const BAR: f32 = 0.014;
-/// How far the bars stand off the screen.
-pub const BAR_OFF: f32 = 0.008;
+/// What the level monitor adds to the measured dBFS before showing
+/// it: the dB-Analyse's convention (its display is dBFS + 100), so
+/// the two readouts agree. A display offset, not a calibration —
+/// the meter still measures dBFS.
+pub const DB_SHOWN_OFFSET: f32 = 100.0;
 
-/// The seven-segment mask of a digit, bit k = bar k lit. Pure —
-/// tested.
+/// The dot pitch, world units.
+pub const DOT_PITCH: f32 = 0.058;
+/// A dot's diameter.
+pub const DOT: f32 = 0.042;
+/// The panel's margin around the dots.
+pub const PANEL_MARGIN: f32 = 0.05;
+/// The panel's depth.
+pub const PANEL_DEPTH: f32 = 0.06;
+/// The gap between the head's top and the panel's bottom (the
+/// handle sits there).
+pub const PANEL_LIFT: f32 = 0.045;
+/// How far the dots stand off the panel's face.
+pub const DOT_OFF: f32 = 0.004;
+
+/// The panel's size: the dot grid plus its margin.
 #[must_use]
-pub fn digit_mask(digit: u8) -> u8 {
-    const A: u8 = 1;
-    const B: u8 = 2;
-    const C: u8 = 4;
-    const D: u8 = 8;
-    const E: u8 = 16;
-    const F: u8 = 32;
-    const G: u8 = 64;
-    match digit {
-        0 => A | B | C | D | E | F,
-        1 => B | C,
-        2 => A | B | D | E | G,
-        3 => A | B | C | D | G,
-        4 => B | C | F | G,
-        5 => A | C | D | F | G,
-        6 => A | C | D | E | F | G,
-        7 => A | B | C,
-        8 => A | B | C | D | E | F | G,
-        9 => A | B | C | D | F | G,
-        _ => 0,
+pub fn panel_size() -> Vec3 {
+    Vec3::new(
+        PANEL_COLS as f32 * DOT_PITCH + 2.0 * PANEL_MARGIN,
+        ROWS as f32 * DOT_PITCH + 2.0 * PANEL_MARGIN,
+        PANEL_DEPTH,
+    )
+}
+
+/// The 5×7 dot font, one row per byte, bit 4 the leftmost column.
+/// Pure — tested.
+#[must_use]
+pub fn glyph_rows(cell: Cell) -> [u8; ROWS] {
+    match cell {
+        Cell::Blank => [0; ROWS],
+        Cell::Digit(d) => match d {
+            0 => [0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E],
+            1 => [0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E],
+            2 => [0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F],
+            3 => [0x1F, 0x02, 0x04, 0x02, 0x01, 0x11, 0x0E],
+            4 => [0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02],
+            5 => [0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E],
+            6 => [0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E],
+            7 => [0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08],
+            8 => [0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E],
+            9 => [0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C],
+            _ => [0; ROWS],
+        },
     }
 }
 
-/// The mask of a cell. Pure — tested.
+/// Whether the dot at `(col, row)` of a cell is lit. Pure — tested.
 #[must_use]
-pub fn cell_mask(cell: Cell) -> u8 {
-    match cell {
-        Cell::Blank => 0,
-        Cell::Digit(d) => digit_mask(d),
-        Cell::Minus => 64,
+pub fn dot_lit(cell: Cell, col: usize, row: usize) -> bool {
+    if col >= COLS || row >= ROWS {
+        return false;
     }
+    glyph_rows(cell)[row] & (1 << (COLS - 1 - col)) != 0
 }
 
 /// The cells for a tempo: the rounded BPM right-aligned, blank
@@ -135,25 +150,16 @@ pub fn bpm_cells(bpm: Option<f32>) -> [Cell; CELLS] {
     }
 }
 
-/// The cells for a level in dBFS: the rounded value with its sign,
-/// −99 ..= 0. Pure — tested.
+/// The cells for a measured level in dBFS: shown as dBFS + 100, the
+/// dB-Analyse's figure, right-aligned, 0 ..= 100. Pure — tested.
 #[must_use]
 pub fn db_cells(db: f32) -> [Cell; CELLS] {
-    let value = db.round().clamp(-99.0, 0.0) as i32;
-    if value == 0 {
-        return [Cell::Blank, Cell::Blank, Cell::Digit(0)];
-    }
-    let magnitude = value.unsigned_abs();
-    let tens = (magnitude / 10) as u8;
-    let ones = (magnitude % 10) as u8;
-    if tens == 0 {
-        [Cell::Blank, Cell::Minus, Cell::Digit(ones)]
-    } else {
-        [Cell::Minus, Cell::Digit(tens), Cell::Digit(ones)]
-    }
+    let shown = (db + DB_SHOWN_OFFSET).round().clamp(0.0, 100.0) as u32;
+    number_cells(shown)
 }
 
-/// A positive number right-aligned in the cells, blanks in front.
+/// A number right-aligned in the cells, blanks in front (a zero is
+/// still a zero).
 fn number_cells(value: u32) -> [Cell; CELLS] {
     let mut cells = [Cell::Blank; CELLS];
     let mut rest = value.min(999);
@@ -167,49 +173,34 @@ fn number_cells(value: u32) -> [Cell; CELLS] {
     cells
 }
 
-/// A bar's pose inside a cell: `(centre offset from the cell's
-/// centre, size)`. Horizontal bars run the cell's width less the
-/// corners; vertical bars run half the height. Pure — tested.
+/// A dot's offset from the panel's centre, in the panel's plane.
+/// Pure — tested.
 #[must_use]
-pub fn bar_pose(bar: usize) -> (Vec2, Vec2) {
-    let half_w = CELL.x * 0.5 - BAR * 0.5;
-    let half_h = CELL.y * 0.5 - BAR * 0.5;
-    let horizontal = Vec2::new(CELL.x - 2.0 * BAR, BAR);
-    let vertical = Vec2::new(BAR, CELL.y * 0.5 - 1.5 * BAR);
-    match bar {
-        0 => (Vec2::new(0.0, half_h), horizontal),
-        1 => (Vec2::new(half_w, half_h * 0.5), vertical),
-        2 => (Vec2::new(half_w, -half_h * 0.5), vertical),
-        3 => (Vec2::new(0.0, -half_h), horizontal),
-        4 => (Vec2::new(-half_w, -half_h * 0.5), vertical),
-        5 => (Vec2::new(-half_w, half_h * 0.5), vertical),
-        _ => (Vec2::ZERO, horizontal),
-    }
+pub fn dot_offset(cell: usize, col: usize, row: usize) -> Vec2 {
+    let column = cell * (COLS + CELL_GAP_COLS) + col;
+    let x = (column as f32 - (PANEL_COLS as f32 - 1.0) * 0.5) * DOT_PITCH;
+    let y = ((ROWS as f32 - 1.0) * 0.5 - row as f32) * DOT_PITCH;
+    Vec2::new(x, y)
 }
 
-/// A cell's centre x relative to the screen's centre. Pure — tested.
+/// Where a readout's panel stands: on that stack's amp head, its
+/// face flush with the head's, lifted over the handle. Pure — tested
+/// against the PA's layout.
 #[must_use]
-pub fn cell_x(cell: usize) -> f32 {
-    let pitch = CELL.x + CELL_GAP;
-    (cell as f32 - (CELLS as f32 - 1.0) * 0.5) * pitch
-}
-
-/// Where a readout's screen sits: on the face of that stack's amp
-/// head, above the knobs. Pure — tested against the PA's layout.
-#[must_use]
-pub fn screen_centre(readout: Readout) -> Vec3 {
+pub fn panel_centre(readout: Readout) -> Vec3 {
     let head = pa::stack_layout(readout.side())
         .into_iter()
         .find(|cabinet| cabinet.kind == CabinetKind::Head)
         .expect("every stack has a head");
+    let size = panel_size();
     Vec3::new(
         head.centre.x,
-        head.centre.y + SCREEN_RISE,
-        head.centre.z + head.size.z * 0.5 + SCREEN_OFF,
+        head.top() + PANEL_LIFT + size.y * 0.5,
+        head.centre.z + head.size.z * 0.5 - size.z * 0.5,
     )
 }
 
-/// A monitor's screen.
+/// A monitor's panel.
 #[derive(Component, Debug, Clone, Copy)]
 pub struct Monitor {
     /// What it shows.
@@ -218,15 +209,17 @@ pub struct Monitor {
     pub shown: [Cell; CELLS],
 }
 
-/// One bar of one cell of one monitor.
+/// One dot of one cell of one monitor.
 #[derive(Component, Debug, Clone, Copy)]
-pub struct MonitorBar {
+pub struct MonitorDot {
     /// The monitor's readout.
     pub readout: Readout,
     /// The cell, 0 = leftmost.
     pub cell: usize,
-    /// The bar, 0..7.
-    pub bar: usize,
+    /// The column inside the cell.
+    pub col: usize,
+    /// The row inside the cell, 0 = top.
+    pub row: usize,
 }
 
 /// Open the room's input for the venue: the listener starts on its
@@ -254,7 +247,7 @@ pub fn tend_monitors(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut monitors: Query<(Entity, &mut Monitor)>,
-    mut bars: Query<(Entity, &MonitorBar, &mut Visibility)>,
+    mut dots: Query<(Entity, &MonitorDot, &mut Visibility)>,
     time: Res<Time>,
     mut reported_at: Local<f32>,
 ) {
@@ -270,7 +263,7 @@ pub fn tend_monitors(
             for (entity, _) in &monitors {
                 commands.entity(entity).despawn();
             }
-            for (entity, _, _) in &bars {
+            for (entity, _, _) in &dots {
                 commands.entity(entity).despawn();
             }
             return;
@@ -291,8 +284,9 @@ pub fn tend_monitors(
     if time.elapsed_secs() - *reported_at >= 5.0 {
         *reported_at = time.elapsed_secs();
         info!(
-            "monitors: level {:.1} dBFS, tempo {}",
+            "monitors: level {:.1} dBFS (shown {}), tempo {}",
             listener.db(),
+            (listener.db() + DB_SHOWN_OFFSET).round().clamp(0.0, 100.0),
             listener
                 .bpm()
                 .map_or_else(|| "none".to_owned(), |bpm| format!("{bpm:.0} BPM"))
@@ -307,12 +301,11 @@ pub fn tend_monitors(
         if cells == monitor.shown {
             continue;
         }
-        for (_, bar, mut visibility) in &mut bars {
-            if bar.readout != monitor.readout || cells[bar.cell] == monitor.shown[bar.cell] {
+        for (_, dot, mut visibility) in &mut dots {
+            if dot.readout != monitor.readout || cells[dot.cell] == monitor.shown[dot.cell] {
                 continue;
             }
-            let lit = cell_mask(cells[bar.cell]) & (1 << bar.bar) != 0;
-            *visibility = if lit {
+            *visibility = if dot_lit(cells[dot.cell], dot.col, dot.row) {
                 Visibility::Inherited
             } else {
                 Visibility::Hidden
@@ -322,7 +315,7 @@ pub fn tend_monitors(
     }
 }
 
-/// Both monitors, every bar hidden: the first `tend` lights them.
+/// Both monitors, every dot hidden: the first `tend` lights them.
 fn spawn_monitors(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -330,12 +323,13 @@ fn spawn_monitors(
     accent: Color,
 ) {
     let layer = RenderLayers::layer(STAGE_LAYER);
-    let screen = meshes.add(Cuboid::from_size(SCREEN));
-    let glass = materials.add(StandardMaterial {
+    let size = panel_size();
+    let panel = meshes.add(Cuboid::from_size(size));
+    let housing = materials.add(StandardMaterial {
         base_color: Color::srgb(0.02, 0.022, 0.03),
-        perceptual_roughness: 0.25,
+        perceptual_roughness: 0.6,
         metallic: 0.0,
-        reflectance: 0.35,
+        reflectance: 0.3,
         ..default()
     });
     let lit = materials.add(StandardMaterial {
@@ -344,14 +338,9 @@ fn spawn_monitors(
         unlit: true,
         ..default()
     });
-    let bar_meshes: Vec<Handle<Mesh>> = (0..BARS)
-        .map(|bar| {
-            let (_, size) = bar_pose(bar);
-            meshes.add(Cuboid::new(size.x, size.y, BAR * 0.6))
-        })
-        .collect();
+    let dot = meshes.add(Cuboid::new(DOT, DOT, DOT * 0.4));
     for readout in [Readout::Bpm, Readout::Db] {
-        let centre = screen_centre(readout);
+        let centre = panel_centre(readout);
         commands.spawn((
             GameplayScreen,
             Stage3d,
@@ -359,32 +348,34 @@ fn spawn_monitors(
                 readout,
                 shown: [Cell::Blank; CELLS],
             },
-            Mesh3d(screen.clone()),
-            MeshMaterial3d(glass.clone()),
+            Mesh3d(panel.clone()),
+            MeshMaterial3d(housing.clone()),
             Transform::from_translation(centre),
             layer.clone(),
         ));
         for cell in 0..CELLS {
-            for (bar, mesh) in bar_meshes.iter().enumerate() {
-                let (offset, _) = bar_pose(bar);
-                commands.spawn((
-                    GameplayScreen,
-                    Stage3d,
-                    NotShadowCaster,
-                    MonitorBar { readout, cell, bar },
-                    Mesh3d(mesh.clone()),
-                    MeshMaterial3d(lit.clone()),
-                    Transform::from_translation(
-                        centre
-                            + Vec3::new(
-                                cell_x(cell) + offset.x,
-                                offset.y,
-                                SCREEN.z * 0.5 + BAR_OFF,
-                            ),
-                    ),
-                    Visibility::Hidden,
-                    layer.clone(),
-                ));
+            for col in 0..COLS {
+                for row in 0..ROWS {
+                    let offset = dot_offset(cell, col, row);
+                    commands.spawn((
+                        GameplayScreen,
+                        Stage3d,
+                        NotShadowCaster,
+                        MonitorDot {
+                            readout,
+                            cell,
+                            col,
+                            row,
+                        },
+                        Mesh3d(dot.clone()),
+                        MeshMaterial3d(lit.clone()),
+                        Transform::from_translation(
+                            centre + Vec3::new(offset.x, offset.y, size.z * 0.5 + DOT_OFF),
+                        ),
+                        Visibility::Hidden,
+                        layer.clone(),
+                    ));
+                }
             }
         }
     }
@@ -410,19 +401,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_digit_has_its_bars() {
-        let masks: Vec<u8> = (0..10).map(digit_mask).collect();
-        // Ten different shapes, none empty, 8 lights everything.
-        for (i, a) in masks.iter().enumerate() {
-            assert_ne!(*a, 0);
-            for b in masks.iter().skip(i + 1) {
+    fn every_digit_has_a_shape_of_its_own() {
+        let shapes: Vec<[u8; ROWS]> = (0..10).map(|d| glyph_rows(Cell::Digit(d))).collect();
+        for (i, a) in shapes.iter().enumerate() {
+            assert!(a.iter().any(|row| *row != 0), "digit {i} is blank");
+            assert!(
+                a.iter().all(|row| *row < 32),
+                "digit {i} spills past five columns"
+            );
+            for b in shapes.iter().skip(i + 1) {
                 assert_ne!(a, b);
             }
         }
-        assert_eq!(digit_mask(8), 127);
-        assert_eq!(digit_mask(1), 2 | 4, "a one is the right-hand bars");
-        assert_eq!(cell_mask(Cell::Minus), 64, "a minus is the middle bar");
-        assert_eq!(cell_mask(Cell::Blank), 0);
+        assert_eq!(glyph_rows(Cell::Blank), [0; ROWS]);
+        // A one is a stem with a foot; its top-left dot is dark.
+        assert!(dot_lit(Cell::Digit(1), 2, 0));
+        assert!(!dot_lit(Cell::Digit(1), 0, 0));
+        assert!(dot_lit(Cell::Digit(1), 1, 6) && dot_lit(Cell::Digit(1), 3, 6));
+        assert!(
+            !dot_lit(Cell::Digit(1), 0, 6),
+            "the foot stops short of the edge"
+        );
+        assert!(
+            !dot_lit(Cell::Digit(8), COLS, 0),
+            "outside the cell is dark"
+        );
+        // Left is left: a seven's stroke hangs from the RIGHT end of
+        // its bar (a mirrored font would pass every symmetric check).
+        assert!(dot_lit(Cell::Digit(7), 4, 1) && !dot_lit(Cell::Digit(7), 0, 1));
+        assert!(dot_lit(Cell::Digit(4), 3, 0) && !dot_lit(Cell::Digit(4), 1, 0));
     }
 
     #[test]
@@ -444,77 +451,95 @@ mod tests {
     }
 
     #[test]
-    fn a_level_carries_its_sign() {
+    fn the_level_is_shown_as_the_db_analyse_shows_it() {
+        // dBFS + 100: a positive figure, never a minus sign.
         assert_eq!(
-            db_cells(-23.4),
-            [Cell::Minus, Cell::Digit(2), Cell::Digit(3)]
+            db_cells(-38.4),
+            [Cell::Blank, Cell::Digit(6), Cell::Digit(2)]
         );
-        assert_eq!(db_cells(-6.0), [Cell::Blank, Cell::Minus, Cell::Digit(6)]);
-        assert_eq!(db_cells(0.0), [Cell::Blank, Cell::Blank, Cell::Digit(0)]);
         assert_eq!(
-            db_cells(-100.0),
-            [Cell::Minus, Cell::Digit(9), Cell::Digit(9)],
-            "the floor is clamped to what three cells can say"
+            db_cells(-6.0),
+            [Cell::Blank, Cell::Digit(9), Cell::Digit(4)]
         );
+        assert_eq!(
+            db_cells(0.0),
+            [Cell::Digit(1), Cell::Digit(0), Cell::Digit(0)],
+            "full scale reads 100"
+        );
+        assert_eq!(db_cells(-100.0), [Cell::Blank, Cell::Blank, Cell::Digit(0)]);
+        assert_eq!(db_cells(-140.0), db_cells(-100.0), "the floor is clamped");
         assert_eq!(db_cells(3.0), db_cells(0.0), "nothing above full scale");
+        assert_eq!(DB_SHOWN_OFFSET, 100.0, "the reference's convention");
     }
 
     #[test]
-    fn the_bars_stay_inside_their_cell_and_the_cells_inside_the_screen() {
-        for bar in 0..BARS {
-            let (offset, size) = bar_pose(bar);
-            assert!(
-                offset.x.abs() + size.x * 0.5 <= CELL.x * 0.5 + 1e-6,
-                "bar {bar}"
-            );
-            assert!(
-                offset.y.abs() + size.y * 0.5 <= CELL.y * 0.5 + 1e-6,
-                "bar {bar}"
-            );
-        }
+    fn the_dots_fill_the_panel_without_leaving_it() {
+        let size = panel_size();
+        let mut min = Vec2::splat(f32::MAX);
+        let mut max = Vec2::splat(f32::MIN);
         for cell in 0..CELLS {
-            assert!(cell_x(cell).abs() + CELL.x * 0.5 < SCREEN.x * 0.5);
+            for col in 0..COLS {
+                for row in 0..ROWS {
+                    let at = dot_offset(cell, col, row);
+                    min = min.min(at);
+                    max = max.max(at);
+                    assert!(
+                        at.x.abs() + DOT * 0.5 < size.x * 0.5,
+                        "dot outside the panel"
+                    );
+                    assert!(
+                        at.y.abs() + DOT * 0.5 < size.y * 0.5,
+                        "dot outside the panel"
+                    );
+                }
+            }
         }
-        // The tallest bar reach stays inside the screen's height.
-        let (top, size) = bar_pose(0);
-        assert!(top.y + size.y * 0.5 < SCREEN.y * 0.5);
-        // Vertical bars on one side do not overlap each other.
-        let (upper, size) = bar_pose(1);
-        let (lower, _) = bar_pose(2);
-        assert!(upper.y - size.y * 0.5 >= lower.y + size.y * 0.5 - 1e-6);
+        // Symmetric about the centre, and the grid uses most of it.
+        assert!((min.x + max.x).abs() < 1e-5 && (min.y + max.y).abs() < 1e-5);
+        assert!(max.x - min.x > size.x * 0.8);
+        // Two cells never share a column: the gap is real.
+        let right_of_first = dot_offset(0, COLS - 1, 0).x;
+        let left_of_second = dot_offset(1, 0, 0).x;
+        assert!(left_of_second - right_of_first > DOT_PITCH * 1.5);
+        // A digit is taller than the old seven-segment cell by a
+        // clear margin — the reason for the redesign.
+        assert!(ROWS as f32 * DOT_PITCH > 0.125 * 3.0);
     }
 
     #[test]
-    fn the_screen_sits_on_the_heads_face_above_the_knobs() {
+    fn the_panel_stands_on_the_head_with_its_face_flush() {
         for readout in [Readout::Bpm, Readout::Db] {
-            let centre = screen_centre(readout);
+            let centre = panel_centre(readout);
+            let size = panel_size();
             let head = pa::stack_layout(readout.side())[3];
             assert_eq!(head.kind, CabinetKind::Head);
             assert_eq!(centre.x, head.centre.x);
-            // Inside the head's face, in front of it.
-            let top = centre.y + SCREEN.y * 0.5;
-            let bottom = centre.y - SCREEN.y * 0.5;
+            let bottom = centre.y - size.y * 0.5;
             assert!(
-                top <= head.top() + 1e-6,
-                "{top} over the head's top {}",
-                head.top()
+                bottom > head.top(),
+                "on top of the head, clear of the handle"
             );
-            // The knobs sit at centre − 0.02 with radius 0.035: the
-            // screen's bottom edge clears them.
+            assert!(bottom - head.top() < 0.1, "not floating");
+            let front = centre.z + size.z * 0.5;
             assert!(
-                bottom >= head.centre.y - 0.02 + 0.035,
-                "{bottom} into the knobs"
+                (front - (head.centre.z + head.size.z * 0.5)).abs() < 1e-5,
+                "flush"
             );
-            assert!(centre.z > head.centre.z + head.size.z * 0.5);
-            // And under the camera, like the head itself.
-            assert!(top < pa::CAMERA_Y - 0.2);
+            // Wide as the head, no wider.
+            assert!(
+                size.x <= head.size.x + 1e-6,
+                "{} wider than the head {}",
+                size.x,
+                head.size.x
+            );
+            assert!(size.x > head.size.x * 0.8);
         }
         assert!(
-            screen_centre(Readout::Bpm).x < 0.0,
+            panel_centre(Readout::Bpm).x < 0.0,
             "tempo on the left stack"
         );
         assert!(
-            screen_centre(Readout::Db).x > 0.0,
+            panel_centre(Readout::Db).x > 0.0,
             "level on the right stack"
         );
     }
@@ -538,7 +563,7 @@ mod tests {
         let count = |world: &mut World| {
             (
                 world.query::<&Monitor>().iter(world).count(),
-                world.query::<&MonitorBar>().iter(world).count(),
+                world.query::<&MonitorDot>().iter(world).count(),
             )
         };
         // Open but never heard: a refused microphone. Nothing.
@@ -557,47 +582,50 @@ mod tests {
             .run_system_once(tend_monitors)
             .expect("the system runs");
         assert_eq!(count(app.world_mut()), (0, 0));
-        // Measuring: both monitors, every bar of every cell.
-        app.insert_resource(Ears(Some(Listener::stub(true, -23.4, Some(120.0)))));
+        // Measuring: both monitors, every dot of every cell.
+        app.insert_resource(Ears(Some(Listener::stub(true, -38.4, Some(120.0)))));
         app.world_mut()
             .run_system_once(tend_monitors)
             .expect("the system runs");
-        assert_eq!(count(app.world_mut()), (2, 2 * CELLS * BARS));
-        // The second tend lights the digits: −23 on the right, 120
-        // on the left, as visibility.
+        assert_eq!(count(app.world_mut()), (2, 2 * CELLS * COLS * ROWS));
+        // The second tend lights the digits: 62 on the right, 120 on
+        // the left, as visibility.
         app.world_mut()
             .run_system_once(tend_monitors)
             .expect("the system runs");
-        let lit = |world: &mut World, readout: Readout| -> Vec<(usize, usize)> {
-            let mut bars: Vec<(usize, usize)> = world
-                .query::<(&MonitorBar, &Visibility)>()
+        let lit = |world: &mut World, readout: Readout| -> Vec<(usize, usize, usize)> {
+            let mut dots: Vec<(usize, usize, usize)> = world
+                .query::<(&MonitorDot, &Visibility)>()
                 .iter(world)
-                .filter(|(bar, visibility)| {
-                    bar.readout == readout && **visibility == Visibility::Inherited
+                .filter(|(dot, visibility)| {
+                    dot.readout == readout && **visibility == Visibility::Inherited
                 })
-                .map(|(bar, _)| (bar.cell, bar.bar))
+                .map(|(dot, _)| (dot.cell, dot.col, dot.row))
                 .collect();
-            bars.sort_unstable();
-            bars
+            dots.sort_unstable();
+            dots
         };
-        let expect = |cells: [Cell; CELLS]| -> Vec<(usize, usize)> {
+        let expect = |cells: [Cell; CELLS]| -> Vec<(usize, usize, usize)> {
             let mut out = Vec::new();
             for (cell, value) in cells.iter().enumerate() {
-                for bar in 0..BARS {
-                    if cell_mask(*value) & (1 << bar) != 0 {
-                        out.push((cell, bar));
+                for col in 0..COLS {
+                    for row in 0..ROWS {
+                        if dot_lit(*value, col, row) {
+                            out.push((cell, col, row));
+                        }
                     }
                 }
             }
             out
         };
-        assert_eq!(lit(app.world_mut(), Readout::Db), expect(db_cells(-23.4)));
+        assert_eq!(lit(app.world_mut(), Readout::Db), expect(db_cells(-38.4)));
+        assert!(!lit(app.world_mut(), Readout::Db).is_empty());
         assert_eq!(
             lit(app.world_mut(), Readout::Bpm),
             expect(bpm_cells(Some(120.0)))
         );
-        // The stream dies: the monitors are gone, bars and all.
-        app.insert_resource(Ears(Some(Listener::stub(false, -23.4, Some(120.0)))));
+        // The stream dies: the monitors are gone, dots and all.
+        app.insert_resource(Ears(Some(Listener::stub(false, -38.4, Some(120.0)))));
         app.world_mut()
             .run_system_once(tend_monitors)
             .expect("the system runs");

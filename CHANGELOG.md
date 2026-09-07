@@ -14,6 +14,41 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.42] - 2026-09-07
+
+### Changed
+
+- **The PA monitors are dot-matrix panels now, and the level reads
+  like the dB-Analyse.** Reported: the level display was too small
+  and showed negative numbers, and the tempo could not be seen. Each
+  monitor is a panel standing on its amp head — as wide as the head,
+  three 5×7 digits of emissive dots the way the reference rig's R4
+  matrix draws its figures — with digits over three times the height
+  of the old seven-segment cells. The level is shown as **dBFS +
+  100**, the dB-Analyse's own convention (a positive, phone-
+  comparable figure; the meter still measures dBFS and the offset is
+  display only), so a −38 dBFS room reads 62. The tempo through the
+  laptop microphone was measured with the song playing from the
+  speakers: 110–116 for the 117 BPM song, blank across one breakdown.
+
+## [0.14.41] - 2026-09-07
+
+### Fixed
+
+- **The BPM monitor reads the tempo now, not the riff.** Measured on
+  a clean decode of *Smells Like Teen Spirit* (117 BPM), the first
+  estimator — the reference rig's inter-onset median — wandered
+  82–136 for most of the song, and an autocorrelation of the bass
+  band sat at 76: the riff's eighth notes are onsets too, and the
+  kick alone carries its dotted pattern. The monitor now runs the
+  chart analysis's own spectral-flux onset stage (its window scaled
+  to the input's rate) and autocorrelation tempo estimator over the
+  last eight seconds, once a second, averaged over four; the same
+  decode reads 113–125, mostly 115–120. The loudness gate holds the
+  recent peak for a second or two, so a beat's gaps are not silence.
+  A harness (`hear_a_file`, ignored) runs any decoded file through
+  the live analyzer for the next tuning.
+
 ## [0.14.40] - 2026-09-07
 
 ### Added

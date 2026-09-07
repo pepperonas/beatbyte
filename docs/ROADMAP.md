@@ -283,7 +283,15 @@ project. Milestones when picked up:
   stale). The monitors are seven-segment cells of emissive bars,
   spawned the frame a measurement exists and despawned the frame it
   stops. Privacy stated in the README and held there by the docs
-  test; the macOS bundle declares the microphone usage.
+  test; the macOS bundle declares the microphone usage. **Tempo
+  rewritten in v0.14.41:** the inter-onset median read 82–136 on
+  Teen Spirit (117); the chart pipeline's flux + autocorrelation on
+  rolling 8 s windows reads 113–125 (measured offline on the decode,
+  the `hear_a_file` harness). Through the laptop mic with the song
+  from the speakers (`hear_the_room`, `BEATBYTE_LISTEN_SECONDS=32`):
+  110–116. **v0.14.42:** user report "zu klein, negative Werte, BPM
+  sehe ich gar nicht" — panels rebuilt as dot matrices on top of the
+  heads (R4 style), level shown as dBFS + 100 like the dB-Analyse.
 - [x] **Highlight on the threshold, white strips, a threshold that
   sets itself** *(v0.14.40)*. Commissioned as an extension of the
   reference rig's dB-Analyse threshold path; BeatByte had none (its

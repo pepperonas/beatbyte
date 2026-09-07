@@ -21,29 +21,31 @@
 //!   of its own that also runs the analysis; the handle shares
 //!   atomics with it and stops it on drop.
 //!
-//! The estimator is the one the reference rig runs (`disco-controller`
-//! `BpmAnalyzer`, itself a port of `bpbel` / `inspector-rust`): band
-//! energy 30–150 Hz per block, an onset when the energy beats its
-//! 3-second moving average by a margin AND rises above the recent
-//! peak, the tempo as the median inter-onset interval folded into
-//! 60–200 BPM, shown as a 4-second mean. [`LiveAnalyzer`] is pure and
-//! pinned on synthesized input; the device code is exercised by the
-//! game, as the player is.
+//! The tempo is read the way the chart analysis reads it, on the
+//! last eight seconds: the same spectral-flux onset stage
+//! ([`crate::analysis::onset::analyze_onsets`], its window scaled to
+//! the device's rate) and the same autocorrelation estimator with
+//! the log-normal prior around 120 BPM
+//! ([`crate::analysis::tempo::estimate_tempo`]), once a second, the
+//! readings averaged over four. Two cuts came before this one and
+//! were measured on a clean decode of *Smells Like Teen Spirit*
+//! (117 BPM): the reference rig's inter-onset median wandered
+//! 82–136 (a riff's eighth notes are onsets too, and a median of
+//! their gaps is not a tempo), and the autocorrelation of a
+//! bass-band envelope sat at 76 (the kick alone carries the riff's
+//! dotted pattern). The broadband flux on rolling windows read
+//! 113–120 through the whole song. [`LiveAnalyzer`] is pure and
+//! pinned on synthesized input; the harness below runs any decoded
+//! file through it; the device code is exercised by the game, as
+//! the player is.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
 
-use realfft::RealFftPlanner;
-
 /// Samples per analysis block: ~21 ms at 48 kHz, the same hop the
 /// reference rig runs.
 pub const BLOCK: usize = 1024;
-/// The rolling FFT window the bass band is read from: long, so the
-/// 30–150 Hz band spans real bins instead of sharing one.
-pub const WINDOW: usize = 4096;
-/// The band the onset detector listens to, in Hz.
-pub const BAND_HZ: (f32, f32) = (30.0, 150.0);
 /// The quietest level reported, in dBFS: digital silence and a
 /// denied device both sit here.
 pub const DB_FLOOR: f32 = -100.0;
@@ -51,18 +53,16 @@ pub const DB_FLOOR: f32 = -100.0;
 /// beat, so a quiet room shows no tempo instead of a made-up one.
 pub const LOUD_DB: f32 = -50.0;
 
-/// Onset threshold over the moving average.
-const ONSET_RATIO: f32 = 1.4;
-/// The moving-average baseline window, seconds.
-const AVG_WINDOW_S: f64 = 3.0;
-/// Minimum gap between onsets (⇒ at most 200 BPM).
-const ONSET_REFRACTORY_S: f64 = 0.30;
-/// Sliding window of onsets the median is taken over.
-const IOI_WINDOW_S: f64 = 6.0;
-/// Onsets needed before a tempo is claimed.
-const MIN_ONSETS: usize = 4;
-/// Without a valid estimate for this long the display returns to
-/// "no tempo".
+/// The onset-strength history the tempo is read from, seconds.
+pub const TEMPO_WINDOW_S: f64 = 8.0;
+/// How often the tempo is re-estimated, seconds.
+pub const TEMPO_EVERY_S: f64 = 1.0;
+/// The autocorrelation confidence under which an estimate is not
+/// believed (the envelope is flat or the beat is not there). The
+/// real song's windows scored 0.11–0.41.
+pub const TEMPO_MIN_CONFIDENCE: f64 = 0.10;
+/// Without a believed estimate for this long the display returns
+/// to "no tempo".
 const STALE_RESET_S: f64 = 4.0;
 /// The tempo range the raw estimate is folded into.
 pub const BPM_RANGE: (f32, f32) = (60.0, 200.0);
@@ -70,14 +70,16 @@ pub const BPM_RANGE: (f32, f32) = (60.0, 200.0);
 pub const OCTAVE_SNAP: f32 = 8.0;
 /// The rolling mean the displayed tempo is smoothed over.
 const DISPLAY_WINDOW_S: f64 = 4.0;
-/// SuperFlux-style rise test: the current block must beat the
-/// peak of `SF_WIN` blocks lagged `SF_LAG` back by this factor.
-const SF_LAG: usize = 4;
-const SF_WIN: usize = 4;
-const SF_MARGIN: f32 = 1.04;
+/// Music must have been playing this long before a tempo is
+/// claimed: the window has to hold more than one bar.
+const WARMUP_S: f64 = 3.0;
 /// Level smoothing per block, so the readout does not flicker at
 /// the block rate (a ~100 ms ease).
 const DB_EASE: f32 = 0.35;
+/// The loudness gate holds the recent peak and lets it fall at this
+/// rate, dB per second: a beat's gaps do not count as silence, a
+/// stopped song does within a second or two.
+const GATE_FALL_DB_PER_S: f32 = 20.0;
 
 /// What the listener is doing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -257,123 +259,110 @@ pub fn snap_octave(raw: f32, display: f32) -> f32 {
     }
 }
 
-/// The energy-onset + median-IOI tempo estimator, fed one band
-/// energy per block. Pure; time is whatever the caller passes.
+/// The live tempo: the chart analysis's onset and tempo stages run
+/// over the last [`TEMPO_WINDOW_S`] of audio every [`TEMPO_EVERY_S`].
+/// Pure; time is whatever the caller passes.
 #[derive(Debug, Clone)]
-pub struct BpmEstimator {
-    onsets: std::collections::VecDeque<f64>,
-    energy: std::collections::VecDeque<(f64, f32)>,
-    recent: std::collections::VecDeque<f32>,
-    raw_history: std::collections::VecDeque<(f64, f32)>,
-    first_t: Option<f64>,
-    last_onset: f64,
+pub struct TempoTracker {
+    /// The rolling audio, at the device's rate.
+    audio: std::collections::VecDeque<f32>,
+    rate: u32,
+    keep: usize,
+    /// The music's start, for the warm-up (None while quiet).
+    music_since: Option<f64>,
+    last_estimate_at: f64,
     last_valid: f64,
+    raw_history: std::collections::VecDeque<(f64, f32)>,
     /// The tempo on display, 0 = none.
     pub display_bpm: f32,
-    /// How regular the intervals are, 0..1.
+    /// The autocorrelation confidence of the last believed estimate.
     pub confidence: f32,
 }
 
-impl Default for BpmEstimator {
-    fn default() -> Self {
-        BpmEstimator {
-            onsets: std::collections::VecDeque::new(),
-            energy: std::collections::VecDeque::new(),
-            recent: std::collections::VecDeque::with_capacity(SF_LAG + SF_WIN + 1),
-            raw_history: std::collections::VecDeque::new(),
-            first_t: None,
-            last_onset: -1e9,
+/// The onset stage's window and hop for a device rate: the chart
+/// analysis tunes 1024/256 for ~22 kHz; the same span in seconds at
+/// this rate, at the nearest power of two. Pure — tested.
+#[must_use]
+pub fn onset_config_for(rate: u32) -> crate::analysis::onset::OnsetConfig {
+    let base = crate::analysis::onset::OnsetConfig::default();
+    let scale = (f64::from(rate) / 22_050.0).max(0.5);
+    // The nearest power of two to the scaled span (48 kHz wants
+    // 2229 → 2048, not the next one up).
+    let window = 1usize << ((base.window as f64 * scale).log2().round().max(8.0) as u32);
+    crate::analysis::onset::OnsetConfig {
+        window,
+        hop: (window / 4).max(1),
+        ..base
+    }
+}
+
+impl TempoTracker {
+    /// A tracker for audio at `rate` Hz.
+    #[must_use]
+    pub fn new(rate: u32) -> TempoTracker {
+        TempoTracker {
+            audio: std::collections::VecDeque::new(),
+            rate,
+            keep: (TEMPO_WINDOW_S * f64::from(rate.max(1))) as usize,
+            music_since: None,
+            last_estimate_at: -1e9,
             last_valid: -1e9,
+            raw_history: std::collections::VecDeque::new(),
             display_bpm: 0.0,
             confidence: 0.0,
         }
     }
-}
 
-impl BpmEstimator {
-    /// Feed one block's band energy at `now` seconds. `allow` is the
-    /// loudness gate: false still moves the baseline but counts no
-    /// onset. Returns whether an onset fired.
-    pub fn push(&mut self, energy: f32, now: f64, allow: bool) -> bool {
-        let first = *self.first_t.get_or_insert(now);
-        self.energy.push_back((now, energy));
-        while self
-            .energy
-            .front()
-            .is_some_and(|&(t, _)| now - t > AVG_WINDOW_S)
-        {
-            self.energy.pop_front();
+    /// Feed one block at `now` seconds. `allow` is the loudness
+    /// gate: a quiet stretch resets the warm-up.
+    pub fn push(&mut self, block: &[f32], now: f64, allow: bool) {
+        self.audio.extend(block.iter().copied());
+        while self.audio.len() > self.keep {
+            self.audio.pop_front();
         }
-        // The SuperFlux reference: the peak of a lagged window,
-        // before this attack's smear.
-        let reference = if self.recent.len() >= SF_LAG + SF_WIN {
-            self.recent
-                .iter()
-                .take(SF_WIN)
-                .copied()
-                .fold(0.0f32, f32::max)
+        if allow {
+            self.music_since.get_or_insert(now);
         } else {
-            0.0
-        };
-        self.recent.push_back(energy);
-        while self.recent.len() > SF_LAG + SF_WIN {
-            self.recent.pop_front();
-        }
-        // The baseline needs its window before anything counts.
-        if now - first < AVG_WINDOW_S {
-            return false;
-        }
-        let average = self.energy.iter().map(|&(_, e)| e).sum::<f32>() / self.energy.len() as f32;
-        if average <= 1e-9 {
-            return false;
-        }
-        let rising = energy > reference * SF_MARGIN;
-        let fired = allow
-            && energy > average * ONSET_RATIO
-            && rising
-            && now - self.last_onset >= ONSET_REFRACTORY_S;
-        if fired {
-            self.last_onset = now;
-            self.onsets.push_back(now);
-            self.trim_onsets(now);
-        }
-        fired
-    }
-
-    fn trim_onsets(&mut self, now: f64) {
-        while self.onsets.front().is_some_and(|&t| now - t > IOI_WINDOW_S) {
-            self.onsets.pop_front();
+            self.music_since = None;
         }
     }
 
-    /// Recompute the displayed tempo and confidence. Cheap; call per
-    /// block.
+    /// Re-estimate the displayed tempo if it is time. Runs the onset
+    /// stage over the window — milliseconds, once a second.
     pub fn estimate(&mut self, now: f64) {
-        self.trim_onsets(now);
-        if self.onsets.len() < MIN_ONSETS {
+        if now - self.last_estimate_at < TEMPO_EVERY_S {
+            return;
+        }
+        self.last_estimate_at = now;
+        let warm = self
+            .music_since
+            .is_some_and(|since| now - since >= WARMUP_S)
+            && self.audio.len() >= self.keep / 2;
+        let estimate = if warm {
+            let piece = crate::decode::AudioData::from_mono(
+                self.audio.iter().copied().collect(),
+                self.rate,
+            );
+            let flux = crate::analysis::onset::analyze_onsets(&piece, &onset_config_for(self.rate));
+            crate::analysis::tempo::estimate_tempo(
+                &flux.flux,
+                flux.hop_s,
+                &crate::analysis::tempo::TempoConfig::default(),
+            )
+            .filter(|estimate| estimate.confidence >= TEMPO_MIN_CONFIDENCE)
+        } else {
+            None
+        };
+        let Some(estimate) = estimate else {
             if self.display_bpm > 0.0 && now - self.last_valid > STALE_RESET_S {
                 self.display_bpm = 0.0;
                 self.raw_history.clear();
                 self.confidence = 0.0;
             }
             return;
-        }
-        let onsets: Vec<f64> = self.onsets.iter().copied().collect();
-        let intervals: Vec<f64> = onsets.windows(2).map(|w| w[1] - w[0]).collect();
-        let mut ordered = intervals.clone();
-        ordered.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        let median = ordered[ordered.len() / 2];
-        if median <= 0.0 {
-            return;
-        }
-        let raw = snap_octave(fold_octaves((60.0 / median) as f32), self.display_bpm);
-        if self
-            .raw_history
-            .back()
-            .is_none_or(|&(_, last)| (last - raw).abs() > 0.01)
-        {
-            self.raw_history.push_back((now, raw));
-        }
+        };
+        let raw = snap_octave(fold_octaves(estimate.bpm as f32), self.display_bpm);
+        self.raw_history.push_back((now, raw));
         while self
             .raw_history
             .front()
@@ -381,14 +370,10 @@ impl BpmEstimator {
         {
             self.raw_history.pop_front();
         }
-        if !self.raw_history.is_empty() {
-            self.display_bpm = self.raw_history.iter().map(|&(_, b)| b).sum::<f32>()
-                / self.raw_history.len() as f32;
-        }
+        self.display_bpm =
+            self.raw_history.iter().map(|&(_, b)| b).sum::<f32>() / self.raw_history.len() as f32;
+        self.confidence = estimate.confidence as f32;
         self.last_valid = now;
-        let variance =
-            intervals.iter().map(|i| (i - median).powi(2)).sum::<f64>() / intervals.len() as f64;
-        self.confidence = (1.0 - (variance.sqrt() / median) as f32).clamp(0.0, 1.0);
     }
 }
 
@@ -396,43 +381,25 @@ impl BpmEstimator {
 /// Pure — pinned on synthesized input.
 pub struct LiveAnalyzer {
     rate: f32,
-    window: Vec<f32>,
-    hann: Vec<f32>,
-    fft: Arc<dyn realfft::RealToComplex<f32>>,
-    fft_in: Vec<f32>,
-    fft_out: Vec<realfft::num_complex::Complex<f32>>,
-    scratch: Vec<realfft::num_complex::Complex<f32>>,
-    band: (usize, usize),
     samples_seen: u64,
     /// The eased level in dBFS.
     pub db: f32,
-    /// The tempo estimator.
-    pub bpm: BpmEstimator,
+    /// The held recent peak the loudness gate reads, dBFS.
+    pub gate_db: f32,
+    /// The tempo tracker.
+    pub bpm: TempoTracker,
 }
 
 impl LiveAnalyzer {
     /// An analyzer for input at `rate` Hz.
     #[must_use]
     pub fn new(rate: f32) -> LiveAnalyzer {
-        let mut planner = RealFftPlanner::<f32>::new();
-        let fft = planner.plan_fft_forward(WINDOW);
-        let hann: Vec<f32> = (0..WINDOW)
-            .map(|i| 0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / WINDOW as f32).cos())
-            .collect();
-        let bin = |hz: f32| ((hz / rate.max(1.0)) * WINDOW as f32).round() as usize;
-        let band = (bin(BAND_HZ.0).max(1), bin(BAND_HZ.1).min(WINDOW / 2));
         LiveAnalyzer {
             rate,
-            window: vec![0.0; WINDOW],
-            hann,
-            fft_in: fft.make_input_vec(),
-            fft_out: fft.make_output_vec(),
-            scratch: fft.make_scratch_vec(),
-            fft,
-            band,
             samples_seen: 0,
             db: DB_FLOOR,
-            bpm: BpmEstimator::default(),
+            gate_db: DB_FLOOR,
+            bpm: TempoTracker::new(rate.max(1.0) as u32),
         }
     }
 
@@ -443,40 +410,20 @@ impl LiveAnalyzer {
     }
 
     /// Analyse one block of mono samples (any length; [`BLOCK`] is
-    /// the intended one). Returns whether an onset fired.
-    pub fn push(&mut self, block: &[f32]) -> bool {
+    /// the intended one).
+    pub fn push(&mut self, block: &[f32]) {
         if block.is_empty() {
-            return false;
+            return;
         }
-        // Level: the block's own RMS, eased.
+        // Level: the block's own RMS, eased; the gate holds its peak.
         let level = dbfs(block);
         self.db += (level - self.db) * DB_EASE;
-        // The rolling window for the band energy.
-        let n = block.len().min(WINDOW);
-        self.window.rotate_left(n);
-        let tail = WINDOW - n;
-        self.window[tail..].copy_from_slice(&block[block.len() - n..]);
-        for (slot, (sample, weight)) in self
-            .fft_in
-            .iter_mut()
-            .zip(self.window.iter().zip(&self.hann))
-        {
-            *slot = sample * weight;
-        }
-        // realfft only fails on wrong buffer lengths, fixed here.
-        let _ =
-            self.fft
-                .process_with_scratch(&mut self.fft_in, &mut self.fft_out, &mut self.scratch);
-        let energy: f32 = self.fft_out[self.band.0..=self.band.1]
-            .iter()
-            .map(|c| c.norm_sqr())
-            .sum::<f32>()
-            / WINDOW as f32;
+        let block_s = block.len() as f32 / self.rate.max(1.0);
+        self.gate_db = level.max(self.gate_db - GATE_FALL_DB_PER_S * block_s);
         self.samples_seen += block.len() as u64;
         let now = self.now();
-        let fired = self.bpm.push(energy, now, self.db > LOUD_DB);
+        self.bpm.push(block, now, self.gate_db > LOUD_DB);
         self.bpm.estimate(now);
-        fired
     }
 }
 
@@ -681,7 +628,7 @@ mod tests {
                 "{bpm} BPM at {rate} Hz read as {shown} (confidence {})",
                 analyzer.bpm.confidence
             );
-            assert!(analyzer.bpm.confidence > 0.8);
+            assert!(analyzer.bpm.confidence > 0.3, "{}", analyzer.bpm.confidence);
         }
     }
 
@@ -692,7 +639,7 @@ mod tests {
         let rate = 48_000.0;
         let quiet: Vec<f32> = kicks(120.0, 14.0, rate).iter().map(|s| s * 0.003).collect();
         let analyzer = run(&quiet, rate);
-        assert!(analyzer.db < LOUD_DB, "{}", analyzer.db);
+        assert!(analyzer.gate_db < LOUD_DB, "{}", analyzer.gate_db);
         assert_eq!(analyzer.bpm.display_bpm, 0.0, "no tempo from a whisper");
     }
 
@@ -736,8 +683,13 @@ mod tests {
     #[test]
     #[ignore = "needs an input device; run by hand"]
     fn hear_the_room_for_four_seconds() {
+        // `BEATBYTE_LISTEN_SECONDS` stretches it (play music meanwhile).
+        let seconds: u32 = std::env::var("BEATBYTE_LISTEN_SECONDS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(4);
         let listener = Listener::open();
-        for tenth in 0..40 {
+        for tenth in 0..seconds * 10 {
             std::thread::sleep(std::time::Duration::from_millis(100));
             if tenth % 5 == 4 {
                 println!(
@@ -751,6 +703,73 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Manual: `BEATBYTE_LISTEN_FILE=<audio> cargo test -p beatbyte-audio
+    /// hear_a_file -- --ignored --nocapture` runs a decoded file
+    /// through the analyzer as if the input heard it clean, and
+    /// prints the tempo trajectory — the way to tell the estimator's
+    /// fault from the microphone's.
+    #[test]
+    #[ignore = "needs a file; run by hand"]
+    fn hear_a_file_and_print_its_tempo() {
+        let Ok(path) = std::env::var("BEATBYTE_LISTEN_FILE") else {
+            return;
+        };
+        let audio = crate::decode::decode_file(std::path::Path::new(&path)).expect("decodes");
+        let rate = audio.sample_rate() as f32;
+        let mut analyzer = LiveAnalyzer::new(rate);
+        let mut next_report = 5.0;
+        for block in audio.samples().chunks(BLOCK) {
+            analyzer.push(block);
+            if analyzer.now() >= next_report {
+                next_report += 5.0;
+                println!(
+                    "{:6.1} s  db={:6.1}  bpm={:6.1}  conf={:.2}",
+                    analyzer.now(),
+                    analyzer.db,
+                    analyzer.bpm.display_bpm,
+                    analyzer.bpm.confidence
+                );
+            }
+        }
+    }
+
+    /// Manual: how long one tempo estimate takes at 48 kHz (the
+    /// listener thread pays it once a second).
+    #[test]
+    #[ignore = "timing; run by hand"]
+    fn time_one_estimate_at_48k() {
+        let rate = 48_000.0;
+        let samples = kicks(120.0, 9.0, rate);
+        let mut analyzer = LiveAnalyzer::new(rate);
+        for block in samples.chunks(BLOCK) {
+            analyzer.push(block);
+        }
+        let started = std::time::Instant::now();
+        analyzer.bpm.last_estimate_at = -1e9;
+        analyzer.bpm.estimate(analyzer.now());
+        println!(
+            "one estimate: {:?} (bpm {})",
+            started.elapsed(),
+            analyzer.bpm.display_bpm
+        );
+    }
+
+    #[test]
+    fn the_onset_window_keeps_its_span_at_any_rate() {
+        let base = crate::analysis::onset::OnsetConfig::default();
+        let at22 = onset_config_for(22_050);
+        assert_eq!((at22.window, at22.hop), (base.window, base.window / 4));
+        let at48 = onset_config_for(48_000);
+        assert_eq!(at48.window, 2048, "twice the span, a power of two");
+        assert_eq!(at48.hop, 512);
+        let span = |rate: u32| f64::from(onset_config_for(rate).window as u32) / f64::from(rate);
+        assert!(
+            (span(48_000) - span(22_050)).abs() < 0.01,
+            "about the same seconds"
+        );
+        assert!(onset_config_for(96_000).window.is_power_of_two());
     }
 
     #[test]

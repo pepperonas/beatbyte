@@ -176,14 +176,17 @@ reaches into the bed.
 
 ### The monitors (`monitors.rs`)
 
-A dark screen on each amp head's face, above the knobs, with three
-seven-segment cells of emissive bars: the left stack reads the tempo
-in BPM, the right the level in dBFS, both **measured** from the
-machine's audio input (`beatbyte-audio::listen`) while the song
-plays. No measurement, no monitor — they are spawned the frame the
-listener first reports a heard sample and despawned the frame it
-stops; there is no blank or zero state. Bars change by visibility
-only, and only when a digit changes.
+A dot-matrix panel standing on each amp head — as wide as the head,
+three 5×7 digits of emissive dots, the way the reference rig's R4
+matrix draws its figures: the left stack reads the tempo in BPM, the
+right the level as **dBFS + 100** (the dB-Analyse's convention; the
+meter measures dBFS, the offset is display only), both **measured**
+from the machine's audio input (`beatbyte-audio::listen`) while the
+song plays. No measurement, no monitor — they are spawned the frame
+the listener first reports a heard sample and despawned the frame it
+stops; there is no blank or zero state. Dots change by visibility
+only, and only when a digit changes. (The first cut, seven-segment
+cells on the head's face, was reported too small.)
 
 ### The light show (`lightshow.rs`)
 
