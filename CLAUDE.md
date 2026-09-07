@@ -635,6 +635,27 @@ artifact, smoke-test it (neutral CWD!), then
   even with `BEATBYTE_UNCAPPED=1`. Measure GPU cost uncapped AND with
   the window raised every half second (`stage/uncapped.sh` pattern):
   9.1 → 10.8 ms was the real change, +19 %.
+- **A background cargo build gets killed for "low memory" long before
+  the OS would kill it.** The session's task watchdog stopped three
+  release builds in a row (thin LTO + `codegen-units = 1` on the game
+  crate, a 16 GB machine with an emulator and other sessions up) —
+  and a kill mid-link leaves NO `target/release/beatbyte` behind. The
+  same build finished in the foreground with `-j 2`. Build the
+  release in the foreground when the machine is loaded, and check
+  the binary exists before running anything.
+- **Never prune `target/` by file age.** Deleting `deps` files older
+  than a day also took the `.d` files of build scripts, and every
+  build after that died on "No such file or directory" until the
+  whole profile directory went. Reclaim space by removing a whole
+  `target/<profile>` (a full rebuild is cheaper than a broken cache),
+  and keep an eye on it: it had grown to 70 GB and filled the disk
+  mid-session, at which point no tool could even open its output
+  file.
+- **A locked screen is not only a black capture: it is a whole
+  session without eyes.** Plan verification at ECS/log level from the
+  start — `info!` lines that carry the measured values (the monitors
+  and the light show log theirs) prove a feature ran; a screenshot
+  can only ever confirm it.
 - **A summary inside this repository is not a source.** Round six of
   the look plan built the gem from a trait table an earlier round had
   written ("dark ring, white centre") instead of from the material,
