@@ -141,6 +141,30 @@ pub fn glyph_cues(text: &str, words: &[beatbyte_chart::lyrics::LyricWord]) -> Ve
     cues
 }
 
+/// [`glyph_cues`] for a line drawn in a face that folds letters
+/// (`UiFont::mono_safe` maps `ö` → `o`, `ß` → `ss`, fullwidth
+/// punctuation onto ASCII): the words are folded through the SAME
+/// `fold` before they are searched for, so a word with an umlaut
+/// still finds its glyphs. Searching the folded text for the raw
+/// word missed silently, and the missed word's glyphs fell to the
+/// tail rule — lit as a block, only once the word was already over
+/// (220 aligned words in eleven songs of the library). Pure — tested.
+#[must_use]
+pub fn glyph_cues_on_face(
+    text: &str,
+    words: &[beatbyte_chart::lyrics::LyricWord],
+    fold: impl Fn(&str) -> String,
+) -> Vec<GlyphCue> {
+    let folded: Vec<beatbyte_chart::lyrics::LyricWord> = words
+        .iter()
+        .map(|word| beatbyte_chart::lyrics::LyricWord {
+            text: fold(&word.text),
+            ..word.clone()
+        })
+        .collect();
+    glyph_cues(text, &folded)
+}
+
 /// First occurrence of `needle` in `haystack` at or after `start`.
 fn find_chars(haystack: &[char], needle: &[char], start: usize) -> Option<usize> {
     (start..=haystack.len().saturating_sub(needle.len()))
@@ -674,14 +698,24 @@ pub fn line_fade(phase: Phase, line: &beatbyte_chart::lyrics::LyricLine, positio
 }
 
 /// A line-timed glyph's colour: unlit through the lead-in (and any
-/// moment before the line's start), the text colour once the line
-/// has begun. Pure — tested.
+/// moment before the line's start), the HIGHLIGHT tone — the brand
+/// amber a sung word settles to — once the line has begun.
+///
+/// The line is the unit this lyric knows the timing of, so the line
+/// is what lights: a whole-line karaoke highlight on the stamp, no
+/// invented word sweep. Until 0.14.38 a begun line took the plain
+/// text colour, which is the tone of a word being sung right now and
+/// never the one the display treats as "highlighted" — a line the
+/// aligner could not hear (every word estimated, `words.json` reads
+/// it line-timed) therefore never highlighted at all: 563 of the
+/// library's 3289 aligned lines, the whole outro of *Smells Like Teen
+/// Spirit* among them. Pure — tested.
 #[must_use]
 pub fn line_timed_tone(phase: Phase, before_start: bool) -> Color {
     if phase == Phase::LeadIn || before_start {
         palette::dimmed(palette::TEXT, 0.42)
     } else {
-        palette::TEXT
+        palette::BRAND
     }
 }
 
@@ -743,7 +777,8 @@ fn spawn_line_glyphs(
     if chars.is_empty() {
         return;
     }
-    let cues = (!line.words.is_empty()).then(|| glyph_cues(&text, &line.words));
+    let cues = (!line.words.is_empty())
+        .then(|| glyph_cues_on_face(&text, &line.words, |word| font.mono_safe(word)));
     let size = size_for(settings.lyrics_size);
     // The step between glyph centers follows the FACE's own advance
     // (1 em pixel font, 0.6 em smooth font) so the row reads as
@@ -1026,10 +1061,69 @@ mod tests {
             line_timed_tone(Phase::LeadIn, true),
             palette::dimmed(palette::TEXT, 0.42)
         );
-        assert_eq!(line_timed_tone(Phase::Singing, false), palette::TEXT);
+        assert_eq!(line_timed_tone(Phase::Singing, false), palette::BRAND);
         assert_ne!(
             line_timed_tone(Phase::LeadIn, true),
             line_timed_tone(Phase::Singing, false)
+        );
+    }
+
+    #[test]
+    fn a_begun_line_timed_line_wears_the_highlight_tone() {
+        // Seen live (Smells Like Teen Spirit, "A denial, a denial"):
+        // a line the aligner could not hear is read line-timed, and a
+        // begun line-timed line took the plain text colour — the tone
+        // of a word being sung, never the amber a highlighted word
+        // settles to. The line is the unit it knows; the line lights.
+        let begun = line_timed_tone(Phase::Singing, false);
+        assert_eq!(begun, palette::BRAND, "the highlight tone");
+        assert_eq!(begun, glyph_tone(false), "the same tone a sung word wears");
+        assert_ne!(begun, palette::TEXT, "not the plain text colour");
+        // The lead-in is still unlit — that part of the old rule holds.
+        assert_eq!(
+            line_timed_tone(Phase::Singing, true),
+            palette::dimmed(palette::TEXT, 0.42)
+        );
+    }
+
+    #[test]
+    fn a_word_with_an_umlaut_finds_its_glyphs_in_the_folded_face() {
+        // The face folds `ö` → `o`; the word does not. Searching the
+        // folded line for the raw word missed, and the glyphs lit as
+        // a block once the word was over instead of on their own.
+        let fold = |text: &str| -> String {
+            text.chars()
+                .map(|c| crate::ui::fold_latin(c).map_or_else(|| c.to_string(), ToOwned::to_owned))
+                .collect()
+        };
+        let words = [word("Schon", 1.0, 2.0), word("schön", 2.0, 3.0)];
+        let text = fold("Schon schön");
+        let cues = glyph_cues_on_face(&text, &words, fold);
+        let second: Vec<_> = cues
+            .iter()
+            .skip(6)
+            .map(|cue| (cue.word, cue.start))
+            .collect();
+        assert_eq!(second.len(), 5);
+        assert!(
+            second
+                .iter()
+                .all(|&(word, start)| word == 1 && (2.0..3.0).contains(&start)),
+            "every glyph of the second word starts INSIDE the word's span: {second:?}"
+        );
+        assert_eq!(
+            second[0].1, 2.0,
+            "the first glyph lights the moment the word starts"
+        );
+        // The unfolded search is what missed — the reason the fold
+        // has to be applied to both sides.
+        let raw = glyph_cues(&text, &words);
+        assert!(
+            raw.iter()
+                .skip(6)
+                .all(|cue| cue.start >= 3.0 && cue.end >= 3.0),
+            "without the fold the umlaut word is not found and its glyphs \
+             light as a block only once the word is over: {raw:?}"
         );
     }
 

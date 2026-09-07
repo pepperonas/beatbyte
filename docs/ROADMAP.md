@@ -682,6 +682,19 @@ budgeted particles, tiered hit feedback, beat-reactive environment
   2026-09-05, an instrumental must not sing along.)
 - [x] Settings: LYRICS, LYRICS SIZE, LYRICS OFFSET.
 
+- [x] **Every line highlights** *(v0.14.38, 2026-09-07)*. Reported:
+  "a denial, a denial" (Teen Spirit) never lit. Not lost, not
+  mis-timed — DEMOTED: the aligner could not hear the outro, the gate
+  fell those lines back to line timing, and a begun line-timed line
+  wore the plain text colour (the tone of a word being sung), never
+  the amber a highlighted word settles to. Library-wide 563 of 3289
+  aligned lines in 58 songs. The line is the unit such a lyric knows,
+  so the line lights whole, on its stamp; still no invented word
+  sweep. Second, independent defect found on the same path: the face
+  folds `ö` → `o` but the words searched for were not folded, so 220
+  aligned words in eleven songs lit as a block only once the word was
+  over. Both pinned; both pins seen failing under mutation.
+
 Follow-ups (only if wanted): a lyrics editor timeline, automatic
 vocal alignment (the data model already carries word spans), a
 lyrics position setting.

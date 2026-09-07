@@ -76,7 +76,10 @@ a screenshot.
 - **Word-timed lines** fill glyph by glyph as `word_progress`
   crosses each glyph's fraction; the boundary glyph lerps, the word
   igniting gets a subtle scale pop (motion-gated).
-- **Line-timed lines** fade in, hold bright, fade out. No fake word
+- **Line-timed lines** fade in, hold in the highlight tone (the
+  whole line lights on its stamp — since 0.14.38; before that they
+  held in the plain text colour and read as never highlighted), fade
+  out. No fake word
   sync — the commission forbids pretending.
 - **Layout**: active line centered above the highway's vanishing
   point (world y ≈ +255), next line dimmed below it, a soft scrim

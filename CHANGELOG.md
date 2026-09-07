@@ -14,6 +14,33 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.38] - 2026-09-07
+
+### Fixed
+
+- **Every lyric line highlights now, not only the ones the aligner
+  heard.** Reported on *Smells Like Teen Spirit*: "a denial, a denial"
+  never lit. The aligner could not read the screamed outro, the gate
+  fell those lines back to line timing (every word marked estimated,
+  and `words.json` shows such a line line-timed — an even spread is
+  not knowledge), and a begun line-timed line was drawn in the plain
+  text colour: the tone of a word being sung *right now*, never the
+  amber a highlighted word settles to. So the line went dim → white
+  while every other line went dim → white → amber, and read as "no
+  highlight". The line is the unit such a lyric knows the timing of,
+  so the line is what lights: a begun line-timed line now wears the
+  highlight tone, whole, on its stamp — still no invented word sweep.
+  Library-wide: 563 of 3289 aligned lines in 58 songs were drawn that
+  way. Pinned; the old expectation in the lead-in test is corrected.
+- **A word with an umlaut lit on its own cue again.** The karaoke
+  face folds letters (`ö` → `o`, `ß` → `ss`) but the words it searched
+  for were not folded, so the search missed silently and the glyphs
+  of such a word fell to the tail rule — they lit as a block only once
+  the word was already over, instead of while it was sung (220 aligned
+  words in eleven German and French songs of the library). Both sides are
+  folded through the same function now. Pinned with a test that also
+  shows the unfolded search missing.
+
 ## [0.14.37] - 2026-09-07
 
 ### Changed
