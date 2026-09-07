@@ -14,6 +14,31 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.39] - 2026-09-07
+
+### Added
+
+- **Two monitors on the PA stacks, measured at the laptop.** A dark
+  screen on each amp head's face with three seven-segment cells: the
+  left stack shows the **tempo in BPM**, the right one the **level in
+  dBFS** — both read from the machine's own audio input while the
+  song plays (`beatbyte-audio::listen`: the level as the eased RMS of
+  each 21 ms block, the tempo by the reference rig's estimator —
+  band energy 30–150 Hz, onsets over a 3 s moving average, the
+  median inter-onset interval folded into 60–200 BPM), nothing from
+  the chart. **No measurement, no monitor:** without an input device,
+  with a device that will not open, a refused permission (an open
+  device that never delivers a non-zero sample) or a stream that
+  dies, the monitors are not blank and not zero — they do not exist.
+  The tempo cell is blank while no tempo is heard. The input closes
+  with the song screen; the samples are reduced to two floats and
+  never written, kept or sent (README, *What leaves your machine*,
+  and a docs test that holds the section to it). The macOS bundle
+  declares the usage. Drawn the house way — bars driven by
+  visibility, a cell redrawn only when its digit changes; every
+  geometry rule pinned (the screen inside the head's face, above the
+  knobs, under the camera; the bars inside their cells).
+
 ## [0.14.38] - 2026-09-07
 
 ### Fixed

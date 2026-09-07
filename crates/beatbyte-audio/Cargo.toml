@@ -16,6 +16,7 @@ thiserror = { workspace = true }
 rodio = { workspace = true }
 symphonia = { workspace = true }
 realfft = { workspace = true }
+cpal = { workspace = true }
 
 [dev-dependencies]
 hound = { workspace = true }

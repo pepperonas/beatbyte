@@ -574,6 +574,23 @@ fn the_network_claim_matches_what_the_code_actually_does() {
                  request the game makes"
             );
         }
+        // The fourth thing is not a request at all, but it is the
+        // one a reader worries about most: an open microphone. The
+        // section has to say it is read and never leaves.
+        if repo().join("crates/beatbyte-audio/src/listen.rs").is_file() {
+            let section = readme
+                .split("### What leaves your machine")
+                .nth(1)
+                .unwrap_or_default();
+            assert!(
+                section.contains("microphone"),
+                "the game opens the audio input; the section must say so"
+            );
+            assert!(
+                section.contains("never written, kept or sent"),
+                "and say what becomes of the samples"
+            );
+        }
         if model_store {
             let section = readme
                 .split("### What leaves your machine")

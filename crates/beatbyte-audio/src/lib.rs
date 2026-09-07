@@ -17,6 +17,8 @@
 //! - [`resample`] — windowed-sinc rate conversion (the models want 16 kHz)
 //! - [`synth`] — deterministic signal synthesis (tests, demo material)
 //! - [`demo`] — the original, fully synthesized bundled demo song
+//! - [`listen`] — the machine's own audio input, reduced to a level
+//!   and a tempo for the stage monitors; nothing is kept or sent
 //!
 //! Architecture: see ADR-0005 and `docs/audio/analysis.md`.
 
@@ -25,6 +27,7 @@ pub mod clock;
 pub mod decode;
 pub mod demo;
 pub mod eval;
+pub mod listen;
 pub mod loudness;
 pub mod playback;
 pub mod priming;

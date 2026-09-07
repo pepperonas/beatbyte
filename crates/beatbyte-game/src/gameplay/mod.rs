@@ -23,6 +23,7 @@ pub mod hotplug;
 pub mod hud;
 pub mod input;
 pub mod lyrics;
+pub mod monitors;
 pub mod notes;
 pub mod pa;
 pub mod rig;

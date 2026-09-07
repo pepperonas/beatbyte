@@ -54,6 +54,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key><string>beatbyte</string>
   <key>CFBundleIconFile</key><string>BeatByte</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <key>NSMicrophoneUsageDescription</key><string>The two monitors on the stage's PA stacks show the tempo and the level the microphone hears. Nothing is recorded or sent.</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>LSMinimumSystemVersion</key><string>11.0</string>
 </dict>

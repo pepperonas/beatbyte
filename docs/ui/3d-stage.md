@@ -174,6 +174,17 @@ written to the joints as transforms; the forward kinematics in the
 tests prove the feet stay planted through a squash and no hand
 reaches into the bed.
 
+### The monitors (`monitors.rs`)
+
+A dark screen on each amp head's face, above the knobs, with three
+seven-segment cells of emissive bars: the left stack reads the tempo
+in BPM, the right the level in dBFS, both **measured** from the
+machine's audio input (`beatbyte-audio::listen`) while the song
+plays. No measurement, no monitor — they are spawned the frame the
+listener first reports a heard sample and despawned the frame it
+stops; there is no blank or zero state. Bars change by visibility
+only, and only when a digit changes.
+
 ## Materials
 
 The stage's surfaces are baked once at `PreStartup` by

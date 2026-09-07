@@ -270,6 +270,21 @@ project. Milestones when picked up:
 - [x] H3 **3D particles; depth of field measured and rejected** *(v0.14.3)*. The sustain-tube half of this line shipped as H2b and the text had gone stale. What was left: hit sparks in world space (`gameplay/spark3d.rs` — they arc from the struck receptor in perspective, shrink rather than fade, round neck only, capped and scaled by EFFECT INTENSITY; 5 tests, 5 mutation probes, no measurable frame cost against H4's baseline), and the lens. The lens was built and removed: at a usable aperture it does nothing (far/near sharpness 0.962 → 0.969), and wide enough to see it blurs the strike line first (612 → 475). The venue separation it was wanted for is already the stage fog's job. Bloom reviewed, left alone. The flat burst that was left unexplained here was diagnosed the next session (v0.14.4): not invisible but MISPLACED — the 3D solo neck is 1.45× wider than the flat layout it is positioned with — and it now stands down on the stage, the outro fireworks excepted.
 - [~] H4 Performance pass + packaging size check. Measured on this machine: the 3D stage holds a vsync-locked 60 fps during a full song with a 99th-percentile frame of 19.4 ms — no stalls, so it costs no notes. `BEATBYTE_FPS=1` now reports median and 99th-percentile frame times (an average would hide exactly the stutters that lose notes). Still open: a low-end GPU and the artifact size check.
 
+## Stage monitors and the room's light show (2026-09-07, v0.14.39–)
+
+- [x] **BPM and dB monitors on the PA** *(v0.14.39)*. Commissioned:
+  the left stack shows the tempo, the right the level, both measured
+  at the laptop; without audio support neither exists. Built on the
+  first audio INPUT path in the tree (`beatbyte-audio::listen`, cpal
+  — the library rodio already plays through — on its own thread
+  like the player; the level as eased block RMS, the tempo by the
+  reference rig's estimator, pinned on synthesized kicks at 96/120/
+  140 BPM, silence, a whisper under the gate, and a stop going
+  stale). The monitors are seven-segment cells of emissive bars,
+  spawned the frame a measurement exists and despawned the frame it
+  stops. Privacy stated in the README and held there by the docs
+  test; the macOS bundle declares the microphone usage.
+
 ## Stage realism II — PA, people, light (DONE 2026-09-07, v0.14.37)
 
 Commissioned as "die Grafik und Darstellung während ein Lied gespielt

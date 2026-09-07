@@ -14,7 +14,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.14.38"
+version = "0.14.39"
 edition = "2024"
 license = "MIT"
 authors = ["Martin Pfeffer"]
@@ -26,15 +26,15 @@ categories = ["games"]
 
 [workspace.dependencies]
 # Internal crates
-beatbyte-core = { path = "crates/beatbyte-core", version = "0.14.38" }
-beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.14.38" }
-beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.14.38" }
-beatbyte-game = { path = "crates/beatbyte-game", version = "0.14.38" }
-beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.14.38" }
-beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.14.38" }
-beatbyte-ml = { path = "crates/beatbyte-ml", version = "0.14.38" }
-beatbyte-lyrics = { path = "crates/beatbyte-lyrics", version = "0.14.38" }
-beatbyte-meter = { path = "crates/beatbyte-meter", version = "0.14.38" }
+beatbyte-core = { path = "crates/beatbyte-core", version = "0.14.39" }
+beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.14.39" }
+beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.14.39" }
+beatbyte-game = { path = "crates/beatbyte-game", version = "0.14.39" }
+beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.14.39" }
+beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.14.39" }
+beatbyte-ml = { path = "crates/beatbyte-ml", version = "0.14.39" }
+beatbyte-lyrics = { path = "crates/beatbyte-lyrics", version = "0.14.39" }
+beatbyte-meter = { path = "crates/beatbyte-meter", version = "0.14.39" }
 
 # Engine ("wav" lets bevy_audio play our procedurally generated SFX;
 # "serialize" gives input types serde for the persisted bindings table)
@@ -45,6 +45,8 @@ rodio = "0.22"
 rusb = { version = "0.9", features = ["vendored"] }
 symphonia = { version = "0.5", default-features = true, features = ["isomp4", "aac", "mp3"] }
 realfft = "3.5"
+# Audio input for the two stage monitors (the version rodio already pulls)
+cpal = "0.17"
 # Test-only WAV writing for decode round-trips
 hound = "3.5"
 

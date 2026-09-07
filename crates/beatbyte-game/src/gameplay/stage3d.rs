@@ -3025,6 +3025,10 @@ pub struct Stage3dPlugin;
 impl Plugin for Stage3dPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<FretHeat>();
+        // The PA monitors and the ears that feed them: their own
+        // systems, gated the same way (the Update tuple below is at
+        // Bevy's cap of twenty).
+        super::monitors::register(app);
         app.add_systems(
             OnEnter(AppState::Gameplay),
             (
