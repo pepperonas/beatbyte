@@ -292,6 +292,11 @@ project. Milestones when picked up:
   110–116. **v0.14.42:** user report "zu klein, negative Werte, BPM
   sehe ich gar nicht" — panels rebuilt as dot matrices on top of the
   heads (R4 style), level shown as dBFS + 100 like the dB-Analyse.
+  **Seen (2026-09-07, unlocked screen):** both panels legible from
+  the camera — 116 on the left, 57 on the right on a −43 dBFS room —
+  and a comet running the left barrier rail, absent in a frame
+  between effects. The highlight's punch is proven by log, not
+  isolated by eye.
 - [x] **Highlight on the threshold, white strips, a threshold that
   sets itself** *(v0.14.40)*. Commissioned as an extension of the
   reference rig's dB-Analyse threshold path; BeatByte had none (its

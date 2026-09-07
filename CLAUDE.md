@@ -651,6 +651,15 @@ artifact, smoke-test it (neutral CWD!), then
   and keep an eye on it: it had grown to 70 GB and filled the disk
   mid-session, at which point no tool could even open its output
   file.
+- **A colour filter is a hypothesis about the renderer.** Counting
+  "warm white" pixels (`r-b > 15`) to find the light strips returned
+  ZERO across eight frames, five of which the log proved had an
+  effect running — and the strips were there all along: emissive
+  white through bloom and tonemapping arrives neutral or clipped
+  (r=g=b), so the filter excluded exactly what it was looking for.
+  The house rule that a tool reporting 0 needs a counter-check
+  applies to image measurements too: difference two frames, or crop
+  and LOOK, before believing a feature does not render.
 - **A locked screen is not only a black capture: it is a whole
   session without eyes.** Plan verification at ECS/log level from the
   start — `info!` lines that carry the measured values (the monitors
