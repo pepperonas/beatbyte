@@ -14,6 +14,43 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.40] - 2026-09-07
+
+### Added
+
+- **The room's own level runs a light show.** Commissioned on the
+  reference rig's vocabulary (its dB-Analyse fires the strip over a
+  threshold): here the level is the one the right monitor shows —
+  measured at the laptop by `beatbyte-audio::listen` — and three
+  things hang off it (`gameplay/lightshow.rs`):
+  - **A highlight on the stage lighting** when the level crosses the
+    threshold: every stage lamp (the six moving heads, the four
+    backline rims, the band's key) punches to 1.9× its own intensity
+    on the rising edge and decays over ~0.35 s. The bit is live
+    (level > threshold, no hysteresis — the reference keeps it that
+    way on purpose); under REDUCED FLASHING the punch is a swell, a
+    third as strong, decaying at a quarter of the rate. Without a
+    measurement it never fires.
+  - **The threshold sets itself**, the reference's duty governor
+    ported (`disco-controller/auto_thr.py`): the share of music time
+    the level sits above it is eased over two seconds and the
+    threshold steps toward a 35 % target — 0.9 dB up, 0.45 dB down,
+    one step per half second — never under the noise floor plus
+    6 dB, frozen in silence. Pinned: it lands between a loud and a
+    soft level at the target duty, climbs twice as fast as it falls,
+    learns nothing from silence, and stays off the noise.
+  - **Three white light strips** — along the band riser's front
+    edge (the stage), along both barrier rails (the audience), up
+    the inner front corner of both PA stacks (the boxes) — each
+    running, now and then (9–18 s apart, its own schedule, from a
+    hash), a **comet** (a bright head with an exponential tail, in
+    either direction, 1.4 s) or a **glimmer** (a second of sparkle
+    re-rolled 24 times a second, 4 under REDUCED FLASHING). Forty
+    additive bars per strip driven by visibility and scale alone,
+    dark between effects, dark and untouched under STAGE MOTION off.
+    Decor, not a readout: the strips glimmer whether or not there is
+    a microphone.
+
 ## [0.14.39] - 2026-09-07
 
 ### Added

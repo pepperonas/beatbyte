@@ -185,6 +185,19 @@ listener first reports a heard sample and despawned the frame it
 stops; there is no blank or zero state. Bars change by visibility
 only, and only when a digit changes.
 
+### The light show (`lightshow.rs`)
+
+The level the right monitor shows also drives the room: a threshold
+that sets itself (the reference rig's duty governor, ported), a punch
+on every stage `SpotLight` on the rising edge of `level > threshold`
+(a lamp's own intensity is remembered in `LampBase` the first time
+the highlight touches it), and five white strips — riser edge, the
+two barrier rails, the two stacks' inner corners — that run a comet
+or a glimmer every 9–18 s on a hashed schedule. Bars are additive
+ghosts (`NotShadowCaster`), driven by visibility and scale; STAGE
+MOTION off leaves them dark and unwritten; REDUCED FLASHING turns the
+punch into a swell and the glimmer into a slow sparkle.
+
 ## Materials
 
 The stage's surfaces are baked once at `PreStartup` by

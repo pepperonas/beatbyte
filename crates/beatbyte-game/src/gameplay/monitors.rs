@@ -255,6 +255,8 @@ pub fn tend_monitors(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut monitors: Query<(Entity, &mut Monitor)>,
     mut bars: Query<(Entity, &MonitorBar, &mut Visibility)>,
+    time: Res<Time>,
+    mut reported_at: Local<f32>,
 ) {
     if !stage3d::active(&settings) {
         return;
@@ -264,6 +266,7 @@ pub fn tend_monitors(
     match (measuring, present) {
         (false, false) => return,
         (false, true) => {
+            info!("monitors: no measurement any more — despawned");
             for (entity, _) in &monitors {
                 commands.entity(entity).despawn();
             }
@@ -273,6 +276,7 @@ pub fn tend_monitors(
             return;
         }
         (true, false) => {
+            info!("monitors: the input is heard — spawned on both stacks");
             spawn_monitors(&mut commands, &mut meshes, &mut materials, theme.0.accent);
             return;
         }
@@ -281,6 +285,19 @@ pub fn tend_monitors(
     let Some(listener) = ears.0.as_ref() else {
         return;
     };
+    // A line every five seconds, so a run's log shows what the
+    // monitors read (an ECS-level probe: a locked screen renders
+    // black, a log line does not).
+    if time.elapsed_secs() - *reported_at >= 5.0 {
+        *reported_at = time.elapsed_secs();
+        info!(
+            "monitors: level {:.1} dBFS, tempo {}",
+            listener.db(),
+            listener
+                .bpm()
+                .map_or_else(|| "none".to_owned(), |bpm| format!("{bpm:.0} BPM"))
+        );
+    }
     let wanted = |readout: Readout| match readout {
         Readout::Bpm => bpm_cells(listener.bpm()),
         Readout::Db => db_cells(listener.db()),

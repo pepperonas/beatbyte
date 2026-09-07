@@ -3029,6 +3029,9 @@ impl Plugin for Stage3dPlugin {
         // systems, gated the same way (the Update tuple below is at
         // Bevy's cap of twenty).
         super::monitors::register(app);
+        // The room's own light show: the highlight on the measured
+        // level and the white strips.
+        super::lightshow::register(app);
         app.add_systems(
             OnEnter(AppState::Gameplay),
             (

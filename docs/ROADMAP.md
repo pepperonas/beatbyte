@@ -284,6 +284,19 @@ project. Milestones when picked up:
   spawned the frame a measurement exists and despawned the frame it
   stops. Privacy stated in the README and held there by the docs
   test; the macOS bundle declares the microphone usage.
+- [x] **Highlight on the threshold, white strips, a threshold that
+  sets itself** *(v0.14.40)*. Commissioned as an extension of the
+  reference rig's dB-Analyse threshold path; BeatByte had none (its
+  Room Stage bridge goes the other way — the game's events drive the
+  Pi's strip), so the mechanism was built on the monitors' listener:
+  a pure duty governor (the reference's rule and numbers), a punch
+  envelope on every stage SpotLight (the lamp's own intensity
+  remembered on first touch — no fixture retuned), five bar pools
+  along the riser edge, the barrier rails and the stacks' corners
+  with comet/glimmer effects on hashed schedules. Every rule pinned;
+  the strips checked against the geometry they sit on. ⚠️ The
+  reference rig itself (raspi5, `stats.html`/`app.py`) was NOT
+  touched — see the open questions in the session report.
 
 ## Stage realism II — PA, people, light (DONE 2026-09-07, v0.14.37)
 

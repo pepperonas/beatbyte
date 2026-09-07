@@ -22,6 +22,7 @@ pub mod fx;
 pub mod hotplug;
 pub mod hud;
 pub mod input;
+pub mod lightshow;
 pub mod lyrics;
 pub mod monitors;
 pub mod notes;
