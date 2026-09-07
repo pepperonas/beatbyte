@@ -14,7 +14,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.14.36"
+version = "0.14.37"
 edition = "2024"
 license = "MIT"
 authors = ["Martin Pfeffer"]
@@ -26,15 +26,15 @@ categories = ["games"]
 
 [workspace.dependencies]
 # Internal crates
-beatbyte-core = { path = "crates/beatbyte-core", version = "0.14.36" }
-beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.14.36" }
-beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.14.36" }
-beatbyte-game = { path = "crates/beatbyte-game", version = "0.14.36" }
-beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.14.36" }
-beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.14.36" }
-beatbyte-ml = { path = "crates/beatbyte-ml", version = "0.14.36" }
-beatbyte-lyrics = { path = "crates/beatbyte-lyrics", version = "0.14.36" }
-beatbyte-meter = { path = "crates/beatbyte-meter", version = "0.14.36" }
+beatbyte-core = { path = "crates/beatbyte-core", version = "0.14.37" }
+beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.14.37" }
+beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.14.37" }
+beatbyte-game = { path = "crates/beatbyte-game", version = "0.14.37" }
+beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.14.37" }
+beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.14.37" }
+beatbyte-ml = { path = "crates/beatbyte-ml", version = "0.14.37" }
+beatbyte-lyrics = { path = "crates/beatbyte-lyrics", version = "0.14.37" }
+beatbyte-meter = { path = "crates/beatbyte-meter", version = "0.14.37" }
 
 # Engine ("wav" lets bevy_audio play our procedurally generated SFX;
 # "serialize" gives input types serde for the persisted bindings table)

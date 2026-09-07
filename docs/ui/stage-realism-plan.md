@@ -60,6 +60,12 @@ key/backlight contrast, with backlights firing TOWARD the camera.
    with a visible front edge — the board stands on a stage, not in
    the air.
 
-Not planned: character models/band figures (asset rule, scope),
-venue art or logos (trade dress), fog particles simulation (static
-haze sheets carry the look at zero per-frame cost).
+Not planned at the time: character models/band figures (asset rule,
+scope), venue art or logos (trade dress), fog particles simulation
+(static haze sheets carry the look at zero per-frame cost).
+
+*Superseded 2026-09-07 (Stage realism II, `docs/ROADMAP.md`):* the
+figures came after all — as original people from primitives under a
+hash-chosen look (`gameplay/figure.rs`), which the asset rule never
+forbade; the "no models" exclusion was about shipping someone else's
+models. Venue art and logos stay out; the haze sheets stay static.

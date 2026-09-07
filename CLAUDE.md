@@ -592,6 +592,49 @@ artifact, smoke-test it (neutral CWD!), then
   window of a fret-hit note (0.14.36). When a judgment rule is added,
   ask what the SAME-FRAME ordering does to it, and pin it with inputs
   in that order.
+- **`AmbientLight` is a component ON THE CAMERA in Bevy 0.19**
+  (`#[require(Camera)]`, `bevy_light/src/ambient_light.rs`). Spawned
+  on its own entity — as the stage did from v0.11 to v0.14.36 — it
+  lights nothing and quietly becomes a phantom camera that no drill
+  sees; the stage ran on the engine's white default ambient the whole
+  time. Light components go where the engine says they go, and a
+  lighting change is verified by looking, not by reading the code
+  that "sets" it.
+- **A blended or additive mesh casts a SOLID shadow** in Bevy 0.19's
+  shadow pass (`pbr_functions.wgsl` discards only masked materials).
+  Every haze sheet, beam mantle, halo, lens and grille cloth carries
+  `NotShadowCaster`, and a wired test walks the venue for any
+  non-opaque material without it. The neck opts out of shadows both
+  ways (`stage3d::on_the_neck`): it is a reading surface.
+- **A normal map without tangents is silently flat.** Every mesh that
+  takes one goes through `surfaces::tangent_mesh`; merge pieces first,
+  generate tangents after (`Mesh::merge` wants identical attribute
+  sets). Data tiles are `Rgba8Unorm`, colour tiles sRGB; a normal map
+  in sRGB leans every normal through the gamma curve.
+- **Bright smooth metal under the rig is fairy lights.** The corner
+  caps of the PA stacks, chrome in the first pass, stood directly under
+  the moving heads and bloomed into white blobs in two consecutive
+  frames — dark and matte is what a corner protector is anyway. A
+  material that catches a spot at close range needs roughness before
+  it needs colour.
+- **A leg fold is not symmetric.** "Thigh forward θ, shin back 2θ" only
+  keeps the foot under the hip when the two segments are equal; with
+  the foot in the shin's length the sole drifted 1.8 mm — the FK test
+  caught it. The shin's angle is `asin(THIGH/SHIN · sin θ)`.
+- **`RenderLayers` is per entity, never inherited**, and a joint or
+  limb without the stage layer is simply invisible; the figure builder
+  puts it on every entity it spawns and a wired test walks the tree.
+- **`BEATBYTE_SHOT_TIMES` frames are named `beatbyte-gameplay-t<time>.png`**
+  — a capture loop that stops on "two PNGs exist" stops on the menu
+  shot and the fixed `gameplay-phrase` frame, before the timed ones.
+- **On the ProMotion panel a vsync frame time is the refresh rate's,
+  not the GPU's.** After the stage realism pass the vsync medians read
+  10.00 ms (100 Hz) with stretches at exactly 16.66 ms (60 Hz) — the
+  panel choosing a rate, and the 60 Hz stretches were the window not
+  being frontmost; a run without the window raised showed 16.66 ms
+  even with `BEATBYTE_UNCAPPED=1`. Measure GPU cost uncapped AND with
+  the window raised every half second (`stage/uncapped.sh` pattern):
+  9.1 → 10.8 ms was the real change, +19 %.
 - **A summary inside this repository is not a source.** Round six of
   the look plan built the gem from a trait table an earlier round had
   written ("dark ring, white centre") instead of from the material,

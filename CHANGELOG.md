@@ -14,6 +14,57 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.37] - 2026-09-07
+
+### Changed
+
+- **The stage became a place with people in it.** A realism pass on
+  everything behind the neck, commissioned as "realistischer,
+  insbesondere die Speaker und die tanzenden Figuren", in the genre's
+  conventions and our own hands, every asset generated at startup:
+  - **The PA** is two full stacks — sub, two tops, an amp head —
+    standing ON the deck (the old cabinets floated 0.27 above it):
+    tolex bodies with a normal map, a raised frame around a recessed
+    grille cloth the driver cones show through, metal corner caps and
+    handles, rubber feet, bass ports, a head with eight knobs and one
+    power LED. The cones stroke out on the beat. No badge, no logo.
+  - **The crowd is fifty-six people** from a new figure builder
+    (pelvis, torso, head with a hair silhouette, arms with elbows and
+    hands, legs with knees) under a hash-chosen look per song, in
+    three staggered rows in front of the band's riser — the old
+    crowd's back seats stood inside it. Each person runs a programme
+    of dance moves (bounce, sway, fist pump, clap, headbang, a jump on
+    the downbeat) that changes on phrase boundaries, scaled by the
+    song's energy (Hype, the streak, silence), and every arm goes up
+    under Hype. The band are four more from the same builder, with a
+    waisted guitar and bass, a strap, sticks in the drummer's hands, a
+    snare, chrome rims and a hi-hat.
+  - **Real light and shadow.** The key light casts the stage's one
+    shadow map (two cascades); the neck opts out, so the board never
+    takes a stack's shadow. The six moving heads and the four backline
+    rims are real spotlights on the same pivots as their visible
+    shafts (one cone, pinned by a test), so the pools on the deck are
+    the lights themselves — the fake sliding floor pools are gone. A
+    warm key from the front truss lights the band; the cool backline
+    rims edge-light everyone. The deck is planks with seams and scuffs
+    and a sheen the pools reflect in; the trusses are steel.
+  - **The ambient light now exists.** It was spawned on its own entity,
+    which in this Bevy makes it a phantom camera and lights nothing;
+    it lives on the stage camera now, in half the theme's accent.
+  All of it honours STAGE MOTION (off = not a transform written) and
+  applies to both note styles; the band stays with the round style.
+  Judgment is untouched (autopilot counts identical), frame time was
+  measured against a baseline (numbers in `docs/ROADMAP.md`).
+
+- The README's two gameplay screenshots re-shot from this build
+  (8-bit under Hype, round style on a phrase).
+
+### Removed
+
+- The fake floor light pools under the moving heads, and the flat
+  speaker-front texture (replaced by real cabinet geometry and a
+  driver relief map).
+
 ## [0.14.36] - 2026-09-06
 
 ### Fixed

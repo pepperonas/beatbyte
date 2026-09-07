@@ -38,6 +38,7 @@ mod shapes;
 pub mod smart_lyrics;
 pub mod song_select;
 pub mod states;
+pub mod surfaces;
 pub mod telemetry;
 mod theme;
 pub mod transition;
@@ -199,6 +200,7 @@ pub fn run() -> AppExit {
         input_test::InputTestPlugin,
         xplorer::XplorerPlugin,
         shapes::ShapesPlugin,
+        surfaces::SurfacesPlugin,
         ui::UiPlugin,
         audio_sys::AudioBridgePlugin,
         config::ConfigPlugin,

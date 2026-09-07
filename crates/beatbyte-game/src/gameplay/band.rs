@@ -2,25 +2,31 @@
 //!
 //! The genre's stage has a band on it — a guitarist, a bassist, a
 //! drummer on a riser, a singer at a stand — and the venue here had
-//! everything but. These are **original figures built from
-//! primitives**, in the same silhouette language as the crowd
-//! (capsule, sphere, box), on a raised platform between the neck's
-//! far end and the back wall: they stand where the eye lands past
-//! the vanishing point and can never occlude a note (the G23 rule —
-//! nothing on stage sits inside the bed).
+//! everything but. Since 2026-09-07 the four are people from the same
+//! [`figure`](super::figure) builder as the crowd (elbows, hands, hair,
+//! a shirt), on a raised platform between the neck's far end and the
+//! back wall: they stand where the eye lands past the vanishing point
+//! and can never occlude a note (the G23 rule — nothing on stage sits
+//! inside the bed).
 //!
 //! They play. Every movement is a pure function of song beats (and
-//! whether Hype runs), so the band is deterministic, costs a few
-//! transforms per frame, and keeps time with the music rather than
-//! the frame rate — the same discipline as the crowd's bob and the
-//! LED wall's pulse.
+//! whether Hype runs) turned into a [`Pose`] per member, so the band
+//! is deterministic, costs a few dozen transforms per frame, and keeps
+//! time with the music rather than the frame rate — the same
+//! discipline as the crowd and the LED wall.
 //!
 //! No character is anyone's: no likeness, no costume, no logo. Four
-//! dark figures and their instruments, lit by the stage.
+//! figures and their instruments, lit by the stage's key and rimmed by
+//! its backline.
 
 use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
+use core::f32::consts::FRAC_PI_2;
 
+use super::figure::{
+    ArmPose, Build, Detail, FigureAssets, FigureJoint, FigureSpec, Hair, Pose, Stance,
+    pose_transform, spawn_figure,
+};
 use super::stage3d::{NeckStyle, STAGE_LAYER, Stage3d, neck_style};
 use super::{GameplayScreen, PlayerSession};
 use crate::audio_sys::GameClock;
@@ -39,10 +45,12 @@ const RISER_TOP: f32 = 1.3;
 /// The figures are drawn larger than life: at thirty units they
 /// would otherwise be a few pixels tall.
 const FIGURE_SCALE: f32 = 1.5;
+/// A band member's height before the stage scale.
+pub const BAND_HEIGHT: f32 = 1.78;
 /// The drummer's own riser, at the back of the band's.
 const DRUM_RISER_H: f32 = 0.5;
 
-/// Who a figure is. Drives both the pose and the animation.
+/// Who a figure is. Drives both the look and the playing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
     /// Front centre, at the stand.
@@ -55,35 +63,35 @@ pub enum Role {
     Drummer,
 }
 
-/// A part of a figure that moves.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Part {
-    /// The whole figure: bobs on the beat (and sways, for the singer).
-    Body,
-    /// The strumming or hitting arm; `0` = right, `1` = left.
-    Arm(u8),
-    /// The head: nods.
-    Head,
+impl Role {
+    /// The four, in spawn order.
+    pub const ALL: [Role; 4] = [Role::Singer, Role::Guitarist, Role::Bassist, Role::Drummer];
 }
 
-/// A moving part of a band member, with its resting transform so the
-/// motion is an offset and never a drift.
-#[derive(Component)]
-pub struct BandPart {
-    /// Who this belongs to.
+/// A band member's root.
+#[derive(Component, Debug, Clone, Copy)]
+pub struct BandMember {
+    /// Who.
     pub role: Role,
-    /// Which part.
-    pub part: Part,
     /// Radians of offset into the beat, so four figures do not pump
     /// as one block.
     pub phase: f32,
-    /// Where it rests.
-    pub rest: Transform,
 }
+
+/// Marks a band figure's joints (disjoint from the crowd's).
+#[derive(Component, Debug, Clone, Copy, Default)]
+pub struct BandJoint;
 
 /// Marker for everything the band spawned.
 #[derive(Component)]
 pub struct Band;
+
+/// How far the singer's free arm is up (eased toward Hype).
+#[derive(Resource, Debug, Clone, Copy, Default)]
+pub struct BandMood {
+    /// 0 = down, 1 = up.
+    pub arm_up: f32,
+}
 
 /// How high a body bobs at this point in the beat, in world units.
 ///
@@ -165,6 +173,217 @@ pub fn stand(role: Role) -> (f32, f32, f32) {
     }
 }
 
+/// The drummer sits; everyone else stands. Pure — tested.
+#[must_use]
+pub fn stance(role: Role) -> Stance {
+    match role {
+        Role::Drummer => Stance::Seated,
+        _ => Stance::Standing,
+    }
+}
+
+/// What each member looks like: a fixed look per role (the band is
+/// the same band every night), lit tones so the key reads on them.
+#[must_use]
+pub fn role_spec(role: Role) -> FigureSpec {
+    let base = FigureSpec {
+        height: BAND_HEIGHT,
+        build: Build::Medium,
+        hair: Hair::Short,
+        detail: Detail::Full,
+        top: 0,
+        bottom: 0,
+        skin: 1,
+        hair_tone: 0,
+        sleeves: true,
+    };
+    match role {
+        Role::Singer => FigureSpec {
+            build: Build::Slim,
+            hair: Hair::Long,
+            top: 7,
+            bottom: 1,
+            skin: 0,
+            hair_tone: 3,
+            ..base
+        },
+        Role::Guitarist => FigureSpec {
+            hair: Hair::Short,
+            top: 4,
+            bottom: 0,
+            skin: 2,
+            hair_tone: 0,
+            ..base
+        },
+        Role::Bassist => FigureSpec {
+            build: Build::Broad,
+            hair: Hair::Beanie,
+            top: 5,
+            bottom: 2,
+            skin: 1,
+            hair_tone: 1,
+            ..base
+        },
+        Role::Drummer => FigureSpec {
+            hair: Hair::Cap,
+            top: 3,
+            bottom: 3,
+            skin: 3,
+            hair_tone: 2,
+            sleeves: false,
+            ..base
+        },
+    }
+}
+
+/// The root scale of a band member (its height on stage).
+#[must_use]
+pub fn member_scale() -> f32 {
+    BAND_HEIGHT * FIGURE_SCALE
+}
+
+/// A member's pose at song position `beats`: the playing, from the
+/// pure per-role functions, as joint angles. `arm_up` is the
+/// singer's free arm (0 down, 1 up), eased outside. Pure — tested:
+/// every pose stays inside the joint limits at every beat.
+#[must_use]
+pub fn role_pose(role: Role, beats: f32, phase: f32, hype: bool, arm_up: f32) -> Pose {
+    let lift = bob(beats, phase, hype) / member_scale();
+    let head_nod = nod(beats, phase);
+    match role {
+        Role::Singer => Pose {
+            lift: lift * 0.6,
+            side: sway(beats),
+            head_nod,
+            arms: [
+                // On the stand: forward and down to the mic.
+                ArmPose {
+                    raise: 0.9,
+                    spread: -0.2,
+                    elbow: 0.9,
+                },
+                // Free: up under Hype — the singer calls the moment.
+                ArmPose {
+                    raise: 0.15 + 2.75 * arm_up.clamp(0.0, 1.0),
+                    spread: 0.15,
+                    elbow: 0.4,
+                },
+            ],
+            ..Pose::default()
+        },
+        Role::Guitarist | Role::Bassist => {
+            let s = strum(beats, role, hype);
+            Pose {
+                lift,
+                head_nod,
+                lean: 0.06,
+                arms: [
+                    // Fretting hand out along the neck (the figure's
+                    // left, where the neck points).
+                    ArmPose {
+                        raise: 0.7,
+                        spread: 0.35,
+                        elbow: 1.4,
+                    },
+                    // Strumming arm: lower and straighter on the
+                    // down-stroke (`strum` is negative there).
+                    ArmPose {
+                        raise: 0.75 + 0.35 * s,
+                        spread: -0.1,
+                        elbow: 1.7 + 0.9 * s,
+                    },
+                ],
+                ..Pose::default()
+            }
+        }
+        Role::Drummer => Pose {
+            lift: lift * 0.3,
+            head_nod,
+            lean: 0.15,
+            arms: [
+                ArmPose {
+                    raise: 0.35 + 0.8 * drum(beats, 1, hype),
+                    spread: 0.25,
+                    elbow: 1.2,
+                },
+                ArmPose {
+                    raise: 0.35 + 0.8 * drum(beats, 0, hype),
+                    spread: 0.25,
+                    elbow: 1.2,
+                },
+            ],
+            ..Pose::default()
+        },
+    }
+}
+
+/// A box translated into place, for the instruments.
+fn block(size: Vec3, at: Vec3) -> Mesh {
+    Mesh::from(Cuboid::from_size(size)).translated_by(at)
+}
+
+fn merged(mut base: Mesh, pieces: Vec<Mesh>) -> Mesh {
+    for piece in &pieces {
+        if let Err(error) = base.merge(piece) {
+            warn!("band: an instrument piece could not be merged ({error:?})");
+        }
+    }
+    base
+}
+
+/// A guitar (or bass) in the figure's frame, hanging from the spine:
+/// a waisted body from two discs and a bridge block, a neck out to
+/// the figure's left, a tilted headstock. Sizes in units of the
+/// figure's height. Pure geometry — no logo, no maker's shape.
+fn guitar_mesh(bass: bool) -> Mesh {
+    let (lower, upper, neck_len) = if bass {
+        (0.11, 0.09, 0.38)
+    } else {
+        (0.10, 0.085, 0.32)
+    };
+    let disc = |r: f32, x: f32| {
+        Mesh::from(Cylinder::new(r, 0.02))
+            .rotated_by(Quat::from_rotation_x(FRAC_PI_2))
+            .translated_by(Vec3::new(x, 0.0, 0.0))
+    };
+    merged(
+        disc(lower, -0.07),
+        vec![
+            disc(upper, 0.13),
+            block(Vec3::new(0.18, 0.15, 0.02), Vec3::new(0.03, 0.0, 0.0)),
+            block(
+                Vec3::new(neck_len, 0.026, 0.015),
+                Vec3::new(0.13 + neck_len * 0.5, 0.01, 0.0),
+            ),
+            block(
+                Vec3::new(0.07, 0.035, 0.012),
+                Vec3::new(0.13 + neck_len + 0.03, 0.02, 0.0),
+            ),
+        ],
+    )
+}
+
+/// The chrome bits of a guitar: two pickups and a bridge.
+fn guitar_chrome() -> Mesh {
+    merged(
+        block(Vec3::new(0.02, 0.06, 0.012), Vec3::new(0.02, 0.0, 0.012)),
+        vec![
+            block(Vec3::new(0.02, 0.06, 0.012), Vec3::new(0.07, 0.0, 0.012)),
+            block(Vec3::new(0.02, 0.05, 0.015), Vec3::new(-0.06, 0.0, 0.012)),
+        ],
+    )
+}
+
+/// The strap over the left shoulder to the right hip.
+fn strap_mesh() -> Mesh {
+    let from = Vec3::new(0.10, 0.19, 0.03);
+    let to = Vec3::new(-0.08, -0.12, 0.09);
+    let dir = to - from;
+    Mesh::from(Capsule3d::new(0.008, dir.length()))
+        .rotated_by(Quat::from_rotation_arc(Vec3::Y, dir.normalize()))
+        .translated_by((from + to) * 0.5)
+}
+
 /// Spawn the band. Instrument neck only — the 8-bit stage is left
 /// exactly as it was.
 #[allow(clippy::too_many_lines)] // one figure after another; splitting it would scatter the layout
@@ -172,6 +391,7 @@ pub fn spawn_band(
     mut commands: Commands,
     settings: Res<Settings>,
     theme: Res<crate::theme::ActiveTheme>,
+    assets: Res<FigureAssets>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
@@ -181,6 +401,7 @@ pub fn spawn_band(
     let stage = theme.0;
     let dark = stage.background;
     let layer = RenderLayers::layer(STAGE_LAYER);
+    commands.insert_resource(BandMood::default());
 
     // The riser: a dark platform with a lit front edge, like the one
     // the highway stands on.
@@ -210,31 +431,7 @@ pub fn spawn_band(
         Transform::from_xyz(0.0, RISER_TOP + DRUM_RISER_H / 2.0, RISER_Z - 2.6),
         layer.clone(),
     ));
-    // A warm wash over the band, so the figures read as figures
-    // against the dark and not as more crowd. Ranged: it must not
-    // reach the neck.
-    commands.spawn((
-        GameplayScreen,
-        Stage3d,
-        Band,
-        PointLight {
-            color: stage.accent.mix(&Color::srgb(1.0, 0.85, 0.7), 0.6),
-            intensity: 1_400_000.0,
-            range: 12.0,
-            shadow_maps_enabled: false,
-            ..default()
-        },
-        Transform::from_xyz(0.0, RISER_TOP + 5.0, RISER_Z + 2.0),
-        layer.clone(),
-    ));
 
-    // Bodies: the crowd's silhouette, a shade lighter, so a lit
-    // band member is a person and a lit crowd member stays a mass.
-    let body_material = materials.add(StandardMaterial {
-        base_color: dark.mix(&Color::BLACK, 0.45),
-        perceptual_roughness: 0.85,
-        ..default()
-    });
     let instrument_material = materials.add(StandardMaterial {
         base_color: dark.mix(&Color::BLACK, 0.5).mix(&stage.accent, 0.18),
         perceptual_roughness: 0.45,
@@ -248,24 +445,33 @@ pub fn spawn_band(
         ..default()
     });
 
-    let head = meshes.add(Sphere::new(0.27).mesh().uv(10, 8));
-    let torso = meshes.add(Capsule3d::new(0.3, 0.8).mesh().latitudes(8).longitudes(12));
-    let arm = meshes.add(Cuboid::new(0.13, 0.78, 0.13));
-    let leg = meshes.add(Cuboid::new(0.16, 0.9, 0.16));
-    let guitar_body = meshes.add(Cuboid::new(0.95, 0.6, 0.14));
-    let guitar_neck = meshes.add(Cuboid::new(0.95, 0.1, 0.06));
-    let stick = meshes.add(Cuboid::new(0.04, 0.5, 0.04));
-    let mic_stand = meshes.add(Cylinder::new(0.025, 1.7));
-    let mic = meshes.add(Sphere::new(0.07).mesh().uv(8, 6));
+    let guitar = meshes.add(guitar_mesh(false));
+    let bass = meshes.add(guitar_mesh(true));
+    let guitar_bits = meshes.add(guitar_chrome());
+    let strap = meshes.add(strap_mesh());
+    let stick = meshes.add(block(
+        Vec3::new(0.012, 0.012, 0.23),
+        Vec3::new(0.0, -0.185, 0.13),
+    ));
+    let mic_stand = meshes.add(Cylinder::new(0.025, 2.3));
+    let mic = meshes.add(Sphere::new(0.08).mesh().uv(8, 6));
+    let stool_seat = meshes.add(Cylinder::new(0.22, 0.05));
+    let stool_post = meshes.add(Cylinder::new(0.03, 0.55));
     let drum_shell = meshes.add(Cylinder::new(0.32, 0.28));
+    let snare = meshes.add(Cylinder::new(0.28, 0.15));
+    let rim = |r: f32| Torus {
+        minor_radius: 0.015,
+        major_radius: r,
+    };
+    let tom_rim = meshes.add(rim(0.32));
+    let snare_rim = meshes.add(rim(0.28));
     let kick = meshes.add(Cylinder::new(0.48, 0.5));
     let cymbal = meshes.add(Cylinder::new(0.42, 0.02));
+    let hihat = meshes.add(Cylinder::new(0.28, 0.015));
     let cymbal_stand = meshes.add(Cylinder::new(0.02, 1.2));
+    let hihat_stand = meshes.add(Cylinder::new(0.02, 0.9));
 
-    for (index, role) in [Role::Singer, Role::Guitarist, Role::Bassist, Role::Drummer]
-        .into_iter()
-        .enumerate()
-    {
+    for (index, role) in Role::ALL.into_iter().enumerate() {
         let (x, z, facing) = stand(role);
         let floor = if role == Role::Drummer {
             RISER_TOP + DRUM_RISER_H
@@ -273,290 +479,252 @@ pub fn spawn_band(
             RISER_TOP
         };
         let phase = index as f32 * 0.9;
-        // The drummer sits; everyone else stands.
-        let hip = if role == Role::Drummer { 0.55 } else { 0.9 };
-        let rest = Transform::from_xyz(x, floor + hip * FIGURE_SCALE, z)
+        let spec = role_spec(role);
+        let root = Transform::from_xyz(x, floor, z)
             .with_rotation(Quat::from_rotation_y(facing))
-            .with_scale(Vec3::splat(FIGURE_SCALE));
-        let root = commands
-            .spawn((
-                GameplayScreen,
-                Stage3d,
-                Band,
-                BandPart {
-                    role,
-                    part: Part::Body,
-                    phase,
-                    rest,
-                },
-                rest,
-                Visibility::default(),
-                layer.clone(),
-            ))
-            .id();
+            .with_scale(Vec3::splat(member_scale()));
+        let handles = spawn_figure(
+            &mut commands,
+            &assets,
+            &spec,
+            stance(role),
+            root,
+            (GameplayScreen, Stage3d, Band, BandMember { role, phase }),
+            BandJoint,
+        );
 
-        commands.entity(root).with_children(|body| {
-            body.spawn((
-                Mesh3d(torso.clone()),
-                MeshMaterial3d(body_material.clone()),
-                Transform::from_xyz(0.0, 0.2, 0.0),
-                layer.clone(),
-            ));
-            let head_rest = Transform::from_xyz(0.0, 0.92, 0.0);
-            body.spawn((
-                BandPart {
-                    role,
-                    part: Part::Head,
-                    phase,
-                    rest: head_rest,
-                },
-                Mesh3d(head.clone()),
-                MeshMaterial3d(body_material.clone()),
-                head_rest,
-                layer.clone(),
-            ));
-            if role != Role::Drummer {
-                for side in [-1.0f32, 1.0] {
-                    body.spawn((
-                        Mesh3d(leg.clone()),
-                        MeshMaterial3d(body_material.clone()),
-                        Transform::from_xyz(side * 0.17, -0.6, 0.0),
-                        layer.clone(),
-                    ));
-                }
-            }
-            match role {
-                Role::Guitarist | Role::Bassist => {
-                    // The instrument hangs across the body, neck out
-                    // to the player's left.
-                    let tilt = if role == Role::Bassist { 0.2 } else { 0.35 };
-                    body.spawn((
-                        Mesh3d(guitar_body.clone()),
-                        MeshMaterial3d(instrument_material.clone()),
-                        Transform::from_xyz(0.1, 0.0, 0.38)
-                            .with_rotation(Quat::from_rotation_z(tilt)),
-                        layer.clone(),
-                    ));
-                    body.spawn((
-                        Mesh3d(guitar_neck.clone()),
-                        MeshMaterial3d(instrument_material.clone()),
-                        Transform::from_xyz(-0.85, 0.32, 0.38)
-                            .with_rotation(Quat::from_rotation_z(tilt)),
-                        layer.clone(),
-                    ));
-                    // Fretting arm, still; strumming arm, animated.
-                    body.spawn((
-                        Mesh3d(arm.clone()),
-                        MeshMaterial3d(body_material.clone()),
-                        Transform::from_xyz(-0.42, 0.35, 0.25)
-                            .with_rotation(Quat::from_rotation_z(0.9)),
-                        layer.clone(),
-                    ));
-                    let strum_rest = Transform::from_xyz(0.42, 0.55, 0.2)
-                        .with_rotation(Quat::from_rotation_z(-0.3));
-                    body.spawn((
-                        BandPart {
-                            role,
-                            part: Part::Arm(0),
-                            phase,
-                            rest: strum_rest,
-                        },
-                        Mesh3d(arm.clone()),
-                        MeshMaterial3d(body_material.clone()),
-                        strum_rest,
-                        layer.clone(),
-                    ));
-                }
-                Role::Singer => {
-                    // One hand on the stand, the other free.
-                    body.spawn((
-                        Mesh3d(arm.clone()),
-                        MeshMaterial3d(body_material.clone()),
-                        Transform::from_xyz(-0.3, 0.45, 0.25)
-                            .with_rotation(Quat::from_rotation_x(-0.9)),
-                        layer.clone(),
-                    ));
-                    let free_rest = Transform::from_xyz(0.4, 0.3, 0.0)
-                        .with_rotation(Quat::from_rotation_z(-0.2));
-                    body.spawn((
-                        BandPart {
-                            role,
-                            part: Part::Arm(0),
-                            phase,
-                            rest: free_rest,
-                        },
-                        Mesh3d(arm.clone()),
-                        MeshMaterial3d(body_material.clone()),
-                        free_rest,
-                        layer.clone(),
-                    ));
-                    // The stand, planted in front.
-                    body.spawn((
-                        Mesh3d(mic_stand.clone()),
-                        MeshMaterial3d(chrome.clone()),
-                        Transform::from_xyz(-0.1, -0.05, 0.55),
-                        layer.clone(),
-                    ));
-                    body.spawn((
-                        Mesh3d(mic.clone()),
-                        MeshMaterial3d(chrome.clone()),
-                        Transform::from_xyz(-0.1, 0.82, 0.45),
-                        layer.clone(),
-                    ));
-                }
-                Role::Drummer => {
-                    // Two arms with sticks, each animated on its own beat.
-                    for hand in 0u8..2 {
-                        let side = if hand == 0 { 1.0 } else { -1.0 };
-                        let arm_rest = Transform::from_xyz(side * 0.38, 0.4, 0.3)
-                            .with_rotation(Quat::from_rotation_x(-0.6));
-                        body.spawn((
-                            BandPart {
-                                role,
-                                part: Part::Arm(hand),
-                                phase,
-                                rest: arm_rest,
-                            },
-                            Mesh3d(arm.clone()),
-                            MeshMaterial3d(body_material.clone()),
-                            arm_rest,
-                            layer.clone(),
-                        ))
-                        .with_child((
-                            Mesh3d(stick.clone()),
-                            MeshMaterial3d(chrome.clone()),
-                            Transform::from_xyz(0.0, -0.55, 0.12)
-                                .with_rotation(Quat::from_rotation_x(1.2)),
-                            layer.clone(),
-                        ));
-                    }
-                }
-            }
-        });
-
-        // The drum kit stands in front of the drummer on the riser —
-        // static geometry, not part of the animated figure.
-        if role == Role::Drummer {
-            let kit_z = z + 1.4;
-            let kit_y = floor;
-            let kit_scale = Vec3::splat(FIGURE_SCALE);
-            commands.spawn((
-                GameplayScreen,
-                Stage3d,
-                Band,
-                Mesh3d(kick.clone()),
-                MeshMaterial3d(instrument_material.clone()),
-                Transform::from_xyz(x, kit_y + 0.48 * FIGURE_SCALE, kit_z + 0.3)
-                    .with_rotation(Quat::from_rotation_x(core::f32::consts::FRAC_PI_2))
-                    .with_scale(kit_scale),
-                layer.clone(),
-            ));
-            for (dx, dz, dy) in [(-0.75, -0.1, 0.75), (0.75, -0.1, 0.75), (-0.35, 0.55, 0.62)] {
+        match role {
+            Role::Guitarist | Role::Bassist => {
+                // The instrument hangs across the body from the
+                // spine, neck out to the figure's left, tilted up.
+                let tilt = if role == Role::Bassist { 0.2 } else { 0.35 };
+                let hang = Transform::from_xyz(-0.02, -0.08, 0.13)
+                    .with_rotation(Quat::from_rotation_z(tilt));
                 commands.spawn((
-                    GameplayScreen,
-                    Stage3d,
-                    Band,
-                    Mesh3d(drum_shell.clone()),
+                    Mesh3d(if role == Role::Bassist {
+                        bass.clone()
+                    } else {
+                        guitar.clone()
+                    }),
                     MeshMaterial3d(instrument_material.clone()),
-                    Transform::from_xyz(
-                        x + dx * FIGURE_SCALE,
-                        kit_y + dy * FIGURE_SCALE,
-                        kit_z + dz,
-                    )
-                    .with_scale(kit_scale),
+                    hang,
+                    layer.clone(),
+                    ChildOf(handles.spine),
+                ));
+                commands.spawn((
+                    Mesh3d(guitar_bits.clone()),
+                    MeshMaterial3d(chrome.clone()),
+                    hang,
+                    layer.clone(),
+                    ChildOf(handles.spine),
+                ));
+                commands.spawn((
+                    Mesh3d(strap.clone()),
+                    MeshMaterial3d(assets.bottoms[0].clone()),
+                    Transform::IDENTITY,
+                    layer.clone(),
+                    ChildOf(handles.spine),
+                ));
+            }
+            Role::Singer => {
+                // The stand, planted in front; the mic at mouth height.
+                commands.spawn((
+                    GameplayScreen,
+                    Stage3d,
+                    Band,
+                    Mesh3d(mic_stand.clone()),
+                    MeshMaterial3d(chrome.clone()),
+                    Transform::from_xyz(x - 0.15, floor + 1.15, z + 0.7),
+                    layer.clone(),
+                ));
+                commands.spawn((
+                    GameplayScreen,
+                    Stage3d,
+                    Band,
+                    Mesh3d(mic.clone()),
+                    MeshMaterial3d(chrome.clone()),
+                    Transform::from_xyz(x - 0.15, floor + 2.36, z + 0.62),
                     layer.clone(),
                 ));
             }
-            for (dx, dz, tilt) in [(-1.35, 0.2, 0.25), (1.3, 0.1, -0.2)] {
+            Role::Drummer => {
+                // Sticks in both hands, pointing forward and down.
+                for hand in handles.hands {
+                    commands.spawn((
+                        Mesh3d(stick.clone()),
+                        MeshMaterial3d(chrome.clone()),
+                        Transform::from_rotation(Quat::from_rotation_x(-0.25)),
+                        layer.clone(),
+                        ChildOf(hand),
+                    ));
+                }
+                // The stool under the seated figure.
                 commands.spawn((
                     GameplayScreen,
                     Stage3d,
                     Band,
-                    Mesh3d(cymbal_stand.clone()),
+                    Mesh3d(stool_seat.clone()),
                     MeshMaterial3d(chrome.clone()),
-                    Transform::from_xyz(
-                        x + dx * FIGURE_SCALE,
-                        kit_y + 0.6 * FIGURE_SCALE,
-                        kit_z + dz,
-                    )
-                    .with_scale(kit_scale),
+                    Transform::from_xyz(x, floor + 0.57, z),
                     layer.clone(),
                 ));
                 commands.spawn((
                     GameplayScreen,
                     Stage3d,
                     Band,
-                    Mesh3d(cymbal.clone()),
+                    Mesh3d(stool_post.clone()),
                     MeshMaterial3d(chrome.clone()),
-                    Transform::from_xyz(
-                        x + dx * FIGURE_SCALE,
-                        kit_y + 1.22 * FIGURE_SCALE,
-                        kit_z + dz,
-                    )
-                    .with_rotation(Quat::from_rotation_z(tilt))
-                    .with_scale(kit_scale),
+                    Transform::from_xyz(x, floor + 0.28, z),
                     layer.clone(),
                 ));
+
+                // The drum kit stands in front of the drummer on the
+                // riser — static geometry, not part of the figure.
+                let kit_z = z + 1.4;
+                let kit_y = floor;
+                let kit_scale = Vec3::splat(FIGURE_SCALE);
+                let mut place = |mesh: Handle<Mesh>,
+                                 material: Handle<StandardMaterial>,
+                                 at: Vec3,
+                                 rotation: Quat| {
+                    commands.spawn((
+                        GameplayScreen,
+                        Stage3d,
+                        Band,
+                        Mesh3d(mesh),
+                        MeshMaterial3d(material),
+                        Transform::from_translation(at)
+                            .with_rotation(rotation)
+                            .with_scale(kit_scale),
+                        layer.clone(),
+                    ));
+                };
+                place(
+                    kick.clone(),
+                    instrument_material.clone(),
+                    Vec3::new(x, kit_y + 0.48 * FIGURE_SCALE, kit_z + 0.3),
+                    Quat::from_rotation_x(FRAC_PI_2),
+                );
+                for (dx, dz, dy) in [(-0.75, -0.1, 0.75), (0.75, -0.1, 0.75), (-0.35, 0.55, 0.62)] {
+                    let at =
+                        Vec3::new(x + dx * FIGURE_SCALE, kit_y + dy * FIGURE_SCALE, kit_z + dz);
+                    place(
+                        drum_shell.clone(),
+                        instrument_material.clone(),
+                        at,
+                        Quat::IDENTITY,
+                    );
+                    place(
+                        tom_rim.clone(),
+                        chrome.clone(),
+                        at + Vec3::new(0.0, 0.14 * FIGURE_SCALE, 0.0),
+                        Quat::IDENTITY,
+                    );
+                }
+                // The snare between the knees.
+                let snare_at = Vec3::new(
+                    x + 0.35 * FIGURE_SCALE,
+                    kit_y + 0.55 * FIGURE_SCALE,
+                    kit_z - 0.35,
+                );
+                place(
+                    snare.clone(),
+                    instrument_material.clone(),
+                    snare_at,
+                    Quat::IDENTITY,
+                );
+                place(
+                    snare_rim.clone(),
+                    chrome.clone(),
+                    snare_at + Vec3::new(0.0, 0.075 * FIGURE_SCALE, 0.0),
+                    Quat::IDENTITY,
+                );
+                for (dx, dz, tilt) in [(-1.35, 0.2, 0.25), (1.3, 0.1, -0.2)] {
+                    place(
+                        cymbal_stand.clone(),
+                        chrome.clone(),
+                        Vec3::new(
+                            x + dx * FIGURE_SCALE,
+                            kit_y + 0.6 * FIGURE_SCALE,
+                            kit_z + dz,
+                        ),
+                        Quat::IDENTITY,
+                    );
+                    place(
+                        cymbal.clone(),
+                        chrome.clone(),
+                        Vec3::new(
+                            x + dx * FIGURE_SCALE,
+                            kit_y + 1.22 * FIGURE_SCALE,
+                            kit_z + dz,
+                        ),
+                        Quat::from_rotation_z(tilt),
+                    );
+                }
+                // The hi-hat pair on its own stand, to the left.
+                let hh = Vec3::new(x - 1.15 * FIGURE_SCALE, kit_y, kit_z - 0.2);
+                place(
+                    hihat_stand.clone(),
+                    chrome.clone(),
+                    hh + Vec3::new(0.0, 0.45 * FIGURE_SCALE, 0.0),
+                    Quat::IDENTITY,
+                );
+                for dy in [0.90, 0.94] {
+                    place(
+                        hihat.clone(),
+                        chrome.clone(),
+                        hh + Vec3::new(0.0, dy * FIGURE_SCALE, 0.0),
+                        Quat::from_rotation_z(0.06),
+                    );
+                }
             }
         }
     }
 }
 
-/// Move the band with the song. Pure functions of beats and Hype,
-/// applied as offsets to each part's resting transform.
+/// Move the band with the song: one pose per member from the pure
+/// per-role functions, written to the joints as transforms only.
+/// Gated on STAGE MOTION like every ambient movement.
 pub fn animate_band(
     settings: Res<Settings>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
     players: Query<&PlayerSession>,
-    mut parts: Query<(&BandPart, &mut Transform)>,
+    mood: Option<ResMut<BandMood>>,
+    members: Query<(Entity, &BandMember)>,
+    mut joints: Query<(&FigureJoint, &mut Transform), With<BandJoint>>,
 ) {
     if !settings.backdrop_motion {
         return;
     }
-    let (Some(now), Some(player)) = (game_clock.song_time(&time), players.iter().next()) else {
+    let (Some(now), Some(player), Some(mut mood)) =
+        (game_clock.song_time(&time), players.iter().next(), mood)
+    else {
         return;
     };
     let beats = player.session.track().tempo.beats_at(now) as f32;
     let hype = player.session.performance().hype_active();
-    for (part, mut transform) in &mut parts {
-        let rest = part.rest;
-        *transform = match (part.role, part.part) {
-            (Role::Singer, Part::Body) => {
-                let mut t = rest;
-                t.translation.y += bob(beats, part.phase, hype) * 0.6;
-                t.rotation = rest.rotation * Quat::from_rotation_z(sway(beats));
-                t
-            }
-            (_, Part::Body) => {
-                let mut t = rest;
-                t.translation.y += bob(beats, part.phase, hype);
-                t
-            }
-            (_, Part::Head) => {
-                let mut t = rest;
-                t.rotation = rest.rotation * Quat::from_rotation_x(nod(beats, part.phase));
-                t
-            }
-            (Role::Guitarist | Role::Bassist, Part::Arm(_)) => {
-                let mut t = rest;
-                t.rotation = rest.rotation * Quat::from_rotation_x(strum(beats, part.role, hype));
-                t
-            }
-            (Role::Drummer, Part::Arm(hand)) => {
-                let mut t = rest;
-                t.rotation = rest.rotation * Quat::from_rotation_x(-drum(beats, hand, hype));
-                t
-            }
-            (Role::Singer, Part::Arm(_)) => {
-                // The free arm goes up under Hype and stays down
-                // otherwise — the singer calls the moment.
-                let mut t = rest;
-                let lift = if hype { 2.4 } else { 0.0 };
-                t.rotation = rest.rotation * Quat::from_rotation_z(-lift);
-                t
-            }
+    let target = if hype { 1.0 } else { 0.0 };
+    let step = (time.delta_secs() * 4.0).min(1.0);
+    mood.arm_up += (target - mood.arm_up) * step;
+
+    let poses: Vec<(Entity, Pose)> = members
+        .iter()
+        .map(|(entity, member)| {
+            (
+                entity,
+                role_pose(member.role, beats, member.phase, hype, mood.arm_up),
+            )
+        })
+        .collect();
+    for (joint, mut transform) in &mut joints {
+        let Some((_, pose)) = poses.iter().find(|(owner, _)| *owner == joint.owner) else {
+            continue;
         };
+        let next = pose_transform(pose, joint.joint, &joint.rest, joint.bendable);
+        if *transform != next {
+            *transform = next;
+        }
     }
 }
 
@@ -627,7 +795,7 @@ mod tests {
         // centre near the strike line, narrowing away. Every member
         // stands further back than the neck's end — nothing can sit
         // on the board — and the flanks stand well outside its width.
-        for role in [Role::Singer, Role::Guitarist, Role::Bassist, Role::Drummer] {
+        for role in Role::ALL {
             let (x, z, _) = stand(role);
             assert!(z < -26.0, "{role:?} stands past the neck's end, z = {z}");
             assert!(
@@ -643,7 +811,7 @@ mod tests {
         // runs INTO the stage, and no part of the riser is in the bed.
         assert!((RISER_Z + RISER_DEPTH / 2.0 + 26.0).abs() < 1e-6);
         // And nobody shares a spot.
-        let spots: Vec<(i32, i32)> = [Role::Singer, Role::Guitarist, Role::Bassist, Role::Drummer]
+        let spots: Vec<(i32, i32)> = Role::ALL
             .iter()
             .map(|r| {
                 let (x, z, _) = stand(*r);
@@ -665,5 +833,49 @@ mod tests {
         assert!((sway(2.0) - 0.10).abs() < 1e-6, "peak lean at two beats");
         assert!(sway(6.0) < -0.09, "and the other way at six");
         assert!((sway(8.0)).abs() < 1e-5, "back to centre at eight");
+    }
+
+    #[test]
+    fn the_drummer_sits_and_the_others_stand() {
+        assert_eq!(stance(Role::Drummer), Stance::Seated);
+        for role in [Role::Singer, Role::Guitarist, Role::Bassist] {
+            assert_eq!(stance(role), Stance::Standing);
+        }
+        assert!(
+            !role_spec(Role::Drummer).sleeves,
+            "the drummer plays sleeveless"
+        );
+        assert!(
+            role_spec(Role::Singer).top == 7,
+            "the singer wears the pale shirt"
+        );
+    }
+
+    #[test]
+    fn every_role_pose_stays_inside_the_limits_and_plays() {
+        for role in Role::ALL {
+            let mut moved = 0;
+            let mut last = role_pose(role, 0.0, 0.0, false, 0.0);
+            for step in 1..200 {
+                let beats = step as f32 * 0.07;
+                for (hype, arm_up) in [(false, 0.0), (true, 1.0)] {
+                    let pose = role_pose(role, beats, 0.9, hype, arm_up);
+                    assert!(
+                        pose.within_limits(),
+                        "{role:?} at {beats} hype {hype}: {pose:?}"
+                    );
+                }
+                let pose = role_pose(role, beats, 0.9, false, 0.0);
+                if pose != last {
+                    moved += 1;
+                }
+                last = pose;
+            }
+            assert!(moved > 100, "{role:?} plays: {moved} changes");
+        }
+        // The singer's free arm goes up under Hype.
+        let down = role_pose(Role::Singer, 1.0, 0.0, false, 0.0).arms[1].raise;
+        let up = role_pose(Role::Singer, 1.0, 0.0, true, 1.0).arms[1].raise;
+        assert!(up > down + 2.0);
     }
 }

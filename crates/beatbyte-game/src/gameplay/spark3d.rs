@@ -236,6 +236,7 @@ pub fn spawn_sparks(
                         ttl,
                         size,
                     },
+                    super::stage3d::on_the_neck(),
                     Mesh3d(assets.mesh.clone()),
                     MeshMaterial3d(material),
                     Transform::from_translation(origin).with_scale(Vec3::splat(size)),

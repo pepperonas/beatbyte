@@ -1,9 +1,13 @@
 # The 3D stage
 
 `crates/beatbyte-game/src/gameplay/stage3d.rs` is the largest module in
-the game — a little over two thousand lines — and it draws the view
-most people play in. This page is the map: what the space means, what
-the pieces are, and which rules must not be broken while changing it.
+the game — some four thousand lines — and it draws the view most
+people play in, with four satellites since the realism pass of
+2026-09-07: `pa.rs` (the speaker stacks), `rig.rs` (the light rig),
+`figure.rs` + `crowd.rs` (the people) and `band.rs` (the four who
+play), all on the surfaces `crate::surfaces` bakes. This page is the
+map: what the space means, what the pieces are, and which rules must
+not be broken while changing it.
 
 The other renderer, the depth view, is not a legacy path. It draws the
 same session with 2D sprites and a perspective projection, and every
@@ -128,11 +132,85 @@ cooling to the lane's colour. It lasts about a third of a second, which
 is the right length for something that happens on every note and does
 mean a screenshot will usually miss it.
 
-**The venue** — rear wall with a generated backdrop, side walls, a
-truss with sweeping beams, speaker stacks, crowd ranks behind barriers
-— is kept outside the bed so it can never occlude an approaching note.
-The crowd bobs on the song's own tempo map, each head with its own
-phase.
+**The venue** — rear wall with a generated backdrop, side walls, two
+lattice trusses, the stage deck, haze sheets, the LED wall — is kept
+outside the bed so it can never occlude an approaching note.
+
+**The deck** (the riser the highway stands on) is planks with seams
+and scuffs from `surfaces`: a colour tile, a normal map and a
+roughness map whose gloss between the scuffs is what makes the rig's
+pools reflect. Everything else on stage stands ON it at `y = −0.30`.
+
+**The PA** (`pa.rs`): two full stacks — sub, two tops, an amp head —
+seated on the deck with rubber feet and stacking cleats. Tolex bodies
+with a normal map, a raised frame around a recessed grille cloth
+(blended, so the driver discs show through as darker circles), metal
+corner caps and handles, bass ports that are unlit black, a head with
+eight knobs and one accent-coloured LED. No badge. The sub's and the
+woofers' cones stroke out on the beat (`pump_drivers`, transforms
+only); the tweeters do not.
+
+**The rig** (`rig.rs`): six moving heads on the front truss and four
+rim fixtures on the backline. Each is a pivot carrying a housing, a
+lens, the additive cone mantles that are the visible shaft in the
+haze — and a real `SpotLight` on the same pivot, wearing the mantle's
+cone (`cone_of_mantle`, pinned), so what the eye sees in the air and
+what lights the deck can never drift apart. The rim lights fire the
+accent's complementary tone toward the camera: the edge light that
+separates people from the dark. There are no fake floor pools any
+more; the pool is the light on the glossy deck.
+
+**The people** (`figure.rs`, `crowd.rs`, `band.rs`): one builder makes
+a person at unit height from primitives — pelvis, torso, head with a
+hair silhouette, arms with elbows and hands, legs with knees and feet
+— under a root whose uniform scale is the height. Fifty-six of them
+stand in three staggered rows behind the barriers (row three built
+simple), in front of the band's riser, each with a hash-chosen look
+and a programme of dance moves that changes on phrase boundaries; the
+band are four more from the same builder with instruments hung from
+their joints. Every move is a pure function of the song's beat, the
+bar and an energy term (Hype, the streak, whether the song is quiet),
+written to the joints as transforms; the forward kinematics in the
+tests prove the feet stay planted through a squash and no hand
+reaches into the bed.
+
+## Materials
+
+The stage's surfaces are baked once at `PreStartup` by
+`crate::surfaces` (`StageSurfaces`): tolex, grille cloth, brushed
+metal, a driver cone and the deck, each as the tiles a PBR material
+takes. Three rules, each broken silently once:
+
+| Rule | What happens otherwise |
+|---|---|
+| Colour tiles are `Rgba8UnormSrgb`; normal and roughness tiles are `Rgba8Unorm` | a data tile in sRGB is decoded through the gamma curve and every normal leans |
+| A mesh with a normal map has tangents (`surfaces::tangent_mesh`) | the map renders flat, with no warning |
+| Repeated tiles carry a mip chain (`surfaces::with_mips`) | the deck shimmers at a grazing angle; MSAA is edge anti-aliasing and does nothing for textures |
+
+The roughness tile follows the layout Bevy samples — G = roughness,
+B = metallic — and multiplies the material's scalars, so a material
+that wants the tile to rule sets both scalars to 1.0.
+
+## Light and shadow
+
+Ambient light is a component **on the stage camera** (`AmbientLight`
+requires `Camera` in this Bevy); spawned on its own entity, as it was
+until 2026-09-07, it lit nothing and stood in the world as a phantom
+camera. The key `DirectionalLight` casts the stage's one shadow map
+(two cascades, to 44 units — the rear wall gets none by design), and
+every piece decides its role:
+
+- **The neck is a reading surface.** Everything on it — bed, rails,
+  strings, fret bars, phrase bands, receptors, notes, tails, flames,
+  sparks, arcs — wears `on_the_neck()` (`NotShadowCaster` +
+  `NotShadowReceiver`). Without it the right stack's shadow reaches
+  across the board.
+- **A ghost casts nothing.** Blended and additive meshes cast SOLID
+  shadows in this Bevy (the shadow pass discards only masked
+  materials): haze sheets, mantles, halos, lenses and the grille cloth
+  carry `NotShadowCaster`. A test spawns the venue and checks every
+  non-opaque material for the mark.
+- People and cabinets cast; the deck receives.
 
 ## Traps this module has already sprung
 
@@ -150,6 +228,20 @@ phase.
   make them provably different sets, and Bevy panics rather than
   aliasing.
 - **`Mesh` has no `Default`.** Use `Sphere::new(r).mesh().uv(n, m)`.
+- **A normal map without tangents is flat.** Every mesh that takes one
+  goes through `surfaces::tangent_mesh`; merge pieces first, generate
+  tangents after (`Mesh::merge` wants identical attribute sets).
+- **A blended mesh casts a solid shadow.** Mark every ghost
+  `NotShadowCaster` (see *Light and shadow*).
+- **`AmbientLight` requires a `Camera`.** It lives on the stage camera,
+  never on an entity of its own.
+- **`RenderLayers` is per entity, never inherited.** Every child mesh
+  and every light carries the stage layer or the stage camera does not
+  see it; the figure builder puts it on every joint, and a test walks
+  the tree.
+- **Joints carry rotation and translation, never scale.** A person's
+  height is the root's uniform scale; a scaled, rotated joint shears
+  its children.
 
 ## Verifying a change here
 
@@ -157,10 +249,18 @@ phase.
 BEATBYTE_AUTOPILOT=1 BEATBYTE_AUTOPILOT_MUTE=1 cargo run --release -p beatbyte
 ```
 
-The score must be identical to before. For looks, capture by window ID
-rather than the harness screenshot — an occluded window renders black,
-and a full-screen terminal is enough to occlude it. The recipe is in
+The judgment counts must be identical to before (perfect / miss /
+overstrum, never the score). For looks, raise the window and use the
+engine's own screenshot (`BEATBYTE_SHOT_DIR`, `BEATBYTE_SHOT_TIMES`),
+then check each frame's luma before believing it — an occluded window
+renders black or stale, and a full-screen terminal is enough to
+occlude it. The recipe is in
 [the harness reference](../development/harness.md).
+
+Frame time is measured, not assumed: `BEATBYTE_FPS=1` logs the median
+and the 99th percentile every five seconds. The realism pass was
+measured against a baseline on the same song and window
+(`docs/ROADMAP.md`, *Stage realism II*).
 
 `BEATBYTE_SHOT_DIR` adds `gameplay-phrase` and `gameplay-hype` moments,
 which exist because the fixed 24–26 s window falls between phrases on
@@ -169,7 +269,10 @@ every song in the library.
 ## Related
 
 - [The UI design system](design-system.md) — menus and settings
-- [How the look was arrived at](gameplay-look-plan.md) — four rounds,
+- [How the look was arrived at](gameplay-look-plan.md) — six rounds,
   with the measurements and the wrong turns
+- [The stage-realism plan](stage-realism-plan.md) — the club-darkness
+  pass of 2026-09-01; its "no figures" exclusion was superseded on
+  2026-09-07
 - [ADR-0004](../decisions/ADR-0004-gameplay-timing.md) — why judgment
   cannot depend on any of this

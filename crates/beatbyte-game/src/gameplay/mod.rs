@@ -13,8 +13,10 @@
 
 pub mod arc;
 pub mod band;
+pub mod crowd;
 pub mod debug_overlay;
 pub mod feedback;
+pub mod figure;
 pub mod flame;
 pub mod fx;
 pub mod hotplug;
@@ -22,6 +24,8 @@ pub mod hud;
 pub mod input;
 pub mod lyrics;
 pub mod notes;
+pub mod pa;
+pub mod rig;
 pub mod spark3d;
 pub mod stage3d;
 

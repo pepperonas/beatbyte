@@ -18,6 +18,7 @@
 //!   of being re-tuned by eye.
 
 use bevy::camera::visibility::RenderLayers;
+use bevy::light::{NotShadowCaster, NotShadowReceiver};
 use bevy::prelude::*;
 
 use beatbyte_core::Lane;
@@ -803,6 +804,7 @@ pub fn spawn_phrase_bands(
                     start_s: phrase.start_s,
                     end_s: phrase.end_s,
                 },
+                on_the_neck(),
                 Mesh3d(band.clone()),
                 MeshMaterial3d(material.clone()),
                 Transform::from_xyz(layout.origin(index.0) * WORLD_PER_PIXEL, 0.012, 0.0)
@@ -1015,43 +1017,6 @@ pub fn sustain_tail_span(
     Some(((head_z + end_z) / 2.0, length))
 }
 
-/// One head in the crowd, with its own phase so the ranks do not
-/// bounce as one block.
-#[derive(Component)]
-pub struct CrowdHead {
-    /// Radians of offset into the beat.
-    pub phase: f32,
-    /// Resting height, so the bob is an offset and not a drift.
-    pub rest: f32,
-}
-
-/// Bob the crowd on the beat.
-///
-/// The ranks were a static grey mass in a room that is otherwise
-/// moving. Driven from the song's own tempo map rather than a free
-/// timer, so the room is on the beat the player is playing to.
-pub fn bob_crowd(
-    settings: Res<Settings>,
-    game_clock: Res<GameClock>,
-    time: Res<Time>,
-    players: Query<&PlayerSession>,
-    mut heads: Query<(&CrowdHead, &mut Transform)>,
-) {
-    if !active(&settings) || !settings.backdrop_motion {
-        return;
-    }
-    let (Some(now), Some(player)) = (game_clock.song_time(&time), players.iter().next()) else {
-        return;
-    };
-    let beats = player.session.track().tempo.beats_at(now) as f32;
-    for (head, mut transform) in &mut heads {
-        // Half a beat up, half a beat down, and never below the rest
-        // height — a crowd jumps, it does not sink into the floor.
-        let swing = (beats * core::f32::consts::PI + head.phase).sin().max(0.0);
-        transform.translation.y = 0.22f32.mul_add(swing, head.rest);
-    }
-}
-
 /// One panel of the LED wall behind the stage.
 #[derive(Component)]
 pub struct LedPanel {
@@ -1094,70 +1059,22 @@ pub fn pulse_led_wall(
     }
 }
 
-/// The positions of one ring of a beam cone's base, radius 1 at
-/// height −1, `segments` points around. Pure — the mantle's UV seam
-/// and winding live here, and both have bitten before in hand-typed
-/// mesh data.
-fn beam_ring(segments: usize) -> Vec<[f32; 3]> {
-    (0..=segments)
-        .map(|i| {
-            let angle = core::f32::consts::TAU * (i as f32) / (segments as f32);
-            [angle.cos(), -1.0, angle.sin()]
-        })
-        .collect()
-}
-
-/// A unit light-cone MANTLE: apex at the origin, base ring of radius
-/// 1 at y = −1, no cap. UVs run u around the shaft and v from apex
-/// (0) to base (1), which is what the beam gradient texture expects
-/// — the engine's stock cone centres its origin and buries its UV
-/// layout, and a beam has to hang from its lamp.
-fn beam_cone_mesh(segments: usize) -> Mesh {
-    use bevy::mesh::{Indices, PrimitiveTopology};
-    let ring = beam_ring(segments);
-    // Apex vertices: one per segment so each triangle gets a clean
-    // u coordinate (a shared apex smears the texture at the tip).
-    let mut positions: Vec<[f32; 3]> = Vec::new();
-    let mut uvs: Vec<[f32; 2]> = Vec::new();
-    for (i, base) in ring.iter().enumerate() {
-        let u = i as f32 / segments as f32;
-        positions.push([0.0, 0.0, 0.0]);
-        uvs.push([u, 0.0]);
-        positions.push(*base);
-        uvs.push([u, 1.0]);
-    }
-    let normals = vec![[0.0, 0.0, 1.0]; positions.len()]; // unlit: unused
-    let mut indices: Vec<u32> = Vec::new();
-    for i in 0..segments as u32 {
-        let apex = i * 2;
-        let base = i * 2 + 1;
-        let next_base = (i + 1) * 2 + 1;
-        indices.extend([apex, base, next_base]);
-    }
-    Mesh::new(
-        PrimitiveTopology::TriangleList,
-        bevy::asset::RenderAssetUsages::default(),
-    )
-    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
-    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
-    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
-    .with_inserted_indices(Indices::U32(indices))
-}
-
 /// A piece of the venue behind the neck.
 #[derive(Component)]
 struct Venue;
 
-/// A moving spotlight beam, with its own phase so the rig does not
-/// sweep in lockstep.
+/// The band's warm key light (a spot from the front truss).
 #[derive(Component)]
-struct SpotBeam {
-    /// The beam's resting tilt. Kept, because the sweep is a swing
-    /// AROUND it — the first version assigned the swing straight to
-    /// the rotation and threw the rig's fan-out away on frame one.
-    base: f32,
-    phase: f32,
-    speed: f32,
+pub struct BandKey;
+
+/// The neck is a reading surface: nothing on it casts a shadow and
+/// nothing on it receives one — the right stack's shadow would
+/// otherwise reach across the board around z −9..−12, and a note's
+/// shadow on the board is noise. Every piece of the highway, the
+/// notes included, wears this.
+#[must_use]
+pub fn on_the_neck() -> (NotShadowCaster, NotShadowReceiver) {
+    (NotShadowCaster, NotShadowReceiver)
 }
 
 /// How far back the rear wall stands. Beyond the neck's far end, so
@@ -1178,12 +1095,14 @@ const VENUE_SIDE: f32 = 9.0;
 /// venue art, because every asset in this repository has to be
 /// original or CC0, and a stage that reads as "a room with lights" is
 /// what the space actually needs.
+#[allow(clippy::too_many_arguments)] // one call site, every piece named
 fn spawn_venue(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     images: &mut Assets<Image>,
     shapes: &crate::shapes::LaneShapes,
+    surfaces: &crate::surfaces::StageSurfaces,
     stage: crate::theme::Theme,
     motion: bool,
 ) {
@@ -1194,19 +1113,23 @@ fn spawn_venue(
     // the notes furthest away.
     let backdrop = images.add(shaded_tile(128, backdrop_shade, false));
     let wall_material = materials.add(StandardMaterial {
-        base_color: dark.mix(&Color::BLACK, 0.62).mix(&stage.accent, 0.06),
-        perceptual_roughness: 0.9,
+        base_color: dark.mix(&Color::BLACK, 0.66).mix(&stage.accent, 0.06),
+        perceptual_roughness: 0.95,
         ..default()
     });
     let backdrop_material = materials.add(StandardMaterial {
-        base_color: dark.mix(&Color::BLACK, 0.45).mix(&stage.accent, 0.10),
+        base_color: dark.mix(&Color::BLACK, 0.50).mix(&stage.accent, 0.10),
         base_color_texture: Some(backdrop),
-        perceptual_roughness: 0.92,
+        perceptual_roughness: 0.95,
         ..default()
     });
+    // The trusses: grey steel, brushed.
     let box_material = materials.add(StandardMaterial {
-        base_color: dark.mix(&Color::WHITE, 0.16),
-        perceptual_roughness: 0.75,
+        base_color: Color::srgb(0.30, 0.30, 0.31),
+        metallic: 0.8,
+        perceptual_roughness: 1.0,
+        metallic_roughness_texture: Some(surfaces.metal_rough.clone()),
+        uv_transform: bevy::math::Affine2::from_scale(Vec2::new(6.0, 1.0)),
         ..default()
     });
 
@@ -1228,10 +1151,10 @@ fn spawn_venue(
     // used to float over a void; a floor is also what the light
     // pools land on, and its faint sheen is what sells them.
     let floor = meshes.add(Cuboid::new(90.0, 0.3, 64.0));
+    // Concrete beyond the riser: matte and mostly fogged.
     let floor_material = materials.add(StandardMaterial {
-        base_color: dark.mix(&Color::BLACK, 0.55),
-        perceptual_roughness: 0.42,
-        metallic: 0.12,
+        base_color: dark.mix(&Color::BLACK, 0.75),
+        perceptual_roughness: 0.9,
         ..default()
     });
     commands.spawn((
@@ -1262,6 +1185,10 @@ fn spawn_venue(
             GameplayScreen,
             Stage3d,
             Venue,
+            // A blended mesh casts a SOLID shadow in this Bevy; a
+            // haze sheet that shadowed the floor would be a black
+            // wall. Every ghost on the stage carries this.
+            NotShadowCaster,
             Mesh3d(haze_quad.clone()),
             MeshMaterial3d(haze_material.clone()),
             Transform::from_xyz(0.0, y, z).with_scale(Vec3::new(width, 1.0, 1.0)),
@@ -1272,10 +1199,21 @@ fn spawn_venue(
     // The stage riser (P6): the highway STANDS on something — a
     // dark platform with a visible front edge, instead of a board
     // floating in the void.
-    let riser = meshes.add(Cuboid::new(13.0, 0.9, 30.0));
+    // Since 2026-09-07 the riser is the stage DECK: planks with
+    // seams and scuffs, a low roughness between the scuffs so the
+    // rig's pools reflect, tangents so the normal map works. The
+    // tile's own roughness/metallic rule (scalars at 1.0).
+    let riser = meshes.add(crate::surfaces::tangent_mesh(Mesh::from(Cuboid::new(
+        13.0, 0.9, 30.0,
+    ))));
     let riser_material = materials.add(StandardMaterial {
-        base_color: dark.mix(&Color::BLACK, 0.7),
-        perceptual_roughness: 0.7,
+        base_color: dark.mix(&Color::BLACK, 0.5),
+        base_color_texture: Some(surfaces.deck_color.clone()),
+        normal_map_texture: Some(surfaces.deck_normal.clone()),
+        metallic_roughness_texture: Some(surfaces.deck_rough.clone()),
+        perceptual_roughness: 1.0,
+        metallic: 1.0,
+        uv_transform: bevy::math::Affine2::from_scale(Vec2::new(4.0, 9.0)),
         ..default()
     });
     commands.spawn((
@@ -1285,6 +1223,17 @@ fn spawn_venue(
         Mesh3d(riser),
         MeshMaterial3d(riser_material),
         Transform::from_xyz(0.0, -0.75, -14.0),
+        RenderLayers::layer(STAGE_LAYER),
+    ));
+    // The deck's front lip: a steel edge where the platform ends.
+    let lip = meshes.add(Cuboid::new(13.0, 0.08, 0.08));
+    commands.spawn((
+        GameplayScreen,
+        Stage3d,
+        Venue,
+        Mesh3d(lip),
+        MeshMaterial3d(box_material.clone()),
+        Transform::from_xyz(0.0, -0.30, 1.0),
         RenderLayers::layer(STAGE_LAYER),
     ));
 
@@ -1404,364 +1353,28 @@ fn spawn_venue(
         };
     spawn_lattice(commands, &box_material, 9.0, -13.0);
 
-    // The light rig. Each fixture is a PIVOT hanging from the truss
-    // — a moving-head housing with a bright lens, and under it a
-    // pair of nested cone mantles wearing the beam-gradient texture,
-    // additively blended: dense at the lamp, dissolving into the
-    // air, with faint striations around the shaft. The old stock
-    // cones were uniform alpha-blended triangles that read as
-    // coloured glass; a light is a THING with a source, a hot core
-    // and a soft sheath, and it swings from its hanger, not around
-    // its own middle.
-    let mantle = meshes.add(beam_cone_mesh(28));
-    let housing = meshes.add(Cuboid::new(0.34, 0.5, 0.34));
-    let lens = meshes.add(Sphere::new(0.13).mesh().uv(10, 8));
-    let housing_material = materials.add(StandardMaterial {
-        base_color: dark.mix(&Color::BLACK, 0.5),
-        perceptual_roughness: 0.55,
-        metallic: 0.4,
-        ..default()
-    });
-    // Every second fixture runs a paler, whiter tone — a rig of six
-    // identical colours reads as a texture, two tones read as lamps.
-    let tones = [stage.accent, stage.accent.mix(&Color::WHITE, 0.45)];
-    let beam_materials: Vec<Handle<StandardMaterial>> = tones
-        .iter()
-        .map(|tone| {
-            materials.add(StandardMaterial {
-                base_color: tone.with_alpha(0.16),
-                base_color_texture: Some(shapes.beam_gradient()),
-                alpha_mode: AlphaMode::Add,
-                unlit: true,
-                double_sided: true,
-                cull_mode: None,
-                ..default()
-            })
-        })
-        .collect();
-    let lens_materials: Vec<Handle<StandardMaterial>> = tones
-        .iter()
-        .map(|tone| {
-            materials.add(StandardMaterial {
-                base_color: *tone,
-                emissive: tone.to_linear() * 6.0,
-                unlit: true,
-                ..default()
-            })
-        })
-        .collect();
-    let halo_quad = meshes.add(Rectangle::new(1.5, 1.5));
-    let halo_materials: Vec<Handle<StandardMaterial>> = tones
-        .iter()
-        .map(|tone| {
-            materials.add(StandardMaterial {
-                base_color: tone.with_alpha(0.55),
-                base_color_texture: Some(shapes.soft_dot()),
-                alpha_mode: AlphaMode::Add,
-                unlit: true,
-                double_sided: true,
-                cull_mode: None,
-                ..default()
-            })
-        })
-        .collect();
-    let spot_quad = meshes.add(Rectangle::new(3.4, 2.2));
-    let spot_materials: Vec<Handle<StandardMaterial>> = tones
-        .iter()
-        .map(|tone| {
-            materials.add(StandardMaterial {
-                base_color: tone.with_alpha(0.30),
-                base_color_texture: Some(shapes.soft_dot()),
-                alpha_mode: AlphaMode::Add,
-                unlit: true,
-                double_sided: true,
-                cull_mode: None,
-                ..default()
-            })
-        })
-        .collect();
-    // The backline (P4): a second lattice above the LED wall with
-    // four fixtures firing SHORT, wide cones toward the camera in
-    // the accent's complementary tone — the warm/cold opposition a
-    // one-colour rig never has, kept high so it rims the room
-    // without washing the fretboard.
+    // The backline lattice (P4) belongs to the venue; every fixture
+    // that hangs from either truss — mantle, lens AND a real light —
+    // lives in `rig`.
     spawn_lattice(commands, &box_material, 12.6, VENUE_BACK + 1.6);
-    let rim_tone = complementary(stage.accent);
-    let rim_material = materials.add(StandardMaterial {
-        base_color: rim_tone.with_alpha(0.10),
-        base_color_texture: Some(shapes.beam_gradient()),
-        alpha_mode: AlphaMode::Add,
-        unlit: true,
-        double_sided: true,
-        cull_mode: None,
-        ..default()
-    });
-    let rim_lens_material = materials.add(StandardMaterial {
-        base_color: rim_tone,
-        emissive: rim_tone.to_linear() * 5.0,
-        unlit: true,
-        ..default()
-    });
-    for i in 0..4 {
-        let x = ((i as f32 + 0.5) / 4.0 - 0.5) * 22.0;
-        let pivot = commands
-            .spawn((
-                GameplayScreen,
-                Stage3d,
-                Venue,
-                // Tipped toward the audience: the shaft leans out of
-                // the wall plane instead of hanging straight down.
-                Transform::from_xyz(x, 12.5, VENUE_BACK + 1.8)
-                    .with_rotation(Quat::from_rotation_x(-0.55)),
-                Visibility::default(),
-                RenderLayers::layer(STAGE_LAYER),
-            ))
-            .id();
-        commands.entity(pivot).with_children(|fixture| {
-            fixture.spawn((
-                Mesh3d(housing.clone()),
-                MeshMaterial3d(housing_material.clone()),
-                Transform::from_xyz(0.0, -0.2, 0.0),
-                RenderLayers::layer(STAGE_LAYER),
-            ));
-            fixture.spawn((
-                Mesh3d(lens.clone()),
-                MeshMaterial3d(rim_lens_material.clone()),
-                Transform::from_xyz(0.0, -0.45, 0.0),
-                RenderLayers::layer(STAGE_LAYER),
-            ));
-            fixture.spawn((
-                Mesh3d(mantle.clone()),
-                MeshMaterial3d(rim_material.clone()),
-                Transform::from_xyz(0.0, -0.5, 0.0).with_scale(Vec3::new(1.6, 9.0, 1.6)),
-                RenderLayers::layer(STAGE_LAYER),
-            ));
-        });
-    }
-
-    // Three a side, none closer to the centre than the speaker
-    // stacks — the neck keeps a clear corridor.
-    for index in 0..6 {
-        let side = if index % 2 == 0 { -1.0 } else { 1.0 };
-        let x = side * (3.4 + 1.7 * (index / 2) as f32);
-        let tone = index % 2;
-        let pivot = commands
-            .spawn((
-                GameplayScreen,
-                Stage3d,
-                Venue,
-                Transform::from_xyz(x, 8.9, -13.0).with_rotation(Quat::from_rotation_z(x * 0.05)),
-                Visibility::default(),
-                RenderLayers::layer(STAGE_LAYER),
-            ))
-            .id();
-        if motion {
-            commands.entity(pivot).insert(SpotBeam {
-                base: x * 0.05,
-                phase: index as f32 * 1.1,
-                speed: 0.35 + 0.05 * index as f32,
-            });
-        }
-        // The pool the shaft throws on the floor: an additive soft
-        // ellipse whose x follows the SAME beam_angle as the sweep.
-        let drop = 8.9 - (-1.3);
-        commands.spawn((
-            GameplayScreen,
-            Stage3d,
-            Venue,
-            FloorSpot {
-                base: x * 0.05,
-                phase: index as f32 * 1.1,
-                speed: 0.35 + 0.05 * index as f32,
-                pivot_x: x,
-                drop,
-            },
-            Mesh3d(spot_quad.clone()),
-            MeshMaterial3d(spot_materials[tone].clone()),
-            Transform::from_xyz(x, -1.28, -13.0)
-                .with_rotation(Quat::from_rotation_x(-core::f32::consts::FRAC_PI_2)),
-            RenderLayers::layer(STAGE_LAYER),
-        ));
-        commands.entity(pivot).with_children(|fixture| {
-            fixture.spawn((
-                Mesh3d(housing.clone()),
-                MeshMaterial3d(housing_material.clone()),
-                Transform::from_xyz(0.0, -0.25, 0.0),
-                RenderLayers::layer(STAGE_LAYER),
-            ));
-            // A soft halo around the lens: a lamp blooms in air.
-            fixture.spawn((
-                Mesh3d(halo_quad.clone()),
-                MeshMaterial3d(halo_materials[tone].clone()),
-                Transform::from_xyz(0.0, -0.52, 0.05),
-                RenderLayers::layer(STAGE_LAYER),
-            ));
-            fixture.spawn((
-                Mesh3d(lens.clone()),
-                MeshMaterial3d(lens_materials[tone].clone()),
-                Transform::from_xyz(0.0, -0.52, 0.0),
-                RenderLayers::layer(STAGE_LAYER),
-            ));
-            // The hot core and the soft sheath: same mantle, same
-            // gradient, different girth — their addition is what
-            // fakes the volumetric falloff across the shaft.
-            fixture.spawn((
-                Mesh3d(mantle.clone()),
-                MeshMaterial3d(beam_materials[tone].clone()),
-                Transform::from_xyz(0.0, -0.55, 0.0).with_scale(Vec3::new(0.42, 7.6, 0.42)),
-                RenderLayers::layer(STAGE_LAYER),
-            ));
-            fixture.spawn((
-                Mesh3d(mantle.clone()),
-                MeshMaterial3d(beam_materials[tone].clone()),
-                Transform::from_xyz(0.0, -0.55, 0.0).with_scale(Vec3::new(1.05, 7.9, 1.05)),
-                RenderLayers::layer(STAGE_LAYER),
-            ));
-        });
-    }
-
-    // Speaker stacks flanking the near end: they give the neck a
-    // sense of scale. Real PA is near-black boxes with DRIVERS in
-    // the front — the sub at the bottom carries one big cone, the
-    // tops a woofer and tweeter — and the fronts breathe with the
-    // beat, because a PA that stands dead still gives a stage away.
-    let cab = meshes.add(Cuboid::new(1.3, 0.9, 1.1));
-    let cab_material = materials.add(StandardMaterial {
-        base_color: dark.mix(&Color::BLACK, 0.6),
-        perceptual_roughness: 0.85,
-        ..default()
-    });
-    let front = meshes.add(Rectangle::new(1.14, 0.76));
-    let front_materials: Vec<Handle<StandardMaterial>> = [true, false]
-        .iter()
-        .map(|sub| {
-            materials.add(StandardMaterial {
-                base_color: dark.mix(&Color::WHITE, 0.55),
-                base_color_texture: Some(if *sub {
-                    shapes.speaker_sub()
-                } else {
-                    shapes.speaker_top()
-                }),
-                perceptual_roughness: 0.9,
-                ..default()
-            })
-        })
-        .collect();
-    for sign in [-1.0f32, 1.0] {
-        for level in 0..3 {
-            let position = Vec3::new(sign * 4.4, 0.42 + 0.95 * level as f32, -7.0);
-            commands.spawn((
-                GameplayScreen,
-                Stage3d,
-                Venue,
-                Mesh3d(cab.clone()),
-                MeshMaterial3d(cab_material.clone()),
-                Transform::from_translation(position),
-                RenderLayers::layer(STAGE_LAYER),
-            ));
-            commands.spawn((
-                GameplayScreen,
-                Stage3d,
-                Venue,
-                WooferFront {
-                    phase: sign.mul_add(0.6, level as f32 * 0.8),
-                },
-                Mesh3d(front.clone()),
-                MeshMaterial3d(front_materials[usize::from(level > 0)].clone()),
-                Transform::from_translation(position + Vec3::new(0.0, 0.0, 0.56)),
-                RenderLayers::layer(STAGE_LAYER),
-            ));
-        }
-    }
-
-    // Crowd. The first attempt was loose spheres at varying heights,
-    // which read as scattered rubble rather than people: a head needs
-    // something to stand behind. Each side gets a dark barrier, and
-    // the heads sit in a line just above its top edge.
-    let barrier = meshes.add(Cuboid::new(0.5, 1.1, 22.0));
-    let barrier_material = materials.add(StandardMaterial {
-        base_color: dark.mix(&Color::BLACK, 0.7),
-        perceptual_roughness: 1.0,
-        ..default()
-    });
-    for sign in [-1.0f32, 1.0] {
-        commands.spawn((
-            GameplayScreen,
-            Stage3d,
-            Venue,
-            Mesh3d(barrier.clone()),
-            MeshMaterial3d(barrier_material.clone()),
-            Transform::from_xyz(sign * 2.9, -0.5, -22.0),
-            RenderLayers::layer(STAGE_LAYER),
-        ));
-    }
-    // A crowd is a SILHOUETTE mass, not a rock pile: near-black
-    // people (torso + head, one in four with an arm up), jittered
-    // off the grid in place and height by the deterministic hash —
-    // a perfect grid is what gave the spheres away as props. The
-    // whole person bobs: CrowdHead sits on the parent and the bob
-    // moves everything it carries.
-    let head = meshes.add(Sphere::new(0.30).mesh().uv(8, 6));
-    let torso = meshes.add(
-        Capsule3d::new(0.26, 0.62)
-            .mesh()
-            .latitudes(6)
-            .longitudes(10),
+    super::rig::spawn_rig(
+        commands,
+        meshes,
+        materials,
+        shapes.beam_gradient(),
+        shapes.soft_dot(),
+        stage,
+        dark,
+        motion,
     );
-    let arm = meshes.add(Cuboid::new(0.10, 0.7, 0.10));
-    let silhouette_material = materials.add(StandardMaterial {
-        base_color: dark.mix(&Color::BLACK, 0.82),
-        perceptual_roughness: 1.0,
-        ..default()
-    });
-    for index in 0..48u32 {
-        let row = index % 3;
-        let seat = index / 6;
-        let sign = if index % 2 == 0 { -1.0f32 } else { 1.0 };
-        let jitter = |salt: usize| super::fx::hash01(index as usize * 97 + salt) - 0.5;
-        let x = sign * (3.2 + 0.85 * row as f32) + 0.5 * jitter(1);
-        let z = 0.6f32.mul_add(row as f32, (-2.4f32).mul_add(seat as f32, -13.5)) + 0.7 * jitter(2);
-        let rest = 0.16f32.mul_add(row as f32, 0.12) + 0.14 * jitter(3);
-        let person = commands
-            .spawn((
-                GameplayScreen,
-                Stage3d,
-                Venue,
-                CrowdHead {
-                    // Spread through the beat by seat, so the ranks
-                    // ripple instead of pumping as one block.
-                    phase: index as f32 * 0.7,
-                    rest,
-                },
-                Transform::from_xyz(x, rest, z),
-                Visibility::default(),
-                RenderLayers::layer(STAGE_LAYER),
-            ))
-            .id();
-        commands.entity(person).with_children(|body| {
-            body.spawn((
-                Mesh3d(torso.clone()),
-                MeshMaterial3d(silhouette_material.clone()),
-                Transform::from_xyz(0.0, -0.30, 0.0),
-                RenderLayers::layer(STAGE_LAYER),
-            ));
-            body.spawn((
-                Mesh3d(head.clone()),
-                MeshMaterial3d(silhouette_material.clone()),
-                Transform::from_xyz(0.0, 0.42, 0.0),
-                RenderLayers::layer(STAGE_LAYER),
-            ));
-            if index % 4 == 0 {
-                body.spawn((
-                    Mesh3d(arm.clone()),
-                    MeshMaterial3d(silhouette_material.clone()),
-                    Transform::from_xyz(sign * 0.30, 0.55, 0.0)
-                        .with_rotation(Quat::from_rotation_z(sign * -0.25)),
-                    RenderLayers::layer(STAGE_LAYER),
-                ));
-            }
-        });
-    }
+
+    // The PA: two full stacks flanking the near end (`pa`), seated
+    // on the deck, with real surfaces and drivers that stroke on
+    // the beat.
+    super::pa::spawn_stacks(commands, meshes, materials, surfaces, stage);
+
+    // The barriers and the crowd live in `crowd`; they spawn once the
+    // figure assets exist.
 }
 
 /// Push a colour toward full saturation by `amount` (0 = unchanged,
@@ -1790,79 +1403,6 @@ pub fn complementary(color: Color) -> Color {
     Color::from(bevy::color::Hsla::from(color.to_srgba()).rotate_hue(180.0))
 }
 
-/// A fixture's beam angle at a moment — ONE formula for the pivot's
-/// rotation and the floor spot's position, so the pool of light can
-/// never drift away from the shaft that casts it. Pure.
-#[must_use]
-pub fn beam_angle(now: f32, base: f32, phase: f32, speed: f32) -> f32 {
-    let swing = (now * speed + phase).sin();
-    swing.mul_add(0.30, base)
-}
-
-/// Sweep the light beams. Gated on the Stage Motion setting, like
-/// every other ambient movement in the game.
-fn sweep_beams(time: Res<Time>, mut beams: Query<(&SpotBeam, &mut Transform)>) {
-    let now = time.elapsed_secs();
-    for (beam, mut transform) in &mut beams {
-        transform.rotation =
-            Quat::from_rotation_z(beam_angle(now, beam.base, beam.phase, beam.speed));
-    }
-}
-
-/// The pool of light a fixture throws on the stage floor.
-#[derive(Component)]
-pub struct FloorSpot {
-    /// The fixture's swing parameters (mirroring its beam pivot).
-    pub base: f32,
-    /// Phase offset.
-    pub phase: f32,
-    /// Swing speed.
-    pub speed: f32,
-    /// The fixture's hanger x.
-    pub pivot_x: f32,
-    /// Vertical drop from hanger to floor.
-    pub drop: f32,
-}
-
-/// Slide each floor pool under its swinging shaft.
-fn slide_floor_spots(time: Res<Time>, mut spots: Query<(&FloorSpot, &mut Transform)>) {
-    let now = time.elapsed_secs();
-    for (spot, mut transform) in &mut spots {
-        let angle = beam_angle(now, spot.base, spot.phase, spot.speed);
-        transform.translation.x = angle.tan().mul_add(spot.drop, spot.pivot_x);
-    }
-}
-
-/// A speaker front whose woofer breathes with the beat.
-#[derive(Component)]
-pub struct WooferFront {
-    /// Per-cabinet phase, so the stacks do not pump as one.
-    pub phase: f32,
-}
-
-/// Pump the speaker fronts on the beat — a PA that stands dead still
-/// while the song plays is what gives a fake stage away. Same
-/// rectified-sine pulse as the LED wall, scaled down to a breath.
-pub fn pulse_woofers(
-    settings: Res<Settings>,
-    game_clock: Res<GameClock>,
-    time: Res<Time>,
-    players: Query<&PlayerSession>,
-    mut fronts: Query<(&WooferFront, &mut Transform)>,
-) {
-    if !active(&settings) || !settings.backdrop_motion {
-        return;
-    }
-    let (Some(now), Some(player)) = (game_clock.song_time(&time), players.iter().next()) else {
-        return;
-    };
-    let beats = player.session.track().tempo.beats_at(now) as f32;
-    for (front, mut transform) in &mut fronts {
-        let swell = (led_pulse(beats, front.phase) - 1.0).mul_add(0.30, 1.0);
-        transform.scale = Vec3::new(swell, swell, 1.0);
-    }
-}
-
 /// Set up camera, lights, the venue and the highway geometry.
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI
 pub fn setup_stage(
@@ -1875,6 +1415,7 @@ pub fn setup_stage(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
     shapes: Res<crate::shapes::LaneShapes>,
+    surfaces: Res<crate::surfaces::StageSurfaces>,
 ) {
     if !active(&settings) {
         return;
@@ -1903,6 +1444,21 @@ pub fn setup_stage(
         // receptors ran off both edges of the bed.
         Transform::from_xyz(0.0, 3.1, 5.2).looking_at(Vec3::new(0.0, 0.05, -7.5), Vec3::Y),
         RenderLayers::layer(STAGE_LAYER),
+    ));
+    // Ambient light is a component ON THE CAMERA in this Bevy
+    // (`AmbientLight` requires `Camera`): spawned on its own entity,
+    // as it was until 2026-09-07, it lit nothing and stood in the
+    // world as a phantom camera. Half the accent, a touch under the
+    // engine's white default — the room is dark by doctrine. The
+    // tonemapper is the engine's default, stated so the contract is
+    // written down.
+    stage_camera.insert((
+        AmbientLight {
+            color: stage.accent.mix(&Color::WHITE, 0.5),
+            brightness: 70.0,
+            ..default()
+        },
+        bevy::core_pipeline::tonemapping::Tonemapping::TonyMcMapface,
     ));
     // Bloom (and the Hdr it requires) belongs to the ROUND style
     // only, and every camera on the window must agree on HDR — an
@@ -1947,8 +1503,23 @@ pub fn setup_stage(
             // enough to model the gems; the ROOM is allowed to
             // vanish into darkness (stage-realism plan P1).
             illuminance: 2_600.0,
+            // The one shadow map on the stage: it grounds the
+            // stacks, the barriers, the crowd and the band with a
+            // single pass. The neck opts out (`on_the_neck`).
+            shadow_maps_enabled: true,
             ..default()
         },
+        // Two cascades: the first ends just past the stacks, the
+        // second covers the crowd and the band and stops short of
+        // the rear wall, which needs none.
+        bevy::light::CascadeShadowConfigBuilder {
+            num_cascades: 2,
+            minimum_distance: 0.5,
+            first_cascade_far_bound: 14.0,
+            maximum_distance: 44.0,
+            overlap_proportion: 0.2,
+        }
+        .build(),
         Transform::from_xyz(2.0, 6.0, 2.0).looking_at(Vec3::new(0.0, 0.0, -8.0), Vec3::Y),
         RenderLayers::layer(STAGE_LAYER),
     ));
@@ -1992,16 +1563,24 @@ pub fn setup_stage(
         Transform::from_xyz(0.0, 5.0, -26.0),
         RenderLayers::layer(STAGE_LAYER),
     ));
-
-    // Ambient light is a component on the camera in this version.
+    // The band's key: a warm spot from the front truss onto the
+    // riser. Its axis passes well above the crowd's heads, so the
+    // crowd stays the silhouette mass it is meant to be and the band
+    // takes the light. (Replaces the band's own point light.)
     commands.spawn((
         GameplayScreen,
         Stage3d,
-        AmbientLight {
-            color: stage.accent,
-            brightness: 90.0,
+        BandKey,
+        SpotLight {
+            color: stage.accent.mix(&Color::srgb(1.0, 0.85, 0.7), 0.6),
+            intensity: 5_500_000.0,
+            range: 30.0,
+            inner_angle: 0.14,
+            outer_angle: 0.22,
+            shadow_maps_enabled: false,
             ..default()
         },
+        Transform::from_xyz(0.0, 8.9, -13.0).looking_at(Vec3::new(0.0, 1.6, -29.0), Vec3::Y),
         RenderLayers::layer(STAGE_LAYER),
     ));
 
@@ -2011,6 +1590,7 @@ pub fn setup_stage(
         &mut materials,
         &mut images,
         &shapes,
+        &surfaces,
         stage,
         settings.backdrop_motion,
     );
@@ -2081,6 +1661,7 @@ pub fn setup_stage(
         commands.spawn((
             GameplayScreen,
             Stage3d,
+            on_the_neck(),
             Mesh3d(bed.clone()),
             MeshMaterial3d(materials.add(StandardMaterial {
                 base_color: board_base,
@@ -2122,6 +1703,7 @@ pub fn setup_stage(
             commands.spawn((
                 GameplayScreen,
                 Stage3d,
+                on_the_neck(),
                 Mesh3d(rail.clone()),
                 MeshMaterial3d(materials.add(StandardMaterial {
                     base_color: rail_base,
@@ -2161,6 +1743,7 @@ pub fn setup_stage(
                             phase: jitter * core::f32::consts::TAU,
                             base: 0.75 + 0.5 * jitter,
                         },
+                        on_the_neck(),
                         Mesh3d(edge_flame_mesh.clone()),
                         MeshMaterial3d(edge_flame_material.clone()),
                         Visibility::Hidden,
@@ -2178,6 +1761,7 @@ pub fn setup_stage(
             commands.spawn((
                 GameplayScreen,
                 Stage3d,
+                on_the_neck(),
                 Mesh3d(trim.clone()),
                 MeshMaterial3d(materials.add(StandardMaterial {
                     base_color: stage.accent.mix(&stage.background, 0.28),
@@ -2214,6 +1798,7 @@ pub fn setup_stage(
             commands.spawn((
                 GameplayScreen,
                 Stage3d,
+                on_the_neck(),
                 Mesh3d(lane_strip.clone()),
                 MeshMaterial3d(materials.add(StandardMaterial {
                     base_color: stage.background.mix(&Color::WHITE, 0.30),
@@ -2251,6 +1836,7 @@ pub fn setup_stage(
             commands.spawn((
                 GameplayScreen,
                 Stage3d,
+                on_the_neck(),
                 Mesh3d(lane_strip.clone()),
                 MeshMaterial3d(materials.add(string_material)),
                 Transform::from_xyz(lane_x(&layout, player, lane), 0.005, centre),
@@ -2266,6 +1852,7 @@ pub fn setup_stage(
             commands.spawn((
                 GameplayScreen,
                 Stage3d,
+                on_the_neck(),
                 Mesh3d(collar_mesh.clone()),
                 MeshMaterial3d(materials.add(StandardMaterial {
                     base_color: stage.background.mix(&Color::WHITE, 0.30),
@@ -2280,6 +1867,7 @@ pub fn setup_stage(
                 GameplayScreen,
                 Stage3d,
                 ReceptorFill { player, lane },
+                on_the_neck(),
                 Mesh3d(fill_mesh.clone()),
                 MeshMaterial3d(materials.add(StandardMaterial {
                     base_color: stage.background,
@@ -2297,6 +1885,7 @@ pub fn setup_stage(
                     lane,
                     life: 0.0,
                 },
+                on_the_neck(),
                 Mesh3d(burst_mesh.clone()),
                 MeshMaterial3d(materials.add(StandardMaterial {
                     base_color: colour.with_alpha(0.0),
@@ -2321,6 +1910,7 @@ pub fn setup_stage(
                         lane,
                         life: 0.0,
                     },
+                    on_the_neck(),
                     Mesh3d(flame_mesh.clone()),
                     MeshMaterial3d(materials.add(StandardMaterial {
                         base_color: colour.with_alpha(0.0),
@@ -2341,6 +1931,7 @@ pub fn setup_stage(
                 GameplayScreen,
                 Stage3d,
                 Receptor3d { player, lane },
+                on_the_neck(),
                 Mesh3d(receptor_mesh.clone()),
                 MeshMaterial3d(materials.add(StandardMaterial {
                     base_color: colour,
@@ -2357,6 +1948,7 @@ pub fn setup_stage(
         commands.spawn((
             GameplayScreen,
             Stage3d,
+            on_the_neck(),
             Mesh3d(hit_bar.clone()),
             MeshMaterial3d(materials.add(StandardMaterial {
                 base_color: Color::WHITE,
@@ -2736,6 +2328,7 @@ pub fn spawn_fret_bars(
                     time_s: t,
                     downbeat,
                 },
+                on_the_neck(),
                 Mesh3d(mesh.clone()),
                 MeshMaterial3d(material),
                 // Parked off-screen until the scroll system places it.
@@ -3092,6 +2685,7 @@ pub fn spawn_due_notes(
                         event_index: cursor,
                         lane,
                     },
+                    on_the_neck(),
                     Mesh3d(if hopo {
                         assets.hopo.clone()
                     } else {
@@ -3121,6 +2715,7 @@ pub fn spawn_due_notes(
                             event_index: cursor,
                             lane,
                         },
+                        on_the_neck(),
                         Mesh3d(ring.clone()),
                         MeshMaterial3d(assets.face_ring_material.clone()),
                         Transform::from_xyz(lane_x(&layout, index.0, lane), 0.104, z)
@@ -3137,6 +2732,7 @@ pub fn spawn_due_notes(
                             event_index: cursor,
                             lane,
                         },
+                        on_the_neck(),
                         Mesh3d(centre.clone()),
                         MeshMaterial3d(assets.centre_material.clone()),
                         Transform::from_xyz(lane_x(&layout, index.0, lane), 0.105, z),
@@ -3153,6 +2749,7 @@ pub fn spawn_due_notes(
                             event_index: cursor,
                             lane,
                         },
+                        on_the_neck(),
                         Mesh3d(if star {
                             // A phrase note IS a star: the genre marks
                             // star-power notes with star-shaped gems,
@@ -3208,6 +2805,7 @@ pub fn spawn_due_notes(
                             lane,
                         },
                         SustainTail3d,
+                        on_the_neck(),
                         Mesh3d(assets.sustain.clone()),
                         MeshMaterial3d(tail_material),
                         // The cylinder is built along Y, so it is
@@ -3234,6 +2832,7 @@ pub fn spawn_due_notes(
                             },
                             SustainTail3d,
                             SustainCore,
+                            on_the_neck(),
                             Mesh3d(core_mesh.clone()),
                             MeshMaterial3d(materials.add(StandardMaterial {
                                 base_color: pale,
@@ -3430,6 +3029,8 @@ impl Plugin for Stage3dPlugin {
             OnEnter(AppState::Gameplay),
             (
                 setup_stage,
+                super::figure::setup_figure_assets,
+                super::crowd::spawn_crowd,
                 setup_note_assets,
                 super::spark3d::setup_spark_assets,
                 spawn_fret_bars,
@@ -3451,11 +3052,10 @@ impl Plugin for Stage3dPlugin {
                 move_phrase_bands,
                 tint_stage_for_hype,
                 burn_edges_for_hype,
-                bob_crowd,
+                super::crowd::animate_crowd,
                 super::band::animate_band,
                 pulse_led_wall,
-                pulse_woofers,
-                slide_floor_spots,
+                super::pa::pump_drivers,
                 update_receptors,
                 // After the receptors: they publish this frame's fret
                 // heat, and the flame must ignite on the frame of the
@@ -3465,7 +3065,7 @@ impl Plugin for Stage3dPlugin {
                 super::arc::crackle_arcs,
                 apply_note_events,
                 sync_phrase_rims,
-                sweep_beams,
+                super::rig::sweep_beams,
                 // The room's own sparks: spawned from the same
                 // feedback the flat burst reads, flown in world space.
                 // Grouped — the tuple is at Bevy's cap of twenty.
@@ -3788,6 +3388,7 @@ mod tests {
                                 hopo: false,
                                 starred: true,
                             },
+                            on_the_neck(),
                             Mesh3d(star.clone()),
                             MeshMaterial3d(hype.clone()),
                             Transform::default(),
@@ -3903,6 +3504,7 @@ mod tests {
                                 hopo: false,
                                 starred: true,
                             },
+                            on_the_neck(),
                             Mesh3d(star.clone()),
                             MeshMaterial3d(hype.clone()),
                             Transform::default(),
@@ -4188,25 +3790,6 @@ mod star_tests {
     }
 
     #[test]
-    fn the_floor_pool_and_the_shaft_share_one_angle() {
-        use super::beam_angle;
-        // The pool slides by tan(angle) x drop from the hanger; the
-        // shaft rotates by the same angle — both take it from ONE
-        // function, and this pins that the function actually swings
-        // (a constant would keep both technically "in sync" while
-        // freezing the rig).
-        let a = beam_angle(0.0, 0.1, 0.0, 0.5);
-        let b = beam_angle(3.0, 0.1, 0.0, 0.5);
-        assert!((a - b).abs() > 0.05, "the rig must swing: {a} vs {b}");
-        // And the swing stays inside +-0.30 around its base: a shaft
-        // past that would rake across the fretboard.
-        for step in 0..60 {
-            let angle = beam_angle(step as f32 * 0.37, 0.1, 1.1, 0.45);
-            assert!((angle - 0.1).abs() <= 0.30 + 1e-6);
-        }
-    }
-
-    #[test]
     fn the_led_wall_swells_on_the_beat_and_never_shrinks_below_rest() {
         // On the beat: full swell; off the beat: at rest — and the
         // rectified sine never dips under 1.0 (a wall shrinking
@@ -4412,5 +3995,82 @@ mod instrument_neck_tests {
             "the venue must never vanish into a hole, got {wall}"
         );
         assert!(wall > end, "the venue must recede further than the neck");
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod shadow_tests {
+    use super::*;
+    use bevy::ecs::system::RunSystemOnce;
+    use bevy::light::NotShadowCaster;
+
+    /// Every blended or additive mesh the venue spawns — haze,
+    /// mantles, halos, lenses, the grille cloth — carries
+    /// `NotShadowCaster`: a ghost that cast a solid shadow would be a
+    /// black wall on the deck.
+    #[test]
+    fn a_ghost_casts_no_shadow() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default(), TransformPlugin));
+        app.init_asset::<Mesh>();
+        app.init_asset::<StandardMaterial>();
+        app.init_asset::<Image>();
+        app.world_mut()
+            .run_system_once(crate::shapes::build_shapes)
+            .unwrap();
+        app.world_mut()
+            .run_system_once(crate::surfaces::build_surfaces)
+            .unwrap();
+        app.world_mut()
+            .run_system_once(
+                |mut commands: Commands,
+                 mut meshes: ResMut<Assets<Mesh>>,
+                 mut materials: ResMut<Assets<StandardMaterial>>,
+                 mut images: ResMut<Assets<Image>>,
+                 shapes: Res<crate::shapes::LaneShapes>,
+                 surfaces: Res<crate::surfaces::StageSurfaces>| {
+                    spawn_venue(
+                        &mut commands,
+                        &mut meshes,
+                        &mut materials,
+                        &mut images,
+                        &shapes,
+                        &surfaces,
+                        crate::theme::ActiveTheme::default().0,
+                        true,
+                    );
+                },
+            )
+            .unwrap();
+        let world = app.world_mut();
+        let mut ghosts = 0;
+        let mut solids = 0;
+        let mut meshes = world.query::<(Entity, &MeshMaterial3d<StandardMaterial>)>();
+        let handles: Vec<(Entity, Handle<StandardMaterial>)> = meshes
+            .iter(world)
+            .map(|(entity, material)| (entity, material.0.clone()))
+            .collect();
+        for (entity, handle) in handles {
+            let material = world
+                .resource::<Assets<StandardMaterial>>()
+                .get(&handle)
+                .expect("a spawned material exists");
+            if material.alpha_mode == AlphaMode::Opaque {
+                solids += 1;
+            } else {
+                ghosts += 1;
+                assert!(
+                    world.get::<NotShadowCaster>(entity).is_some(),
+                    "{entity:?} is a ghost ({:?}) without NotShadowCaster",
+                    material.alpha_mode
+                );
+            }
+        }
+        assert!(
+            ghosts >= 20,
+            "haze, mantles, halos, lenses and cloth: {ghosts}"
+        );
+        assert!(solids >= 100, "the venue is mostly solid: {solids}");
     }
 }

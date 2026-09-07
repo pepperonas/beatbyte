@@ -353,6 +353,7 @@ pub fn spawn_flames(
                         layer,
                         phase,
                     },
+                    super::stage3d::on_the_neck(),
                     Mesh3d(cone.clone()),
                     MeshMaterial3d(material.clone()),
                     Transform::from_xyz(x, 0.5, 0.0).with_scale(Vec3::splat(0.001)),
@@ -368,6 +369,7 @@ pub fn spawn_flames(
                 }
                 // The foot, as a child: it scales with the body.
                 body.with_child((
+                    super::stage3d::on_the_neck(),
                     Mesh3d(foot.clone()),
                     MeshMaterial3d(material),
                     // In the body's local space the cone spans y −0.5…0.5
@@ -388,6 +390,7 @@ pub fn spawn_flames(
                         ttl: 0.5,
                         live: false,
                     },
+                    super::stage3d::on_the_neck(),
                     Mesh3d(ember_mesh.clone()),
                     MeshMaterial3d(materials.add(StandardMaterial {
                         base_color: ember_color(0.0).with_alpha(0.0),

@@ -270,6 +270,23 @@ project. Milestones when picked up:
 - [x] H3 **3D particles; depth of field measured and rejected** *(v0.14.3)*. The sustain-tube half of this line shipped as H2b and the text had gone stale. What was left: hit sparks in world space (`gameplay/spark3d.rs` — they arc from the struck receptor in perspective, shrink rather than fade, round neck only, capped and scaled by EFFECT INTENSITY; 5 tests, 5 mutation probes, no measurable frame cost against H4's baseline), and the lens. The lens was built and removed: at a usable aperture it does nothing (far/near sharpness 0.962 → 0.969), and wide enough to see it blurs the strike line first (612 → 475). The venue separation it was wanted for is already the stage fog's job. Bloom reviewed, left alone. The flat burst that was left unexplained here was diagnosed the next session (v0.14.4): not invisible but MISPLACED — the 3D solo neck is 1.45× wider than the flat layout it is positioned with — and it now stands down on the stage, the outro fireworks excepted.
 - [~] H4 Performance pass + packaging size check. Measured on this machine: the 3D stage holds a vsync-locked 60 fps during a full song with a 99th-percentile frame of 19.4 ms — no stalls, so it costs no notes. `BEATBYTE_FPS=1` now reports median and 99th-percentile frame times (an average would hide exactly the stutters that lose notes). Still open: a low-end GPU and the artifact size check.
 
+## Stage realism II — PA, people, light (DONE 2026-09-07, v0.14.37)
+
+Commissioned as "die Grafik und Darstellung während ein Lied gespielt
+wird … realistischer, insbesondere die Speaker und die tanzenden
+Figuren", with the user's decisions up front: stylized-realistic, the
+GH3 / World Tour stage conventions in our own hands, procedural assets
+only, one pass with one screenshot set at the end. Plan and the
+as-built map: `docs/ui/3d-stage.md`.
+
+- [x] `surfaces.rs` — procedural PBR tiles (tolex, grille cloth, brushed metal, driver cone, stage deck: colour, normal, roughness, mip chains, tangents), format rules pinned.
+- [x] `pa.rs` — two full stacks seated on the deck, hardware, amp head, cones that stroke on the beat.
+- [x] `figure.rs` + `crowd.rs` — one figure builder (joints, hair, shirts, forward kinematics), 56 dancers in staggered rows with a dance repertoire on the beat and the bar, arms up under Hype, still under STAGE MOTION off.
+- [x] `band.rs` retargeted onto the builder; instruments and kit detailed.
+- [x] `rig.rs` — real spotlights on the moving-head and backline pivots, fake floor pools removed; the band's warm key; the ambient light fixed onto the camera; shadows on the key light; the neck opted out; every ghost marked.
+- [x] Measured (Teen Spirit expert, 2560×1440 window on the M1 Pro). **Judgment identical** in every configuration: 750 perfect / 0 miss / 0 overstrum before and after, in the round style (three runs), the 8-bit style, two players, both pause drills (HDR agreement, one-camera-clears, UI visible) and STAGE MOTION off. **GPU cost, uncapped with the window frontmost:** before median 9.1 ms, after ≈ 10.8 ms (+19 %, inside the plan's +40 % gate). ⚠️ The vsync numbers are NOT a clean measure on this display: ProMotion picks the refresh rate, and the stage that used to fit 120 Hz (8.4 ms flat) now runs at 10.0 ms (100 Hz) with stretches locked at exactly 16.66 ms (60 Hz) whenever the window is not frontmost — a run without the window raised shows 16.66 ms "uncapped" too. Measure uncapped, frontmost, or the number is the panel's, not the GPU's. First fallback if a weaker GPU needs one: `DirectionalLightShadowMap { size: 1024 }`, then one cascade to 22 units, then the far crowd row to `Detail::Simple` (roadmap H4 stays open for the low-end check).
+- [x] Looked at (round + 8-bit, t24 / hype frames, stack, crowd and band crops): the first two frames had chrome corner caps blooming into fairy lights under the moving heads and tolex going pale under the blue lamp — both fixed (matte black protectors, near-black vinyl) before the set was accepted.
+
 ## AI song graph upgrade (PLANNED 2026-09-05 — docs/plans/ai-song-graph-upgrade.md)
 
 Word-level karaoke from local forced alignment (Track L), then a
