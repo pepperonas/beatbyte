@@ -39,6 +39,8 @@ pub(crate) enum Row {
     Theme,
     WatchFolder,
     ReducedFlashing,
+    /// What the stage's white flashes are timed by.
+    FlashSync,
     FxIntensity,
     TextScale,
     HighContrast,
@@ -62,11 +64,12 @@ impl Row {
     /// Every row, in the order the screen shows them: **alphabetical
     /// by label**, and kept that way by a test — a new row goes where
     /// its name falls, not at the end of the list.
-    const ALL: [Row; 29] = [
+    const ALL: [Row; 30] = [
         Row::BeatPulse,
         Row::Controls,
         Row::FxIntensity,
         Row::ExportHistory,
+        Row::FlashSync,
         Row::Fullscreen,
         Row::HighContrast,
         Row::HitLabels,
@@ -110,6 +113,7 @@ impl Row {
             Row::NoFail => "NO FAIL",
             Row::RoomLights => "ROOM LIGHTS",
             Row::ReducedFlashing => "REDUCED FLASHING",
+            Row::FlashSync => "FLASH SYNC",
             Row::FxIntensity => "EFFECT INTENSITY",
             Row::TextScale => "UI SCALE",
             Row::HighContrast => "HIGH CONTRAST",
@@ -154,6 +158,11 @@ impl Row {
                 },
             ),
             Row::ReducedFlashing => on_off(settings.reduced_flashing),
+            Row::FlashSync => match settings.flash_sync {
+                crate::config::FlashSync::Level => "ROOM LEVEL",
+                crate::config::FlashSync::Beat => "SONG BEAT",
+            }
+            .to_owned(),
             Row::FxIntensity => format!("{:.0}%", settings.fx_intensity * 100.0),
             Row::TextScale => format!("{:.0}%", settings.ui_scale * 100.0),
             Row::HighContrast => on_off(settings.high_contrast),
@@ -198,6 +207,9 @@ impl Row {
                         .join("   ")
                 }
             }
+            // Which of the two clocks this is, and what it costs:
+            // one needs a microphone, the other needs nothing.
+            Row::FlashSync => "ROOM LEVEL hears the room; SONG BEAT needs no mic".to_owned(),
             _ => String::new(),
         }
     }
@@ -234,6 +246,12 @@ impl Row {
             Row::SongPreview => settings.song_preview = !settings.song_preview,
             Row::WatchFolder => settings.watch_folder = None,
             Row::ReducedFlashing => settings.reduced_flashing = !settings.reduced_flashing,
+            Row::FlashSync => {
+                settings.flash_sync = match settings.flash_sync {
+                    crate::config::FlashSync::Level => crate::config::FlashSync::Beat,
+                    crate::config::FlashSync::Beat => crate::config::FlashSync::Level,
+                };
+            }
             Row::FxIntensity => {
                 settings.fx_intensity = (settings.fx_intensity + 0.1 * direction).clamp(0.0, 1.0);
             }
@@ -290,6 +308,7 @@ impl Row {
             | Row::SongPreview
             | Row::WatchFolder
             | Row::ReducedFlashing
+            | Row::FlashSync
             | Row::HighContrast
             | Row::Lyrics
             | Row::TapMode
@@ -683,6 +702,25 @@ mod tests {
     }
 
     #[test]
+    fn the_flash_sync_row_names_both_clocks_and_flips_either_way() {
+        use crate::config::FlashSync;
+        let mut settings = Settings::default();
+        assert_eq!(
+            settings.flash_sync,
+            FlashSync::Level,
+            "the room's level is what the light show has always followed"
+        );
+        assert_eq!(Row::FlashSync.label(), "FLASH SYNC");
+        assert_eq!(Row::FlashSync.value(&settings), "ROOM LEVEL");
+        Row::FlashSync.adjust(&mut settings, 1.0);
+        assert_eq!(settings.flash_sync, FlashSync::Beat);
+        assert_eq!(Row::FlashSync.value(&settings), "SONG BEAT");
+        // Two values: either direction is the other one.
+        Row::FlashSync.adjust(&mut settings, -1.0);
+        assert_eq!(settings.flash_sync, FlashSync::Level);
+    }
+
+    #[test]
     fn a_subtitle_fits_the_panel() {
         // Press Start 2P advances a full em, so the widest subtitle
         // is a plain multiplication - and it has to fit inside the
@@ -696,12 +734,19 @@ mod tests {
     }
 
     #[test]
-    fn only_the_song_folder_explains_itself() {
-        // A subtitle on every row would be noise; this one exists
-        // because "which folder delivers my tracks" is a question
-        // the value line ("watching: …") does not answer.
+    fn only_a_row_that_needs_explaining_carries_a_subtitle() {
+        // A subtitle on every row would be noise. Two rows earn
+        // one: "which folder delivers my tracks" is a question the
+        // value line ("watching: …") does not answer, and neither
+        // ROOM LEVEL nor SONG BEAT says on its own what it costs.
         use super::Row;
         assert!(!Row::WatchFolder.subtitle().is_empty());
+        assert!(!Row::FlashSync.subtitle().is_empty());
+        assert!(
+            Row::FlashSync.subtitle().chars().count() <= SUBTITLE_CHARS,
+            "the subtitle runs past the panel: {}",
+            Row::FlashSync.subtitle()
+        );
         for row in [Row::MusicVolume, Row::Lyrics, Row::Controls, Row::Theme] {
             assert!(row.subtitle().is_empty(), "{row:?} should stay quiet");
         }
@@ -811,7 +856,7 @@ mod tests {
             );
         }
         // And nothing is listed twice or left out.
-        assert_eq!(Row::ALL.len(), 29);
+        assert_eq!(Row::ALL.len(), 30);
     }
 
     #[test]

@@ -307,6 +307,30 @@ project. Milestones when picked up:
   bars. Nine mutation probes and one wired drill (a lamp flares
   white, its neighbour does not, the key light never does,
   everything returns to its own colour).
+- [x] **The flashes can follow the song instead of the room**
+  *(v0.14.47)*. Asked for as an alternative to the dB threshold, with
+  a setting for it: FLASH SYNC = `ROOM LEVEL` (unchanged default) or
+  `SONG BEAT`. One `Plan` describes both clocks — a gap, a rolled
+  rest, and what each snaps to — so the pacing settled on in v0.14.46
+  is literally the same code, only measured in beats: flashes on whole
+  beats, bursts on bar lines, rests of one or two bars. The second
+  clock also takes the microphone out of the requirement (a chart
+  carries its grid), which is what finally gives REDUCED FLASHING's
+  swell an edge to rise on when nothing is heard.
+
+  **Measured live**, muted, on the song's clock: 105 flashes in 57
+  bursts over a 424-beat song — every one within 0.12 beats of a whole
+  beat (median 0.017, i.e. inside a frame), bursts of one, two and
+  three, rests of 3.9–8.0 beats, and all 57 starting on a bar line.
+  Autopilot on the same run: 293/293 perfect, PASSED. ⚠️ Those are the
+  numbers AFTER the count-in fix; the first probe run is what found
+  it, and the tests had not.
+
+  Eighteen mutation probes: fifteen fired at once, two showed the test
+  could not see the change (both sharpened until it could — one of
+  them because the two clocks read the same value at the instant it
+  measured), and one could not be made to fail at all because the
+  guard it mutated was dead code, which was then removed.
 - [x] **The 8-bit note style removed** *(v0.14.44)*. Asked for as a
   development-speed change and it is one: every visual decision was
   being made twice, and the style matrix is where the invisible-stage

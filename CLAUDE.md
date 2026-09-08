@@ -575,6 +575,16 @@ artifact, smoke-test it (neutral CWD!), then
   metrical level: a third, a half, double — a 5 % ratio), not the
   noise of one method. Pin both sides: the other level refused, the
   other reading accepted.
+- **The song clock steps BACKWARDS at the count-in handover**, and a
+  little more whenever it corrects itself against the audio device (a
+  30 ms snap, a 10 % slew). Anything scheduled on song POSITION must
+  therefore tell a correction from a new timeline: the light show's
+  first cut restarted its burst schedule on any backwards step, so the
+  top of every song flashed on six beats running — the flicker the
+  pacing exists to prevent (seen in the probe log, not in any test).
+  The rule is a threshold — a step back bigger than the longest gap
+  the schedule can plan is a new song, anything smaller is a clock
+  correcting itself and the schedule simply carries on.
 - **Two `cargo` runs in one target directory serialise on its lock**,
   so a CLI rebuild waits behind a Bevy release build. Build the CLI
   into its own directory (`CARGO_TARGET_DIR=<scratchpad>/target-cli`)

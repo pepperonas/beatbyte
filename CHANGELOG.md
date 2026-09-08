@@ -14,6 +14,47 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.47] - 2026-09-08
+
+### Added
+
+- **The stage's white flashes can follow the song instead of the
+  room** — Settings → **FLASH SYNC**, `ROOM LEVEL` (the default, and
+  what the light show has always done) or `SONG BEAT`.
+
+  On `SONG BEAT` the ceiling's burst schedule runs on the chart's
+  **tracked beat grid** rather than on the wall clock: every flash
+  lands on a beat, every burst starts on a bar line, and a rest is one
+  or two bars instead of two to three seconds. The pacing the last
+  release settled on is unchanged — one to three flashes, then the
+  room breathes — only its clock is different, so at 160 BPM the
+  ceiling gets calmer rather than busier (a beat is longer than the
+  0.16 s the wall clock uses).
+
+  It also needs **no microphone**. `ROOM LEVEL` measures the room and
+  fires over a threshold that sets itself; with no input device, a
+  refused one or a silent one, nothing ever fires. The song's rhythm
+  is already in the chart, so on `SONG BEAT` the show runs on every
+  machine — and the swell that REDUCED FLASHING leaves in place of the
+  strobe now has a musical edge to rise on (the bar line), where
+  before it had only the threshold and therefore, without a mic,
+  nothing at all.
+
+  Bars are counted in fours from the chart's first tracked beat: the
+  tempo map carries the beats, not the downbeats. That decides where a
+  burst STARTS, never whether a flash is on the beat.
+
+### Fixed
+
+- **The burst schedule no longer restarts when the song clock
+  corrects itself.** Found by probing the first `SONG BEAT` run: the
+  clock steps backwards a fraction of a beat when the count-in hands
+  over to the music (it anchors to the audio device, which snaps at
+  30 ms), the schedule read that as a new timeline, and the top of the
+  song flashed on six beats running. A step back only counts as a new
+  song when it is bigger than the longest rest the schedule can roll.
+  The same rule protects the wall clock, where a seek can do it too.
+
 ## [0.14.46] - 2026-09-08
 
 ### Changed

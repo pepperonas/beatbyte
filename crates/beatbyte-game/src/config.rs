@@ -52,6 +52,10 @@ pub struct Settings {
     /// Reduced flashing: suppress full-screen flashes (accessibility).
     #[serde(default)]
     pub reduced_flashing: bool,
+    /// What the stage's white flashes follow: the room's own level
+    /// over the dynamic threshold, or the song's rhythm.
+    #[serde(default, deserialize_with = "flash_sync_lenient")]
+    pub flash_sync: FlashSync,
     /// Visual effect intensity, 0.0–1.0: scales particle counts,
     /// shake strength and flash opacity together.
     #[serde(default = "default_fx_intensity")]
@@ -132,6 +136,45 @@ pub struct Settings {
     pub browser_sort_reversed: bool,
 }
 
+/// What the ceiling's white flashes are timed by.
+///
+/// The light show was built on the room's own level: a threshold that
+/// sets itself and a strobe over it. That needs a microphone and it
+/// follows whatever the room is doing — including the neighbours. The
+/// song's rhythm is the other honest clock in the building, and the
+/// chart already carries it beat by beat, so the flashes can land on
+/// the music instead of on its loudness.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FlashSync {
+    /// The measured room level over the self-setting threshold — the
+    /// original behaviour, and the default.
+    #[default]
+    Level,
+    /// The song's own beat, from the chart's tracked grid. Needs no
+    /// microphone.
+    Beat,
+}
+
+/// Read the flash clock, falling back to the default on any name
+/// this build does not know.
+///
+/// Without this an unrecognised value would fail the WHOLE settings
+/// file, and the loader answers a parse error by falling back to
+/// defaults — so one unknown word here would silently reset volumes,
+/// bindings and calibration too. A file written by a build with a
+/// third clock in it must cost the player nothing but that setting.
+fn flash_sync_lenient<'de, D>(de: D) -> Result<FlashSync, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let name = String::deserialize(de)?;
+    Ok(match name.as_str() {
+        "beat" => FlashSync::Beat,
+        _ => FlashSync::Level,
+    })
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Settings {
@@ -147,6 +190,7 @@ impl Default for Settings {
             hit_labels: true,
             no_fail: true,
             reduced_flashing: false,
+            flash_sync: FlashSync::default(),
             fx_intensity: 1.0,
             ui_scale: 1.0,
             high_contrast: false,
@@ -410,6 +454,33 @@ mod tests {
         assert!(
             (s.video_offset_ms - 0.0).abs() < f32::EPSILON,
             "NaN falls back"
+        );
+    }
+
+    #[test]
+    fn an_unknown_flash_clock_costs_only_that_setting() {
+        use super::FlashSync;
+        // A file that says nothing has always meant the room's level.
+        let old: Settings = serde_json::from_str(r#"{"music_volume": 0.25}"#).unwrap();
+        assert_eq!(old.flash_sync, FlashSync::Level);
+        assert!((old.music_volume - 0.25).abs() < 1e-6);
+        // A file that names the song's clock gets it, and survives a
+        // round trip through the writer.
+        let beat: Settings = serde_json::from_str(r#"{"flash_sync": "beat"}"#).unwrap();
+        assert_eq!(beat.flash_sync, FlashSync::Beat);
+        let json = serde_json::to_string(&beat).unwrap();
+        let back: Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.flash_sync, FlashSync::Beat);
+        // A clock from a future build reads as the default — and, the
+        // point of the lenient reader, takes nothing else down with
+        // it. Rejected, the whole file would fail and the loader
+        // would answer that by resetting every setting there is.
+        let future: Settings =
+            serde_json::from_str(r#"{"flash_sync": "onsets", "latency_offset_ms": 42.0}"#).unwrap();
+        assert_eq!(future.flash_sync, FlashSync::Level);
+        assert!(
+            (future.latency_offset_ms - 42.0).abs() < 1e-6,
+            "the rest of the file survives an unknown clock"
         );
     }
 

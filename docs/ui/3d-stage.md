@@ -196,6 +196,27 @@ that sets itself (the reference rig's duty governor, ported), a
 five white strips that run a comet or a spray of sparks every 9–18 s
 on a hashed schedule.
 
+**Which clock the strobe runs on is a setting** — FLASH SYNC, `ROOM
+LEVEL` or `SONG BEAT` (`Plan::SECONDS` / `Plan::BEATS`, chosen by
+`flash_plan`). The two plans differ only in the unit their positions
+are measured in and in whether they round: the wall clock rounds to
+nothing, the song's clock puts every flash on a whole beat
+(`Plan::snap` to the NEAREST — rounding up would skip the beat it was
+aiming at) and every burst on a bar line (rounding UP, so a rest is
+never cut below what it was rolled). A rest is then one or two bars
+rather than two to three seconds. Positions come from the chart's
+tracked grid via `track().tempo.beats_at`, and bars are counted in
+fours from the first tracked beat because the tempo map carries beats,
+not downbeats — which decides where a burst starts, never whether a
+flash is on the beat.
+
+On `SONG BEAT` the strobe is armed by the song running rather than by
+the threshold (`armed_now`), so it needs no microphone at all, and the
+swell's rising edge is a bar line (`crossed_bar`) rather than the
+threshold's — which is also what gives REDUCED FLASHING something to
+do on a machine with no input device. The governor keeps running
+either way; on `SONG BEAT` it simply gates nothing.
+
 The strobe flares a pair of lamps white in a shuffled order — every
 lamp once per pass through the rig — and it flares the light AND the
 fixture's own beam, because the additive mantle is what the eye sees
@@ -206,7 +227,10 @@ rolled per burst. The threshold gates it (held 150 ms past the last
 sample over, because the bit flickers with the music) and the
 schedule FREEZES while the ceiling is dark, or a rest would run out
 during every quiet passage and the pacing would follow the music
-instead of the schedule. Each lamp's own colour and intensity live
+instead of the schedule. A position that goes BACKWARDS by more than
+the longest rest is a new timeline and restarts the schedule; a
+smaller step back is the song clock correcting itself against the
+audio device and is simply carried. Each lamp's own colour and intensity live
 in `LampBase`, handed back the frame the level drops. `rig::RigLamp` numbers the
 lamps so the chase never depends on query order; the band's key
 light carries no such number and never strobes; it and the venue's

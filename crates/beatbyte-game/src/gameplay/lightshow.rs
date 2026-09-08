@@ -51,6 +51,7 @@ use bevy::prelude::*;
 use beatbyte_audio::listen::LOUD_DB;
 
 use super::GameplayScreen;
+use super::PlayerSession;
 use super::arc::segment_pose;
 use super::crowd::{BARRIER_X, CROWD_FLOOR_Y};
 use super::fx::hash01;
@@ -58,7 +59,8 @@ use super::monitors::Ears;
 use super::pa;
 use super::rig;
 use super::stage3d::{self, STAGE_LAYER, Stage3d};
-use crate::config::Settings;
+use crate::audio_sys::GameClock;
+use crate::config::{FlashSync, Settings};
 use crate::states::AppState;
 
 // ---------------------------------------------------------------- threshold
@@ -182,6 +184,25 @@ pub const BURST_MAX: u32 = 3;
 pub const REST_MIN_S: f32 = 2.0;
 /// The longest.
 pub const REST_MAX_S: f32 = 3.0;
+/// Beats between two flashes of one burst, on the song's clock.
+///
+/// A beat is the natural gap: at 160 BPM it is longer than the wall
+/// clock's [`FLASH_GAP_S`], so the ceiling gets calmer rather than
+/// busier, and every flash lands where the drummer does.
+pub const BEAT_GAP: f32 = 1.0;
+/// Beats to a bar while the flashes count them.
+///
+/// The tempo map carries the beats, not the downbeats, so bars are
+/// counted in fours from the chart's first tracked beat — the
+/// convention the grid itself uses when no stage knew the downbeats.
+/// It decides where a burst STARTS; whether a flash is ON the beat
+/// does not depend on it.
+pub const FLASH_BEATS_PER_BAR: f32 = 4.0;
+/// The shortest rest between two bursts, in beats, before it is
+/// rounded up to the next bar line.
+pub const REST_MIN_BEATS: f32 = 3.0;
+/// The spread on top of it, in beats.
+pub const REST_SPAN_BEATS: f32 = 3.0;
 /// Lamps hit per flash. A single lamp reads as a twinkle; a pair
 /// reads as a hit.
 pub const STROBE_AT_ONCE: usize = 2;
@@ -271,6 +292,93 @@ pub fn strobe_hit(lamp: usize, flash: u32, lamps: usize, since: f32) -> f32 {
     }
 }
 
+/// The clock a burst is scheduled on, and what it snaps to.
+///
+/// Both plans do the same thing — a burst of flashes, then a rest —
+/// and differ only in the unit their positions are measured in and
+/// in whether they round. [`Plan::SECONDS`] runs on the wall clock
+/// and rounds to nothing; [`Plan::BEATS`] runs on the song's beats,
+/// puts every flash on a whole beat and every burst on a bar line.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Plan {
+    /// Between two flashes of one burst, in this plan's unit.
+    pub gap: f32,
+    /// The shortest rest after a burst.
+    pub rest_min: f32,
+    /// The spread on top of it.
+    pub rest_span: f32,
+    /// What a flash inside a burst snaps to; zero snaps to nothing.
+    pub beat: f32,
+    /// What the first flash of a burst snaps to; zero snaps to nothing.
+    pub bar: f32,
+}
+
+impl Plan {
+    /// The wall clock: the pacing the ceiling has always run.
+    pub const SECONDS: Plan = Plan {
+        gap: FLASH_GAP_S,
+        rest_min: REST_MIN_S,
+        rest_span: REST_MAX_S - REST_MIN_S,
+        beat: 0.0,
+        bar: 0.0,
+    };
+    /// The song's own clock.
+    pub const BEATS: Plan = Plan {
+        gap: BEAT_GAP,
+        rest_min: REST_MIN_BEATS,
+        rest_span: REST_SPAN_BEATS,
+        beat: 1.0,
+        bar: FLASH_BEATS_PER_BAR,
+    };
+
+    /// The longest rest this plan can roll — and so the smallest
+    /// backwards step that cannot be a clock correcting itself.
+    #[must_use]
+    pub fn longest_rest(&self) -> f32 {
+        self.rest_min + self.rest_span
+    }
+
+    /// How long the rest after burst `number` lasts, in this plan's
+    /// unit. Pure — tested.
+    #[must_use]
+    pub fn rest_after(&self, number: u32) -> f32 {
+        self.rest_span
+            .mul_add(hash01(number as usize * 3391 + 29), self.rest_min)
+    }
+
+    /// Where a flash may begin, given the position the schedule
+    /// asked for: the next bar line when a burst is `starting`, the
+    /// nearest whole beat inside one, and `pos` itself on a plan that
+    /// snaps to nothing.
+    ///
+    /// A burst START rounds UP so the rest is never cut below
+    /// [`Plan::rest_min`]; a flash inside a burst rounds to the
+    /// NEAREST beat, because rounding up there would skip the beat
+    /// it was aiming at. Pure — tested.
+    #[must_use]
+    pub fn snap(&self, pos: f32, starting: bool) -> f32 {
+        let step = if starting { self.bar } else { self.beat };
+        if step <= 0.0 {
+            return pos;
+        }
+        let steps = pos / step;
+        if starting {
+            steps.ceil() * step
+        } else {
+            steps.round() * step
+        }
+    }
+}
+
+/// The plan a setting asks for. Pure — tested.
+#[must_use]
+pub fn flash_plan(sync: FlashSync) -> Plan {
+    match sync {
+        FlashSync::Level => Plan::SECONDS,
+        FlashSync::Beat => Plan::BEATS,
+    }
+}
+
 /// The strobe's own pacing: bursts of a few flashes with a rest of
 /// a couple of seconds between them, both rolled from a hash of the
 /// burst's number.
@@ -321,30 +429,46 @@ pub fn burst_length(number: u32) -> u32 {
     BURST_MIN + ((hash01(number as usize * 7717 + 13) * span as f32) as u32).min(span - 1)
 }
 
-/// How long the rest after burst `number` lasts. Pure — tested.
-#[must_use]
-pub fn burst_rest(number: u32) -> f32 {
-    (REST_MAX_S - REST_MIN_S).mul_add(hash01(number as usize * 3391 + 29), REST_MIN_S)
-}
-
 impl Burst {
-    /// Advance the schedule to `now`, and say how hard the ceiling is
+    /// Advance the schedule to `pos` — the position on the `plan`'s
+    /// own clock, seconds or beats — and say how hard the ceiling is
     /// flashing: the flash that is on screen and how far into it we
-    /// are. Pure — tested.
-    pub fn tick(&mut self, now: f32) -> (u32, f32) {
-        // The schedule freezes while the ceiling is dark. The
-        // threshold bit flickers with the music, so a rest left to
-        // run through the quiet stretches would be over every time
-        // the room came back and the pacing would follow the music
-        // instead of the schedule (measured: 17 % of armed frames lit
-        // where the schedule asks for 6).
+    /// are, in SECONDS, because a flash's own life is wall time
+    /// whatever schedules it. Pure — tested.
+    pub fn tick(&mut self, now: f32, pos: f32, plan: Plan) -> (u32, f32) {
         match self.last_tick {
-            Some(last) if now - last > FLASH_GAP_S => self.next_at += now - last,
-            None => self.next_at = now,
+            // The position went a long way backwards: another song,
+            // or a switch of clock. Without this the schedule would
+            // wait for the old position to come round again and the
+            // ceiling would stay dark for the rest of the song.
+            //
+            // It has to be a LONG way. The song clock corrects itself
+            // against the audio device (a snap of 30 ms, a 10 % slew)
+            // and steps back a fraction of a beat when the count-in
+            // hands over to the music. Restarting on those measured
+            // as a fresh burst two beats after the last one — six
+            // flashes in six beats at the top of the song, which is
+            // the flicker the pacing exists to prevent. A step back
+            // smaller than the longest rest is a clock correcting
+            // itself: the schedule simply carries on, and the flash
+            // it was waiting for arrives that fraction later.
+            Some(last) if pos < last - plan.longest_rest() => {
+                self.next_at = plan.snap(pos, true);
+            }
+            // The schedule freezes while the ceiling is dark. The
+            // threshold bit flickers with the music, so a rest left to
+            // run through the quiet stretches would be over every time
+            // the room came back and the pacing would follow the music
+            // instead of the schedule (measured: 17 % of armed frames
+            // lit where the schedule asks for 6).
+            Some(last) if pos - last > plan.gap => {
+                self.next_at = plan.snap(self.next_at + (pos - last), self.left == 0);
+            }
+            None => self.next_at = plan.snap(pos, true),
             Some(_) => {}
         }
-        self.last_tick = Some(now);
-        if now >= self.next_at {
+        self.last_tick = Some(pos);
+        if pos >= self.next_at {
             if self.left == 0 {
                 self.left = burst_length(self.number);
             }
@@ -352,11 +476,11 @@ impl Burst {
             self.flash = self.flash.wrapping_add(1);
             self.left -= 1;
             self.next_at = if self.left == 0 {
-                let rest = burst_rest(self.number);
+                let rest = plan.rest_after(self.number);
                 self.number = self.number.wrapping_add(1);
-                now + rest
+                plan.snap(pos + rest, true)
             } else {
-                now + FLASH_GAP_S
+                plan.snap(pos + plan.gap, false)
             };
         }
         (self.flash, now - self.lit_at)
@@ -384,6 +508,34 @@ pub fn strobe_armed_until(over: bool, now: f32, armed_until: f32) -> f32 {
     }
 }
 
+/// Whether the strobe is armed this instant, before the hold: on
+/// the room's level, the live threshold bit; on the song's beat,
+/// simply that a song is running — a rhythm needs no permission from
+/// a microphone. `BEATBYTE_LIGHTSHOW` arms it either way. Pure —
+/// tested (the decision, not only its branches).
+#[must_use]
+pub fn armed_now(sync: FlashSync, over: bool, playing: bool, forced: bool) -> bool {
+    forced
+        || match sync {
+            FlashSync::Level => over,
+            FlashSync::Beat => playing,
+        }
+}
+
+/// Whether the song crossed a bar line between two frames — the
+/// swell's rising edge on the song's clock, as the threshold's
+/// rising edge is on the room's.
+///
+/// Which bar a position sits in rises with the position, so asking
+/// for a HIGHER bar than last frame already excludes a clock that
+/// went backwards; an explicit direction guard was written here and
+/// removed again when no mutation of it could be made to fail.
+/// Pure — tested.
+#[must_use]
+pub fn crossed_bar(before: f32, now: f32) -> bool {
+    (now / FLASH_BEATS_PER_BAR).floor() > (before / FLASH_BEATS_PER_BAR).floor()
+}
+
 /// Whether the ceiling strobes at `now`: still inside the arming,
 /// and never under reduced flashing — the whole point of that
 /// setting. Pure — tested (the decision, not only its branches).
@@ -406,6 +558,10 @@ pub struct Highlight {
     pub strobe_until: f32,
     /// The burst schedule: how the flashes are paced.
     pub burst: Burst,
+    /// Where the song stood last frame, in beats — the swell's
+    /// rising edge on the song's clock needs both sides of a bar
+    /// line. `None` while no song is running.
+    pub last_beat: Option<f32>,
     /// Whether anything was written to the lamps last frame, so the
     /// idle case costs nothing but still restores once.
     pub was_active: bool,
@@ -470,6 +626,8 @@ pub fn drive_highlight(
     )>,
     mut wash: Query<(Entity, &mut PointLight, Option<&LampBase>), With<VenueWash>>,
     mut beams: Query<(&mut rig::RigBeam, &mut MeshMaterial3d<StandardMaterial>)>,
+    game_clock: Res<GameClock>,
+    players: Query<&PlayerSession>,
     mut last_reported: Local<f32>,
     mut show: Local<Option<bool>>,
     mut tally: Local<(u32, u32)>,
@@ -501,16 +659,47 @@ pub fn drive_highlight(
         None => (false, false),
     };
     highlight.over = over;
+    // Where the song stands, in beats off its tracked grid: the other
+    // clock the flashes may run on, and the only one that needs no
+    // microphone.
+    let beats = game_clock.song_time(&time).and_then(|song| {
+        players
+            .iter()
+            .next()
+            .map(|player| player.session.track().tempo.beats_at(song) as f32)
+    });
+    let sync = settings.flash_sync;
+    // The swell's rising edge is the threshold's on the room's clock
+    // and a bar line on the song's.
+    let rising = match sync {
+        FlashSync::Level => rising,
+        FlashSync::Beat => match (highlight.last_beat, beats) {
+            (Some(before), Some(at)) => crossed_bar(before, at),
+            _ => false,
+        },
+    };
+    highlight.last_beat = beats;
     highlight.punch = advance_punch(highlight.punch, rising, settings.reduced_flashing, dt);
-    let armed = over || *show.get_or_insert_with(forced);
+    let armed = armed_now(
+        sync,
+        over,
+        beats.is_some(),
+        *show.get_or_insert_with(forced),
+    );
     highlight.strobe_until = strobe_armed_until(armed, now, highlight.strobe_until);
-    // The chase runs on the wall clock and the threshold only gates
-    // it. Anchoring it to the arming instead restarted the cycle on
-    // every edge — and the bit flickers with the music, so the same
-    // first pair fired over and over for a few milliseconds each
-    // time (seen live: not one white frame in six).
-    let strobe = strobing(now, highlight.strobe_until, settings.reduced_flashing)
-        .then(|| highlight.burst.tick(now));
+    // The chase runs on its own clock and the arming only gates it.
+    // Anchoring it to the arming instead restarted the cycle on
+    // every edge — and the threshold bit flickers with the music, so
+    // the same first pair fired over and over for a few milliseconds
+    // each time (seen live: not one white frame in six).
+    let plan = flash_plan(sync);
+    let position = match sync {
+        FlashSync::Level => Some(now),
+        FlashSync::Beat => beats,
+    };
+    let strobe = position
+        .filter(|_| strobing(now, highlight.strobe_until, settings.reduced_flashing))
+        .map(|pos| highlight.burst.tick(now, pos, plan));
     // Nothing to say and nothing said last frame: every lamp already
     // sits at its own colour and intensity.
     let active = highlight.punch > 0.0 || strobe.is_some();
@@ -609,11 +798,23 @@ pub fn drive_highlight(
     // answer for ever.
     if strobe.is_some() && now - *last_reported >= 1.0 {
         *last_reported = now;
-        info!(
-            "strobe: {} of {} frames had a hit, {ceiling} lamps, \
-             {beams_lit}/{beams_seen} beams white, now {hits:?}",
-            tally.1, tally.0
-        );
+        // Only a second that actually flashed says anything: on the
+        // song's clock the strobe is armed for the whole song, and a
+        // line a second either way would be noise rather than a
+        // diagnostic.
+        if tally.1 > 0 {
+            info!(
+                "strobe: {} of {} frames had a hit, {ceiling} lamps, \
+                 {beams_lit}/{beams_seen} beams white, now {hits:?}, \
+                 {sync:?} at {:.2}",
+                tally.1,
+                tally.0,
+                // The schedule's own position: seconds on the wall
+                // clock, beats on the song's. Printing the beats
+                // either way would read NaN through half the game.
+                position.unwrap_or(f32::NAN)
+            );
+        }
         *tally = (0, 0);
     }
 }
@@ -1241,7 +1442,7 @@ mod tests {
         let mut t = 0.0f32;
         let mut last_flash = 0;
         while t < 30.0 {
-            let (flash, since) = burst.tick(t);
+            let (flash, since) = burst.tick(t, t, Plan::SECONDS);
             if flash != last_flash {
                 last_flash = flash;
                 lit_at.push(t);
@@ -1283,7 +1484,7 @@ mod tests {
         let lengths: Vec<u32> = (0..60).map(burst_length).collect();
         assert!(lengths.iter().all(|n| (BURST_MIN..=BURST_MAX).contains(n)));
         assert!(lengths.contains(&BURST_MIN) && lengths.contains(&BURST_MAX));
-        let rests: Vec<f32> = (0..60).map(burst_rest).collect();
+        let rests: Vec<f32> = (0..60).map(|n| Plan::SECONDS.rest_after(n)).collect();
         assert!(rests.iter().all(|r| (REST_MIN_S..=REST_MAX_S).contains(r)));
         let spread = rests.iter().copied().fold(f32::MIN, f32::max)
             - rests.iter().copied().fold(f32::MAX, f32::min);
@@ -1292,6 +1493,201 @@ mod tests {
             "the rests spread across their range: {spread}"
         );
         assert_eq!(burst_length(7), burst_length(7), "deterministic");
+    }
+
+    #[test]
+    fn the_songs_clock_puts_every_flash_on_a_beat_and_every_burst_on_a_bar() {
+        // The whole point of the setting: the ceiling stops flashing
+        // at the room's loudness and starts flashing with the band.
+        let mut burst = Burst::default();
+        let mut lit: Vec<f32> = Vec::new();
+        let mut starts: Vec<f32> = Vec::new();
+        let mut last_flash = u32::MAX;
+        let mut opening = true;
+        // 120 BPM: two beats a second, sampled at 240 Hz.
+        for step in 0..(60 * 240) {
+            let t = step as f32 / 240.0;
+            let beats = t * 2.0;
+            let (flash, _) = burst.tick(t, beats, Plan::BEATS);
+            if flash != last_flash {
+                if opening || beats - lit.last().copied().unwrap_or(beats) > BEAT_GAP * 1.5 {
+                    starts.push(beats);
+                }
+                opening = false;
+                last_flash = flash;
+                lit.push(beats);
+            }
+        }
+        assert!(lit.len() > 8, "the ceiling flashes at all: {}", lit.len());
+        // One frame at this rate is 0.0084 beats, and a crossing is
+        // caught on the frame after it: everything else is a flash
+        // that missed its beat.
+        for beat in &lit {
+            let off = (beat - beat.round()).abs();
+            assert!(off < 0.02, "a flash off the beat by {off} at {beat}");
+        }
+        for start in &starts {
+            let bar = start / FLASH_BEATS_PER_BAR;
+            assert!(
+                (bar - bar.round()).abs() < 0.01,
+                "a burst starting off the bar at beat {start}"
+            );
+        }
+        let gaps: Vec<f32> = lit.windows(2).map(|pair| pair[1] - pair[0]).collect();
+        let inside: Vec<f32> = gaps.iter().copied().filter(|g| *g < 2.0).collect();
+        let between: Vec<f32> = gaps.iter().copied().filter(|g| *g >= 2.0).collect();
+        assert!(!inside.is_empty() && !between.is_empty());
+        assert!(
+            inside.iter().all(|g| (*g - BEAT_GAP).abs() < 0.02),
+            "inside a burst the flashes are a beat apart: {inside:?}"
+        );
+        assert!(
+            between
+                .iter()
+                .all(|g| (REST_MIN_BEATS..=2.0 * FLASH_BEATS_PER_BAR + 0.1).contains(g)),
+            "a rest is one or two bars: {between:?}"
+        );
+        let first = between[0];
+        assert!(
+            between.iter().any(|g| (g - first).abs() > 0.5),
+            "and the rests are rolled, not a metronome: {between:?}"
+        );
+    }
+
+    #[test]
+    fn a_burst_starts_on_the_next_bar_and_a_flash_inside_it_on_the_nearest_beat() {
+        // Rounding UP at a burst start keeps the rest at least as
+        // long as it was rolled; rounding to the NEAREST inside a
+        // burst keeps the flash on the beat it was aiming at, which
+        // rounding up would skip.
+        let plan = Plan::BEATS;
+        assert!((plan.snap(5.02, true) - 8.0).abs() < 1e-5);
+        assert!(
+            (plan.snap(8.0, true) - 8.0).abs() < 1e-5,
+            "already on a bar"
+        );
+        assert!(
+            (plan.snap(4.02, false) - 4.0).abs() < 1e-5,
+            "the beat it aims at"
+        );
+        assert!((plan.snap(3.98, false) - 4.0).abs() < 1e-5);
+        // The wall clock rounds to nothing at all.
+        for pos in [0.0, 1.7, 12.34] {
+            assert!((Plan::SECONDS.snap(pos, true) - pos).abs() < 1e-6);
+            assert!((Plan::SECONDS.snap(pos, false) - pos).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn the_setting_chooses_the_clock() {
+        // The decision itself, not only the two plans it picks
+        // between: a test of each branch alone stays green while the
+        // code always answers the same one.
+        assert_eq!(flash_plan(FlashSync::Level), Plan::SECONDS);
+        assert_eq!(flash_plan(FlashSync::Beat), Plan::BEATS);
+        assert_ne!(Plan::SECONDS, Plan::BEATS);
+        assert_eq!(Plan::SECONDS.beat, 0.0, "the wall clock knows no beats");
+        const {
+            assert!(Plan::BEATS.beat > 0.0 && Plan::BEATS.bar > 0.0);
+        }
+    }
+
+    #[test]
+    fn the_beat_needs_no_microphone_and_the_level_needs_the_threshold() {
+        // On the room's level nothing fires until the level is over;
+        // on the song's beat it is enough that a song is running.
+        assert!(!armed_now(FlashSync::Level, false, true, false));
+        assert!(armed_now(FlashSync::Level, true, false, false));
+        assert!(!armed_now(FlashSync::Beat, true, false, false));
+        assert!(armed_now(FlashSync::Beat, false, true, false));
+        // And the harness switch arms either clock.
+        for sync in [FlashSync::Level, FlashSync::Beat] {
+            assert!(armed_now(sync, false, false, true));
+        }
+    }
+
+    #[test]
+    fn a_bar_line_is_crossed_once_a_bar_and_not_by_going_back() {
+        assert!(crossed_bar(3.9, 4.1), "the bar line between them");
+        assert!(!crossed_bar(4.1, 4.9), "a beat inside the bar is not one");
+        assert!(!crossed_bar(1.9, 2.1));
+        assert!(
+            !crossed_bar(4.1, 3.9),
+            "and running back over one is not crossing it"
+        );
+        assert!(!crossed_bar(4.0, 4.0));
+        let mut crossings = 0;
+        let mut before = 0.0f32;
+        for step in 1..=(16 * 100) {
+            let now = step as f32 / 100.0;
+            if crossed_bar(before, now) {
+                crossings += 1;
+            }
+            before = now;
+        }
+        assert_eq!(crossings, 4, "sixteen beats are four bars");
+    }
+
+    #[test]
+    fn a_clock_correcting_itself_backwards_is_not_a_new_song() {
+        // Measured live before this rule existed: the song clock
+        // steps back a fraction of a beat when the count-in hands
+        // over to the music (it anchors to the audio device, which
+        // snaps at 30 ms), the schedule read that as a fresh
+        // timeline, and the top of the song flashed on six beats
+        // running — the flicker the burst pacing exists to prevent.
+        let mut burst = Burst::default();
+        let mut pos = 0.0f32;
+        // Run into a rest with room to spare.
+        loop {
+            burst.tick(pos, pos, Plan::BEATS);
+            if burst.left == 0 && burst.next_at > pos + 1.0 {
+                break;
+            }
+            pos += 0.05;
+            assert!(pos < 100.0, "a rest must come");
+        }
+        let scheduled = burst.next_at;
+        let before = burst.flash;
+        // The clock corrects itself by a fraction of a beat.
+        let (after, _) = burst.tick(pos, pos - 0.2, Plan::BEATS);
+        assert_eq!(after, before, "no flash: the clock only nudged");
+        assert!(
+            (burst.next_at - scheduled).abs() < 1e-6,
+            "and the schedule it was already keeping is untouched: \
+             {scheduled} became {}",
+            burst.next_at
+        );
+    }
+
+    #[test]
+    fn a_new_song_puts_the_schedule_back_rather_than_leaving_the_ceiling_dark() {
+        // The resource outlives a song. Without this the schedule
+        // would sit at a position the new song reaches minutes later
+        // — or never — and the ceiling would stay dark for all of it.
+        let mut burst = Burst::default();
+        let mut last = u32::MAX;
+        let mut flashes = 0;
+        for step in 0..(240 * 120) {
+            let t = step as f32 / 240.0;
+            let (flash, _) = burst.tick(t, t * 2.0, Plan::BEATS);
+            if flash != last {
+                last = flash;
+                flashes += 1;
+            }
+        }
+        assert!(flashes > 10, "a long song flashes: {flashes}");
+        // The next song starts at beat zero again.
+        let mut fresh = 0;
+        for step in 0..(240 * 20) {
+            let t = 120.0 + step as f32 / 240.0;
+            let (flash, _) = burst.tick(t, step as f32 / 240.0 * 2.0, Plan::BEATS);
+            if flash != last {
+                last = flash;
+                fresh += 1;
+            }
+        }
+        assert!(fresh > 2, "and so does the next one: {fresh}");
     }
 
     #[test]
@@ -1397,6 +1793,7 @@ mod tests {
             ..Settings::default()
         });
         app.init_resource::<Highlight>();
+        app.init_resource::<GameClock>();
         // A loud room: over the governor's opening threshold.
         app.insert_resource(Ears(Some(beatbyte_audio::listen::Listener::stub(
             true, -20.0, None,
@@ -1522,6 +1919,131 @@ mod tests {
             assert!((intensity - 1000.0).abs() < 1e-3, "and its own intensity");
         }
         assert!(!app.world().resource::<Highlight>().was_active);
+    }
+
+    #[test]
+    fn the_ceiling_flashes_on_the_song_alone_with_no_microphone_in_the_room() {
+        // The setting's whole promise: on the song's clock the show
+        // runs with no input device at all — where the room's level
+        // would leave the ceiling dark for ever. And it runs on the
+        // SONG's positions: the first frame stands three beats in,
+        // between bar lines, and must NOT flash; the second stands on
+        // the bar and must. A schedule reading the wall clock instead
+        // would fire on the first.
+        use beatbyte_core::{
+            Difficulty, Lane, LaneSet, NoteEvent, NoteKind, ScoreConfig, TempoMap, TimingWindows,
+            Track, TrackSession,
+        };
+        use bevy::ecs::system::RunSystemOnce;
+
+        let lamps = rig::RIG_LAMPS;
+        let firing = flash_lamps(0, lamps)[0];
+        let tone = Color::srgb(1.0, 0.2, 0.1);
+        // 120 BPM: beat 3 at 1.5 s (between bars), beat 4 at 2.0 s.
+        let run = |sync: FlashSync, calm: bool, song: &[f64]| {
+            let mut app = App::new();
+            app.add_plugins((MinimalPlugins, AssetPlugin::default()));
+            app.init_asset::<StandardMaterial>();
+            app.insert_resource(Settings {
+                stage_3d: true,
+                flash_sync: sync,
+                reduced_flashing: calm,
+                ..Settings::default()
+            });
+            app.init_resource::<Highlight>();
+            // No input device: nothing is measured, ever.
+            app.insert_resource(Ears(None));
+            app.init_resource::<GameClock>();
+            let track = Track::new(
+                Difficulty::Medium,
+                TempoMap::constant(120.0, 0.0),
+                vec![NoteEvent {
+                    time_s: 1.0,
+                    lanes: LaneSet::single(Lane::One),
+                    kind: NoteKind::Strum,
+                    sustain_s: 0.0,
+                }],
+                Vec::new(),
+            )
+            .expect("a valid track");
+            app.world_mut().spawn(PlayerSession {
+                session: TrackSession::new(track, TimingWindows::default(), ScoreConfig::default()),
+                frame_events: Vec::new(),
+                spawn_cursor: 0,
+            });
+            let lamp = app
+                .world_mut()
+                .spawn((
+                    rig::RigLamp(firing),
+                    SpotLight {
+                        color: tone,
+                        intensity: 1000.0,
+                        ..default()
+                    },
+                ))
+                .id();
+            let mut seen = Vec::new();
+            for song_s in song {
+                // The wall clock stands still across these frames —
+                // only the song moves, which is the point.
+                app.world_mut()
+                    .resource_mut::<GameClock>()
+                    .clock
+                    .start(0.0, *song_s);
+                app.world_mut()
+                    .run_system_once(drive_highlight)
+                    .expect("the system runs");
+                let light = app.world().get::<SpotLight>(lamp).expect("a lamp");
+                seen.push((light.color.to_srgba(), light.intensity));
+            }
+            seen
+        };
+
+        let white = |(color, bright): &(Srgba, f32)| {
+            color.red > 0.95
+                && color.green > 0.95
+                && color.blue > 0.95
+                && *bright > STROBE_FLASH * 0.9
+        };
+        let beat = run(FlashSync::Beat, false, &[1.5, 2.0]);
+        assert!(
+            !white(&beat[0]),
+            "three beats in is between bar lines: {:?}",
+            beat[0]
+        );
+        assert!(
+            white(&beat[1]),
+            "and the bar line flares the lamp white: {:?}",
+            beat[1]
+        );
+        // The same room on the other clock: nothing is heard, so
+        // nothing fires at all. That contrast IS the setting.
+        let level = run(FlashSync::Level, false, &[1.5, 2.0]);
+        for seen in &level {
+            assert!(
+                (seen.0.red - 1.0).abs() < 1e-3
+                    && seen.0.blue < 0.2
+                    && seen.1 < STROBE_FLASH * 0.01,
+                "on the room's level an unheard room leaves the lamp alone: {seen:?}"
+            );
+        }
+        // REDUCED FLASHING takes the strobe away and leaves the
+        // swell — and on the song's clock the swell has a musical
+        // edge to rise on, so that setting is no longer a room with
+        // nothing in it at all.
+        let swell = run(FlashSync::Beat, true, &[1.5, 2.0]);
+        for seen in &swell {
+            assert!(
+                !white(seen),
+                "reduced flashing never strobes, on any clock: {seen:?}"
+            );
+        }
+        assert!(
+            swell[1].1 > swell[0].1 * 1.1,
+            "the bar line swells the lamp: {} then {}",
+            swell[0].1,
+            swell[1].1
+        );
     }
 
     #[test]
