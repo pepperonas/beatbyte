@@ -14,6 +14,31 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.45] - 2026-09-08
+
+### Fixed
+
+- **The ceiling's white flash reaches the near, large cones too.**
+  Reported: the strobe read well on the small greenish cones and
+  poorly on the bigger red ones. Measured over six frames of a
+  running strobe, and the report was exact: the saturation of the
+  near head cones did not move at all (0.711–0.723) while their
+  lights flashed white underneath, where the far rims — a fainter
+  mantle, small on screen — swung 0.27–0.48. Two causes, both fixed:
+  - **A fixture's beam is what the eye sees, and it never changed.**
+    The additive mantles and the lens wear the fixture's colour and
+    were left alone, on the rule that a shared material must not be
+    written per frame. They now SWAP to a shared white beam for the
+    length of a hit and back afterwards — handle swaps, once per
+    change, no material writes (`rig::RigBeam`). A moving head has
+    three such parts, a rim two.
+  - **The flash was a factor on the fixture's own brightness.** The
+    rims rest at 3 000 000 and the heads at 900 000, so the heads —
+    the near, large cones — flashed a third as hard. A flash is a
+    property of the flash: it adds an absolute `STROBE_FLASH` now,
+    and a weak fixture flashes within a factor of two of a strong
+    one instead of a factor of three and a bit.
+
 ## [0.14.44] - 2026-09-08
 
 ### Removed

@@ -214,6 +214,30 @@ fn lamp(
     })
 }
 
+/// A part of a fixture that wears the beam's colour — a mantle or a
+/// lens. A strobe hit swaps it to white and back.
+///
+/// It has to, because the coloured additive beam is what the eye
+/// actually sees at a fixture: measured over six frames of a running
+/// strobe, the saturation of the near head cones did not move at all
+/// (0.71–0.73) while their lights flashed white underneath, and the
+/// far rims — whose mantle is fainter and small on screen — swung
+/// 0.27–0.48. Flashing the light alone reads on a small distant
+/// fixture and not on a big near one, which is exactly what was
+/// reported.
+#[derive(Component)]
+pub struct RigBeam {
+    /// The lamp this part belongs to.
+    pub lamp: usize,
+    /// The material it wears at rest.
+    pub base: Handle<StandardMaterial>,
+    /// The material it wears under a flash.
+    pub flash: Handle<StandardMaterial>,
+    /// Whether it is currently flashing, so the swap happens once
+    /// per change instead of once per frame.
+    pub lit: bool,
+}
+
 /// One lamp of the ceiling rig, numbered 0..[`RIG_LAMPS`]: the rims
 /// first, then the heads. The number is the lamp's identity for
 /// anything that wants to address them in an order of its own.
@@ -262,6 +286,11 @@ pub fn spawn_rig(
     motion: bool,
 ) {
     let layer = RenderLayers::layer(STAGE_LAYER);
+    // What a fixture wears while the strobe hits it: a white beam
+    // and a white bulb, shared by every fixture. Swapping the handle
+    // costs nothing per frame and never touches a live material.
+    let flash_beam = additive(materials, Color::WHITE, 0.55, beam_gradient.clone());
+    let flash_lens = lamp(materials, Color::WHITE, 9.0);
     let mantle = meshes.add(beam_cone_mesh(28));
     let housing = meshes.add(Cuboid::new(0.34, 0.5, 0.34));
     let lens = meshes.add(Sphere::new(0.13).mesh().uv(10, 8));
@@ -318,6 +347,12 @@ pub fn spawn_rig(
         ));
         commands.spawn((
             NotShadowCaster,
+            RigBeam {
+                lamp: i,
+                base: rim_lens_material.clone(),
+                flash: flash_lens.clone(),
+                lit: false,
+            },
             Mesh3d(lens.clone()),
             MeshMaterial3d(rim_lens_material.clone()),
             Transform::from_xyz(0.0, -0.45, 0.0),
@@ -327,6 +362,12 @@ pub fn spawn_rig(
         commands.spawn((
             Mantle,
             NotShadowCaster,
+            RigBeam {
+                lamp: i,
+                base: rim_material.clone(),
+                flash: flash_beam.clone(),
+                lit: false,
+            },
             Mesh3d(mantle.clone()),
             MeshMaterial3d(rim_material.clone()),
             Transform::from_xyz(0.0, -0.5, 0.0).with_scale(Vec3::new(1.6, 9.0, 1.6)),
@@ -376,6 +417,12 @@ pub fn spawn_rig(
         ));
         commands.spawn((
             NotShadowCaster,
+            RigBeam {
+                lamp: RIMS + index,
+                base: lens_materials[head.tone].clone(),
+                flash: flash_lens.clone(),
+                lit: false,
+            },
             Mesh3d(lens.clone()),
             MeshMaterial3d(lens_materials[head.tone].clone()),
             Transform::from_xyz(0.0, -0.52, 0.0),
@@ -392,6 +439,12 @@ pub fn spawn_rig(
             commands.spawn((
                 Mantle,
                 NotShadowCaster,
+                RigBeam {
+                    lamp: RIMS + index,
+                    base: beam_materials[head.tone].clone(),
+                    flash: flash_beam.clone(),
+                    lit: false,
+                },
                 Mesh3d(mantle.clone()),
                 MeshMaterial3d(beam_materials[head.tone].clone()),
                 Transform::from_xyz(0.0, -0.55, 0.0).with_scale(scale),

@@ -177,8 +177,14 @@ pub const STROBE_AT_ONCE: usize = 2;
 /// The share of a step a hit lasts. The rest is the dark gap that
 /// makes this a strobe rather than a chase.
 pub const STROBE_DUTY: f32 = 0.55;
-/// How much a hit adds to the lamp's own resting intensity.
-pub const STROBE_GAIN: f32 = 2.6;
+/// What a hit adds to a lamp's intensity, in the engine's own units
+/// rather than as a factor on the lamp's resting brightness.
+///
+/// A flash is a property of the flash, not of the fixture: the rims
+/// rest at 3 000 000 and the moving heads at 900 000, so a factor
+/// made the heads flash a third as hard as the rims — and the heads
+/// are the near, large cones, where it was reported as not reading.
+pub const STROBE_FLASH: f32 = 6_000_000.0;
 /// The strobe's colour, whatever colour the lamp usually wears.
 pub const STROBE_WHITE: Color = Color::srgb(1.0, 1.0, 1.0);
 /// How far the venue's colour wash drops under a flash. A strobe
@@ -361,6 +367,7 @@ pub fn drive_highlight(
         Option<&rig::RigLamp>,
     )>,
     mut wash: Query<(Entity, &mut PointLight, Option<&LampBase>), With<VenueWash>>,
+    mut beams: Query<(&mut rig::RigBeam, &mut MeshMaterial3d<StandardMaterial>)>,
     mut last_reported: Local<f32>,
     mut show: Local<Option<bool>>,
     mut tally: Local<(u32, u32)>,
@@ -413,6 +420,10 @@ pub fn drive_highlight(
     // flash, so the ceiling has something to be brighter than.
     let shape = strobe.map_or(0.0, strobe_shape);
     let dip = STROBE_DIP.mul_add(-shape, 1.0);
+    // Every firing lamp of a step shares one shape, so the ten hits
+    // are computed once and read by the lights AND their beams.
+    let hits_by_lamp: [f32; rig::RIG_LAMPS] =
+        core::array::from_fn(|lamp| strobe.map_or(0.0, |t| strobe_hit(lamp, rig::RIG_LAMPS, t)));
     let mut ceiling = 0usize;
     let mut hits: Vec<usize> = Vec::new();
     tally.0 += 1;
@@ -428,13 +439,10 @@ pub fn drive_highlight(
                 base
             }
         };
-        let hit = match (strobe, rig_lamp) {
-            (Some(t), Some(lamp)) => {
-                ceiling += 1;
-                strobe_hit(lamp.0, rig::RIG_LAMPS, t)
-            }
-            _ => 0.0,
-        };
+        let hit = rig_lamp.map_or(0.0, |lamp| {
+            ceiling += 1;
+            hits_by_lamp[lamp.0]
+        });
         if hit > 0.0
             && let Some(lamp) = rig_lamp
         {
@@ -447,10 +455,29 @@ pub fn drive_highlight(
             // White for the whole flash: a xenon tube does not tint.
             // The brightness carries the shape.
             light.color = STROBE_WHITE;
-            light.intensity = base.intensity * STROBE_GAIN.mul_add(hit, gain);
+            light.intensity = base.intensity.mul_add(gain, STROBE_FLASH * hit);
         } else {
             light.color = base.color;
             light.intensity = base.intensity * gain * dip;
+        }
+    }
+    // The beam a fixture wears goes white with it. Handle swaps, and
+    // only when the state changes.
+    let mut beams_seen = 0usize;
+    let mut beams_lit = 0usize;
+    for (mut beam, mut material) in &mut beams {
+        let lit = hits_by_lamp.get(beam.lamp).is_some_and(|hit| *hit > 0.0);
+        beams_seen += 1;
+        if lit {
+            beams_lit += 1;
+        }
+        if lit != beam.lit {
+            beam.lit = lit;
+            material.0 = if lit {
+                beam.flash.clone()
+            } else {
+                beam.base.clone()
+            };
         }
     }
     for (entity, mut light, base) in &mut wash {
@@ -477,7 +504,8 @@ pub fn drive_highlight(
     if strobe.is_some() && now - *last_reported >= 1.0 {
         *last_reported = now;
         info!(
-            "strobe: {} of {} frames had a hit, {ceiling} ceiling lamps, now {hits:?}",
+            "strobe: {} of {} frames had a hit, {ceiling} lamps, \
+             {beams_lit}/{beams_seen} beams white, now {hits:?}",
             tally.1, tally.0
         );
         *tally = (0, 0);
@@ -1097,6 +1125,24 @@ mod tests {
     }
 
     #[test]
+    fn a_flash_is_as_hard_from_a_weak_fixture_as_from_a_strong_one() {
+        // The rims rest at 3 000 000 and the heads at 900 000. A
+        // factor on the resting brightness made the heads flash a
+        // third as hard as the rims — and the heads are the near,
+        // large cones, which is where it was reported as not
+        // reading. The flash is absolute; the rest is the fixture.
+        let flash = |rest: f32| rest.mul_add(1.0, STROBE_FLASH);
+        let weak = flash(900_000.0);
+        let strong = flash(3_000_000.0);
+        assert!(
+            strong / weak < 2.0,
+            "a weak fixture must flash within a factor of two of a \
+             strong one: {weak} vs {strong}"
+        );
+        assert!(weak / 900_000.0 > 5.0, "and it must be a flash: {weak}");
+    }
+
+    #[test]
     fn the_whole_room_gives_way_to_a_flash() {
         // Every firing lamp shares one shape, and that shape is what
         // the rest of the room dips by: the strobe reads by contrast.
@@ -1175,7 +1221,8 @@ mod tests {
         let waiting = order[lamps - 1] as usize;
         let tone = Color::srgb(1.0, 0.2, 0.1);
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins);
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()));
+        app.init_asset::<StandardMaterial>();
         app.insert_resource(Settings {
             stage_3d: true,
             reduced_flashing: false,
@@ -1186,6 +1233,25 @@ mod tests {
         app.insert_resource(Ears(Some(beatbyte_audio::listen::Listener::stub(
             true, -20.0, None,
         ))));
+        let base_material = app
+            .world_mut()
+            .resource_mut::<Assets<StandardMaterial>>()
+            .add(StandardMaterial::default());
+        let flash_material = app
+            .world_mut()
+            .resource_mut::<Assets<StandardMaterial>>()
+            .add(StandardMaterial::default());
+        for lamp in [firing, waiting] {
+            app.world_mut().spawn((
+                rig::RigBeam {
+                    lamp,
+                    base: base_material.clone(),
+                    flash: flash_material.clone(),
+                    lit: false,
+                },
+                MeshMaterial3d(base_material.clone()),
+            ));
+        }
         let lit = app
             .world_mut()
             .spawn((
@@ -1229,16 +1295,34 @@ mod tests {
             white.red > 0.95 && white.green > 0.95 && white.blue > 0.95,
             "the hit lamp flares white: {white:?}"
         );
-        assert!(bright > 1000.0 * 3.0, "and much brighter: {bright}");
-        let (kept, waiting) = look(app.world_mut(), dark);
+        assert!(
+            bright > STROBE_FLASH * 0.9,
+            "and flashes in absolute terms, not as a factor on a dim \
+             fixture: {bright}"
+        );
+        let (kept, held_back) = look(app.world_mut(), dark);
         assert!(
             kept.green < 0.5,
             "a lamp between hits keeps its colour: {kept:?}"
         );
         assert!(
-            waiting < bright * 0.5,
-            "and gives way to the flash instead of matching it: {waiting}"
+            held_back < bright * 0.5,
+            "and gives way to the flash instead of matching it: {held_back}"
         );
+        // The fixture's own beam goes white with it, and the one
+        // between hits keeps its colour: the coloured additive cone
+        // is what the eye sees at a fixture, and flashing the light
+        // alone was invisible on the near, large ones.
+        let beam_of = |world: &mut World, lamp: usize| -> Handle<StandardMaterial> {
+            world
+                .query::<(&rig::RigBeam, &MeshMaterial3d<StandardMaterial>)>()
+                .iter(world)
+                .find(|(beam, _)| beam.lamp == lamp)
+                .map(|(_, material)| material.0.clone())
+                .expect("a beam")
+        };
+        assert_eq!(beam_of(app.world_mut(), firing), flash_material);
+        assert_eq!(beam_of(app.world_mut(), waiting), base_material);
         let (key_color, _) = look(app.world_mut(), key);
         assert!(
             key_color.green < 0.5,
@@ -1256,6 +1340,11 @@ mod tests {
         app.world_mut()
             .run_system_once(drive_highlight)
             .expect("the system runs");
+        assert_eq!(
+            beam_of(app.world_mut(), firing),
+            base_material,
+            "and the beam comes back too"
+        );
         for lamp in [lit, dark, key] {
             let (color, intensity) = look(app.world_mut(), lamp);
             assert!(

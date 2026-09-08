@@ -197,7 +197,10 @@ five white strips that run a comet or a spray of sparks every 9–18 s
 on a hashed schedule.
 
 The strobe flares a pair of lamps white twelve times a second in a
-shuffled order — every lamp once per cycle, a dark gap inside each
+shuffled order — the light AND the fixture's own beam, because the
+additive mantle is what the eye sees at a fixture and a light that
+flashed alone was measured not to move the near cones' colour at all
+—  — every lamp once per cycle, a dark gap inside each
 step — on the wall clock, with the threshold only gating it (held
 150 ms past the last sample over, because the bit flickers with the
 music and a cycle anchored to it never gets past its first pair) — and each lamp's own colour and intensity live in `LampBase`,

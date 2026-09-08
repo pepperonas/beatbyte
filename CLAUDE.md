@@ -654,6 +654,17 @@ artifact, smoke-test it (neutral CWD!), then
   and keep an eye on it: it had grown to 70 GB and filled the disk
   mid-session, at which point no tool could even open its output
   file.
+- **What the eye sees at a light is its BEAM, not its light.** The
+  ceiling strobe flashed its `SpotLight`s white and read on the far,
+  small fixtures and not on the near, large ones — reported, then
+  measured: the near cones' saturation did not move at all
+  (0.711–0.723 over six frames of a running strobe) because the
+  additive mantle wears the fixture's colour and was never touched.
+  A fixture that flashes has to flash its mantle and its lens too,
+  by swapping the material HANDLE (a shared material may not be
+  written per frame). And a flash is a property of the flash: a
+  factor on the fixture's own intensity made a 900 000 head flash a
+  third as hard as a 3 000 000 rim.
 - **A colour filter is a hypothesis about the renderer.** Counting
   "warm white" pixels (`r-b > 15`) to find the light strips returned
   ZERO across eight frames, five of which the log proved had an
@@ -663,6 +674,15 @@ artifact, smoke-test it (neutral CWD!), then
   The house rule that a tool reporting 0 needs a counter-check
   applies to image measurements too: difference two frames, or crop
   and LOOK, before believing a feature does not render.
+- **`caffeinate -dis` does not stop the screen LOCKING.** Half a
+  session's measurements were taken on black frames because the
+  display locked on the idle timer a few minutes into each run — and
+  a black frame measures as "the feature is not visible", which sent
+  two hypotheses down the wrong road. `-d`/`-i`/`-s` only prevent
+  sleep; **`-u` asserts user activity**, which is what holds off the
+  idle lock: `caffeinate -disu -t 1200 <binary>`. It cannot unlock a
+  screen that is already locked, so check `CGSSessionScreenIsLocked`
+  first and check it AGAIN when a measurement says nothing changed.
 - **A locked screen is not only a black capture: it is a whole
   session without eyes.** Plan verification at ECS/log level from the
   start — `info!` lines that carry the measured values (the monitors
