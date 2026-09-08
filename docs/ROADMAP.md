@@ -297,6 +297,16 @@ project. Milestones when picked up:
   and a comet running the left barrier rail, absent in a frame
   between effects. The highlight's punch is proven by log, not
   isolated by eye.
+- [x] **Strobe on the ceiling, sparks that die** *(v0.14.43)*. On
+  report: the ceiling rig strobes white in a shuffled order while
+  the level is over the threshold (a pair of ten lamps at 12 Hz,
+  every lamp once per cycle, off entirely under REDUCED FLASHING),
+  and the sparkle was rebuilt as the reference rig's dying clusters
+  after the first cut read as white noise ("aktuell gefällt mir der
+  nicht"). Comet eased and given the larger share; strips at 64
+  bars. Nine mutation probes and one wired drill (a lamp flares
+  white, its neighbour does not, the key light never does,
+  everything returns to its own colour).
 - [x] **Highlight on the threshold, white strips, a threshold that
   sets itself** *(v0.14.40)*. Commissioned as an extension of the
   reference rig's dB-Analyse threshold path; BeatByte had none (its

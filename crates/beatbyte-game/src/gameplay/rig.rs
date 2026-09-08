@@ -38,6 +38,16 @@ pub const MANTLE_RADIUS: f32 = 1.05;
 /// The wide mantle's length.
 pub const MANTLE_LENGTH: f32 = 7.9;
 /// A moving head's inner (full-intensity) cone half-angle.
+/// Fixtures on the rear (backline) truss.
+pub const RIMS: usize = 4;
+/// Moving heads on the front truss.
+pub const HEADS: usize = 6;
+/// Every real lamp hanging from the two trusses — the ceiling the
+/// strobe plays on. Each carries [`RigLamp`] with its own index, so
+/// a chase can order them without depending on query order.
+pub const RIG_LAMPS: usize = RIMS + HEADS;
+
+/// A moving head's inner (full-intensity) cone half-angle.
 pub const HEAD_INNER_ANGLE: f32 = 0.07;
 /// How much wider the light is than its mantle, so the pool has a
 /// soft edge.
@@ -204,10 +214,24 @@ fn lamp(
     })
 }
 
+/// One lamp of the ceiling rig, numbered 0..[`RIG_LAMPS`]: the rims
+/// first, then the heads. The number is the lamp's identity for
+/// anything that wants to address them in an order of its own.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RigLamp(pub usize);
+
 /// A real light hanging down the pivot's −Y, the way the mantle
 /// does (a spot's forward is −Z, so it is turned to point down).
-fn hung_light(color: Color, intensity: f32, range: f32, inner: f32, outer: f32) -> impl Bundle {
+fn hung_light(
+    index: usize,
+    color: Color,
+    intensity: f32,
+    range: f32,
+    inner: f32,
+    outer: f32,
+) -> impl Bundle {
     (
+        RigLamp(index),
         SpotLight {
             color,
             intensity,
@@ -272,7 +296,7 @@ pub fn spawn_rig(
     let rim_tone = complementary(theme.accent);
     let rim_material = additive(materials, rim_tone, 0.10, beam_gradient.clone());
     let rim_lens_material = lamp(materials, rim_tone, 5.0);
-    for i in 0..4 {
+    for i in 0..RIMS {
         let pivot = commands
             .spawn((
                 GameplayScreen,
@@ -310,12 +334,12 @@ pub fn spawn_rig(
             ChildOf(pivot),
         ));
         commands.spawn((
-            hung_light(rim_tone, 3_000_000.0, 30.0, 0.30, 0.45),
+            hung_light(i, rim_tone, 3_000_000.0, 30.0, 0.30, 0.45),
             ChildOf(pivot),
         ));
     }
 
-    for index in 0..6 {
+    for index in 0..HEADS {
         let head = fixture(index);
         let pivot = commands
             .spawn((
@@ -377,6 +401,7 @@ pub fn spawn_rig(
         }
         commands.spawn((
             hung_light(
+                RIMS + index,
                 tones[head.tone],
                 900_000.0,
                 24.0,

@@ -14,6 +14,53 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.43] - 2026-09-08
+
+### Changed
+
+- **The ceiling strobes white while the room is loud.** On
+  commission: the ten lamps hanging from the two trusses
+  (`rig::RigLamp` — four backline rims, six moving heads) now flare
+  WHITE in pairs twelve times a second for as long as the measured
+  level sits over the self-setting threshold, and which pair is a
+  shuffle of all ten, so every lamp is hit once per cycle and no two
+  cycles run the same order. Each hit rises hard and falls away
+  inside its step, leaving the dark gap that makes it a strobe
+  rather than a chase. A lamp's own colour and intensity are
+  remembered the first time the show touches it and handed back the
+  frame the level drops; the band's key light is not part of the
+  ceiling and never strobes. Under REDUCED FLASHING there is no
+  strobe at all — the rising edge swells the lamps instead, as
+  before. The chase runs on the wall clock and the threshold only
+  gates it, held armed for 150 ms past the last sample over: the bit
+  is live and flickers with the music, and the first cut — which
+  anchored the cycle to the arming — restarted it on every edge, so
+  the same first pair fired for a few milliseconds at a time. The
+  flash is a xenon shape — instant rise, a plateau, a fast fall —
+  because an exponential spends most of its lit share nearly dark
+  and averages to a tint; and **the rest of the room gives way**
+  while it fires (the venue's two coloured washes and the fill drop
+  to 40 %, and so do the lamps between hits), because the ceiling's
+  cones are narrow and a white spot against a full-strength colour
+  wash is not a strobe. `BEATBYTE_LIGHTSHOW=1` runs the show flat
+  out for looking at it.
+- **The sparkle is a spray of dying sparks, not noise.** Reported:
+  the old one did not look good, and the comet did. It rolled every
+  bar independently at 24 Hz — no cluster, no decay, a bar lit for a
+  single frame — which is white noise, and read as static. It is now
+  the reference rig's own recipe, whose lesson is that *sparks die,
+  they do not switch*: clusters of two to five neighbouring bars,
+  each bar with its own peak, flaring and then dimming quadratically
+  over 0.28 s, a new cluster every 45 ms, and the effect outlives its
+  last spark so it ends by going out rather than by being cut off.
+- **The comet is thrown, not crawled.** It enters fast and eases out
+  the way the reference rig's meteor flies, carries a whisker of bow
+  glow ahead of its head instead of a hard wall, and — since the
+  comet is the stronger of the two by eye — now takes 60 % of the
+  firings. The strips also went from 40 bars to 64, which is the
+  resolution both the comet's gradient and a spark cluster live on,
+  and the bars are walked once a frame instead of once per strip.
+
 ## [0.14.42] - 2026-09-07
 
 ### Changed

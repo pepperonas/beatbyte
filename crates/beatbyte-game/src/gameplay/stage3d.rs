@@ -1538,6 +1538,7 @@ pub fn setup_stage(
         commands.spawn((
             GameplayScreen,
             Stage3d,
+            super::lightshow::VenueWash,
             PointLight {
                 color: tint,
                 intensity: 1_500_000.0 * strength,
@@ -1553,6 +1554,7 @@ pub fn setup_stage(
     commands.spawn((
         GameplayScreen,
         Stage3d,
+        super::lightshow::VenueWash,
         PointLight {
             color: stage.background.mix(&Color::WHITE, 0.7),
             intensity: 350_000.0,

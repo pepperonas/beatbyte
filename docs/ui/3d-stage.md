@@ -191,15 +191,34 @@ cells on the head's face, was reported too small.)
 ### The light show (`lightshow.rs`)
 
 The level the right monitor shows also drives the room: a threshold
-that sets itself (the reference rig's duty governor, ported), a punch
-on every stage `SpotLight` on the rising edge of `level > threshold`
-(a lamp's own intensity is remembered in `LampBase` the first time
-the highlight touches it), and five white strips — riser edge, the
-two barrier rails, the two stacks' inner corners — that run a comet
-or a glimmer every 9–18 s on a hashed schedule. Bars are additive
-ghosts (`NotShadowCaster`), driven by visibility and scale; STAGE
-MOTION off leaves them dark and unwritten; REDUCED FLASHING turns the
-punch into a swell and the glimmer into a slow sparkle.
+that sets itself (the reference rig's duty governor, ported), a
+**strobe** on the ten ceiling lamps while the level is over it, and
+five white strips that run a comet or a spray of sparks every 9–18 s
+on a hashed schedule.
+
+The strobe flares a pair of lamps white twelve times a second in a
+shuffled order — every lamp once per cycle, a dark gap inside each
+step — on the wall clock, with the threshold only gating it (held
+150 ms past the last sample over, because the bit flickers with the
+music and a cycle anchored to it never gets past its first pair) — and each lamp's own colour and intensity live in `LampBase`,
+handed back the frame the level drops. `rig::RigLamp` numbers the
+lamps so the chase never depends on query order; the band's key
+light carries no such number and never strobes; it and the venue's
+colour washes (`VenueWash` on the two coloured point lights and the
+crowd fill) dip to 40 % under a flash, because a white spot against
+a full-strength wash is not a strobe. REDUCED FLASHING takes the
+strobe away and leaves the swell. `BEATBYTE_LIGHTSHOW=1` runs the
+whole show flat out, for looking at it without waiting for a loud
+passage to coincide with a screenshot.
+
+Strip bars are additive ghosts (`NotShadowCaster`) driven by
+visibility and scale, 64 to a strip; a dark bar of an idle strip is
+not written at all. A comet enters fast and eases out with a whisker
+of bow glow ahead of its head; a sparkle is clusters of two to five
+neighbouring bars that flare and **die by dimming** over 0.28 s —
+sparks die, they do not switch, and the version that switched read
+as television static. STAGE MOTION off leaves every strip dark and
+unwritten.
 
 ## Materials
 
