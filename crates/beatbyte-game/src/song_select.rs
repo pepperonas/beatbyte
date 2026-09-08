@@ -449,6 +449,7 @@ impl Plugin for SongSelectPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LyricsLookup>()
             .init_resource::<Discovery>()
+            .init_resource::<DownloadPrompt>()
             .init_resource::<SelectedDifficulty>()
             .init_resource::<BrowserCursor>()
             .init_resource::<crate::mc::McQueue>()
@@ -462,6 +463,7 @@ impl Plugin for SongSelectPlugin {
                     browser_input,
                     poll_lyrics_lookup,
                     poll_discovery,
+                    download_input,
                     search_sort_input,
                     sync_view,
                     sync_search_button,
@@ -836,9 +838,8 @@ struct StartDeps<'w, 's> {
     smart: ResMut<'w, crate::smart_lyrics::SmartLyrics>,
     /// The in-flight song search (`Y` searches for what was typed).
     discovery: ResMut<'w, Discovery>,
-    /// The player's settings: the search reads whether the optional
-    /// model may help and, if so, with what.
-    settings: Res<'w, crate::config::Settings>,
+    /// The "add a song by name" field (`D` opens it).
+    prompt: ResMut<'w, DownloadPrompt>,
 }
 
 /// The in-flight song search. One at a time, for the reason the
@@ -856,6 +857,118 @@ pub struct Discovery {
 
 /// The search's background task.
 struct DiscoverTask(bevy::tasks::Task<Result<String, String>>);
+
+/// The "add a song by name" prompt: its own field, not the browser's
+/// filter.
+///
+/// The first cut read the filter box and started on `Y`, which is
+/// unusable and was reported as such: to press the key you must
+/// first leave the field, and a song whose name contains the key is
+/// a song you cannot type. A field of its own takes every letter,
+/// starts on Enter and cancels on Esc, like any other text box.
+#[derive(Resource, Default)]
+pub struct DownloadPrompt {
+    /// Whether the field is taking keys.
+    pub open: bool,
+    /// What has been typed into it.
+    pub text: String,
+}
+
+impl DownloadPrompt {
+    /// The line the panel shows while the field is open. Pure —
+    /// tested.
+    #[must_use]
+    pub fn line(&self) -> String {
+        format!("ADD A SONG: {}_   ENTER searches, ESC cancels", self.text)
+    }
+}
+
+/// The prompt's keys. Runs before `browser_input`, which suppresses
+/// its own letter shortcuts while this field is open — otherwise
+/// typing a name would open the editor, queue a set and arm a delete
+/// on the way through.
+fn download_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut typed: MessageReader<bevy::input::keyboard::KeyboardInput>,
+    mut prompt: ResMut<DownloadPrompt>,
+    mut discovery: ResMut<Discovery>,
+    mut status: ResMut<crate::import::ImportStatus>,
+    settings: Res<crate::config::Settings>,
+    mut sounds: MessageWriter<crate::sfx::UiSound>,
+) {
+    if !prompt.open {
+        return;
+    }
+    for event in typed.read() {
+        if !event.state.is_pressed() {
+            continue;
+        }
+        match &event.logical_key {
+            bevy::input::keyboard::Key::Character(text) => {
+                let typed: String = text.chars().filter(|c| !c.is_control()).collect();
+                prompt.text.push_str(&typed);
+            }
+            bevy::input::keyboard::Key::Space => prompt.text.push(' '),
+            // Here rather than on `just_pressed`, so the OS key
+            // repeat erases while held like every text field.
+            bevy::input::keyboard::Key::Backspace => {
+                prompt.text.pop();
+            }
+            _ => {}
+        }
+    }
+    if keys.just_pressed(KeyCode::Escape) {
+        prompt.open = false;
+        prompt.text.clear();
+        status.0 = "search cancelled".to_owned();
+        sounds.write(crate::sfx::UiSound::Back);
+        return;
+    }
+    if keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::NumpadEnter) {
+        let query = prompt.text.trim().to_owned();
+        if query.is_empty() {
+            sounds.write(crate::sfx::UiSound::Error);
+            status.0 = "type a song name, then ENTER".to_owned();
+            return;
+        }
+        if discovery.task.is_some() {
+            sounds.write(crate::sfx::UiSound::Error);
+            status.0 = "a search is already running".to_owned();
+            return;
+        }
+        if !crate::discover::tool_available() {
+            sounds.write(crate::sfx::UiSound::Error);
+            status.0 = crate::discover::missing_tool_message();
+            return;
+        }
+        let backend = crate::discover::backend_for(
+            settings.ai_search,
+            crate::discover::cli_available(),
+            crate::discover::api_key(&settings.anthropic_api_key).as_deref(),
+        );
+        let say_to = std::sync::Arc::clone(&discovery.progress);
+        if let Ok(mut step) = say_to.lock() {
+            step.clear();
+        }
+        let feed = std::sync::Arc::clone(&say_to);
+        discovery.task = Some(DiscoverTask(
+            bevy::tasks::AsyncComputeTaskPool::get().spawn(async move {
+                crate::discover::discover(&query, &backend, &move |line| {
+                    if let Ok(mut step) = feed.lock() {
+                        *step = line;
+                    }
+                })
+            }),
+        ));
+        prompt.open = false;
+        prompt.text.clear();
+        sounds.write(crate::sfx::UiSound::Confirm);
+        status.0 = "searching...".to_owned();
+        return;
+    }
+    // While it is open the panel shows what is being typed.
+    status.0 = prompt.line();
+}
 
 /// Report a running or finished search.
 fn poll_discovery(
@@ -938,7 +1051,10 @@ fn browser_input(
     } else {
         MenuNav::read(&map, &keys, pads.iter())
     };
-    let searching = view.searching;
+    // Letter shortcuts are suppressed while EITHER field is taking
+    // keys: typing a song name must not open the editor, queue a set
+    // and arm a delete on the way through.
+    let searching = view.searching || start.prompt.open;
     let clicked_back = ui_kit::back_pressed(&mut start.back_button);
     // Esc with a filter still narrowing the list CLEARS it first and
     // leaves on the next press — the whole list is the state to
@@ -1076,41 +1192,15 @@ fn browser_input(
             }
         }
     }
-    // Y searches the internet for whatever is typed in the search
-    // box and adds it: the same box, because a song you are looking
-    // for and a song you cannot find are the same thought. The
-    // library scan picks the new folder up on its own.
-    if !searching && keys.just_pressed(KeyCode::KeyY) && start.discovery.task.is_none() {
-        let query = view.filter.trim().to_owned();
-        if query.is_empty() {
-            sounds.write(crate::sfx::UiSound::Error);
-            status.0 = "type a song name in the search box first (F), then Y".to_owned();
-        } else if !crate::discover::tool_available() {
-            sounds.write(crate::sfx::UiSound::Error);
-            status.0 = crate::discover::missing_tool_message();
-        } else {
-            let backend = crate::discover::backend_for(
-                start.settings.ai_search,
-                crate::discover::cli_available(),
-                crate::discover::api_key(&start.settings.anthropic_api_key).as_deref(),
-            );
-            let progress = std::sync::Arc::clone(&start.discovery.progress);
-            let say_to = std::sync::Arc::clone(&progress);
-            if let Ok(mut step) = progress.lock() {
-                step.clear();
-            }
-            start.discovery.task = Some(DiscoverTask(
-                bevy::tasks::AsyncComputeTaskPool::get().spawn(async move {
-                    crate::discover::discover(&query, &backend, &move |line| {
-                        if let Ok(mut step) = say_to.lock() {
-                            *step = line;
-                        }
-                    })
-                }),
-            ));
-            sounds.write(crate::sfx::UiSound::Confirm);
-            status.0 = "searching...".to_owned();
-        }
+    // D opens the "add a song by name" field. Its own field, not
+    // the browser's filter: `Y` on the filter meant leaving the box
+    // to press it, and a song whose name carries the key could not
+    // be typed at all (reported).
+    if !searching && keys.just_pressed(KeyCode::KeyD) && start.discovery.task.is_none() {
+        start.prompt.open = true;
+        start.prompt.text.clear();
+        sounds.write(crate::sfx::UiSound::Confirm);
+        status.0 = start.prompt.line();
     }
     // K aligns the highlighted song's lyrics against its own audio
     // (plan L4b) - word and letter timing from the `.lrc` beside it,
@@ -2446,6 +2536,132 @@ mod view_tests {
         assert_eq!(clip_chars("short", 10), "short");
         assert_eq!(clip_chars("exactlyten", 10), "exactlyten");
         assert_eq!(clip_chars("elevenchars", 10), "elevencha~");
+    }
+}
+
+/// The "add a song by name" field as the player meets it.
+#[cfg(test)]
+mod download_prompt_tests {
+    use super::*;
+    use bevy::input::ButtonState;
+    use bevy::input::keyboard::{Key, KeyboardInput};
+
+    /// An app that runs `download_input` and nothing else, with the
+    /// field already open.
+    fn app() -> App {
+        let mut app = App::new();
+        app.add_message::<KeyboardInput>()
+            .add_message::<crate::sfx::UiSound>()
+            .init_resource::<ButtonInput<KeyCode>>()
+            .init_resource::<DownloadPrompt>()
+            .init_resource::<Discovery>()
+            .init_resource::<crate::import::ImportStatus>()
+            .insert_resource(crate::config::Settings::default())
+            .add_systems(Update, download_input);
+        app.world_mut().resource_mut::<DownloadPrompt>().open = true;
+        app
+    }
+
+    fn type_text(app: &mut App, text: &str) {
+        for character in text.chars() {
+            let key = if character == ' ' {
+                Key::Space
+            } else {
+                Key::Character(character.to_string().into())
+            };
+            app.world_mut().write_message(KeyboardInput {
+                key_code: KeyCode::KeyA, // the physical key is not read here
+                logical_key: key,
+                state: ButtonState::Pressed,
+                text: Some(character.to_string().into()),
+                repeat: false,
+                window: Entity::PLACEHOLDER,
+            });
+        }
+        app.update();
+    }
+
+    fn tap(app: &mut App, code: KeyCode) {
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(code);
+        app.update();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release(code);
+    }
+
+    #[test]
+    fn a_name_carrying_the_key_that_opens_the_field_types_in_full() {
+        // The whole reason this field exists. The first cut read the
+        // browser's filter and started the search on `Y`, so a song
+        // with that letter in its name could not be typed — reported,
+        // and right. Every letter goes in, the opening key included.
+        let mut app = app();
+        type_text(&mut app, "Daft Punk - Da Funk");
+        let prompt = app.world().resource::<DownloadPrompt>();
+        assert_eq!(prompt.text, "Daft Punk - Da Funk");
+        assert!(prompt.open, "typing a name does not start anything");
+    }
+
+    #[test]
+    fn escape_cancels_the_field_and_forgets_what_was_typed() {
+        let mut app = app();
+        type_text(&mut app, "Nirvana - Lithium");
+        tap(&mut app, KeyCode::Escape);
+        let prompt = app.world().resource::<DownloadPrompt>();
+        assert!(!prompt.open, "Esc closes it");
+        assert!(prompt.text.is_empty(), "and it does not come back typed");
+        assert_eq!(
+            app.world().resource::<crate::import::ImportStatus>().0,
+            "search cancelled"
+        );
+    }
+
+    #[test]
+    fn backspace_erases_and_the_line_shows_what_is_there() {
+        let mut app = app();
+        type_text(&mut app, "abc");
+        app.world_mut().write_message(KeyboardInput {
+            key_code: KeyCode::Backspace,
+            logical_key: Key::Backspace,
+            state: ButtonState::Pressed,
+            text: None,
+            repeat: false,
+            window: Entity::PLACEHOLDER,
+        });
+        app.update();
+        let prompt = app.world().resource::<DownloadPrompt>();
+        assert_eq!(prompt.text, "ab");
+        let line = prompt.line();
+        assert!(line.contains("ab_"), "the caret follows the text: {line}");
+        assert!(line.contains("ESC"), "and the way out is on it: {line}");
+    }
+
+    #[test]
+    fn an_empty_field_does_not_start_a_search() {
+        // Enter on nothing must not reach the network, and must say
+        // why rather than doing nothing at all.
+        let mut app = app();
+        tap(&mut app, KeyCode::Enter);
+        let prompt = app.world().resource::<DownloadPrompt>();
+        assert!(prompt.open, "the field stays open to be typed into");
+        assert!(
+            app.world()
+                .resource::<crate::import::ImportStatus>()
+                .0
+                .contains("type a song name"),
+            "it says what to do"
+        );
+        assert!(app.world().resource::<Discovery>().task.is_none());
+    }
+
+    #[test]
+    fn a_closed_field_ignores_everything() {
+        let mut app = app();
+        app.world_mut().resource_mut::<DownloadPrompt>().open = false;
+        type_text(&mut app, "typed at the browser, not the field");
+        assert!(app.world().resource::<DownloadPrompt>().text.is_empty());
     }
 }
 

@@ -14,6 +14,25 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.51] - 2026-09-08
+
+### Fixed
+
+- **Adding a song by name has its own field, opened with `D`.**
+  Reported, and right: the first cut read the browser's search filter
+  and started on `Y`, which cannot work. To press the key you had to
+  leave the field first — and a song whose name carries that letter
+  could not be typed at all. The flow described in the release notes
+  was not a flow anybody could follow.
+
+  Now `D` opens a field of its own. Every letter goes into it, the
+  opening key included; **Enter** searches, **Esc** cancels and
+  forgets what was typed. While it is open the browser's own letter
+  shortcuts are suppressed — the same rule the filter already had,
+  or typing a name would open the editor and queue a set on the way
+  through — and its Esc cannot also be read as "back to the menu",
+  because the field is still open when that check runs.
+
 ## [0.14.50] - 2026-09-08
 
 ### Added

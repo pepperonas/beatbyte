@@ -7,10 +7,16 @@ correction pass. Every command below was run exactly as written
 
 ## By name, from inside the game
 
-Type a song in the browser's search box and press **Y**. The search
-looks it up, judges the recordings it finds, fetches the best one,
+Press **D** in the browser, type the song and press **Enter** (**Esc**
+cancels). The search looks it up, judges the recordings it finds, fetches the best one,
 measures it, pulls the lyrics and charts it — the result lands in
 `songs/imported/` exactly as a dropped file does.
+
+Write it as `Artist - Title` where you can: only then can the
+catalogue be asked how long the song is, and that length is what
+throws out live takes, remixes and hour-long loops *before* anything
+is downloaded. Without the dash it still searches, but the choice
+rests on the titles alone.
 
 It needs **`yt-dlp`** on your machine (`brew install yt-dlp`); the
 game ships no downloader of its own and says so if the tool is
