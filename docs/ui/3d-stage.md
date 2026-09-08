@@ -196,15 +196,18 @@ that sets itself (the reference rig's duty governor, ported), a
 five white strips that run a comet or a spray of sparks every 9–18 s
 on a hashed schedule.
 
-The strobe flares a pair of lamps white twelve times a second in a
-shuffled order — the light AND the fixture's own beam, because the
-additive mantle is what the eye sees at a fixture and a light that
-flashed alone was measured not to move the near cones' colour at all
-—  — every lamp once per cycle, a dark gap inside each
-step — on the wall clock, with the threshold only gating it (held
-150 ms past the last sample over, because the bit flickers with the
-music and a cycle anchored to it never gets past its first pair) — and each lamp's own colour and intensity live in `LampBase`,
-handed back the frame the level drops. `rig::RigLamp` numbers the
+The strobe flares a pair of lamps white in a shuffled order — every
+lamp once per pass through the rig — and it flares the light AND the
+fixture's own beam, because the additive mantle is what the eye sees
+at a fixture and a light that flashed alone was measured not to move
+the near cones' colour at all. It plays in **bursts**: one to three
+flashes 0.16 s apart, then a rest of two to three seconds, both
+rolled per burst. The threshold gates it (held 150 ms past the last
+sample over, because the bit flickers with the music) and the
+schedule FREEZES while the ceiling is dark, or a rest would run out
+during every quiet passage and the pacing would follow the music
+instead of the schedule. Each lamp's own colour and intensity live
+in `LampBase`, handed back the frame the level drops. `rig::RigLamp` numbers the
 lamps so the chase never depends on query order; the band's key
 light carries no such number and never strobes; it and the venue's
 colour washes (`VenueWash` on the two coloured point lights and the

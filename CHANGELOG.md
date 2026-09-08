@@ -14,6 +14,26 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.46] - 2026-09-08
+
+### Changed
+
+- **The ceiling flashes in bursts now, with the room breathing
+  between them.** Reported: the flashes look good but come too often
+  and too wildly. They ran at a flat twelve a second for as long as
+  the level stayed over the threshold, which reads as one continuous
+  flicker rather than a strobe. A burst is one to three flashes
+  0.16 s apart, then a rest of two to three seconds — both rolled
+  from a hash of the burst's number, so no two bursts are the same
+  and none of it is a metronome. Measured against the real threshold
+  on a song: 101 of 1321 frames carry a flash, where the old pacing
+  lit 36 of every 60.
+  ⚠️ The schedule **freezes while the ceiling is dark**. The
+  threshold bit flickers with the music, so a rest left running
+  through the quiet stretches was always over by the time the room
+  came back — the pacing followed the music instead of the schedule
+  and lit 17 % of armed frames where the schedule asks for 6.
+
 ## [0.14.45] - 2026-09-08
 
 ### Fixed

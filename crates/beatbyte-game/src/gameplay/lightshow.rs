@@ -169,14 +169,22 @@ pub const CALM_PUNCH: f32 = 0.35;
 /// lingers longer than the flash would.
 pub const CALM_DECAY_PER_S: f32 = 0.7;
 
-/// Strobe steps per second while the level is over the threshold.
-pub const STROBE_HZ: f32 = 12.0;
-/// Lamps hit per step. A single lamp reads as a twinkle; a pair
+/// How long one flash lasts.
+pub const FLASH_S: f32 = 0.09;
+/// The gap between two flashes of the same burst: far enough apart
+/// to read as two hits rather than a flicker.
+pub const FLASH_GAP_S: f32 = 0.16;
+/// The fewest flashes in a burst.
+pub const BURST_MIN: u32 = 1;
+/// The most.
+pub const BURST_MAX: u32 = 3;
+/// The shortest rest between two bursts.
+pub const REST_MIN_S: f32 = 2.0;
+/// The longest.
+pub const REST_MAX_S: f32 = 3.0;
+/// Lamps hit per flash. A single lamp reads as a twinkle; a pair
 /// reads as a hit.
 pub const STROBE_AT_ONCE: usize = 2;
-/// The share of a step a hit lasts. The rest is the dark gap that
-/// makes this a strobe rather than a chase.
-pub const STROBE_DUTY: f32 = 0.55;
 /// What a hit adds to a lamp's intensity, in the engine's own units
 /// rather than as a factor on the lamp's resting brightness.
 ///
@@ -218,49 +226,141 @@ pub fn strobe_order(cycle: u32, lamps: usize) -> [u8; rig::RIG_LAMPS] {
     order
 }
 
-/// The flash's shape at `t`, whichever lamps are firing: a hard
-/// rise on the step, a plateau, a fast fall, then the dark gap. The
+/// The flash's shape `since` seconds into it, whichever lamps are
+/// firing: a hard rise, a plateau, a fast fall, nothing after. The
 /// venue's wash dips by this too, so the ceiling flashes against a
 /// darker room. Pure — tested.
 #[must_use]
-pub fn strobe_shape(t: f32) -> f32 {
-    if t < 0.0 {
-        return 0.0;
-    }
-    let step = (t * STROBE_HZ).floor();
-    let within = t.mul_add(STROBE_HZ, -step);
-    if within > STROBE_DUTY {
+pub fn flash_shape(since: f32) -> f32 {
+    if !(0.0..FLASH_S).contains(&since) {
         return 0.0;
     }
     // A xenon tube: instant rise, a plateau, a fast fall. An
-    // exponential from the first cut spent most of its lit share
-    // nearly dark, which averages to a tint rather than a flash.
-    let across = within / STROBE_DUTY;
+    // exponential spent most of its lit share nearly dark, which
+    // averages to a tint rather than a flash.
+    let across = since / FLASH_S;
     (1.0 - across * across * across * across).max(0.0)
 }
 
-/// How hard lamp `lamp` is hit `t` seconds into the strobe, 0..1:
-/// the flash's shape on its own step, dark for the rest of the
-/// cycle. Pure — tested.
+/// Which two lamps the `flash`-th flash lights: the next pair of the
+/// shuffled order, so every lamp is hit once per pass through the
+/// rig and no two passes run the same order — across bursts, not
+/// within one. Pure — tested.
 #[must_use]
-pub fn strobe_hit(lamp: usize, lamps: usize, t: f32) -> f32 {
-    if lamps == 0 || lamp >= lamps || t < 0.0 {
+pub fn flash_lamps(flash: u32, lamps: usize) -> [usize; STROBE_AT_ONCE] {
+    let slots = (lamps.max(1)).div_ceil(STROBE_AT_ONCE) as u32;
+    let order = strobe_order(flash / slots, lamps);
+    let slot = (flash % slots) as usize;
+    core::array::from_fn(|k| {
+        let index = slot * STROBE_AT_ONCE + k;
+        order[index.min(lamps.saturating_sub(1))] as usize
+    })
+}
+
+/// How hard lamp `lamp` is hit `since` seconds into flash number
+/// `flash`, 0..1. Pure — tested.
+#[must_use]
+pub fn strobe_hit(lamp: usize, flash: u32, lamps: usize, since: f32) -> f32 {
+    if lamps == 0 || lamp >= lamps {
         return 0.0;
     }
-    let step = (t * STROBE_HZ).floor();
-    let within = t.mul_add(STROBE_HZ, -step);
-    if within > STROBE_DUTY {
-        return 0.0;
+    if flash_lamps(flash, lamps).contains(&lamp) {
+        flash_shape(since)
+    } else {
+        0.0
     }
-    let slots = lamps.div_ceil(STROBE_AT_ONCE);
-    let cycle = (step as u32) / slots as u32;
-    let slot = (step as usize) % slots;
-    let order = strobe_order(cycle, lamps);
-    let hit = (0..STROBE_AT_ONCE)
-        .map(|k| slot * STROBE_AT_ONCE + k)
-        .filter(|index| *index < lamps)
-        .any(|index| order[index] as usize == lamp);
-    if hit { strobe_shape(t) } else { 0.0 }
+}
+
+/// The strobe's own pacing: bursts of a few flashes with a rest of
+/// a couple of seconds between them, both rolled from a hash of the
+/// burst's number.
+///
+/// The first cut ran a flat twelve flashes a second for as long as
+/// the level stayed over the threshold, which reads as one continuous
+/// flicker — reported as too hectic and too wild. A burst and a rest
+/// is how a lighting desk plays a strobe: a hit, maybe two or three,
+/// then the room breathes.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Burst {
+    /// Which burst this is, the seed for its roll.
+    pub number: u32,
+    /// Flashes left in it, this one included.
+    pub left: u32,
+    /// When the next flash begins.
+    pub next_at: f32,
+    /// The flash on screen, counted from the rig's start — the index
+    /// the lamp order is read at. `u32::MAX` before the first, so the
+    /// first flash is number zero.
+    pub flash: u32,
+    /// When the flash on screen began.
+    pub lit_at: f32,
+    /// When the schedule was last advanced, so a rest that runs out
+    /// while the ceiling is dark does not fire the moment the room
+    /// gets loud again.
+    pub last_tick: Option<f32>,
+}
+
+impl Default for Burst {
+    fn default() -> Self {
+        Burst {
+            number: 0,
+            left: 0,
+            next_at: f32::MIN,
+            flash: u32::MAX,
+            lit_at: f32::MIN,
+            last_tick: None,
+        }
+    }
+}
+
+/// How many flashes burst `number` carries: [`BURST_MIN`]..=[`BURST_MAX`].
+/// Pure — tested.
+#[must_use]
+pub fn burst_length(number: u32) -> u32 {
+    let span = BURST_MAX - BURST_MIN + 1;
+    BURST_MIN + ((hash01(number as usize * 7717 + 13) * span as f32) as u32).min(span - 1)
+}
+
+/// How long the rest after burst `number` lasts. Pure — tested.
+#[must_use]
+pub fn burst_rest(number: u32) -> f32 {
+    (REST_MAX_S - REST_MIN_S).mul_add(hash01(number as usize * 3391 + 29), REST_MIN_S)
+}
+
+impl Burst {
+    /// Advance the schedule to `now`, and say how hard the ceiling is
+    /// flashing: the flash that is on screen and how far into it we
+    /// are. Pure — tested.
+    pub fn tick(&mut self, now: f32) -> (u32, f32) {
+        // The schedule freezes while the ceiling is dark. The
+        // threshold bit flickers with the music, so a rest left to
+        // run through the quiet stretches would be over every time
+        // the room came back and the pacing would follow the music
+        // instead of the schedule (measured: 17 % of armed frames lit
+        // where the schedule asks for 6).
+        match self.last_tick {
+            Some(last) if now - last > FLASH_GAP_S => self.next_at += now - last,
+            None => self.next_at = now,
+            Some(_) => {}
+        }
+        self.last_tick = Some(now);
+        if now >= self.next_at {
+            if self.left == 0 {
+                self.left = burst_length(self.number);
+            }
+            self.lit_at = now;
+            self.flash = self.flash.wrapping_add(1);
+            self.left -= 1;
+            self.next_at = if self.left == 0 {
+                let rest = burst_rest(self.number);
+                self.number = self.number.wrapping_add(1);
+                now + rest
+            } else {
+                now + FLASH_GAP_S
+            };
+        }
+        (self.flash, now - self.lit_at)
+    }
 }
 
 /// Whether `BEATBYTE_LIGHTSHOW` is set: the ceiling strobes
@@ -304,6 +404,8 @@ pub struct Highlight {
     pub punch: f32,
     /// Until when the strobe is armed.
     pub strobe_until: f32,
+    /// The burst schedule: how the flashes are paced.
+    pub burst: Burst,
     /// Whether anything was written to the lamps last frame, so the
     /// idle case costs nothing but still restores once.
     pub was_active: bool,
@@ -407,7 +509,8 @@ pub fn drive_highlight(
     // every edge — and the bit flickers with the music, so the same
     // first pair fired over and over for a few milliseconds each
     // time (seen live: not one white frame in six).
-    let strobe = strobing(now, highlight.strobe_until, settings.reduced_flashing).then_some(now);
+    let strobe = strobing(now, highlight.strobe_until, settings.reduced_flashing)
+        .then(|| highlight.burst.tick(now));
     // Nothing to say and nothing said last frame: every lamp already
     // sits at its own colour and intensity.
     let active = highlight.punch > 0.0 || strobe.is_some();
@@ -418,12 +521,15 @@ pub fn drive_highlight(
     let gain = HIGHLIGHT_GAIN.mul_add(highlight.punch, 1.0);
     // Everything that is not being hit right now gives way to the
     // flash, so the ceiling has something to be brighter than.
-    let shape = strobe.map_or(0.0, strobe_shape);
+    let shape = strobe.map_or(0.0, |(_, since)| flash_shape(since));
     let dip = STROBE_DIP.mul_add(-shape, 1.0);
     // Every firing lamp of a step shares one shape, so the ten hits
     // are computed once and read by the lights AND their beams.
-    let hits_by_lamp: [f32; rig::RIG_LAMPS] =
-        core::array::from_fn(|lamp| strobe.map_or(0.0, |t| strobe_hit(lamp, rig::RIG_LAMPS, t)));
+    let hits_by_lamp: [f32; rig::RIG_LAMPS] = core::array::from_fn(|lamp| {
+        strobe.map_or(0.0, |(flash, since)| {
+            strobe_hit(lamp, flash, rig::RIG_LAMPS, since)
+        })
+    });
     let mut ceiling = 0usize;
     let mut hits: Vec<usize> = Vec::new();
     tally.0 += 1;
@@ -1079,49 +1185,113 @@ mod tests {
     }
 
     #[test]
-    fn every_lamp_is_hit_once_a_cycle_with_a_dark_gap_between_hits() {
+    fn every_lamp_is_hit_once_a_pass_and_the_pairs_never_repeat_a_lamp() {
         let lamps = rig::RIG_LAMPS;
-        let slots = lamps.div_ceil(STROBE_AT_ONCE);
-        let cycle_s = slots as f32 / STROBE_HZ;
-        let samples = 400;
-        let mut hits = vec![0u32; lamps];
-        let mut dark = 0;
-        for k in 0..samples {
-            let t = k as f32 / samples as f32 * cycle_s;
-            let lit: Vec<usize> = (0..lamps)
-                .filter(|l| strobe_hit(*l, lamps, t) > 0.0)
-                .collect();
-            if lit.is_empty() {
-                dark += 1;
-            }
-            assert!(lit.len() <= STROBE_AT_ONCE, "a pair at a time, not a wash");
-            for lamp in lit {
-                hits[lamp] += 1;
+        let slots = lamps.div_ceil(STROBE_AT_ONCE) as u32;
+        let mut seen = vec![0u32; lamps];
+        for flash in 0..slots {
+            let pair = flash_lamps(flash, lamps);
+            assert_ne!(pair[0], pair[1], "a flash lights two different lamps");
+            for lamp in pair {
+                seen[lamp] += 1;
             }
         }
         assert!(
-            hits.iter().all(|count| *count > 0),
-            "every lamp is hit once a cycle: {hits:?}"
+            seen.iter().all(|count| *count == 1),
+            "one pass covers every lamp exactly once: {seen:?}"
+        );
+        // The next pass is a different order.
+        let first: Vec<_> = (0..slots).map(|f| flash_lamps(f, lamps)).collect();
+        let second: Vec<_> = (slots..2 * slots).map(|f| flash_lamps(f, lamps)).collect();
+        assert_ne!(first, second, "two passes must not run the same order");
+        assert_eq!(
+            flash_lamps(3, lamps),
+            flash_lamps(3, lamps),
+            "deterministic"
+        );
+    }
+
+    #[test]
+    fn a_flash_is_a_hit_with_a_hard_edge_and_then_nothing() {
+        let lamps = rig::RIG_LAMPS;
+        let lamp = flash_lamps(0, lamps)[0];
+        assert!((strobe_hit(lamp, 0, lamps, 0.0) - 1.0).abs() < 1e-6);
+        assert!(
+            strobe_hit(lamp, 0, lamps, FLASH_S * 0.5) > 0.9,
+            "it holds through its length"
+        );
+        let late = strobe_hit(lamp, 0, lamps, FLASH_S * 0.99);
+        assert!(late > 0.0 && late < 0.1, "and then falls away fast: {late}");
+        assert_eq!(strobe_hit(lamp, 0, lamps, FLASH_S), 0.0, "gone at its end");
+        assert_eq!(strobe_hit(lamp, 0, lamps, -1.0), 0.0);
+        // A lamp that is not in this flash's pair stays dark.
+        let dark = (0..lamps)
+            .find(|l| !flash_lamps(0, lamps).contains(l))
+            .expect("a lamp between hits");
+        assert_eq!(strobe_hit(dark, 0, lamps, 0.0), 0.0);
+    }
+
+    #[test]
+    fn the_ceiling_flashes_in_bursts_with_the_room_breathing_between() {
+        // Reported: a flat twelve flashes a second reads as one
+        // continuous flicker. A burst of one to three, then a rest of
+        // two to three seconds, both rolled per burst.
+        let mut burst = Burst::default();
+        let mut lit_at: Vec<f32> = Vec::new();
+        let mut t = 0.0f32;
+        let mut last_flash = 0;
+        while t < 30.0 {
+            let (flash, since) = burst.tick(t);
+            if flash != last_flash {
+                last_flash = flash;
+                lit_at.push(t);
+            }
+            assert!(since >= 0.0);
+            t += 1.0 / 240.0;
+        }
+        assert!(
+            (8..=40).contains(&lit_at.len()),
+            "half a minute is a handful of bursts, not a flicker: {}",
+            lit_at.len()
+        );
+        // The gaps come in two kinds: inside a burst, and between.
+        let gaps: Vec<f32> = lit_at.windows(2).map(|pair| pair[1] - pair[0]).collect();
+        let inside: Vec<f32> = gaps.iter().copied().filter(|g| *g < 1.0).collect();
+        let between: Vec<f32> = gaps.iter().copied().filter(|g| *g >= 1.0).collect();
+        assert!(!inside.is_empty(), "bursts of more than one flash exist");
+        assert!(!between.is_empty(), "and the room rests between them");
+        assert!(
+            inside.iter().all(|g| (*g - FLASH_GAP_S).abs() < 0.02),
+            "inside a burst the flashes are one gap apart: {inside:?}"
         );
         assert!(
-            dark > samples / 5,
-            "a real gap between hits: {dark}/{samples}"
+            between
+                .iter()
+                .all(|g| (REST_MIN_S - 0.05..=REST_MAX_S + FLASH_GAP_S).contains(g)),
+            "and a rest is two to three seconds: {between:?}"
         );
-        // A hit rises hard and falls away inside its own step.
-        let lamp = strobe_order(0, lamps)[0] as usize;
-        assert!((strobe_hit(lamp, lamps, 0.0) - 1.0).abs() < 1e-6);
-        // A plateau, not a slope: still near full half way through
-        // its lit share, gone by the end of it.
-        let half = strobe_hit(lamp, lamps, STROBE_DUTY * 0.5 / STROBE_HZ);
-        assert!(half > 0.9, "the flash holds through its share: {half}");
-        let late = strobe_hit(lamp, lamps, STROBE_DUTY * 0.99 / STROBE_HZ);
-        assert!(late > 0.0 && late < 0.1, "and then falls away fast: {late}");
-        assert_eq!(
-            strobe_hit(lamp, lamps, 0.99 / STROBE_HZ),
-            0.0,
-            "dark before the next step"
+        // Randomised, not a metronome: the rests differ.
+        let first = between[0];
+        assert!(
+            between.iter().any(|g| (g - first).abs() > 0.05),
+            "the rests must vary: {between:?}"
         );
-        assert_eq!(strobe_hit(lamp, lamps, -1.0), 0.0);
+    }
+
+    #[test]
+    fn a_burst_is_one_to_three_flashes_and_its_rest_is_rolled_too() {
+        let lengths: Vec<u32> = (0..60).map(burst_length).collect();
+        assert!(lengths.iter().all(|n| (BURST_MIN..=BURST_MAX).contains(n)));
+        assert!(lengths.contains(&BURST_MIN) && lengths.contains(&BURST_MAX));
+        let rests: Vec<f32> = (0..60).map(burst_rest).collect();
+        assert!(rests.iter().all(|r| (REST_MIN_S..=REST_MAX_S).contains(r)));
+        let spread = rests.iter().copied().fold(f32::MIN, f32::max)
+            - rests.iter().copied().fold(f32::MAX, f32::min);
+        assert!(
+            spread > 0.5,
+            "the rests spread across their range: {spread}"
+        );
+        assert_eq!(burst_length(7), burst_length(7), "deterministic");
     }
 
     #[test]
@@ -1144,38 +1314,35 @@ mod tests {
 
     #[test]
     fn the_whole_room_gives_way_to_a_flash() {
-        // Every firing lamp shares one shape, and that shape is what
-        // the rest of the room dips by: the strobe reads by contrast.
+        // Every firing lamp of a flash shares one shape, and that
+        // shape is what the rest of the room dips by: the strobe
+        // reads by contrast.
         let lamps = rig::RIG_LAMPS;
-        for k in 0..40 {
-            let t = k as f32 * 0.01;
-            let shape = strobe_shape(t);
+        for k in 0..30 {
+            let since = k as f32 * 0.005;
+            let shape = flash_shape(since);
             let lit: Vec<f32> = (0..lamps)
-                .map(|lamp| strobe_hit(lamp, lamps, t))
+                .map(|lamp| strobe_hit(lamp, 0, lamps, since))
                 .filter(|hit| *hit > 0.0)
                 .collect();
             assert!(
                 lit.iter().all(|hit| (hit - shape).abs() < 1e-6),
-                "one shape for every lamp of the step: {lit:?} vs {shape}"
+                "one shape for every lamp of the flash: {lit:?} vs {shape}"
             );
             if lit.is_empty() {
-                assert_eq!(shape, 0.0, "and nothing to dip by in the gap");
+                assert_eq!(shape, 0.0, "and nothing to dip by between flashes");
             }
         }
-        assert!((strobe_shape(0.0) - 1.0).abs() < 1e-6);
-        assert_eq!(strobe_shape(-1.0), 0.0);
-        // The dip is a real darkening, and it lifts again.
-        // The dip is a real darkening at the peak, and nothing in
-        // the gap.
+        assert!((flash_shape(0.0) - 1.0).abs() < 1e-6);
+        assert_eq!(flash_shape(-1.0), 0.0);
+        // The dip is a real darkening at the peak, and nothing
+        // between flashes.
         assert!(
-            STROBE_DIP.mul_add(-strobe_shape(0.0), 1.0) < 0.6,
+            STROBE_DIP.mul_add(-flash_shape(0.0), 1.0) < 0.6,
             "the room gives way"
         );
-        let gap = STROBE_DIP.mul_add(-strobe_shape(0.9 / STROBE_HZ), 1.0);
-        assert!(
-            (gap - 1.0).abs() < 1e-6,
-            "and stands up again between flashes"
-        );
+        let gap = STROBE_DIP.mul_add(-flash_shape(FLASH_S + 0.01), 1.0);
+        assert!((gap - 1.0).abs() < 1e-6, "and stands up again between them");
     }
 
     #[test]
@@ -1216,9 +1383,10 @@ mod tests {
     fn a_ceiling_lamp_flares_white_and_gives_its_colour_back() {
         use bevy::ecs::system::RunSystemOnce;
         let lamps = rig::RIG_LAMPS;
-        let order = strobe_order(0, lamps);
-        let firing = order[0] as usize;
-        let waiting = order[lamps - 1] as usize;
+        let firing = flash_lamps(0, lamps)[0];
+        let waiting = (0..lamps)
+            .find(|lamp| !flash_lamps(0, lamps).contains(lamp))
+            .expect("a lamp between hits");
         let tone = Color::srgb(1.0, 0.2, 0.1);
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, AssetPlugin::default()));

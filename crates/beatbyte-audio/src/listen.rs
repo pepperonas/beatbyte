@@ -490,6 +490,16 @@ mod device {
         };
         let channels = usize::from(config.channels());
         let rate = config.sample_rate() as f32;
+        // Which input a machine hands over is worth saying out loud:
+        // a virtual loopback here would be listening to the game's
+        // own output rather than the room.
+        if let Ok(description) = device.description() {
+            eprintln!(
+                "listen: input \"{}\" ({:?}) at {rate} Hz, {channels} channel(s)",
+                description.name(),
+                description.device_type()
+            );
+        }
         let (tx, rx): (SyncSender<Vec<f32>>, Receiver<Vec<f32>>) = sync_channel(QUEUE);
         let errored = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let on_error = {
