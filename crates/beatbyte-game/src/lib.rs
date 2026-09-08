@@ -224,7 +224,8 @@ pub fn run() -> AppExit {
         crt::CrtPlugin,
         transition::TransitionPlugin,
         autopilot::AutopilotPlugin,
-    ));
+    ))
+    .add_plugins(discover::DiscoverPlugin);
 
     // `BEATBYTE_FPS=1` turns on periodic frame-time reporting. Off by
     // default so the resource does not exist and the system returns

@@ -81,6 +81,118 @@ pub const API_URL: &str = "https://api.anthropic.com/v1/messages";
 /// optional nicety; it may never hold up an import.
 pub const AI_TIMEOUT_S: u64 = 30;
 
+// ── Where a search is ───────────────────────────────────────────────
+
+/// The step a running search has reached.
+///
+/// Typed rather than a line of prose, because the overlay draws a
+/// bar from it: a minute of one unchanging sentence and then a
+/// finished song is not a state anybody can read, and neither is a
+/// bar that guesses from the words.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Phase {
+    /// Asking the catalogue what the song is.
+    #[default]
+    Look,
+    /// Asking the tool for recordings.
+    Search,
+    /// Asking the model which recording.
+    Ask,
+    /// Downloading one.
+    Fetch,
+    /// Measuring what came down.
+    Measure,
+    /// Looking the lyrics up.
+    Lyrics,
+    /// Charting it — the longest step by far.
+    Chart,
+    /// Over, one way or the other.
+    Done,
+}
+
+impl Phase {
+    /// Where the bar stands when this phase begins.
+    ///
+    /// The shares are an ordering, not a measurement: they say that
+    /// charting takes longer than looking a name up, which is the
+    /// only thing a bar has to get right to be worth drawing. A run
+    /// that retries a second candidate walks `Fetch` twice, so the
+    /// bar is held against going backwards by the caller.
+    #[must_use]
+    pub fn progress(self) -> f32 {
+        match self {
+            Phase::Look => 0.0,
+            Phase::Search => 0.04,
+            Phase::Ask => 0.10,
+            Phase::Fetch => 0.16,
+            Phase::Measure => 0.42,
+            Phase::Lyrics => 0.60,
+            Phase::Chart => 0.66,
+            Phase::Done => 1.0,
+        }
+    }
+
+    /// Where the NEXT phase begins — the ceiling this one creeps
+    /// toward.
+    #[must_use]
+    pub fn ceiling(self) -> f32 {
+        match self {
+            Phase::Look => Phase::Search.progress(),
+            Phase::Search => Phase::Ask.progress(),
+            Phase::Ask => Phase::Fetch.progress(),
+            Phase::Fetch => Phase::Measure.progress(),
+            Phase::Measure => Phase::Lyrics.progress(),
+            Phase::Lyrics => Phase::Chart.progress(),
+            Phase::Chart | Phase::Done => 1.0,
+        }
+    }
+}
+
+/// How far the bar has crept while a phase dwells.
+///
+/// A bar that stops moving reads as a hang; a bar that arrives early
+/// lies. This leaves the phase's own mark at once and approaches the
+/// next one's without ever reaching it, so every phase change is
+/// still a visible jump.
+#[must_use]
+pub fn creeping(phase: Phase, dwell_s: f32) -> f32 {
+    let from = phase.progress();
+    let span = phase.ceiling() - from;
+    from + span * (1.0 - (-dwell_s / 9.0).exp()) * 0.8
+}
+
+/// The bar's mark once this frame is taken into account.
+///
+/// A search may try up to [`MAX_ATTEMPTS`] recordings, walking
+/// `Fetch` and `Measure` again for each — the bar must not walk back
+/// with it, because a bar going backwards reads as work being
+/// undone.
+#[must_use]
+pub fn holding(high: f32, phase: Phase, dwell_s: f32) -> f32 {
+    high.max(creeping(phase, dwell_s))
+}
+
+/// A step reached: what the search is doing, and what it is doing it
+/// to.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Step {
+    /// Which step, for the bar.
+    pub phase: Phase,
+    /// The words for it, for the line.
+    pub line: String,
+}
+
+impl Step {
+    /// A step.
+    #[must_use]
+    pub fn new(phase: Phase, line: impl Into<String>) -> Step {
+        Step {
+            phase,
+            line: line.into(),
+        }
+    }
+}
+
 // ── Candidates ──────────────────────────────────────────────────────
 
 /// One recording the search turned up.
@@ -723,7 +835,7 @@ pub const MAX_ATTEMPTS: usize = 3;
 ///
 /// # Errors
 /// When nothing usable was found, or the import itself failed.
-pub fn discover(query: &str, backend: &Backend, say: &dyn Fn(String)) -> Result<String, String> {
+pub fn discover(query: &str, backend: &Backend, say: &dyn Fn(Step)) -> Result<String, String> {
     let (typed_artist, typed_title) = split_query(query);
     if typed_title.is_empty() {
         return Err("type a song name first".to_owned());
@@ -735,11 +847,17 @@ pub fn discover(query: &str, backend: &Backend, say: &dyn Fn(String)) -> Result<
     let catalogue_s = if typed_artist.is_empty() {
         None
     } else {
-        say(format!("looking up \"{typed_title}\"..."));
+        say(Step::new(
+            Phase::Look,
+            format!("looking up \"{typed_title}\"..."),
+        ));
         crate::lyrics_fetch::catalogue_duration(&typed_artist, &typed_title)
     };
 
-    say(format!("searching for \"{query}\"..."));
+    say(Step::new(
+        Phase::Search,
+        format!("searching for \"{query}\"..."),
+    ));
     let found = search(&typed_artist, &typed_title)?;
     if found.is_empty() {
         return Err(format!("nothing found for \"{query}\""));
@@ -751,15 +869,24 @@ pub fn discover(query: &str, backend: &Backend, say: &dyn Fn(String)) -> Result<
             found.len()
         ));
     }
+    if !matches!(backend, Backend::Off) {
+        say(Step::new(Phase::Ask, "asking the model which recording..."));
+    }
     if let Some(chosen) = ai_preference(backend, &typed_artist, &typed_title, &ranked) {
-        say(format!("the model prefers \"{}\"", ranked[chosen].title));
+        say(Step::new(
+            Phase::Ask,
+            format!("the model prefers \"{}\"", ranked[chosen].title),
+        ));
         ranked = promote(&ranked, chosen);
     }
 
     let dir = std::env::temp_dir().join("beatbyte-discover");
     let mut last = String::from("no candidate worked");
     for candidate in ranked.iter().take(MAX_ATTEMPTS) {
-        say(format!("fetching \"{}\"...", candidate.title));
+        say(Step::new(
+            Phase::Fetch,
+            format!("fetching \"{}\"...", candidate.title),
+        ));
         let audio = match fetch_audio(candidate, &dir) {
             Ok(path) => path,
             Err(error) => {
@@ -767,7 +894,7 @@ pub fn discover(query: &str, backend: &Backend, say: &dyn Fn(String)) -> Result<
                 continue;
             }
         };
-        say("measuring...".to_owned());
+        say(Step::new(Phase::Measure, "measuring..."));
         match measure(&audio) {
             Ok(verdict) if verdict.good => {
                 let (artist, title) = names_from(&typed_artist, &typed_title, candidate);
@@ -788,14 +915,17 @@ pub fn discover(query: &str, backend: &Backend, say: &dyn Fn(String)) -> Result<
                 // the fetched file travels with it: `import_song`
                 // already carries one along, and that is the path a
                 // dropped file takes too.
-                say(format!("looking up lyrics for \"{title}\"..."));
+                say(Step::new(
+                    Phase::Lyrics,
+                    format!("looking up lyrics for \"{title}\"..."),
+                ));
                 let words = crate::lyrics_fetch::fetch_and_cache(
                     &artist,
                     &title,
                     duration_of(&audio),
                     &audio,
                 );
-                say(format!("charting \"{title}\"..."));
+                say(Step::new(Phase::Chart, format!("charting \"{title}\"...")));
                 let imported = crate::import::import_fetched(&audio, &title, &artist)?;
                 let _ = std::fs::remove_file(&audio);
                 let _ = std::fs::remove_file(audio.with_extension("lrc"));
@@ -880,6 +1010,169 @@ fn measure(audio: &Path) -> Result<Verdict, String> {
     ))
 }
 
+// ── The running search ──────────────────────────────────────────────
+
+/// How long the overlay stays up after a search ends.
+pub const LINGER_S: f32 = 6.0;
+
+/// The in-flight song search. One at a time, for the reason the
+/// lyrics lookup is: the browser is not a place to start a dozen
+/// downloads by holding a key.
+///
+/// It lives here rather than in the browser because it outlives it.
+/// Registered on the browser's own systems, the poll stopped the
+/// moment a song started — the search kept running and nobody
+/// collected it. Now it runs wherever the player is, and says so on
+/// the import overlay, which every screen carries.
+#[derive(bevy::prelude::Resource, Default)]
+pub struct Discovery {
+    /// The background task, while there is one.
+    task: Option<DiscoverTask>,
+    /// What the task last reached. Written there, read here.
+    feed: std::sync::Arc<std::sync::Mutex<Step>>,
+    /// The line the overlay shows.
+    pub line: String,
+    /// The phase the bar aims at.
+    pub phase: Phase,
+    /// How long this phase has held, for the creep.
+    pub dwell_s: f32,
+    /// Whether the finished search found something.
+    pub ok: bool,
+    /// Seconds since it finished.
+    pub since_finished: f32,
+    /// Whether a search has run at all this session.
+    pub ran: bool,
+    /// The furthest the bar has stood. A run that retries a second
+    /// candidate walks `Fetch` again; a bar that walked back with it
+    /// would read as work being undone.
+    high: f32,
+}
+
+/// The search's background task.
+struct DiscoverTask(bevy::tasks::Task<Result<String, String>>);
+
+impl Discovery {
+    /// Whether a search is in flight.
+    #[must_use]
+    pub fn running(&self) -> bool {
+        self.task.is_some()
+    }
+
+    /// Whether the overlay has anything to show.
+    #[must_use]
+    pub fn showing(&self) -> bool {
+        self.ran && (self.running() || self.since_finished < LINGER_S)
+    }
+
+    /// Where the bar aims: creeping through the phase while it runs,
+    /// full once it is over.
+    #[must_use]
+    pub fn bar(&self) -> f32 {
+        if self.running() { self.high } else { 1.0 }
+    }
+
+    /// Start one. The caller has already decided it may.
+    pub fn start(&mut self, query: String, backend: Backend) {
+        let feed = std::sync::Arc::new(std::sync::Mutex::new(Step::new(
+            Phase::Look,
+            format!("searching for \"{query}\"..."),
+        )));
+        self.feed = std::sync::Arc::clone(&feed);
+        self.line = format!("searching for \"{query}\"...");
+        self.phase = Phase::Look;
+        self.dwell_s = 0.0;
+        self.since_finished = 0.0;
+        self.ran = true;
+        self.ok = false;
+        self.high = 0.0;
+        self.task = Some(DiscoverTask(
+            bevy::tasks::AsyncComputeTaskPool::get().spawn(async move {
+                discover(&query, &backend, &move |step| {
+                    if let Ok(mut slot) = feed.lock() {
+                        *slot = step;
+                    }
+                })
+            }),
+        ));
+    }
+}
+
+/// Everything about a running search: it polls wherever the player
+/// is, so a song found while they play lands anyway.
+pub struct DiscoverPlugin;
+
+impl bevy::prelude::Plugin for DiscoverPlugin {
+    fn build(&self, app: &mut bevy::prelude::App) {
+        app.init_resource::<Discovery>()
+            .add_systems(bevy::prelude::Update, poll_discovery);
+    }
+}
+
+/// Collect the search: advance its clocks, follow its steps, and on
+/// success rescan the library so the song is there at once.
+pub fn poll_discovery(
+    time: bevy::prelude::Res<bevy::prelude::Time>,
+    mut discovery: bevy::prelude::ResMut<Discovery>,
+    mut status: bevy::prelude::ResMut<crate::import::ImportStatus>,
+    builtins: Option<bevy::prelude::Res<crate::boot::BuiltinSongs>>,
+    library: Option<bevy::prelude::ResMut<crate::library::SongLibrary>>,
+) {
+    let delta = time.delta_secs();
+    if !discovery.running() {
+        if discovery.ran {
+            discovery.since_finished += delta;
+        }
+        return;
+    }
+    discovery.dwell_s += delta;
+
+    // Whatever step the task last reached; a new phase restarts the
+    // dwell, which is what makes the bar jump on a change.
+    let reached = discovery.feed.lock().ok().map(|slot| slot.clone());
+    if let Some(step) = reached
+        && !step.line.is_empty()
+    {
+        if step.phase != discovery.phase {
+            discovery.phase = step.phase;
+            discovery.dwell_s = 0.0;
+        }
+        if step.line != discovery.line {
+            discovery.line.clone_from(&step.line);
+            status.0.clone_from(&step.line);
+        }
+    }
+
+    discovery.high = holding(discovery.high, discovery.phase, discovery.dwell_s);
+
+    let Some(task) = discovery.task.as_mut() else {
+        return;
+    };
+    let Some(result) =
+        bevy::tasks::block_on(bevy::tasks::futures_lite::future::poll_once(&mut task.0))
+    else {
+        return;
+    };
+    let found = result.is_ok();
+    let line = match result {
+        Ok(line) => line,
+        Err(reason) => format!("search: {reason}"),
+    };
+    status.0.clone_from(&line);
+    discovery.line = line;
+    discovery.phase = Phase::Done;
+    discovery.ok = found;
+    discovery.since_finished = 0.0;
+    discovery.task = None;
+    // The library is scanned once at boot, so a song added while the
+    // browser is open is invisible until a restart — reported as
+    // "says it was added, but I cannot find the track". A dropped
+    // file has always rescanned here (`import::poll_import`); a found
+    // one now does too.
+    if found && let (Some(builtins), Some(mut library)) = (builtins, library) {
+        *library = crate::boot::scan_with_builtins(&builtins.0);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -891,6 +1184,120 @@ mod tests {
             uploader: uploader.to_owned(),
             duration_s: seconds,
         }
+    }
+
+    #[test]
+    fn the_search_is_polled_on_an_app_that_has_no_screens_at_all() {
+        // The property the whole move was for: registered on the
+        // browser's systems, the poll stopped the moment a song
+        // started and nobody collected the result. This app has no
+        // `AppState` and no browser — if the system asked for either,
+        // it would not run here.
+        use bevy::prelude::*;
+        let mut app = App::new();
+        app.add_plugins((bevy::time::TimePlugin, DiscoverPlugin))
+            .init_resource::<crate::import::ImportStatus>();
+        {
+            let mut discovery = app.world_mut().resource_mut::<Discovery>();
+            discovery.ran = true;
+            discovery.since_finished = 0.0;
+        }
+        app.update();
+        app.update();
+        assert!(
+            app.world().resource::<Discovery>().since_finished > 0.0,
+            "the poll must run wherever the player is"
+        );
+    }
+
+    #[test]
+    fn the_phases_run_forward_and_end_at_the_top() {
+        let order = [
+            Phase::Look,
+            Phase::Search,
+            Phase::Ask,
+            Phase::Fetch,
+            Phase::Measure,
+            Phase::Lyrics,
+            Phase::Chart,
+            Phase::Done,
+        ];
+        for pair in order.windows(2) {
+            assert!(
+                pair[0].progress() < pair[1].progress(),
+                "{:?} must come before {:?}",
+                pair[0],
+                pair[1]
+            );
+        }
+        assert!((Phase::Look.progress() - 0.0).abs() < f32::EPSILON);
+        assert!((Phase::Done.progress() - 1.0).abs() < f32::EPSILON);
+        // Every phase creeps toward the next one's mark, so the
+        // ceilings are the neighbours and nothing overshoots.
+        for pair in order.windows(2) {
+            assert!((pair[0].ceiling() - pair[1].progress()).abs() < f32::EPSILON);
+        }
+    }
+
+    #[test]
+    fn a_dwelling_phase_creeps_without_arriving() {
+        // Charting takes the longest, so it is the phase whose bar
+        // would otherwise sit still for half a minute.
+        let start = creeping(Phase::Fetch, 0.0);
+        let later = creeping(Phase::Fetch, 10.0);
+        let much_later = creeping(Phase::Fetch, 120.0);
+        assert!(
+            (start - Phase::Fetch.progress()).abs() < 1e-6,
+            "it starts at its own mark"
+        );
+        assert!(later > start, "it moves while the phase holds");
+        assert!(much_later > later, "and keeps moving");
+        assert!(
+            much_later < Phase::Measure.progress(),
+            "but never reaches the next phase's mark: {much_later} vs {}",
+            Phase::Measure.progress()
+        );
+    }
+
+    #[test]
+    fn a_second_attempt_does_not_walk_the_bar_backwards() {
+        // Measured the first candidate, did not like it, went back
+        // to fetch the second: the phase is behind where it was.
+        let after_measure = holding(0.0, Phase::Measure, 12.0);
+        let on_retry = holding(after_measure, Phase::Fetch, 0.0);
+        assert!(
+            on_retry >= after_measure,
+            "the bar held at {after_measure} and must not fall to {on_retry}"
+        );
+        // It still moves forward again once the retry gets further.
+        let past_it = holding(on_retry, Phase::Chart, 3.0);
+        assert!(past_it > on_retry, "and forward progress still shows");
+    }
+
+    #[test]
+    fn the_bar_stands_still_only_when_the_search_is_over() {
+        let mut discovery = Discovery::default();
+        assert!(!discovery.showing(), "nothing to show before a search");
+        // Not started: `bar` is the finished value, and `showing`
+        // keeps it off screen, which is what matters.
+        assert!((discovery.bar() - 1.0).abs() < f32::EPSILON);
+        discovery.ran = true;
+        discovery.since_finished = LINGER_S + 1.0;
+        assert!(!discovery.showing(), "and it does not linger forever");
+        discovery.since_finished = 0.0;
+        assert!(discovery.showing(), "a fresh result lingers");
+    }
+
+    #[test]
+    fn the_first_step_of_a_search_is_the_line_it_shows() {
+        // `start` cannot run without a task pool, so this pins the
+        // part the panel reads on the first frame: the resource is
+        // marked as having run and carries a line, rather than
+        // showing an empty panel until the task's first step lands.
+        let step = Step::new(Phase::Look, "looking up \"Lithium\"...");
+        assert_eq!(step.phase, Phase::Look);
+        assert!(step.line.contains("Lithium"));
+        assert_eq!(Step::default().phase, Phase::Look);
     }
 
     #[test]

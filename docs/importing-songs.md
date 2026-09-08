@@ -10,7 +10,14 @@ correction pass. Every command below was run exactly as written
 Press **D** in the browser, type the song and press **Enter** (**Esc**
 cancels). The search looks it up, judges the recordings it finds, fetches the best one,
 measures it, pulls the lyrics and charts it — the result lands in
-`songs/imported/` exactly as a dropped file does.
+`songs/imported/` exactly as a dropped file does, and appears in the
+browser the moment it is there.
+
+**It runs in the background.** Start a search, then browse, change a
+setting or play a song: it carries on and lands anyway. A panel at the
+bottom of the screen — the one a dropped file uses — says which step
+it is on and how far along it is, on whatever screen you are looking
+at.
 
 Write it as `Artist - Title` where you can: only then can the
 catalogue be asked how long the song is, and that length is what
@@ -31,11 +38,13 @@ measurements rather than guesses:
 | On the metadata | The catalogue's length for the song, through the same rule the lyrics lookup uses, throws out every different edit. What is left is ordered by what its own title admits — live, cover, karaoke, nightcore, hour-long loop. |
 | On the audio, leader only | The loudness report (a video rip gives itself away by where its spectrum ends) and the analyzer's tempo confidence. Fail either and the next candidate gets its turn. |
 
-**SETTINGS → AI SEARCH** (off by default) lets a model help with the
+**SETTINGS → AI SEARCH** (on by default) lets a model help with the
 first stage: it reads the candidate titles and answers with a number.
-It runs through the Claude Code CLI if that is installed, otherwise
-through an API key you store; with neither, the ranking above stands
-on its own.
+On means "use it when there is one to use": it runs through the Claude
+Code CLI if that is installed — already signed in, so no key is stored
+anywhere — otherwise through an API key you store. With neither it
+costs nothing and does nothing, the row says as much, and the ranking
+above stands on its own. It never touches the audio.
 
 Supported audio: **WAV, Ogg Vorbis, FLAC, MP3, M4A/AAC** — the
 verified list lives in

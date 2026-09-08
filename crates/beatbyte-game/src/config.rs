@@ -54,12 +54,20 @@ pub struct Settings {
     pub reduced_flashing: bool,
     /// Let a model help pick which recording a song search fetches.
     ///
-    /// OFF by default, and off is a complete feature: the search
-    /// ranks candidates on their length and their own names without
-    /// it. On, it runs through the Claude Code CLI when that is
+    /// ON by default, which reads as "use it when there is one to
+    /// use": it runs through the Claude Code CLI when that is
     /// installed — already signed in, so no key is stored anywhere —
-    /// and otherwise through [`Settings::anthropic_api_key`].
-    #[serde(default)]
+    /// else through [`Settings::anthropic_api_key`], and with
+    /// neither it costs nothing and does nothing, because
+    /// [`crate::discover::backend_for`] has nothing to return. The
+    /// search is a complete feature without it: candidates are
+    /// ranked on their length and their own names either way.
+    ///
+    /// ⚠️ `#[serde(default)]` fills a MISSING field with `false`, not
+    /// with this default — a settings file written before the switch
+    /// existed keeps it off. `default = "default_true"` is what
+    /// makes an older file adopt it.
+    #[serde(default = "default_true")]
     pub ai_search: bool,
     /// An Anthropic API key for that step, for machines without the
     /// CLI.
@@ -207,7 +215,7 @@ impl Default for Settings {
             hit_labels: true,
             no_fail: true,
             reduced_flashing: false,
-            ai_search: false,
+            ai_search: true,
             anthropic_api_key: String::new(),
             flash_sync: FlashSync::default(),
             fx_intensity: 1.0,

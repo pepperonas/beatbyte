@@ -512,57 +512,114 @@ fn spawn_import_panel(mut commands: Commands, font: Res<crate::ui::UiFont>) {
         });
 }
 
-/// Drive the overlay: show while a batch runs (plus a 4-second
-/// summary), pulse the border, ease the bar toward the batch
-/// progress, and flash the fill whenever a file finishes.
+/// How long the overlay lingers after an import batch ends.
+pub const IMPORT_LINGER_S: f32 = 4.0;
+
+/// What the overlay is drawing this frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PanelSource {
+    /// A drop the player just made.
+    Import,
+    /// A search running in the background.
+    Search,
+}
+
+/// Which of the two the one overlay draws, if either.
+///
+/// An import wins: the player just dropped a file and is waiting on
+/// it, while a search runs for a minute and will still be there
+/// after. Pinned as its own function because the choice is the part
+/// worth pinning — two branches that each work and a decision that
+/// picks the wrong one is exactly what a per-branch test misses.
+#[must_use]
+pub fn panel_source(
+    queued: usize,
+    import_active: bool,
+    since_import: f32,
+    search_showing: bool,
+) -> Option<PanelSource> {
+    if queued > 0 && (import_active || since_import < IMPORT_LINGER_S) {
+        Some(PanelSource::Import)
+    } else if search_showing {
+        Some(PanelSource::Search)
+    } else {
+        None
+    }
+}
+
+/// Drive the overlay: show while a batch runs or a search does (plus
+/// a moment after), pulse the border, ease the bar toward whatever
+/// the work has reached, and flash the fill on every step.
+///
+/// Two sources, one panel. An import is a foreground act — the
+/// player just dropped a file — so it wins when both are up; a
+/// search runs for a minute in the background and needs somewhere to
+/// say so on every screen, which is exactly what this overlay
+/// already was.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)] // Bevy system: params are DI
 fn update_import_panel(
     time: Res<Time>,
     mut queue: ResMut<ImportQueue>,
+    discovery: Res<crate::discover::Discovery>,
     mut root: Query<&mut Visibility, With<ImportPanelRoot>>,
     mut boxes: Query<&mut BorderColor, With<ImportPanelBox>>,
     mut texts: Query<&mut Text, With<ImportPanelText>>,
     mut fills: Query<(&mut Node, &mut BackgroundColor), With<ImportBarFill>>,
     mut last_done: Local<usize>,
+    mut last_phase: Local<Option<crate::discover::Phase>>,
     mut flash: Local<f32>,
 ) {
     let Ok(mut visibility) = root.single_mut() else {
         return;
     };
-    if queue.total == 0 {
-        *visibility = Visibility::Hidden;
-        return;
-    }
-    if !queue.active() {
+    if queue.total > 0 && !queue.active() {
         queue.since_finished += time.delta_secs();
     }
-    let show = queue.active() || queue.since_finished < 4.0;
-    *visibility = if show {
-        Visibility::Visible
-    } else {
-        Visibility::Hidden
-    };
-    if !show {
+    let source = panel_source(
+        queue.total,
+        queue.active(),
+        queue.since_finished,
+        discovery.showing(),
+    );
+    let Some(source) = source else {
+        *visibility = Visibility::Hidden;
         return;
-    }
+    };
+    *visibility = Visibility::Visible;
+    let importing = source == PanelSource::Import;
 
+    // A step forward flashes the fill, whichever kind of step it was.
     if queue.done != *last_done {
         *last_done = queue.done;
         *flash = 1.0;
     }
+    if !importing && *last_phase != Some(discovery.phase) {
+        *last_phase = Some(discovery.phase);
+        *flash = 1.0;
+    }
     *flash = (*flash - time.delta_secs() * 2.5).max(0.0);
 
+    let working = if importing {
+        queue.active()
+    } else {
+        discovery.running()
+    };
+
     if let Ok(mut text) = texts.single_mut() {
-        let line = if queue.active() {
-            let name = queue.current.as_deref().unwrap_or("...");
-            let name = crate::ui::font_safe(name);
-            format!(
-                "importing \"{name}\"  ({}/{})",
-                (queue.done + 1).min(queue.total),
-                queue.total
-            )
+        let line = if importing {
+            if queue.active() {
+                let name = queue.current.as_deref().unwrap_or("...");
+                let name = crate::ui::font_safe(name);
+                format!(
+                    "importing \"{name}\"  ({}/{})",
+                    (queue.done + 1).min(queue.total),
+                    queue.total
+                )
+            } else {
+                summary_line(queue.ok, queue.failed, queue.skipped)
+            }
         } else {
-            summary_line(queue.ok, queue.failed, queue.skipped)
+            crate::ui::font_safe(&discovery.line)
         };
         if text.0 != line {
             text.0 = line;
@@ -571,7 +628,7 @@ fn update_import_panel(
 
     // Border pulse while working; steady when done.
     if let Ok(mut border) = boxes.single_mut() {
-        let alpha = if queue.active() {
+        let alpha = if working {
             0.45 + 0.35 * (time.elapsed_secs() * 6.0).sin()
         } else {
             0.8
@@ -580,7 +637,11 @@ fn update_import_panel(
     }
 
     if let Ok((mut node, mut color)) = fills.single_mut() {
-        let target = queue.done as f32 / queue.total.max(1) as f32 * 100.0;
+        let target = if importing {
+            queue.done as f32 / queue.total.max(1) as f32 * 100.0
+        } else {
+            discovery.bar() * 100.0
+        };
         let current = match node.width {
             Val::Percent(value) => value,
             _ => 0.0,
@@ -592,7 +653,14 @@ fn update_import_panel(
         } else {
             eased
         });
-        color.0 = crate::palette::BRAND.mix(&Color::WHITE, *flash * 0.7);
+        // A search that came home empty says so in the bar's colour;
+        // an import keeps the one it has always had.
+        let base = if !importing && !working && !discovery.ok {
+            crate::palette::MISS
+        } else {
+            crate::palette::BRAND
+        };
+        color.0 = base.mix(&Color::WHITE, *flash * 0.7);
     }
 }
 
@@ -1149,5 +1217,34 @@ mod write_plan_tests {
         std::fs::write(dir.join("chart.v3.json"), "{}").expect("v3");
         let (path, _) = plan_chart_write(&dir).expect("plans");
         assert_eq!(path, dir.join("chart.v4.json"));
+    }
+}
+
+#[cfg(test)]
+mod panel_tests {
+    use super::{IMPORT_LINGER_S, PanelSource, panel_source};
+
+    #[test]
+    fn an_import_wins_the_overlay_and_a_search_gets_it_back_after() {
+        // Both up: the drop the player is waiting on is what shows.
+        assert_eq!(
+            panel_source(3, true, 0.0, true),
+            Some(PanelSource::Import),
+            "a running import outranks a background search"
+        );
+        // The import's summary still holds it for its moment.
+        assert_eq!(
+            panel_source(3, false, IMPORT_LINGER_S - 0.1, true),
+            Some(PanelSource::Import)
+        );
+        // Once that moment passes, the search gets the panel.
+        assert_eq!(
+            panel_source(3, false, IMPORT_LINGER_S + 0.1, true),
+            Some(PanelSource::Search)
+        );
+        // A search alone owns it outright.
+        assert_eq!(panel_source(0, false, 0.0, true), Some(PanelSource::Search));
+        // And with nothing running the overlay stays off.
+        assert_eq!(panel_source(0, false, 0.0, false), None);
     }
 }

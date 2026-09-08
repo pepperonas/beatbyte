@@ -472,7 +472,6 @@ pub struct SongSelectPlugin;
 impl Plugin for SongSelectPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LyricsLookup>()
-            .init_resource::<Discovery>()
             .init_resource::<DownloadPrompt>()
             .init_resource::<SelectedDifficulty>()
             .init_resource::<BrowserCursor>()
@@ -486,7 +485,6 @@ impl Plugin for SongSelectPlugin {
                 (
                     browser_input,
                     poll_lyrics_lookup,
-                    poll_discovery,
                     download_input,
                     search_sort_input,
                     sync_view,
@@ -864,22 +862,6 @@ struct StartDeps<'w, 's> {
     prompt: ResMut<'w, DownloadPrompt>,
 }
 
-/// The in-flight song search. One at a time, for the reason the
-/// lyrics lookup is: the browser is not a place to start a dozen
-/// downloads by holding a key.
-#[derive(Resource, Default)]
-pub struct Discovery {
-    task: Option<DiscoverTask>,
-    /// Where the running search is, written by the task and read by
-    /// the poll — the steps take tens of seconds each, and a minute
-    /// of silence followed by a finished song is not a state anybody
-    /// can read.
-    progress: std::sync::Arc<std::sync::Mutex<String>>,
-}
-
-/// The search's background task.
-struct DiscoverTask(bevy::tasks::Task<Result<String, String>>);
-
 /// The "add a song by name" prompt: its own field, not the browser's
 /// filter.
 ///
@@ -913,7 +895,7 @@ fn download_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut typed: MessageReader<bevy::input::keyboard::KeyboardInput>,
     mut prompt: ResMut<DownloadPrompt>,
-    mut discovery: ResMut<Discovery>,
+    mut discovery: ResMut<crate::discover::Discovery>,
     mut status: ResMut<crate::import::ImportStatus>,
     settings: Res<crate::config::Settings>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
@@ -935,7 +917,7 @@ fn download_input(
         // principle, not as the demonstrated fix. A reader's cursor
         // is its own, so emptying it takes nothing from the other
         // systems that read the keyboard.
-        let opening = keys.just_pressed(KeyCode::KeyD) && discovery.task.is_none();
+        let opening = keys.just_pressed(KeyCode::KeyD) && !discovery.running();
         for _ in typed.read() {}
         if opening {
             prompt.open = true;
@@ -977,7 +959,7 @@ fn download_input(
             status.0 = "type a song name, then ENTER".to_owned();
             return;
         }
-        if discovery.task.is_some() {
+        if discovery.running() {
             sounds.write(crate::sfx::UiSound::Error);
             status.0 = "a search is already running".to_owned();
             return;
@@ -992,20 +974,7 @@ fn download_input(
             crate::discover::cli_available(),
             crate::discover::api_key(&settings.anthropic_api_key).as_deref(),
         );
-        let say_to = std::sync::Arc::clone(&discovery.progress);
-        if let Ok(mut step) = say_to.lock() {
-            step.clear();
-        }
-        let feed = std::sync::Arc::clone(&say_to);
-        discovery.task = Some(DiscoverTask(
-            bevy::tasks::AsyncComputeTaskPool::get().spawn(async move {
-                crate::discover::discover(&query, &backend, &move |line| {
-                    if let Ok(mut step) = feed.lock() {
-                        *step = line;
-                    }
-                })
-            }),
-        ));
+        discovery.start(query, backend);
         prompt.open = false;
         prompt.text.clear();
         sounds.write(crate::sfx::UiSound::Confirm);
@@ -1014,44 +983,6 @@ fn download_input(
     }
     // While it is open the panel shows what is being typed.
     status.0 = prompt.line();
-}
-
-/// Report a running or finished search.
-fn poll_discovery(
-    mut discovery: ResMut<Discovery>,
-    mut status: ResMut<crate::import::ImportStatus>,
-    builtins: Option<Res<BuiltinSongs>>,
-    library: Option<ResMut<SongLibrary>>,
-) {
-    let Some(task) = discovery.task.as_mut() else {
-        return;
-    };
-    match bevy::tasks::block_on(bevy::tasks::futures_lite::future::poll_once(&mut task.0)) {
-        Some(result) => {
-            let found = result.is_ok();
-            status.0 = match result {
-                Ok(line) => line,
-                Err(reason) => format!("search: {reason}"),
-            };
-            discovery.task = None;
-            // The library is scanned once at boot, so a song added
-            // while the browser is open is invisible until a restart
-            // — reported as "says it was added, but I cannot find
-            // the track". A dropped file has always rescanned here
-            // (`import::poll_import`); a found one now does too.
-            if found && let (Some(builtins), Some(mut library)) = (builtins, library) {
-                *library = crate::boot::scan_with_builtins(&builtins.0);
-            }
-        }
-        None => {
-            // Still running: show whatever step it last reached.
-            if let Ok(step) = discovery.progress.lock()
-                && !step.is_empty()
-            {
-                status.0 = step.clone();
-            }
-        }
-    }
 }
 
 /// The in-flight lyrics lookup. One at a time: the browser is not a
@@ -2643,7 +2574,7 @@ mod download_prompt_tests {
             .add_message::<crate::sfx::UiSound>()
             .init_resource::<ButtonInput<KeyCode>>()
             .init_resource::<DownloadPrompt>()
-            .init_resource::<Discovery>()
+            .init_resource::<crate::discover::Discovery>()
             .init_resource::<crate::import::ImportStatus>()
             .insert_resource(crate::config::Settings::default())
             .add_systems(Update, download_input);
@@ -2792,7 +2723,11 @@ mod download_prompt_tests {
                 .contains("type a song name"),
             "it says what to do"
         );
-        assert!(app.world().resource::<Discovery>().task.is_none());
+        assert!(
+            !app.world()
+                .resource::<crate::discover::Discovery>()
+                .running()
+        );
     }
 
     #[test]

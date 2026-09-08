@@ -720,6 +720,34 @@ artifact, smoke-test it (neutral CWD!), then
   start — `info!` lines that carry the measured values (the monitors
   and the light show log theirs) prove a feature ran; a screenshot
   can only ever confirm it.
+- **Work that outlives a screen does not belong on that screen's
+  systems.** The song search was registered in `SongSelectPlugin`, so
+  its poll stopped the instant a song started: the task kept running
+  in the pool and nobody collected it. Anything that runs for tens of
+  seconds — a search, a lookup, an import — gets its own plugin with
+  a plain `Update` registration, and says where it is on the import
+  overlay, which is spawned outside every screen for exactly that
+  reason. The pin for it is a wired test on an app that has **no**
+  `AppState` at all: if the system asked for a screen, it would not
+  run there.
+- **`#[serde(default)]` fills a missing field with the FIELD's
+  default, not the struct's `Default`.** Flipping `ai_search` to true
+  in `Settings::default()` reached nobody: every existing
+  `settings.json` has the field written, and a file that predates the
+  field would have taken `bool::default()` — false. A default that
+  must reach existing files needs `#[serde(default = "…")]` naming a
+  function, and existing files that carry the old value need editing
+  or migrating; the type's `Default` alone changes nothing for anyone
+  who has already played.
+- **A mutation-probe helper that restores from the wrong path stacks
+  mutations silently**, and every reading after the first is
+  worthless — a later probe "passed" here only because three earlier
+  mutations were still in the file. Two guards, both cheap: name the
+  backup after the FULL path (the `basename` trap already cost a
+  clobbered stylesheet in another project), and check `git status`
+  is clean between probes rather than trusting the helper's own
+  `cp`. And a mutant must compile: a probe that fails to build
+  proves nothing (one here needed `IntoScheduleConfigs` in scope).
 - **A summary inside this repository is not a source.** Round six of
   the look plan built the gem from a trait table an earlier round had
   written ("dark ring, white centre") instead of from the material,

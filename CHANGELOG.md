@@ -14,6 +14,42 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.56] - 2026-09-08
+
+### Added
+
+- **A song search now shows itself on every screen, and finishes
+  wherever you are.** The search moved out of the browser into its
+  own plugin: registered on the browser's systems, its poll stopped
+  the moment a song started, so a search begun and then played over
+  was never collected. It now runs in the background in the sense
+  that word usually means, and reports on the import overlay — the
+  panel a dropped file already used, which every screen carries.
+- **The overlay draws the search as work in progress.** The steps are
+  typed (`Phase`) rather than sentences, so the bar knows where it
+  stands: it takes each phase's mark at once, creeps toward the next
+  one's while the phase holds — a bar that stops moving reads as a
+  hang — and never arrives early. A retry of a second recording walks
+  `Fetch` again without walking the bar back. Every phase change
+  flashes the fill, the border pulses while it works, and a search
+  that came home empty says so in the bar's colour.
+
+### Changed
+
+- **AI search defaults to on**, which here reads as "use it when
+  there is one to use": the Claude Code CLI when it is installed, an
+  API key when one is stored, and with neither it costs nothing and
+  does nothing. A settings file written before the switch existed
+  adopts the new default.
+
+### Fixed
+
+- **The song added as "ocm how bizarre" is now `OMC - How Bizarre`,
+  with word-level lyrics.** It was filed under the video's id from a
+  query with a typo in the artist, which is what made both the folder
+  name and the lyrics lookup miss. The entry was repaired by hand;
+  the code that caused it was fixed in 0.14.55.
+
 ## [0.14.55] - 2026-09-08
 
 ### Fixed

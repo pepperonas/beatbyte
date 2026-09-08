@@ -336,6 +336,32 @@ project. Milestones when picked up:
   contaminated file, and a mutation was left in the tree until the
   suite went red. Re-run cleanly afterwards.
 
+  **Follow-ups, all done** *(v0.14.55–56)*. Reported as "keine
+  lyrics und info sagt, dass hinzugefügt wurde, aber ich finde den
+  track nicht", then commissioned as "neue Lieder direkt sichtbar,
+  Lyrics gezogen, KI optimiert, schöner animiert, im Hintergrund".
+  Three separate faults behind the one report: the library was
+  scanned once at boot, so a found song was invisible until a
+  restart; the fetched file kept the video's id, so the folder was
+  named after it; and with no artist in the query the lyrics lookup
+  had nothing to ask the catalogue. Then the round itself: the
+  search **moved out of the browser into its own plugin**, because
+  registered on the browser's systems its poll stopped the moment a
+  song started — it now runs and lands wherever the player is, and
+  draws itself on the **import overlay**, the panel every screen
+  already carries. Typed phases (`Phase`) rather than sentences, so
+  the bar knows where it stands: each phase's mark taken at once,
+  creeping toward the next while it holds, never arriving early,
+  never walking back when a second candidate is tried. AI search now
+  defaults on, meaning *use it when there is one to use*.
+
+  ⚠️ **The AI default needed `serde(default = "default_true")`**, not
+  the type's `Default`: a missing field takes the FIELD's serde
+  default, so plain `#[serde(default)]` would have left every
+  existing settings file switched off. Six mutation probes, all
+  firing — one invalid on the first attempt (it did not compile) and
+  re-run with the trait in scope.
+
 - [x] **The floor** *(v0.14.48)*. Asked for as "gestalte den boden
   schöner". Diagnosed before it was designed: the seams were a hard
   two-texel slot (black chasms), the boards ran thirty metres without
