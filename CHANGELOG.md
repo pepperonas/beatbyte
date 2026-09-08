@@ -14,6 +14,39 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.49] - 2026-09-08
+
+### Fixed
+
+- **The two burning spots on the deck are gone.** Reported ("diese
+  lichtkegel stören"), and they were mine: the venue's two coloured
+  washes are 1.5-million-lumen POINT lights, and v0.14.48's lacquer
+  was sharp enough (clearcoat roughness 0.12) to mirror them —
+  producing two hard white blobs either side of the highway, exactly
+  where the eye is trying to play. Before the clearcoat the deck was
+  too matte to show them.
+
+  Identified rather than guessed: the mirror geometry puts those
+  reflections at screen (375, 541) and (905, 541) on a 1280-wide
+  frame, and that is where the blown-out white was. The coat is now
+  broad enough to spread a point light into a sheen down the boards
+  (roughness 0.38, strength 0.45), which is what a sealed floor looks
+  like from the third row.
+
+### Added
+
+- **The deck's back corners have their own light.** Reported: the
+  floor was gone at the back left and right. Two causes and only one
+  of them is light — the linear fog has taken more than half of
+  anything that far away (0.58 at the back corners), so what survives
+  is whatever the surface was lit to, and out there past the stacks
+  that was almost nothing. The fog stays (notes emerging from it is a
+  deliberate reading and a pinned one); the corners get two fills of
+  their own instead, outboard of the barriers and the deck's edge,
+  low enough to graze the boards rather than wash the crowd, and
+  tagged `VenueWash` so they dip under a strobe flash like every
+  other wash in the room.
+
 ## [0.14.48] - 2026-09-08
 
 ### Changed

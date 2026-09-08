@@ -162,6 +162,21 @@ reflections stay clean and the wood's detail lives underneath them.
 (The clearcoat NORMAL map would need Bevy's
 `pbr_multi_layer_material_textures` feature; it is not wanted.)
 
+⚠️ **The coat's roughness is a hard floor, not a taste.** At 0.12 it
+mirrored the venue's two coloured washes — 1.5-million-lumen POINT
+lights — into two hard white blobs on the deck either side of the
+highway (reported; the mirror geometry predicts them at screen
+(375, 541) and (905, 541) on a 1280-wide frame, and that is where the
+blown-out white was). A point light in a tight coat is a point. It
+sits at 0.38, and a test says why.
+
+The deck's **back corners** carry two fills of their own
+(`back_fill_position`), outboard of the barriers and of the deck's
+edge, low and upstage: the fog takes more than half of anything that
+far from the camera, so out there the floor is only as visible as it
+was lit, and past the stacks it was not lit at all. They wear
+`VenueWash`, so they dip under a flash with the rest of the room.
+
 Everything else on stage stands ON the deck at `y = −0.30`. The
 **venue floor** under and beyond it is plain concrete with a faint
 sheen — enough that the washes spilling off the deck land on

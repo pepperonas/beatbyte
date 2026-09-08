@@ -85,12 +85,32 @@ const FOG_END: f32 = 52.0;
 /// A sealed floor is the difference between a stage and a plank. It
 /// is deliberately short of 1.0 — a working deck is scuffed, and a
 /// mirror-bright one would read as ice.
-pub const DECK_CLEARCOAT: f32 = 0.6;
-/// How sharp that lacquer's reflections are. Well under the wood's
-/// own roughness (0.30 on the flat of a board), which is the whole
-/// point: two lobes, a soft one from the timber and a tight one from
-/// the finish over it.
-pub const DECK_CLEARCOAT_ROUGHNESS: f32 = 0.12;
+pub const DECK_CLEARCOAT: f32 = 0.45;
+/// How sharp that lacquer's reflections are — still under the wood's
+/// own roughness (0.30 on the flat of a board), which is the point:
+/// two lobes, a soft one from the timber and a tighter one from the
+/// finish over it.
+///
+/// It was 0.12, and that was too tight to live with. The venue's two
+/// coloured washes are 1.5-million-lumen POINT lights, and a lacquer
+/// that sharp turns a point light into a point reflection: two hard
+/// white blobs burned into the deck either side of the highway,
+/// exactly where the eye is trying to play. Reported ("diese
+/// lichtkegel stören"), and it was mine — before the clearcoat the
+/// deck was too matte to show them. Spread over four times the
+/// solid angle they are a sheen down the boards instead, which is
+/// what a sealed floor actually looks like from the third row.
+pub const DECK_CLEARCOAT_ROUGHNESS: f32 = 0.38;
+
+/// Where the deck's back-corner fills hang, per side.
+///
+/// Outboard of the barriers (x 2.9) and of the deck's own edge
+/// (6.5), upstage near the riser, and LOW — the job is to graze the
+/// boards at the back, not to wash the crowd from the side.
+#[must_use]
+pub fn back_fill_position(side: f32) -> Vec3 {
+    Vec3::new(side.signum() * 7.6, 2.6, -24.0)
+}
 
 /// Radius of a note's coloured face, in world units. Large relative
 /// to the lane spacing, as in the games this borrows from — a gem
@@ -1437,6 +1457,40 @@ pub fn setup_stage(
         Transform::from_xyz(0.0, 5.0, -26.0),
         RenderLayers::layer(STAGE_LAYER),
     ));
+    // Two more fills, low and outboard, on the deck's back corners.
+    //
+    // Reported: the floor was gone at the back left and right. Two
+    // reasons, and only one of them is light — the linear fog has
+    // taken more than half of anything that far from the camera
+    // (measured: 0.58 at the back corners), so what survives is
+    // whatever the surface was lit to in the first place, and out
+    // there past the stacks that was almost nothing. The fog itself
+    // stays: notes emerging from it is a deliberate reading and a
+    // pinned one. So the corners get their own light instead.
+    //
+    // Outboard of the barriers (x 2.9) and of the stacks, low enough
+    // to graze the boards rather than wash the crowd, and dipping
+    // under a strobe flash like every other wash in the room.
+    for side in [-1.0f32, 1.0] {
+        commands.spawn((
+            GameplayScreen,
+            Stage3d,
+            super::lightshow::VenueWash,
+            PointLight {
+                color: stage.accent.mix(&stage.background, 0.55),
+                // Measured on the first cut at 700 000: the back
+                // corners came up from 22.1 to 24.8 (left) and 12.6
+                // to 16.2 (right) out of 255 — real, and still too
+                // dark to call the floor visible.
+                intensity: 1_300_000.0,
+                range: 30.0,
+                shadow_maps_enabled: false,
+                ..default()
+            },
+            Transform::from_translation(back_fill_position(side)),
+            RenderLayers::layer(STAGE_LAYER),
+        ));
+    }
     // The band's key: a warm spot from the front truss onto the
     // riser. Its axis passes well above the crowd's heads, so the
     // crowd stays the silhouette mass it is meant to be and the band
@@ -3568,6 +3622,63 @@ mod instrument_neck_tests {
                 "the core must be the lighter one"
             );
         }
+    }
+
+    #[test]
+    fn the_back_corner_fills_graze_the_deck_from_outside_the_room() {
+        // Reported: the floor was gone at the back left and right.
+        // These two exist to answer that, and where they hang is the
+        // whole of it — inboard they would wash the crowd, high they
+        // would light the band, downstage they would double the
+        // washes that already cover the middle of the deck.
+        use super::super::crowd::BARRIER_X;
+        for side in [-1.0f32, 1.0] {
+            let p = back_fill_position(side);
+            assert_eq!(p.x.signum(), side, "one per side");
+            assert!(
+                p.x.abs() > 6.5,
+                "outboard of the deck's own edge: {}",
+                p.x.abs()
+            );
+            assert!(p.x.abs() > BARRIER_X + 3.0, "and well clear of the crowd");
+            assert!(p.y < 4.0, "low enough to graze rather than wash: {}", p.y);
+            assert!(p.z < -20.0, "upstage, where the deck went dark: {}", p.z);
+        }
+    }
+
+    #[test]
+    fn the_decks_lacquer_is_too_broad_to_burn_a_point_light_into_it() {
+        // Reported as "diese lichtkegel stören": two hard white blobs
+        // on the deck either side of the highway. They were the
+        // SPECULAR REFLECTIONS of the venue's two coloured washes —
+        // 1.5-million-lumen POINT lights — in a lacquer sharp enough
+        // to mirror them. Predicted from the mirror geometry at
+        // screen (375, 541) and (905, 541) on a 1280-wide frame, and
+        // that is where the blown-out white was.
+        //
+        // A point light reflected in a tight coat is a point. The
+        // coat has to be broad enough to spread it.
+        //
+        // Both bounds are compile-time: they are facts about a
+        // constant, so breaking one should not need the test to run.
+        const {
+            assert!(
+                DECK_CLEARCOAT_ROUGHNESS >= 0.30,
+                "the lacquer is tight enough to mirror a point light"
+            );
+            // ... and still a coat rather than another layer of
+            // timber: the whole point of a clearcoat is a SECOND,
+            // tighter lobe over the wood's own (0.30 on the flat of a
+            // board, rising into the scuffs and gaps).
+            assert!(
+                DECK_CLEARCOAT_ROUGHNESS < 0.55,
+                "the coat has stopped being a coat"
+            );
+        }
+        assert!(
+            (0.0..1.0).contains(&DECK_CLEARCOAT),
+            "a deck is sealed, not chromed: {DECK_CLEARCOAT}"
+        );
     }
 
     #[test]
