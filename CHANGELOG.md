@@ -14,6 +14,34 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.55] - 2026-09-08
+
+### Fixed
+
+Three defects in adding a song by name, all from one report: *added,
+no lyrics, and I cannot find the track.*
+
+- **A found song appears in the browser at once.** The library is
+  scanned once at boot, so a song added while the browser was open
+  stayed invisible until a restart — it was on disk the whole time.
+  A dropped file has always rescanned (`import::poll_import`); a
+  found one now does the same.
+
+- **It is filed under its own name.** The import takes the folder
+  name from the file name, and the fetch named the file after the
+  video's id — so the song landed in `c2cmg33mwvy-m4a`, which is not
+  something anybody can find. The file is renamed after the song
+  before it goes in.
+
+- **The names come from the recording, not from the raw query.** A
+  song typed without an artist was filed under exactly what was
+  typed — "how bizarre ocm" — and the lyrics catalogue was then asked
+  for a song of that name and found nothing. Now a query that names
+  an artist still wins (the player said what they meant), and
+  otherwise the names are read off the winning recording: its
+  published title with the furniture stripped (`(Official Music
+  Video)`, `[HD]`), split at the dash, or the channel as the artist.
+
 ## [0.14.54] - 2026-09-08
 
 ### Fixed

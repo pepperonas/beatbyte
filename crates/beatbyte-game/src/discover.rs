@@ -613,6 +613,99 @@ pub fn judge(quality_ok: bool, quality_note: &str, tempo_confidence: f64) -> Ver
     }
 }
 
+// ── What the song ends up called ────────────────────────────────────
+
+/// Strip the furniture a publisher puts around a title.
+///
+/// `(Official Music Video)`, `[HD]`, `(Lyrics)` — none of it is the
+/// song's name, and all of it ends up in the folder name and in the
+/// question the lyrics catalogue is asked. Pure — tested.
+#[must_use]
+pub fn clean_title(title: &str) -> String {
+    let mut out = String::with_capacity(title.len());
+    let mut depth = 0i32;
+    for character in title.chars() {
+        match character {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth = (depth - 1).max(0),
+            _ if depth == 0 => out.push(character),
+            _ => {}
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The artist and title a found song is filed under.
+///
+/// The query wins when it named an artist (`Artist - Title`): the
+/// player said what they meant. Without one the names come from the
+/// recording that won, NOT from the raw query — "how bizarre ocm"
+/// was filed under exactly that, and the catalogue was then asked for
+/// a song of that name and found nothing (reported: added, no
+/// lyrics). A published title is usually `Artist - Title`, and where
+/// it is not, the channel is the artist. Pure — tested.
+#[must_use]
+pub fn names_from(
+    typed_artist: &str,
+    typed_title: &str,
+    candidate: &Candidate,
+) -> (String, String) {
+    if !typed_artist.trim().is_empty() {
+        return (
+            typed_artist.trim().to_owned(),
+            typed_title.trim().to_owned(),
+        );
+    }
+    let cleaned = clean_title(&candidate.title);
+    for separator in [" - ", " – ", " — "] {
+        if let Some((artist, title)) = cleaned.split_once(separator) {
+            let (artist, title) = (artist.trim(), title.trim());
+            if !artist.is_empty() && !title.is_empty() {
+                return (artist.to_owned(), title.to_owned());
+            }
+        }
+    }
+    let artist = artist_from_uploader(&candidate.uploader);
+    let title = if cleaned.is_empty() {
+        typed_title.trim().to_owned()
+    } else {
+        cleaned
+    };
+    (artist, title)
+}
+
+/// The file a fetched song is stored as, before the import copies it
+/// in.
+///
+/// `import_song` takes the FOLDER name from the file name, so a file
+/// called after the video id gives a folder called after the video
+/// id — `c2cmg33mwvy-m4a` in the library, which is not a song
+/// anybody can find (reported). Pure — tested.
+#[must_use]
+pub fn file_stem_for(artist: &str, title: &str) -> String {
+    let joined = if artist.trim().is_empty() {
+        title.trim().to_owned()
+    } else {
+        format!("{} - {}", artist.trim(), title.trim())
+    };
+    let safe: String = joined
+        .chars()
+        .map(|c| {
+            if c.is_control() || "/\\:*?\"<>|".contains(c) {
+                '-'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let safe = safe.trim().trim_matches('.').trim().to_owned();
+    if safe.is_empty() {
+        "found song".to_owned()
+    } else {
+        safe
+    }
+}
+
 // ── The whole way, from a typed name to a song on disk ──────────────
 
 /// How many candidates may be fetched before a search gives up.
@@ -677,15 +770,19 @@ pub fn discover(query: &str, backend: &Backend, say: &dyn Fn(String)) -> Result<
         say("measuring...".to_owned());
         match measure(&audio) {
             Ok(verdict) if verdict.good => {
-                let artist = if typed_artist.is_empty() {
-                    artist_from_uploader(&candidate.uploader)
-                } else {
-                    typed_artist.clone()
-                };
-                let title = if typed_title.is_empty() {
-                    candidate.title.clone()
-                } else {
-                    typed_title.clone()
+                let (artist, title) = names_from(&typed_artist, &typed_title, candidate);
+                // The import takes the FOLDER name from the file
+                // name, so the file is renamed before it goes in:
+                // fetched as the video's id, it filed the song under
+                // `c2cmg33mwvy-m4a` and nobody could find it.
+                let audio = match rename_to_song(&audio, &artist, &title) {
+                    Ok(renamed) => renamed,
+                    Err(error) => {
+                        // Not worth failing an import over — the song
+                        // still lands, under a poorer name.
+                        bevy::log::warn!("discover: cannot rename the fetch: {error}");
+                        audio
+                    }
                 };
                 // The lyrics before the import, so the `.lrc` beside
                 // the fetched file travels with it: `import_song`
@@ -715,6 +812,27 @@ pub fn discover(query: &str, backend: &Backend, say: &dyn Fn(String)) -> Result<
         }
     }
     Err(format!("no usable recording: {last}"))
+}
+
+/// Rename a fetched file after the song it turned out to be.
+///
+/// # Errors
+/// When the rename fails.
+fn rename_to_song(audio: &Path, artist: &str, title: &str) -> Result<PathBuf, String> {
+    let extension = audio
+        .extension()
+        .map_or_else(|| "m4a".to_owned(), |e| e.to_string_lossy().into_owned());
+    let named = audio.with_file_name(format!("{}.{extension}", file_stem_for(artist, title)));
+    if named == audio {
+        return Ok(named);
+    }
+    std::fs::rename(audio, &named).map_err(|error| format!("{error}"))?;
+    // The lyrics land beside the audio, so they travel with it.
+    let from = audio.with_extension("lrc");
+    if from.is_file() {
+        let _ = std::fs::rename(&from, named.with_extension("lrc"));
+    }
+    Ok(named)
 }
 
 /// The line the panel ends on. Pure — tested.
@@ -991,6 +1109,60 @@ mod tests {
             );
         }
         assert!(!ranked.is_empty(), "nothing survived the length rule");
+    }
+
+    #[test]
+    fn a_published_title_loses_its_furniture() {
+        assert_eq!(
+            clean_title("How Bizarre (Official Music Video)"),
+            "How Bizarre"
+        );
+        assert_eq!(clean_title("Song [HD] (Lyrics)"), "Song");
+        assert_eq!(clean_title("  Song   spaced  "), "Song spaced");
+        // Nothing to strip, nothing lost.
+        assert_eq!(clean_title("Plain Song"), "Plain Song");
+        // An unclosed bracket must not eat the rest of the name.
+        assert_eq!(clean_title("Song (unclosed"), "Song");
+    }
+
+    #[test]
+    fn the_names_come_from_the_recording_when_the_query_gave_none() {
+        // Reported: a song typed without an artist was filed under
+        // the raw query, and the catalogue was then asked for a song
+        // by that name and found nothing.
+        let published = candidate("OMC - How Bizarre (Official Video)", "OMC", None);
+        let (artist, title) = names_from("", "how bizarre ocm", &published);
+        assert_eq!(artist, "OMC");
+        assert_eq!(title, "How Bizarre");
+        // No dash in the title: the channel is the artist.
+        let bare = candidate("How Bizarre", "OMC - Topic", None);
+        assert_eq!(
+            names_from("", "how bizarre", &bare),
+            ("OMC".to_owned(), "How Bizarre".to_owned())
+        );
+        // A query that named an artist wins: the player said what
+        // they meant, and a publisher's title does not overrule it.
+        assert_eq!(
+            names_from("Nirvana", "Lithium", &published),
+            ("Nirvana".to_owned(), "Lithium".to_owned())
+        );
+    }
+
+    #[test]
+    fn the_file_is_named_after_the_song_not_the_video() {
+        // The import takes the folder name from the file name, so a
+        // file called after the id filed the song under
+        // `c2cmg33mwvy-m4a` and nobody could find it.
+        assert_eq!(file_stem_for("OMC", "How Bizarre"), "OMC - How Bizarre");
+        assert_eq!(file_stem_for("", "How Bizarre"), "How Bizarre");
+        // Nothing that would build a path may survive.
+        let awkward = file_stem_for("AC/DC", "Back: In*Black?");
+        for bad in ['/', '\\', ':', '*', '?', '"', '<', '>', '|'] {
+            assert!(!awkward.contains(bad), "{bad:?} survived in {awkward:?}");
+        }
+        // And it is never empty, or the file would have no name.
+        assert!(!file_stem_for("", "").is_empty());
+        assert!(!file_stem_for("  ", " ... ").is_empty());
     }
 
     #[test]

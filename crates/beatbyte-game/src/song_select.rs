@@ -1020,17 +1020,28 @@ fn download_input(
 fn poll_discovery(
     mut discovery: ResMut<Discovery>,
     mut status: ResMut<crate::import::ImportStatus>,
+    builtins: Option<Res<BuiltinSongs>>,
+    library: Option<ResMut<SongLibrary>>,
 ) {
     let Some(task) = discovery.task.as_mut() else {
         return;
     };
     match bevy::tasks::block_on(bevy::tasks::futures_lite::future::poll_once(&mut task.0)) {
         Some(result) => {
+            let found = result.is_ok();
             status.0 = match result {
                 Ok(line) => line,
                 Err(reason) => format!("search: {reason}"),
             };
             discovery.task = None;
+            // The library is scanned once at boot, so a song added
+            // while the browser is open is invisible until a restart
+            // — reported as "says it was added, but I cannot find
+            // the track". A dropped file has always rescanned here
+            // (`import::poll_import`); a found one now does too.
+            if found && let (Some(builtins), Some(mut library)) = (builtins, library) {
+                *library = crate::boot::scan_with_builtins(&builtins.0);
+            }
         }
         None => {
             // Still running: show whatever step it last reached.
