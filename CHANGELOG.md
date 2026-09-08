@@ -14,6 +14,57 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.50] - 2026-09-08
+
+### Added
+
+- **Add a song by name.** Type it in the song browser's search box and
+  press **Y**: the search looks the song up, picks a recording,
+  fetches it, measures it, pulls the lyrics and charts it — into the
+  same `songs/imported/` folder a dropped file lands in, through the
+  same pipeline. One way for a song to enter the library, with a
+  second door into it.
+
+  **Which recording, decided in two stages**, because the expensive
+  one must run once and not six times. On the metadata: the catalogue
+  says how long the song is and `lyrics_fetch::duration_fits` — the
+  rule written after a remix was handed the original's stamps — throws
+  out every candidate that is a different edit; what is left is
+  ordered by what its own title admits (a live take, a cover, a
+  karaoke track and an hour-long loop all say so in their names).
+  Then on the audio, for the leader only: the instruments already
+  here. The loudness report knows a video rip by its spectrum and the
+  analyzer says how sure it is of the tempo. Fail either and the next
+  candidate gets its turn.
+
+  **The audio comes from `yt-dlp`, called as a program.** Writing a
+  stream extractor was asked for and is not what this is: YouTube's
+  signature ciphering exists to keep third-party downloaders out, so
+  an extractor is thousands of lines that break at the far end's next
+  change — a feature that works on the day it ships. The moving part
+  stays outside this repository, where somebody maintains it, and the
+  player still never opens a terminal. ⚠️ Downloading from YouTube is
+  against its terms of service; the README says so where the feature
+  is described.
+
+- **AI SEARCH** (Settings, **off by default**): a model may help pick
+  which recording to fetch. It is sent the candidate **titles** — no
+  audio, no lyrics, nothing about the player — and answers with a
+  number; an answer that is not one of the candidates changes nothing.
+  Two backends, because this machine and someone else's differ: the
+  **Claude Code CLI** when it is installed (already signed in, so no
+  key is stored anywhere), else an **API key** from Settings or
+  `ANTHROPIC_API_KEY`, the environment winning because a key exported
+  for a session is narrower than one written to a file. With neither,
+  the row says so rather than promising a step that will not happen.
+
+### Changed
+
+- **The README's "what leaves your machine" says three things now,
+  not one.** It claimed "exactly one thing" and that stopped being
+  true with this feature: the typed query reaches YouTube through
+  `yt-dlp`, and the candidate titles reach a model if AI SEARCH is on.
+
 ## [0.14.49] - 2026-09-08
 
 ### Fixed

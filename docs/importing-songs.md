@@ -5,6 +5,32 @@ minute: analyze → generate → play, with the built-in editor as the
 correction pass. Every command below was run exactly as written
 (against an MP3) while writing this guide.
 
+## By name, from inside the game
+
+Type a song in the browser's search box and press **Y**. The search
+looks it up, judges the recordings it finds, fetches the best one,
+measures it, pulls the lyrics and charts it — the result lands in
+`songs/imported/` exactly as a dropped file does.
+
+It needs **`yt-dlp`** on your machine (`brew install yt-dlp`); the
+game ships no downloader of its own and says so if the tool is
+missing. ⚠️ Downloading from YouTube is against its terms of service —
+what you fetch and from where is your call.
+
+Which recording it takes is decided in two stages, and both are
+measurements rather than guesses:
+
+| Stage | What decides |
+|---|---|
+| On the metadata | The catalogue's length for the song, through the same rule the lyrics lookup uses, throws out every different edit. What is left is ordered by what its own title admits — live, cover, karaoke, nightcore, hour-long loop. |
+| On the audio, leader only | The loudness report (a video rip gives itself away by where its spectrum ends) and the analyzer's tempo confidence. Fail either and the next candidate gets its turn. |
+
+**SETTINGS → AI SEARCH** (off by default) lets a model help with the
+first stage: it reads the candidate titles and answers with a number.
+It runs through the Claude Code CLI if that is installed, otherwise
+through an API key you store; with neither, the ranking above stands
+on its own.
+
 Supported audio: **WAV, Ogg Vorbis, FLAC, MP3, M4A/AAC** — the
 verified list lives in
 [the chart-format spec](chart-format/chart-format-v1.md#supported-audio-formats).

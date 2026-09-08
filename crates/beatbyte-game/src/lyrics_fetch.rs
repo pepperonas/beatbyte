@@ -185,6 +185,30 @@ pub fn clean_query(artist: &str, title: &str) -> (String, String) {
     (strip_furniture(artist), strip_furniture(&unwiden(title)))
 }
 
+/// How long the catalogue thinks this song is.
+///
+/// The one fact the search needs BEFORE it fetches anything: with it,
+/// a recording of the wrong length is rejected on its metadata and
+/// never downloaded. `None` when the catalogue has no entry, which
+/// simply means length cannot decide.
+#[must_use]
+pub fn catalogue_duration(artist: &str, title: &str) -> Option<f64> {
+    if artist.trim().is_empty() || title.trim().is_empty() {
+        return None;
+    }
+    let response = ureq::get("https://lrclib.net/api/get")
+        .query("artist_name", artist.trim())
+        .query("track_name", title.trim())
+        .timeout(std::time::Duration::from_secs(TIMEOUT_S))
+        .call()
+        .ok()?;
+    let body = response.into_string().ok()?;
+    serde_json::from_str::<serde_json::Value>(&body)
+        .ok()?
+        .get("duration")
+        .and_then(serde_json::Value::as_f64)
+}
+
 /// Ask lrclib for a track's lyrics.
 ///
 /// `duration_s` is the song's own length. It is sent along, so the

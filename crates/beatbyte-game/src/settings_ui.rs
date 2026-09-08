@@ -41,6 +41,8 @@ pub(crate) enum Row {
     ReducedFlashing,
     /// What the stage's white flashes are timed by.
     FlashSync,
+    /// Whether a model helps a song search pick its recording.
+    AiSearch,
     FxIntensity,
     TextScale,
     HighContrast,
@@ -64,7 +66,8 @@ impl Row {
     /// Every row, in the order the screen shows them: **alphabetical
     /// by label**, and kept that way by a test — a new row goes where
     /// its name falls, not at the end of the list.
-    const ALL: [Row; 30] = [
+    const ALL: [Row; 31] = [
+        Row::AiSearch,
         Row::BeatPulse,
         Row::Controls,
         Row::FxIntensity,
@@ -114,6 +117,7 @@ impl Row {
             Row::RoomLights => "ROOM LIGHTS",
             Row::ReducedFlashing => "REDUCED FLASHING",
             Row::FlashSync => "FLASH SYNC",
+            Row::AiSearch => "AI SEARCH",
             Row::FxIntensity => "EFFECT INTENSITY",
             Row::TextScale => "UI SCALE",
             Row::HighContrast => "HIGH CONTRAST",
@@ -158,6 +162,24 @@ impl Row {
                 },
             ),
             Row::ReducedFlashing => on_off(settings.reduced_flashing),
+            Row::AiSearch => {
+                if !settings.ai_search {
+                    "OFF".to_owned()
+                } else {
+                    match crate::discover::backend_for(
+                        true,
+                        crate::discover::cli_available(),
+                        crate::discover::api_key(&settings.anthropic_api_key).as_deref(),
+                    ) {
+                        crate::discover::Backend::Cli => "ON (CLAUDE CLI)".to_owned(),
+                        crate::discover::Backend::Api(_) => "ON (API KEY)".to_owned(),
+                        // Switched on with nothing to run it: the row
+                        // says so rather than promising a step that
+                        // will not happen.
+                        crate::discover::Backend::Off => "ON (NOTHING TO RUN IT)".to_owned(),
+                    }
+                }
+            }
             Row::FlashSync => match settings.flash_sync {
                 crate::config::FlashSync::Level => "ROOM LEVEL",
                 crate::config::FlashSync::Beat => "SONG BEAT",
@@ -210,6 +232,9 @@ impl Row {
             // Which of the two clocks this is, and what it costs:
             // one needs a microphone, the other needs nothing.
             Row::FlashSync => "ROOM LEVEL hears the room; SONG BEAT needs no mic".to_owned(),
+            // The one row whose value cannot say everything: WHERE
+            // the model runs decides whether a key is needed at all.
+            Row::AiSearch => "picks which recording a song search fetches".to_owned(),
             _ => String::new(),
         }
     }
@@ -246,6 +271,7 @@ impl Row {
             Row::SongPreview => settings.song_preview = !settings.song_preview,
             Row::WatchFolder => settings.watch_folder = None,
             Row::ReducedFlashing => settings.reduced_flashing = !settings.reduced_flashing,
+            Row::AiSearch => settings.ai_search = !settings.ai_search,
             Row::FlashSync => {
                 settings.flash_sync = match settings.flash_sync {
                     crate::config::FlashSync::Level => crate::config::FlashSync::Beat,
@@ -309,6 +335,7 @@ impl Row {
             | Row::WatchFolder
             | Row::ReducedFlashing
             | Row::FlashSync
+            | Row::AiSearch
             | Row::HighContrast
             | Row::Lyrics
             | Row::TapMode
@@ -856,7 +883,7 @@ mod tests {
             );
         }
         // And nothing is listed twice or left out.
-        assert_eq!(Row::ALL.len(), 30);
+        assert_eq!(Row::ALL.len(), 31);
     }
 
     #[test]

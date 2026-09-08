@@ -307,6 +307,35 @@ project. Milestones when picked up:
   bars. Nine mutation probes and one wired drill (a lamp flares
   white, its neighbour does not, the key light never does,
   everything returns to its own colour).
+- [x] **Add a song by name** *(v0.14.50)*. Commissioned as "neue
+  Lieder über YouTube hinzufügen, samt Lyrics, optional mit KI, die
+  beste Version finden". Built as `discover.rs`: search, a two-stage
+  choice, fetch, measure, lyrics, chart — all of it feeding the
+  existing `import_song`, so there is still one way for a song to
+  enter the library.
+
+  The choice is the interesting part and it is **measured**: the
+  catalogue's length through `duration_fits` rejects other edits
+  before anything is downloaded, titles are read for what they admit
+  to, and only the leader is fetched and put on the instruments this
+  project already owns (the loudness report's spectrum verdict, the
+  analyzer's tempo confidence). No language model is needed for any
+  of that, which is why the optional one is only allowed to reorder
+  the shortlist.
+
+  ⚠️ **What was asked for and not built**: a stream extractor inside
+  the game. YouTube's signature ciphering exists to keep third-party
+  downloaders out; an extractor is thousands of lines with a half-life
+  measured in weeks. `yt-dlp` is called as a program instead — the
+  player's experience is the same and the moving part stays outside
+  this repository. Said plainly at the time rather than quietly
+  substituted.
+
+  Ten mutation probes, all firing — but see the CLAUDE.md gotcha: two
+  probe runs overlapped, one "caught" reading was taken from a
+  contaminated file, and a mutation was left in the tree until the
+  suite went red. Re-run cleanly afterwards.
+
 - [x] **The floor** *(v0.14.48)*. Asked for as "gestalte den boden
   schöner". Diagnosed before it was designed: the seams were a hard
   two-texel slot (black chasms), the boards ran thirty metres without

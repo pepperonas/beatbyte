@@ -575,6 +575,16 @@ artifact, smoke-test it (neutral CWD!), then
   metrical level: a third, a half, double — a 5 % ratio), not the
   noise of one method. Pin both sides: the other level refused, the
   other reading accepted.
+- **Two mutation runs must never overlap.** A second run that starts
+  while the first is still going snapshots its "original" from a file
+  the first has already mutated — and then restores THAT at the end,
+  leaving the mutation in the tree and every later reading worthless.
+  It happened here: `judge`'s quality branch came back as `if false`,
+  the probe that "caught" it had actually read a contaminated file,
+  and only the suite going red afterwards showed it. Wait for a run to
+  finish, and re-read the probe results of any run that overlapped
+  another. (Restoring is by scratchpad copy, never `git checkout` —
+  and for a NEW file git could not have restored it at all.)
 - **The game window can open on a second display that renders
   nothing** — measured at (−1473, −76) on this machine. Every capture
   then comes back PURE BLACK: the engine's own

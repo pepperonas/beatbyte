@@ -598,6 +598,23 @@ fn update_import_panel(
 
 /// Copy, analyze, chart and save — the blocking part, off-thread.
 /// Returns the audio-quality warning, if the file earned one.
+/// Import a file the search fetched, under a name it was searched
+/// for rather than the one the file happens to carry.
+///
+/// The same pipeline a dropped file takes — there is one way for a
+/// song to enter the library, and this is a door into it, not a
+/// second one.
+///
+/// # Errors
+/// Whatever the import itself reports.
+pub(crate) fn import_fetched(
+    source: &Path,
+    title: &str,
+    artist: &str,
+) -> Result<Option<String>, String> {
+    import_song(source, title, artist)
+}
+
 fn import_song(source: &Path, title: &str, artist: &str) -> Result<Option<String>, String> {
     let file_name = source
         .file_name()

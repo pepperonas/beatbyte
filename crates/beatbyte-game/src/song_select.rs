@@ -448,6 +448,7 @@ pub struct SongSelectPlugin;
 impl Plugin for SongSelectPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LyricsLookup>()
+            .init_resource::<Discovery>()
             .init_resource::<SelectedDifficulty>()
             .init_resource::<BrowserCursor>()
             .init_resource::<crate::mc::McQueue>()
@@ -460,6 +461,7 @@ impl Plugin for SongSelectPlugin {
                 (
                     browser_input,
                     poll_lyrics_lookup,
+                    poll_discovery,
                     search_sort_input,
                     sync_view,
                     sync_search_button,
@@ -832,6 +834,54 @@ struct StartDeps<'w, 's> {
     lookup: ResMut<'w, LyricsLookup>,
     /// The aligner's state (`K` aligns the highlighted song).
     smart: ResMut<'w, crate::smart_lyrics::SmartLyrics>,
+    /// The in-flight song search (`Y` searches for what was typed).
+    discovery: ResMut<'w, Discovery>,
+    /// The player's settings: the search reads whether the optional
+    /// model may help and, if so, with what.
+    settings: Res<'w, crate::config::Settings>,
+}
+
+/// The in-flight song search. One at a time, for the reason the
+/// lyrics lookup is: the browser is not a place to start a dozen
+/// downloads by holding a key.
+#[derive(Resource, Default)]
+pub struct Discovery {
+    task: Option<DiscoverTask>,
+    /// Where the running search is, written by the task and read by
+    /// the poll — the steps take tens of seconds each, and a minute
+    /// of silence followed by a finished song is not a state anybody
+    /// can read.
+    progress: std::sync::Arc<std::sync::Mutex<String>>,
+}
+
+/// The search's background task.
+struct DiscoverTask(bevy::tasks::Task<Result<String, String>>);
+
+/// Report a running or finished search.
+fn poll_discovery(
+    mut discovery: ResMut<Discovery>,
+    mut status: ResMut<crate::import::ImportStatus>,
+) {
+    let Some(task) = discovery.task.as_mut() else {
+        return;
+    };
+    match bevy::tasks::block_on(bevy::tasks::futures_lite::future::poll_once(&mut task.0)) {
+        Some(result) => {
+            status.0 = match result {
+                Ok(line) => line,
+                Err(reason) => format!("search: {reason}"),
+            };
+            discovery.task = None;
+        }
+        None => {
+            // Still running: show whatever step it last reached.
+            if let Ok(step) = discovery.progress.lock()
+                && !step.is_empty()
+            {
+                status.0 = step.clone();
+            }
+        }
+    }
 }
 
 /// The in-flight lyrics lookup. One at a time: the browser is not a
@@ -1024,6 +1074,42 @@ fn browser_input(
                 status.0 = format!("looking up lyrics for \"{shown}\"...");
                 start.lookup.title = shown;
             }
+        }
+    }
+    // Y searches the internet for whatever is typed in the search
+    // box and adds it: the same box, because a song you are looking
+    // for and a song you cannot find are the same thought. The
+    // library scan picks the new folder up on its own.
+    if !searching && keys.just_pressed(KeyCode::KeyY) && start.discovery.task.is_none() {
+        let query = view.filter.trim().to_owned();
+        if query.is_empty() {
+            sounds.write(crate::sfx::UiSound::Error);
+            status.0 = "type a song name in the search box first (F), then Y".to_owned();
+        } else if !crate::discover::tool_available() {
+            sounds.write(crate::sfx::UiSound::Error);
+            status.0 = crate::discover::missing_tool_message();
+        } else {
+            let backend = crate::discover::backend_for(
+                start.settings.ai_search,
+                crate::discover::cli_available(),
+                crate::discover::api_key(&start.settings.anthropic_api_key).as_deref(),
+            );
+            let progress = std::sync::Arc::clone(&start.discovery.progress);
+            let say_to = std::sync::Arc::clone(&progress);
+            if let Ok(mut step) = progress.lock() {
+                step.clear();
+            }
+            start.discovery.task = Some(DiscoverTask(
+                bevy::tasks::AsyncComputeTaskPool::get().spawn(async move {
+                    crate::discover::discover(&query, &backend, &move |line| {
+                        if let Ok(mut step) = say_to.lock() {
+                            *step = line;
+                        }
+                    })
+                }),
+            ));
+            sounds.write(crate::sfx::UiSound::Confirm);
+            status.0 = "searching...".to_owned();
         }
     }
     // K aligns the highlighted song's lyrics against its own audio

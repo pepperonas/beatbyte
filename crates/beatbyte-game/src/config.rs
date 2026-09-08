@@ -52,6 +52,23 @@ pub struct Settings {
     /// Reduced flashing: suppress full-screen flashes (accessibility).
     #[serde(default)]
     pub reduced_flashing: bool,
+    /// Let a model help pick which recording a song search fetches.
+    ///
+    /// OFF by default, and off is a complete feature: the search
+    /// ranks candidates on their length and their own names without
+    /// it. On, it runs through the Claude Code CLI when that is
+    /// installed — already signed in, so no key is stored anywhere —
+    /// and otherwise through [`Settings::anthropic_api_key`].
+    #[serde(default)]
+    pub ai_search: bool,
+    /// An Anthropic API key for that step, for machines without the
+    /// CLI.
+    ///
+    /// Empty by default. `ANTHROPIC_API_KEY` in the environment wins
+    /// over it: a key exported for a session is narrower than one
+    /// written into a file, and the narrower one should win.
+    #[serde(default)]
+    pub anthropic_api_key: String,
     /// What the stage's white flashes follow: the room's own level
     /// over the dynamic threshold, or the song's rhythm.
     #[serde(default, deserialize_with = "flash_sync_lenient")]
@@ -190,6 +207,8 @@ impl Default for Settings {
             hit_labels: true,
             no_fail: true,
             reduced_flashing: false,
+            ai_search: false,
+            anthropic_api_key: String::new(),
             flash_sync: FlashSync::default(),
             fx_intensity: 1.0,
             ui_scale: 1.0,
