@@ -14,6 +14,22 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.58] - 2026-09-09
+
+### Fixed
+
+- **The hit line no longer hangs off the sides of the neck.** Reported
+  with a screenshot and two arrows: "die weißen elemente stören". It
+  was drawn 12 % wider than the neck it lies on, so its two ends had
+  nothing under them and — pure white at emissive 2.4, through HDR and
+  bloom — became the brightest thing in the frame. The width was a
+  deliberate choice for a good reason (a line that stops at the outer
+  receptors reads as a pair of stubs rather than one line), and the
+  reason survives at 0.98: it still runs behind all five receptors,
+  now ending inside the rail. The glow came down to 1.1 with a slight
+  cool tint, so it marks where notes are struck instead of glaring.
+  Both bounds are pinned.
+
 ## [0.14.57] - 2026-09-09
 
 ### Added

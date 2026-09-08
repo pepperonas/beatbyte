@@ -328,6 +328,25 @@ pub fn neck_spread(layout: &HighwayLayout) -> f32 {
     if layout.players() == 1 { 1.45 } else { 1.0 }
 }
 
+/// How wide the hit line is, as a share of the neck it lies on.
+///
+/// Under 1: the line ends inside the rail. At 1.12 — what it was —
+/// the ends overhung the neck and glared, which is the one thing on
+/// the highway a player was moved to complain about.
+pub const HIT_LINE_WIDTH: f32 = 0.98;
+
+/// How hard the hit line glows.
+///
+/// It was 2.4, which through HDR and bloom made a white bar that
+/// outshone the receptors it is meant to sit behind. It still has to
+/// be the line notes are struck ON, so this is a dimming rather than
+/// a retreat.
+const HIT_LINE_GLOW: f32 = 1.1;
+
+/// How much bluer its glow is than white, keeping it from reading as
+/// a lamp.
+const HIT_LINE_COOL: f32 = 1.17;
+
 /// Distance ahead of the hit line for a note `seconds` away.
 #[must_use]
 pub fn note_z(seconds: f64, scroll_speed: f32) -> f32 {
@@ -1784,13 +1803,27 @@ pub fn setup_stage(
             Mesh3d(hit_bar.clone()),
             MeshMaterial3d(materials.add(StandardMaterial {
                 base_color: Color::WHITE,
-                emissive: LinearRgba::rgb(2.4, 2.4, 2.8),
+                emissive: LinearRgba::rgb(
+                    HIT_LINE_GLOW,
+                    HIT_LINE_GLOW,
+                    HIT_LINE_GLOW * HIT_LINE_COOL,
+                ),
                 ..default()
             })),
-            // Wider than the bed and lifted just clear of it: the line
-            // the notes are struck ON has to be the brightest thing
-            // on the neck, not a pair of stubs beside the receptors.
-            Transform::from_xyz(origin, 0.014, 0.0).with_scale(Vec3::new(width * 1.12, 1.0, 1.6)),
+            // Just inside the bed and lifted clear of it. It used to
+            // run 12 % WIDER, so that it read as one line rather than
+            // a pair of stubs beside the receptors — but past the
+            // neck's edge it had nothing to lie on, and the two ends
+            // hung in the air as the brightest thing in the frame
+            // ("die weißen elemente stören", with arrows at exactly
+            // those two stubs). Ending inside the rail keeps the line
+            // continuous behind the receptors, which was the point,
+            // and puts it back on the neck.
+            Transform::from_xyz(origin, 0.014, 0.0).with_scale(Vec3::new(
+                width * HIT_LINE_WIDTH,
+                1.0,
+                1.6,
+            )),
             RenderLayers::layer(STAGE_LAYER),
         ));
     }
@@ -2921,6 +2954,23 @@ mod tests {
         // Built from a hash, not a random number: a fretboard that
         // reshuffled itself between runs would be a distraction.
         assert!((board_shade(0.31, 0.62) - board_shade(0.31, 0.62)).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn the_hit_line_stays_on_the_neck_and_under_the_receptors() {
+        // The line must end INSIDE the neck: at 1.12 — what it was —
+        // its two ends had nothing under them and hung in the air,
+        // which is the one thing on the highway anybody complained
+        // about. It still has to run behind all five receptors,
+        // though, or it reads as stubs between them rather than one
+        // line.
+        const { assert!(HIT_LINE_WIDTH < 1.0 && HIT_LINE_WIDTH > 0.9) }
+        // It lies UNDER the receptors and behind the notes, so it
+        // must not be the brightest thing on the neck — 2.4 was, and
+        // through HDR and bloom it read as a bar of glare. Lit, but
+        // not a lamp: a touch cooler than white.
+        const { assert!(HIT_LINE_GLOW < 1.5 && HIT_LINE_GLOW > 0.5) }
+        const { assert!(HIT_LINE_COOL > 1.0) }
     }
 
     #[test]
