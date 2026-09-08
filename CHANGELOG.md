@@ -14,6 +14,27 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.53] - 2026-09-08
+
+### Fixed
+
+- **A typed space no longer starts a song.** Reported against the
+  add-a-song field, and the report came with the right instinct: the
+  search **filter had it too**, since long before that field existed.
+
+  CONFIRM is bound to Space *and* Enter, and the browser acted on it
+  whatever was being typed — so a space was both a space and "play",
+  and typing a song's name started a song halfway through. The rule
+  now is that **while a text field is taking keys, a printable key is
+  text**. Enter is not printable, so the filter keeps its useful
+  habit — narrow the list, press Enter, the highlighted song plays —
+  while the add-a-song field, where Enter means "search", starts
+  nothing at all.
+
+  The decision is a pure function (`may_start`) rather than a
+  condition buried in a sixteen-parameter system, so it is pinned:
+  three tests, three mutation probes, all firing.
+
 ## [0.14.52] - 2026-09-08
 
 ### Fixed

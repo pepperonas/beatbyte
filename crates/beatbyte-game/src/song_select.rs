@@ -353,6 +353,30 @@ fn sync_search_button(
     }
 }
 
+/// Whether a keypress may start the highlighted song.
+///
+/// CONFIRM is bound to Space AND Enter, and the browser used to act
+/// on it whatever was being typed. So a space in the search filter
+/// was both a space and "play" — typing a song's name started a
+/// song. Reported against the add-a-song field, and true of the
+/// filter since long before it.
+///
+/// The rule: **while a text field is taking keys, a printable key is
+/// text.** Enter is not printable, so the filter keeps "narrow the
+/// list, then Enter plays the highlighted one". The add-a-song field
+/// means Enter as "search", so nothing there starts a song.
+/// Pure — tested.
+#[must_use]
+pub fn may_start(filtering: bool, prompt_open: bool, enter: bool, confirm: bool) -> bool {
+    if prompt_open {
+        false
+    } else if filtering {
+        enter
+    } else {
+        confirm
+    }
+}
+
 /// The status line's text for the current view state.
 fn status_text(view: &BrowserView) -> String {
     let direction = if view.flipped { " (reversed)" } else { "" };
@@ -1161,7 +1185,13 @@ fn browser_input(
         selected.0 = offered[position + 1];
     }
 
-    if nav.confirm || clicked_selected {
+    let start_song = may_start(
+        view.searching,
+        start.prompt.open,
+        keys.just_pressed(KeyCode::Enter),
+        nav.confirm,
+    );
+    if start_song || clicked_selected {
         sounds.write(crate::sfx::UiSound::Confirm);
         match prepare_song(entry, &start.builtins) {
             Ok(song) => {
@@ -2548,6 +2578,42 @@ mod view_tests {
         assert_eq!(clip_chars("short", 10), "short");
         assert_eq!(clip_chars("exactlyten", 10), "exactlyten");
         assert_eq!(clip_chars("elevenchars", 10), "elevencha~");
+    }
+}
+
+/// The rule that keeps a typed space from starting a song.
+#[cfg(test)]
+mod may_start_tests {
+    use super::may_start;
+
+    #[test]
+    fn a_printable_key_is_text_while_a_field_is_taking_keys() {
+        // Reported against the add-a-song field: pressing space
+        // started a track. CONFIRM is bound to Space and Enter, and
+        // the browser acted on it whatever was being typed — so the
+        // filter had it too, since long before the field existed.
+        let space_only = |filtering, prompt| may_start(filtering, prompt, false, true);
+        assert!(!space_only(true, false), "a space in the filter is a space");
+        assert!(!space_only(false, true), "and in the field it is a space");
+        assert!(
+            space_only(false, false),
+            "with nothing being typed, CONFIRM still plays"
+        );
+    }
+
+    #[test]
+    fn enter_still_plays_from_the_filter_but_never_from_the_field() {
+        // Narrowing the list and hitting Enter is worth keeping;
+        // Enter in the add-a-song field means "search".
+        assert!(may_start(true, false, true, true), "filter: Enter plays");
+        assert!(!may_start(false, true, true, true), "field: Enter searches");
+        assert!(may_start(false, false, true, true));
+    }
+
+    #[test]
+    fn the_field_wins_over_the_filter_when_both_are_somehow_open() {
+        // The field is the narrower state, so it decides.
+        assert!(!may_start(true, true, true, true));
     }
 }
 
