@@ -836,8 +836,6 @@ struct StartDeps<'w, 's> {
     lookup: ResMut<'w, LyricsLookup>,
     /// The aligner's state (`K` aligns the highlighted song).
     smart: ResMut<'w, crate::smart_lyrics::SmartLyrics>,
-    /// The in-flight song search (`Y` searches for what was typed).
-    discovery: ResMut<'w, Discovery>,
     /// The "add a song by name" field (`D` opens it).
     prompt: ResMut<'w, DownloadPrompt>,
 }
@@ -897,6 +895,30 @@ fn download_input(
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
     if !prompt.open {
+        // `D` opens the field HERE and not in `browser_input`, which
+        // runs one system earlier: with the open there, the very
+        // keystroke that caused it was still unread when this system
+        // collected the text, and a `d` appeared in the empty field
+        // (reported). One system owning the field is what fixes it —
+        // proven in the running game, where the field now opens
+        // empty and the next characters land whole.
+        //
+        // The drain is belt to that braces: a reader that returns
+        // without reading leaves its cursor behind a frame. ⚠️ No
+        // test covers it — removing it fails nothing, because the
+        // harness loses a stale message the game would deliver. It
+        // is kept as the cheap half of a hazard that is real in
+        // principle, not as the demonstrated fix. A reader's cursor
+        // is its own, so emptying it takes nothing from the other
+        // systems that read the keyboard.
+        let opening = keys.just_pressed(KeyCode::KeyD) && discovery.task.is_none();
+        for _ in typed.read() {}
+        if opening {
+            prompt.open = true;
+            prompt.text.clear();
+            sounds.write(crate::sfx::UiSound::Confirm);
+            status.0 = prompt.line();
+        }
         return;
     }
     for event in typed.read() {
@@ -1191,16 +1213,6 @@ fn browser_input(
                 start.lookup.title = shown;
             }
         }
-    }
-    // D opens the "add a song by name" field. Its own field, not
-    // the browser's filter: `Y` on the filter meant leaving the box
-    // to press it, and a song whose name carries the key could not
-    // be typed at all (reported).
-    if !searching && keys.just_pressed(KeyCode::KeyD) && start.discovery.task.is_none() {
-        start.prompt.open = true;
-        start.prompt.text.clear();
-        sounds.write(crate::sfx::UiSound::Confirm);
-        status.0 = start.prompt.line();
     }
     // K aligns the highlighted song's lyrics against its own audio
     // (plan L4b) - word and letter timing from the `.lrc` beside it,
@@ -2589,6 +2601,56 @@ mod download_prompt_tests {
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .release(code);
+    }
+
+    /// Press the opening key for real, from a closed field.
+    fn press_d(app: &mut App) {
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyD);
+        app.world_mut().write_message(KeyboardInput {
+            key_code: KeyCode::KeyD,
+            logical_key: Key::Character("d".into()),
+            state: ButtonState::Pressed,
+            text: Some("d".into()),
+            repeat: false,
+            window: Entity::PLACEHOLDER,
+        });
+        app.update();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release(KeyCode::KeyD);
+    }
+
+    #[test]
+    fn the_key_that_opens_the_field_does_not_type_itself_into_it() {
+        // Reported: "wenn ich d drücke wird direkt d in die eingabe
+        // übernommen." The open sat one system earlier, so the
+        // keystroke that caused it was still unread when the text
+        // was collected. Opening and reading now happen in one pass.
+        let mut app = app();
+        app.world_mut().resource_mut::<DownloadPrompt>().open = false;
+        press_d(&mut app);
+        assert!(
+            app.world().resource::<DownloadPrompt>().open,
+            "D opens the field"
+        );
+        // A quiet frame, and this is the one that matters: the
+        // keystroke was written before the field existed, so an
+        // unread message would be delivered NOW and typed in. It is
+        // also what the harness alone will not show — writing the
+        // next characters loses the stale one, and the first version
+        // of this test passed with the drain removed.
+        app.update();
+        let prompt = app.world().resource::<DownloadPrompt>();
+        assert!(
+            prompt.text.is_empty(),
+            "the field starts empty, not with a d: {:?}",
+            prompt.text
+        );
+        // And the next keystroke does land in it.
+        type_text(&mut app, "aft Punk");
+        assert_eq!(app.world().resource::<DownloadPrompt>().text, "aft Punk");
     }
 
     #[test]

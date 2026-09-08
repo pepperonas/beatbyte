@@ -14,6 +14,28 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.52] - 2026-09-08
+
+### Fixed
+
+- **`D` no longer types a `d` into the field it opens.** Reported the
+  moment the field shipped. `browser_input` opened it and
+  `download_input`, four systems later in the same chain, then read
+  the very keystroke that had opened it. The field now opens in the
+  system that owns it, so the open and the reading happen in one
+  pass — which is what `search_sort_input` has always done for the
+  filter, where the drain that looks for a typed `/` happens to
+  swallow the `f` as well.
+
+  Verified in the **running game**, because that is where it was
+  seen: the field opens with an empty text, `aft punk` typed after it
+  arrives whole, and `Esc` closes it. ⚠️ The extra drain on the
+  opening frame is kept as cheap insurance against a reader whose
+  cursor lags a frame, but no test covers it — removing it fails
+  nothing, because the harness loses a stale message that the game
+  would deliver. The comment says so rather than claiming it is the
+  fix.
+
 ## [0.14.51] - 2026-09-08
 
 ### Fixed
