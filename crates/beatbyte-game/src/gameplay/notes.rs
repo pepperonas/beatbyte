@@ -54,7 +54,6 @@ pub fn spawn_highways(
     }
     let theme = theme.0;
     let shapes = &*shapes;
-    let round = settings.round_gems;
     let perspective = settings.perspective;
     for index in players.iter() {
         let player = index.0;
@@ -74,11 +73,7 @@ pub fn spawn_highways(
                 Mesh2d(meshes.add(mesh)),
                 MeshMaterial2d(materials.add(bevy::sprite_render::ColorMaterial {
                     color: theme.surface,
-                    texture: if round {
-                        Some(shapes.bed_gradient())
-                    } else {
-                        None
-                    },
+                    texture: Some(shapes.bed_gradient()),
                     ..Default::default()
                 })),
                 Transform::from_xyz(origin, 0.0, -10.0),
@@ -88,11 +83,7 @@ pub fn spawn_highways(
                 GameplayScreen,
                 super::fx::HighwayBed,
                 Sprite {
-                    image: if round {
-                        shapes.bed_gradient()
-                    } else {
-                        Handle::default()
-                    },
+                    image: shapes.bed_gradient(),
                     color: theme.surface,
                     custom_size: Some(Vec2::new(layout.bed_width(), 900.0)),
                     ..Default::default()
@@ -100,22 +91,20 @@ pub fn spawn_highways(
                 Transform::from_xyz(origin, 0.0, -10.0),
             ));
         }
-        // Stage vignette (round style): darkened corners focus the
-        // lit highway. Sits above backdrop/bed/guides, below notes.
-        if round {
-            commands.spawn((
-                GameplayScreen,
-                Sprite {
-                    image: shapes.vignette(),
-                    color: Color::BLACK,
-                    custom_size: Some(Vec2::new(4200.0, 2400.0)),
-                    ..Default::default()
-                },
-                Transform::from_xyz(0.0, 0.0, -3.0),
-            ));
-        }
-        // Lane guide lines — soft glow strips in the round style; in
-        // the depth view they lean toward the vanishing point.
+        // Stage vignette: darkened corners focus the lit highway.
+        // Sits above backdrop/bed/guides, below notes.
+        commands.spawn((
+            GameplayScreen,
+            Sprite {
+                image: shapes.vignette(),
+                color: Color::BLACK,
+                custom_size: Some(Vec2::new(4200.0, 2400.0)),
+                ..Default::default()
+            },
+            Transform::from_xyz(0.0, 0.0, -3.0),
+        ));
+        // Lane guide lines — soft glow strips; in the depth view they
+        // lean toward the vanishing point.
         for lane in Lane::ALL {
             let lane_x = layout.lane_x(player, lane);
             let transform = if perspective {
@@ -144,21 +133,16 @@ pub fn spawn_highways(
             commands.spawn((
                 GameplayScreen,
                 Sprite {
-                    image: if round {
-                        shapes.glow_strip()
-                    } else {
-                        Handle::default()
-                    },
-                    color: palette::dimmed(theme.lane_color(lane), if round { 0.16 } else { 0.06 }),
-                    custom_size: Some(Vec2::new(if round { 10.0 } else { 2.0 }, length)),
+                    image: shapes.glow_strip(),
+                    color: palette::dimmed(theme.lane_color(lane), 0.16),
+                    custom_size: Some(Vec2::new(10.0, length)),
                     ..Default::default()
                 },
                 transform,
             ));
         }
         // Receptor row: ring look = the gem body under a smaller
-        // background copy. 8-bit style keeps the per-lane shapes
-        // (colorblind-safe default); round style uses discs.
+        // background copy, in discs.
         let receptor = layout.receptor_size();
         // Depth view: receptors LIE on the board — a flattened ring
         // sells the perspective; and a glowing hit line spans the
@@ -168,11 +152,7 @@ pub fn spawn_highways(
             commands.spawn((
                 GameplayScreen,
                 Sprite {
-                    image: if round {
-                        shapes.glow_strip()
-                    } else {
-                        Handle::default()
-                    },
+                    image: shapes.glow_strip(),
                     color: Color::srgba(1.0, 1.0, 1.0, 0.16),
                     custom_size: Some(Vec2::new(layout.bed_width() * 1.02, 5.0)),
                     ..Default::default()
@@ -211,8 +191,6 @@ pub fn spawn_highways(
                 },
                 gem_sprite(
                     shapes,
-                    lane,
-                    round,
                     palette::dimmed(theme.lane_color(lane), 0.35),
                     receptor,
                 ),
@@ -221,7 +199,7 @@ pub fn spawn_highways(
             commands.spawn((
                 GameplayScreen,
                 ReceptorCore { player, lane },
-                gem_sprite(shapes, lane, round, theme.background, receptor * 0.72),
+                gem_sprite(shapes, theme.background, receptor * 0.72),
                 Transform::from_xyz(x, RECEPTOR_Y, -4.0).with_scale(base_scale),
             ));
         }
@@ -262,7 +240,6 @@ pub fn spawn_due_notes(
                 &layout,
                 &theme.0,
                 &shapes,
-                settings.round_gems,
                 index.0,
                 cursor,
                 &event,
@@ -279,7 +256,6 @@ fn spawn_event_sprites(
     layout: &HighwayLayout,
     theme: &crate::theme::Theme,
     shapes: &crate::shapes::LaneShapes,
-    round: bool,
     player: usize,
     event_index: usize,
     event: &beatbyte_core::NoteEvent,
@@ -292,10 +268,10 @@ fn spawn_event_sprites(
         // 8-bit: HOPOs render smaller with a bright core. Round: all
         // gems the same size, white center on every note, dark ring
         // ONLY on strum notes — the documented classic distinction.
-        let gem = if hopo && !round { size * 0.78 } else { size };
+        let gem = size;
         // Round gems run slightly emissive so the HDR bloom makes
         // them glow.
-        let body_color = if round { emissive(color, 1.35) } else { color };
+        let body_color = emissive(color, 1.35);
         let entity = commands
             .spawn((
                 GameplayScreen,
@@ -305,11 +281,11 @@ fn spawn_event_sprites(
                     resolved: false,
                     flat_x: layout.lane_x(player, lane),
                 },
-                gem_sprite(shapes, lane, round, body_color, gem),
+                gem_sprite(shapes, body_color, gem),
                 Transform::from_xyz(layout.lane_x(player, lane), 2000.0, 0.0),
             ))
             .id();
-        if round {
+        {
             commands.entity(entity).with_children(|parent| {
                 parent.spawn((
                     Sprite {
@@ -350,20 +326,13 @@ fn spawn_event_sprites(
                     ));
                 }
             });
-        } else if hopo {
-            commands.entity(entity).with_children(|parent| {
-                parent.spawn((
-                    shape_sprite(shapes, lane, Color::WHITE.with_alpha(0.85), gem * 0.42),
-                    Transform::from_xyz(0.0, 0.0, 0.5),
-                ));
-            });
         }
 
-        // Sustain tail: extends upward (later in time). Round style:
-        // a soft glowing tube instead of a hard rectangle.
+        // Sustain tail: extends upward (later in time) — a soft
+        // glowing tube instead of a hard rectangle.
         if event.is_sustain() {
             let tail_height = (event.sustain_s as f32) * scroll_speed;
-            let tail_width = if round { size * 0.55 } else { size * 0.35 };
+            let tail_width = size * 0.55;
             commands.entity(entity).with_children(|parent| {
                 parent.spawn((
                     SustainTail {
@@ -371,11 +340,7 @@ fn spawn_event_sprites(
                         width: tail_width,
                     },
                     Sprite {
-                        image: if round {
-                            shapes.tube()
-                        } else {
-                            Handle::default()
-                        },
+                        image: shapes.tube(),
                         color: color.with_alpha(0.35),
                         custom_size: Some(Vec2::new(tail_width, tail_height)),
                         ..Default::default()
@@ -490,7 +455,7 @@ pub mod depth {
     }
 }
 
-/// A bar line ("fret") across the highway — round style only, the
+/// A bar line ("fret") across the highway — the
 /// classic look's fretboard feel. Spawned once per bar, scrolled by
 /// [`move_fret_lines`].
 #[derive(Component)]
@@ -509,7 +474,7 @@ pub fn spawn_fret_lines(
     song: Res<crate::boot::LoadedSong>,
     players: Query<&PlayerIndex, With<PlayerSession>>,
 ) {
-    if !settings.round_gems || super::stage3d::active(&settings) {
+    if super::stage3d::active(&settings) {
         return;
     }
     // The bars as the chart's grid has them — tracked where the
@@ -914,16 +879,6 @@ pub fn apply_note_events(
     }
 }
 
-/// A lane-shaped sprite: the generated mask image tinted by `color`.
-fn shape_sprite(shapes: &crate::shapes::LaneShapes, lane: Lane, color: Color, size: f32) -> Sprite {
-    Sprite {
-        image: shapes.image(lane),
-        color,
-        custom_size: Some(Vec2::splat(size)),
-        ..Default::default()
-    }
-}
-
 /// A trapezoid running from a wide near edge to a narrow far edge —
 /// the depth view's highway bed. UV v=1 at the near edge matches the
 /// bed gradient's "lighter near" orientation.
@@ -962,16 +917,10 @@ fn emissive(color: Color, factor: f32) -> Color {
     })
 }
 
-/// The gem body in the active note style (8-bit lane shape or disc).
-fn gem_sprite(
-    shapes: &crate::shapes::LaneShapes,
-    lane: Lane,
-    round: bool,
-    color: Color,
-    size: f32,
-) -> Sprite {
+/// The gem body: a disc.
+fn gem_sprite(shapes: &crate::shapes::LaneShapes, color: Color, size: f32) -> Sprite {
     Sprite {
-        image: shapes.body(lane, round),
+        image: shapes.body(),
         color,
         custom_size: Some(Vec2::splat(size)),
         ..Default::default()

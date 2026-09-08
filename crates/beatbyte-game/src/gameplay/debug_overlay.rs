@@ -403,10 +403,6 @@ pub fn update_debug_overlay(
         &[
             ("tap", on_off(settings.tap_mode)),
             ("nofail", on_off(settings.no_fail)),
-            (
-                "style",
-                if settings.round_gems { "round" } else { "8bit" }.to_owned(),
-            ),
         ],
     ));
     lines.push(row("", &[("3d", on_off(settings.stage_3d))]));

@@ -136,23 +136,6 @@ pub struct ReceptorFill {
     pub lane: Lane,
 }
 
-/// The flame that leaps off a fret when a note lands on it.
-///
-/// The genre's signature moment, and the one thing the stage still
-/// did not do: a hit produced a flat ring spreading across the board
-/// and nothing else. The comment that justified that said the flame
-/// "spreads across the board rather than rising off it", which is
-/// backwards — it rises.
-#[derive(Component)]
-pub struct HitFlame {
-    /// Owning player.
-    pub player: usize,
-    /// Which fret.
-    pub lane: Lane,
-    /// 1.0 at the strike, decaying to 0.
-    pub life: f32,
-}
-
 /// Per-fret heat for this frame — how hard the fret is pressed, how
 /// recently a note landed on it, and whether a sustain holds it —
 /// as `update_receptors` computed it. Published so the round style's
@@ -228,32 +211,6 @@ pub fn active(settings: &Settings) -> bool {
 /// the effect was wanted for is already done, honestly, by the
 /// stage's linear fog.
 ///
-/// What the neck is made of.
-///
-/// The genre's neck is an instrument: a dark, near-neutral board on
-/// which the gems and the fret buttons are the only colour, with pale
-/// strings between the lanes. The 8-bit style keeps its own idea — a
-/// neon runway with a glowing line per lane — because that IS its
-/// look, and the rule is that the 8-bit mode stays untouched. Pure —
-/// tested, so the gate cannot silently invert.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NeckStyle {
-    /// Five glowing lane lines, bright rails: the 8-bit stage.
-    Neon,
-    /// Dark board, pale strings, quiet rails: the round style.
-    Instrument,
-}
-
-/// Which neck the settings ask for.
-#[must_use]
-pub fn neck_style(settings: &Settings) -> NeckStyle {
-    if settings.round_gems {
-        NeckStyle::Instrument
-    } else {
-        NeckStyle::Neon
-    }
-}
-
 /// The colour of a string on the instrument neck: one pale, slightly
 /// warm shade for all five, so lane identity comes from the buttons
 /// and the gems — where the player's eye already is — and not from
@@ -281,11 +238,7 @@ pub fn string_color(stage: crate::theme::Theme) -> Color {
 /// the face, around the dot.
 #[must_use]
 pub fn centre_radius(gem: f32, hopo: bool) -> f32 {
-    if hopo {
-        gem * hopo_face(NeckStyle::Instrument) * 0.68
-    } else {
-        gem * 0.16
-    }
+    if hopo { gem * 0.68 } else { gem * 0.16 }
 }
 
 /// The black ring on a strum note's face: `(inner, outer)` radii.
@@ -295,20 +248,6 @@ pub fn centre_radius(gem: f32, hopo: bool) -> f32 {
 pub fn face_ring_radii(gem: f32) -> (f32, f32) {
     let inner = centre_radius(gem, false);
     (inner, gem * 0.44)
-}
-
-/// A HOPO's face radius relative to a strum note's.
-///
-/// Neon: smaller, the way the 2D views tell a HOPO apart. Instrument:
-/// the SAME size — there the white cap is the mark, and a second
-/// difference on top of it only made the notes look uneven (user:
-/// "alle Töne sollen gleich groß sein"). Pure — tested.
-#[must_use]
-pub const fn hopo_face(neck: NeckStyle) -> f32 {
-    match neck {
-        NeckStyle::Neon => 0.62,
-        NeckStyle::Instrument => 1.0,
-    }
 }
 
 /// The board of the instrument neck: the theme's hue, pulled well
@@ -577,97 +516,6 @@ pub struct HypeTinted {
 }
 
 // ── Burning edges while Star Power runs ─────────────────────────────
-//
-// The genre's classic Star-Power tell: the highway's edges catch
-// BLUE fire while the boost is active. Ours is a row of additive
-// flame cones licking up from each rail — animated purely through
-// transforms (the per-frame channel this stage reserves for motion;
-// the shared flame material is never written after creation), grown
-// in and out with the same eased feel as the hype tint so the fire
-// arrives with the color instead of popping.
-
-/// One flame lick on a highway edge.
-#[derive(Component)]
-pub struct EdgeFlame {
-    /// The player whose Hype this flame answers.
-    pub player: usize,
-    /// Phase offset so the row never moves as one block.
-    pub phase: f32,
-    /// This lick's resting height scale (raggedness).
-    pub base: f32,
-}
-
-/// Spacing of the flame licks along the rail.
-const EDGE_FLAME_SPACING: f32 = 0.9;
-/// A lick's resting height in world units (scaled by the flicker).
-/// Sized against the rail's own glow: the first pass at 0.34 was
-/// rendered and CONFIRMED on screen coordinates, yet visually
-/// drowned in the rail's bloom - fire that must read from the
-/// receptor line to mid-neck needs this much body.
-const EDGE_FLAME_HEIGHT: f32 = 0.62;
-/// The blue the edges burn with (commissioned: blue, the genre's
-/// Star-Power color — not the house Hype purple).
-const EDGE_FLAME_BLUE: Color = Color::srgb(0.35, 0.65, 1.0);
-
-/// How tall a lick stands right now, as a factor on its rest: two
-/// incommensurable sines layered so the row flickers without a
-/// visible loop, bounded well away from zero — a flame that blinks
-/// out reads as the boost dropping. Pure — tested.
-#[must_use]
-pub fn flame_lick(seconds: f32, phase: f32) -> f32 {
-    let a = (seconds * 9.3 + phase).sin();
-    let b = (seconds * 14.1 + phase * 1.7).sin();
-    1.0 + 0.24 * a + 0.14 * b
-}
-
-/// Drive the edge fire: visible and licking while the player's Hype
-/// runs, eased away when it ends. Transforms and visibility only.
-pub fn burn_edges_for_hype(
-    settings: Res<Settings>,
-    time: Res<Time>,
-    players: Query<(&PlayerIndex, &PlayerSession)>,
-    mut flames: Query<(&EdgeFlame, &mut Transform, &mut Visibility)>,
-    mut blend: Local<Vec<f32>>,
-) {
-    if !active(&settings) {
-        return;
-    }
-    let delta = time.delta_secs();
-    // The same 6/s ease the hype tint uses, advanced once per player.
-    for (index, player) in &players {
-        if blend.len() <= index.0 {
-            blend.resize(index.0 + 1, 0.0);
-        }
-        let target = if player.session.performance().hype_active() {
-            1.0
-        } else {
-            0.0
-        };
-        blend[index.0] += (target - blend[index.0]) * (6.0 * delta).min(1.0);
-    }
-    let now = time.elapsed_secs();
-    for (flame, mut transform, mut visibility) in &mut flames {
-        let grown = blend.get(flame.player).copied().unwrap_or(0.0);
-        // Fully out: hide and stop writing transforms - the resting
-        // edge look is exactly the pre-existing rails.
-        let wanted = if grown < 0.02 {
-            Visibility::Hidden
-        } else {
-            Visibility::Inherited
-        };
-        if *visibility != wanted {
-            *visibility = wanted;
-        }
-        if wanted == Visibility::Hidden {
-            continue;
-        }
-        let height = EDGE_FLAME_HEIGHT * flame.base * flame_lick(now, flame.phase) * grown;
-        transform.scale = Vec3::new(grown, height, grown);
-        // The cone's origin is its centre: keep the BASE seated on
-        // the rail while the tip licks upward.
-        transform.translation.y = 0.015 + height / 2.0;
-    }
-}
 
 /// Wash the neck with the energy colour while hype is running — and
 /// turn the notes themselves toward it, the genre's star-power
@@ -915,7 +763,6 @@ pub fn sync_phrase_rims(
     let Some(assets) = assets else {
         return;
     };
-    let neon = neck_style(&settings) == NeckStyle::Neon;
     for (note, mut rim, mut mesh, mut material, mut transform) in &mut rims {
         let Some((_, player)) = players.iter().find(|(index, _)| index.0 == note.player) else {
             continue;
@@ -942,11 +789,7 @@ pub fn sync_phrase_rims(
         } else {
             assets.rim_material.clone()
         };
-        transform.scale = if wanted && rim.hopo && neon {
-            Vec3::splat(0.72)
-        } else {
-            Vec3::ONE
-        };
+        transform.scale = Vec3::ONE;
     }
 }
 
@@ -1421,7 +1264,6 @@ pub fn setup_stage(
         return;
     }
     let stage = theme.0;
-    let neck = neck_style(&settings);
 
     // The camera sits behind and above the hit line, tilted down the
     // neck. This is the framing the genre settled on: close enough
@@ -1460,38 +1302,35 @@ pub fn setup_stage(
         },
         bevy::core_pipeline::tonemapping::Tonemapping::TonyMcMapface,
     ));
-    // Bloom (and the Hdr it requires) belongs to the ROUND style
-    // only, and every camera on the window must agree on HDR — an
-    // SDR 2D camera over an HDR stage camera silently drops the
-    // stage's whole pass (the invisible-stage bug). sync_bloom keeps
-    // this in step when the style is toggled at runtime.
-    if settings.round_gems {
-        stage_camera.insert((
-            bevy::camera::Hdr,
-            bevy::post_process::bloom::Bloom {
-                intensity: 0.18,
-                ..bevy::post_process::bloom::Bloom::NATURAL
-            },
-        ));
-    }
-    if neck == NeckStyle::Instrument {
-        // The far end of the neck fades into the venue's dark, so
-        // notes emerge from it rather than from the crowd. Linear,
-        // because a curve with a knee is a thing to tune by eye and
-        // a line is a thing to state: the neck's last third (camera
-        // distance ~21–31) darkens to about half, the back wall (~45)
-        // recedes to a fifth. Never to full black, or the venue would
-        // be a hole.
-        stage_camera.insert(bevy::pbr::DistanceFog {
-            color: stage.background.mix(&Color::BLACK, 0.85),
-            directional_light_color: Color::NONE,
-            directional_light_exponent: 8.0,
-            falloff: bevy::pbr::FogFalloff::Linear {
-                start: FOG_START,
-                end: FOG_END,
-            },
-        });
-    }
+    // Bloom, and the Hdr it requires. Every camera on the window
+    // must agree on HDR — an SDR 2D camera over an HDR stage camera
+    // silently drops the stage's whole pass (the invisible-stage
+    // bug). Both cameras carry it from birth now; while the note
+    // style could be toggled at runtime a system had to keep them in
+    // step, and that system was where the bug lived.
+    stage_camera.insert((
+        bevy::camera::Hdr,
+        bevy::post_process::bloom::Bloom {
+            intensity: 0.18,
+            ..bevy::post_process::bloom::Bloom::NATURAL
+        },
+    ));
+    // The far end of the neck fades into the venue's dark, so
+    // notes emerge from it rather than from the crowd. Linear,
+    // because a curve with a knee is a thing to tune by eye and
+    // a line is a thing to state: the neck's last third (camera
+    // distance ~21–31) darkens to about half, the back wall (~45)
+    // recedes to a fifth. Never to full black, or the venue would
+    // be a hole.
+    stage_camera.insert(bevy::pbr::DistanceFog {
+        color: stage.background.mix(&Color::BLACK, 0.85),
+        directional_light_color: Color::NONE,
+        directional_light_exponent: 8.0,
+        falloff: bevy::pbr::FogFalloff::Linear {
+            start: FOG_START,
+            end: FOG_END,
+        },
+    });
 
     // Key light down the neck plus a soft fill, so gems read as
     // spheres rather than flat discs.
@@ -1613,33 +1452,9 @@ pub fn setup_stage(
     // reads as a drawn outline; a ring seated in a metal collar reads
     // as a thing you could press.
     let collar_mesh = meshes.add(Torus::new(GEM_RADIUS * 1.14, GEM_RADIUS * 1.46));
-    // The ring on the board — the impact — and the flame that leaps
-    // off it. Two halves of one moment: the ring says WHERE, the
-    // flame says HOW MUCH.
+    // The ring on the board: the impact, saying WHERE.
     let burst_mesh = meshes.add(Cylinder::new(GEM_RADIUS * 1.9, 0.012));
-    let flame_mesh = meshes.add(Cone {
-        radius: GEM_RADIUS * 1.15 * neck_spread(&layout),
-        height: 1.0,
-    });
     let hit_bar = meshes.add(Cuboid::new(1.0, 0.02, 0.06));
-    // The Star-Power edge fire: one cone and ONE material shared by
-    // every lick on every rail; the burn system animates transforms
-    // only and never touches this material again.
-    let edge_flame_mesh = meshes.add(Cone {
-        radius: 0.15,
-        height: 1.0,
-    });
-
-    let edge_flame_material = materials.add(StandardMaterial {
-        // The house additive recipe (the beams, halos and haze all
-        // use it): an UNLIT material renders its BASE color and
-        // ignores emissive entirely - the first version wrote alpha
-        // 0.0 plus emissive and the fire was invisible.
-        base_color: EDGE_FLAME_BLUE.with_alpha(0.85),
-        alpha_mode: AlphaMode::Add,
-        unlit: true,
-        ..default()
-    });
 
     for index in &players {
         let player = index.0;
@@ -1656,10 +1471,7 @@ pub fn setup_stage(
         // bed the gems floated in a void. Instrument: darker and
         // warmer, because on that neck the gems must be the brightest
         // thing and the grain texture gives the surface its presence.
-        let board_base = match neck {
-            NeckStyle::Neon => stage.background.mix(&Color::WHITE, 0.16),
-            NeckStyle::Instrument => instrument_board_color(stage),
-        };
+        let board_base = instrument_board_color(stage);
         commands.spawn((
             GameplayScreen,
             Stage3d,
@@ -1697,10 +1509,8 @@ pub fn setup_stage(
         // and the theme's colour lives in the decorated trim outside
         // it. Measured with a coloured rail at 0.7 glow: still the
         // loudest line on the board.
-        let (rail_base, rail_glow, trim_glow) = match neck {
-            NeckStyle::Neon => (stage.accent, 2.6, 1.05),
-            NeckStyle::Instrument => (string_color(stage).mix(&stage.accent, 0.3), 0.45, 0.32),
-        };
+        let (rail_base, rail_glow, trim_glow) =
+            (string_color(stage).mix(&stage.accent, 0.3), 0.45, 0.32);
         for side in [-1.0f32, 1.0] {
             commands.spawn((
                 GameplayScreen,
@@ -1724,39 +1534,6 @@ pub fn setup_stage(
                 Transform::from_xyz(origin + side * width / 2.0, 0.015, centre),
                 RenderLayers::layer(STAGE_LAYER),
             ));
-
-            // The Star-Power fire: a row of blue flame licks along
-            // this rail, hidden until the boost runs (see
-            // `burn_edges_for_hype`). One shared additive material
-            // for every lick - it is never written again. Neon only:
-            // the instrument neck's edge crackles with the arc in
-            // `super::arc` instead (user: "am Rand bei Star Power
-            // eher ein Blitzeffekt").
-            if neck == NeckStyle::Neon {
-                let mut z = -HIGHWAY_LENGTH + HIGHWAY_BEHIND / 2.0;
-                let mut lick = 0usize;
-                while z < HIGHWAY_BEHIND {
-                    let jitter = super::fx::hash01(lick * 73 + if side < 0.0 { 0 } else { 1 });
-                    commands.spawn((
-                        GameplayScreen,
-                        Stage3d,
-                        EdgeFlame {
-                            player,
-                            phase: jitter * core::f32::consts::TAU,
-                            base: 0.75 + 0.5 * jitter,
-                        },
-                        on_the_neck(),
-                        Mesh3d(edge_flame_mesh.clone()),
-                        MeshMaterial3d(edge_flame_material.clone()),
-                        Visibility::Hidden,
-                        Transform::from_xyz(origin + side * (width / 2.0 + 0.09), 0.015, z)
-                            .with_scale(Vec3::ZERO),
-                        RenderLayers::layer(STAGE_LAYER),
-                    ));
-                    z += EDGE_FLAME_SPACING;
-                    lick += 1;
-                }
-            }
 
             // The decorated trim. Dimmer than the rail on purpose:
             // the border should be seen, the edge should be read.
@@ -1820,20 +1597,12 @@ pub fn setup_stage(
         // it is. That is the buttons' and the gems' job.
         for lane in Lane::ALL {
             let colour = stage.lane_color(lane);
-            let string_material = match neck {
-                NeckStyle::Neon => StandardMaterial {
-                    base_color: colour,
-                    emissive: colour.to_linear() * 1.4,
-                    unlit: false,
-                    ..default()
-                },
-                NeckStyle::Instrument => StandardMaterial {
-                    base_color: string_color(stage),
-                    emissive: string_color(stage).to_linear() * 0.22,
-                    perceptual_roughness: 0.3,
-                    metallic: 0.7,
-                    ..default()
-                },
+            let string_material = StandardMaterial {
+                base_color: string_color(stage),
+                emissive: string_color(stage).to_linear() * 0.22,
+                perceptual_roughness: 0.3,
+                metallic: 0.7,
+                ..default()
             };
             commands.spawn((
                 GameplayScreen,
@@ -1903,32 +1672,6 @@ pub fn setup_stage(
             // The flame, parked flat until a note lands on this fret.
             // The neon stage's cone; the instrument neck lights the
             // layered flame in `super::flame` instead.
-            if neck == NeckStyle::Neon {
-                commands.spawn((
-                    GameplayScreen,
-                    Stage3d,
-                    HitFlame {
-                        player,
-                        lane,
-                        life: 0.0,
-                    },
-                    on_the_neck(),
-                    Mesh3d(flame_mesh.clone()),
-                    MeshMaterial3d(materials.add(StandardMaterial {
-                        base_color: colour.with_alpha(0.0),
-                        emissive: colour.to_linear() * 5.0,
-                        alpha_mode: AlphaMode::Add,
-                        unlit: true,
-                        double_sided: true,
-                        cull_mode: None,
-                        ..default()
-                    })),
-                    // Sits ON the fret, base at the board, tip upward.
-                    Transform::from_xyz(lane_x(&layout, player, lane), 0.5, 0.0)
-                        .with_scale(Vec3::splat(0.01)),
-                    RenderLayers::layer(STAGE_LAYER),
-                ));
-            }
             commands.spawn((
                 GameplayScreen,
                 Stage3d,
@@ -1998,9 +1741,8 @@ pub fn update_receptors(
             &mut Transform,
             &MeshMaterial3d<StandardMaterial>,
         ),
-        (Without<Receptor3d>, Without<HitFlame>),
+        Without<Receptor3d>,
     >,
-    mut flames: FlameQuery,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut state: Local<Vec<(usize, Lane, f32, f32)>>,
     mut heat: ResMut<FretHeat>,
@@ -2169,74 +1911,6 @@ pub fn update_receptors(
             let colour = theme.0.lane_color(burst.lane);
             surface.base_color = colour.with_alpha(burst.life.powf(1.3));
             surface.emissive = colour.to_linear() * (7.0 * burst.life);
-        }
-    }
-
-    drive_flames(
-        delta,
-        &remembered,
-        &holds,
-        &mut flames,
-        &mut materials,
-        theme.0,
-    );
-}
-
-/// The flame query, named because clippy is right that spelling it
-/// out twice is unreadable.
-type FlameQuery<'w, 's> = Query<
-    'w,
-    's,
-    (
-        &'static mut HitFlame,
-        &'static mut Transform,
-        &'static MeshMaterial3d<StandardMaterial>,
-    ),
-    (Without<Receptor3d>, Without<HitBurst>),
->;
-
-/// Grow, lean and die: the flame is the loudest part of a hit, so it
-/// has to be short. A quarter of a second, and gone before the next
-/// note needs the space.
-fn drive_flames(
-    delta: f32,
-    remembered: &[(usize, Lane, f32, f32)],
-    sustaining: &dyn Fn(usize, Lane) -> bool,
-    flames: &mut FlameQuery,
-    materials: &mut Assets<StandardMaterial>,
-    theme: crate::theme::Theme,
-) {
-    for (mut flame, mut transform, material) in flames {
-        if let Some((_, _, _, hit)) = remembered
-            .iter()
-            .find(|(p, l, _, _)| *p == flame.player && *l == flame.lane)
-            && *hit > flame.life
-        {
-            flame.life = *hit;
-        }
-        // A held sustain keeps a low flame alive under the fret.
-        if sustaining(flame.player, flame.lane) {
-            flame.life = flame.life.max(0.34);
-        }
-        flame.life = (flame.life - 3.0 * delta).max(0.0);
-
-        let life = flame.life;
-        // Tall and narrow at the peak, collapsing as it dies — a
-        // flame thins upward, it does not shrink uniformly.
-        // Proportions matter more than size here: at 2.6 tall and
-        // 0.9 across the first version read as a laser, not a flame.
-        // Roughly five to three is the shape of a flare.
-        let height = 1.45 * life;
-        let girth = 0.55f32.mul_add(life, 0.95) * life.max(0.001);
-        transform.scale = Vec3::new(girth, height.max(0.001), girth);
-        transform.translation.y = 0.03 + height * 0.5;
-        if let Some(mut paint) = materials.get_mut(&material.0) {
-            let colour = theme.lane_color(flame.lane);
-            // Whiter at the base of the strike, the lane's own colour
-            // as it burns down.
-            let tint = colour.mix(&Color::WHITE, 0.45 * life);
-            paint.base_color = tint.with_alpha(life * 0.75);
-            paint.emissive = tint.to_linear() * (6.5 * life);
         }
     }
 }
@@ -2492,37 +2166,14 @@ pub fn setup_note_assets(
     // The gem radius is a world-unit constant, so widening the neck
     // without it would leave the notes undersized in their own lanes.
     let gem = GEM_RADIUS * neck_spread(&layout);
-    let neck = neck_style(&settings);
     commands.insert_resource(NoteAssets {
         gem: meshes.add(Cylinder::new(gem, 0.055)),
-        rim: meshes.add(Cylinder::new(
-            gem * match neck {
-                NeckStyle::Neon => 1.28,
-                // A thin edge only: on this neck the strum note's
-                // mark is the black ring on its FACE, and a fat
-                // outer bezel would compete with it.
-                NeckStyle::Instrument => 1.12,
-            },
-            0.042,
-        )),
-        centre: match neck {
-            NeckStyle::Neon => None,
-            NeckStyle::Instrument => {
-                Some(meshes.add(Cylinder::new(centre_radius(gem, false), 0.02)))
-            }
-        },
-        hopo_centre: match neck {
-            NeckStyle::Neon => None,
-            NeckStyle::Instrument => {
-                Some(meshes.add(Cylinder::new(centre_radius(gem, true), 0.02)))
-            }
-        },
-        face_ring: match neck {
-            NeckStyle::Neon => None,
-            NeckStyle::Instrument => {
-                let (inner, outer) = face_ring_radii(gem);
-                Some(meshes.add(Annulus::new(inner, outer)))
-            }
+        rim: meshes.add(Cylinder::new(gem * 1.12, 0.042)),
+        centre: { Some(meshes.add(Cylinder::new(centre_radius(gem, false), 0.02))) },
+        hopo_centre: { Some(meshes.add(Cylinder::new(centre_radius(gem, true), 0.02))) },
+        face_ring: {
+            let (inner, outer) = face_ring_radii(gem);
+            Some(meshes.add(Annulus::new(inner, outer)))
         },
         // Unlit: a lit near-black picks up the key light and the
         // cap's bloom and came back as dark orange (measured ~100 of
@@ -2544,30 +2195,10 @@ pub fn setup_note_assets(
         }),
         // A HOPO is smaller and reads as a different object, the way
         // the 2D views distinguish it.
-        hopo: meshes.add(Cylinder::new(gem * hopo_face(neck), 0.05)),
-        hopo_rim: meshes.add(Cylinder::new(
-            gem * match neck {
-                NeckStyle::Neon => 0.86,
-                // Same thin edge as the strum note: same size, same
-                // edge, the cap alone tells them apart.
-                NeckStyle::Instrument => 1.12,
-            },
-            0.04,
-        )),
-        sustain: meshes.add(Cylinder::new(
-            match neck {
-                NeckStyle::Neon => 0.05,
-                // Thinner: the reference's tail is a rail, not a pipe.
-                NeckStyle::Instrument => 0.036,
-            } * neck_spread(&layout),
-            1.0,
-        )),
-        sustain_core: match neck {
-            NeckStyle::Neon => None,
-            NeckStyle::Instrument => {
-                Some(meshes.add(Cylinder::new(0.013 * neck_spread(&layout), 1.0)))
-            }
-        },
+        hopo: meshes.add(Cylinder::new(gem, 0.05)),
+        hopo_rim: meshes.add(Cylinder::new(gem * 1.12, 0.04)),
+        sustain: meshes.add(Cylinder::new(0.036 * neck_spread(&layout), 1.0)),
+        sustain_core: { Some(meshes.add(Cylinder::new(0.013 * neck_spread(&layout), 1.0))) },
         star_rim: meshes.add(star_mesh(gem * 1.62, gem * 0.82)),
         // ONE grey material that missed notes switch TO. Repainting
         // the lane's own material instead turned every note in that
@@ -2579,16 +2210,8 @@ pub fn setup_note_assets(
             ..default()
         }),
         rim_material: materials.add(StandardMaterial {
-            base_color: match neck {
-                NeckStyle::Neon => Color::srgb(0.05, 0.05, 0.07),
-                // Near-black and a touch glossy: the ring on a button
-                // is a bezel, and a bezel catches a little light.
-                NeckStyle::Instrument => Color::srgb(0.02, 0.02, 0.025),
-            },
-            perceptual_roughness: match neck {
-                NeckStyle::Neon => 0.6,
-                NeckStyle::Instrument => 0.35,
-            },
+            base_color: Color::srgb(0.02, 0.02, 0.025),
+            perceptual_roughness: 0.35,
             ..default()
         }),
         // A note inside an energy phrase wears a lit rim instead of a
@@ -2604,13 +2227,7 @@ pub fn setup_note_assets(
         lane_material: Lane::ALL
             .iter()
             .map(|lane| {
-                let colour = match neck {
-                    NeckStyle::Neon => theme.0.lane_color(*lane),
-                    // Pulled toward full saturation: under bloom the
-                    // theme's lane colour read pastel on the darker
-                    // board, and a button cap is a solid colour.
-                    NeckStyle::Instrument => saturate(theme.0.lane_color(*lane), 0.35),
-                };
+                let colour = saturate(theme.0.lane_color(*lane), 0.35);
                 materials.add(StandardMaterial {
                     base_color: colour,
                     base_color_texture: Some(face.clone()),
@@ -2767,13 +2384,7 @@ pub fn spawn_due_notes(
                         } else {
                             assets.rim_material.clone()
                         }),
-                        Transform::from_xyz(lane_x(&layout, index.0, lane), 0.06, z).with_scale(
-                            if star && hopo && neck_style(&settings) == NeckStyle::Neon {
-                                Vec3::splat(0.72)
-                            } else {
-                                Vec3::ONE
-                            },
-                        ),
+                        Transform::from_xyz(lane_x(&layout, index.0, lane), 0.06, z),
                         RenderLayers::layer(STAGE_LAYER),
                     ))
                     .id();
@@ -3060,7 +2671,6 @@ impl Plugin for Stage3dPlugin {
                 move_fret_bars,
                 move_phrase_bands,
                 tint_stage_for_hype,
-                burn_edges_for_hype,
                 super::crowd::animate_crowd,
                 super::band::animate_band,
                 pulse_led_wall,
@@ -3356,7 +2966,6 @@ mod tests {
             let note_assets = assets(&mut app);
             app.insert_resource(Settings {
                 stage_3d: true,
-                round_gems: true,
                 ..Settings::default()
             })
             .insert_resource(note_assets);
@@ -3637,29 +3246,6 @@ mod tests {
 }
 
 #[cfg(test)]
-mod edge_flame_tests {
-    use super::flame_lick;
-
-    #[test]
-    fn the_lick_flickers_but_never_dies() {
-        // A flame that blinks out reads as the boost dropping; one
-        // that stands still reads as a painted edge. The factor must
-        // MOVE and must stay well clear of zero.
-        let samples: Vec<f32> = (0..400).map(|i| flame_lick(i as f32 * 0.02, 1.3)).collect();
-        let lo = samples.iter().copied().fold(f32::MAX, f32::min);
-        let hi = samples.iter().copied().fold(f32::MIN, f32::max);
-        assert!(lo > 0.5, "a lick collapsed to {lo}");
-        assert!(hi < 1.5, "a lick blew up to {hi}");
-        assert!(hi - lo > 0.4, "the fire barely moves: {lo}..{hi}");
-        // Two licks with different phases must not move in step - a
-        // row breathing as one block is a curtain, not a fire.
-        let other = flame_lick(1.0, 4.0);
-        let this = flame_lick(1.0, 1.3);
-        assert!((other - this).abs() > 0.01, "phases collapsed");
-    }
-}
-
-#[cfg(test)]
 mod rail_tests {
     use super::rail_shade;
 
@@ -3834,26 +3420,9 @@ mod star_tests {
 #[cfg(test)]
 mod instrument_neck_tests {
     use super::*;
-    use crate::config::Settings;
-
-    fn round(on: bool) -> Settings {
-        Settings {
-            round_gems: on,
-            ..Default::default()
-        }
-    }
 
     #[test]
-    fn the_instrument_neck_belongs_to_the_round_style_only() {
-        // The rule this round was built under: the 8-bit mode stays
-        // untouched. If this gate ever inverted, every 8-bit stage
-        // would quietly turn into a wooden neck.
-        assert_eq!(neck_style(&round(true)), NeckStyle::Instrument);
-        assert_eq!(neck_style(&round(false)), NeckStyle::Neon);
-    }
-
-    #[test]
-    fn the_instrument_board_is_darker_than_the_neon_one_in_every_theme() {
+    fn the_board_is_dark_enough_for_the_gems_in_every_theme() {
         // The point of the neck: the gems must be the brightest thing
         // on it. Checked per theme, because the board keeps the
         // theme's hue and a light theme could have slipped through.
@@ -3925,27 +3494,13 @@ mod instrument_neck_tests {
             hopo > strum,
             "hopo {hopo} must be larger than strum {strum}"
         );
-        assert!(
-            hopo < gem * hopo_face(NeckStyle::Instrument),
-            "the HOPO centre must sit inside the HOPO face"
-        );
+        assert!(hopo < gem, "the HOPO centre must sit inside the HOPO face");
         assert!(
             strum < gem,
             "the strum centre must sit inside the strum face"
         );
         // And the HOPO keeps a visible coloured ring around its cap.
-        assert!(
-            gem * hopo_face(NeckStyle::Instrument) - hopo > gem * 0.15,
-            "a coloured ring must remain"
-        );
-    }
-
-    #[test]
-    fn on_the_instrument_neck_every_note_is_the_same_size() {
-        // User, 2026-09-03: "alle Töne sollen gleich groß sein." The
-        // cap is the mark; the neon stage keeps its smaller HOPO.
-        assert!((hopo_face(NeckStyle::Instrument) - 1.0).abs() < 1e-6);
-        assert!(hopo_face(NeckStyle::Neon) < 1.0);
+        assert!(gem - hopo > gem * 0.15, "a coloured ring must remain");
     }
 
     #[test]

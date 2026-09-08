@@ -27,7 +27,7 @@ use super::figure::{
     ArmPose, Build, Detail, FigureAssets, FigureJoint, FigureSpec, Hair, Pose, Stance,
     pose_transform, spawn_figure,
 };
-use super::stage3d::{NeckStyle, STAGE_LAYER, Stage3d, neck_style};
+use super::stage3d::{STAGE_LAYER, Stage3d};
 use super::{GameplayScreen, PlayerSession};
 use crate::audio_sys::GameClock;
 use crate::config::Settings;
@@ -395,7 +395,7 @@ pub fn spawn_band(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    if !super::stage3d::active(&settings) || neck_style(&settings) != NeckStyle::Instrument {
+    if !super::stage3d::active(&settings) {
         return;
     }
     let stage = theme.0;

@@ -248,11 +248,10 @@ pub fn spawn_backdrop(
         } else {
             base
         };
-        // Round style: roughly square bits become soft discs — pixel
-        // squares would betray "not 8-bit". Long strips (grid lines,
-        // spotlight cones) keep their rectangle.
+        // Roughly square bits are soft discs; long strips (grid
+        // lines, spotlight cones) keep their rectangle.
         let squarish = size.x / size.y < 2.0 && size.y / size.x < 2.0;
-        let image = if settings.round_gems && squarish {
+        let image = if squarish {
             shapes.soft_dot()
         } else {
             Handle::default()

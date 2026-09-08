@@ -41,9 +41,7 @@ use beatbyte_core::Lane;
 use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
 
-use super::stage3d::{
-    FretHeat, GEM_RADIUS, NeckStyle, STAGE_LAYER, Stage3d, lane_x, neck_spread, neck_style,
-};
+use super::stage3d::{FretHeat, GEM_RADIUS, STAGE_LAYER, Stage3d, lane_x, neck_spread};
 use super::{GameplayScreen, HighwayLayout, PlayerIndex, PlayerSession};
 use crate::config::Settings;
 
@@ -307,7 +305,7 @@ pub fn spawn_flames(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    if !super::stage3d::active(&settings) || neck_style(&settings) != NeckStyle::Instrument {
+    if !super::stage3d::active(&settings) {
         return;
     }
     let layer_mask = RenderLayers::layer(STAGE_LAYER);

@@ -23,7 +23,7 @@
 use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
 
-use super::stage3d::{NeckStyle, STAGE_LAYER, Stage3d, neck_style, rail_x};
+use super::stage3d::{STAGE_LAYER, Stage3d, rail_x};
 use super::{GameplayScreen, HighwayLayout, PlayerIndex, PlayerSession};
 use crate::config::Settings;
 
@@ -166,7 +166,7 @@ pub fn spawn_arcs(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    if !super::stage3d::active(&settings) || neck_style(&settings) != NeckStyle::Instrument {
+    if !super::stage3d::active(&settings) {
         return;
     }
     let layer = RenderLayers::layer(STAGE_LAYER);

@@ -110,10 +110,6 @@ pub struct Settings {
     /// of the 2D projection. Presentation only — judgment is
     /// input-stamp driven and identical across all three views.
     pub stage_3d: bool,
-    /// Round gems instead of the 8-bit per-lane shapes. Off by
-    /// default: the shapes are the colorblind-safe look — turning
-    /// them off makes color the only lane signal.
-    pub round_gems: bool,
     /// Fullscreen window mode.
     pub fullscreen: bool,
     /// A folder watched for new audio tracks (set by dropping a
@@ -165,7 +161,6 @@ impl Default for Settings {
             tap_mode: true,
             perspective: true,
             stage_3d: true,
-            round_gems: false,
             fullscreen: false,
             watch_folder: None,
             input_map: InputMap::default(),
@@ -347,7 +342,6 @@ fn apply_settings(
     effects.screen_shake = settings.screen_shake;
     effects.beat_pulse = settings.beat_pulse;
     effects.backdrop_motion = settings.backdrop_motion;
-    effects.round_particles = settings.round_gems;
     effects.stage_3d = settings.stage_3d;
     effects.reduced_flashing = settings.reduced_flashing;
     effects.intensity = settings.fx_intensity;
@@ -392,13 +386,11 @@ mod tests {
     fn settings_round_trip_preserves_the_look_and_mode() {
         let mut settings = Settings::default();
         settings.tap_mode = !settings.tap_mode;
-        settings.round_gems = !settings.round_gems;
         settings.perspective = !settings.perspective;
         settings.latency_offset_ms = 23.5;
         let json = serde_json::to_string(&settings).unwrap();
         let back: Settings = serde_json::from_str(&json).unwrap();
         assert_eq!(back.tap_mode, settings.tap_mode);
-        assert_eq!(back.round_gems, settings.round_gems);
         assert_eq!(back.perspective, settings.perspective);
         assert!((back.latency_offset_ms - 23.5).abs() < f32::EPSILON);
     }

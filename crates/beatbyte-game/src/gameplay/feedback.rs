@@ -103,7 +103,7 @@ pub fn spawn_feedback(
     // The lower, smaller placement belongs to the instrument neck
     // (3D stage, round style). The 8-bit stage keeps its word where
     // it always was — that mode is untouched by the round-six work.
-    let placement = label_placement(settings.stage_3d && settings.round_gems, layout.players());
+    let placement = label_placement(settings.stage_3d, layout.players());
     for message in feedback.read() {
         let player = message.player_index;
         if !shows_label(settings.hit_labels, &message.event) {

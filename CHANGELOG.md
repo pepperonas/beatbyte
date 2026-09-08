@@ -14,6 +14,32 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.44] - 2026-09-08
+
+### Removed
+
+- **The 8-bit note style is gone, and with it the second look.** On
+  request ("entferne den 8 bit modus … dann geht die entwicklung
+  deutlich schneller und einfacher"), and the reasoning holds: every
+  visual decision was made twice, and the settings matrix it created
+  is where the worst bug of the stage's life lived — two cameras on
+  one window must agree on HDR, and a style that turned bloom off on
+  one of them silently dropped the other's entire render pass. That
+  whole class of bug is now impossible: both cameras carry HDR and
+  bloom from birth and `sync_bloom` is deleted.
+  What went: the NOTE STYLE settings row and the `round_gems`
+  setting; the neon neck (`NeckStyle`, `neck_style`, and every match
+  and branch on them across nine modules); the neon-only edge fire
+  and hit-flame cones on the 3D stage, and the flat view's square
+  particles, small HOPO gems and hard sustain rectangles; the pixel
+  font (Press Start 2P, and its licence file with it) and the
+  font-style sync that swapped faces at runtime.
+  ⚠️ **Two honest losses.** The per-lane 8-bit shapes are gone, and
+  they were the colourblind-safe signal — lane identity is now
+  position and colour, as it is in the genre's own games, but the
+  extra cue is no longer there. And the flat 2D view keeps the round
+  look only; it no longer has a pixel identity of its own.
+
 ## [0.14.43] - 2026-09-08
 
 ### Changed

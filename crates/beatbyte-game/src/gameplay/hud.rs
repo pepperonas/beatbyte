@@ -419,7 +419,7 @@ pub fn spawn_huds(
     ));
 
     if layout.players() == 1 {
-        spawn_solo_panels(&mut commands, &font, &shapes, settings.round_gems);
+        spawn_solo_panels(&mut commands, &font, &shapes);
         return;
     }
     let compact = layout.players() > 2;
@@ -542,17 +542,12 @@ fn caption(commands: &mut Commands, font: &UiFont, text: &str, at: Vec2) {
 
 /// The solo layout: score and multiplier bottom-left, meter
 /// bottom-right, nothing over the highway.
-fn spawn_solo_panels(
-    commands: &mut Commands,
-    font: &UiFont,
-    shapes: &crate::shapes::LaneShapes,
-    chrome: bool,
-) {
-    let accent = palette::plate_accent(chrome, player_color(0));
-    // The digits: white on chrome, the player's colour otherwise. A
+fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::shapes::LaneShapes) {
+    let accent = palette::CHROME;
+    // The digits: white on the chrome plate. A
     // counter on stage hardware is lit white; a coloured readout is
     // the arcade's idea.
-    let digits = if chrome { palette::TEXT } else { accent };
+    let digits = palette::TEXT;
     let left = Vec2::new(
         -640.0 + PLATE_INSET + PLATE_W / 2.0,
         -360.0 + PLATE_INSET + PLATE_H / 2.0,
@@ -674,11 +669,7 @@ fn spawn_solo_panels(
         StreakPop { seen: 0, age: 1.0 },
         Text2d::new(""),
         font.text(12.0),
-        TextColor(if chrome {
-            palette::TEXT
-        } else {
-            palette::BRAND
-        }),
+        TextColor(palette::TEXT),
         Anchor::TOP_LEFT,
         Transform::from_xyz(
             box_at.x - box_size.x / 2.0,
@@ -692,13 +683,7 @@ fn spawn_solo_panels(
     // needle, the special-power meter a tube next to it. The frame is
     // chrome like the left plate; the instruments inside keep their
     // colours — the meter is what is coloured, not the housing.
-    plate(
-        commands,
-        shapes,
-        right,
-        size,
-        palette::plate_accent(chrome, palette::HYPE),
-    );
+    plate(commands, shapes, right, size, palette::CHROME);
     // The dial sits right of centre to make room for the tube.
     let pivot = Vec2::new(right.x + DIAL_SHIFT, right.y - PLATE_H / 2.0 + 34.0);
     caption(
@@ -931,19 +916,14 @@ fn spawn_solo_panels(
     // (measured: it ran off the right edge and under the tube). At
     // 8 px, centred on the free span rather than on the dial, it
     // fits. The display face is narrow and keeps its size.
-    let free_centre = (tube_x + TUBE_W / 2.0 + right.x + PLATE_W / 2.0) / 2.0;
     commands.spawn((
         GameplayScreen,
         HypeReadyText,
         Text2d::new(""),
-        font.text(if chrome { 9.0 } else { 8.0 }),
+        font.text(9.0),
         TextColor(palette::HYPE),
         Anchor::TOP_CENTER,
-        Transform::from_xyz(
-            if chrome { pivot.x } else { free_centre },
-            right.y - PLATE_H / 2.0 + 24.0,
-            5.0,
-        ),
+        Transform::from_xyz(pivot.x, right.y - PLATE_H / 2.0 + 24.0, 5.0),
     ));
 }
 

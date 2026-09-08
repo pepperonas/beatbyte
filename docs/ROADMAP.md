@@ -307,6 +307,16 @@ project. Milestones when picked up:
   bars. Nine mutation probes and one wired drill (a lamp flares
   white, its neighbour does not, the key light never does,
   everything returns to its own colour).
+- [x] **The 8-bit note style removed** *(v0.14.44)*. Asked for as a
+  development-speed change and it is one: every visual decision was
+  being made twice, and the style matrix is where the invisible-stage
+  bug lived (two cameras on one window must agree on HDR). Gone: the
+  NOTE STYLE row and `round_gems`, `NeckStyle` and every branch on it
+  across nine modules, the neon edge fire and hit-flame cones, the
+  flat view's square particles and hard tails, the pixel font, and
+  `sync_bloom` — both cameras now carry HDR and bloom from birth, so
+  that class of bug cannot recur. Losses named in the CHANGELOG: the
+  colourblind-safe per-lane shapes, and the flat view's own identity.
 - [x] **Highlight on the threshold, white strips, a threshold that
   sets itself** *(v0.14.40)*. Commissioned as an extension of the
   reference rig's dB-Analyse threshold path; BeatByte had none (its

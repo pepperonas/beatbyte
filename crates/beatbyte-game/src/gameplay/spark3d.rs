@@ -25,7 +25,7 @@ use beatbyte_core::{Judgment, Lane, SessionEvent};
 use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
 
-use super::stage3d::{NeckStyle, STAGE_LAYER, Stage3d, lane_x, neck_style};
+use super::stage3d::{STAGE_LAYER, Stage3d, lane_x};
 use super::{GameplayScreen, HighwayLayout, PlayerIndex, PlayerSession, SessionFeedback};
 use crate::config::Settings;
 
@@ -141,18 +141,11 @@ pub fn setup_spark_assets(
     commands.insert_resource(SparkAssets { mesh, lane, accent });
 }
 
-/// Whether this configuration throws sparks at all.
-///
-/// The 3D stage, the round neck, and the particles setting — the
-/// middle one is the 8-bit neck's protection: it keeps its own
-/// vocabulary, and a spray of round embers is not part of it. Pure —
-/// tested, because "the 8-bit mode stays untouched" is a promise and
-/// not a detail.
+/// Whether this configuration throws sparks at all: the 3D stage and
+/// the particles setting. Pure — tested.
 #[must_use]
 pub fn throws_sparks(settings: &Settings) -> bool {
-    super::stage3d::active(settings)
-        && neck_style(settings) == NeckStyle::Instrument
-        && settings.particles
+    super::stage3d::active(settings) && settings.particles
 }
 
 /// Throw sparks from the receptor that was struck.
@@ -327,21 +320,13 @@ mod tests {
     }
 
     #[test]
-    fn only_the_round_neck_on_the_3d_stage_throws_them() {
+    fn only_the_3d_stage_throws_them() {
         let base = Settings {
             stage_3d: true,
-            round_gems: true,
             particles: true,
             ..Settings::default()
         };
         assert!(throws_sparks(&base));
-        assert!(
-            !throws_sparks(&Settings {
-                round_gems: false,
-                ..base.clone()
-            }),
-            "the 8-bit neck keeps its own vocabulary"
-        );
         assert!(
             !throws_sparks(&Settings {
                 stage_3d: false,

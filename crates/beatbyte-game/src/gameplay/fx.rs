@@ -28,7 +28,6 @@ pub struct EffectSettings {
     /// Backdrop animation (off = a still stage, reduced motion).
     pub backdrop_motion: bool,
     /// Round style: particles render as soft discs, not pixels.
-    pub round_particles: bool,
     /// Whether the 3D stage is drawing the highway.
     ///
     /// These sprites are placed with the FLAT layout, and the 3D solo
@@ -71,7 +70,6 @@ impl Default for EffectSettings {
             screen_shake: true,
             beat_pulse: true,
             backdrop_motion: true,
-            round_particles: false,
             reduced_flashing: false,
             intensity: 1.0,
         }
@@ -218,7 +216,7 @@ fn react_to_feedback(
     particles: Query<(), With<Particle>>,
 ) {
     let mut live_particles = particles.iter().count();
-    let soft = settings.round_particles.then(|| shapes.soft_dot());
+    let soft = Some(shapes.soft_dot());
 
     for message in feedback.read() {
         let player = message.player_index;
@@ -253,7 +251,7 @@ fn react_to_feedback(
                         count,
                         speed,
                         event_index,
-                        settings.round_particles,
+                        true,
                     );
                     if spice {
                         // A few white sparks make Perfect feel electric.
@@ -266,7 +264,7 @@ fn react_to_feedback(
                             scaled_count(5, settings.intensity),
                             speed * 1.4,
                             event_index + 7,
-                            settings.round_particles,
+                            true,
                         );
                     }
                 }
@@ -417,7 +415,7 @@ fn sustain_sparks(
     if !throws_flat_sparks(&settings) {
         return;
     }
-    let soft = settings.round_particles.then(|| shapes.soft_dot());
+    let soft = Some(shapes.soft_dot());
     // Shared spark budget across players.
     *accumulator += time.delta_secs() * 24.0;
     if *accumulator < 1.0 {
@@ -442,9 +440,9 @@ fn sustain_sparks(
                 ticks.min(2),
                 130.0,
                 sustain_index * 101 + i + (time.elapsed_secs() * 60.0) as usize,
-                // Sustain sparks are embers too in the round style —
+                // Sustain sparks are embers too —
                 // they leave a burning fret.
-                settings.round_particles,
+                true,
             );
         }
     }
@@ -563,7 +561,7 @@ fn celebrate_outro(
     }
     *fired = due;
     let mut live = particles.iter().count();
-    let soft = settings.round_particles.then(|| shapes.soft_dot());
+    let soft = Some(shapes.soft_dot());
     // The salvo walks the lanes so the whole highway celebrates.
     let lane = (due as usize) % beatbyte_core::Lane::ALL.len();
     let color = theme.0.lane_color(beatbyte_core::Lane::ALL[lane]);

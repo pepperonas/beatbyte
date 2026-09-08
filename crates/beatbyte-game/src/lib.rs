@@ -188,12 +188,7 @@ pub fn run() -> AppExit {
     .add_systems(Startup, spawn_camera)
     .add_systems(
         Update,
-        (
-            sync_bloom,
-            sync_stage_compositing,
-            sync_ui_scale,
-            report_frame_times,
-        ),
+        (sync_stage_compositing, sync_ui_scale, report_frame_times),
     )
     .add_plugins((
         import::ImportPlugin,
@@ -268,6 +263,15 @@ pub fn run() -> AppExit {
 fn spawn_camera(mut commands: Commands) {
     commands.spawn((
         Camera2d,
+        // HDR and its bloom: emissive gems and glow strips actually
+        // GLOW. Every camera on the window must agree on HDR — an
+        // SDR camera over an HDR one silently drops the HDR camera's
+        // whole pass — so the stage camera carries the same pair.
+        bevy::camera::Hdr,
+        bevy::post_process::bloom::Bloom {
+            intensity: 0.22,
+            ..bevy::post_process::bloom::Bloom::NATURAL
+        },
         // THE UI camera, explicitly. With a second camera on screen
         // (the 3D stage) and no marked default, bevy_ui cannot pick
         // a target for root nodes: they lay out to ZERO size and
@@ -376,45 +380,6 @@ fn sync_stage_compositing(
     for mut camera in &mut cameras {
         if core::mem::discriminant(&camera.clear_color) != core::mem::discriminant(&wanted) {
             camera.clear_color = wanted;
-        }
-    }
-}
-
-/// The cameras whose bloom/HDR state follows the note style: the 2D
-/// camera and the 3D stage camera.
-type BloomCameras = Or<(
-    With<Camera2d>,
-    (With<Camera3d>, With<gameplay::stage3d::Stage3d>),
-)>;
-
-/// HDR bloom rides with the round style: emissive gems and glow
-/// strips actually GLOW. The pixel style stays bloom-free — crisp
-/// squares are its identity — and that rule now covers EVERY camera
-/// on the window, the 3D stage's included. This is load-bearing
-/// beyond looks: cameras sharing one window must agree on HDR. A
-/// mixed pair (SDR 2D over HDR stage) silently drops the HDR
-/// camera's whole pass — the stage vanished under the 8-bit style
-/// exactly so, while the round style worked only because its bloom
-/// happened to make both cameras HDR.
-fn sync_bloom(
-    mut commands: Commands,
-    settings: Res<config::Settings>,
-    cameras: Query<(Entity, Has<bevy::post_process::bloom::Bloom>, Has<Camera2d>), BloomCameras>,
-) {
-    for (camera, has_bloom, is_2d) in &cameras {
-        if settings.round_gems && !has_bloom {
-            let intensity = if is_2d { 0.22 } else { 0.18 };
-            commands
-                .entity(camera)
-                .insert(bevy::post_process::bloom::Bloom {
-                    intensity,
-                    ..bevy::post_process::bloom::Bloom::NATURAL
-                });
-        } else if !settings.round_gems && has_bloom {
-            commands
-                .entity(camera)
-                .remove::<bevy::post_process::bloom::Bloom>()
-                .remove::<bevy::camera::Hdr>();
         }
     }
 }

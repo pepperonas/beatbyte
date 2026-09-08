@@ -12,16 +12,9 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
-use beatbyte_core::Lane;
-
-/// Shape mask side length in pixels.
-pub const SHAPE_SIZE: usize = 16;
-
-/// The generated shape images, indexed by lane, plus the round-gem
-/// set used when the player turns the 8-bit shapes off.
+/// The generated gem and surface images.
 #[derive(Resource)]
 pub struct LaneShapes {
-    per_lane: [Handle<Image>; 5],
     round_body: Handle<Image>,
     round_core: Handle<Image>,
     round_ring: Handle<Image>,
@@ -43,21 +36,11 @@ pub struct LaneShapes {
 }
 
 impl LaneShapes {
-    /// The 8-bit shape image for a lane.
+    /// The gem body: a LIT sphere (grayscale shading × the sprite
+    /// tint).
     #[must_use]
-    pub fn image(&self, lane: Lane) -> Handle<Image> {
-        self.per_lane[lane as usize].clone()
-    }
-
-    /// The gem body for a lane in the chosen style. Round bodies are
-    /// LIT spheres (grayscale shading × the sprite tint).
-    #[must_use]
-    pub fn body(&self, lane: Lane, round: bool) -> Handle<Image> {
-        if round {
-            self.sphere_body.clone()
-        } else {
-            self.image(lane)
-        }
+    pub fn body(&self) -> Handle<Image> {
+        self.sphere_body.clone()
     }
 
     /// The plain disc texture (soft particles, backdrop dots).
@@ -183,15 +166,7 @@ impl Plugin for ShapesPlugin {
 }
 
 pub(crate) fn build_shapes(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
-    let handles: Vec<Handle<Image>> = (0..5)
-        .map(|lane| images.add(mask_to_image(&shape_mask(lane))))
-        .collect();
-    let per_lane: [Handle<Image>; 5] = match handles.try_into() {
-        Ok(array) => array,
-        Err(_) => unreachable!("exactly five shapes are generated"),
-    };
     commands.insert_resource(LaneShapes {
-        per_lane,
         round_body: images.add(round_image(RoundPart::Body)),
         round_core: images.add(round_image(RoundPart::Core)),
         round_ring: images.add(round_image(RoundPart::Ring)),
@@ -669,296 +644,10 @@ fn round_image(part: RoundPart) -> Image {
         TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD,
     );
-    // The app-wide default is nearest (pixel art); these two lines are
-    // exactly why the round style does not look 8-bit.
+    // The app-wide default is nearest; these two lines are what
+    // keeps a generated texture from looking like pixel art.
     image.sampler = bevy::image::ImageSampler::linear();
     image
-}
-
-/// The pixel mask for a lane's shape. Pure — the geometry tests live
-/// on this.
-#[must_use]
-pub fn shape_mask(lane: usize) -> [[bool; SHAPE_SIZE]; SHAPE_SIZE] {
-    let mut mask = [[false; SHAPE_SIZE]; SHAPE_SIZE];
-    let center = (SHAPE_SIZE as f32 - 1.0) / 2.0; // 7.5
-    for (y, row) in mask.iter_mut().enumerate() {
-        for (x, cell) in row.iter_mut().enumerate() {
-            let dx = x as f32 - center;
-            let dy = y as f32 - center;
-            *cell = match lane {
-                // Lane 0: square (1 px margin).
-                0 => dx.abs() <= 6.5 && dy.abs() <= 6.5,
-                // Lane 1: circle.
-                1 => dx * dx + dy * dy <= 7.3 * 7.3,
-                // Lane 2: diamond.
-                2 => dx.abs() + dy.abs() <= 7.5,
-                // Lane 3: triangle, point up, base at the bottom.
-                3 => {
-                    let progress = y as f32 / (SHAPE_SIZE as f32 - 1.0);
-                    dy >= -7.0 && dx.abs() <= progress * 7.4
-                }
-                // Lane 4: X cross (thick diagonals).
-                _ => {
-                    let on_diag = (dx - dy).abs() <= 2.2 || (dx + dy).abs() <= 2.2;
-                    on_diag && dx.abs() <= 7.0 && dy.abs() <= 7.0
-                }
-            };
-        }
-    }
-    mask
-}
-
-/// White-on-transparent RGBA image from a mask (tinted by sprite
-/// color at draw time).
-fn mask_to_image(mask: &[[bool; SHAPE_SIZE]; SHAPE_SIZE]) -> Image {
-    let mut data = Vec::with_capacity(SHAPE_SIZE * SHAPE_SIZE * 4);
-    for row in mask {
-        for &on in row {
-            data.extend_from_slice(if on { &[255u8; 4] } else { &[0u8; 4] });
-        }
-    }
-    Image::new(
-        Extent3d {
-            width: SHAPE_SIZE as u32,
-            height: SHAPE_SIZE as u32,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        data,
-        TextureFormat::Rgba8UnormSrgb,
-        RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD,
-    )
-}
-
-#[cfg(test)]
-#[allow(clippy::unwrap_used)]
-mod tests {
-
-    #[test]
-    fn the_plate_reads_as_hardware_not_a_rectangle() {
-        use super::plate_shading;
-        // The top edge catches light, the corners carry rivets that
-        // outshine the metal beside them, and the field vignettes
-        // darker than the centre.
-        let (edge, _) = plate_shading(0.5, 0.01);
-        let (centre, _) = plate_shading(0.5, 0.5);
-        let (corner_field, _) = plate_shading(0.18, 0.09);
-        let (rivet, _) = plate_shading(0.045, 0.09);
-        assert!(
-            edge > centre,
-            "top catch {edge} must outshine the field {centre}"
-        );
-        assert!(
-            rivet > corner_field,
-            "rivet {rivet} vs plain corner {corner_field}"
-        );
-    }
-
-    #[test]
-    fn the_well_shades_under_its_lip() {
-        use super::well_shading;
-        // A recess is darkest right under the lip - that shadow is
-        // what makes it read as IN the plate instead of ON it.
-        let (under_lip, _) = well_shading(0.5, 0.02);
-        let (floor, _) = well_shading(0.5, 0.7);
-        assert!(under_lip < floor, "lip shadow {under_lip} vs floor {floor}");
-    }
-
-    #[test]
-    fn the_led_module_is_dots_on_a_dark_carrier() {
-        use super::led_module_shading;
-        // Dead centre of an emitter: bright. Between four emitters:
-        // the dark carrier. Without that gap a module is a lamp.
-        let (dot, _) = led_module_shading(0.5 / 12.0, 0.5 / 12.0);
-        let (carrier, _) = led_module_shading(1.0 / 12.0, 1.0 / 12.0);
-        assert!(dot > 0.8, "emitter centre must glow ({dot})");
-        assert!(carrier < 0.15, "carrier must stay dark ({carrier})");
-    }
-
-    #[test]
-    fn the_beam_dissolves_from_lamp_to_foot_and_tiles_seamlessly() {
-        use super::beam_shading;
-        // Densest just below the lens, thinner halfway, gone at the
-        // foot — that falloff IS the volumetric read.
-        let near = beam_shading(0.25, 0.1).1;
-        let mid = beam_shading(0.25, 0.5).1;
-        let foot = beam_shading(0.25, 0.999).1;
-        assert!(near > mid && mid > foot, "{near} > {mid} > {foot}");
-        assert!(foot < 0.01, "the foot must dissolve, got {foot}");
-        // The tip fades in instead of starting as a hard edge.
-        assert!(beam_shading(0.25, 0.0).1 < 0.01);
-        // The striations close around the shaft: u=0 and u=1 are the
-        // same line, or the cone shows a seam.
-        let (a, _) = beam_shading(0.0, 0.4);
-        let (b, _) = beam_shading(1.0, 0.4);
-        assert!((a - b).abs() < 1e-4, "seam: {a} vs {b}");
-    }
-
-    #[test]
-    fn the_hype_glass_is_a_frame_and_not_a_lid() {
-        use super::hype_glass_shading;
-        // THE defect this pins, found by looking at it: the first
-        // version was a filled capsule, and it painted over the very
-        // charge it was supposed to contain.
-        let (_, middle) = hype_glass_shading(0.5, 0.5);
-        assert!(middle < 0.2, "the middle must be see-through, not {middle}");
-        // The rim carries the shape. It is a THIN band — about a
-        // pixel and a half at the size this is drawn — so the sample
-        // has to sit inside it rather than in the soft outer edge.
-        for u in [0.035, 0.965] {
-            let (value, alpha) = hype_glass_shading(u, 0.5);
-            assert!(alpha > 0.7, "the rim is solid at {u}, not {alpha}");
-            assert!(value > 0.6, "and bright at {u}, not {value}");
-        }
-        // Outside the capsule there is nothing at all: the caps are
-        // round, so a corner of the tile is empty.
-        assert_eq!(hype_glass_shading(0.02, 0.001).1, 0.0, "outside the cap");
-        // The specular sits on the left shoulder, and is brighter up
-        // top than down at the bottom.
-        let (top, _) = hype_glass_shading(0.275, 0.2);
-        let (bottom, _) = hype_glass_shading(0.275, 0.85);
-        assert!(top > bottom, "the light comes from above");
-    }
-
-    #[test]
-    fn the_hype_fill_is_a_lit_column() {
-        use super::hype_fill_shading;
-        let (core, core_a) = hype_fill_shading(0.5, 0.5);
-        let (flank, _) = hype_fill_shading(0.14, 0.5);
-        assert!(core > flank, "a core brighter than its flanks");
-        assert!(core > 0.9 && flank < 0.75, "and enough of a range to read");
-        assert!(core_a > 0.9, "solid down the middle");
-        // Shaped across the width only: scaling it vertically must
-        // not change what it looks like.
-        assert_eq!(hype_fill_shading(0.5, 0.05), hype_fill_shading(0.5, 0.95));
-    }
-
-    #[test]
-    fn the_tube_aspect_is_the_tubes_own_proportion() {
-        use super::{TUBE_ASPECT, TUBE_H, TUBE_W};
-        // The glass texture's caps are drawn for this ratio. It is
-        // derived, so this pins that nobody re-types it as a number.
-        assert!((TUBE_ASPECT - TUBE_H / TUBE_W).abs() < 1e-6);
-    }
-
-    #[test]
-    fn the_star_is_a_star() {
-        use super::star_shading;
-        // Tip up: the top centre of the tile is inside, the top
-        // corners are not.
-        let (_, tip) = star_shading(0.5, 0.08);
-        assert!(tip > 0.9, "the upper tip is solid ({tip})");
-        assert_eq!(star_shading(0.08, 0.08).1, 0.0, "top-left corner is empty");
-        assert_eq!(star_shading(0.92, 0.08).1, 0.0, "top-right corner is empty");
-        // Between two tips, at the tips' radius, is the sky — that is
-        // what makes it a star and not a disc.
-        // 36° off the top, at radius 0.8: x = 0.8 sin 36°, y = 0.8 cos 36°.
-        let (bx, by) = (0.5 + 0.4 * 0.5878, 0.5 - 0.4 * 0.8090);
-        assert_eq!(
-            star_shading(bx, by).1,
-            0.0,
-            "the valley between tips is open"
-        );
-        // The centre is solid and brighter than a tip: lit from
-        // within, not a flat cut-out.
-        let (centre, centre_a) = star_shading(0.5, 0.5);
-        let (tip_value, _) = star_shading(0.5, 0.08);
-        assert!(centre_a > 0.99);
-        assert!(
-            centre > tip_value,
-            "lit from the centre: {centre} > {tip_value}"
-        );
-        // Five-fold symmetry: the same radius 72° round is the same
-        // shape (the next tip, up-left, at 162° from +x).
-        let (rx, ry) = (0.5 - 0.42 * 0.9511, 0.5 - 0.42 * 0.3090);
-        let (_, rotated) = star_shading(rx, ry);
-        assert!(
-            rotated > 0.9,
-            "a tip 72° round is just as solid ({rotated})"
-        );
-        // No comet tails: straight beyond a tip there is nothing.
-        assert_eq!(star_shading(0.5, 0.005).1, 0.0, "beyond the tip is empty");
-    }
-
-    #[test]
-    fn the_gauge_arc_is_a_band_with_its_strongest_tick_at_the_top() {
-        use super::gauge_arc_shading;
-        // On the band at the top (u=0.5 near v small): visible.
-        let (top_value, top_alpha) = gauge_arc_shading(0.5, 1.0 - 0.79);
-        assert!(top_alpha > 0.5, "the band must be visible ({top_alpha})");
-        // The activation tick at the top is the strongest mark.
-        let (side_value, _) = gauge_arc_shading(0.5 + 0.35, 1.0 - 0.63);
-        assert!(
-            top_value > side_value,
-            "the halfway tick ({top_value}) must outshine the plain band ({side_value})"
-        );
-        assert!(
-            top_value >= 0.99,
-            "the activation tick is the dial's BRIGHTEST mark ({top_value})"
-        );
-        // Outside the ring: nothing.
-        assert_eq!(gauge_arc_shading(0.5, 0.9).1, 0.0, "inside the hub");
-        assert_eq!(gauge_arc_shading(0.5, 0.005).1, 0.0, "beyond the rim");
-        // The horizon endpoints carry the 0%/100% ticks — brighter
-        // than the plain band, like the activation mark.
-        let (end_value, end_alpha) = gauge_arc_shading(0.1, 1.0);
-        assert!(end_alpha > 0.5 && end_value > side_value);
-    }
-    use super::{SHAPE_SIZE, shape_mask};
-
-    fn count(mask: &[[bool; SHAPE_SIZE]; SHAPE_SIZE]) -> usize {
-        mask.iter().flatten().filter(|c| **c).count()
-    }
-
-    #[test]
-    fn every_lane_shape_is_substantial() {
-        for lane in 0..5 {
-            let filled = count(&shape_mask(lane));
-            assert!(
-                (40..=220).contains(&filled),
-                "lane {lane}: {filled} pixels — too sparse or a filled block"
-            );
-        }
-    }
-
-    /// The whole point: shapes must be tellable apart WITHOUT color.
-    /// Any two lanes must differ in a meaningful fraction of pixels.
-    #[test]
-    fn shapes_are_pairwise_distinct() {
-        for a in 0..5 {
-            for b in (a + 1)..5 {
-                let (ma, mb) = (shape_mask(a), shape_mask(b));
-                let differing = ma
-                    .iter()
-                    .flatten()
-                    .zip(mb.iter().flatten())
-                    .filter(|(x, y)| x != y)
-                    .count();
-                assert!(
-                    differing >= 30,
-                    "lanes {a} and {b} differ in only {differing} pixels"
-                );
-            }
-        }
-    }
-
-    /// Left-right symmetry keeps every shape readable in any lane
-    /// position (nothing points sideways).
-    #[test]
-    fn shapes_are_horizontally_symmetric() {
-        for lane in 0..5 {
-            let mask = shape_mask(lane);
-            for row in &mask {
-                for x in 0..SHAPE_SIZE / 2 {
-                    assert_eq!(
-                        row[x],
-                        row[SHAPE_SIZE - 1 - x],
-                        "lane {lane} is not mirror-symmetric"
-                    );
-                }
-            }
-        }
-    }
 }
 
 #[cfg(test)]

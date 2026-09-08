@@ -7,7 +7,7 @@ file wins over habit; the roadmap wins over improvisation.
 
 ## What this is
 
-**BeatByte** — an original 8-bit five-lane rhythm game in **Rust + Bevy
+**BeatByte** — an original five-lane rhythm game in **Rust + Bevy
 0.19** (repo `pepperonas/beatbyte`, MIT, © 2026 Martin Pfeffer, public).
 Cargo workspace: `crates/beatbyte-{core,chart,audio,editor,cli,game,ml,lyrics,meter}`
 + `apps/beatbyte` (thin launcher; all logic lives in the crates). UI
@@ -360,16 +360,19 @@ artifact, smoke-test it (neutral CWD!), then
   agree on HDR**: `Bloom` requires `Hdr`, and a mixed pair (SDR 2D
   over HDR stage) silently drops the HDR camera's entire pass — the
   round style worked only because its bloom made both cameras HDR.
-  `sync_bloom` now keeps Bloom+Hdr in step on BOTH cameras per note
-  style. (2) **Exactly one camera may clear**: once the stage
+  Since v0.14.44 there is only one style and both cameras carry
+  Hdr+Bloom from birth, which is why `sync_bloom` — the system that
+  kept them in step, and the place the bug lived — is gone. The
+  rule still binds anything that adds a third camera.
+  (2) **Exactly one camera may clear**: once the stage
   actually renders, the 2D camera's default clear would wipe it —
   `sync_stage_compositing` flips it to `ClearColorConfig::None`
   while a stage camera exists (and back: menus must clear, or they
   smear — a ghost of the song browser burned into gameplay was the
   telltale). The pause drill pins both rules and was seen to fail
   under each mutation. Twin lessons: when a rendering bug is
-  reported, test the settings MATRIX (view × note style), not just
-  the defaults — and **a screenshot that contradicts expectations
+  reported, test the settings MATRIX (the view, and whatever else
+  forks the render), not just the defaults — and **a screenshot that contradicts expectations
   is evidence, not an artifact**: the missing stage in an autopilot
   shot was waved off as a capture quirk hours before the user
   reported the same black screen.

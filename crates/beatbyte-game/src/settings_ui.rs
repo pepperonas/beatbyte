@@ -35,7 +35,6 @@ pub(crate) enum Row {
     /// Preview a song's hook while the browser cursor rests on it.
     SongPreview,
     TapMode,
-    NoteStyle,
     Fullscreen,
     Theme,
     WatchFolder,
@@ -63,7 +62,7 @@ impl Row {
     /// Every row, in the order the screen shows them: **alphabetical
     /// by label**, and kept that way by a test — a new row goes where
     /// its name falls, not at the end of the list.
-    const ALL: [Row; 30] = [
+    const ALL: [Row; 29] = [
         Row::BeatPulse,
         Row::Controls,
         Row::FxIntensity,
@@ -80,7 +79,6 @@ impl Row {
         Row::LyricsSize,
         Row::MusicVolume,
         Row::NoFail,
-        Row::NoteStyle,
         Row::Particles,
         Row::ReducedFlashing,
         Row::RoomLights,
@@ -122,7 +120,6 @@ impl Row {
             Row::LyricsLeadIn => "LYRICS LEAD-IN",
             Row::LyricsModel => "LYRICS MODEL",
             Row::TapMode => "TAP MODE (NO STRUM)",
-            Row::NoteStyle => "NOTE STYLE",
             Row::Fullscreen => "FULLSCREEN",
             Row::Theme => "STAGE THEME",
             Row::WatchFolder => "SONG FOLDER",
@@ -174,12 +171,6 @@ impl Row {
             // this is what a build without the resource would show.
             Row::LyricsModel => "CHECKING...".to_owned(),
             Row::TapMode => on_off(settings.tap_mode),
-            Row::NoteStyle => if settings.round_gems {
-                "ROUND"
-            } else {
-                "8-BIT SHAPES"
-            }
-            .to_owned(),
             Row::Fullscreen => on_off(settings.fullscreen),
             Row::Theme => settings.theme.to_uppercase(),
             Row::Controls => "OPEN >".to_owned(),
@@ -270,7 +261,6 @@ impl Row {
             // cancels; stepping left/right does nothing.
             Row::LyricsModel => {}
             Row::TapMode => settings.tap_mode = !settings.tap_mode,
-            Row::NoteStyle => settings.round_gems = !settings.round_gems,
             Row::Fullscreen => settings.fullscreen = !settings.fullscreen,
             Row::Theme => {
                 // Cycle auto → themes → auto.
@@ -303,7 +293,6 @@ impl Row {
             | Row::HighContrast
             | Row::Lyrics
             | Row::TapMode
-            | Row::NoteStyle
             | Row::Fullscreen => crate::sfx::UiSound::Toggle,
             _ => crate::sfx::UiSound::Slider,
         }
@@ -822,7 +811,7 @@ mod tests {
             );
         }
         // And nothing is listed twice or left out.
-        assert_eq!(Row::ALL.len(), 30);
+        assert_eq!(Row::ALL.len(), 29);
     }
 
     #[test]
