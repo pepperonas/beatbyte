@@ -79,6 +79,19 @@ const HIGHWAY_BEHIND: f32 = 2.5;
 const FOG_START: f32 = 12.0;
 const FOG_END: f32 = 52.0;
 
+/// How much lacquer the stage deck wears: the strength of its
+/// clearcoat layer.
+///
+/// A sealed floor is the difference between a stage and a plank. It
+/// is deliberately short of 1.0 — a working deck is scuffed, and a
+/// mirror-bright one would read as ice.
+pub const DECK_CLEARCOAT: f32 = 0.6;
+/// How sharp that lacquer's reflections are. Well under the wood's
+/// own roughness (0.30 on the flat of a board), which is the whole
+/// point: two lobes, a soft one from the timber and a tight one from
+/// the finish over it.
+pub const DECK_CLEARCOAT_ROUGHNESS: f32 = 0.12;
+
 /// Radius of a note's coloured face, in world units. Large relative
 /// to the lane spacing, as in the games this borrows from — a gem
 /// nearly fills its lane, which is what makes a chord read as one
@@ -994,10 +1007,16 @@ fn spawn_venue(
     // used to float over a void; a floor is also what the light
     // pools land on, and its faint sheen is what sells them.
     let floor = meshes.add(Cuboid::new(90.0, 0.3, 64.0));
-    // Concrete beyond the riser: matte and mostly fogged.
+    // Concrete beyond the riser: mostly fogged, but no longer a
+    // void. It was mixed 75 % into black and left at roughness 0.9,
+    // which is a surface nothing can land on — the coloured washes
+    // that spill off the deck simply vanished at its edge. A little
+    // more of the theme's own tone and a sealed-concrete sheen give
+    // them somewhere to fall.
     let floor_material = materials.add(StandardMaterial {
-        base_color: dark.mix(&Color::BLACK, 0.75),
-        perceptual_roughness: 0.9,
+        base_color: dark.mix(&Color::BLACK, 0.62),
+        perceptual_roughness: 0.62,
+        metallic: 0.1,
         ..default()
     });
     commands.spawn((
@@ -1056,6 +1075,20 @@ fn spawn_venue(
         metallic_roughness_texture: Some(surfaces.deck_rough.clone()),
         perceptual_roughness: 1.0,
         metallic: 1.0,
+        // A stage deck is SEALED, and that is what the eye reads on
+        // one: a lacquer layer over the wood with its own, much
+        // sharper specular lobe. Without it the rig's spots land on
+        // the boards as matte blotches; with it they are reflections
+        // on a floor somebody maintains.
+        //
+        // The clearcoat lobe deliberately runs on the mesh's own flat
+        // normal, not the boards' relief — that is what
+        // `KHR_materials_clearcoat` prescribes without a clearcoat
+        // normal map, and it is right here: the varnish is a smooth
+        // sheet, so the reflections stay clean while the wood's
+        // detail lives underneath them.
+        clearcoat: DECK_CLEARCOAT,
+        clearcoat_perceptual_roughness: DECK_CLEARCOAT_ROUGHNESS,
         uv_transform: bevy::math::Affine2::from_scale(Vec2::new(4.0, 9.0)),
         ..default()
     });

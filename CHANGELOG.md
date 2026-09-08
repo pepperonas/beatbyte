@@ -14,6 +14,49 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.48] - 2026-09-08
+
+### Changed
+
+- **The stage deck is a floor now, not a plane with planks drawn on
+  it.** Four changes, all of them looked at rather than reasoned
+  about:
+  - **A board edge is eased, not sawn.** The seams were a hard
+    two-texel slot and read as black chasms between slats; they are
+    now a narrow gap with a broad chamfer either side, and the gap is
+    dark without being a hole — there is a board edge down there, not
+    a way through the stage.
+  - **The deck is built from platforms.** A joint runs across the
+    boards once per tile, so they stop running the full thirty metres
+    without a break, which is what a staging deck actually looks like.
+  - **The boards are dished, and not alike.** A cupped board is a
+    cylindrical mirror and is what draws a light into a streak along a
+    plank. The first cut dished every board the same and the deck came
+    back as corrugated plastic — one hard rail of light per board. Now
+    the dish is half as deep and each board has aged its own amount,
+    so some catch a spot and some do not.
+  - **The pools stopped puddling.** The relief carried a
+    `value_noise(6, 6)` warp at 0.15 on a tile that repeats
+    thirty-six times across the deck, and every light pool broke into
+    lumps. One cell per board, two along it, a third of the amplitude:
+    measured, the relief along a board now turns once per tile
+    instead of three times, and wanders 0.031 across a patch of the
+    flat instead of 0.140.
+
+- **The deck is sealed.** It carries a **clearcoat** — a lacquer layer
+  with its own much sharper specular lobe over the wood's soft one.
+  That is what a stage deck is, and it is the difference between the
+  rig's spots landing as matte blotches and reading as reflections on
+  a floor someone maintains. Per `KHR_materials_clearcoat` the coat
+  runs on the mesh's flat normal, so the reflections stay clean while
+  the boards' detail lives underneath them.
+
+- **The venue floor beyond the deck is no longer a void.** It was
+  mixed 75 % into black at roughness 0.9 — a surface nothing could
+  land on, so the coloured washes spilling off the deck simply
+  vanished at its edge. A little more of the theme's own tone and a
+  sealed-concrete sheen give them somewhere to fall.
+
 ## [0.14.47] - 2026-09-08
 
 ### Added

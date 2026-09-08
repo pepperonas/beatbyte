@@ -136,10 +136,36 @@ mean a screenshot will usually miss it.
 lattice trusses, the stage deck, haze sheets, the LED wall — is kept
 outside the bed so it can never occlude an approaching note.
 
-**The deck** (the riser the highway stands on) is planks with seams
-and scuffs from `surfaces`: a colour tile, a normal map and a
-roughness map whose gloss between the scuffs is what makes the rig's
-pools reflect. Everything else on stage stands ON it at `y = −0.30`.
+**The deck** (the riser the highway stands on) is a built stage
+floor from `surfaces`: a colour tile, a normal map and a roughness
+map. Boards a little over half a metre wide, each with a narrow gap
+and a broad chamfer either side (`deck_profile`) — the gap is dark
+but never black, because a board edge sits at the bottom of it.
+**Platform joints** run across the boards once per tile
+(`deck_joint_profile`), so the deck reads as modules rather than
+thirty-metre planks. Each board is **dished** across its width
+(`deck_cup`) by its own amount: a cupped board is a cylindrical
+mirror and is what pulls a light into a streak along a plank — dished
+alike, every board answers a spot with the same hard rail and the
+deck reads as corrugated plastic, which is exactly what the first cut
+did. The warp over all of it is deliberately long and shallow (one
+cell per board, two along it); the earlier `value_noise(6, 6)` at
+0.15, on a tile that repeats thirty-six times, broke every light pool
+into puddles.
+
+Over the wood sits a **clearcoat** (`DECK_CLEARCOAT`): the lacquer of
+a sealed floor, a second and much tighter specular lobe. Without it
+the rig's spots are matte blotches. Per `KHR_materials_clearcoat` it
+runs on the mesh's own flat normal rather than the boards' relief —
+which is right here, since the varnish is a smooth sheet: the
+reflections stay clean and the wood's detail lives underneath them.
+(The clearcoat NORMAL map would need Bevy's
+`pbr_multi_layer_material_textures` feature; it is not wanted.)
+
+Everything else on stage stands ON the deck at `y = −0.30`. The
+**venue floor** under and beyond it is plain concrete with a faint
+sheen — enough that the washes spilling off the deck land on
+something instead of vanishing at its edge.
 
 **The PA** (`pa.rs`): two full stacks — sub, two tops, an amp head —
 seated on the deck with rubber feet and stacking cleats. Tolex bodies

@@ -575,6 +575,18 @@ artifact, smoke-test it (neutral CWD!), then
   metrical level: a third, a half, double — a 5 % ratio), not the
   noise of one method. Pin both sides: the other level refused, the
   other reading accepted.
+- **The game window can open on a second display that renders
+  nothing** — measured at (−1473, −76) on this machine. Every capture
+  then comes back PURE BLACK: the engine's own
+  `Screenshot::primary_window()` too, because Bevy has no rendered
+  frame to read back. The screen was unlocked and the desktop
+  captured fine, so both usual explanations were wrong. Ask the
+  window where it is (`System Events` → `position of window 1`) before
+  blaming anything else, move it onto the main screen, and then
+  RE-READ the position: a raise or a move that silently fails leaves a
+  fixed crop photographing whatever else is there — mine grabbed a
+  Mail window and looked plausible enough to reason about. Capture the
+  window's own rect (`screencapture -R`), never the whole screen.
 - **The song clock steps BACKWARDS at the count-in handover**, and a
   little more whenever it corrects itself against the audio device (a
   30 ms snap, a 10 % slew). Anything scheduled on song POSITION must

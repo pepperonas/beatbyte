@@ -307,6 +307,37 @@ project. Milestones when picked up:
   bars. Nine mutation probes and one wired drill (a lamp flares
   white, its neighbour does not, the key light never does,
   everything returns to its own colour).
+- [x] **The floor** *(v0.14.48)*. Asked for as "gestalte den boden
+  schöner". Diagnosed before it was designed: the seams were a hard
+  two-texel slot (black chasms), the boards ran thirty metres without
+  a joint, and the light pools broke into puddles because the relief
+  carried a `value_noise(6, 6)` warp at 0.15 on a tile that repeats
+  thirty-six times. Now: eased board edges over a gap that is dark
+  and not a hole, platform joints across the boards, each board
+  dished its own amount, a long shallow warp — and a **clearcoat**
+  over the wood, which is what a sealed stage deck is and what turns
+  the rig's spots from matte blotches into reflections. The venue
+  floor beyond stopped being a void.
+
+  ⚠️ **The first cut was wrong and only looking showed it**: dishing
+  every board alike, with a narrow (therefore steep) chamfer, gave
+  one hard rail of light per board — the deck read as corrugated
+  plastic. Broadened the chamfer, halved the dish, and gave each
+  board its own ageing. Eight mutation probes; one was blind (its
+  threshold was looser than the amplitude of the very field it was
+  meant to reject) and was replaced by two measures taken against
+  the old field first: turns along a board, 3 → 1, and wander across
+  a patch of the flat, 0.140 → 0.031.
+
+  ⚠️ **The screenshots were pure black for an hour** and it was not
+  the lock and not occlusion: the game window opens at (−1473, −76),
+  on a second display that renders nothing, so Bevy had nothing to
+  read back. `scratchpad/look.sh` moves the window onto the main
+  screen, RE-READS where it actually ended up, refuses to capture
+  unless the game is frontmost, and grabs only that rect — the
+  version before the re-read photographed a Mail window and I nearly
+  reasoned about it.
+
 - [x] **The flashes can follow the song instead of the room**
   *(v0.14.47)*. Asked for as an alternative to the dB threshold, with
   a setting for it: FLASH SYNC = `ROOM LEVEL` (unchanged default) or

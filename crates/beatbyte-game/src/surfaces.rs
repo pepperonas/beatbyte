@@ -276,17 +276,107 @@ pub const DECK_STRENGTH: f32 = 0.3;
 pub const DECK_METALLIC: f32 = 0.05;
 /// Planks across one tile.
 pub const DECK_PLANKS: f32 = 6.0;
-/// Seam width in texels.
-const SEAM_TEXELS: f32 = 2.0;
+/// Half the gap between two boards, in texels.
+const SEAM_HALF_TEXELS: f32 = 1.0;
+/// The chamfer beside the gap, in texels: a board edge is eased, not
+/// sawn square, and that eased edge is the line a stage light draws
+/// along a floor. The first cut had none — a hard two-texel slot —
+/// and the seams read as black chasms between slats.
+///
+/// Widened from 3.5 after looking: a narrow chamfer is a steep one,
+/// every board answered a spot with the same hard rail of light, and
+/// the deck read as corrugated plastic. A broad ease spreads that
+/// answer instead of concentrating it.
+const CHAMFER_TEXELS: f32 = 7.0;
+/// Platform joints per tile: a stage deck is built from modules, so
+/// the boards end. One joint per tile, and the tile is 3.3 m along
+/// the deck (see the riser's `uv_transform`), which puts a joint at
+/// about the length of a real staging platform.
+const DECK_JOINTS: f32 = 1.0;
+/// Half the width of a platform joint, in texels: wider than a board
+/// seam, because two framed platforms meet there.
+const JOINT_HALF_TEXELS: f32 = 1.6;
+/// The chamfer beside a platform joint.
+const JOINT_CHAMFER_TEXELS: f32 = 2.5;
+/// How deeply a board is dished across its width. Boards cup as they
+/// age, and a cupped board is a cylindrical mirror: it is what pulls
+/// a light's reflection into a long streak ALONG the plank on a real
+/// floor. Small — a hair of the chamfer's depth.
+const DECK_CUP: f32 = 0.05;
+/// The shallowest a board may be dished, as a share of [`DECK_CUP`].
+///
+/// Boards do not age alike, and identical ones are what turn a floor
+/// into a comb: with every board answering a light the same way, the
+/// deck read as ribbed. Some are nearly flat, some fully dished.
+const DECK_CUP_FLOOR: f32 = 0.25;
 
 fn plank_index(u: f32) -> usize {
     (u.rem_euclid(1.0) * DECK_PLANKS) as usize
 }
 
-/// 1 inside a seam between planks, 0 elsewhere.
-fn seam(u: f32) -> f32 {
-    let across = (u.rem_euclid(1.0) * DECK_PLANKS).fract() * (TILE as f32 / DECK_PLANKS);
-    if across < SEAM_TEXELS { 1.0 } else { 0.0 }
+/// Texels per plank across the tile.
+fn plank_texels() -> f32 {
+    TILE as f32 / DECK_PLANKS
+}
+
+/// How far `u` sits from the nearest board seam, in texels. Seams
+/// run at the plank boundaries, so the measure is symmetric: a board
+/// has one on each side. Pure — tested.
+#[must_use]
+pub fn seam_distance(u: f32) -> f32 {
+    let across = (u.rem_euclid(1.0) * DECK_PLANKS).fract() * plank_texels();
+    across.min(plank_texels() - across)
+}
+
+/// How far `v` sits from the nearest platform joint, in texels.
+/// Pure — tested.
+#[must_use]
+pub fn joint_distance(v: f32) -> f32 {
+    let per = TILE as f32 / DECK_JOINTS;
+    let along = (v.rem_euclid(1.0) * DECK_JOINTS).fract() * per;
+    along.min(per - along)
+}
+
+/// The surface across a groove: 0 in the gap (within `half` texels
+/// of its centre), 1 on the flat beyond the chamfer, eased between.
+/// Pure — tested.
+#[must_use]
+pub fn groove(distance_texels: f32, half: f32, chamfer: f32) -> f32 {
+    smooth(((distance_texels - half) / chamfer).clamp(0.0, 1.0))
+}
+
+/// The board's surface across the tile: 0 in a seam, 1 on the flat.
+/// Pure — tested.
+#[must_use]
+pub fn deck_profile(u: f32) -> f32 {
+    groove(seam_distance(u), SEAM_HALF_TEXELS, CHAMFER_TEXELS)
+}
+
+/// The platform's surface along the tile: 0 in a joint, 1 elsewhere.
+/// Pure — tested.
+#[must_use]
+pub fn deck_joint_profile(v: f32) -> f32 {
+    groove(joint_distance(v), JOINT_HALF_TEXELS, JOINT_CHAMFER_TEXELS)
+}
+
+/// A hump that peaks on the chamfer itself and is zero both in the
+/// gap and on the flat — the worn, paler edge of a board. Pure —
+/// tested.
+#[must_use]
+pub fn deck_chamfer(u: f32) -> f32 {
+    let p = deck_profile(u);
+    4.0 * p * (1.0 - p)
+}
+
+/// How the board is dished across its width: 0 at the edges, 1 in
+/// the middle of the board — scaled by how much THIS board has
+/// cupped, which is not how much its neighbour has. Pure — tested.
+#[must_use]
+pub fn deck_cup(u: f32) -> f32 {
+    let across = (u.rem_euclid(1.0) * DECK_PLANKS).fract();
+    let centred = 2.0f32.mul_add(across, -1.0);
+    let aged = (1.0 - DECK_CUP_FLOOR).mul_add(hash01(91 + plank_index(u)), DECK_CUP_FLOOR);
+    (1.0 - centred * centred) * aged
 }
 
 /// Scuff streaks: three per tile, running along the planks, slowly
@@ -305,26 +395,51 @@ pub fn deck_scuff(u: f32, v: f32) -> f32 {
 }
 
 /// Deck brightness: planks with their own tone, grain along the
-/// plank, dark seams, pale scuffs. Pure — tested.
+/// plank, pale worn edges, a dark gap between boards, a darker
+/// platform joint across them, pale scuffs. Pure — tested.
 #[must_use]
 pub fn deck_shade(u: f32, v: f32) -> f32 {
-    let plank_tone = 0.06 * (hash01(61 + plank_index(u)) - 0.5);
+    // Half again as much board-to-board variation as the first cut:
+    // at rest the eye should be able to count the boards without a
+    // light on them.
+    let plank_tone = 0.09 * (hash01(61 + plank_index(u)) - 0.5);
     let grain = 0.78 + 0.14 * value_noise(u, v, 40, 6, 71) + plank_tone;
     let scuffed = lerp(grain, 0.92, 0.6 * deck_scuff(u, v));
-    lerp(scuffed, 0.45, seam(u))
+    // The eased edge has lost its finish, so it gives back a little
+    // of what the groove's shadow takes: the chamfer is still darker
+    // than the flat, just not as dark as the gap it runs into. The
+    // bright line an edge shows under a light comes from the normal
+    // map, not from here.
+    let edged = lerp(scuffed, (scuffed + 0.10).min(1.0), 0.7 * deck_chamfer(u));
+    // Dark in the gap — but a gap between two boards has a board
+    // edge at the bottom of it, not a hole through the stage.
+    let gapped = lerp(0.34, edged, deck_profile(u));
+    lerp(0.30, gapped, deck_joint_profile(v))
 }
 
-/// Deck relief: seams are grooves, planks warp a little.
+/// Deck relief: the gap between boards with its chamfer, the
+/// platform joint across them, each board dished across its width,
+/// and a long, gentle warp.
+///
+/// The warp used to be `value_noise(6, 6)` at 0.15 on a tile that
+/// repeats thirty-six times over the deck — every light pool broke
+/// into puddles. One cell per board, two along, a third of the
+/// amplitude: boards sit a little proud of each other, and a pool
+/// stays a pool.
 #[must_use]
 pub fn deck_height(u: f32, v: f32) -> f32 {
-    let warp = 0.15 * value_noise(u, v, 6, 6, 81);
-    0.5 + warp - seam(u)
+    let warp = 0.05 * value_noise(u, v, 6, 2, 81);
+    let board = deck_profile(u).min(deck_joint_profile(v));
+    let cup = DECK_CUP * deck_cup(u) * deck_profile(u);
+    board - 0.5 + warp - cup
 }
 
-/// Deck roughness: glossy between scuffs, dull on them.
+/// Deck roughness: glossy between scuffs, dull on them, and duller
+/// still in the gaps and joints, where a floor is never polished.
 #[must_use]
 pub fn deck_rough(u: f32, v: f32) -> f32 {
-    0.30 + 0.16 * deck_scuff(u, v)
+    let open = (1.0 - deck_profile(u)).max(1.0 - deck_joint_profile(v));
+    0.30 + 0.16 * deck_scuff(u, v) + 0.34 * open
 }
 
 // ---- height → normal -----------------------------------------------------
@@ -657,6 +772,155 @@ mod tests {
             differs_at_a_thread,
             "a quarter period must change the weave"
         );
+    }
+
+    #[test]
+    fn a_board_edge_is_eased_and_the_gap_is_not_a_hole() {
+        // The first cut cut a hard two-texel slot: the seams read as
+        // black chasms between slats rather than as boards laid
+        // beside each other.
+        let texel = |t: f32| t / TILE as f32;
+        assert_eq!(deck_profile(texel(0.0)), 0.0, "the gap itself");
+        // Positions come from the constants, not from the tuning of
+        // the day: the first cut of this test wrote the texels down
+        // and went red the moment the chamfer was widened.
+        let across = SEAM_HALF_TEXELS + CHAMFER_TEXELS;
+        let ramp: Vec<f32> = (1..5)
+            .map(|k| deck_profile(texel(SEAM_HALF_TEXELS + across * k as f32 / 5.0)))
+            .collect();
+        for pair in ramp.windows(2) {
+            assert!(pair[1] > pair[0], "the chamfer rises: {ramp:?}");
+        }
+        assert!(
+            deck_profile(texel(across + 0.5)) > 0.999,
+            "and reaches the flat of the board"
+        );
+        // Dark, but a gap between two boards has a board edge at the
+        // bottom of it.
+        let gap = deck_shade(texel(0.0), 0.5);
+        assert!(
+            gap > 0.25 && gap < deck_shade(texel(20.0), 0.5) - 0.2,
+            "the gap is dark and not black: {gap}"
+        );
+        // ... and it is the darkest place across a board.
+        for t in 1..40 {
+            assert!(
+                deck_shade(texel(t as f32), 0.5) >= gap,
+                "nothing across the board is darker than its gap (texel {t})"
+            );
+        }
+    }
+
+    #[test]
+    fn the_deck_is_built_from_platforms() {
+        // A stage deck is modules; before this the boards ran the
+        // whole thirty metres without a joint anywhere.
+        let joint = deck_joint_profile(0.0);
+        assert_eq!(joint, 0.0, "the joint itself");
+        assert!(
+            deck_joint_profile(0.5) > 0.999,
+            "and the platform between joints is flat"
+        );
+        // It runs ACROSS the planks: on the flat of every board, not
+        // only where a seam already darkens (each of these sits at
+        // the middle of a board — `fract(u * DECK_PLANKS)` near 0.5).
+        for u in [0.083, 0.25, 0.4167, 0.5833, 0.75] {
+            assert!(
+                deck_shade(u, 0.0) < deck_shade(u, 0.5) - 0.15,
+                "the joint is dark at u {u}"
+            );
+            assert!(
+                deck_height(u, 0.0) < deck_height(u, 0.5) - 0.5,
+                "and grooved at u {u}"
+            );
+        }
+        // And where a seam crosses it, the joint never brightens.
+        assert!(deck_shade(0.0, 0.0) <= deck_shade(0.0, 0.5));
+    }
+
+    #[test]
+    fn a_board_is_dished_across_its_width_but_only_just() {
+        // A cupped board is a cylindrical mirror — it is what pulls a
+        // stage light into a streak along the plank. It must stay far
+        // shallower than the gap beside it, or the boards read as
+        // gutters.
+        let per = TILE as f32 / DECK_PLANKS;
+        let flat = SEAM_HALF_TEXELS + CHAMFER_TEXELS + 1.0;
+        // Every board, because they no longer cup alike: none may be
+        // domed, and the deepest of them must actually dish.
+        let mut deepest = 0.0f32;
+        for board in 0..DECK_PLANKS as usize {
+            let at = |t: f32| (board as f32 + t / per) / DECK_PLANKS;
+            let middle = deck_height(at(per * 0.5), 0.5);
+            let near_edge = deck_height(at(flat), 0.5);
+            assert!(
+                middle <= near_edge + 1e-4,
+                "board {board} is domed: {middle} against {near_edge}"
+            );
+            deepest = deepest.max(near_edge - middle);
+        }
+        assert!(deepest > 0.01, "no board dishes at all: {deepest}");
+        let gap = deck_height(flat / per / DECK_PLANKS, 0.5) - deck_height(0.0, 0.5);
+        assert!(
+            deepest < gap * 0.25,
+            "the dish is a hair of the gap's depth: dish {deepest}, gap {gap}"
+        );
+    }
+
+    #[test]
+    fn the_flat_of_a_board_no_longer_puddles() {
+        // The warp was value_noise(6, 6) at 0.15 on a tile that
+        // repeats thirty-six times across the deck, and every light
+        // pool broke into puddles. Two measures, both taken against
+        // the old field before the thresholds were chosen: how often
+        // the relief turns along one board (was 3 per tile, is 1),
+        // and how far it wanders over a patch of the flat (was 0.140,
+        // is 0.031 — against a gap almost a whole unit deep).
+        let per = TILE as f32 / DECK_PLANKS;
+        let u = 20.0 / per / DECK_PLANKS;
+        let heights: Vec<f32> = (0..400)
+            .map(|i| deck_height(u, 0.12 + i as f32 * 0.0019))
+            .collect();
+        let turns = heights
+            .windows(3)
+            .filter(|w| (w[1] - w[0]) * (w[2] - w[1]) < 0.0)
+            .count();
+        assert!(
+            turns <= 2,
+            "the relief along one board turns {turns} times in a tile"
+        );
+        let patch: Vec<f32> = (0..40)
+            .flat_map(|i| {
+                (0..40).map(move |j| {
+                    deck_height(
+                        (10.0 + i as f32 * 0.55) / per / DECK_PLANKS,
+                        0.15 + j as f32 * 0.0175,
+                    )
+                })
+            })
+            .collect();
+        let span = patch.iter().copied().fold(f32::MIN, f32::max)
+            - patch.iter().copied().fold(f32::MAX, f32::min);
+        assert!(span < 0.06, "the flat wanders {span} across a patch");
+    }
+
+    #[test]
+    fn the_open_places_of_the_deck_are_never_polished() {
+        // A floor is waxed where it is walked on, not down in the
+        // gaps and joints where the mop never reaches.
+        let flat = deck_rough(20.0 / (TILE as f32 / DECK_PLANKS) / DECK_PLANKS, 0.5);
+        assert!(
+            deck_rough(0.0, 0.5) > flat + 0.2,
+            "the gap is duller than the board"
+        );
+        assert!(
+            deck_rough(0.15, 0.0) > flat + 0.2,
+            "and so is the platform joint"
+        );
+        for (u, v) in [(0.0f32, 0.0f32), (0.15, 0.5), (0.42, 0.27)] {
+            let r = deck_rough(u, v);
+            assert!((0.0..=1.0).contains(&r), "roughness {r} at {u},{v}");
+        }
     }
 
     #[test]
