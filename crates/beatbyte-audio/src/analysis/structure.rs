@@ -396,7 +396,13 @@ pub fn snap_to_bars(
     if bars.is_empty() {
         let s = start.div_ceil(4) * 4;
         let e = end / 4 * 4;
-        return (e > s && s - start <= snap).then_some((s, e - s));
+        // `then` and not `then_some`: the latter builds its value
+        // EAGERLY, so `e - s` was computed before `e > s` was ever
+        // consulted. A short span without a bar grid — start 1,
+        // len 1, so s = 4 and e = 0 — underflowed and took the whole
+        // analysis down with it (a panic in the task pool, seen in
+        // the running game).
+        return (e > s && s - start <= snap).then(|| (s, e - s));
     }
     let s = *bars.iter().find(|&&b| b >= start)?;
     if s - start > snap {
@@ -582,6 +588,22 @@ mod tests {
         );
         assert_eq!(snap_to_bars(5, 3, &[0, 4, 8], 3), None, "no bar inside");
         assert_eq!(snap_to_bars(1, 10, &[], 3), Some((4, 4)));
+        // A span too short to hold a bar, with no grid to snap to.
+        // This PANICKED: `then_some` builds its value eagerly, so
+        // `e - s` was computed with s = 4 and e = 0 before `e > s`
+        // was consulted, and the subtraction underflowed. It took
+        // the whole analysis down with it in the running game.
+        assert_eq!(snap_to_bars(1, 1, &[], 3), None, "nothing fits");
+        assert_eq!(snap_to_bars(1, 2, &[], 3), None);
+        assert_eq!(snap_to_bars(0, 3, &[], 3), None);
+        // ... and every start and length near that edge is answered
+        // rather than survived.
+        for start in 0..12usize {
+            for len in 0..12usize {
+                let _ = snap_to_bars(start, len, &[], 3);
+                let _ = snap_to_bars(start, len, &[0, 4, 8], 3);
+            }
+        }
         assert_eq!(
             bar_indices(&[0.0, 0.5, 1.0, 1.5, 2.0], &[0.01, 2.04, 2.04]),
             vec![0, 4]

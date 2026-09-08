@@ -14,6 +14,28 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.54] - 2026-09-08
+
+### Fixed
+
+- **A short repeated span no longer crashes the whole analysis.**
+  `snap_to_bars` ended in `.then_some((s, e - s))`, and `then_some`
+  builds its value **eagerly**: `e - s` was computed before `e > s`
+  had been consulted. A span too short to hold a bar, with no grid to
+  snap to — start 1, length 1, so `s = 4` and `e = 0` — underflowed
+  and panicked on the task-pool thread, taking the game down with it.
+  Seen in the running game while adding a song by name; it could have
+  come from any import.
+
+  Now `.then(…)`, which is lazy. The regression test asks for exactly
+  that span and sweeps every start and length around the edge; with
+  the old line back it panics with the same message on the same line.
+
+  The one sibling this turned up (`generate.rs`'s
+  `(here > 0).then_some(here - 1)`) is not the same bug: that lane is
+  `i32`, so the eager value is `-1` rather than an underflow, and the
+  guard means it is never used. Left alone.
+
 ## [0.14.53] - 2026-09-08
 
 ### Fixed
