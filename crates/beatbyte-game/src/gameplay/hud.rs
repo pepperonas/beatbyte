@@ -313,6 +313,83 @@ pub struct SongTitleText;
 /// Width of the song ribbon, in world units.
 const RIBBON_W: f32 = 620.0;
 
+/// Size of the song ribbon's title, in pixels.
+///
+/// The size was found by being wrong twice, in both directions.
+/// 9 → 13 came back as "ich sehe keinen unterschied" — a third more
+/// of a very small thing is not a change anybody sees. 18 came back
+/// as "sieht nicht gut aus" — though the screenshot that came with it
+/// showed the progress bar running through the words, which was a
+/// separate fault and is fixed (see [`RIBBON_TEXT_TOP`]). With the
+/// strip readable again the answer was "noch etwas größer", and 16 is
+/// what the runway allows: at 14 the longest title plus its tag drew
+/// x=330..784 against a clock beginning at x=905, so the size may
+/// grow by 1.26 before the two touch. 16 spends 1.14 of that and
+/// leaves ~56 px clear. The clock keeps its own size — it was never
+/// what anybody asked to read.
+///
+/// The ceiling is the clock, measured off frames rather than
+/// computed — text width needs the font engine. The library's
+/// longest title (*Santa Esmeralda - Kill Bill Vol. 1 - Don´t Let Me
+/// Be Misunderstood*, 66 characters) drew x=331..702 at 13 px and
+/// x=330..846 at 18 px, with the clock beginning at x=905. So the
+/// runway is 574 px, 14 px spends about 400 of it, and the
+/// difficulty tag after it still has room.
+const SONG_TITLE_PX: f32 = 16.0;
+
+/// Top edge of the ribbon's text line (title on the left, clock on
+/// the right; both anchored at their top, so they hang DOWN from it).
+///
+/// It was 350 while the title was 9 px. At 14 the glyphs reached into
+/// the progress bar and the bar ran through the words — reported as
+/// "die zeitleiste funkt noch zwischen", and measured off that frame:
+/// the glyphs occupied design y 334.5..347 while the bar occupies
+/// 334.5..337.5. Raising the line clears it; the bar cannot go down
+/// instead, because in multiplayer the score block starts just below
+/// it at [`HUD_TOP`].
+///
+/// It has to rise again whenever the title does, which is why the
+/// clearance is a test rather than a habit: at 16 px the ink reaches
+/// 17.8 below the anchor, so 356 would put it back within a unit of
+/// the bar.
+const RIBBON_TEXT_TOP: f32 = 358.0;
+
+/// Centre line of the song's progress bar.
+const RIBBON_BAR_Y: f32 = 336.0;
+
+/// Its height.
+const RIBBON_BAR_H: f32 = 3.0;
+
+/// How far below its anchor a top-anchored line's glyphs reach, as a
+/// multiple of the font size.
+///
+/// Measured rather than assumed: at 14 px the drawn glyphs began 3
+/// units below the anchor and ran 12.5 units tall, so the deepest ink
+/// sits 15.5 below it. Text metrics need the font engine, which a
+/// unit test does not have — this constant is what lets one check the
+/// clearance anyway, and it is therefore only compiled for them.
+#[cfg(test)]
+const RIBBON_GLYPH_DROP: f32 = 1.11;
+
+/// What the song ribbon reads.
+///
+/// Pure, so the shape can be pinned: the difficulty is a tag after
+/// the names, spaced far enough to read as a separate fact rather
+/// than as part of the artist. A song still loading has no track and
+/// therefore no difficulty, and then the tag is simply absent — never
+/// an empty gap or a guess.
+#[must_use]
+pub fn ribbon_title(
+    title: &str,
+    artist: &str,
+    difficulty: Option<beatbyte_core::Difficulty>,
+) -> String {
+    match difficulty {
+        Some(difficulty) => format!("{title} - {artist}   {difficulty}"),
+        None => format!("{title} - {artist}"),
+    }
+}
+
 /// How far through the song `now` is, in 0..1.
 ///
 /// Clamped at both ends because the clock starts NEGATIVE - there is a
@@ -383,10 +460,13 @@ pub fn spawn_huds(
         GameplayScreen,
         SongTitleText,
         Text2d::new(title),
-        font.text(9.0),
+        // Larger than the clock beside it (user request): the title
+        // is read once, glanced at afterwards, and at 9 px it was the
+        // smallest thing on a screen nobody leans towards.
+        font.text(SONG_TITLE_PX),
         TextColor(palette::dimmed(palette::TEXT_DIM, 0.9)),
         Anchor::TOP_LEFT,
-        Transform::from_xyz(-RIBBON_W / 2.0, 350.0, 5.0),
+        Transform::from_xyz(-RIBBON_W / 2.0, RIBBON_TEXT_TOP, 5.0),
     ));
     commands.spawn((
         GameplayScreen,
@@ -395,7 +475,7 @@ pub fn spawn_huds(
         font.text(9.0),
         TextColor(palette::dimmed(palette::TEXT_DIM, 0.9)),
         Anchor::TOP_RIGHT,
-        Transform::from_xyz(RIBBON_W / 2.0, 350.0, 5.0),
+        Transform::from_xyz(RIBBON_W / 2.0, RIBBON_TEXT_TOP, 5.0),
     ));
     // Track, then fill. The track has to be visible on its own or an
     // empty bar looks like a missing one.
@@ -403,19 +483,20 @@ pub fn spawn_huds(
         GameplayScreen,
         Sprite::from_color(
             palette::dimmed(palette::TEXT_DIM, 0.22),
-            Vec2::new(RIBBON_W, 3.0),
+            Vec2::new(RIBBON_W, RIBBON_BAR_H),
         ),
-        Transform::from_xyz(0.0, 336.0, 4.0),
+        Transform::from_xyz(0.0, RIBBON_BAR_Y, 4.0),
     ));
     commands.spawn((
         GameplayScreen,
         SongProgressFill,
         Sprite::from_color(
             palette::dimmed(palette::HYPE, 0.85),
-            Vec2::new(RIBBON_W, 3.0),
+            Vec2::new(RIBBON_W, RIBBON_BAR_H),
         ),
         Anchor::CENTER_LEFT,
-        Transform::from_xyz(-RIBBON_W / 2.0, 336.0, 5.0).with_scale(Vec3::new(0.0, 1.0, 1.0)),
+        Transform::from_xyz(-RIBBON_W / 2.0, RIBBON_BAR_Y, 5.0)
+            .with_scale(Vec3::new(0.0, 1.0, 1.0)),
     ));
 
     if layout.players() == 1 {
@@ -1610,28 +1691,43 @@ pub fn pulse_gauge(
 }
 
 /// Advance the song ribbon: the bar fills, the clock counts.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI
 pub fn update_song_ribbon(
     song: Res<crate::boot::LoadedSong>,
     game_clock: Res<super::GameClock>,
     time: Res<Time>,
     font: Res<crate::ui::UiFont>,
+    players: Query<(&super::PlayerIndex, &super::PlayerSession)>,
     mut fill: Query<&mut Transform, With<SongProgressFill>>,
     mut label: Query<&mut Text2d, (With<SongTimeText>, Without<SongTitleText>)>,
     mut title: Query<&mut Text2d, (With<SongTitleText>, Without<SongTimeText>)>,
 ) {
-    // An MC-set swap replaces the song resource mid-gameplay; the
-    // ribbon's title must follow it.
-    if song.is_changed()
-        && let Ok(mut text) = title.single_mut()
+    // The ribbon says which song, who made it and how hard it is. The
+    // difficulty was asked for in the debug overlay and put there
+    // first; it was then reported missing while looking at THIS strip,
+    // which is fair — the strip is where you look for what you are
+    // playing, and a fact behind a debug key is a fact most players
+    // never see. It is in both places now.
+    //
+    // From the first player's TRACK, not from the browser's
+    // selection: an MC set can hand a player a different difficulty
+    // mid-set, and this must say what is under their hands.
+    let difficulty = players
+        .iter()
+        .find(|(index, _)| index.0 == 0)
+        .map(|(_, player)| player.session.track().difficulty);
+    let wanted = ribbon_title(
+        &font.safe(&song.chart.song.title),
+        &font.safe(&song.chart.song.artist),
+        difficulty,
+    );
+    // Composed every frame and written only on a change: an MC-set
+    // swap replaces the song resource mid-gameplay, and the
+    // difficulty can travel with it.
+    if let Ok(mut text) = title.single_mut()
+        && text.0 != wanted
     {
-        let wanted = format!(
-            "{} - {}",
-            font.safe(&song.chart.song.title),
-            font.safe(&song.chart.song.artist)
-        );
-        if text.0 != wanted {
-            text.0 = wanted;
-        }
+        text.0 = wanted;
     }
     let Some(now) = game_clock.song_time(&time) else {
         return;
@@ -1733,6 +1829,49 @@ mod ribbon_tests {
 
 #[cfg(test)]
 mod gauge_tests {
+    use super::ribbon_title;
+
+    #[test]
+    fn the_progress_bar_runs_clear_of_the_title_it_sits_under() {
+        use super::{
+            RIBBON_BAR_H, RIBBON_BAR_Y, RIBBON_GLYPH_DROP, RIBBON_TEXT_TOP, SONG_TITLE_PX,
+        };
+        let ink_bottom = RIBBON_TEXT_TOP - SONG_TITLE_PX * RIBBON_GLYPH_DROP;
+        let bar_top = RIBBON_BAR_Y + RIBBON_BAR_H / 2.0;
+        assert!(
+            ink_bottom > bar_top + 2.0,
+            "the title's deepest ink sits at {ink_bottom} and the bar's top at {bar_top}: \
+             the bar would run through the words, which is what growing the title once did"
+        );
+    }
+
+    #[test]
+    fn the_ribbon_names_the_difficulty_after_the_song() {
+        let line = ribbon_title(
+            "How Bizarre",
+            "OMC",
+            Some(beatbyte_core::Difficulty::Medium),
+        );
+        assert!(
+            line.starts_with("How Bizarre - OMC"),
+            "the names lead: {line}"
+        );
+        assert!(
+            line.ends_with("Medium"),
+            "the difficulty is a tag at the end: {line}"
+        );
+        assert!(
+            line.contains("OMC   Medium"),
+            "and it is spaced clear of the artist, or it reads as part of the name: {line}"
+        );
+        // Before a track exists there is no difficulty to name, and a
+        // guess would be worse than silence.
+        assert_eq!(
+            ribbon_title("How Bizarre", "OMC", None),
+            "How Bizarre - OMC"
+        );
+    }
+
     use super::{approach, charge_glow, shimmer_at};
 
     #[test]

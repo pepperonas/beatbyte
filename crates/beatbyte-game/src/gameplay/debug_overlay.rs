@@ -319,8 +319,17 @@ pub fn update_debug_overlay(
             ));
         }
         let label = format!("P{}", index.0 + 1);
+        // The difficulty gets the label row to itself. A fourth cell
+        // on the score row would overrun the plate (75 characters =
+        // 405 px against a 360 px budget, measured), and it is the
+        // line a player looks for once rather than watches.
+        //
+        // From the TRACK, not from the browser's selection: an MC set
+        // can hand a player a different difficulty mid-set, and this
+        // says what is under their hands right now.
+        lines.push(row(&label, &[("diff", track.difficulty.to_string())]));
         lines.push(row(
-            &label,
+            "",
             &[
                 ("score", perf.score().to_string()),
                 ("streak", perf.streak().to_string()),
@@ -471,6 +480,32 @@ mod tests {
                 assert!(!src.contains(key), "{key} is the debug overlay's key");
             }
         }
+    }
+
+    #[test]
+    fn the_difficulty_row_fits_the_plate_and_a_fourth_cell_would_not() {
+        // Why it sits on its own line: every difficulty name is short
+        // enough for the label row, and the score row is already full.
+        for difficulty in beatbyte_core::Difficulty::ALL {
+            let line = row("P1", &[("diff", difficulty.to_string())]);
+            assert!(
+                line.len() as f32 * SIZE * 0.6 < PLATE_W - 12.0,
+                "{difficulty} overflows the plate"
+            );
+        }
+        let crowded = row(
+            "P1",
+            &[
+                ("diff", "Expert".to_owned()),
+                ("score", "1234567".to_owned()),
+                ("streak", "999".to_owned()),
+                ("mult", "x4".to_owned()),
+            ],
+        );
+        assert!(
+            crowded.len() as f32 * SIZE * 0.6 > PLATE_W - 12.0,
+            "if four cells ever fit, put the difficulty back on the score row"
+        );
     }
 
     #[test]

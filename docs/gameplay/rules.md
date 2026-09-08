@@ -19,7 +19,10 @@ Chords score per lane (a 3-lane Perfect chord = 150 base points).
 
 ## Hitting notes
 
-- **Strum**: hits the earliest pending note in the window whose frets
+- **Strum**: `Space`, `↑`/`↓`, a gamepad's strum bar, or the **primary
+  mouse button** (keyboard players only — a pad player has a strum bar
+  under their hand, and in a two-player game one click must not strum
+  for both). Hits the earliest pending note in the window whose frets
   match. Single notes use *anchoring* — only the highest held fret must
   match (lower frets may stay held). Chords require exact frets.
 - **Overstrum** (strum matching nothing): breaks the streak, ends any

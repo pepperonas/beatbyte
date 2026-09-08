@@ -14,6 +14,57 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.57] - 2026-09-09
+
+### Added
+
+- **The primary mouse button strums.** Asked for as "während des
+  Spielens auch mittels primärem Mausklick Noten anschlagen". It is
+  deliberately not in the bindable input map — that map is keyed by
+  `KeyCode` and `GamepadButton` — and it belongs to the keyboard
+  player only: a pad player has a strum bar under their hand, and in
+  a two-player game one click must not strum for both. Stamped like
+  every other input, so it judges identically.
+- **The difficulty is named in two places.** In the **song ribbon**,
+  as a tag after the title, where a player looks for what they are
+  playing; and in the **debug overlay**, which is where it was asked
+  for and where it was built first — it was then reported missing
+  while looking at the ribbon, which was fair: a fact behind a debug
+  key is a fact most players never see. Both read it from the first
+  player's track rather than from the browser's selection, so an MC
+  set that hands a player a different difficulty mid-set tells the
+  truth. In the overlay it has the label row to itself: a fourth cell
+  on the score row overruns the plate (75 characters = 405 px against
+  a 360 px budget), and a test now fails if that ever stops being
+  true.
+
+### Changed
+
+- **The song ribbon's title is larger** (9 → 16 px), the clock beside
+  it unchanged. The size was found by being wrong twice: 13 px came
+  back as "ich sehe keinen unterschied" — a third more of a very small
+  thing is not a change anybody sees — and 18 px as "sieht nicht gut
+  aus", with a screenshot that said why, since at twice the clock the
+  title stopped being a label on a strip and became the loudest thing
+  in the frame. The ceiling was measured off frames rather than
+  computed, text width needing the font engine: the library's longest
+  title (*Santa Esmeralda - Kill Bill Vol. 1 - Don´t Let Me Be
+  Misunderstood*, 66 characters) drew x=331..702 at 13 px and
+  x=330..846 at 18 px with the clock at x=905, and x=330..784 at 14 px
+  once the difficulty tag joined it. 16 px spends 1.14 of the 1.26
+  available and leaves about 56 px clear of the clock. The clock keeps
+  its own size: it was never what anybody asked to read.
+- **The ribbon's text line sits higher, so the progress bar no longer
+  runs through it.** A knock-on of the larger title, reported as "die
+  zeitleiste funkt noch zwischen" and measured off that frame: a
+  top-anchored line hangs DOWN from its anchor, so at 14 px the ink
+  reached design y 334.5 while the bar occupies 334.5–337.5. The line
+  moved up (350 → 358) rather than the bar down, because in
+  multiplayer the score block starts just below the bar. A test now
+  computes the clearance from the font size, using a glyph-drop factor
+  measured off a rendered frame — text metrics need the font engine,
+  which a unit test does not have.
+
 ## [0.14.56] - 2026-09-08
 
 ### Added
