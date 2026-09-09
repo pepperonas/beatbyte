@@ -38,7 +38,7 @@ use crate::audio_sys::GameClock;
 use crate::config::Settings;
 
 /// How many puffs one machine can have in the air at once.
-pub const PUFFS_PER_NOZZLE: usize = 18;
+pub const PUFFS_PER_NOZZLE: usize = 26;
 
 /// The two nozzles.
 pub const NOZZLES: usize = 2;
@@ -46,11 +46,18 @@ pub const NOZZLES: usize = 2;
 /// Every quad the pool holds.
 pub const POOL: usize = NOZZLES * PUFFS_PER_NOZZLE;
 
-/// Where a nozzle stands, outboard of the deck's edge.
+/// Where a nozzle stands, at the deck's outer edge.
 ///
 /// Outboard on purpose: fog that starts over the boards ends up over
 /// the neck, and the neck is a reading surface.
-pub const NOZZLE_X: f32 = pa::STACK_X + 1.6;
+///
+/// Measured from the DECK rather than from the PA. It hung off
+/// `pa::STACK_X` at first, and when the stacks were asked to move in
+/// the nozzles came with them — far enough that the const assert
+/// below stopped holding, at compile time, which is exactly where a
+/// rule like this should bite. Where the machines stand is a fact
+/// about the stage, not about the speakers.
+pub const NOZZLE_X: f32 = stage3d::DECK_WIDTH / 2.0 - 0.6;
 
 /// How far upstage they sit — behind the PA, in front of the crowd.
 pub const NOZZLE_Z: f32 = -12.0;
@@ -69,29 +76,59 @@ pub const QUIET_MIN_S: f32 = 26.0;
 pub const QUIET_SPREAD_S: f32 = 26.0;
 
 /// How long one puff lives.
-pub const PUFF_LIFE_S: f32 = 7.0;
+///
+/// Long: real fog does not end, it dissolves. At 7 s a puff was still
+/// visibly a thing that appeared and went; over eleven it drifts far
+/// enough to stop reading as an object at all.
+pub const PUFF_LIFE_S: f32 = 11.0;
 
 /// How long a firing keeps releasing, seconds.
-pub const BURST_S: f32 = 1.6;
+///
+/// A machine does not cough: it runs for a moment, and the fog that
+/// left first is already spreading while the last of it is still
+/// coming out. That overlap is most of what makes a bank read as one
+/// body rather than as a row of puffs.
+pub const BURST_S: f32 = 4.0;
 
 /// How fast a puff rises.
-pub const RISE_PER_S: f32 = 0.42;
+pub const RISE_PER_S: f32 = 0.26;
 
 /// How fast it drifts outward, away from the neck.
-pub const DRIFT_PER_S: f32 = 0.55;
+pub const DRIFT_PER_S: f32 = 0.62;
 
 /// A puff's size when it leaves the nozzle.
-pub const BORN_SIZE: f32 = 1.7;
+pub const BORN_SIZE: f32 = 2.1;
 
 /// How much it swells over its life.
-pub const SWELL: f32 = 5.2;
+pub const SWELL: f32 = 7.0;
 
 /// The thickest a puff ever draws.
 ///
-/// Thin: the first cut at 0.16 read as a ball of smoke rather than as
-/// fog, because a few dense round sprites are balls however soft
-/// their edges. Fog is many faint overlapping ones.
-pub const PEAK_ALPHA: f32 = 0.10;
+/// Thin, and then thinner: 0.16 read as a ball of smoke and 0.10 as a
+/// cloud with an outline. A few dense round sprites are balls however
+/// soft their edges; fog is many faint overlapping ones, and the
+/// thinner each is the more the bank is made of their sum rather than
+/// of any one of them.
+pub const PEAK_ALPHA: f32 = 0.045;
+
+/// The slowest and fastest a puff travels, as a share of the drift.
+///
+/// Real fog stretches as it goes, because no two parts of it move at
+/// the same speed. Released at one speed the bank stays the lump it
+/// left as; spread over this range it draws itself out into a bank.
+pub const PACE: (f32, f32) = (0.55, 1.5);
+
+/// How far a puff wanders across its own path, in world units.
+///
+/// Fog does not travel in a straight line. Each puff swings slowly
+/// about the drift it is on, on its own period and phase, so the bank
+/// curls instead of sliding. Small enough that it never overcomes the
+/// outward drift — a puff that wandered back over the neck would be a
+/// bug, and there is a test for it.
+pub const WANDER: f32 = 0.55;
+
+/// The slowest and fastest a puff wanders, in cycles per second.
+pub const WANDER_HZ: (f32, f32) = (0.05, 0.13);
 
 /// How much wider than tall a puff may be drawn.
 ///
@@ -161,8 +198,11 @@ pub fn age_of(puff: &Puff, now: f64) -> Option<f32> {
 #[must_use]
 pub fn thickness(age: f32) -> f32 {
     let t = (age / PUFF_LIFE_S).clamp(0.0, 1.0);
-    let bloom = (t / 0.12).clamp(0.0, 1.0);
-    let fade = (1.0 - t).powf(1.6);
+    // Slower in, slower out than the first cut: fog that arrives in a
+    // tenth of its life pops, and fog that leaves on a straight line
+    // switches off. Both ends are curves now.
+    let bloom = (t / 0.22).clamp(0.0, 1.0);
+    let fade = (1.0 - t).powf(2.4);
     PEAK_ALPHA * bloom * fade
 }
 
@@ -175,10 +215,21 @@ pub fn thickness(age: f32) -> f32 {
 pub fn drift(side: f32, slot: usize, age: f32) -> Vec3 {
     let spread = hash01(slot * 6151 + 5) - 0.5;
     let lift = hash01(slot * 3163 + 11).mul_add(0.5, 0.75);
+    // The wander: a slow swing about the path, its own rate and phase
+    // per puff, so no two curl together. It grows with age — fog
+    // leaves the nozzle in a jet and only loses its way once it has
+    // spread — and it is bounded well under the outward drift.
+    let pace = (PACE.1 - PACE.0).mul_add(hash01(slot * 7333 + 19), PACE.0);
+    let rate = (WANDER_HZ.1 - WANDER_HZ.0).mul_add(hash01(slot * 5309 + 7), WANDER_HZ.0);
+    let phase = hash01(slot * 9377 + 3) * core::f32::consts::TAU;
+    let swing = (age / PUFF_LIFE_S).min(1.0);
+    let wander =
+        |turn: f32| WANDER * swing * (age * rate * core::f32::consts::TAU + phase + turn).sin();
     Vec3::new(
-        side.signum() * (DRIFT_PER_S * age + spread * 0.9),
-        RISE_PER_S * lift * age,
-        (hash01(slot * 2777 + 23) - 0.5).mul_add(2.4, -0.35 * age),
+        side.signum() * (DRIFT_PER_S * pace * age + spread * 0.9) + wander(0.0),
+        RISE_PER_S * lift * age + wander(2.1) * 0.35,
+        (hash01(slot * 2777 + 23) - 0.5).mul_add(2.4, -0.35 * age)
+            + wander(core::f32::consts::FRAC_PI_2),
     )
 }
 
@@ -387,6 +438,52 @@ mod tests {
             );
             assert!(late.y > early.y, "and rise");
         }
+        // It stretches as it travels: no two puffs at the same speed,
+        // or the bank stays the lump it left the nozzle as.
+        let far: Vec<f32> = (0..PUFFS_PER_NOZZLE)
+            .map(|slot| drift(1.0, slot, PUFF_LIFE_S - 0.1).x)
+            .collect();
+        let nearest = far.iter().copied().fold(f32::MAX, f32::min);
+        let furthest = far.iter().copied().fold(0.0f32, f32::max);
+        assert!(
+            furthest - nearest > DRIFT_PER_S * PUFF_LIFE_S * 0.4,
+            "the bank barely drew itself out: {nearest} to {furthest}"
+        );
+    }
+
+    #[test]
+    fn a_puff_wanders_instead_of_travelling_in_a_line() {
+        // The "fließender" half of the ask, and the half no other
+        // test covered: a probe that switched the wander off left
+        // every one of them green.
+        //
+        // A straight path would have the puff's cross-track offset
+        // grow monotonically. This one swings: sampled across its
+        // life, the offset from the straight line reverses.
+        let straight = |age: f32| DRIFT_PER_S * age;
+        let offsets: Vec<f32> = (0..40)
+            .map(|i| {
+                let age = i as f32 * PUFF_LIFE_S / 40.0;
+                drift(1.0, 5, age).x - straight(age)
+            })
+            .collect();
+        let reversals = offsets
+            .windows(3)
+            .filter(|w| (w[1] - w[0]).signum() != (w[2] - w[1]).signum())
+            .count();
+        assert!(
+            reversals >= 1,
+            "the path never turns: {reversals} reversals in {} samples",
+            offsets.len()
+        );
+        // And no two puffs curl together, or the bank moves as a slab.
+        let at = |slot: usize| drift(1.0, slot, PUFF_LIFE_S * 0.6);
+        let a = at(2);
+        let b = at(3);
+        assert!(
+            (a.x - b.x).abs() + (a.z - b.z).abs() > 0.2,
+            "two puffs on the same path: {a:?} and {b:?}"
+        );
     }
 
     #[test]

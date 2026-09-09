@@ -14,6 +14,32 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.15.2] - 2026-09-09
+
+### Changed
+
+- **The PA is a size down and a step in from the edge** (scale 1.45 →
+  1.25, x ±8.6 → ±7.0). At 8.6 the cabinets stood hard against the
+  deck's own edge; now there is stage outboard of them again. The
+  dot-matrix readouts follow without being touched — they take their
+  metrics from the cabinets, which is what that coupling was for.
+- **The fog flows instead of travelling.** Thinner (peak 0.10 →
+  0.055), longer-lived (7 → 11 s), released over a longer burst so the
+  first of it is spreading while the last is still coming out, rising
+  more slowly and drifting a little faster — and each puff now
+  **wanders** about its own path on its own period and phase, so the
+  bank curls rather than sliding, and each travels at **its own pace**, so the bank draws itself out as it goes instead of staying the lump it left the nozzle as. Both ends of a puff's life are
+  curves now: fog that arrives in a tenth of its life pops, and fog
+  that leaves on a straight line switches off.
+  ⚠️ The wander is bounded well under the outward drift, and the test
+  that fog never comes back over the highway still holds.
+- ⚠️ **The nozzles now measure from the DECK, not from the PA.** They
+  hung off `pa::STACK_X`, so moving the stacks in dragged them in too
+  — far enough that the const assert keeping fog off the boards
+  stopped holding, which the build said before anything ran. Where a
+  fog machine stands is a fact about the stage, not about the
+  speakers.
+
 ## [0.15.1] - 2026-09-09
 
 ### Added

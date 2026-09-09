@@ -35,7 +35,11 @@ pub const DECK_TOP: f32 = -0.30;
 /// camera (`stage3d::VENUE_SIDE`) and the deck 20 across, they belong
 /// at the edges where a real PA stands — outboard of the barriers
 /// (2.9) and the crowd's inner rank (3.35), still on the deck.
-pub const STACK_X: f32 = 8.6;
+///
+/// 8.6 put them hard against the deck's own edge, which read as too
+/// far out ("stelle sie nicht so weit an den rand"); 7.0 leaves a
+/// margin of stage outboard of them and still clears the crowd.
+pub const STACK_X: f32 = 7.0;
 
 /// How much bigger the cabinets are than the first cut.
 ///
@@ -46,7 +50,7 @@ pub const STACK_X: f32 = 8.6;
 /// matters is that they stay clear of the neck's corridor on screen
 /// and inside the picture, and `the_stacks_clear_the_necks_sightline`
 /// checks exactly that instead.
-pub const STACK_SCALE: f32 = 1.45;
+pub const STACK_SCALE: f32 = 1.25;
 /// How far down the stage the stacks stand.
 pub const STACK_Z: f32 = -7.0;
 /// Height of the rubber feet under the sub.
