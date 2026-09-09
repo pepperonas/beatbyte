@@ -347,6 +347,40 @@ const HIT_LINE_GLOW: f32 = 1.1;
 /// a lamp.
 const HIT_LINE_COOL: f32 = 1.17;
 
+/// Where the stage camera sits.
+pub const CAMERA_POS: Vec3 = Vec3::new(0.0, 3.1, 5.2);
+/// What it looks at.
+pub const CAMERA_LOOK: Vec3 = Vec3::new(0.0, 0.05, -7.5);
+/// Its vertical field of view, in radians.
+pub const CAMERA_FOV: f32 = 50.0 * core::f32::consts::PI / 180.0;
+
+/// The highest world y the camera still shows at depth `z`.
+///
+/// Aspect-INDEPENDENT, which is what makes it worth having: the
+/// camera has no roll and no x offset, so its right vector is
+/// horizontal and widening the window cannot move the top edge up or
+/// down. Anything above this line at that depth is off the picture at
+/// every window shape, which is what happened to the light rig.
+#[must_use]
+pub fn frame_top_y(z: f32) -> f32 {
+    let forward = (CAMERA_LOOK - CAMERA_POS).normalize();
+    let right = forward.cross(Vec3::Y).normalize();
+    let up = right.cross(forward);
+    let ray = forward + up * (CAMERA_FOV / 2.0).tan();
+    let along = (z - CAMERA_POS.z) / ray.z;
+    CAMERA_POS.y + ray.y * along
+}
+
+/// How wide the stage deck is.
+///
+/// It was 13 — narrower than the picture at any window wider than
+/// about 16:9, so past its edge the eye found the unlit concrete and
+/// read it as missing floor ("der Boden bedeckt nicht die gesamte
+/// Fläche"). At 20 the deck reaches past the bottom corners of the
+/// frame out to an aspect of about 3.3, which is wider than any
+/// window anybody plays in.
+pub const DECK_WIDTH: f32 = 20.0;
+
 /// Distance ahead of the hit line for a note `seconds` away.
 #[must_use]
 pub fn note_z(seconds: f64, scroll_speed: f32) -> f32 {
@@ -1105,7 +1139,7 @@ fn spawn_venue(
     // rig's pools reflect, tangents so the normal map works. The
     // tile's own roughness/metallic rule (scalars at 1.0).
     let riser = meshes.add(crate::surfaces::tangent_mesh(Mesh::from(Cuboid::new(
-        13.0, 0.9, 30.0,
+        DECK_WIDTH, 0.9, 30.0,
     ))));
     let riser_material = materials.add(StandardMaterial {
         base_color: dark.mix(&Color::BLACK, 0.5),
@@ -1141,7 +1175,7 @@ fn spawn_venue(
         RenderLayers::layer(STAGE_LAYER),
     ));
     // The deck's front lip: a steel edge where the platform ends.
-    let lip = meshes.add(Cuboid::new(13.0, 0.08, 0.08));
+    let lip = meshes.add(Cuboid::new(DECK_WIDTH, 0.08, 0.08));
     commands.spawn((
         GameplayScreen,
         Stage3d,
@@ -1266,12 +1300,25 @@ fn spawn_venue(
                 ));
             }
         };
-    spawn_lattice(commands, &box_material, 9.0, -13.0);
+    // From the rig's own constants, not a copy of them: the two
+    // drifted apart once already, and a truss with its lamps hanging
+    // somewhere else is not a truss.
+    spawn_lattice(
+        commands,
+        &box_material,
+        super::rig::RIG_Y + 0.1,
+        super::rig::RIG_Z,
+    );
 
     // The backline lattice (P4) belongs to the venue; every fixture
     // that hangs from either truss — mantle, lens AND a real light —
     // lives in `rig`.
-    spawn_lattice(commands, &box_material, 12.6, VENUE_BACK + 1.6);
+    spawn_lattice(
+        commands,
+        &box_material,
+        super::rig::BACKLINE_Y + 0.1,
+        VENUE_BACK + 1.6,
+    );
     super::rig::spawn_rig(
         commands,
         meshes,
@@ -1350,13 +1397,13 @@ pub fn setup_stage(
             ..default()
         },
         Projection::Perspective(PerspectiveProjection {
-            fov: 50.0f32.to_radians(),
+            fov: CAMERA_FOV,
             ..default()
         }),
         // Further back and higher than the first attempt: at 2.35/3.6
         // the nearest gems filled a third of the screen and the row of
         // receptors ran off both edges of the bed.
-        Transform::from_xyz(0.0, 3.1, 5.2).looking_at(Vec3::new(0.0, 0.05, -7.5), Vec3::Y),
+        Transform::from_translation(CAMERA_POS).looking_at(CAMERA_LOOK, Vec3::Y),
         RenderLayers::layer(STAGE_LAYER),
     ));
     // Ambient light is a component ON THE CAMERA in this Bevy
@@ -2971,6 +3018,78 @@ mod tests {
         // not a lamp: a touch cooler than white.
         const { assert!(HIT_LINE_GLOW < 1.5 && HIT_LINE_GLOW > 0.5) }
         const { assert!(HIT_LINE_COOL > 1.0) }
+    }
+
+    #[test]
+    fn the_rig_hangs_inside_the_picture() {
+        // The fault: fixtures above the frame's top edge, so every
+        // beam entered the picture already cut. The fixture's own
+        // height is its lattice (two chords 0.45 apart, 0.12 thick)
+        // hanging 0.1 above the pivot.
+        const FIXTURE_TOP: f32 = 0.1 + 0.45 + 0.06;
+        let front = frame_top_y(super::super::rig::RIG_Z);
+        let back = frame_top_y(super::super::rig::BACKLINE_Z);
+        assert!(
+            super::super::rig::RIG_Y + FIXTURE_TOP < front,
+            "the front truss at {} is above the frame's top of {front} at that depth",
+            super::super::rig::RIG_Y
+        );
+        assert!(
+            super::super::rig::BACKLINE_Y + FIXTURE_TOP < back,
+            "the backline truss at {} is above the frame's top of {back}",
+            super::super::rig::BACKLINE_Y
+        );
+        // And not so low that a lamp hangs into the band's heads.
+        const { assert!(super::super::rig::RIG_Y > 4.5) } // and still overhead
+    }
+
+    #[test]
+    fn the_frame_top_does_not_move_with_the_window_shape() {
+        // The property the rig check leans on: the camera has no roll
+        // and no x offset, so its right vector is horizontal and a
+        // wider window cannot raise or lower the top edge. Computed
+        // here the long way, with an explicit aspect, to prove the
+        // short way in `frame_top_y` is allowed to leave it out.
+        let forward = (CAMERA_LOOK - CAMERA_POS).normalize();
+        let right = forward.cross(Vec3::Y).normalize();
+        let up = right.cross(forward);
+        let half = (CAMERA_FOV / 2.0).tan();
+        for aspect in [16.0 / 9.0, 2.4, 3.0] {
+            let corner = forward + up * half + right * (half * aspect);
+            let along = (-13.0 - CAMERA_POS.z) / corner.z;
+            let y = CAMERA_POS.y + corner.y * along;
+            assert!(
+                (y - frame_top_y(-13.0)).abs() < 1e-3,
+                "at aspect {aspect} the corner reaches y={y}, not {}",
+                frame_top_y(-13.0)
+            );
+        }
+    }
+
+    #[test]
+    fn the_deck_reaches_past_the_bottom_of_the_picture() {
+        // The other fault: at 13 wide the deck ended inside the
+        // frame and the unlit concrete beyond it read as missing
+        // floor. The bottom corners of the picture land on the deck's
+        // own plane; the deck has to reach them.
+        let forward = (CAMERA_LOOK - CAMERA_POS).normalize();
+        let right = forward.cross(Vec3::Y).normalize();
+        let up = right.cross(forward);
+        let half = (CAMERA_FOV / 2.0).tan();
+        const DECK_TOP: f32 = -0.30;
+        // 21:9 is the widest shape anyone plays on; 3.0 is past every
+        // monitor sold.
+        for aspect in [16.0 / 9.0, 2.4, 3.0] {
+            let corner = (forward - up * half + right * (half * aspect)).normalize();
+            let along = (DECK_TOP - CAMERA_POS.y) / corner.y;
+            let x = CAMERA_POS.x + corner.x * along;
+            assert!(
+                x.abs() < DECK_WIDTH / 2.0,
+                "at aspect {aspect} the picture's corner falls at x={x}, off a deck \
+                 half {} wide",
+                DECK_WIDTH / 2.0
+            );
+        }
     }
 
     #[test]

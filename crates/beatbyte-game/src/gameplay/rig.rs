@@ -26,11 +26,25 @@ use super::stage3d::{STAGE_LAYER, Stage3d, complementary};
 use crate::theme::Theme;
 
 /// The front truss's height.
-pub const RIG_Y: f32 = 8.9;
+///
+/// It hung at 8.9 until 2026-09-09, and at that height it was NOT IN
+/// FRAME: the camera's top plane passes y=6.80 at [`RIG_Z`], so every
+/// fixture was two units above the picture and each beam entered from
+/// off screen, cut off by the frame's top edge. Reported as "die
+/// Lichter sind abgeschnitten — sie werden nicht vollständig
+/// dargestellt". The camera is the genre's framing and does not move
+/// for this, so the rig came down to it.
+/// `stage3d::the_rig_hangs_inside_the_picture` computes the frame's
+/// top from the camera's own constants and fails if either truss
+/// leaves it again.
+pub const RIG_Y: f32 = 5.9;
 /// The front truss's depth.
 pub const RIG_Z: f32 = -13.0;
 /// The backline truss's height.
-pub const BACKLINE_Y: f32 = 12.5;
+///
+/// Was 12.5, which is 0.6 above the frame's top at [`BACKLINE_Z`] —
+/// less badly cut than the front truss, but cut.
+pub const BACKLINE_Y: f32 = 11.0;
 /// The backline fixtures' depth (just in front of the rear wall).
 pub const BACKLINE_Z: f32 = -38.2;
 /// The wide mantle's base radius, in fixture units.

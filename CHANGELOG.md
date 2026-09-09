@@ -14,6 +14,37 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.59] - 2026-09-09
+
+### Fixed
+
+- **The light rig hung above the picture, so every beam entered it
+  already cut off.** Reported as "die Lichter sind abgeschnitten —
+  sie werden nicht vollständig dargestellt". Measured rather than
+  guessed: the camera's top plane passes y=6.80 at the front truss's
+  depth and y=11.93 at the backline's, while the trusses hung at 8.9
+  and 12.5 — two units and half a unit above the frame. The camera is
+  the genre's framing and does not move for this, so the rig came down
+  to it (5.9 and 11.0), and the lattices now take their height from
+  the rig's own constants rather than from copies that had already
+  drifted (9.0 against 8.9). A test computes the frame's top from the
+  camera's constants and fails if either truss leaves it again; a
+  second proves that top edge does not move with the window's shape,
+  which is what lets the first one ignore the aspect.
+- **The stage deck ran out inside the frame.** Reported as "der Boden
+  bedeckt nicht die gesamte Fläche". At 13 units wide its edge fell
+  inside the picture on anything wider than about 16:9 — the bottom
+  corners of a 21:9 window land at x=±7.2 — and past that edge the eye
+  found unlit concrete and read it as missing floor. The deck is 20
+  wide now, which carries it past the bottom corners out to an aspect
+  of 3.3, and a test checks the corners against the deck at three
+  window shapes.
+- ⚠️ **Not a hole.** Before changing anything, the venue was rendered
+  once with a magenta clear colour: at 16:9 and at the reported
+  window, **no pixel** showed it. Nothing was uncovered — the floor
+  was there and unlit, which is a different fault with a different
+  fix, and this entry says so rather than claiming a hole was sealed.
+
 ## [0.14.58] - 2026-09-09
 
 ### Fixed
