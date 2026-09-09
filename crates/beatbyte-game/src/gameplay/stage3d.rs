@@ -102,6 +102,24 @@ pub const DECK_CLEARCOAT: f32 = 0.45;
 /// what a sealed floor actually looks like from the third row.
 pub const DECK_CLEARCOAT_ROUGHNESS: f32 = 0.38;
 
+/// Where the floor's side fills hang, per side.
+///
+/// The horizontal boundary was the last thing left of the "der Boden
+/// bedeckt nicht die gesamte Fläche" report, and it cannot be solved
+/// by making the deck wider: its edge runs the length of the stage,
+/// and to push that line out of frame at the deck's FAR end would
+/// take a deck 72 units across. The magenta test had already shown
+/// there is no hole out there — the floor is present and unlit, and
+/// an unlit floor beside a lit deck reads as an edge into nothing.
+///
+/// So the concrete gets light. Outboard of the deck (now ±10), low
+/// enough to graze rather than to wash, and near-to-mid depth, which
+/// is where the outboard floor actually fills the picture.
+#[must_use]
+pub fn side_fill_position(side: f32) -> Vec3 {
+    Vec3::new(side.signum() * 15.0, 3.2, -7.0)
+}
+
 /// Where the deck's back-corner fills hang, per side.
 ///
 /// Outboard of the barriers (x 2.9) and of the deck's own edge
@@ -1087,7 +1105,7 @@ fn spawn_venue(
     // more of the theme's own tone and a sealed-concrete sheen give
     // them somewhere to fall.
     let floor_material = materials.add(StandardMaterial {
-        base_color: dark.mix(&Color::BLACK, 0.62),
+        base_color: dark.mix(&Color::BLACK, 0.45),
         perceptual_roughness: 0.62,
         metallic: 0.1,
         ..default()
@@ -1554,6 +1572,25 @@ pub fn setup_stage(
                 ..default()
             },
             Transform::from_translation(back_fill_position(side)),
+            RenderLayers::layer(STAGE_LAYER),
+        ));
+    }
+    // The floor's side fills: the concrete outboard of the deck, so
+    // the deck's edge is a step in a lit floor rather than the last
+    // thing before darkness.
+    for side in [-1.0f32, 1.0] {
+        commands.spawn((
+            GameplayScreen,
+            Stage3d,
+            super::lightshow::VenueWash,
+            PointLight {
+                color: stage.accent.mix(&stage.background, 0.6),
+                intensity: 2_600_000.0,
+                range: 42.0,
+                shadow_maps_enabled: false,
+                ..default()
+            },
+            Transform::from_translation(side_fill_position(side)),
             RenderLayers::layer(STAGE_LAYER),
         ));
     }
@@ -3062,6 +3099,29 @@ mod tests {
                 (y - frame_top_y(-13.0)).abs() < 1e-3,
                 "at aspect {aspect} the corner reaches y={y}, not {}",
                 frame_top_y(-13.0)
+            );
+        }
+    }
+
+    #[test]
+    fn the_side_fills_light_the_floor_outboard_of_the_deck() {
+        for side in [-1.0f32, 1.0] {
+            let p = side_fill_position(side);
+            assert!(
+                p.x.abs() > DECK_WIDTH / 2.0,
+                "a fill inboard of the deck lights the deck, not the floor: {}",
+                p.x
+            );
+            assert_eq!(p.x.signum(), side, "one fill per side");
+            // Low: the job is to graze the concrete, not to wash the
+            // crowd from the side.
+            assert!(p.y < 5.0, "too high to graze the floor: {}", p.y);
+            // Near-to-mid depth, where the outboard floor is what
+            // fills the picture. The back corners have their own
+            // fills further upstage.
+            assert!(
+                p.z > back_fill_position(side).z,
+                "the side fill belongs downstage of the back-corner fill"
             );
         }
     }

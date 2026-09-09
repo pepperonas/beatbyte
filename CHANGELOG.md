@@ -14,6 +14,23 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.60] - 2026-09-09
+
+### Fixed
+
+- **The floor outboard of the deck is lit, so its edge is a step in a
+  floor rather than the last thing before darkness.** The remaining
+  half of "der Boden bedeckt nicht die gesamte Fläche", narrowed by
+  the reporter to "die Begrenzung auf der horizontalen". A wider deck
+  cannot answer it: the deck's edge runs the length of the stage, and
+  pushing that line out of frame at its far end would take a deck 72
+  units across. The magenta test had already shown there is no hole
+  out there — the floor is present and unlit — so it gets two side
+  fills, outboard of the deck, low enough to graze rather than wash,
+  at the near-to-mid depth where the outboard floor fills the picture.
+  The concrete's own tone came up as well (a 62 % mix into black was a
+  surface nothing could land on).
+
 ## [0.14.59] - 2026-09-09
 
 ### Fixed
