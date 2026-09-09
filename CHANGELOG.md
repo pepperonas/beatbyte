@@ -14,6 +14,36 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.15.1] - 2026-09-09
+
+### Added
+
+- **`G` in the song browser re-runs a song's chart design.** Asked for
+  as "ich möchte in der playlist die optimierung des song graph und
+  der lyrics auch manuell anstoßen können" — the lyrics half was
+  already there (`L` looks them up, `K` aligns them against the
+  audio); the chart half had only ever been a command-line job.
+  It writes the folder's next version and moves the pointer, so
+  nothing is overwritten and a revert stays one pointer away, and the
+  library rescans the moment it lands. A built-in song says why it
+  cannot: it is synthesized at boot and has no folder to write into.
+- **A chore runner** (`chore.rs`) for jobs of that size: off the main
+  thread, reported on the import overlay with a bar that creeps toward
+  the end without arriving, collected wherever the player has gone by
+  the time it finishes. One at a time on purpose — these decode and
+  re-analyse whole recordings, and a browser where a held key starts a
+  dozen of those is a browser that eats the machine. The second is
+  refused in words a status line can carry.
+
+### Changed
+
+- **The redesign moved out of the command line into
+  `beatbyte_chart::redesign`**, so the game and the CLI run the same
+  one rather than two that drift. The reading of the recording is
+  injected, which keeps `beatbyte-chart` free of any dependency on
+  `beatbyte-audio`; the CLI supplies its decode, analysis and meter,
+  and the game supplies the same decode and analysis an import uses.
+
 ## [0.15.0] - 2026-09-09
 
 ### Added

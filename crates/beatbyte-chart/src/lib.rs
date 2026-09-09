@@ -41,6 +41,7 @@ pub mod generate;
 pub mod grid;
 pub mod io;
 pub mod lyrics;
+pub mod redesign;
 pub mod schema;
 pub mod validate;
 pub mod versions;

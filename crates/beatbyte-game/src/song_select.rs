@@ -711,7 +711,7 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
             crate::prompts::device_footer(
                 parent,
                 font,
-                "UP/DOWN song  LEFT/RIGHT difficulty  S sort  F search  ENTER rock  L lyrics  K align  Q queue MC set  P play set  E edit  DEL delete  ESC back",
+                "UP/DOWN song  LEFT/RIGHT difficulty  S sort  F search  ENTER rock  D add  L lyrics  K align  G redesign  Q queue MC set  P play set  E edit  DEL delete  ESC back",
                 "D-PAD song and difficulty  SOUTH rock  EAST back",
             );
             ui_kit::back_button(parent, font, "MAIN MENU");
@@ -860,6 +860,55 @@ struct StartDeps<'w, 's> {
     smart: ResMut<'w, crate::smart_lyrics::SmartLyrics>,
     /// The "add a song by name" field (`D` opens it).
     prompt: ResMut<'w, DownloadPrompt>,
+    /// The one background job (`G` redesigns the highlighted chart).
+    chore: ResMut<'w, crate::chore::Chore>,
+}
+
+/// The folder a song's chart lives in, or `None` for a built-in.
+///
+/// A built-in is synthesized at boot and has no folder to write a
+/// version into; the redesign has nothing to hold on to there, and
+/// the browser says so rather than failing silently.
+fn chart_folder(source: &SongSource) -> Option<std::path::PathBuf> {
+    match source {
+        SongSource::Builtin(_) => None,
+        SongSource::File { chart_path, .. } => chart_path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .map(std::path::Path::to_path_buf),
+    }
+}
+
+/// Redesign one song folder, off the main thread.
+///
+/// The reading of the recording is this side's to supply — the chart
+/// crate deliberately knows nothing of audio — and it is the same
+/// decode and analysis an import does, so a redesigned chart and a
+/// freshly imported one come from the same reading.
+fn redesign_song(folder: &std::path::Path) -> Result<String, String> {
+    beatbyte_chart::redesign::redesign_folder(
+        folder,
+        &|audio_path| {
+            let audio = beatbyte_audio::decode_file(audio_path)
+                .map_err(|error| format!("cannot decode `{}`: {error}", audio_path.display()))?;
+            let priming = audio.priming();
+            let trim = beatbyte_chart::AudioTrim::declared(
+                priming.samples,
+                priming.timescale,
+                audio.sample_rate(),
+            );
+            let analysis = <beatbyte_audio::SpectralAnalyzer as beatbyte_audio::Analyzer>::analyze(
+                &beatbyte_audio::SpectralAnalyzer::default(),
+                &audio,
+            );
+            Ok(beatbyte_chart::redesign::Reading { analysis, trim })
+        },
+        // A game has nowhere to print diagnostics, and the line the
+        // player sees is the result rather than the working.
+        &|_| {},
+    )
+    .map(|line| format!("redesigned: {line}"))
+    .map_err(|reason| format!("redesign: {reason}"))
 }
 
 /// The "add a song by name" prompt: its own field, not the browser's
@@ -1208,6 +1257,42 @@ fn browser_input(
                 Err(reason) => {
                     sounds.write(crate::sfx::UiSound::Error);
                     status.0 = reason.message().to_owned();
+                }
+            }
+        }
+    }
+    // G re-runs the chart's own design on the highlighted song: a
+    // fresh reading of the recording, hard and expert regenerated
+    // from it, written as the folder's NEXT version with the pointer
+    // moved — so a revert is one pointer away and nothing is
+    // overwritten. The same redesign the command line runs
+    // (`beatbyte_chart::redesign`), not a second one.
+    //
+    // It runs as a chore: off the main thread, reported on the import
+    // overlay, and collected wherever the player has gone by the time
+    // it finishes. A four-minute song takes the better part of a
+    // minute, which is not a wait to hold a browser still for.
+    if !searching && keys.just_pressed(KeyCode::KeyG) {
+        match chart_folder(&entry.source) {
+            None => {
+                sounds.write(crate::sfx::UiSound::Error);
+                status.0 = "the built-in songs are generated, not designed".to_owned();
+            }
+            Some(folder) => {
+                let title = crate::ui::font_safe(&entry.title);
+                let line = format!("redesigning \"{title}\"...");
+                match start
+                    .chore
+                    .start(line.clone(), move || redesign_song(&folder))
+                {
+                    Ok(()) => {
+                        sounds.write(crate::sfx::UiSound::Confirm);
+                        status.0 = line;
+                    }
+                    Err(reason) => {
+                        sounds.write(crate::sfx::UiSound::Error);
+                        status.0 = reason.to_owned();
+                    }
                 }
             }
         }
@@ -1929,6 +2014,7 @@ mod column_tests {
     /// It has been wrong twice: the OPT cell was once spawned after
     /// the score while its caption came before it, and the two marks
     /// were swapped in the header alone.
+
     #[test]
     fn the_captions_and_the_cells_are_spawned_in_one_order() {
         let source = include_str!("song_select.rs");
@@ -2897,5 +2983,34 @@ mod search_input_tests {
         });
         frame(&mut app, 0.016);
         assert_eq!(view(&app).1, "M");
+    }
+}
+
+#[cfg(test)]
+mod redesign_tests {
+    use super::{SongSource, chart_folder};
+
+    #[test]
+    fn a_redesign_needs_a_folder_and_a_builtin_has_none() {
+        // What `G` decides before it starts anything: a song on disk
+        // gives the folder its versions are written into; a built-in
+        // is synthesized at boot and has nowhere to put one, which
+        // the browser says instead of failing quietly.
+        assert_eq!(chart_folder(&SongSource::Builtin(0)), None);
+        let source = SongSource::File {
+            chart_path: std::path::PathBuf::from("/songs/a-song/chart.json"),
+            audio_path: std::path::PathBuf::from("/songs/a-song/a.m4a"),
+        };
+        assert_eq!(
+            chart_folder(&source),
+            Some(std::path::PathBuf::from("/songs/a-song")),
+            "the folder is where the next version goes"
+        );
+        // A chart path with no parent is not a folder either.
+        let bare = SongSource::File {
+            chart_path: std::path::PathBuf::from("chart.json"),
+            audio_path: std::path::PathBuf::from("a.m4a"),
+        };
+        assert_eq!(chart_folder(&bare), None);
     }
 }

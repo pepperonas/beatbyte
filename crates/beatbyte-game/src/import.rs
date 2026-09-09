@@ -522,6 +522,8 @@ pub enum PanelSource {
     Import,
     /// A search running in the background.
     Search,
+    /// A chore: a chart redesign, or whatever comes next of its kind.
+    Chore,
 }
 
 /// Which of the two the one overlay draws, if either.
@@ -537,11 +539,14 @@ pub fn panel_source(
     import_active: bool,
     since_import: f32,
     search_showing: bool,
+    chore_showing: bool,
 ) -> Option<PanelSource> {
     if queued > 0 && (import_active || since_import < IMPORT_LINGER_S) {
         Some(PanelSource::Import)
     } else if search_showing {
         Some(PanelSource::Search)
+    } else if chore_showing {
+        Some(PanelSource::Chore)
     } else {
         None
     }
@@ -561,6 +566,7 @@ fn update_import_panel(
     time: Res<Time>,
     mut queue: ResMut<ImportQueue>,
     discovery: Res<crate::discover::Discovery>,
+    chore: Res<crate::chore::Chore>,
     mut root: Query<&mut Visibility, With<ImportPanelRoot>>,
     mut boxes: Query<&mut BorderColor, With<ImportPanelBox>>,
     mut texts: Query<&mut Text, With<ImportPanelText>>,
@@ -580,6 +586,7 @@ fn update_import_panel(
         queue.active(),
         queue.since_finished,
         discovery.showing(),
+        chore.showing(),
     );
     let Some(source) = source else {
         *visibility = Visibility::Hidden;
@@ -599,10 +606,10 @@ fn update_import_panel(
     }
     *flash = (*flash - time.delta_secs() * 2.5).max(0.0);
 
-    let working = if importing {
-        queue.active()
-    } else {
-        discovery.running()
+    let working = match source {
+        PanelSource::Import => queue.active(),
+        PanelSource::Search => discovery.running(),
+        PanelSource::Chore => chore.running(),
     };
 
     if let Ok(mut text) = texts.single_mut() {
@@ -618,8 +625,10 @@ fn update_import_panel(
             } else {
                 summary_line(queue.ok, queue.failed, queue.skipped)
             }
-        } else {
+        } else if source == PanelSource::Search {
             crate::ui::font_safe(&discovery.line)
+        } else {
+            crate::ui::font_safe(&chore.line)
         };
         if text.0 != line {
             text.0 = line;
@@ -637,10 +646,10 @@ fn update_import_panel(
     }
 
     if let Ok((mut node, mut color)) = fills.single_mut() {
-        let target = if importing {
-            queue.done as f32 / queue.total.max(1) as f32 * 100.0
-        } else {
-            discovery.bar() * 100.0
+        let target = match source {
+            PanelSource::Import => queue.done as f32 / queue.total.max(1) as f32 * 100.0,
+            PanelSource::Search => discovery.bar() * 100.0,
+            PanelSource::Chore => chore.bar() * 100.0,
         };
         let current = match node.width {
             Val::Percent(value) => value,
@@ -655,7 +664,12 @@ fn update_import_panel(
         });
         // A search that came home empty says so in the bar's colour;
         // an import keeps the one it has always had.
-        let base = if !importing && !working && !discovery.ok {
+        let failed = match source {
+            PanelSource::Import => false,
+            PanelSource::Search => !discovery.ok,
+            PanelSource::Chore => !chore.ok,
+        };
+        let base = if !working && failed {
             crate::palette::MISS
         } else {
             crate::palette::BRAND
@@ -1225,26 +1239,41 @@ mod panel_tests {
     use super::{IMPORT_LINGER_S, PanelSource, panel_source};
 
     #[test]
-    fn an_import_wins_the_overlay_and_a_search_gets_it_back_after() {
+    fn an_import_wins_the_overlay_and_the_rest_queue_behind_it() {
         // Both up: the drop the player is waiting on is what shows.
         assert_eq!(
-            panel_source(3, true, 0.0, true),
+            panel_source(3, true, 0.0, true, true),
             Some(PanelSource::Import),
-            "a running import outranks a background search"
+            "a running import outranks everything in the background"
         );
         // The import's summary still holds it for its moment.
         assert_eq!(
-            panel_source(3, false, IMPORT_LINGER_S - 0.1, true),
+            panel_source(3, false, IMPORT_LINGER_S - 0.1, true, true),
             Some(PanelSource::Import)
         );
         // Once that moment passes, the search gets the panel.
         assert_eq!(
-            panel_source(3, false, IMPORT_LINGER_S + 0.1, true),
+            panel_source(3, false, IMPORT_LINGER_S + 0.1, true, true),
             Some(PanelSource::Search)
         );
         // A search alone owns it outright.
-        assert_eq!(panel_source(0, false, 0.0, true), Some(PanelSource::Search));
+        assert_eq!(
+            panel_source(0, false, 0.0, true, false),
+            Some(PanelSource::Search)
+        );
+        // A chore takes it when nothing else wants it — and never
+        // before a search, because a search is the one the player
+        // just asked a question with.
+        assert_eq!(
+            panel_source(0, false, 0.0, false, true),
+            Some(PanelSource::Chore)
+        );
+        assert_eq!(
+            panel_source(0, false, 0.0, true, true),
+            Some(PanelSource::Search),
+            "a chore must not push a running search off the panel"
+        );
         // And with nothing running the overlay stays off.
-        assert_eq!(panel_source(0, false, 0.0, false), None);
+        assert_eq!(panel_source(0, false, 0.0, false, false), None);
     }
 }

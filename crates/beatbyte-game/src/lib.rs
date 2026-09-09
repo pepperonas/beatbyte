@@ -9,6 +9,7 @@ pub mod audio_sys;
 pub mod autopilot;
 pub mod boot;
 pub mod calibration;
+pub mod chore;
 pub mod config;
 pub mod controls;
 pub mod controls_ui;
@@ -225,7 +226,11 @@ pub fn run() -> AppExit {
         transition::TransitionPlugin,
         autopilot::AutopilotPlugin,
     ))
-    .add_plugins((discover::DiscoverPlugin, gameplay::fog::FogPlugin));
+    .add_plugins((
+        discover::DiscoverPlugin,
+        gameplay::fog::FogPlugin,
+        chore::ChorePlugin,
+    ));
 
     // `BEATBYTE_FPS=1` turns on periodic frame-time reporting. Off by
     // default so the resource does not exist and the system returns
