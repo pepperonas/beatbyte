@@ -55,7 +55,24 @@ pub const MANTLE_LENGTH: f32 = 7.9;
 /// Fixtures on the rear (backline) truss.
 pub const RIMS: usize = 4;
 /// Moving heads on the front truss.
-pub const HEADS: usize = 6;
+///
+/// Six until 2026-09-09, all within x ±6.8 — a cluster over the neck
+/// on a truss that now crosses the whole picture, so the sides of the
+/// frame had a bare truss and no lights ("lichter immer noch an den
+/// SEITEN abgeschnitten"). Twelve, spread from the neck's corridor
+/// out to the truss's ends. None of them casts a shadow, so
+/// the extra six are clustered forward+ lights and nothing more.
+pub const HEADS: usize = 12;
+
+/// The innermost head's x: outboard of the speaker stacks, so the
+/// neck keeps a clear corridor.
+pub const HEAD_INNERMOST: f32 = 3.4;
+
+/// The outermost head's x.
+///
+/// Just inside the truss's own end, which is sized in `stage3d` to
+/// cross the picture at [`crate::gameplay::stage3d::VENUE_ASPECT`].
+pub const HEAD_OUTERMOST: f32 = 20.0;
 /// Every real lamp hanging from the two trusses — the ceiling the
 /// strobe plays on. Each carries [`RigLamp`] with its own index, so
 /// a chase can order them without depending on query order.
@@ -132,12 +149,19 @@ impl MovingHead {
     }
 }
 
-/// The six moving heads: three a side, none closer to the centre
-/// than the speaker stacks, so the neck keeps a clear corridor.
+/// The moving heads: half a side, evenly spread from the neck's
+/// corridor out to the truss's ends, so the row of lights crosses the
+/// picture instead of huddling over the middle of it.
 #[must_use]
 pub fn fixture(index: usize) -> MovingHead {
     let side = if index.is_multiple_of(2) { -1.0 } else { 1.0 };
-    let x = side * (3.4 + 1.7 * (index / 2) as f32);
+    let per_side = HEADS / 2;
+    let step = if per_side > 1 {
+        (HEAD_OUTERMOST - HEAD_INNERMOST) / (per_side - 1) as f32
+    } else {
+        0.0
+    };
+    let x = side * (HEAD_INNERMOST + step * (index / 2) as f32);
     MovingHead {
         x,
         tone: index % 2,
@@ -518,13 +542,47 @@ mod tests {
 
     #[test]
     fn the_heads_keep_the_necks_corridor_and_alternate_tones() {
-        for index in 0..6 {
+        for index in 0..HEADS {
             let head = fixture(index);
-            assert!(head.x.abs() >= 3.4, "{head:?}");
+            assert!(head.x.abs() >= HEAD_INNERMOST, "{head:?}");
+            assert!(head.x.abs() <= HEAD_OUTERMOST, "{head:?}");
             assert_eq!(head.tone, index % 2);
             assert!(head.speed > 0.0);
         }
         assert!(rim_x(0) < rim_x(3));
+    }
+
+    #[test]
+    fn the_heads_reach_the_ends_of_the_truss_and_both_sides_match() {
+        // The point of spreading them: a lamp near each end, so the
+        // row crosses the picture rather than huddling over the neck.
+        let xs: Vec<f32> = (0..HEADS).map(|i| fixture(i).x).collect();
+        let widest = xs.iter().fold(0.0f32, |a, x| a.max(x.abs()));
+        assert!(
+            (widest - HEAD_OUTERMOST).abs() < 1e-3,
+            "the outermost head sits at {widest}, not at the truss's end"
+        );
+        // Mirrored: every left head has a right twin at the same x.
+        let mut left: Vec<f32> = xs.iter().filter(|x| **x < 0.0).map(|x| -x).collect();
+        let mut right: Vec<f32> = xs.iter().filter(|x| **x > 0.0).copied().collect();
+        left.sort_by(f32::total_cmp);
+        right.sort_by(f32::total_cmp);
+        assert_eq!(
+            left.len(),
+            right.len(),
+            "the sides must carry the same count"
+        );
+        for (l, r) in left.iter().zip(&right) {
+            assert!((l - r).abs() < 1e-3, "unpaired heads at {l} and {r}");
+        }
+        // Evenly spread, so no gap reads as a missing fixture.
+        let gaps: Vec<f32> = right.windows(2).map(|w| w[1] - w[0]).collect();
+        let widest_gap = gaps.iter().fold(0.0f32, |a, g| a.max(*g));
+        let tightest = gaps.iter().fold(f32::MAX, |a, g| a.min(*g));
+        assert!(
+            widest_gap - tightest < 1e-3,
+            "uneven spacing: {tightest} to {widest_gap}"
+        );
     }
 
     #[test]
@@ -576,7 +634,7 @@ mod tests {
                 rims += 1;
             }
         }
-        assert_eq!((heads, rims), (6, 4));
+        assert_eq!((heads, rims), (HEADS, RIMS));
         // Every additive piece is a ghost to the shadow pass.
         let mut ghosts = world.query::<(&Mantle, Option<&NotShadowCaster>)>();
         for (_, mark) in ghosts.iter(world) {

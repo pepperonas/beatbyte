@@ -117,7 +117,7 @@ pub const DECK_CLEARCOAT_ROUGHNESS: f32 = 0.38;
 /// is where the outboard floor actually fills the picture.
 #[must_use]
 pub fn side_fill_position(side: f32) -> Vec3 {
-    Vec3::new(side.signum() * 15.0, 3.2, -7.0)
+    Vec3::new(side.signum() * 20.0, 3.2, -7.0)
 }
 
 /// Where the deck's back-corner fills hang, per side.
@@ -371,6 +371,32 @@ pub const CAMERA_POS: Vec3 = Vec3::new(0.0, 3.1, 5.2);
 pub const CAMERA_LOOK: Vec3 = Vec3::new(0.0, 0.05, -7.5);
 /// Its vertical field of view, in radians.
 pub const CAMERA_FOV: f32 = 50.0 * core::f32::consts::PI / 180.0;
+
+/// The widest window the venue is built to fill.
+///
+/// 21:9 ultrawide is 2.33; this covers it. The room is sized from
+/// the camera rather than by eye, because that is what went wrong:
+/// the hall was 18 units across while the picture at the reported
+/// window was 39 across at the truss's depth, so the walls, the
+/// truss and the lit floor all ended INSIDE the frame and the sides
+/// went black. Past this shape the walls do come into view, which is
+/// not a fault — a room has walls — but everything reaches this far.
+pub const VENUE_ASPECT: f32 = 2.4;
+
+/// Half the width the camera shows at depth `z` on a window of that
+/// shape.
+///
+/// The counterpart to [`frame_top_y`], and unlike it this one DOES
+/// depend on the window: a wider window shows more to the sides and
+/// nothing more above.
+#[must_use]
+pub fn frame_half_width(z: f32, aspect: f32) -> f32 {
+    let forward = (CAMERA_LOOK - CAMERA_POS).normalize();
+    let right = forward.cross(Vec3::Y).normalize();
+    let ray = forward + right * ((CAMERA_FOV / 2.0).tan() * aspect);
+    let along = (z - CAMERA_POS.z) / ray.z;
+    (CAMERA_POS.x + ray.x * along).abs()
+}
 
 /// The highest world y the camera still shows at depth `z`.
 ///
@@ -1028,7 +1054,17 @@ pub fn on_the_neck() -> (NotShadowCaster, NotShadowReceiver) {
 /// it can never occlude an approaching note.
 const VENUE_BACK: f32 = -40.0;
 /// Half the distance between the side walls.
-const VENUE_SIDE: f32 = 9.0;
+///
+/// It was 9 — a hall 18 units across, seen by a camera that shows 49
+/// units at the walls' own depth on a 21:9 window. So the walls stood
+/// inside the picture and everything beyond them was black, which is
+/// what "die Begrenzung auf der horizontalen" and "die Lichter sind
+/// an den Seiten abgeschnitten" both were. At 25 the walls sit just
+/// outside the frame at their own depth and close the room further
+/// back, where the eye reads them as the end of a hall rather than as
+/// an edge. `the_room_is_wider_than_the_picture` pins it against the
+/// camera.
+const VENUE_SIDE: f32 = 25.0;
 
 /// Build the room the neck sits in.
 ///
@@ -1287,7 +1323,10 @@ fn spawn_venue(
 
     // Lighting truss overhead — LATTICE, not a stick (P5): two
     // chords with diagonal bracing, the way real rigs are built.
-    let truss_len = VENUE_SIDE * 1.7;
+    // Long enough to cross the whole picture at [`VENUE_ASPECT`] and
+    // still fit between the walls: a truss that stops inside the
+    // frame is a row of lights that stops inside the frame.
+    let truss_len = 2.0 * frame_half_width(super::rig::RIG_Z, VENUE_ASPECT) + 2.0;
     let chord = meshes.add(Cuboid::new(truss_len, 0.12, 0.12));
     let brace = meshes.add(Cuboid::new(0.08, 0.55, 0.08));
     let spawn_lattice =
@@ -1585,8 +1624,8 @@ pub fn setup_stage(
             super::lightshow::VenueWash,
             PointLight {
                 color: stage.accent.mix(&stage.background, 0.6),
-                intensity: 2_600_000.0,
-                range: 42.0,
+                intensity: 4_200_000.0,
+                range: 60.0,
                 shadow_maps_enabled: false,
                 ..default()
             },
@@ -3101,6 +3140,55 @@ mod tests {
                 frame_top_y(-13.0)
             );
         }
+    }
+
+    #[test]
+    fn the_room_is_wider_than_the_picture() {
+        // The fault behind every "it stops before the side of the
+        // screen": the hall was narrower than the frame, so its walls
+        // — and with them the truss and the lit floor — ended inside
+        // the picture. The walls' own depth is where they would show
+        // first.
+        const WALL_Z: f32 = VENUE_BACK / 2.0 + 4.0;
+        let picture = frame_half_width(WALL_Z, VENUE_ASPECT);
+        assert!(
+            VENUE_SIDE >= picture,
+            "the wall at {VENUE_SIDE} stands inside a picture {picture} wide"
+        );
+        // And the truss crosses the picture at the truss's own depth
+        // while still fitting between those walls.
+        let truss_half = frame_half_width(super::super::rig::RIG_Z, VENUE_ASPECT) + 1.0;
+        assert!(
+            truss_half <= VENUE_SIDE,
+            "a truss {truss_half} long cannot fit a hall {VENUE_SIDE} wide"
+        );
+        // The outermost lamp belongs on the truss, not past its end
+        // — and not huddled over the middle of it either. The second
+        // half of that is measured against the PICTURE rather than
+        // against the constant's own value: pinning it to itself let
+        // a mutation shrink both sides together, and a probe caught
+        // exactly that.
+        let ordinary = frame_half_width(super::super::rig::RIG_Z, 16.0 / 9.0);
+        assert!(
+            super::super::rig::HEAD_OUTERMOST < truss_half,
+            "the outer head at {} hangs off the truss",
+            super::super::rig::HEAD_OUTERMOST
+        );
+        assert!(
+            super::super::rig::HEAD_OUTERMOST > ordinary,
+            "the outer head at {} stops inside a 16:9 picture {ordinary} wide",
+            super::super::rig::HEAD_OUTERMOST
+        );
+    }
+
+    #[test]
+    fn a_wider_window_shows_more_to_the_sides_and_nothing_more_above() {
+        let z = -13.0;
+        assert!(frame_half_width(z, 2.4) > frame_half_width(z, 16.0 / 9.0));
+        // The half-width scales with the aspect exactly, which is
+        // what makes one number enough to size the room by.
+        let narrow = frame_half_width(z, 1.0);
+        assert!((frame_half_width(z, 2.4) - narrow * 2.4).abs() < 1e-3);
     }
 
     #[test]

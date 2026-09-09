@@ -14,6 +14,29 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.14.61] - 2026-09-09
+
+### Fixed
+
+- **The hall was narrower than the picture, which is why everything
+  kept stopping before the sides of the screen.** Reported twice more
+  — "lichter immer noch an den SEITEN abgeschnitten" and "der boden
+  reicht auch nicht zum seitlichen ende" — and the two are one fault.
+  The room was 18 units across; on a 21:9 window the camera shows 49
+  units at the side walls' own depth and 42 at the truss's. So the
+  walls stood inside the frame, the truss stopped well short of it,
+  the six moving heads huddled within x ±6.8 over the middle, and
+  everything past them was unlit. The venue is now sized FROM the
+  camera: `frame_half_width(z, aspect)` alongside the existing
+  `frame_top_y`, walls at ±25 (just outside the frame at their own
+  depth, closing the room further back where the eye reads them as
+  the end of a hall), a truss long enough to cross the picture and
+  still fit between them, **twelve** moving heads spread evenly from
+  the neck's corridor out to the truss's ends in matched pairs, and
+  the floor's side fills moved out with the reach to match. None of
+  the new lamps casts a shadow, so they are clustered forward+ lights
+  and nothing more.
+
 ## [0.14.60] - 2026-09-09
 
 ### Fixed
