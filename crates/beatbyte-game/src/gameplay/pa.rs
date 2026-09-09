@@ -29,15 +29,48 @@ use crate::theme::Theme;
 /// The top of the deck the stacks stand on (the highway riser).
 pub const DECK_TOP: f32 = -0.30;
 /// Where each stack stands.
-pub const STACK_X: f32 = 4.4;
+///
+/// It was 4.4, which put the cabinets in front of the crowd's inner
+/// ranks on a stage only 13 units wide. With the hall sized from the
+/// camera (`stage3d::VENUE_SIDE`) and the deck 20 across, they belong
+/// at the edges where a real PA stands — outboard of the barriers
+/// (2.9) and the crowd's inner rank (3.35), still on the deck.
+pub const STACK_X: f32 = 8.6;
+
+/// How much bigger the cabinets are than the first cut.
+///
+/// Asked for as "die boxen können größer sein". The rule they used to
+/// obey — never taller than the camera — was written when they stood
+/// beside the neck, where a tall box would have loomed over the
+/// sightline. Out at the edges that is no longer the constraint; what
+/// matters is that they stay clear of the neck's corridor on screen
+/// and inside the picture, and `the_stacks_clear_the_necks_sightline`
+/// checks exactly that instead.
+pub const STACK_SCALE: f32 = 1.45;
 /// How far down the stage the stacks stand.
 pub const STACK_Z: f32 = -7.0;
 /// Height of the rubber feet under the sub.
 pub const FOOT: f32 = 0.04;
 /// Gap left by the stacking cleats between cabinets.
 pub const CLEAT: f32 = 0.02;
-/// The camera's height: a stack may not loom above it (G23).
+/// The camera's height.
 pub const CAMERA_Y: f32 = 3.1;
+
+/// The yaw that turns a stack's face toward the camera.
+///
+/// A PA at the edge of a stage is toed IN — it plays at the room, not
+/// down the wall — and asked for as "dafür in meine richtung zeigen".
+/// The cabinets are built facing +z, so this is the angle from that
+/// axis to the line joining the stack to the camera. Pure — tested.
+#[must_use]
+pub fn stack_yaw(side: f32) -> f32 {
+    let to_camera = Vec3::new(
+        -side.signum() * STACK_X,
+        0.0,
+        stage3d::CAMERA_POS.z - STACK_Z,
+    );
+    to_camera.x.atan2(to_camera.z)
+}
 
 /// What a cabinet is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,10 +113,10 @@ impl CabinetSpec {
 #[must_use]
 pub fn stack_layout(side: f32) -> [CabinetSpec; 4] {
     let sizes = [
-        (CabinetKind::Sub, Vec3::new(1.36, 0.96, 1.18)),
-        (CabinetKind::Top, Vec3::new(1.30, 0.84, 1.02)),
-        (CabinetKind::Top, Vec3::new(1.30, 0.84, 1.02)),
-        (CabinetKind::Head, Vec3::new(1.24, 0.40, 0.86)),
+        (CabinetKind::Sub, Vec3::new(1.36, 0.96, 1.18) * STACK_SCALE),
+        (CabinetKind::Top, Vec3::new(1.30, 0.84, 1.02) * STACK_SCALE),
+        (CabinetKind::Top, Vec3::new(1.30, 0.84, 1.02) * STACK_SCALE),
+        (CabinetKind::Head, Vec3::new(1.24, 0.40, 0.86) * STACK_SCALE),
     ];
     let mut bottom = DECK_TOP + FOOT;
     let mut out = [CabinetSpec {
@@ -107,8 +140,14 @@ pub fn stack_layout(side: f32) -> [CabinetSpec; 4] {
 pub struct DriverCone {
     /// Beat phase, so the two stacks and the drivers breathe apart.
     pub phase: f32,
-    /// The cone's resting z.
-    pub rest_z: f32,
+    /// Where the cone rests.
+    ///
+    /// The whole position, not just its z: a toed-in stack strokes
+    /// along ITS OWN forward, and writing world z would slide the
+    /// cone sideways out of its own grille.
+    pub rest: Vec3,
+    /// The unit direction it strokes along — the cabinet's forward.
+    pub out: Vec3,
     /// How far it strokes out.
     pub reach: f32,
 }
@@ -137,11 +176,12 @@ pub fn pump_drivers(
     };
     let beats = player.session.track().tempo.beats_at(now) as f32;
     for (cone, mut transform) in &mut cones {
-        let z = cone
-            .reach
-            .mul_add(cone_stroke(beats, cone.phase), cone.rest_z);
-        if (transform.translation.z - z).abs() > 1e-6 {
-            transform.translation.z = z;
+        let wanted = cone.out.mul_add(
+            Vec3::splat(cone.reach * cone_stroke(beats, cone.phase)),
+            cone.rest,
+        );
+        if transform.translation.distance_squared(wanted) > 1e-12 {
+            transform.translation = wanted;
         }
     }
 }
@@ -453,23 +493,36 @@ pub fn spawn_stacks(
     let looks = StackMaterials::build(materials, surfaces, theme);
     let layer = RenderLayers::layer(STAGE_LAYER);
     for side in [-1.0f32, 1.0] {
+        // The whole stack turns about its own base to face the
+        // camera. Every piece is spawned in world space, so the spin
+        // is applied here rather than by a parent: the position is
+        // swung about the pivot and the piece carries the same yaw.
+        let spin = Quat::from_rotation_y(stack_yaw(side));
+        let pivot = Vec3::new(side * STACK_X, 0.0, STACK_Z);
+        let forward = spin * Vec3::Z;
         for (level, cabinet) in stack_layout(side).iter().enumerate() {
             let size = cabinet.size;
             let front_z = cabinet.centre.z + size.z * 0.5;
             let mut piece = |mesh: Handle<Mesh>,
                              material: Handle<StandardMaterial>,
                              at: Vec3,
-                             extra: Option<DriverCone>| {
+                             extra: Option<(f32, f32)>| {
+                let placed = pivot + spin * (at - pivot);
                 let mut entity = commands.spawn((
                     GameplayScreen,
                     Stage3d,
                     Mesh3d(mesh),
                     MeshMaterial3d(material),
-                    Transform::from_translation(at),
+                    Transform::from_translation(placed).with_rotation(spin),
                     layer.clone(),
                 ));
-                if let Some(cone) = extra {
-                    entity.insert(cone);
+                if let Some((phase, reach)) = extra {
+                    entity.insert(DriverCone {
+                        phase,
+                        rest: placed,
+                        out: forward,
+                        reach,
+                    });
                 }
             };
             let kind = match cabinet.kind {
@@ -523,22 +576,14 @@ pub fn spawn_stacks(
                             parts.sub_driver.clone(),
                             looks.driver.clone(),
                             Vec3::new(cabinet.centre.x, cabinet.centre.y - 0.03, driver_z),
-                            Some(DriverCone {
-                                phase,
-                                rest_z: driver_z,
-                                reach: 0.028,
-                            }),
+                            Some((phase, 0.028)),
                         );
                     } else {
                         piece(
                             parts.woofer.clone(),
                             looks.driver.clone(),
                             Vec3::new(cabinet.centre.x, cabinet.centre.y - 0.10, driver_z),
-                            Some(DriverCone {
-                                phase,
-                                rest_z: driver_z,
-                                reach: 0.016,
-                            }),
+                            Some((phase, 0.016)),
                         );
                         piece(
                             parts.tweeter.clone(),
@@ -636,9 +681,52 @@ mod tests {
     }
 
     #[test]
-    fn the_head_stays_below_the_camera() {
+    fn the_stacks_clear_the_necks_sightline_and_stay_in_the_picture() {
+        // What the old "never taller than the camera" rule was FOR:
+        // a cabinet beside the neck must not grow into the sightline.
+        // Out at the stage's edges that is no longer what constrains
+        // the height, so the property is checked directly instead —
+        // which is what let the boxes grow when asked to.
         let stack = stack_layout(1.0);
-        assert!(stack[3].top() < CAMERA_Y - 0.2, "top {}", stack[3].top());
+        let inner = stack[0].centre.x - stack[0].size.x * 0.5;
+        assert!(
+            inner > super::super::crowd::CROWD_INNER_X,
+            "the stack's inner face at {inner} stands over the crowd"
+        );
+        // On screen it must sit well outside the neck. The bed is
+        // about 3.5 wide either side of centre at the hit line; the
+        // stack is further away, so its share of the picture is what
+        // matters.
+        let half = super::super::stage3d::frame_half_width(STACK_Z, 16.0 / 9.0);
+        assert!(
+            inner / half > 0.5,
+            "the stack reaches to {:.2} of the half-picture, into the neck's corridor",
+            inner / half
+        );
+        // And it has to fit in the frame rather than run off the top.
+        let top = stack[3].top();
+        assert!(
+            top < super::super::stage3d::frame_top_y(STACK_Z),
+            "the head at {top} stands above the picture"
+        );
+        // Bigger than the first cut, which is what was asked for.
+        assert!(top > CAMERA_Y, "the stacks were asked to grow: {top}");
+    }
+
+    #[test]
+    fn a_stack_turns_its_face_toward_the_camera() {
+        // Toed in: the +z face swings toward the player, and the two
+        // sides mirror each other exactly.
+        let right = stack_yaw(1.0);
+        let left = stack_yaw(-1.0);
+        assert!(right < 0.0, "the right stack turns to its left: {right}");
+        assert!((right + left).abs() < 1e-6, "the sides must mirror");
+        // Its forward really does point at the camera.
+        let forward = Quat::from_rotation_y(right) * Vec3::Z;
+        let to_camera = (super::super::stage3d::CAMERA_POS - Vec3::new(STACK_X, 0.0, STACK_Z))
+            * Vec3::new(1.0, 0.0, 1.0);
+        let cos = forward.dot(to_camera.normalize());
+        assert!(cos > 0.999, "the face misses the camera: cos {cos}");
     }
 
     #[test]

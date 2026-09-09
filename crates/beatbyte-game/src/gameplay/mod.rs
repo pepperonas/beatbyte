@@ -18,6 +18,7 @@ pub mod debug_overlay;
 pub mod feedback;
 pub mod figure;
 pub mod flame;
+pub mod fog;
 pub mod fx;
 pub mod hotplug;
 pub mod hud;

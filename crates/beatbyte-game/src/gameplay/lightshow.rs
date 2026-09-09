@@ -825,7 +825,7 @@ pub fn drive_highlight(
 /// gradient and a spark cluster both live on this resolution.
 pub const STRIP_BARS: usize = 64;
 /// Strips in the venue — see [`strip_lines`].
-pub const STRIPS: usize = 5;
+pub const STRIPS: usize = 7;
 /// A bar's thickness at full brightness.
 pub const STRIP_BAR: f32 = 0.045;
 /// The comet's run, seconds.
@@ -868,9 +868,16 @@ pub enum StripPlace {
     Audience,
     /// Up the front of a PA stack (one per side).
     Pa,
+    /// Along the deck's own outer edge (one per side).
+    ///
+    /// Added when the stage grew to 20 units across: the widened
+    /// deck had nothing drawing its line, so its outer thirds read as
+    /// empty floor. A strip down each edge is what a real stage puts
+    /// there, and it gives the eye the room's width.
+    Deck,
 }
 
-/// The five strips: where each runs, from `a` to `b`. Pure — tested.
+/// The seven strips: where each runs, from `a` to `b`. Pure — tested.
 #[must_use]
 pub fn strip_lines() -> [(StripPlace, Vec3, Vec3); STRIPS] {
     // The band riser: front face at z −26, top at 1.3 (band.rs).
@@ -880,11 +887,28 @@ pub fn strip_lines() -> [(StripPlace, Vec3, Vec3); STRIPS] {
     // CROWD_FLOOR_Y + 1.14.
     let rail_y = CROWD_FLOOR_Y + 1.14 + 0.06;
     // The stacks: up the inner front corner of the sub, from the
-    // deck to the head's top.
+    // deck to the head's top. The stacks are toed in now, so the
+    // corner is swung about the stack's base the same way the
+    // cabinets are — a strip left on the unrotated corner would hang
+    // in the air beside the box.
     let sub = pa::stack_layout(1.0)[0];
     let head = pa::stack_layout(1.0)[3];
-    let pa_x = sub.centre.x - sub.size.x * 0.5 + 0.08;
-    let pa_z = sub.centre.z + sub.size.z * 0.5 + 0.03;
+    let spin = Quat::from_rotation_y(pa::stack_yaw(1.0));
+    let pivot = Vec3::new(pa::STACK_X, 0.0, pa::STACK_Z);
+    let corner = |y: f32| {
+        let raw = Vec3::new(
+            sub.centre.x - sub.size.x * 0.5 + 0.08,
+            y,
+            sub.centre.z + sub.size.z * 0.5 + 0.03,
+        );
+        pivot + spin * (raw - pivot)
+    };
+    let pa_low = corner(sub.bottom());
+    let pa_high = corner(head.top());
+    // The deck's outer edges, just inside the rail and a hair above
+    // the boards.
+    let deck_x = stage3d::DECK_WIDTH / 2.0 - 0.25;
+    let deck_y = pa::DECK_TOP + 0.02;
     [
         (
             StripPlace::Stage,
@@ -903,13 +927,19 @@ pub fn strip_lines() -> [(StripPlace, Vec3, Vec3); STRIPS] {
         ),
         (
             StripPlace::Pa,
-            Vec3::new(-pa_x, sub.bottom(), pa_z),
-            Vec3::new(-pa_x, head.top(), pa_z),
+            Vec3::new(-pa_low.x, pa_low.y, pa_low.z),
+            Vec3::new(-pa_high.x, pa_high.y, pa_high.z),
+        ),
+        (StripPlace::Pa, pa_low, pa_high),
+        (
+            StripPlace::Deck,
+            Vec3::new(-deck_x, deck_y, 0.5),
+            Vec3::new(-deck_x, deck_y, -28.0),
         ),
         (
-            StripPlace::Pa,
-            Vec3::new(pa_x, sub.bottom(), pa_z),
-            Vec3::new(pa_x, head.top(), pa_z),
+            StripPlace::Deck,
+            Vec3::new(deck_x, deck_y, 0.5),
+            Vec3::new(deck_x, deck_y, -28.0),
         ),
     ]
 }
@@ -2057,7 +2087,9 @@ mod tests {
                 StripPlace::Audience,
                 StripPlace::Audience,
                 StripPlace::Pa,
-                StripPlace::Pa
+                StripPlace::Pa,
+                StripPlace::Deck,
+                StripPlace::Deck
             ]
         );
         for (place, a, b) in lines {
@@ -2071,7 +2103,34 @@ mod tests {
                 StripPlace::Pa => {
                     let sub = pa::stack_layout(a.x.signum())[0];
                     assert!(a.x.abs() < sub.centre.x.abs(), "on the inner corner");
-                    assert!(b.y <= pa::CAMERA_Y - 0.2, "under the camera, like the head");
+                    // It runs the height of the stack it is stuck to
+                    // — pinned to the stack rather than to a number,
+                    // so growing the cabinets carries the strip up
+                    // with them.
+                    let head = pa::stack_layout(a.x.signum())[3];
+                    assert!((b.y - head.top()).abs() < 0.2, "up to the head's top");
+                    // And it swung with the toed-in box: the corner
+                    // is no longer on the cabinet's unrotated face.
+                    let flat_z = sub.centre.z + sub.size.z * 0.5 + 0.03;
+                    assert!(
+                        (a.z - flat_z).abs() > 0.2,
+                        "the strip stayed on the unrotated corner"
+                    );
+                }
+                StripPlace::Deck => {
+                    assert!(
+                        a.x.abs() < stage3d::DECK_WIDTH / 2.0,
+                        "a strip must lie ON the deck, not off its edge"
+                    );
+                    assert!(
+                        a.x.abs() > pa::STACK_X - 1.5,
+                        "and outboard, where the widened stage had nothing"
+                    );
+                    assert!((a.y - pa::DECK_TOP).abs() < 0.1, "on the boards");
+                    assert!(
+                        (a.x - b.x).abs() < 1e-6,
+                        "it runs down the stage, not across"
+                    );
                 }
             }
         }

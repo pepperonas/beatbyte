@@ -14,6 +14,45 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.15.0] - 2026-09-09
+
+### Added
+
+- **Fog machines.** Asked for as "von Zeit zu Zeit soll auch
+  Nebelmaschine etwas Nebel sprühen". Two nozzles outboard of the
+  deck, each firing every 26–52 seconds on a hash of its own firing
+  count — irregular enough never to read as a metronome, deterministic
+  so the same song fogs alike twice, and out of step with each other.
+  A firing releases a slug over 1.6 s; each puff rises, spreads,
+  drifts and thins on its own curve out of a fixed pool of billboards,
+  with no allocation and no shared material.
+  ⚠️ **It may never cover the neck** — the highway is a reading
+  surface — so the nozzles stand outboard and the puffs travel further
+  out still, which is pinned rather than trusted.
+
+### Changed
+
+- **The PA stands where a PA stands.** Asked for as "die boxen können
+  größer sein und mehr am rand stehen und dafür in meine richtung
+  zeigen". The cabinets are 45 % bigger, out at x ±8.6 (they used to
+  crowd the barrier at 4.4, in front of the audience's inner ranks),
+  and **toed in**: each stack turns about its own base so its face
+  points at the camera. The driver cones stroke along the cabinet's
+  own forward now rather than along world z, which a rotated stack
+  would have sent sliding out of its grille.
+  ⚠️ The old rule "a stack may never be taller than the camera" was
+  written when they stood beside the neck, where a tall box would have
+  grown into the sightline. Out at the edges that is not what
+  constrains them, so the test now checks the property it was standing
+  in for — the stack clear of the neck's corridor on screen, inside
+  the picture — which is what let them grow.
+- **The light strips follow.** The PA strips swing with the toed-in
+  boxes (left on the unrotated corner they would have hung in the air
+  beside the cabinet) and run to the taller head. Two new strips light
+  the **deck's own outer edges**: the stage grew to 20 units across
+  and had nothing drawing its line, so its outer thirds read as empty
+  floor.
+
 ## [0.14.61] - 2026-09-09
 
 ### Fixed

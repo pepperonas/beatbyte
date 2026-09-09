@@ -86,11 +86,17 @@ pub const PANEL_COLS: usize = CELLS * COLS + (CELLS - 1) * CELL_GAP_COLS;
 pub const DB_SHOWN_OFFSET: f32 = 100.0;
 
 /// The dot pitch, world units.
-pub const DOT_PITCH: f32 = 0.058;
+pub const DOT_PITCH: f32 = 0.058 * pa::STACK_SCALE;
 /// A dot's diameter.
-pub const DOT: f32 = 0.042;
+pub const DOT: f32 = 0.042 * pa::STACK_SCALE;
 /// The panel's margin around the dots.
-pub const PANEL_MARGIN: f32 = 0.05;
+/// The margin around the grid.
+///
+/// The dot metrics scale with the cabinets ([`pa::STACK_SCALE`]): the
+/// panel stands ON the amp head and is meant to be as wide as it, so
+/// when the boxes grew the readout had to grow with them or it would
+/// have sat on the head like a stamp.
+pub const PANEL_MARGIN: f32 = 0.05 * pa::STACK_SCALE;
 /// The panel's depth.
 pub const PANEL_DEPTH: f32 = 0.06;
 /// The gap between the head's top and the panel's bottom (the
@@ -340,6 +346,12 @@ fn spawn_monitors(
     });
     let dot = meshes.add(Cuboid::new(DOT, DOT, DOT * 0.4));
     for readout in [Readout::Bpm, Readout::Db] {
+        // The panel rides its stack, and the stacks are toed in: the
+        // same swing about the same pivot, or the readout would float
+        // beside the head at an angle to it.
+        let spin = Quat::from_rotation_y(pa::stack_yaw(readout.side()));
+        let pivot = Vec3::new(readout.side() * pa::STACK_X, 0.0, pa::STACK_Z);
+        let place = |at: Vec3| pivot + spin * (at - pivot);
         let centre = panel_centre(readout);
         commands.spawn((
             GameplayScreen,
@@ -350,7 +362,7 @@ fn spawn_monitors(
             },
             Mesh3d(panel.clone()),
             MeshMaterial3d(housing.clone()),
-            Transform::from_translation(centre),
+            Transform::from_translation(place(centre)).with_rotation(spin),
             layer.clone(),
         ));
         for cell in 0..CELLS {
@@ -369,9 +381,10 @@ fn spawn_monitors(
                         },
                         Mesh3d(dot.clone()),
                         MeshMaterial3d(lit.clone()),
-                        Transform::from_translation(
+                        Transform::from_translation(place(
                             centre + Vec3::new(offset.x, offset.y, size.z * 0.5 + DOT_OFF),
-                        ),
+                        ))
+                        .with_rotation(spin),
                         Visibility::Hidden,
                         layer.clone(),
                     ));
