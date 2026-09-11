@@ -6,6 +6,16 @@ holds the work itself.
 
 ## How to work this roadmap
 
+- [x] Hit-flame refinement (0.15.3): curved shared mesh, shorter hot core,
+  anchored feet and delayed ember visibility. Verified: workspace tests,
+  fmt, all-feature clippy, check, rustdoc with/without all features;
+  shape regression fails when the old core height is restored. Inspected
+  gameplay captures at 6.1 and 7 seconds. Release autopilot on "Lift Me Up"
+  medium: 278 perfect, 0 misses, 0 overstrums. Frame medians about 10 ms;
+  after startup every five-second p99 below 15.1 ms on this Mac.
+  Screenshot run had one overstrum; the separate capture-free release
+  run passed. Four-player/low-end GPU performance remains unmeasured.
+
 - Tasks are **small and independently verifiable**: each one names how
   to prove it done (*Verify:*). A task without a passed verification
   is not done.

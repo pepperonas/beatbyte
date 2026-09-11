@@ -14,6 +14,17 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.15.3] - 2026-09-11
+
+### Changed
+
+- Hit flames have curved shoulders and tips, with a shorter white-gold
+  core inside the coloured mantle. The foot stays anchored while leaning.
+  Delayed embers remain hidden until launch; disabling particles or
+  enabling reduced flashing also stops existing embers. The local glow
+  follows effect intensity and is softened with reduced flashing.
+  Scoring and judgment are unchanged.
+
 ## [0.15.2] - 2026-09-09
 
 ### Changed

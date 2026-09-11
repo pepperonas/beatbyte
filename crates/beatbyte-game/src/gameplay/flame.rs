@@ -1,13 +1,9 @@
 //! The hit flame, round style: three layered bodies, a flicker, and
 //! embers that rise.
 //!
-//! The neon stage's flame is one additive cone scaled by a decaying
-//! `life` (`stage3d::drive_flames`). It reads as a laser for reasons
-//! that are physical as much as aesthetic: a cone has straight edges
-//! and one colour, it never flickers, and nothing rises off it. Fire
-//! is a translucent volume, white-hot at the base and cooling to red
-//! at a ragged tip, turbulent at 8–12 Hz, buoyant — and its embers
-//! detach and climb.
+//! Three curved, tapered bodies share a fixed mesh. A short hot
+//! core leaves the taller coloured mantle visible; independent lean
+//! and height modulation move the tips while the feet stay planted.
 //!
 //! So, on the instrument neck, a hit lights **three nested bodies**
 //! per fret — a narrow white-gold core, an orange-to-lane mantle, a
@@ -19,11 +15,9 @@
 //! **light** whose intensity follows the flame, so the board takes
 //! its glow.
 //!
-//! Three phases. **Ignite** (0–60 ms): `life` overshoots to 1.15 and
-//! the core flashes near-white. **Flare** (60–200 ms): full height,
-//! flickering in height and lean. **Die** (200–450 ms): height falls
-//! faster than girth, colour cools to the lane, the embers outlive
-//! the body.
+//! A hit raises `life` to at most 1.15, followed by a linear decay
+//! over about 380 ms. Height falls faster than girth, the core cools,
+//! and the embers outlive the body. Sustains retain a low flame.
 //!
 //! Everything lives in pre-spawned entities and is driven by pure
 //! functions of `life`, time and a seed: no allocation per frame,
@@ -189,18 +183,19 @@ pub fn flicker(seconds: f32, phase: f32, strength: f32) -> (f32, f32) {
 ///
 /// Height falls faster than girth as the flame dies (height ∝ life,
 /// girth ∝ √life): a dying flame gets short before it gets thin.
-/// The core is narrow and tall, the aura broad and low — the
+/// The core is short and hot, the mantle carries the coloured tip,
+/// and the aura is broad and low — the
 /// nesting is what gives the gradient. Pure — tested.
 #[must_use]
 pub fn body_shape(layer: Layer, life: f32, intensity: f32) -> (f32, f32) {
     let life = life.clamp(0.0, IGNITE_OVERSHOOT);
     let (girth_k, height_k) = match layer {
-        Layer::Core => (0.55, 1.0),
-        Layer::Mantle => (0.9, 0.84),
+        Layer::Core => (0.55, 0.52),
+        Layer::Mantle => (0.9, 1.0),
         // The aura at 1.3 pooled across two lanes at the base; a
         // flame's glow is wider than its body, not wider than its
         // neighbour.
-        Layer::Aura => (1.05, 0.58),
+        Layer::Aura => (1.05, 0.72),
     };
     let scale = 0.6 + 0.4 * intensity.clamp(0.0, 1.0);
     let height = HEIGHT * height_k * life * scale;
@@ -223,7 +218,7 @@ pub fn body_color(layer: Layer, life: f32, lane: Color) -> (Color, f32) {
         Layer::Core => {
             let gold = Color::srgb(1.0, 0.86, 0.55);
             let white = Color::srgb(1.0, 0.97, 0.9);
-            (gold.mix(&white, 0.4 + 0.6 * heat), 5.5 + 5.0 * heat)
+            (gold.mix(&white, 0.4 + 0.6 * heat), 3.0 + 3.0 * heat)
         }
         Layer::Mantle => {
             let orange = Color::srgb(1.0, 0.52, 0.16);
@@ -287,6 +282,48 @@ pub fn ember_count(intensity: f32) -> usize {
     ((EMBERS as f32) * intensity.clamp(0.0, 1.0)).round() as usize
 }
 
+/// Bend and round a unit-height cone. The
+/// base remains fixed; the narrowing tip curls away from its axis.
+fn flame_vertex([x, y, z]: [f32; 3]) -> [f32; 3] {
+    let t = (y + 0.5).clamp(0.0, 1.0);
+    let shoulder = 1.0 + 0.45 * (core::f32::consts::PI * t).sin();
+    [x * shoulder + 0.09 * t * t, y, z * shoulder]
+}
+
+/// A shared, low-resolution curved flame (192 triangles). Built
+/// once on entering gameplay; no vertex updates during animation.
+fn flame_mesh(radius: f32) -> Mesh {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::mesh::{Indices, PrimitiveTopology};
+    let mut positions = Vec::with_capacity(117);
+    let mut indices = Vec::with_capacity(576);
+    for ring in 0..=8 {
+        let t = ring as f32 / 8.0;
+        for side in 0..=12 {
+            let angle = core::f32::consts::TAU * side as f32 / 12.0;
+            let r = radius * (1.0 - t);
+            let mut p = flame_vertex([r * angle.cos(), t - 0.5, r * angle.sin()]);
+            // Keep the curl proportional to lane size in multiplayer.
+            p[0] += 0.09 * t * t * (radius / 0.25 - 1.0);
+            positions.push(p);
+            if ring < 8 && side < 12 {
+                let a = ring * 13 + side;
+                indices.extend_from_slice(&[a, a + 13, a + 1, a + 1, a + 13, a + 14]);
+            }
+        }
+    }
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_attribute(
+        Mesh::ATTRIBUTE_NORMAL,
+        vec![[0.0, 1.0, 0.0]; positions.len()],
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_indices(Indices::U32(indices))
+}
+
 /// Deterministic seed in 0..1 for an ember of a fret.
 fn ember_seed(player: usize, lane: Lane, index: usize, launch: u32) -> f32 {
     super::fx::hash01(player * 977 + lane.index() * 131 + index * 17 + launch as usize * 7919)
@@ -312,10 +349,7 @@ pub fn spawn_flames(
     let radius = GEM_RADIUS * 1.05 * neck_spread(&layout);
     // One cone with a rounded foot per body: the sphere at the base is
     // what turns a spike into a teardrop.
-    let cone = meshes.add(Cone {
-        radius,
-        height: 1.0,
-    });
+    let cone = meshes.add(flame_mesh(radius));
     let foot = meshes.add(Sphere::new(radius).mesh().uv(12, 8));
     // Small and round: at 0.035 with six segments the embers were
     // orange hexagons the size of a gem's centre (seen on the user's
@@ -427,6 +461,7 @@ pub fn spawn_flames(
 pub fn drive_flames(
     time: Res<Time>,
     settings: Res<Settings>,
+    layout: Res<HighwayLayout>,
     theme: Res<crate::theme::ActiveTheme>,
     heat: Res<FretHeat>,
     mut states: Query<(&FlameBody, &mut FlameState)>,
@@ -469,8 +504,11 @@ pub fn drive_flames(
         let (flick_h, lean) = flicker(now, body.phase, if still { 0.0 } else { 1.0 });
         let height = height * flick_h;
         transform.scale = Vec3::new(girth.max(0.001), height.max(0.001), girth.max(0.001));
-        transform.translation.y = 0.03 + height * 0.5;
         transform.rotation = Quat::from_rotation_z(lean * life);
+        // Rotate around the receptor, not the cone's centre: the
+        // foot stays planted while the tip sways.
+        transform.translation = Vec3::new(lane_x(&layout, body.player, body.lane), 0.03, 0.0)
+            + transform.rotation * Vec3::Y * (height * 0.5);
         if let Some(mut paint) = materials.get_mut(&material.0) {
             let (base, glow) = body_color(body.layer, life, theme.0.lane_color(body.lane));
             let alpha = match body.layer {
@@ -489,7 +527,11 @@ pub fn drive_flames(
             .find(|(b, _)| b.player == light.player && b.lane == light.lane)
             .map_or(0.0, |(_, s)| s.life);
         let (flick_h, _) = flicker(now, 0.0, if still { 0.0 } else { 0.6 });
-        point.intensity = LIGHT_INTENSITY * life.min(1.0) * flick_h;
+        point.intensity = LIGHT_INTENSITY
+            * life.min(1.0)
+            * flick_h
+            * intensity.clamp(0.0, 1.0)
+            * if still { 0.35 } else { 1.0 };
     }
 }
 
@@ -538,17 +580,27 @@ pub fn drive_embers(
     }
 
     for (mut ember, mut transform, mut visibility, material) in &mut embers {
+        if !allowed || ember.index >= count {
+            ember.live = false;
+            *visibility = Visibility::Hidden;
+            continue;
+        }
         if !ember.live {
             continue;
         }
         ember.age += delta;
+        if ember.age < 0.0 {
+            *visibility = Visibility::Hidden;
+            continue;
+        }
         if ember.age >= ember.ttl {
             ember.live = false;
             *visibility = Visibility::Hidden;
             continue;
         }
         let seed = ember_seed(ember.player, ember.lane, ember.index, 0);
-        let (dx, dy, alpha) = ember_flight(ember.age.max(0.0), ember.ttl, seed);
+        *visibility = Visibility::Inherited;
+        let (dx, dy, alpha) = ember_flight(ember.age, ember.ttl, seed);
         let x = lane_x(&layout, ember.player, ember.lane);
         transform.translation = Vec3::new(x + dx, 0.55 + dy, 0.0);
         let t = (ember.age / ember.ttl).clamp(0.0, 1.0);
@@ -628,6 +680,10 @@ mod tests {
 
     #[test]
     fn the_bodies_nest_core_inside_mantle_inside_aura() {
+        // The mesh deformation leaves the ignition point planted
+        // and gives the tip a different axis from the foot.
+        assert_eq!(flame_vertex([0.1, -0.5, 0.0]), [0.1, -0.5, 0.0]);
+        assert!(flame_vertex([0.0, 0.5, 0.0])[0] > 0.05);
         let (core_g, core_h) = body_shape(Layer::Core, 1.0, 1.0);
         let (mantle_g, mantle_h) = body_shape(Layer::Mantle, 1.0, 1.0);
         let (aura_g, aura_h) = body_shape(Layer::Aura, 1.0, 1.0);
@@ -636,8 +692,8 @@ mod tests {
             "girth grows outward"
         );
         assert!(
-            core_h > mantle_h && mantle_h > aura_h,
-            "height falls outward"
+            core_h < aura_h && aura_h < mantle_h,
+            "the coloured mantle extends beyond the white core"
         );
         // Dying: at half life the height has halved but the girth has
         // only fallen to ~71 % — short before thin.
@@ -677,6 +733,11 @@ mod tests {
         let (_, _, late) = ember_flight(0.45, ttl, 0.5);
         assert!(late > 0.0 && late < 1.0, "fading near the end, got {late}");
         assert_eq!(ember_flight(0.5, ttl, 0.5), (0.0, 0.0, 0.0), "gone at ttl");
+        assert_eq!(
+            ember_flight(-0.03, ttl, 0.5),
+            (0.0, 0.0, 0.0),
+            "not born yet"
+        );
         // Two seeds, two paths.
         assert_ne!(ember_flight(0.2, ttl, 0.1).0, ember_flight(0.2, ttl, 0.9).0);
     }
