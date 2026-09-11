@@ -185,6 +185,21 @@ pub fn pop_scale(age: f32) -> f32 {
     1.0 + 0.4 * (1.0 - t) * (1.0 - t)
 }
 
+/// Scale and glow of the score counter after its value changes.
+/// The response is short enough to settle between dense notes and
+/// deliberately smaller than the multiplier pop. Reduced flashing
+/// retains a small scale cue and removes the light pulse.
+#[must_use]
+pub fn score_impact(age: f32, reduced: bool) -> (f32, f32) {
+    if !age.is_finite() || age < 0.0 || age >= 0.16 {
+        return (1.0, 0.0);
+    }
+    let falloff = (1.0 - age / 0.16).powi(2);
+    let scale = 1.0 + if reduced { 0.025 } else { 0.065 } * falloff;
+    let glow = if reduced { 0.0 } else { 0.24 * falloff };
+    (scale, glow)
+}
+
 /// How long the phrase-complete flash lasts on the Hype meter.
 pub const STEP_FLASH_S: f32 = 0.35;
 /// How long the crown (and a multiplayer bar) swells for it.
@@ -301,6 +316,17 @@ const PLATE_BORDER: f32 = 2.0;
 #[derive(Component)]
 pub struct SongProgressFill;
 
+/// Bright playhead travelling along the song-progress rail.
+#[derive(Component)]
+pub struct SongProgressHead;
+
+type SongProgressHeadFilter = (
+    With<SongProgressHead>,
+    Without<SongProgressFill>,
+    Without<SongTimeText>,
+    Without<SongTitleText>,
+);
+
 /// The elapsed / total readout beside it.
 #[derive(Component)]
 pub struct SongTimeText;
@@ -309,6 +335,17 @@ pub struct SongTimeText;
 /// rewrite it (it used to be written once at spawn and never again).
 #[derive(Component)]
 pub struct SongTitleText;
+
+/// The solo score counter's restrained hit response.
+#[derive(Component)]
+pub struct ScorePulse {
+    seen: u64,
+    age: f32,
+}
+
+/// Soft light behind the score digits during their hit response.
+#[derive(Component)]
+pub struct ScoreGlow;
 
 /// Width of the song ribbon, in world units.
 const RIBBON_W: f32 = 620.0;
@@ -404,6 +441,12 @@ pub fn song_progress(now: f64, duration_s: f64) -> f32 {
     (now / duration_s).clamp(0.0, 1.0) as f32
 }
 
+/// Horizontal position of the progress playhead for a normalized song position.
+#[must_use]
+pub fn progress_head_x(progress: f32) -> f32 {
+    RIBBON_W.mul_add(progress.clamp(0.0, 1.0), -RIBBON_W / 2.0)
+}
+
 /// A song position as `m:ss`, for the readout.
 ///
 /// Negative times (the pre-roll) show as `0:00` rather than as a
@@ -435,7 +478,7 @@ pub fn spawn_huds(
     commands.spawn((
         GameplayScreen,
         Text2d::new(badge),
-        font.text(9.0),
+        font.text(10.0),
         TextColor(color),
         Anchor::TOP_LEFT,
         // Top-left: the bottom-left corner now belongs to the score
@@ -464,7 +507,7 @@ pub fn spawn_huds(
         // is read once, glanced at afterwards, and at 9 px it was the
         // smallest thing on a screen nobody leans towards.
         font.text(SONG_TITLE_PX),
-        TextColor(palette::dimmed(palette::TEXT_DIM, 0.9)),
+        TextColor(palette::TEXT),
         Anchor::TOP_LEFT,
         Transform::from_xyz(-RIBBON_W / 2.0, RIBBON_TEXT_TOP, 5.0),
     ));
@@ -472,8 +515,8 @@ pub fn spawn_huds(
         GameplayScreen,
         SongTimeText,
         Text2d::new("0:00"),
-        font.text(9.0),
-        TextColor(palette::dimmed(palette::TEXT_DIM, 0.9)),
+        font.text(11.0),
+        TextColor(palette::dimmed(palette::TEXT, 0.85)),
         Anchor::TOP_RIGHT,
         Transform::from_xyz(RIBBON_W / 2.0, RIBBON_TEXT_TOP, 5.0),
     ));
@@ -482,8 +525,16 @@ pub fn spawn_huds(
     commands.spawn((
         GameplayScreen,
         Sprite::from_color(
+            palette::BACKGROUND.with_alpha(0.78),
+            Vec2::new(RIBBON_W + 24.0, 34.0),
+        ),
+        Transform::from_xyz(0.0, RIBBON_BAR_Y + 12.0, 3.0),
+    ));
+    commands.spawn((
+        GameplayScreen,
+        Sprite::from_color(
             palette::dimmed(palette::TEXT_DIM, 0.22),
-            Vec2::new(RIBBON_W, RIBBON_BAR_H),
+            Vec2::new(RIBBON_W, RIBBON_BAR_H + 1.0),
         ),
         Transform::from_xyz(0.0, RIBBON_BAR_Y, 4.0),
     ));
@@ -497,6 +548,17 @@ pub fn spawn_huds(
         Anchor::CENTER_LEFT,
         Transform::from_xyz(-RIBBON_W / 2.0, RIBBON_BAR_Y, 5.0)
             .with_scale(Vec3::new(0.0, 1.0, 1.0)),
+    ));
+    commands.spawn((
+        GameplayScreen,
+        SongProgressHead,
+        Sprite {
+            image: shapes.soft_dot(),
+            color: palette::TEXT,
+            custom_size: Some(Vec2::splat(10.0)),
+            ..default()
+        },
+        Transform::from_xyz(-RIBBON_W / 2.0, RIBBON_BAR_Y, 5.2),
     ));
 
     if layout.players() == 1 {
@@ -614,7 +676,7 @@ fn caption(commands: &mut Commands, font: &UiFont, text: &str, at: Vec2) {
     commands.spawn((
         GameplayScreen,
         Text2d::new(text.to_owned()),
-        font.text(8.0),
+        font.text(9.5),
         TextColor(palette::dimmed(palette::TEXT_DIM, 0.85)),
         Anchor::TOP_CENTER,
         Transform::from_xyz(at.x, at.y, 5.0),
@@ -647,9 +709,20 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::sha
     // A recessed well, so the digits read as sitting IN the plate.
     commands.spawn((
         GameplayScreen,
+        ScoreGlow,
+        Sprite {
+            image: shapes.soft_dot(),
+            color: palette::BRAND.with_alpha(0.0),
+            custom_size: Some(Vec2::new(PLATE_W - 24.0, 62.0)),
+            ..default()
+        },
+        Transform::from_xyz(left.x, left.y + PLATE_H / 2.0 - 44.0, 3.25),
+    ));
+    commands.spawn((
+        GameplayScreen,
         Sprite {
             image: shapes.well(),
-            custom_size: Some(Vec2::new(PLATE_W - 40.0, 34.0)),
+            custom_size: Some(Vec2::new(PLATE_W - 40.0, 38.0)),
             ..default()
         },
         Transform::from_xyz(left.x, left.y + PLATE_H / 2.0 - 44.0, 3.2),
@@ -662,8 +735,9 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::sha
         .spawn((
             GameplayScreen,
             ScorePad,
+            ScorePulse { seen: 0, age: 1.0 },
             Text2d::new("00000"),
-            font.text(24.0),
+            font.text(28.0),
             TextColor(palette::dimmed(digits, 0.22)),
             Anchor::CENTER,
             Transform::from_xyz(left.x, left.y + PLATE_H / 2.0 - 44.0, 5.0),
@@ -671,7 +745,7 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::sha
         .with_child((
             ScoreText(0),
             TextSpan::new("0"),
-            font.text(24.0),
+            font.text(28.0),
             TextColor(digits),
         ));
 
@@ -698,7 +772,7 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::sha
         MultiplierText(0),
         MultiplierPop { seen: 1, age: 1.0 },
         Text2d::new("x1"),
-        font.text(16.0),
+        font.text(18.0),
         TextColor(palette::TEXT),
         Anchor::CENTER,
         Transform::from_xyz(box_at.x, box_at.y, 5.0),
@@ -749,7 +823,7 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::sha
         ComboText(0),
         StreakPop { seen: 0, age: 1.0 },
         Text2d::new(""),
-        font.text(12.0),
+        font.text(14.0),
         TextColor(palette::TEXT),
         Anchor::TOP_LEFT,
         Transform::from_xyz(
@@ -1085,7 +1159,7 @@ pub fn update_huds(
         Query<(&ScoreText, &mut TextSpan)>,
         Query<(&ComboText, &mut Text2d)>,
         Query<(&MultiplierText, &mut Text2d, &mut TextColor)>,
-        Query<&mut Text2d, With<ScorePad>>,
+        Query<(&mut Text2d, &mut ScorePulse)>,
         Query<&mut Text2d, With<HypeReadyText>>,
     )>,
     mut fills: Query<(&HypeFill, &mut Transform), Without<HypeNeedle>>,
@@ -1193,7 +1267,11 @@ pub fn update_huds(
 
         // The counter's padding shrinks as the score grows, so the
         // number stays the same width and only gains bright digits.
-        if let Ok(mut pad) = texts.p3().single_mut() {
+        if let Ok((mut pad, mut pulse)) = texts.p3().single_mut() {
+            if perf.score() != pulse.seen {
+                pulse.seen = perf.score();
+                pulse.age = 0.0;
+            }
             let digits = perf.score().to_string().len();
             let wanted = "0".repeat(SCORE_DIGITS.saturating_sub(digits));
             if pad.0 != wanted {
@@ -1260,6 +1338,27 @@ pub fn update_huds(
                 text.0 = line.to_owned();
             }
         }
+    }
+}
+
+/// Give every score change a compact instrument response. The text
+/// and its significant-digit child scale as one; the separate glow
+/// follows the same age and never allocates or changes meshes.
+pub fn animate_score(
+    time: Res<Time>,
+    effects: Res<crate::gameplay::fx::EffectSettings>,
+    mut counters: Query<(&mut ScorePulse, &mut Transform), With<ScorePad>>,
+    mut glows: Query<&mut Sprite, With<ScoreGlow>>,
+) {
+    let mut glow: f32 = 0.0;
+    for (mut pulse, mut transform) in &mut counters {
+        pulse.age += time.delta_secs();
+        let (scale, strength) = score_impact(pulse.age, effects.reduced_flashing);
+        transform.scale = Vec3::splat(scale);
+        glow = glow.max(strength);
+    }
+    for mut sprite in &mut glows {
+        sprite.color = palette::BRAND.with_alpha(glow);
     }
 }
 
@@ -1699,6 +1798,7 @@ pub fn update_song_ribbon(
     font: Res<crate::ui::UiFont>,
     players: Query<(&super::PlayerIndex, &super::PlayerSession)>,
     mut fill: Query<&mut Transform, With<SongProgressFill>>,
+    mut head: Query<&mut Transform, SongProgressHeadFilter>,
     mut label: Query<&mut Text2d, (With<SongTimeText>, Without<SongTitleText>)>,
     mut title: Query<&mut Text2d, (With<SongTitleText>, Without<SongTimeText>)>,
 ) {
@@ -1746,6 +1846,9 @@ pub fn update_song_ribbon(
     for mut transform in &mut fill {
         transform.scale.x = progress;
     }
+    for mut transform in &mut head {
+        transform.translation.x = progress_head_x(progress);
+    }
     for mut text in &mut label {
         text.0 = format!("{} / {}", clock_text(now), clock_text(duration));
     }
@@ -1778,7 +1881,27 @@ mod meter_tests {
 
 #[cfg(test)]
 mod ribbon_tests {
-    use super::{clock_text, song_progress};
+    use super::{RIBBON_W, clock_text, progress_head_x, score_impact, song_progress};
+
+    #[test]
+    fn score_response_is_brief_and_reduced_flashing_stays_subtle() {
+        let full = score_impact(0.0, false);
+        let reduced = score_impact(0.0, true);
+        assert!(full.0 > reduced.0 && reduced.0 > 1.0);
+        assert!(full.1 > 0.0);
+        assert_eq!(reduced.1, 0.0);
+        assert_eq!(score_impact(0.16, false), (1.0, 0.0));
+        assert_eq!(score_impact(f32::NAN, false), (1.0, 0.0));
+    }
+
+    #[test]
+    fn progress_head_reaches_both_ends_of_the_rail() {
+        assert!((progress_head_x(0.0) + RIBBON_W / 2.0).abs() < f32::EPSILON);
+        assert!(progress_head_x(0.5).abs() < f32::EPSILON);
+        assert!((progress_head_x(1.0) - RIBBON_W / 2.0).abs() < f32::EPSILON);
+        assert_eq!(progress_head_x(-1.0), progress_head_x(0.0));
+        assert_eq!(progress_head_x(2.0), progress_head_x(1.0));
+    }
 
     #[test]
     fn the_bar_does_not_fill_backwards_during_the_count_in() {

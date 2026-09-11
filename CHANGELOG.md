@@ -14,6 +14,17 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.15.4] - 2026-09-11
+
+### Changed
+
+- The in-song HUD has a clearer arcade-instrument hierarchy: larger score,
+  multiplier, combo, labels and clock; a stable dark song ribbon; and a bright
+  playhead that travels along the progress rail. Score changes get a compact
+  scale-and-glow response, while judgment words land, settle and lift as they
+  fade. Reduced flashing removes the glow and travel and keeps a smaller scale
+  cue. Scoring, note timing and song progression are unchanged.
+
 ## [0.15.3] - 2026-09-11
 
 ### Changed

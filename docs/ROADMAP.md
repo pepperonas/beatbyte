@@ -6,6 +6,13 @@ holds the work itself.
 
 ## How to work this roadmap
 
+- [x] In-song HUD polish (0.15.4): stronger score/multiplier/combo typography,
+  readable song ribbon and clock, progress playhead, score impact and a short
+  landing/lift envelope for judgment words. Reduced flashing removes HUD glow
+  and judgment travel. Verified with unit tests, gameplay captures at 6.05,
+  6.12, 7 and 10 seconds, workspace quality gates and a capture-free release
+  autopilot run on "Lift Me Up" medium. No scoring or timing code changed.
+
 - [x] Hit-flame refinement (0.15.3): curved shared mesh, shorter hot core,
   anchored feet and delayed ember visibility. Verified: workspace tests,
   fmt, all-feature clippy, check, rustdoc with/without all features;

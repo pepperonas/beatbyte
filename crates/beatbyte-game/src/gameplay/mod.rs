@@ -374,6 +374,7 @@ impl Plugin for GameplayPlugin {
                     (
                         hud::mark_hype_steps,
                         hud::update_huds,
+                        hud::animate_score,
                         hud::pop_streak,
                         hud::pop_multiplier,
                         hud::pulse_gauge,

@@ -89,6 +89,26 @@ pub struct JudgmentPopup {
     pub player: usize,
     /// Seconds left before it fades out.
     pub ttl: f32,
+    /// Resting vertical position; animation lifts from here.
+    pub base_y: f32,
+}
+
+/// `(scale, lift, alpha)` for a judgment popup with `ttl` seconds
+/// remaining. It lands with a quick overshoot, settles, then rises a
+/// little as it fades. Reduced flashing keeps the fade and removes
+/// the travel while retaining a smaller emphasis cue.
+#[must_use]
+pub fn feedback_pose(ttl: f32, reduced: bool) -> (f32, f32, f32) {
+    let age = (0.5 - ttl).clamp(0.0, 0.5);
+    let punch = (1.0 - age / 0.14).clamp(0.0, 1.0).powi(2);
+    let scale = 1.0 + if reduced { 0.06 } else { 0.18 } * punch;
+    let lift = if reduced {
+        0.0
+    } else {
+        10.0 * (age / 0.5).powi(2)
+    };
+    let alpha = (ttl / 0.18).clamp(0.0, 1.0);
+    (scale, lift, alpha)
 }
 
 /// Turn this frame's session events into flashes and popups.
@@ -97,7 +117,12 @@ pub fn spawn_feedback(
     layout: Res<HighwayLayout>,
     settings: Res<crate::config::Settings>,
     mut feedback: MessageReader<SessionFeedback>,
-    mut popups: Query<(&mut JudgmentPopup, &mut Text2d, &mut TextColor)>,
+    mut popups: Query<(
+        &mut JudgmentPopup,
+        &mut Text2d,
+        &mut TextColor,
+        &mut Transform,
+    )>,
     font: Res<UiFont>,
 ) {
     // The lower, smaller placement belongs to the instrument neck
@@ -215,7 +240,12 @@ fn judgment_style(judgment: Judgment) -> (&'static str, Color) {
 /// Show (or refresh) a player's judgment popup.
 #[allow(clippy::too_many_arguments)]
 fn show_popup(
-    popups: &mut Query<(&mut JudgmentPopup, &mut Text2d, &mut TextColor)>,
+    popups: &mut Query<(
+        &mut JudgmentPopup,
+        &mut Text2d,
+        &mut TextColor,
+        &mut Transform,
+    )>,
     commands: &mut Commands,
     layout: &HighwayLayout,
     font: &UiFont,
@@ -224,18 +254,24 @@ fn show_popup(
     label: &str,
     color: Color,
 ) {
-    for (mut popup, mut text, mut text_color) in popups.iter_mut() {
+    for (mut popup, mut text, mut text_color, mut transform) in popups.iter_mut() {
         if popup.player == player {
             text.0 = label.to_owned();
             text_color.0 = color;
             popup.ttl = 0.5;
+            transform.translation.y = popup.base_y;
+            transform.scale = Vec3::ONE;
             return;
         }
     }
     let (size, lift) = placement;
     commands.spawn((
         GameplayScreen,
-        JudgmentPopup { player, ttl: 0.5 },
+        JudgmentPopup {
+            player,
+            ttl: 0.5,
+            base_y: RECEPTOR_Y + lift,
+        },
         Text2d::new(label),
         font.text(size),
         TextColor(color),
@@ -244,13 +280,19 @@ fn show_popup(
     ));
 }
 
-/// Fade the popups (particle lifetimes live in `fx`).
-pub fn animate_feedback(time: Res<Time>, mut popups: Query<(&mut JudgmentPopup, &mut TextColor)>) {
+/// Settle, lift and fade the popups (particle lifetimes live in `fx`).
+pub fn animate_feedback(
+    time: Res<Time>,
+    settings: Res<crate::config::Settings>,
+    mut popups: Query<(&mut JudgmentPopup, &mut TextColor, &mut Transform)>,
+) {
     let dt = time.delta_secs();
-    for (mut popup, mut color) in &mut popups {
+    for (mut popup, mut color, mut transform) in &mut popups {
         popup.ttl -= dt;
-        let alpha = (popup.ttl / 0.2).clamp(0.0, 1.0);
+        let (scale, lift, alpha) = feedback_pose(popup.ttl, settings.reduced_flashing);
         color.0 = color.0.with_alpha(alpha);
+        transform.translation.y = popup.base_y + lift;
+        transform.scale = Vec3::splat(scale);
     }
 }
 
@@ -301,5 +343,17 @@ mod tests {
         assert_eq!(timing_tag(Judgment::Good, 0.07), Some("LATE"));
         assert_eq!(timing_tag(Judgment::Perfect, -0.01), None);
         assert_eq!(timing_tag(Judgment::Miss, 0.2), None);
+    }
+
+    #[test]
+    fn feedback_lands_then_settles_lifts_and_fades() {
+        let fresh = super::feedback_pose(0.5, false);
+        let settled = super::feedback_pose(0.3, false);
+        let late = super::feedback_pose(0.05, false);
+        assert!(fresh.0 > settled.0, "the word lands with a punch");
+        assert!(late.1 > settled.1 && settled.1 > fresh.1, "then rises");
+        assert!(late.2 < settled.2, "and fades only near the end");
+        let reduced = super::feedback_pose(0.3, true);
+        assert_eq!(reduced.1, 0.0, "reduced flashing removes travel");
     }
 }
