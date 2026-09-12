@@ -93,17 +93,16 @@ pub struct BandMood {
     pub arm_up: f32,
 }
 
-/// How high a body bobs at this point in the beat, in world units.
+/// Knee load at this point in the beat, in radians.
 ///
-/// Half a beat up, half a beat down, never below rest — a musician
-/// bounces, they do not sink through the riser. Hype lifts the whole
-/// band higher: the boost is visible on stage, not only on the HUD.
-/// Pure — tested.
+/// The old animation used this value as vertical lift, so every standing
+/// musician left the riser on ordinary beats. A real groove shifts weight
+/// through ankles and knees; the figure rig's squash keeps both soles planted.
+/// Hype deepens that grounded movement. Pure — tested.
 #[must_use]
 pub fn bob(beats: f32, phase: f32, hype: bool) -> f32 {
-    let swing = (beats * core::f32::consts::PI + phase).sin().max(0.0);
-    let height = if hype { 0.34 } else { 0.18 };
-    swing * height
+    let load = 0.5 + 0.5 * (beats * core::f32::consts::TAU + phase).cos();
+    load * if hype { 0.17 } else { 0.11 }
 }
 
 /// The strumming arm's angle (radians about X, forward-back) for a
@@ -248,13 +247,16 @@ pub fn member_scale() -> f32 {
 /// every pose stays inside the joint limits at every beat.
 #[must_use]
 pub fn role_pose(role: Role, beats: f32, phase: f32, hype: bool, arm_up: f32) -> Pose {
-    let lift = bob(beats, phase, hype) / member_scale();
+    let groove = bob(beats, phase, hype);
     let head_nod = nod(beats, phase);
+    let slow = (beats * core::f32::consts::PI * 0.5 + phase * 0.3).sin();
     match role {
         Role::Singer => Pose {
-            lift: lift * 0.6,
+            squash: groove * 0.45,
             side: sway(beats),
+            twist: 0.035 * slow,
             head_nod,
+            head_tilt: -0.025 * slow,
             arms: [
                 // On the stand: forward and down to the mic.
                 ArmPose {
@@ -273,17 +275,22 @@ pub fn role_pose(role: Role, beats: f32, phase: f32, hype: bool, arm_up: f32) ->
         },
         Role::Guitarist | Role::Bassist => {
             let s = strum(beats, role, hype);
+            let side = if role == Role::Guitarist { -1.0 } else { 1.0 };
+            let fret = (beats * core::f32::consts::PI + phase).sin();
             Pose {
-                lift,
+                squash: groove,
+                hips_roll: side * 0.025 * slow,
                 head_nod,
-                lean: 0.06,
+                head_tilt: side * 0.035 * slow,
+                lean: 0.07 + 0.025 * slow,
+                twist: side * 0.065 * slow,
                 arms: [
                     // Fretting hand out along the neck (the figure's
                     // left, where the neck points).
                     ArmPose {
-                        raise: 0.7,
+                        raise: 0.70 + 0.055 * fret,
                         spread: 0.35,
-                        elbow: 1.4,
+                        elbow: 1.40 + 0.075 * fret,
                     },
                     // Strumming arm: lower and straighter on the
                     // down-stroke (`strum` is negative there).
@@ -297,9 +304,10 @@ pub fn role_pose(role: Role, beats: f32, phase: f32, hype: bool, arm_up: f32) ->
             }
         }
         Role::Drummer => Pose {
-            lift: lift * 0.3,
-            head_nod,
-            lean: 0.15,
+            head_nod: head_nod * 0.75,
+            head_tilt: 0.025 * slow,
+            lean: 0.13 + 0.025 * slow,
+            twist: 0.045 * (drum(beats, 0, hype) - drum(beats, 1, hype)),
             arms: [
                 ArmPose {
                     raise: 0.35 + 0.8 * drum(beats, 1, hype),
@@ -733,7 +741,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_body_bobs_up_never_down_and_higher_under_hype() {
+    fn a_body_loads_the_knees_and_stays_grounded() {
         let mut lowest = f32::MAX;
         let mut highest = f32::MIN;
         for step in 0..400 {
@@ -746,8 +754,14 @@ mod tests {
                 "hype never lowers the bounce"
             );
         }
-        assert!(lowest >= 0.0, "never below the riser");
-        assert!(highest > 0.1, "and it actually moves");
+        assert!(lowest >= 0.0, "knee bend is never negative");
+        assert!(highest > 0.1, "and the weight shift is visible");
+        for role in Role::ALL {
+            for step in 0..80 {
+                let pose = role_pose(role, step as f32 * 0.09, 0.7, false, 0.0);
+                assert_eq!(pose.lift, 0.0, "{role:?} keeps both feet on the riser");
+            }
+        }
     }
 
     #[test]

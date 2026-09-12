@@ -67,6 +67,12 @@ pub struct StageSurfaces {
     pub deck_normal: Handle<Image>,
     /// Stage-deck roughness / metallic tile.
     pub deck_rough: Handle<Image>,
+    /// Venue-floor colour: sealed concrete with aggregate and slab joints.
+    pub concrete_color: Handle<Image>,
+    /// Venue-floor normal map: fine aggregate and recessed slab joints.
+    pub concrete_normal: Handle<Image>,
+    /// Venue-floor roughness / metallic tile.
+    pub concrete_rough: Handle<Image>,
 }
 
 pub(crate) fn build_surfaces(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
@@ -104,6 +110,13 @@ impl StageSurfaces {
                 roughness_image(TILE, deck_rough, DECK_METALLIC),
                 false,
             )),
+            concrete_color: images.add(with_mips(color_tile(TILE, concrete_shade), false)),
+            concrete_normal: images.add(with_mips(
+                normal_tile(TILE, concrete_height, CONCRETE_STRENGTH),
+                true,
+            )),
+            concrete_rough: images
+                .add(with_mips(roughness_image(TILE, concrete_rough, 0.0), false)),
         }
     }
 }
@@ -440,6 +453,46 @@ pub fn deck_height(u: f32, v: f32) -> f32 {
 pub fn deck_rough(u: f32, v: f32) -> f32 {
     let open = (1.0 - deck_profile(u)).max(1.0 - deck_joint_profile(v));
     0.30 + 0.16 * deck_scuff(u, v) + 0.34 * open
+}
+
+// ---- venue concrete -----------------------------------------------------
+
+/// How strongly the aggregate and slab joints tilt the concrete normals.
+pub const CONCRETE_STRENGTH: f32 = 0.055;
+
+fn concrete_joint(u: f32, v: f32) -> f32 {
+    let edge = |x: f32| {
+        let x = x.rem_euclid(1.0);
+        x.min(1.0 - x)
+    };
+    let distance = edge(u).min(edge(v));
+    smooth((distance / 0.025).clamp(0.0, 1.0))
+}
+
+/// Sealed venue concrete: broad mottling, fine aggregate and recessed
+/// expansion joints. The range stays narrow so it receives coloured light
+/// without becoming a second playfield.
+#[must_use]
+pub fn concrete_shade(u: f32, v: f32) -> f32 {
+    let broad = value_noise(u, v, 5, 5, 101);
+    let aggregate = value_noise(u, v, 28, 28, 102);
+    let body = 0.62 + 0.10 * broad + 0.045 * (aggregate - 0.5);
+    lerp(0.42, body, concrete_joint(u, v))
+}
+
+/// Fine concrete relief with a shallow groove at each slab boundary.
+#[must_use]
+pub fn concrete_height(u: f32, v: f32) -> f32 {
+    let aggregate = 0.65 * value_noise(u, v, 24, 24, 103) + 0.35 * speckle(u, v, 104);
+    aggregate - 0.75 * (1.0 - concrete_joint(u, v))
+}
+
+/// Mostly matte concrete; aggregate varies the finish and joints collect
+/// dust, making them rougher than the slab faces.
+#[must_use]
+pub fn concrete_rough(u: f32, v: f32) -> f32 {
+    let aggregate = value_noise(u, v, 18, 18, 105);
+    (0.67 + 0.11 * aggregate + 0.16 * (1.0 - concrete_joint(u, v))).clamp(0.0, 1.0)
 }
 
 // ---- height → normal -----------------------------------------------------
@@ -936,6 +989,19 @@ mod tests {
             );
         }
         assert!(deck_height(seam_u, 0.5) < deck_height(plank_u, 0.5) - 0.5);
+    }
+
+    #[test]
+    fn concrete_has_matte_slabs_with_recessed_joints() {
+        let face = (0.5, 0.5);
+        let joint = (0.0, 0.5);
+        assert!(concrete_shade(joint.0, joint.1) < concrete_shade(face.0, face.1) - 0.1);
+        assert!(concrete_height(joint.0, joint.1) < concrete_height(face.0, face.1) - 0.2);
+        assert!(concrete_rough(joint.0, joint.1) > concrete_rough(face.0, face.1));
+        for (u, v) in [(0.0, 0.0), (0.17, 0.62), (0.5, 0.5)] {
+            assert!((0.0..=1.0).contains(&concrete_shade(u, v)));
+            assert!((0.0..=1.0).contains(&concrete_rough(u, v)));
+        }
     }
 
     #[test]

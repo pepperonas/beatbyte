@@ -106,7 +106,7 @@ pub struct Dancer {
     pub hold: u8,
     /// Phrase offset so the crowd does not switch as one.
     pub offset: u8,
-    /// Beat phase, radians.
+    /// Small reaction offset around the beat, radians.
     pub phase: f32,
     /// Personal amplitude, 0.8..1.2.
     pub vigour: f32,
@@ -131,6 +131,8 @@ pub struct CrowdBeat {
 pub struct CrowdMood {
     /// 0 = the programme, 1 = everyone's arms up.
     pub arms_up: f32,
+    /// Smoothed movement energy, so quiet/loud boundaries do not snap.
+    pub energy: f32,
 }
 
 /// A stable seed from the song's title (the theme's own fold), so a
@@ -215,7 +217,10 @@ pub fn slot(index: usize, seed: usize) -> Slot {
             program,
             hold: 2 + (h(24) * 3.0) as u8,
             offset: (h(25) * 3.0) as u8,
-            phase: h(26) * TAU,
+            // People react in loose clusters around the same beat. A full
+            // random cycle made half the room rise while the other half fell,
+            // which looked like procedural noise rather than a shared groove.
+            phase: row as f32 * 0.12 + (seat % 3) as f32 * 0.06 + 0.40 * j(26),
             vigour: 0.8 + 0.4 * h(27),
         },
     }
@@ -270,7 +275,7 @@ fn bounce(beats: f32, e: f32, phase: f32, a: f32) -> Pose {
 #[must_use]
 pub fn move_pose(mv: Move, beats: f32, bar: f32, e: f32, phase: f32) -> Pose {
     let e = e.clamp(0.0, 1.0);
-    match mv {
+    let pose = match mv {
         Move::Bounce => bounce(beats, e, phase, 1.0),
         Move::Sway => {
             let s = (beats * PI + phase).sin();
@@ -383,7 +388,22 @@ pub fn move_pose(mv: Move, beats: f32, bar: f32, e: f32, phase: f32) -> Pose {
             pose.arms = arms(up, up);
             pose
         }
-    }
+    };
+    organic_pose(pose, beats, e, phase)
+}
+
+/// Layer a quiet weight shift and left/right asymmetry under every authored
+/// move. All waves repeat over four beats and vanish at zero energy.
+fn organic_pose(mut pose: Pose, beats: f32, e: f32, phase: f32) -> Pose {
+    let weight = (beats * PI * 0.5 + phase * 0.37).sin();
+    let counter = (beats * PI + phase + 0.8).sin();
+    pose.hips_roll += 0.010 * e * weight;
+    pose.twist += 0.025 * e * counter;
+    pose.side += 0.012 * e * weight;
+    pose.head_tilt += 0.020 * e * weight;
+    pose.arms[0].elbow += 0.035 * e * (0.5 + 0.5 * counter);
+    pose.arms[1].elbow += 0.035 * e * (0.5 - 0.5 * counter);
+    pose
 }
 
 /// Which programme slot plays in `phrase` (four bars each).
@@ -426,6 +446,15 @@ pub fn crowd_energy(hype: bool, streak: u32, calm: bool) -> f32 {
         0.55 + 0.30 * (streak as f32 / 24.0).min(1.0)
     };
     if calm { base * 0.45 } else { base }
+}
+
+/// Frame-rate-independent attack/release for the shared crowd energy.
+#[must_use]
+pub fn smooth_energy(current: f32, target: f32, dt: f32) -> f32 {
+    let current = current.clamp(0.0, 1.0);
+    let target = target.clamp(0.0, 1.0);
+    let rate = if target > current { 4.5 } else { 1.8 };
+    target + (current - target) * (-rate * dt.clamp(0.0, 0.25)).exp()
 }
 
 /// How far from a note counts as quiet.
@@ -586,7 +615,9 @@ pub fn animate_crowd(
     let beats = track.tempo.beats_at(now) as f32;
     let performance = player.session.performance();
     let hype = performance.hype_active();
-    let energy = crowd_energy(hype, performance.streak(), is_calm(track.events(), now));
+    let target_energy = crowd_energy(hype, performance.streak(), is_calm(track.events(), now));
+    mood.energy = smooth_energy(mood.energy, target_energy, time.delta_secs());
+    let energy = mood.energy;
     let (bar_index, bar) = match beat.as_deref() {
         Some(beat) if beat.bars.len() >= 2 => bar_position(&beat.bars, now),
         _ => {
@@ -819,6 +850,30 @@ mod tests {
             differ > CROWD_PER_SIDE,
             "another song, another crowd: {differ} differ"
         );
+    }
+
+    #[test]
+    fn reactions_cluster_around_the_beat_without_becoming_identical() {
+        let phases: Vec<f32> = (0..2 * CROWD_PER_SIDE)
+            .map(|index| slot(index, 17).dancer.phase)
+            .collect();
+        assert!(phases.iter().all(|phase| phase.abs() < 0.7));
+        let span = phases.iter().copied().fold(f32::MIN, f32::max)
+            - phases.iter().copied().fold(f32::MAX, f32::min);
+        assert!(span > 0.1, "people still carry individual reaction lag");
+    }
+
+    #[test]
+    fn crowd_energy_arrives_quickly_and_releases_slowly() {
+        let attack = smooth_energy(0.2, 0.9, 0.1);
+        let release = smooth_energy(0.9, 0.2, 0.1);
+        assert!(attack > 0.2 && attack < 0.9);
+        assert!(release > 0.2 && release < 0.9);
+        assert!(
+            attack - 0.2 > 0.9 - release,
+            "the room reacts faster than it settles"
+        );
+        assert!((smooth_energy(0.5, 0.5, 0.2) - 0.5).abs() < f32::EPSILON);
     }
 
     #[test]

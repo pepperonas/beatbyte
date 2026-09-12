@@ -6,6 +6,15 @@ holds the work itself.
 
 ## How to work this roadmap
 
+- [x] Stage floor and room-motion pass (0.15.5): finer deck boards and softer
+  lacquer, textured concrete around the deck, beat-clustered audience reactions
+  with eased energy and secondary body motion, and grounded role-specific band
+  weight shifts. Verified with focused regression tests and gameplay captures
+  at 10.00, 10.15, 10.30, 20 and 30 seconds, all workspace gates, and a
+  capture-free release autopilot run: 278 perfect, 0 misses, 0 overstrums.
+  Steady gameplay held a 16.6 ms median frame time, with most five-second p99
+  windows at 18–20 ms on this Mac. Scoring and timing code are unchanged.
+
 - [x] In-song HUD polish (0.15.4): stronger score/multiplier/combo typography,
   readable song ribbon and clock, progress playhead, score impact and a short
   landing/lift envelope for judgment words. Reduced flashing removes HUD glow

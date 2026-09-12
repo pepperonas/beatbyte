@@ -85,11 +85,10 @@ const FOG_END: f32 = 52.0;
 /// A sealed floor is the difference between a stage and a plank. It
 /// is deliberately short of 1.0 — a working deck is scuffed, and a
 /// mirror-bright one would read as ice.
-pub const DECK_CLEARCOAT: f32 = 0.45;
-/// How sharp that lacquer's reflections are — still under the wood's
-/// own roughness (0.30 on the flat of a board), which is the point:
-/// two lobes, a soft one from the timber and a tighter one from the
-/// finish over it.
+pub const DECK_CLEARCOAT: f32 = 0.32;
+/// How broad the lacquer's reflections are. The finish now spreads light
+/// farther than the wood's own roughness (0.30 on a board flat), keeping
+/// both material layers visible without a hard stripe along each board.
 ///
 /// It was 0.12, and that was too tight to live with. The venue's two
 /// coloured washes are 1.5-million-lumen POINT lights, and a lacquer
@@ -100,7 +99,7 @@ pub const DECK_CLEARCOAT: f32 = 0.45;
 /// deck was too matte to show them. Spread over four times the
 /// solid angle they are a sheen down the boards instead, which is
 /// what a sealed floor actually looks like from the third row.
-pub const DECK_CLEARCOAT_ROUGHNESS: f32 = 0.38;
+pub const DECK_CLEARCOAT_ROUGHNESS: f32 = 0.46;
 
 /// Where the floor's side fills hang, per side.
 ///
@@ -1133,7 +1132,9 @@ fn spawn_venue(
     // A stage floor. Everything here — speakers, barriers, crowd —
     // used to float over a void; a floor is also what the light
     // pools land on, and its faint sheen is what sells them.
-    let floor = meshes.add(Cuboid::new(90.0, 0.3, 64.0));
+    let floor = meshes.add(crate::surfaces::tangent_mesh(Mesh::from(Cuboid::new(
+        90.0, 0.3, 64.0,
+    ))));
     // Concrete beyond the riser: mostly fogged, but no longer a
     // void. It was mixed 75 % into black and left at roughness 0.9,
     // which is a surface nothing can land on — the coloured washes
@@ -1141,9 +1142,15 @@ fn spawn_venue(
     // more of the theme's own tone and a sealed-concrete sheen give
     // them somewhere to fall.
     let floor_material = materials.add(StandardMaterial {
-        base_color: dark.mix(&Color::BLACK, 0.45),
-        perceptual_roughness: 0.62,
-        metallic: 0.1,
+        base_color: dark.mix(&Color::BLACK, 0.38).mix(&stage.accent, 0.035),
+        base_color_texture: Some(surfaces.concrete_color.clone()),
+        normal_map_texture: Some(surfaces.concrete_normal.clone()),
+        metallic_roughness_texture: Some(surfaces.concrete_rough.clone()),
+        perceptual_roughness: 1.0,
+        metallic: 1.0,
+        clearcoat: 0.10,
+        clearcoat_perceptual_roughness: 0.72,
+        uv_transform: bevy::math::Affine2::from_scale(Vec2::new(18.0, 12.0)),
         ..default()
     });
     commands.spawn((
@@ -1216,7 +1223,9 @@ fn spawn_venue(
         // detail lives underneath them.
         clearcoat: DECK_CLEARCOAT,
         clearcoat_perceptual_roughness: DECK_CLEARCOAT_ROUGHNESS,
-        uv_transform: bevy::math::Affine2::from_scale(Vec2::new(4.0, 9.0)),
+        // Seventy-two boards across twenty metres: broad stage planks,
+        // rather than the old 83 cm bands that read as floor stripes.
+        uv_transform: bevy::math::Affine2::from_scale(Vec2::new(12.0, 9.0)),
         ..default()
     });
     commands.spawn((

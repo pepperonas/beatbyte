@@ -14,6 +14,20 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.15.5] - 2026-09-12
+
+### Changed
+
+- The stage deck now reads as individual, realistically sized boards with a
+  softer lacquer response. The surrounding venue floor uses a tiled concrete
+  surface with aggregate, expansion joints, roughness and shallow relief, so
+  light pools reveal the floor beyond the stage instead of falling across a
+  featureless plane.
+- Audience reactions now share the beat while retaining small row and person
+  delays, eased room energy and secondary hip, torso, head and arm motion. Band
+  poses load the knees and add role-specific weight shifts while every standing
+  performer keeps both feet on the riser. Scoring and song timing are unchanged.
+
 ## [0.15.4] - 2026-09-11
 
 ### Changed
