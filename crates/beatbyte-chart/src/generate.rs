@@ -20,6 +20,9 @@ use crate::grid::{BeatGrid, SNAP_TOLERANCE_S};
 use crate::schema::{ChartDef, ChartFile, ChartNote, ChartPhrase, SongMeta};
 use crate::{FORMAT_VERSION, validate::BPM_RANGE};
 
+mod lead_study;
+pub use lead_study::generate_lead_study;
+
 /// Per-difficulty generation parameters. Data, not code: tuning a
 /// difficulty never touches generator logic.
 #[derive(Debug, Clone, Copy, PartialEq)]

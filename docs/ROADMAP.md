@@ -6,6 +6,17 @@ holds the work itself.
 
 ## How to work this roadmap
 
+- [x] Guitar-feel technical pilot (0.15.6): audit import/redesign, research instrument
+  transcription, and compare source selection and stable fret mapping on one
+  existing song. [Research and single-song protocol](guitar-feel-pilot.md).
+  Full local quality gate and release Expert autopilot passed: 512 perfect,
+  0 misses, 0 overstrums. All 596 pre-existing library JSON files unchanged.
+- [ ] Guitar-feel musical acceptance: compare the separate Van Halen pilot
+  with the original on Medium/Hard and investigate the 13.7-second Easy gap.
+  No bulk generation; ordinary-import adoption depends on the user's playtest.
+  Polyphonic guitar transcription remains a follow-up, not a capability of
+  the current mono tracker.
+
 - [x] Stage floor and room-motion pass (0.15.5): finer deck boards and softer
   lacquer, textured concrete around the deck, beat-clustered audience reactions
   with eased energy and secondary body motion, and grounded role-specific band

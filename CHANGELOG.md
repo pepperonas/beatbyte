@@ -14,6 +14,19 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.15.6] - 2026-09-12
+
+### Added
+
+- An opt-in single-song lead-chart study: compare the existing generator and
+  a tonal-source variant on both the mix and an aligned instrument stem. The
+  variant preserves repeated-pitch strums, maps each phrase's pitches to stable
+  frets, splits holds at supported source attacks and omits strength-invented
+  chords. A CLI example writes four comparison charts and measurements into a
+  new directory. Ordinary imports and redesigns continue using the existing
+  generator; no library-wide regeneration is performed. See
+  [the research and pilot](docs/guitar-feel-pilot.md) for limitations and A/B steps.
+
 ## [0.15.5] - 2026-09-12
 
 ### Changed
