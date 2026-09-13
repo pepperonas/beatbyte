@@ -734,8 +734,18 @@ fn derive_notes(
     master: &[MasterNote],
     grid_origin_s: f64,
 ) -> Vec<ChartNote> {
-    let lanes_used = i32::from(profile.lanes_used.clamp(1, LANE_COUNT as u8));
     let kept = reduction_chain(master, profile.difficulty, analysis, grid_origin_s);
+    place_derived_notes(analysis, profile, &kept)
+}
+
+/// Place an already reduced set, sharing sustain, lane and HOPO rules with
+/// the optional lead study without changing the default reduction policy.
+fn place_derived_notes(
+    analysis: &SongAnalysis,
+    profile: &DifficultyProfile,
+    kept: &[&MasterNote],
+) -> Vec<ChartNote> {
+    let lanes_used = i32::from(profile.lanes_used.clamp(1, LANE_COUNT as u8));
     // The song's own accents: chord eligibility is a percentile of
     // the KEPT notes' strengths, never an absolute bar — a quiet
     // master and a loud one carry the same accent rate. The median

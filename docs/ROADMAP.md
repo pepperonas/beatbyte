@@ -11,8 +11,15 @@ holds the work itself.
   existing song. [Research and single-song protocol](guitar-feel-pilot.md).
   Full local quality gate and release Expert autopilot passed: 512 perfect,
   0 misses, 0 overstrums. All 596 pre-existing library JSON files unchanged.
+- [x] Guitar-feel quiet-part reduction (0.15.7): lower-level global strength
+  floors discarded accepted notes in the 13.7-second Easy gap. Reduce the
+  unchanged Hard part within four tracked beats for Medium/Easy. Pilot max
+  Easy gap now 4.331s; default controls and Hard/Expert remain identical.
+  Full quality gate passed; release Easy autopilot: 189 perfect, 0 misses,
+  0 overstrums. Two new regression tests demonstrated failing before correction
+  or under a fixed-tempo mutation. Existing library JSON files unchanged.
 - [ ] Guitar-feel musical acceptance: compare the separate Van Halen pilot
-  with the original on Medium/Hard and investigate the 13.7-second Easy gap.
+  with the original on Easy/Medium/Hard and check the remaining source gaps.
   No bulk generation; ordinary-import adoption depends on the user's playtest.
   Polyphonic guitar transcription remains a follow-up, not a capability of
   the current mono tracker.

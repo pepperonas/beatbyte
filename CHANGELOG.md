@@ -14,6 +14,17 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.15.7] - 2026-09-13
+
+### Fixed
+
+- The optional guitar-feel pilot no longer discards quiet accepted tonal parts
+  on Easy/Medium using whole-song strength floors. Those levels now reduce the
+  unchanged Hard part within four tracked beats, sharing density locally and
+  respecting spacing across block boundaries. Actual source rests stay empty;
+  Hard/Expert and the normal import/redesign policy retain their behavior.
+  [Pilot findings and verification](docs/guitar-feel-pilot.md).
+
 ## [0.15.6] - 2026-09-12
 
 ### Added

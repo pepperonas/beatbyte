@@ -80,7 +80,8 @@ pub fn generate_lead_study(analysis: &SongAnalysis, meta: &GenerateMeta) -> Char
             let mut profile = DifficultyProfile::for_difficulty(difficulty);
             profile.chord_share = 0.0;
             profile.max_chord_size = 1;
-            let notes = derive_notes(&lead, &profile, &master, origin);
+            let kept = study_reduction(&master, difficulty, &lead, origin);
+            let notes = place_derived_notes(&lead, &profile, &kept);
             let phrases = place_phrases(&lead, &notes);
             ChartDef {
                 difficulty,
@@ -91,6 +92,91 @@ pub fn generate_lead_study(analysis: &SongAnalysis, meta: &GenerateMeta) -> Char
         })
         .collect();
     chart
+}
+
+fn study_reduction<'a>(
+    master: &'a [MasterNote],
+    difficulty: Difficulty,
+    analysis: &SongAnalysis,
+    origin: f64,
+) -> Vec<&'a MasterNote> {
+    if matches!(difficulty, Difficulty::Hard | Difficulty::Expert) {
+        return reduction_chain(master, difficulty, analysis, origin);
+    }
+    let mut kept = reduction_chain(master, Difficulty::Hard, analysis, origin);
+    for step in [Difficulty::Medium, Difficulty::Easy] {
+        kept = thin_local_part(&kept, step, analysis, origin);
+        if step == difficulty {
+            break;
+        }
+    }
+    kept
+}
+
+/// Salience is relative to the loudest note, not transcription confidence.
+/// Lower levels reduce the accepted Hard part within four tracked beats:
+/// a loud chorus cannot spend a quiet verse's budget. No source event is added.
+fn thin_local_part<'a>(
+    parent: &[&'a MasterNote],
+    difficulty: Difficulty,
+    analysis: &SongAnalysis,
+    origin: f64,
+) -> Vec<&'a MasterNote> {
+    let profile = DifficultyProfile::for_difficulty(difficulty);
+    let grid = BeatGrid::from_beats(&analysis.beats);
+    let hot = crate::escalation::hot_bar_flags(analysis, origin);
+    let higher = match difficulty {
+        Difficulty::Easy => Difficulty::Medium,
+        _ => Difficulty::Hard,
+    };
+    let mut blocks = std::collections::BTreeMap::<usize, Vec<&MasterNote>>::new();
+    for &note in parent {
+        let block = if grid.is_usable() {
+            grid.beat_index(note.time_s) / 4
+        } else {
+            crate::escalation::bar_of(note.time_s, origin, analysis.beat_interval_s())
+        };
+        blocks.entry(block).or_default().push(note);
+    }
+    let mut kept: Vec<&MasterNote> = Vec::new();
+    for (block, mut ranked) in blocks {
+        let hot_bar =
+            crate::escalation::bar_of(ranked[0].time_s, origin, analysis.beat_interval_s());
+        let density = if hot.get(hot_bar).copied().unwrap_or(false) {
+            DifficultyProfile::for_difficulty(higher).target_notes_per_beat
+        } else {
+            profile.target_notes_per_beat
+        };
+        // Distribute fractional targets (e.g. 1.4 hits/block on Easy) without
+        // accumulating spare budget across empty instrument passages.
+        let budget = (((block + 1) as f64 * 4.0 * density).round()
+            - (block as f64 * 4.0 * density).round())
+        .max(1.0) as usize;
+        ranked.sort_by(|a, b| {
+            b.strength
+                .total_cmp(&a.strength)
+                .then(a.time_s.total_cmp(&b.time_s))
+        });
+        let previous = kept.last().map(|n| n.time_s);
+        let mut selected: Vec<&MasterNote> = Vec::new();
+        for note in ranked {
+            if previous.is_some_and(|t| note.time_s - t < profile.min_spacing_s)
+                || selected
+                    .iter()
+                    .any(|n| (n.time_s - note.time_s).abs() < profile.min_spacing_s)
+            {
+                continue;
+            }
+            selected.push(note);
+            if selected.len() == budget {
+                break;
+            }
+        }
+        selected.sort_by(|a, b| a.time_s.total_cmp(&b.time_s));
+        kept.extend(selected);
+    }
+    // These levels' minimum spacing already exceeds the burst threshold.
+    kept
 }
 
 /// Split a held pitch only on a strong attack from that same source. Onsets
@@ -259,5 +345,77 @@ mod tests {
                 assert!(pair[1].notes.iter().any(|n| n.time == note.time));
             }
         }
+    }
+
+    #[test]
+    fn easy_retains_a_quiet_part_without_filling_a_source_rest() {
+        let mut a = reading(&[]);
+        a.melody = (0..24)
+            .filter(|i| !(12..16).contains(i))
+            .map(|i| MelodyNote {
+                time_s: 1.0 + i as f64 * 0.5,
+                end_s: 1.2 + i as f64 * 0.5,
+                midi: 60.0,
+                strength: if i < 4 { 0.9 } else { 0.15 },
+            })
+            .collect();
+        let c = chart(&a);
+        let easy = &c.chart_for(Difficulty::Easy).expect("easy").notes;
+        for start in [3.0, 5.0, 9.0, 11.0] {
+            assert!(
+                easy.iter().any(|n| n.time >= start && n.time < start + 2.0),
+                "quiet block at {start} lost despite accepted tonal evidence"
+            );
+        }
+        for def in &c.charts {
+            assert!(def.notes.iter().all(|n| !(7.0..9.0).contains(&n.time)));
+            let profile = DifficultyProfile::for_difficulty(def.difficulty);
+            assert!(
+                def.notes
+                    .windows(2)
+                    .all(|p| p[1].time - p[0].time >= profile.min_spacing_s)
+            );
+        }
+        for pair in c.charts.windows(2) {
+            assert!(
+                pair[0]
+                    .notes
+                    .iter()
+                    .all(|n| pair[1].notes.iter().any(|p| p.time == n.time))
+            );
+        }
+    }
+
+    #[test]
+    fn local_reduction_uses_tracked_beats_and_respects_block_edges() {
+        let mut a = reading(&[]);
+        a.beats = (0..24).map(|i| 1.0 + i as f64).collect();
+        // Stored beat intervals are 1s, while the nominal tempo remains 120.
+        // Each 4s block competes locally, including across its boundary.
+        let master: Vec<_> = [
+            (1.0, 0.9),
+            (2.0, 0.6),
+            (3.0, 0.1),
+            (4.9, 0.8),
+            (5.1, 0.9),
+            (5.8, 0.8),
+            (7.0, 0.1),
+            (8.0, 0.7),
+        ]
+        .into_iter()
+        .map(|(time_s, strength)| MasterNote {
+            time_s,
+            strength,
+            lane: 2,
+            held_s: 0.0,
+            pitched: true,
+        })
+        .collect();
+        let parent: Vec<_> = master.iter().collect();
+        let kept = thin_local_part(&parent, Difficulty::Medium, &a, 1.0);
+        assert_eq!(
+            kept.iter().map(|n| n.time_s).collect::<Vec<_>>(),
+            vec![1.0, 2.0, 4.9, 5.8, 7.0, 8.0]
+        );
     }
 }

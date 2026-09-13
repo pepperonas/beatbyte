@@ -1,6 +1,6 @@
 # Gitarren-Gefühl: Recherche und Einzelversuch
 
-Stand: 2026-09-12, Experiment 0.15.6. Auftrag: vorhandene Spielbarkeit erhalten,
+Stand: 2026-09-13, Experiment 0.15.7. Auftrag: vorhandene Spielbarkeit erhalten,
 aber die Verbindung zwischen Gitarrenpart und Eingabe verbessern. Erst einen
 Song vergleichen; keine Neuberechnung der Bibliothek.
 
@@ -19,14 +19,14 @@ Song vergleichen; keine Neuberechnung der Bibliothek.
 - `crates/beatbyte-audio/src/analysis/melody.rs`: HPSS trennt tonale und
   perkussive Spektrogrammanteile. Das ist keine Instrumententrennung. Ein
   einzelner Tonhöhenpfad kann auch Gesang, Bass-Obertöne oder Keyboard verfolgen.
-- `crates/beatbyte-chart/src/generate.rs:843`, `merge_candidates`: ergänzt diese
+- `crates/beatbyte-chart/src/generate.rs:853`, `merge_candidates`: ergänzt diese
   Melodie um Anschläge des Gesamtmixes. Nicht zugeordnete Anschläge bekommen
   Tasten über spektrale Helligkeit und einen zeitabhängigen Hash.
 - `generate.rs:404`, `break_jacks`, verändert schnelle Tonwiederholungen zu wechselnden Tasten.
-  `generate.rs:731`, `derive_notes`, erklärt nahe Tastenwechsel zu HOPOs und starke Einzelereignisse
+  `generate.rs:731`, `derive_notes` mit `place_derived_notes`, erklärt nahe Tastenwechsel zu HOPOs und starke Einzelereignisse
   teilweise zu Akkorden. Das fördert Abwechslung und Spielbarkeit, beweist aber
   weder einen Tonwechsel noch Legato-Technik oder einen Gitarrenakkord.
-- `generate.rs:1057`, `ContourMapper`, summiert Tonhöhenintervalle und begrenzt sie am Halsrand.
+- `generate.rs:1067`, `ContourMapper`, summiert Tonhöhenintervalle und begrenzt sie am Halsrand.
   Dadurch kann derselbe Ton nach einem großen Sprung auf einer anderen Taste
   landen. `unify_repeats` kopiert aus Ähnlichkeit des Gesamtmixes ganze Abschnitte;
   eine Gitarrenvariation kann trotz ähnlicher Begleitung real sein.
@@ -114,7 +114,7 @@ demucs -n htdemucs --two-stems other --shifts 0 -d cpu -j 1 \
 cargo run -p beatbyte-cli --example guitar_study -- \
   songs/imported/van-halen---ain-t-talkin---bout-love-m4a/chart.json \
   local/guitar-study/stems/htdemucs/mix/other.wav \
-  local/guitar-study/comparison-final
+  local/guitar-study/comparison-0157
 ```
 
 Das Beispiel verlangt ein neues Zielverzeichnis, validiert alle vier Charts und
@@ -122,7 +122,7 @@ lehnt mehr als 25 ms Längendifferenz ab. Gleiche Länge beweist keine korrekte
 Ausrichtung; die Ableitung aus demselben Decoder-Export bleibt Voraussetzung.
 Das Beispiel lädt keine Modelle, aktiviert keine Version und hat keinen `--all`-Pfad.
 
-Lokal enthält `local/guitar-study/comparison-final/` beide Analysen, vier Charts, den
+Lokal enthält `local/guitar-study/comparison-0157/` beide Analysen, vier Charts, den
 vorherigen Chart als Archiv, die dekodierte Aufnahme und `report.json`.
 `original.json` ist ein Archiv mit ursprünglicher Audio-Referenz, kein eigenständig
 spielbares Paket. Der Pilot ist separat unter
@@ -135,7 +135,8 @@ Audio, abgeleitete Charts und Vergleichsdateien bleiben lokale Nutzerinhalte.
 
 ## Gemessener Vergleich
 
-Gleiche Aufnahme und gleiches akzeptiertes Raster; Zahlen sind die Zahl der
+Erster Pilot (0.15.6, archiviert in `comparison-final/`): gleiche Aufnahme und
+gleiches akzeptiertes Raster; Zahlen sind die Zahl der
 Chart-Noten inklusive etwaiger Akkordbestandteile, keine Qualitätsnote.
 
 | Quelle / Zuordnung | Easy | Medium | Hard | Expert | Expert-HOPOs | Expert-Sustains |
@@ -152,13 +153,71 @@ Die Expert-Versuchsvariante erhält 19 schnelle Anschlagspaare derselben Taste.
 Diese Zahlen zeigen, dass beide Stellgrößen wirken. Sie zeigen weder die
 Treffsicherheit der Tonhöhenerkennung noch einen Sieg im Hörvergleich.
 
-Offener Befund: Auf Easy entsteht im Pilot eine rund 13,7 Sekunden lange Pause,
-auf Medium und Hard beträgt die längste Pause ungefähr vier Sekunden. Ob die
-Gitarre dort wirklich pausiert oder die Erkennung/Reduktion zu viel verwirft,
-muss im Hörvergleich geprüft werden. Auch Griffwechsel nach längeren Abständen
-können weiterhin groß ausfallen. Easy ist damit noch nicht zur Übernahme empfohlen.
+### Korrektur der leisen Abschnitte (0.15.7)
+
+Die Easy-Pause von 109,093 bis 122,837 Sekunden war teilweise ein nachgewiesener
+Reduktionsverlust: `generate.rs:638` filtert nach der Schwierigkeitsschwelle;
+Easy verlangt 0,20. Der Detektor normalisiert seine Salienz dagegen auf den
+stärksten Ton des gesamten Songs (`analysis/melody.rs:496`), nicht auf eine
+Erkennungswahrscheinlichkeit. In der Lücke enthält die gespeicherte Analyse
+Tonereignisse von ungefähr 0,10 bis 0,20; Medium und Hard hatten dort bereits
+Noten. Die globale Rangfolge erlaubt zudem starken Abschnitten, das gemeinsame
+Notenbudget auszuschöpfen. Damit ist die Reduktion belegbar beteiligt; die
+musikalische Richtigkeit der erkannten Töne bleibt weiterhin ungeprüft.
+
+`generate/lead_study.rs`, `study_reduction` und `thin_local_part`, reduzieren
+jetzt Hard → Medium → Easy innerhalb jeweils vier gespeicherter Beats. Nur
+bereits im Hard-Part akzeptierte Tonereignisse stehen zur Auswahl. Die unteren
+Stufen bekommen keine zusätzliche globale Stärkeschwelle. Stärkere Ereignisse
+gewinnen lokal; ein leerer Block bleibt leer und überträgt kein Budget. Die
+bisherigen Dichteziele und die Anhebung in energiereichen Passagen gelten
+weiter; Bruchteile des Budgets werden über die Blocknummer verteilt. Abstände
+werden auch zur letzten Note des vorigen Blocks geprüft. Das sind Vier-Beat-
+Fenster, keine neu erkannte musikalische Taktart oder Phrasensegmentierung.
+
+Der Standardgenerator verwendet dieselbe Reduktionslogik wie zuvor. Lediglich
+das gemeinsame Platzieren der bereits gewählten Noten wurde in
+`place_derived_notes` ausgegliedert, damit Sustain-, Tasten- und HOPO-Regeln
+identisch bleiben.
+
+| Pilot-Schwierigkeit | Noten vorher → jetzt | Längster Abstand vorher → jetzt | Kleinster Abstand jetzt |
+|---|---:|---:|---:|
+| Easy | 206 → 189 | 13,744 → 4,331 s | 0,528 s |
+| Medium | 330 → 313 | 4,331 → 4,331 s | 0,312 s |
+| Hard | 474 → 474 | 4,112 → 4,112 s | 0,208 s |
+| Expert | 512 → 512 | 4,112 → 4,112 s | 0,104 s |
+
+Im Inneren der früheren Easy-Lücke liegen jetzt acht bereits im Hard-Part
+vorhandene Noten. Insgesamt wird der Chart etwas dünner, weil ungenutztes
+lokales Budget nicht in andere Passagen fließt. Hard und Expert sind samt
+Phrasen identisch mit 0.15.6; beide Kontrollvarianten des Standardgenerators
+sind vollständig identisch. Die Notenmengen bleiben über alle Schwierigkeiten
+verschachtelt. Messwerte: `local/guitar-study/reduction-0157-metrics.json`.
+
+Offen bleiben die musikalische Prüfung des Parts und der längsten verbliebenen
+Pause bei etwa 2:04–2:08 sowie die Spielbarkeit großer Griffwechsel. Die
+Reduktionskorrektur allein ist keine Freigabe des Gitarrenpiloten.
 
 ## Abnahme vor jeder Übernahme
+
+Zusätzlich geprüft am 2026-09-13 mit 0.15.7:
+
+- Zwei neue Regressionstests: Der leise Part verschwand mit dem bisherigen
+  Generator (Test rot vor dem Fix); der Rastertest schlug mit absichtlich
+  eingesetztem Durchschnittstempo fehl. Die endgültigen sieben Pilot-Tests
+  bestehen, einschließlich leerer Quellen, Tonwiederholungen und Reduktion.
+- Vollständiges lokales Gate erneut bestanden: fmt, Clippy aller Targets und
+  Features mit `-D warnings`, Workspace-Tests (**1.093 bestanden, vier bestehende
+  ignoriert**), check und beide Rustdoc-Konfigurationen mit `-D warnings`.
+- Release 0.15.7 gebaut und der installierte Easy-Pilot bis zum Ergebnis
+  gespielt: **189 Perfect, 0 Misses, 0 Overstrums**, Autopilot `PASSED`, Exit 0.
+  Log: `local/guitar-study/autopilot-easy-0157.log`. Medium wurde statisch
+  validiert und vermessen, in diesem Schritt nicht vollständig durchgespielt.
+- Der Vergleichslauf validierte wieder alle vier Varianten auf allen vier
+  Schwierigkeiten. Beide Standardkontrollen und Pilot-Hard/Expert sind
+  identisch zu 0.15.6. Die 596 ursprünglichen Bibliotheks-JSONs sind unverändert.
+  Nur die Easy-/Medium-Charts des separaten Piloten wurden lokal ersetzt;
+  dessen übrige Metadaten, Audio-Referenz und Beat-Raster blieben erhalten.
 
 Technisch geprüft am 2026-09-12:
 
@@ -182,7 +241,7 @@ Diese Prüfungen belegen Ausführbarkeit und Schutz der bisherigen Bibliothek.
 Es wurde damit weder die Tonerkennung gegen eine Referenztranskription gemessen
 noch ein menschlicher Hör- und Spielvergleich durchgeführt.
 
-Zuerst Original und Pilot jeweils auf Medium und Hard spielen: Anfangsriff,
+Zuerst Original und Pilot jeweils auf Easy, Medium und Hard spielen: Anfangsriff,
 Passage mit Gesang, längere gehaltene Töne und spätere Wiederkehr des Riffs.
 Prüffragen: Folgen die Finger derselben hörbaren Stimme? Bleiben Tonwiederholungen
 wiedererkennbar? Fehlen hörbare Anschläge? Sind Pausen tatsächlich Gitarrenpausen?
