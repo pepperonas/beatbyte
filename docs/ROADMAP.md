@@ -18,9 +18,13 @@ holds the work itself.
   Full quality gate passed; release Easy autopilot: 189 perfect, 0 misses,
   0 overstrums. Two new regression tests demonstrated failing before correction
   or under a fixed-tempo mutation. Existing library JSON files unchanged.
-- [ ] Guitar-feel musical acceptance: compare the separate Van Halen pilot
-  with the original on Easy/Medium/Hard and check the remaining source gaps.
-  No bulk generation; ordinary-import adoption depends on the user's playtest.
+- [x] Guitar-feel Medium/Hard playtest: user played the Van Halen pilot on
+  both levels and reported a better guitar feel on 2026-09-13
+  ("mittel und schwer. ja, war besser"). This is a positive single-song
+  result; the exact tested pilot version was not specified.
+- [ ] Guitar-feel remaining acceptance: playtest Easy/Expert, check the
+  remaining source gaps and validate transfer to a second contrasting song.
+  No bulk generation; the positive pilot verdict is not a library migration.
   Polyphonic guitar transcription remains a follow-up, not a capability of
   the current mono tracker.
 

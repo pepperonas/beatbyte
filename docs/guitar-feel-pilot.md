@@ -194,9 +194,10 @@ Phrasen identisch mit 0.15.6; beide Kontrollvarianten des Standardgenerators
 sind vollständig identisch. Die Notenmengen bleiben über alle Schwierigkeiten
 verschachtelt. Messwerte: `local/guitar-study/reduction-0157-metrics.json`.
 
-Offen bleiben die musikalische Prüfung des Parts und der längsten verbliebenen
-Pause bei etwa 2:04–2:08 sowie die Spielbarkeit großer Griffwechsel. Die
-Reduktionskorrektur allein ist keine Freigabe des Gitarrenpiloten.
+Gezielt zu prüfen bleiben die längste verbliebene Pause bei etwa 2:04–2:08
+sowie die Spielbarkeit großer Griffwechsel auf den noch nicht bewerteten
+Stufen. Die Reduktionskorrektur allein ist keine Freigabe des Gitarrenpiloten;
+das spätere positive Mittel-/Schwer-Urteil ist unten separat festgehalten.
 
 ## Abnahme vor jeder Übernahme
 
@@ -237,11 +238,24 @@ Technisch geprüft am 2026-09-12:
   Exit 1 abgelehnt. SHA-256-Vergleich: alle 596 zuvor vorhandenen JSON-Dateien
   der Bibliothek unverändert; Pilot- und Originalaufnahme bytegleich.
 
-Diese Prüfungen belegen Ausführbarkeit und Schutz der bisherigen Bibliothek.
-Es wurde damit weder die Tonerkennung gegen eine Referenztranskription gemessen
-noch ein menschlicher Hör- und Spielvergleich durchgeführt.
+Diese technischen Prüfungen belegen Ausführbarkeit und Schutz der bisherigen
+Bibliothek. Sie messen weder die Tonerkennung gegen eine Referenztranskription
+noch das menschliche Spielgefühl.
 
-Zuerst Original und Pilot jeweils auf Easy, Medium und Hard spielen: Anfangsriff,
+### Spielerrückmeldung vom 2026-09-13
+
+Der Nutzer hat den Van-Halen-Piloten auf **Mittel und Schwer** gespielt. Auf die
+Frage, ob sich Tonwiederholungen und Haltenoten näher an der hörbaren Gitarre
+anfühlten, lautete die Rückmeldung: **„mittel und schwer. ja, war besser“**.
+Damit liegt ein positives musikalisches Spielerurteil für diesen Song auf
+diesen beiden Stufen vor. Die genaue getestete Pilotversion wurde nicht genannt;
+das Urteil wird deshalb nicht eigens der Reduktionskorrektur 0.15.7 zugeschrieben.
+
+Easy und Expert sind musikalisch noch nicht durch den Nutzer bewertet. Ebenso
+offen bleiben die Übertragbarkeit auf andere Songs, die Reinheit der Quelle und
+die Akkorderkennung. Aus diesem Einzelurteil folgt keine Bibliotheksmigration.
+
+Für die weiteren Vergleiche Original und Pilot an denselben Stellen spielen: Anfangsriff,
 Passage mit Gesang, längere gehaltene Töne und spätere Wiederkehr des Riffs.
 Prüffragen: Folgen die Finger derselben hörbaren Stimme? Bleiben Tonwiederholungen
 wiedererkennbar? Fehlen hörbare Anschläge? Sind Pausen tatsächlich Gitarrenpausen?
@@ -249,7 +263,7 @@ Wirken Haltenoten so lang wie die gespielte Stimme? Macht die geringere Zahl
 künstlicher Tastenwechsel das Strumming glaubhafter?
 
 Eine automatische fehlerfreie Partie prüft nur Spiellogik und Chart-Ausführbarkeit.
-Die musikalische Bewertung steht bis zu diesem A/B-Test offen. Vor einem Ausbau
+Das positive Mittel-/Schwer-Urteil ergänzt jetzt diese Prüfung. Vor einem Ausbau
 braucht es einen geprüften guitar-Stem, polyphone Ereignisse für echte Akkorde,
 Phrasen-erhaltende Reduktion und mindestens einen zweiten stilistisch anderen
 Testtrack. Erst danach kommt eine bewusste Übernahme in Import und Neuanalyse;
