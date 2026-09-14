@@ -29,6 +29,7 @@ pub mod demo;
 pub mod eval;
 pub mod listen;
 pub mod loudness;
+pub mod mark;
 pub mod playback;
 pub mod priming;
 pub mod quality;

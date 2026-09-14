@@ -13,6 +13,7 @@ use clap::{Parser, Subcommand};
 
 #[cfg(feature = "ml")]
 mod align;
+mod chart_check;
 mod dossier;
 mod history;
 mod loudness;
@@ -68,6 +69,32 @@ enum Command {
     Inspect {
         /// Path to the chart JSON file.
         chart: PathBuf,
+    },
+    /// The song with a click on every chart note, so a chart's
+    /// RHYTHM can be judged by ear — plus the share of notes that
+    /// sit on the grid and on an audible attack. `--secs` cuts a
+    /// slice (from the chart's preview anchor unless `--from` says
+    /// otherwise), which is what makes two variants comparable in
+    /// half a minute.
+    ChartCheck {
+        /// Path to the audio file (wav/ogg/flac/mp3/m4a).
+        song: PathBuf,
+        /// Path to the chart JSON file.
+        chart: PathBuf,
+        /// Difficulty to check (defaults to medium, the tuning
+        /// anchor).
+        #[arg(long, default_value = "medium")]
+        difficulty: String,
+        /// Window start in seconds.
+        #[arg(long)]
+        from: Option<f64>,
+        /// Window length in seconds (default: to the end of the song).
+        #[arg(long)]
+        secs: Option<f64>,
+        /// Where to write the click track (defaults to
+        /// `<chart>.chart-check.wav`).
+        #[arg(long)]
+        out: Option<PathBuf>,
     },
     /// Review a chart against recorded play sessions (ADR-0011).
     Review {
@@ -347,6 +374,20 @@ fn main() -> ExitCode {
         } => generate(&song, title, &artist, out),
         Command::Validate { chart } => validate(&chart),
         Command::Inspect { chart } => inspect(&chart),
+        Command::ChartCheck {
+            song,
+            chart,
+            difficulty,
+            from,
+            secs,
+            out,
+        } => match parse_difficulty(&difficulty) {
+            Some(difficulty) => chart_check::run(&song, &chart, difficulty, from, secs, out),
+            None => {
+                eprintln!("unknown difficulty `{difficulty}`");
+                ExitCode::from(2)
+            }
+        },
         Command::Review {
             chart,
             difficulty,

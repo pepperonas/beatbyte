@@ -37,6 +37,7 @@
 
 pub mod convert;
 pub mod escalation;
+pub mod fit;
 pub mod generate;
 pub mod grid;
 pub mod io;

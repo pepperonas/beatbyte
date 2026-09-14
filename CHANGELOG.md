@@ -14,6 +14,27 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.15.9] - 2026-09-15
+
+### Added
+
+- `beatbyte-cli chart-check <song> <chart>`: the song with a **click on every
+  chart note**, so a chart's rhythm can be judged by ear in one pass — plus the
+  numbers that do not need an ear: the share of notes sitting on the beat grid,
+  the share with a detected onset within 55 ms ("a player hears something
+  there"), the median signed distance to that attack, density and sustain
+  share. `--secs` cuts a slice, from the chart's own preview anchor unless
+  `--from` says otherwise, which is what makes two variants comparable in half
+  a minute.
+
+  It came out of a playtest question — the guitar study plays better, but is
+  the rhythm right, or is there a delay? Measured with it on Nothing Else
+  Matters, medium: the stem-charted guitar pilot sits **100 % on the grid**
+  with **56 %** of its notes on a detected attack and a median of **−1.3 ms**;
+  the mix-charted default 100 % / 63 % / +0.0 ms. The charts carry no delay,
+  which makes "is there a delay?" and "is the rhythm right?" two different
+  questions — and only the second one is still open.
+
 ## [0.15.8] - 2026-09-14
 
 ### Fixed

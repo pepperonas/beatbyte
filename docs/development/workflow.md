@@ -72,6 +72,32 @@ incremental builds are fast. If iteration feels sluggish, consider
 `cargo run --features bevy/dynamic_linking -p beatbyte` locally — do not
 commit that feature into any Cargo.toml.
 
+## Judging a chart's rhythm without playing it
+
+```bash
+beatbyte-cli chart-check <song.m4a> <chart.json> --difficulty medium [--from 63.7 --secs 30]
+```
+
+writes the song with a **click on every chart note** and prints the two
+numbers that do not need an ear:
+
+| Number | What it says |
+|---|---|
+| on the grid | share of notes sitting on a beat subdivision — the generator quantizes, but a note further than 55 ms from every subdivision keeps its RAW detector time, so a chart can silently be a mixture |
+| with an attack | share of notes with a detected onset within 55 ms — "a player hears something there" |
+| median offset | signed distance to the nearest attack; positive = charted LATER than the music |
+
+A click beside the music is a note beside the music, and that is audible
+in one pass where a table of times is not. `--secs` cuts a slice (from
+the chart's own preview anchor unless `--from` says otherwise), which is
+what makes two variants comparable in half a minute.
+
+Measured on Nothing Else Matters, medium (2026-09-14): the stem-charted
+guitar pilot 100 % on the grid, **56 %** with an attack, median
+**−1.3 ms**; the mix-charted default 100 % / **62.9 %** / −1.3 ms. Same
+phase, different sources — which is why "is there a delay?" and "is the
+rhythm right?" are two questions, not one.
+
 ## Disk: what `target/` holds, and what may be deleted
 
 `target/debug` reaches tens of gigabytes here, and the parts are not
