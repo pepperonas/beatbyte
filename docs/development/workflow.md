@@ -71,3 +71,48 @@ workspace code, `3` for dependencies). The first build is slow (Bevy);
 incremental builds are fast. If iteration feels sluggish, consider
 `cargo run --features bevy/dynamic_linking -p beatbyte` locally — do not
 commit that feature into any Cargo.toml.
+
+## Disk: what `target/` holds, and what may be deleted
+
+`target/debug` reaches tens of gigabytes here, and the parts are not
+equally reclaimable (measured 2026-09-14):
+
+| Part | Size | May be deleted? |
+|---|---:|---|
+| `deps/` | 32 GB | Only as a WHOLE profile directory — never by file age |
+| `examples/` | 2.6 GB | Yes, as a whole |
+| `incremental/` | 2.9 GB | Yes, always — see below |
+
+**Incremental caches are the part that grows while you work.** Cargo
+keeps one directory per *unit* (crate × profile × feature set × target
+kind) and one **session** inside it per build. It collects a superseded
+session only when it builds that same unit again — so a configuration
+that ran once (`clippy --all-features`, `cargo doc`, a one-off
+`-p <crate>` probe) keeps its cache for ever. Half an hour of ordinary
+work left **95 unit directories holding 2.9 GB**, one of them with a
+520 MB session no later build ever collected.
+
+```bash
+python3 tools/prune-incremental.py --dry-run      # what it would free
+python3 tools/prune-incremental.py                # superseded sessions
+python3 tools/prune-incremental.py --stale-days 7 # + configurations unused for a week
+python3 tools/prune-incremental.py --self-test    # the rule, pinned
+```
+
+This can never break a build: the cost of a deleted cache is one
+non-incremental compile of that unit. It does not touch `deps/`.
+
+**Incremental compilation stays ON** — that is a measured decision, not
+a default. Editing one file in `beatbyte-game` and rebuilding:
+
+| | Rebuild | Cache written |
+|---|---:|---:|
+| incremental (default) | **8.0 s** | +196 MB |
+| `CARGO_INCREMENTAL=0` | **30.5 s** | none |
+
+So the ~200 MB per edit-and-build cycle buys a 3.8× faster loop and is
+worth paying *while iterating*. It is NOT worth paying for a run whose
+configuration happens once and is never rebuilt — a full-workspace
+`clippy --all-features` or `cargo doc` pass writes caches nothing will
+ever read. Put `CARGO_INCREMENTAL=0` in front of those when disk is
+tight.

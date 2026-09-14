@@ -685,7 +685,22 @@ artifact, smoke-test it (neutral CWD!), then
   `target/<profile>` (a full rebuild is cheaper than a broken cache),
   and keep an eye on it: it had grown to 70 GB and filled the disk
   mid-session, at which point no tool could even open its output
-  file.
+  file. **The one part that IS safe to prune is `incremental/`**, and
+  it is the part that grows while you work: cargo collects a superseded
+  session only when it rebuilds that same unit, so a configuration that
+  ran once (`clippy --all-features`, `cargo doc`, a one-off `-p <crate>`
+  probe) keeps its cache for ever — half an hour of work left 95 unit
+  directories holding 2.9 GB, one with a 520 MB session nothing ever
+  collected. `tools/prune-incremental.py` drops them; the worst case is
+  one non-incremental compile of that unit (measured on
+  `beatbyte-game`: 8.0 s incremental against 30.5 s without, for
+  196 MB of cache per edit-and-build cycle — which is why incremental
+  stays ON for iterating and belongs off (`CARGO_INCREMENTAL=0`) for
+  one-shot full-workspace passes). ⚠️ Predicting what a deletion frees
+  means counting only files whose **link count is 1**: cargo hard-links
+  unchanged files into the next session, so the first version of that
+  tool summed file sizes and claimed 814 MB where `du` then measured
+  393.
 - **What the eye sees at a light is its BEAM, not its light.** The
   ceiling strobe flashed its `SpotLight`s white and read on the far,
   small fixtures and not on the near, large ones — reported, then
