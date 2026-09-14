@@ -22,6 +22,11 @@ holds the work itself.
   both levels and reported a better guitar feel on 2026-09-13
   ("mittel und schwer. ja, war besser"). This is a positive single-song
   result; the exact tested pilot version was not specified.
+- [~] Guitar-feel second-song transfer: separate Nothing Else Matters pilot
+  generated with unchanged 0.15.7 logic, active v5 grid and original audio.
+  Autopilot plays it flawlessly on Medium (498/498) and Hard (679/679); the
+  player's verdict on the feel is what is still missing.
+  [Transfer measurements and source gap](guitar-feel-transfer.md).
 - [ ] Guitar-feel remaining acceptance: playtest Easy/Expert, check the
   remaining source gaps and validate transfer to a second contrasting song.
   No bulk generation; the positive pilot verdict is not a library migration.
