@@ -16,10 +16,22 @@ pub struct ResultsPlugin;
 impl Plugin for ResultsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<FeedbackGiven>()
+            .init_resource::<CommentField>()
             .add_systems(OnEnter(AppState::Results), spawn_results)
             .add_systems(
                 Update,
-                (results_input, animate_grade, count_up_score).run_if(in_state(AppState::Results)),
+                // The field runs FIRST and owns every key while it is
+                // open: the browser's lesson, that one system must
+                // own a text field, or the keystroke that opened it
+                // lands inside it.
+                (
+                    results_comment,
+                    results_input,
+                    animate_grade,
+                    count_up_score,
+                )
+                    .chain()
+                    .run_if(in_state(AppState::Results)),
             )
             .add_systems(OnExit(AppState::Results), despawn_results);
     }
@@ -39,6 +51,41 @@ struct FeedbackStatus;
 struct FeedbackGiven {
     fun: Option<u8>,
     versus: Option<&'static str>,
+    /// How many sentences this visit recorded. A rating replaces the
+    /// previous one; a sentence is added to it.
+    comments: usize,
+}
+
+/// The comment field: closed until `C` opens it.
+#[derive(Resource, Default)]
+struct CommentField {
+    open: bool,
+    text: String,
+}
+
+/// What ENTER does on the results screen.
+///
+/// The browser learned this the hard way (`song_select::may_start`):
+/// while a text field is taking keys, a printable key is text — and
+/// Enter belongs to the field, not to the screen behind it. Without
+/// this, finishing a sentence would leave the screen and throw the
+/// sentence away. Pure — tested.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnterMeans {
+    /// Commit what was typed.
+    CommitComment,
+    /// Leave for the browser.
+    Leave,
+}
+
+/// See [`EnterMeans`].
+#[must_use]
+pub fn enter_means(comment_open: bool) -> EnterMeans {
+    if comment_open {
+        EnterMeans::CommitComment
+    } else {
+        EnterMeans::Leave
+    }
 }
 
 /// Which digit key rates how much fun (1 = none, 5 = loved it).
@@ -64,6 +111,9 @@ fn results_footer(can_rate: bool, can_versus: bool) -> String {
     if can_versus {
         parts.push("LEFT worse than before");
         parts.push("RIGHT better");
+    }
+    if can_rate {
+        parts.push("C comment");
     }
     parts.push("ENTER back to browser");
     parts.join("  ")
@@ -102,13 +152,20 @@ fn needs_recalibration(mean_ms: f64) -> bool {
 }
 
 /// What the status line says for the feedback given so far.
-fn feedback_status(fun: Option<u8>, versus: Option<&str>) -> String {
+fn feedback_status(fun: Option<u8>, versus: Option<&str>, comments: usize) -> String {
     let mut parts: Vec<String> = Vec::new();
     if let Some(rating) = fun {
         parts.push(format!("fun {rating}/5"));
     }
     if let Some(verdict) = versus {
         parts.push(format!("felt {verdict} than the previous version"));
+    }
+    if comments > 0 {
+        parts.push(if comments == 1 {
+            "a comment".to_owned()
+        } else {
+            format!("{comments} comments")
+        });
     }
     if parts.is_empty() {
         String::new()
@@ -132,6 +189,7 @@ struct ScoreCountUp {
     age: f32,
 }
 
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn spawn_results(
     mut commands: Commands,
     results: Option<Res<LastResults>>,
@@ -139,6 +197,7 @@ fn spawn_results(
     logs: Option<Res<crate::telemetry::SessionLogFiles>>,
     song: Option<Res<crate::boot::LoadedSong>>,
     mut given: ResMut<FeedbackGiven>,
+    mut field: ResMut<CommentField>,
     font: Res<UiFont>,
 ) {
     let Some(results) = results else {
@@ -155,6 +214,7 @@ fn spawn_results(
     let can_rate = logs.is_some_and(|l| !l.files.is_empty());
     let can_versus = can_rate && song.is_some_and(|s| s.chart.provenance.is_some());
     *given = FeedbackGiven::default();
+    *field = CommentField::default();
 
     // Record solo runs only — multiplayer scoreboards would mix
     // devices and players into one book. Tap mode records normally
@@ -598,6 +658,99 @@ fn count_up_score(time: Res<Time>, mut scores: Query<(&mut ScoreCountUp, &mut Te
     }
 }
 
+/// The comment field: `C` opens it, typing fills it, ENTER records it
+/// in the session log, ESC throws it away.
+///
+/// ONE system owns the field and it runs before [`results_input`] —
+/// the browser paid for that lesson: with the opening in an earlier
+/// system, the very keystroke that opened the field was still unread
+/// and appeared inside it. The drain on the closed branch is the
+/// other half: a reader that returns without reading leaves its
+/// cursor a frame behind.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
+fn results_comment(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut typed: MessageReader<bevy::input::keyboard::KeyboardInput>,
+    logs: Option<Res<crate::telemetry::SessionLogFiles>>,
+    mut field: ResMut<CommentField>,
+    mut given: ResMut<FeedbackGiven>,
+    mut status: Query<&mut Text, With<FeedbackStatus>>,
+    mut sounds: MessageWriter<crate::sfx::UiSound>,
+) {
+    use bevy::input::keyboard::Key;
+
+    let can_rate = logs.as_ref().is_some_and(|l| !l.files.is_empty());
+    if !field.open {
+        let opening = can_rate && keys.just_pressed(KeyCode::KeyC);
+        for _ in typed.read() {}
+        if opening {
+            field.open = true;
+            field.text.clear();
+            sounds.write(crate::sfx::UiSound::Confirm);
+            say(&mut status, field_line(""));
+        }
+        return;
+    }
+    for event in typed.read() {
+        if !event.state.is_pressed() {
+            continue;
+        }
+        match &event.logical_key {
+            Key::Character(text) => {
+                let clean: String = text.chars().filter(|c| !c.is_control()).collect();
+                field.text.push_str(&clean);
+            }
+            Key::Space => field.text.push(' '),
+            // Here rather than on `just_pressed`, so the OS key
+            // repeat erases while held like every text field.
+            Key::Backspace => {
+                field.text.pop();
+            }
+            _ => {}
+        }
+    }
+    if keys.just_pressed(KeyCode::Escape) {
+        field.open = false;
+        field.text.clear();
+        sounds.write(crate::sfx::UiSound::Back);
+        say(
+            &mut status,
+            feedback_status(given.fun, given.versus, given.comments),
+        );
+        return;
+    }
+    if keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::NumpadEnter) {
+        debug_assert_eq!(enter_means(true), EnterMeans::CommitComment);
+        let line = beatbyte_core::telemetry::comment_line(&field.text);
+        if let (Some(logs), Some(line)) = (logs.as_ref(), line) {
+            crate::telemetry::append_feedback(logs, &line);
+            given.comments += 1;
+        }
+        field.open = false;
+        field.text.clear();
+        sounds.write(crate::sfx::UiSound::Confirm);
+        say(
+            &mut status,
+            feedback_status(given.fun, given.versus, given.comments),
+        );
+        return;
+    }
+    let echo = field.text.clone();
+    say(&mut status, field_line(&echo));
+}
+
+/// Put one line on the feedback status row.
+fn say(status: &mut Query<&mut Text, With<FeedbackStatus>>, line: String) {
+    if let Ok(mut text) = status.single_mut() {
+        text.0 = line;
+    }
+}
+
+/// The status line while the field is open.
+fn field_line(typed: &str) -> String {
+    format!("comment: {typed}_   ENTER records  ESC cancels")
+}
+
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn results_input(
     keys: Res<ButtonInput<KeyCode>>,
@@ -609,8 +762,15 @@ fn results_input(
     mut sounds: MessageWriter<crate::sfx::UiSound>,
     mut status: Query<&mut Text, With<FeedbackStatus>>,
     mut given: ResMut<FeedbackGiven>,
+    field: Res<CommentField>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
+    // While the field is taking keys it owns them: a digit is text,
+    // and ENTER commits the sentence rather than leaving the screen.
+    if field.open {
+        debug_assert_eq!(enter_means(true), EnterMeans::CommitComment);
+        return;
+    }
     // Feedback first, so a digit or arrow never doubles as an exit.
     let can_rate = logs.as_ref().is_some_and(|l| !l.files.is_empty());
     if can_rate && let Some(logs) = logs.as_ref() {
@@ -649,7 +809,7 @@ fn results_input(
         }
         if changed {
             if let Ok(mut text) = status.single_mut() {
-                text.0 = feedback_status(given.fun, given.versus);
+                text.0 = feedback_status(given.fun, given.versus, given.comments);
             }
             sounds.write(crate::sfx::UiSound::Navigate);
         }
@@ -679,7 +839,10 @@ fn despawn_results(mut commands: Commands, entities: Query<Entity, With<ResultsS
 
 #[cfg(test)]
 mod tests {
-    use super::{feedback_status, fun_rating_for, grade_for, results_footer};
+    use super::{
+        EnterMeans, enter_means, feedback_status, field_line, fun_rating_for, grade_for,
+        results_footer,
+    };
     use bevy::prelude::KeyCode;
 
     #[test]
@@ -707,6 +870,14 @@ mod tests {
         assert_eq!(results_footer(false, false), "ENTER back to browser");
         let rate_only = results_footer(true, false);
         assert!(rate_only.contains("1-5 rate fun"));
+        assert!(
+            rate_only.contains("C comment"),
+            "a run that can be rated can be described: {rate_only}"
+        );
+        assert!(
+            !results_footer(false, false).contains("C comment"),
+            "no log, no offer — a hint that does nothing is a lie"
+        );
         assert!(
             !rate_only.contains("worse"),
             "no versus hint without a parent"
@@ -736,15 +907,45 @@ mod tests {
 
     #[test]
     fn the_status_line_reads_back_what_was_recorded() {
-        assert_eq!(feedback_status(None, None), "");
-        assert_eq!(feedback_status(Some(4), None), "recorded: fun 4/5");
+        assert_eq!(feedback_status(None, None, 0), "");
+        assert_eq!(feedback_status(Some(4), None, 0), "recorded: fun 4/5");
         assert_eq!(
-            feedback_status(Some(4), Some("better")),
+            feedback_status(Some(4), Some("better"), 0),
             "recorded: fun 4/5 · felt better than the previous version"
         );
         assert_eq!(
-            feedback_status(None, Some("worse")),
+            feedback_status(None, Some("worse"), 0),
             "recorded: felt worse than the previous version"
+        );
+        // A sentence ADDS to a rating; a second one adds again,
+        // because unlike a rating it does not replace the first.
+        assert_eq!(
+            feedback_status(Some(3), None, 1),
+            "recorded: fun 3/5 · a comment"
+        );
+        assert_eq!(feedback_status(None, None, 2), "recorded: 2 comments");
+    }
+
+    #[test]
+    fn enter_belongs_to_the_field_while_it_is_open() {
+        // The browser's rule, one screen on: finishing a sentence must
+        // not also leave the screen and throw the sentence away.
+        assert_eq!(enter_means(true), EnterMeans::CommitComment);
+        assert_eq!(enter_means(false), EnterMeans::Leave);
+    }
+
+    #[test]
+    fn the_field_shows_what_was_typed_and_how_to_end_it() {
+        let line = field_line("the chorus drags");
+        assert!(line.contains("the chorus drags"), "{line}");
+        assert!(
+            line.contains("ENTER"),
+            "a field must say how to commit: {line}"
+        );
+        assert!(line.contains("ESC"), "and how to abandon: {line}");
+        assert!(
+            field_line("").contains("comment:"),
+            "an empty field still names itself"
         );
     }
 

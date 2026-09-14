@@ -50,6 +50,7 @@ One line per observation thereafter:
 {"o": 1, "near": 42}
 {"fun": 4}
 {"versus": "better", "parent": "d29f1c07e1a54b32"}
+{"comment": "the verse drags, chorus is great"}
 ```
 
 (`i` = event index into the played track, `j` = judgment, `off_ms` =
@@ -61,7 +62,11 @@ note and in files written before the field existed. `fun` = the
 one-key rating from the results screen, 1–5; `versus` = the pairwise
 verdict on a designed version against `parent`, its provenance hash.
 Both are appended after the session was written; when several
-appear, the LAST one is the player's word.)
+appear, the LAST one is the player's word. `comment` = a sentence
+typed on the results screen (`C`), capped at 280 characters — and the
+one line kind that does NOT collapse to the last one: two remarks
+about two passages are two pieces of evidence, so `review` prints all
+of them verbatim and a design pass reads them as written.)
 
 Rules that are load-bearing:
 

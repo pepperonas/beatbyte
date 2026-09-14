@@ -1011,6 +1011,12 @@ fn run_review(
             outcome.versus.len() - better
         );
     }
+    if !outcome.comments.is_empty() {
+        println!("what the player said:");
+        for comment in &outcome.comments {
+            println!("  \u{201c}{comment}\u{201d}");
+        }
+    }
     if outcome.sections.is_empty() {
         println!("no observations for this chart version yet.");
         return ExitCode::SUCCESS;

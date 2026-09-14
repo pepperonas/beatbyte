@@ -141,6 +141,11 @@ pub struct Review {
     /// The last versus verdict ("better"/"worse" than the parent
     /// version) of each used session that gave one.
     pub versus: Vec<String>,
+    /// Every sentence the player left, in the order they were
+    /// written. Unlike a rating these do NOT collapse to one per
+    /// session: two remarks about two passages are two pieces of
+    /// evidence, and a design pass reads them verbatim.
+    pub comments: Vec<String>,
     /// Per-section aggregation, ascending by bar.
     pub sections: Vec<SectionReport>,
     /// Directives, when the evidence clears the thresholds.
@@ -254,7 +259,7 @@ pub fn review(
                 }
                 // Feedback lines carry no position; they aggregate
                 // per session below, not per section.
-                NoteLine::Fun { .. } | NoteLine::Versus { .. } => {}
+                NoteLine::Fun { .. } | NoteLine::Versus { .. } | NoteLine::Comment { .. } => {}
             }
         }
     }
@@ -382,6 +387,15 @@ pub fn review(
             })
         })
         .collect();
+    let comments: Vec<String> = used
+        .iter()
+        .flat_map(|session| {
+            session.lines.iter().filter_map(|line| match line {
+                NoteLine::Comment { comment } => Some(comment.clone()),
+                _ => None,
+            })
+        })
+        .collect();
     let versus: Vec<String> = used
         .iter()
         .filter_map(|session| {
@@ -398,6 +412,7 @@ pub fn review(
         autopilot_sessions: piloted,
         fun_ratings,
         versus,
+        comments,
         sections,
         directives,
     }
@@ -532,6 +547,42 @@ mod tests {
         );
         assert_eq!(out.fun_ratings, vec![5, 3], "the last rating wins");
         assert_eq!(out.versus, vec!["better".to_owned(), "worse".to_owned()]);
+    }
+
+    #[test]
+    fn every_sentence_survives_where_a_rating_would_be_replaced() {
+        // Two remarks in ONE session are two pieces of evidence about
+        // two passages — the last-one-wins rule that is right for a
+        // rating would throw half of them away.
+        let track = track_with_events(&[1.0, 2.0]);
+        let mut spoken = sessions(&[miss(0), miss(1)]);
+        spoken[0].lines.push(NoteLine::Comment {
+            comment: "the verse drags".to_owned(),
+        });
+        spoken[0].lines.push(NoteLine::Comment {
+            comment: "chorus is great".to_owned(),
+        });
+        spoken[1].lines.push(NoteLine::Comment {
+            comment: "too many holds".to_owned(),
+        });
+        let out = review(
+            &track,
+            BPM,
+            0.0,
+            "h",
+            &spoken,
+            false,
+            &Thresholds::default(),
+        );
+        assert_eq!(
+            out.comments,
+            vec![
+                "the verse drags".to_owned(),
+                "chorus is great".to_owned(),
+                "too many holds".to_owned()
+            ],
+            "all of them, in the order they were written"
+        );
     }
 
     #[test]

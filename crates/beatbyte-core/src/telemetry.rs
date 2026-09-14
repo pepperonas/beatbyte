@@ -52,6 +52,10 @@ pub struct SessionHeader {
     pub notes_total: usize,
 }
 
+/// The longest comment a session log will carry. Long enough for a
+/// sentence about a passage, short enough that a line stays a line.
+pub const COMMENT_MAX: usize = 280;
+
 /// One recorded observation. Serialized untagged: the field sets are
 /// disjoint, so each line stays as small as the spec sketches it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -106,6 +110,20 @@ pub enum NoteLine {
         /// 1 (no fun) … 5 (loved it).
         fun: u8,
     },
+    /// A sentence the player left about this run — the one signal a
+    /// number cannot carry ("the chorus drags", "too many holds in
+    /// the verse"). Appended after the session like
+    /// [`NoteLine::Fun`], but unlike a rating a second sentence does
+    /// not replace the first: all of them count, in the order they
+    /// were written.
+    ///
+    /// Capped at [`COMMENT_MAX`] characters. A session log is read
+    /// line by line by tools and by people, and one runaway line
+    /// would cost both.
+    Comment {
+        /// What they wrote.
+        comment: String,
+    },
     /// The pairwise verdict on a designed chart version: did THIS
     /// version feel better or worse than the one it was derived
     /// from? Only offered when the played chart carries provenance.
@@ -118,6 +136,23 @@ pub enum NoteLine {
         /// names BOTH sides even if the pointer moves later.
         parent: String,
     },
+}
+
+/// A comment line from what a player typed: trimmed, control
+/// characters dropped, capped at [`COMMENT_MAX`] characters (not
+/// bytes — a cap that splits a multi-byte character would panic).
+/// `None` for anything that is only whitespace, so an accidental
+/// Enter leaves no line at all. Pure — tested.
+#[must_use]
+pub fn comment_line(typed: &str) -> Option<NoteLine> {
+    let cleaned: String = typed.chars().filter(|c| !c.is_control()).collect();
+    let trimmed = cleaned.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(NoteLine::Comment {
+        comment: trimmed.chars().take(COMMENT_MAX).collect(),
+    })
 }
 
 /// The stable label a judgment is recorded under.
@@ -185,6 +220,35 @@ pub fn nearest_judged_index(lines: &[NoteLine]) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_comment_is_trimmed_capped_and_never_empty() {
+        let Some(NoteLine::Comment { comment }) = comment_line("  the chorus drags  ") else {
+            panic!("a sentence is a comment");
+        };
+        assert_eq!(comment, "the chorus drags");
+        assert_eq!(comment_line("   "), None, "whitespace leaves no line");
+        assert_eq!(comment_line(""), None, "and neither does nothing");
+        // A cap in CHARACTERS: cutting bytes mid-character panics, and
+        // the first thing anybody types into a field is an umlaut.
+        let long = "ä".repeat(COMMENT_MAX + 50);
+        let Some(NoteLine::Comment { comment }) = comment_line(&long) else {
+            panic!("a long sentence is still a comment");
+        };
+        assert_eq!(comment.chars().count(), COMMENT_MAX);
+    }
+
+    #[test]
+    fn a_comment_survives_the_untagged_round_trip() {
+        // The field sets must stay disjoint: a line that parses back
+        // as another kind would be evidence about the wrong thing
+        // (an `o` field once read as an overstrum).
+        let line = comment_line("too many holds in the verse").expect("a comment");
+        let text = serde_json::to_string(&line).expect("serializes");
+        let back: NoteLine = serde_json::from_str(&text).expect("parses");
+        assert_eq!(back, line);
+        assert!(text.contains("comment"), "{text}");
+    }
 
     fn header() -> SessionHeader {
         SessionHeader {

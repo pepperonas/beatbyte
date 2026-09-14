@@ -14,6 +14,23 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.15.10] - 2026-09-15
+
+### Added
+
+- **A sentence, not just a number.** `C` on the results screen opens a comment
+  field; what you type is recorded in the session log beside the 1–5 rating and
+  the better/worse verdict, and `beatbyte-cli review` prints every one of them
+  verbatim. A rating says how much; only a sentence says what — "the verse
+  drags", "too many holds in the chorus" — and that is the half a chart's
+  telemetry cannot derive.
+
+  Unlike a rating, comments do **not** collapse to the last one: two remarks
+  about two passages are two pieces of evidence. Capped at 280 characters, and
+  while the field is open it owns the keyboard — a digit is text and ENTER
+  commits the sentence rather than leaving the screen, the browser's rule one
+  screen further on.
+
 ## [0.15.9] - 2026-09-15
 
 ### Added
