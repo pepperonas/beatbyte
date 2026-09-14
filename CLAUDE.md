@@ -758,3 +758,20 @@ artifact, smoke-test it (neutral CWD!), then
   result against the reference before measuring anything. Pixel
   metrics prove a change happened; only looking proves it is the
   right one.
+- **An autopilot verdict could be failed by the room, and the
+  telemetry says so.** Real device input went into the same session
+  the injector plays into: a key, a pad button or a click at the desk
+  added strums the chart never asked for. Seven of 305 recorded
+  sessions carried overstrums **with every note still hit perfectly at
+  0.0 ms** — more strums than notes, which the injector cannot produce
+  (it strums at most once per pending note). One of them failed a
+  Metallica playtest that passed untouched minutes later, and cost an
+  evening spent looking for a chart defect that was not there. Since
+  0.15.8 the injector owns the inputs
+  (`autopilot::injector_owns_input`). When a verdict looks impossible,
+  read the run's own judgment log —
+  `~/Library/Application Support/beatbyte/telemetry/<ms>-p<n>.jsonl`,
+  one line per note (`i`, `j`, `off_ms`), per sustain (`s`, `done`)
+  and per overstrum (`o`, `near` = the last judged note) — before
+  reasoning about the chart: all notes hit plus overstrums is the
+  room, not the music.

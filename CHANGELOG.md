@@ -14,6 +14,20 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.15.8] - 2026-09-14
+
+### Fixed
+
+- An autopilot run is no longer judged on input from the room. While the note
+  injector owns a session it plays every note itself, stamped; a key, a pad
+  button or a mouse click at the desk could previously reach the same session
+  and add strums the chart never asked for. Measured across this project's
+  recorded telemetry, seven of 305 autopilot sessions carried overstrums while
+  every note was still hit perfectly — more strums than notes, which the
+  injector cannot produce. One such run failed a playtest that passed untouched
+  minutes later. `BEATBYTE_AUTOPILOT_KEYS` is unchanged: there the autopilot is
+  the keyboard. Nothing changes for a person playing the game.
+
 ## [0.15.7] - 2026-09-13
 
 ### Fixed

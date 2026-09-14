@@ -47,7 +47,15 @@ pub fn gameplay_input(
     game_clock: Res<GameClock>,
     time: Res<Time>,
     settings: Res<Settings>,
+    injector: Option<Res<crate::autopilot::InjectorOwnsInput>>,
 ) {
+    // While the autopilot's note injector owns the session it plays
+    // every note itself: a key, a pad button or a click from the desk
+    // belongs to the room, not to the run, and could only add phantom
+    // strums (see `autopilot::injector_owns_input`).
+    if injector.is_some() {
+        return;
+    }
     let Some(raw_now) = game_clock.song_time(&time) else {
         return;
     };
@@ -133,5 +141,82 @@ mod tests {
             !mouse_strums(DeviceId::Keyboard, false),
             "and no click is no strum"
         );
+    }
+
+    /// The real system in a real (headless) app: one player on the
+    /// keyboard, the clock running, an empty track — so every strum
+    /// lands on nothing and an overstrum is the proof that the input
+    /// reached the session at all.
+    mod wired {
+        use super::super::*;
+        use crate::autopilot::InjectorOwnsInput;
+        use beatbyte_core::{
+            Difficulty, ScoreConfig, TempoMap, TimingWindows, Track, TrackSession,
+        };
+
+        fn overstrums_after_a_strum_key(muted: bool) -> u32 {
+            let mut app = App::new();
+            app.init_resource::<Time>()
+                .init_resource::<ButtonInput<KeyCode>>()
+                .init_resource::<ButtonInput<MouseButton>>()
+                .init_resource::<InputMap>()
+                .init_resource::<Settings>()
+                .init_resource::<GameClock>()
+                .add_systems(Update, gameplay_input);
+            if muted {
+                app.insert_resource(InjectorOwnsInput);
+            }
+            app.world_mut().resource_mut::<GameClock>().begin(0.0, 0.0);
+            let track = Track::new(
+                Difficulty::Medium,
+                TempoMap::constant(120.0, 0.0),
+                vec![],
+                vec![],
+            )
+            .expect("an empty track is a track");
+            app.world_mut().spawn((
+                PlayerDevice(DeviceId::Keyboard),
+                PlayerSession {
+                    session: TrackSession::new(
+                        track,
+                        TimingWindows::default(),
+                        ScoreConfig::default(),
+                    ),
+                    frame_events: Vec::new(),
+                    spawn_cursor: 0,
+                },
+            ));
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .press(KeyCode::ArrowDown);
+            app.update();
+            let mut players = app.world_mut().query::<&PlayerSession>();
+            players
+                .iter(app.world())
+                .next()
+                .expect("the one player")
+                .session
+                .performance()
+                .overstrums()
+        }
+
+        #[test]
+        fn a_strum_key_from_the_desk_reaches_the_session() {
+            assert_eq!(
+                overstrums_after_a_strum_key(false),
+                1,
+                "a player at the keyboard must be heard"
+            );
+        }
+
+        #[test]
+        fn the_desk_is_silent_while_the_injector_owns_the_inputs() {
+            assert_eq!(
+                overstrums_after_a_strum_key(true),
+                0,
+                "the autopilot plays every note itself; a key pressed in the \
+                 room is not part of the run and must not fail it"
+            );
+        }
     }
 }

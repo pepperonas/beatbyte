@@ -46,6 +46,43 @@ pub struct Autopilot {
 #[derive(Resource)]
 struct FailDrill;
 
+/// Whether the note injector owns this run's inputs, so real devices
+/// are muted while it plays.
+///
+/// The injector plays every note itself, stamped — a key, a pad
+/// button or a click from the desk is not part of the run and can
+/// only add strums the chart never asked for. Measured in this
+/// project's recorded telemetry: seven of 305 autopilot sessions
+/// carried overstrums, and in every one of them EVERY note was still
+/// hit perfectly at 0.0 ms. More strums than notes is something the
+/// injector cannot produce — it strums at most once per pending
+/// event — so those came from the room, and one of them failed a
+/// playtest that passed untouched minutes later.
+///
+/// Key-play mode is the exception: there the autopilot IS the
+/// keyboard, and muting the key path would mute the drill.
+#[must_use]
+pub fn injector_owns_input(enabled: bool, key_play: bool) -> bool {
+    enabled && !key_play
+}
+
+/// Marker for [`injector_owns_input`]: while it exists,
+/// [`crate::gameplay::input::gameplay_input`] ignores real devices.
+#[derive(Resource)]
+pub struct InjectorOwnsInput;
+
+/// Install [`InjectorOwnsInput`] when the run calls for it.
+///
+/// The wiring lives in its own function so a test can watch the
+/// decision reach the world: a predicate that is right while nothing
+/// installs its marker would leave both halves green and the run
+/// still open to the room.
+fn own_inputs(app: &mut App, enabled: bool, key_play: bool) {
+    if injector_owns_input(enabled, key_play) {
+        app.insert_resource(InjectorOwnsInput);
+    }
+}
+
 /// Frets the autopilot currently holds, per player.
 #[derive(Resource, Default)]
 struct AutopilotHands {
@@ -69,8 +106,10 @@ pub struct AutopilotPlugin;
 impl Plugin for AutopilotPlugin {
     fn build(&self, app: &mut App) {
         let enabled = std::env::var_os("BEATBYTE_AUTOPILOT").is_some();
+        let key_play = std::env::var_os("BEATBYTE_AUTOPILOT_KEYS").is_some();
         app.insert_resource(Autopilot { enabled })
             .init_resource::<AutopilotHands>();
+        own_inputs(app, enabled, key_play);
 
         // Screen photography works without the autopilot: the screens
         // it cannot reach are exactly the ones that need it.
@@ -185,7 +224,7 @@ impl Plugin for AutopilotPlugin {
                 // then the row's own state machine is the verdict.
                 app.add_systems(PreUpdate, autopilot_model.after(bevy::input::InputSystems));
             }
-            if std::env::var_os("BEATBYTE_AUTOPILOT_KEYS").is_some() {
+            if key_play {
                 // Keyboard-path validation: press REAL KeyCodes on
                 // ButtonInput, so InputMap resolution, gameplay_input
                 // routing and judgment run exactly as for a human.
@@ -1979,6 +2018,35 @@ fn autopilot_results(
 mod tests {
     use super::shot_state;
     use crate::states::AppState;
+
+    #[test]
+    fn the_injector_owns_the_inputs_unless_the_autopilot_plays_by_key() {
+        // The marker in the world is the whole mechanism, so the test
+        // reads the world rather than the predicate.
+        let owned = |enabled, key_play| {
+            let mut app = bevy::app::App::new();
+            super::own_inputs(&mut app, enabled, key_play);
+            app.world()
+                .get_resource::<super::InjectorOwnsInput>()
+                .is_some()
+        };
+        assert!(
+            owned(true, false),
+            "the note injector plays every note itself: the desk must not join in"
+        );
+        assert!(
+            !owned(true, true),
+            "key-play IS the keyboard path — muting it would mute the drill"
+        );
+        assert!(
+            !owned(false, false),
+            "without the autopilot the player owns their own inputs"
+        );
+        assert!(
+            !owned(false, true),
+            "and the key-play switch alone means nothing"
+        );
+    }
 
     #[test]
     fn shot_times_parse_leniently() {

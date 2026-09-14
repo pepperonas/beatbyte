@@ -64,6 +64,17 @@ Its input feed must stay ordered `.before(advance_sessions)`. Moving it
 after would make the run frame-quantised, at which point Greats become
 legitimate and the pass/fail line stops meaning anything.
 
+While it plays, **the injector owns the session's inputs**: the real
+device path is muted for the run, so a key, a pad button or a mouse
+click at the desk cannot join in. It has to be that way for the strict
+verdict to mean anything — the injector strums at most once per
+pending note, so any extra strum comes from the room and shows up as
+an overstrum on a run that hit every note perfectly. That is exactly
+what seven of 305 recorded sessions look like, and one of them failed
+a playtest that passed untouched minutes later. `BEATBYTE_AUTOPILOT_KEYS`
+is the exception: there the autopilot *is* the keyboard, so the key
+path stays live (and a run under it is as disturbable as a human's).
+
 Because it is exact, it doubles as a **presentation-independence
 proof**: the same song scores identically in the depth view and the 3D
 stage (624 perfect, 0 miss on a real import), which is how "the renderer
