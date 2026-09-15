@@ -28,6 +28,15 @@
 //! `particles` off removes embers, `fx_intensity` scales height and
 //! ember count.
 //!
+//! No two flames burn alike: every ignition draws a [`Character`] —
+//! height, girth, flicker rate, a slow gutter, a resting lean, a hue
+//! nuance, the core's whiteness, how fast it dies — from a stable
+//! seed of (player, fret, strike count), so a fret's flame differs
+//! from its neighbour's and from its own last burn, and holds that
+//! shape for the burn's length instead of being re-rolled per frame.
+//! The three bodies of one flame share the character; the neutral
+//! character is exactly the flame before it existed.
+//!
 //! Every number is a constant here, so the effect can be tuned or
 //! rolled back by value.
 
@@ -55,6 +64,31 @@ const FLICKER_HZ: (f32, f32) = (9.3, 13.7);
 const FLICKER_HEIGHT: f32 = 0.18;
 /// Lean modulation at full flicker, ± radians.
 const FLICKER_LEAN: f32 = 0.14;
+/// How far a flame's own height may stray from the nominal, ± this.
+const VARY_HEIGHT: f32 = 0.15;
+/// How far its girth may stray, ± this.
+const VARY_GIRTH: f32 = 0.10;
+/// Flicker rate multiplier range: `1 - this ..= 1 + this`. Fire on a
+/// draught flickers faster; on still air slower.
+const VARY_RATE: f32 = 0.18;
+/// The slow gutter — a 2–3 Hz breathing under the flicker — at most
+/// this fraction of height.
+const GUTTER_MAX: f32 = 0.06;
+/// The gutter's rate, Hz, before the character's own multiplier.
+const GUTTER_HZ: f32 = 2.6;
+/// A resting lean, ± radians: a flame that stands a little to one
+/// side, like one in a draught.
+const VARY_LEAN: f32 = 0.06;
+/// How far the mantle's orange may run toward red or yellow.
+const VARY_HUE: f32 = 1.0;
+/// The core's whiteness floor: the whitest core mixes fully to white,
+/// the dullest only this far.
+const WHITE_FLOOR: f32 = 0.85;
+/// Decay multiplier range: some flames snuff, some linger.
+const VARY_DECAY: f32 = 0.10;
+/// Below this `life` the mantle reddens toward ember red: a dying
+/// flame goes dark red before it goes out.
+const REDDEN_BELOW: f32 = 0.35;
 /// Peak body height in world units at `life` 1 and intensity 1.
 /// 1.55 was the first value; with the core at 0.42 girth that gave a
 /// 1:8 spike at the tip — the laser the whole exercise set out to
@@ -88,6 +122,68 @@ pub enum Layer {
     Aura,
 }
 
+/// What sets one flame apart from the next.
+///
+/// Drawn ONCE per ignition from a stable seed and held for the burn;
+/// never re-rolled per frame — that would twitch, not live. Every
+/// field is a multiplier or offset around the neutral flame, bounded
+/// by the `VARY_*` constants. Pure — tested.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Character {
+    /// Height multiplier.
+    pub height: f32,
+    /// Girth multiplier.
+    pub girth: f32,
+    /// Flicker (and gutter) rate multiplier.
+    pub rate: f32,
+    /// Slow-breathing amplitude, fraction of height.
+    pub gutter: f32,
+    /// Resting lean, radians.
+    pub lean: f32,
+    /// Mantle hue nuance: −1 red … 0 orange … +1 yellow.
+    pub hue: f32,
+    /// How white the core gets at the strike, `WHITE_FLOOR..=1`.
+    pub white: f32,
+    /// Decay multiplier.
+    pub decay: f32,
+}
+
+impl Character {
+    /// The flame as it was before characters: every multiplier one,
+    /// every offset zero.
+    pub const NEUTRAL: Character = Character {
+        height: 1.0,
+        girth: 1.0,
+        rate: 1.0,
+        gutter: 0.0,
+        lean: 0.0,
+        hue: 0.0,
+        white: 1.0,
+        decay: 1.0,
+    };
+
+    /// The character of a fret's `strike`-th burn. Deterministic:
+    /// the same fret and count draws the same flame, so a run can be
+    /// reconstructed; different frets and different strikes draw
+    /// different ones. Pure — tested.
+    #[must_use]
+    pub fn draw(player: usize, lane: Lane, strike: u32) -> Character {
+        let base = player * 104_729 + lane.index() * 7_919 + strike as usize * 131;
+        let unit = |i: usize| super::fx::hash01(base + i * 1_000_003);
+        let signed = |i: usize| unit(i) * 2.0 - 1.0;
+        Character {
+            height: 1.0 + VARY_HEIGHT * signed(1),
+            girth: 1.0 + VARY_GIRTH * signed(2),
+            rate: 1.0 + VARY_RATE * signed(3),
+            gutter: GUTTER_MAX * unit(4),
+            lean: VARY_LEAN * signed(5),
+            hue: VARY_HUE * signed(6),
+            white: WHITE_FLOOR + (1.0 - WHITE_FLOOR) * unit(7),
+            decay: 1.0 + VARY_DECAY * signed(8),
+        }
+    }
+}
+
 /// One body of a fret's flame.
 #[derive(Component)]
 pub struct FlameBody {
@@ -110,6 +206,10 @@ pub struct FlameState {
     pub last_hit: f32,
     /// When the embers were last launched, in stage seconds.
     pub last_launch: f32,
+    /// How many strikes this fret has taken: the seed of its burns.
+    pub strikes: u32,
+    /// This burn's character.
+    pub character: Character,
 }
 
 /// One ember of a fret's pool.
@@ -149,11 +249,32 @@ pub struct FlameLight {
 /// low flame alive. Otherwise it decays. Pure — tested.
 #[must_use]
 pub fn advance_life(life: f32, last_hit: f32, hit: f32, held: bool, delta: f32) -> f32 {
+    advance_life_with(life, last_hit, hit, held, delta, &Character::NEUTRAL)
+}
+
+/// Whether a hit strength rising above last frame's is a strike — the
+/// one rule ignition and the character draw share. Pure — tested.
+#[must_use]
+pub fn is_strike(last_hit: f32, hit: f32) -> bool {
+    hit > last_hit + 1e-4
+}
+
+/// [`advance_life`] for a flame with a character: its decay is its
+/// own, some snuff and some linger.
+#[must_use]
+pub fn advance_life_with(
+    life: f32,
+    last_hit: f32,
+    hit: f32,
+    held: bool,
+    delta: f32,
+    character: &Character,
+) -> f32 {
     let mut next = life;
-    if hit > last_hit + 1e-4 {
+    if is_strike(last_hit, hit) {
         next = next.max(hit * IGNITE_OVERSHOOT);
     }
-    next = (next - DECAY_PER_S * delta).max(0.0);
+    next = (next - DECAY_PER_S * character.decay * delta).max(0.0);
     // The floor is applied AFTER the decay: a held fret burns at
     // least this brightly every frame, whatever the frame length.
     // (The first version applied it before, and its own test — a
@@ -171,11 +292,31 @@ pub fn advance_life(life: f32, last_hit: f32, hit: f32, held: bool, delta: f32) 
 /// Pure — tested.
 #[must_use]
 pub fn flicker(seconds: f32, phase: f32, strength: f32) -> (f32, f32) {
-    let a = (seconds * FLICKER_HZ.0 + phase).sin();
-    let b = (seconds * FLICKER_HZ.1 + phase * 1.7).sin();
-    let height = 1.0 + strength * FLICKER_HEIGHT * (0.65 * a + 0.35 * b);
-    let lean = strength * FLICKER_LEAN * (0.5 * a - 0.5 * b);
+    flicker_with(seconds, phase, strength, &Character::NEUTRAL)
+}
+
+/// [`flicker`] for a flame with a character: its own rate, a slow
+/// gutter under the flicker, and a resting lean that stays even when
+/// the motion is stilled — a posture, not a movement.
+#[must_use]
+pub fn flicker_with(seconds: f32, phase: f32, strength: f32, character: &Character) -> (f32, f32) {
+    let rate = character.rate;
+    let a = (seconds * FLICKER_HZ.0 * rate + phase).sin();
+    let b = (seconds * FLICKER_HZ.1 * rate + phase * 1.7).sin();
+    let gutter = (seconds * GUTTER_HZ * rate + phase * 0.4).sin();
+    let height =
+        1.0 + strength * (FLICKER_HEIGHT * (0.65 * a + 0.35 * b) + character.gutter * gutter);
+    let lean = character.lean + strength * FLICKER_LEAN * (0.5 * a - 0.5 * b);
     (height, lean)
+}
+
+/// How much a body narrows as its height stretches: a flame that
+/// licks up gets thinner, one that sags gets fatter — girth follows
+/// height inversely, half-strength, so the volume reads as conserved.
+/// Neutral at a height factor of one. Pure — tested.
+#[must_use]
+pub fn breathe(height_factor: f32) -> f32 {
+    (1.0 / height_factor.max(0.5)).sqrt().clamp(0.85, 1.15)
 }
 
 /// The shape of one body at `life`: `(girth, height)` in world
@@ -188,6 +329,24 @@ pub fn flicker(seconds: f32, phase: f32, strength: f32) -> (f32, f32) {
 /// nesting is what gives the gradient. Pure — tested.
 #[must_use]
 pub fn body_shape(layer: Layer, life: f32, intensity: f32) -> (f32, f32) {
+    body_shape_with(layer, life, intensity, &Character::NEUTRAL)
+}
+
+/// [`body_shape`] for a flame with a character: taller or shorter,
+/// fatter or thinner than the nominal, the same for its three bodies
+/// so they keep nesting.
+#[must_use]
+pub fn body_shape_with(
+    layer: Layer,
+    life: f32,
+    intensity: f32,
+    character: &Character,
+) -> (f32, f32) {
+    let (girth, height) = body_shape_neutral(layer, life, intensity);
+    (girth * character.girth, height * character.height)
+}
+
+fn body_shape_neutral(layer: Layer, life: f32, intensity: f32) -> (f32, f32) {
     let life = life.clamp(0.0, IGNITE_OVERSHOOT);
     let (girth_k, height_k) = match layer {
         Layer::Core => (0.55, 0.52),
@@ -212,17 +371,48 @@ pub fn body_shape(layer: Layer, life: f32, intensity: f32) -> (f32, f32) {
 /// colour darkened. Pure — tested.
 #[must_use]
 pub fn body_color(layer: Layer, life: f32, lane: Color) -> (Color, f32) {
+    body_color_with(layer, life, lane, &Character::NEUTRAL)
+}
+
+/// [`body_color`] for a flame with a character, plus two things every
+/// flame does: the strike itself flashes the core whiter than a
+/// steady burn (the overshoot above `life` 1 is the flash), and a
+/// dying mantle reddens toward ember red before it goes dark — the
+/// lane's colour is what the flame burns in, red is what it burns
+/// down to. The aura is untouched: it is the lane's glow, not fire.
+#[must_use]
+pub fn body_color_with(
+    layer: Layer,
+    life: f32,
+    lane: Color,
+    character: &Character,
+) -> (Color, f32) {
+    let flash = ((life - 1.0) / (IGNITE_OVERSHOOT - 1.0)).clamp(0.0, 1.0);
     let life = life.clamp(0.0, 1.0);
     let heat = life * life;
     match layer {
         Layer::Core => {
             let gold = Color::srgb(1.0, 0.86, 0.55);
             let white = Color::srgb(1.0, 0.97, 0.9);
-            (gold.mix(&white, 0.4 + 0.6 * heat), 3.0 + 3.0 * heat)
+            let whiteness = ((0.4 + 0.6 * heat) * character.white + 0.3 * flash).min(1.0);
+            (gold.mix(&white, whiteness), 3.0 + 3.0 * heat + 2.0 * flash)
         }
         Layer::Mantle => {
+            // The nuance: this flame's orange leans red or yellow.
+            let red_orange = Color::srgb(1.0, 0.42, 0.12);
             let orange = Color::srgb(1.0, 0.52, 0.16);
-            (lane.mix(&orange, 0.35 + 0.45 * heat), 3.0 + 3.0 * heat)
+            let yellow_orange = Color::srgb(1.0, 0.64, 0.2);
+            let tint = if character.hue < 0.0 {
+                orange.mix(&red_orange, -character.hue)
+            } else {
+                orange.mix(&yellow_orange, character.hue)
+            };
+            let mut colour = lane.mix(&tint, 0.35 + 0.45 * heat);
+            if life < REDDEN_BELOW {
+                let ember = Color::srgb(0.75, 0.12, 0.04);
+                colour = colour.mix(&ember, 0.5 * (REDDEN_BELOW - life) / REDDEN_BELOW);
+            }
+            (colour, 3.0 + 3.0 * heat)
         }
         Layer::Aura => (lane.mix(&Color::BLACK, 0.35), 1.2 + 1.4 * heat),
     }
@@ -397,6 +587,8 @@ pub fn spawn_flames(
                         life: 0.0,
                         last_hit: 0.0,
                         last_launch: -1.0,
+                        strikes: 0,
+                        character: Character::draw(player, lane, 0),
                     });
                 }
                 // The foot, as a child: it scales with the body.
@@ -488,7 +680,14 @@ pub fn drive_flames(
             .iter()
             .find(|e| e.player == body.player && e.lane == body.lane)
             .map_or((0.0, false), |e| (e.hit, e.held));
-        state.life = advance_life(state.life, state.last_hit, hit, held, delta);
+        // A strike draws this burn's character BEFORE the life moves,
+        // so the ignition frame already wears it.
+        if is_strike(state.last_hit, hit) {
+            state.strikes = state.strikes.wrapping_add(1);
+            state.character = Character::draw(body.player, body.lane, state.strikes);
+        }
+        let character = state.character;
+        state.life = advance_life_with(state.life, state.last_hit, hit, held, delta, &character);
         state.last_hit = hit;
     }
 
@@ -500,9 +699,12 @@ pub fn drive_flames(
             continue;
         };
         let life = state.life;
-        let (girth, height) = body_shape(body.layer, life, intensity);
-        let (flick_h, lean) = flicker(now, body.phase, if still { 0.0 } else { 1.0 });
+        let character = state.character;
+        let (girth, height) = body_shape_with(body.layer, life, intensity, &character);
+        let (flick_h, lean) =
+            flicker_with(now, body.phase, if still { 0.0 } else { 1.0 }, &character);
         let height = height * flick_h;
+        let girth = girth * breathe(flick_h);
         transform.scale = Vec3::new(girth.max(0.001), height.max(0.001), girth.max(0.001));
         transform.rotation = Quat::from_rotation_z(lean * life);
         // Rotate around the receptor, not the cone's centre: the
@@ -510,7 +712,8 @@ pub fn drive_flames(
         transform.translation = Vec3::new(lane_x(&layout, body.player, body.lane), 0.03, 0.0)
             + transform.rotation * Vec3::Y * (height * 0.5);
         if let Some(mut paint) = materials.get_mut(&material.0) {
-            let (base, glow) = body_color(body.layer, life, theme.0.lane_color(body.lane));
+            let (base, glow) =
+                body_color_with(body.layer, life, theme.0.lane_color(body.lane), &character);
             let alpha = match body.layer {
                 Layer::Core => 0.9,
                 Layer::Mantle => 0.7,
@@ -522,11 +725,15 @@ pub fn drive_flames(
     }
 
     for (light, mut point) in &mut lights {
-        let life = states
+        let (life, character, phase) = states
             .iter()
             .find(|(b, _)| b.player == light.player && b.lane == light.lane)
-            .map_or(0.0, |(_, s)| s.life);
-        let (flick_h, _) = flicker(now, 0.0, if still { 0.0 } else { 0.6 });
+            .map_or((0.0, Character::NEUTRAL, 0.0), |(b, s)| {
+                (s.life, s.character, b.phase)
+            });
+        // The light breathes with ITS flame, not with every fret's at
+        // once: the same phase and rate as the body it lights.
+        let (flick_h, _) = flicker_with(now, phase, if still { 0.0 } else { 0.6 }, &character);
         point.intensity = LIGHT_INTENSITY
             * life.min(1.0)
             * flick_h
@@ -617,6 +824,172 @@ pub fn drive_embers(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn luma(c: Color) -> f32 {
+        let l = c.to_linear();
+        0.2126 * l.red + 0.7152 * l.green + 0.0722 * l.blue
+    }
+
+    #[test]
+    fn no_two_flames_burn_alike_and_the_same_flame_burns_the_same() {
+        // Neighbouring frets, the same strike: different characters.
+        let a = Character::draw(0, Lane::One, 1);
+        let b = Character::draw(0, Lane::Two, 1);
+        assert_ne!(a, b, "two frets drew the same flame");
+        // The same fret, the next strike: a different flame again.
+        let c = Character::draw(0, Lane::One, 2);
+        assert_ne!(a, c, "a fret's second burn repeated its first");
+        // Deterministic: a run can be reconstructed.
+        assert_eq!(a, Character::draw(0, Lane::One, 1));
+        // And the difference is not one field by a hair: across the
+        // whole neck, every field spreads.
+        let draws: Vec<Character> = (0..40)
+            .flat_map(|strike| Lane::ALL.map(|lane| Character::draw(0, lane, strike)))
+            .collect();
+        let spread = |f: fn(&Character) -> f32| {
+            let (lo, hi) = draws
+                .iter()
+                .map(f)
+                .fold((f32::MAX, f32::MIN), |(lo, hi), v| (lo.min(v), hi.max(v)));
+            hi - lo
+        };
+        assert!(spread(|c| c.height) > VARY_HEIGHT, "heights barely differ");
+        assert!(spread(|c| c.girth) > VARY_GIRTH, "girths barely differ");
+        assert!(spread(|c| c.rate) > VARY_RATE, "rates barely differ");
+        assert!(spread(|c| c.hue) > VARY_HUE, "hues barely differ");
+        assert!(spread(|c| c.decay) > VARY_DECAY, "decays barely differ");
+    }
+
+    #[test]
+    fn a_character_stays_inside_its_bounds() {
+        for strike in 0..200 {
+            for lane in Lane::ALL {
+                let c = Character::draw(1, lane, strike);
+                assert!((c.height - 1.0).abs() <= VARY_HEIGHT + 1e-6);
+                assert!((c.girth - 1.0).abs() <= VARY_GIRTH + 1e-6);
+                assert!((c.rate - 1.0).abs() <= VARY_RATE + 1e-6);
+                assert!(c.gutter >= 0.0 && c.gutter <= GUTTER_MAX + 1e-6);
+                assert!(c.lean.abs() <= VARY_LEAN + 1e-6);
+                assert!(c.hue.abs() <= VARY_HUE + 1e-6);
+                assert!(c.white >= WHITE_FLOOR - 1e-6 && c.white <= 1.0 + 1e-6);
+                assert!((c.decay - 1.0).abs() <= VARY_DECAY + 1e-6);
+                // And the flicker it drives stays where the old bounds were.
+                for tick in 0..50 {
+                    let (h, lean) = flicker_with(tick as f32 * 0.037, 0.3, 1.0, &c);
+                    assert!(h > 0.7 && h < 1.3, "height factor out of range: {h}");
+                    assert!(lean.abs() <= FLICKER_LEAN + VARY_LEAN + 1e-6);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_neutral_character_is_the_flame_that_was() {
+        // Every old entry point is the new one with the neutral
+        // character — the pins above this line still pin the flame.
+        for life in [0.0, 0.3, 0.8, 1.0, IGNITE_OVERSHOOT] {
+            for layer in [Layer::Core, Layer::Mantle, Layer::Aura] {
+                assert_eq!(
+                    body_shape(layer, life, 0.7),
+                    body_shape_with(layer, life, 0.7, &Character::NEUTRAL)
+                );
+                let lane = Color::srgb(0.2, 0.5, 1.0);
+                assert_eq!(
+                    body_color(layer, life, lane),
+                    body_color_with(layer, life, lane, &Character::NEUTRAL)
+                );
+            }
+        }
+        assert_eq!(
+            flicker(0.37, 1.0, 1.0),
+            flicker_with(0.37, 1.0, 1.0, &Character::NEUTRAL)
+        );
+        assert_eq!(
+            advance_life(0.5, 0.0, 0.0, false, 0.1),
+            advance_life_with(0.5, 0.0, 0.0, false, 0.1, &Character::NEUTRAL)
+        );
+        assert!(
+            (breathe(1.0) - 1.0).abs() < 1e-6,
+            "no stretch, no narrowing"
+        );
+    }
+
+    #[test]
+    fn a_stretched_flame_narrows_and_a_sagging_one_fattens() {
+        assert!(breathe(1.18) < 1.0);
+        assert!(breathe(0.82) > 1.0);
+        // Half strength: a 18 % stretch narrows by well under 18 %.
+        assert!(1.0 - breathe(1.18) < 0.18);
+    }
+
+    #[test]
+    fn the_strike_flashes_the_core_whiter_and_a_dying_mantle_reddens() {
+        let lane = Color::srgb(0.2, 0.5, 1.0);
+        let (steady, steady_glow) = body_color(Layer::Core, 1.0, lane);
+        let (flash, flash_glow) = body_color(Layer::Core, IGNITE_OVERSHOOT, lane);
+        assert!(
+            luma(flash) >= luma(steady),
+            "the strike is at least as bright"
+        );
+        assert!(flash_glow > steady_glow, "and glows harder");
+        // A mantle low on life leans to ember red: more red per green
+        // than the same mantle at half life.
+        let ratio = |c: Color| {
+            let s = c.to_srgba();
+            s.red / s.green.max(1e-3)
+        };
+        let mid = body_color(Layer::Mantle, 0.5, lane).0;
+        let dying = body_color(Layer::Mantle, 0.12, lane).0;
+        assert!(ratio(dying) > ratio(mid), "a dying mantle should redden");
+        // A hue nuance moves the mantle but not the aura.
+        let warm = Character {
+            hue: 1.0,
+            ..Character::NEUTRAL
+        };
+        let red = Character {
+            hue: -1.0,
+            ..Character::NEUTRAL
+        };
+        assert_ne!(
+            body_color_with(Layer::Mantle, 0.8, lane, &warm).0,
+            body_color_with(Layer::Mantle, 0.8, lane, &red).0
+        );
+        assert_eq!(
+            body_color_with(Layer::Aura, 0.8, lane, &warm).0,
+            body_color_with(Layer::Aura, 0.8, lane, &red).0,
+            "the aura is the lane's glow, not fire"
+        );
+    }
+
+    #[test]
+    fn some_flames_snuff_and_some_linger_but_all_are_out_in_time() {
+        let quick = Character {
+            decay: 1.0 + VARY_DECAY,
+            ..Character::NEUTRAL
+        };
+        let slow = Character {
+            decay: 1.0 - VARY_DECAY,
+            ..Character::NEUTRAL
+        };
+        let time_to_die = |c: &Character| {
+            let mut life = IGNITE_OVERSHOOT;
+            let mut t = 0.0;
+            while life > 0.0 {
+                life = advance_life_with(life, 0.0, 0.0, false, 1.0 / 120.0, c);
+                t += 1.0 / 120.0;
+            }
+            t
+        };
+        assert!(time_to_die(&quick) < time_to_die(&slow));
+        for c in [&quick, &slow] {
+            let t = time_to_die(c);
+            assert!(
+                t > 0.25 && t < 0.45,
+                "took {t} s — outside the flame's window"
+            );
+        }
+        assert!(is_strike(0.2, 0.5) && !is_strike(0.5, 0.5) && !is_strike(0.5, 0.2));
+    }
 
     #[test]
     fn a_strike_ignites_with_overshoot_and_a_repeat_only_re_raises() {

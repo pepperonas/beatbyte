@@ -14,6 +14,24 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.15.17] - 2026-09-15
+
+### Changed
+
+- **No two hit flames burn alike, and the same fret's flame burns the
+  same way twice.** Every ignition draws a *character* for the flame
+  from the fret and its strike count (seeded, never re-rolled per
+  frame): its height and girth, its flicker rate and a slow gutter,
+  a resting lean, a hue leaning toward yellow- or red-orange, how
+  white the core flashes at the strike, and how fast it dies (some
+  snuff, some linger — all are out inside the same half second). The
+  body shapes and colours read the character: a tall flame narrows
+  and a sagging one fattens, the core flashes whiter in the first
+  frames after the strike, and a dying mantle reddens toward ember
+  as it goes. The reduced-motion setting keeps its still flame; the
+  rendering path (three sprites per fret, sprite transforms and tints
+  only) is unchanged.
+
 ## [0.15.16] - 2026-09-15
 
 ### Changed
