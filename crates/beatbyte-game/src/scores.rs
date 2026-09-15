@@ -141,7 +141,7 @@ pub fn is_legacy(text: &str) -> bool {
 #[must_use]
 pub fn migrate_legacy_key(key: &str) -> Option<RecordKey> {
     let (rest, id) = key.rsplit_once('|')?;
-    let difficulty = Difficulty::ALL.into_iter().find(|d| d.id() == id)?;
+    let difficulty = Difficulty::from_id(id)?;
     let (title, artist) = rest.split_once('|')?;
     Some(RecordKey {
         title: title.to_owned(),

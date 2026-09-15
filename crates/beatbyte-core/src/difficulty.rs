@@ -39,6 +39,16 @@ impl Difficulty {
         }
     }
 
+    /// The difficulty an id names, or `None` for anything else.
+    ///
+    /// The inverse of [`Difficulty::id`], and the reader for every
+    /// place a difficulty arrives as text: the play history stores it
+    /// lowercase, and the scoreboard's legacy keys ended in one.
+    #[must_use]
+    pub fn from_id(id: &str) -> Option<Difficulty> {
+        Difficulty::ALL.into_iter().find(|d| d.id() == id)
+    }
+
     /// Human-readable display name.
     #[must_use]
     pub const fn display_name(self) -> &'static str {

@@ -28,6 +28,9 @@ pub mod menu;
 pub mod multiplayer;
 pub mod mute;
 pub mod palette;
+pub mod players;
+pub mod players_ui;
+pub mod plot;
 pub mod preview;
 pub mod prompts;
 pub mod results;
@@ -40,6 +43,7 @@ mod shapes;
 pub mod smart_lyrics;
 pub mod song_select;
 pub mod states;
+pub mod stats_ui;
 pub mod study_twin;
 pub mod surfaces;
 pub mod taste;
@@ -233,6 +237,9 @@ pub fn run() -> AppExit {
         gameplay::fog::FogPlugin,
         chore::ChorePlugin,
         study_twin::StudyTwinPlugin,
+        players::PlayersPlugin,
+        players_ui::PlayersUiPlugin,
+        stats_ui::StatsUiPlugin,
     ));
 
     // `BEATBYTE_FPS=1` turns on periodic frame-time reporting. Off by

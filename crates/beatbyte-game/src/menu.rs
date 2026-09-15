@@ -16,6 +16,8 @@ pub enum MenuAction {
     Play,
     /// Open the multiplayer join screen.
     Multiplayer,
+    /// Open the roster and its statistics.
+    Players,
     /// Open settings.
     Settings,
     /// Open latency calibration.
@@ -29,9 +31,10 @@ pub enum MenuAction {
 }
 
 impl MenuAction {
-    const ALL: [MenuAction; 7] = [
+    const ALL: [MenuAction; 8] = [
         MenuAction::Play,
         MenuAction::Multiplayer,
+        MenuAction::Players,
         MenuAction::Settings,
         MenuAction::Calibration,
         MenuAction::InputTest,
@@ -43,6 +46,7 @@ impl MenuAction {
         match self {
             MenuAction::Play => "PLAY",
             MenuAction::Multiplayer => "MULTIPLAYER",
+            MenuAction::Players => "PLAYERS",
             MenuAction::Settings => "SETTINGS",
             MenuAction::Calibration => "CALIBRATION",
             MenuAction::InputTest => "INPUT TEST",
@@ -193,6 +197,7 @@ pub(crate) fn menu_input(
                 next_state.set(AppState::SongSelect);
             }
             MenuAction::Multiplayer => next_state.set(AppState::MultiplayerSetup),
+            MenuAction::Players => next_state.set(AppState::Players),
             MenuAction::Settings => next_state.set(AppState::Settings),
             MenuAction::Calibration => next_state.set(AppState::Calibration),
             MenuAction::InputTest => next_state.set(AppState::InputTest),

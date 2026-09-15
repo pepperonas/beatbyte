@@ -76,6 +76,10 @@ mod tests {
             score: 12_345,
             accuracy: 0.934_25,
             source: "file".to_owned(),
+            player: None,
+            detail: beatbyte_core::history::RunDetail::default(),
+            co_players: Vec::new(),
+            chart_hash: None,
         }
     }
 

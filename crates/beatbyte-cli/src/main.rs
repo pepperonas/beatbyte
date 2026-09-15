@@ -21,6 +21,7 @@ mod loudness;
 mod lyrics_eval;
 #[cfg(feature = "ml")]
 mod models;
+mod players;
 mod redesign;
 mod review;
 mod study;
@@ -224,6 +225,23 @@ enum Command {
         /// Keep only runs that reached the end of the song.
         #[arg(long)]
         completed_only: bool,
+    },
+    /// The local roster: who plays on this machine.
+    ///
+    /// Adding the FIRST player credits them with every run the log
+    /// already holds that nobody is on — the log predates the roster,
+    /// and those runs belong to somebody. A copy of the log is kept
+    /// beside it first.
+    Players {
+        /// Add a player under this name instead of listing them.
+        #[arg(long)]
+        add: Option<String>,
+    },
+    /// One player's statistics — the same numbers the game plots.
+    Stats {
+        /// Whose. Defaults to whoever is selected in the game.
+        #[arg(long)]
+        player: Option<String>,
     },
     /// Render the built-in songs and generate their charts.
     Demo {
@@ -447,6 +465,8 @@ fn main() -> ExitCode {
             }
         }
         Command::SetGenre { chart, genre } => set_genre(&chart, &genre),
+        Command::Players { add } => players::run(add.as_deref()),
+        Command::Stats { player } => players::stats(player.as_deref()),
         Command::History {
             format,
             out,

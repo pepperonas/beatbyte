@@ -72,6 +72,15 @@ pub(crate) fn fold_latin(c: char) -> Option<&'static str> {
 }
 
 impl UiFont {
+    /// The resource around an already-loaded handle.
+    ///
+    /// The plugin's own path, and the one a wired test uses to build
+    /// a screen without an asset server behind it.
+    #[must_use]
+    pub const fn from_handle(display: Handle<Font>) -> UiFont {
+        UiFont { display }
+    }
+
     /// Text ready for the display face of this style.
     ///
     /// Maps the look-alikes neither face carries. Both display faces

@@ -535,6 +535,28 @@ pub fn panel() -> impl Bundle {
     )
 }
 
+/// The list frame at [`PANEL_WIDE`], for a screen whose content is
+/// a table or a plot rather than a menu column. Same frame, same
+/// padding, same rhythm — only wider, because a diagram in 620 px of
+/// Press Start 2P is a diagram nobody can read.
+#[must_use]
+pub fn panel_wide() -> impl Bundle {
+    let (background, border) = frame();
+    (
+        Node {
+            width: px(PANEL_WIDE),
+            flex_direction: FlexDirection::Column,
+            row_gap: px(ROW_GAP),
+            padding: UiRect::all(px(PANEL_PAD)),
+            border: UiRect::all(px(PANEL_BORDER)),
+            border_radius: BorderRadius::all(px(6)),
+            ..default()
+        },
+        background,
+        border,
+    )
+}
+
 /// The same frame around something that is not a list — the
 /// calibration dot, the input tester's lamps. Centred, and roomier,
 /// because an instrument needs air where a list needs density.

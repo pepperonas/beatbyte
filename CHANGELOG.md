@@ -14,6 +14,54 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.16.0] - 2026-09-15
+
+### Added
+
+- **Players, and statistics for each of them.** BeatByte kept a play
+  log, a scoreboard and a telemetry file, and none of them knew who
+  was holding the guitar. Now a machine has a roster: **PLAYERS** on
+  the main menu adds, selects and renames people, every run is filed
+  under whoever is playing, and each of them gets four views of their
+  own play.
+  - **OVERVIEW** — am I getting better? Accuracy per finished run,
+    one line per difficulty (mixing Easy and Expert into one line
+    shows a player "getting worse" the day they move up), with the
+    trend stated in words: "UP 4.0 POINTS PER 10 RUNS".
+  - **TIMING** — do I play early or late? The run's mean offset
+    against a zero line, plus the judgment mix it produced. This is
+    also the only honest way to see whether a calibration helped.
+  - **DIFFICULTY** — where do I play, and how far do I get? Best
+    accuracy and completion rate per level, with a difficulty that
+    was never finished saying so rather than showing 0 %.
+  - **VERSUS** — how do I stand against the others? Only on songs
+    both players have finished at the same difficulty. There is no
+    single "skill rating": one would need difficulty weights that
+    nothing in this game measures, and a ranking built on invented
+    numbers is an opinion wearing a decimal point.
+- **The play log now records what a run was made of** — who played
+  it, the streak, the judgment counts, the overstrums, the mean
+  timing offset, the co-players' scores, and the hash of the chart
+  that was played. Every field is optional and older lines read as
+  "not recorded", which is not the same as zero. The CSV export is
+  unchanged: it answers "what was performed", one row per
+  performance.
+- **`beatbyte-cli players` and `beatbyte-cli stats`** print the
+  roster and the same numbers the game plots, from the same
+  functions — the way to check one against the other. Adding the
+  first player credits them with the runs the log already holds that
+  nobody is on, after putting a copy of the log beside it.
+
+### Changed
+
+- The first player created on a machine adopts the existing
+  unattributed runs, once. The play log predates the roster by
+  months; without this a player's statistics would open empty beside
+  a log full of their own play. Autopilot runs are never claimed,
+  runs already credited to someone are left alone, and a line the
+  reader cannot parse is copied through byte for byte rather than
+  dropped.
+
 ## [0.15.18] - 2026-09-15
 
 ### Fixed

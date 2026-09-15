@@ -16,6 +16,10 @@ pub enum AppState {
     MainMenu,
     /// The multiplayer join screen.
     MultiplayerSetup,
+    /// The roster: who plays on this machine.
+    Players,
+    /// One player's statistics.
+    Stats,
     /// The song browser.
     SongSelect,
     /// The settings screen.

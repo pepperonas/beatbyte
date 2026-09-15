@@ -21,7 +21,7 @@
 use std::io::Write as _;
 use std::path::PathBuf;
 
-pub use beatbyte_core::history::{PlayEntry, parse_log, render_entry};
+pub use beatbyte_core::history::{PlayEntry, RunDetail, RunPart, parse_log, render_entry};
 
 /// Where the history lives — beside `scores.json`, the way every
 /// other persistent file in this game does.
@@ -72,6 +72,24 @@ pub fn load() -> Vec<PlayEntry> {
     history_path()
         .and_then(|path| std::fs::read_to_string(path).ok())
         .map_or_else(Vec::new, |text| parse_log(&text))
+}
+
+/// A finished player's numbers, as the log stores them.
+///
+/// `mean_offset_ms` is `None` when nothing was hit — there is no
+/// drift to report, and a 0 would read as "dead on time". Pure.
+#[must_use]
+fn run_detail(performance: &beatbyte_core::PlayerPerformance) -> RunDetail {
+    let counts = performance.counts();
+    RunDetail {
+        best_streak: Some(performance.best_streak()),
+        perfect: Some(counts.perfect),
+        great: Some(counts.great),
+        good: Some(counts.good),
+        miss: Some(counts.miss),
+        overstrums: Some(performance.overstrums()),
+        mean_offset_ms: performance.mean_offset_ms(),
+    }
 }
 
 /// Where exports go: the platform's Downloads folder.
@@ -170,9 +188,26 @@ pub struct HistoryPlugin;
 
 impl Plugin for HistoryPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(crate::states::AppState::Gameplay), begin_run)
-            .add_systems(OnExit(crate::states::AppState::Gameplay), log_run);
+        app.insert_resource(PlayHistory(load()))
+            .add_systems(OnEnter(crate::states::AppState::Gameplay), begin_run)
+            .add_systems(OnExit(crate::states::AppState::Gameplay), log_run)
+            // The log is appended to while playing, so the screens
+            // that read it re-read it on the way in rather than
+            // trusting a copy from startup.
+            .add_systems(OnEnter(crate::states::AppState::Players), reload_history)
+            .add_systems(OnEnter(crate::states::AppState::Stats), reload_history);
     }
+}
+
+/// The play log, in memory, for the screens that draw from it.
+///
+/// Held rather than read per frame: 259 lines is nothing to parse
+/// once and a waste to parse sixty times a second.
+#[derive(Resource, Debug, Clone, Default)]
+pub struct PlayHistory(pub Vec<PlayEntry>);
+
+fn reload_history(mut history: ResMut<PlayHistory>) {
+    history.0 = load();
 }
 
 fn begin_run(mut commands: Commands) {
@@ -200,6 +235,7 @@ fn log_run(
     practice: Option<Res<crate::gameplay::PracticeState>>,
     autopilot: Option<Res<crate::autopilot::Autopilot>>,
     roster: Option<Res<crate::multiplayer::PlayerRoster>>,
+    players: Option<Res<crate::players::Players>>,
 ) {
     commands.remove_resource::<RunCompleted>();
     commands.remove_resource::<RunStart>();
@@ -211,8 +247,9 @@ fn log_run(
     // finished: `LastResults` is the LAST finished run, so reading
     // it after an abort would attribute an older score to this
     // track.
-    let (score, accuracy) = results
-        .filter(|_| completed)
+    let finished = results.filter(|_| completed);
+    let (score, accuracy) = finished
+        .as_ref()
         .and_then(|results| {
             results
                 .players
@@ -220,6 +257,34 @@ fn log_run(
                 .map(|p| (p.performance.score(), p.performance.accuracy()))
         })
         .unwrap_or((0, 0.0));
+    // The detail the results screen shows and the log used to throw
+    // away: streak, judgment mix, overstrums and the run's drift.
+    // Written per player, so a co-op night is not reduced to slot
+    // one (`beatbyte_core::history::RunPart`).
+    let detail = finished
+        .as_ref()
+        .and_then(|results| results.players.first().map(|p| run_detail(&p.performance)))
+        .unwrap_or_default();
+    // Slots two and up. Their scores are recorded now so the data
+    // exists; who sat in them is not, because the join screen still
+    // assigns DEVICES rather than people — guessing a name from the
+    // roster would attribute somebody's bad night to a friend.
+    let co_players = finished
+        .as_ref()
+        .map(|results| {
+            results
+                .players
+                .iter()
+                .skip(1)
+                .map(|p| RunPart {
+                    player: None,
+                    score: p.performance.score(),
+                    accuracy: p.performance.accuracy(),
+                    detail: run_detail(&p.performance),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let entry = PlayEntry {
         title: song.chart.song.title.clone(),
         artist: song.chart.song.artist.clone(),
@@ -238,6 +303,13 @@ fn log_run(
             crate::boot::SongAudio::File(_) => "file",
         }
         .to_owned(),
+        player: players.and_then(|players| players.0.selected),
+        detail,
+        co_players,
+        // Which chart this was. Without it a rising accuracy cannot
+        // be told from a chart that was redesigned easier underneath
+        // the player — and this library is redesigned in rollovers.
+        chart_hash: Some(beatbyte_chart::chart_hash(&song.chart)),
     };
     append(&entry);
 }

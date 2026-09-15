@@ -18,6 +18,9 @@
 //! - [`session`] — the deterministic gameplay session (judgment engine)
 //! - [`music`] — analysis results (beats, onsets) shared with the
 //!   audio pipeline and chart generator
+//! - [`player`] — the local roster: who plays on this machine
+//! - [`history`] — the play log, one line per played track
+//! - [`stats`] — what a roster and a play log say about a player
 //!
 //! ## Time convention
 //!
@@ -29,8 +32,10 @@ pub mod history;
 pub mod lane;
 pub mod music;
 pub mod note;
+pub mod player;
 pub mod score;
 pub mod session;
+pub mod stats;
 pub mod telemetry;
 pub mod timing;
 
@@ -38,6 +43,7 @@ pub use difficulty::Difficulty;
 pub use lane::{Lane, LaneSet};
 pub use music::{MelodyNote, Onset, Repeat, SongAnalysis};
 pub use note::{NoteEvent, NoteKind, Phrase, Track};
+pub use player::{Player, PlayerId, Roster};
 pub use score::{PlayerPerformance, ScoreConfig};
 pub use session::{GameInput, InputKind, SessionEvent, TrackSession};
 pub use timing::{Judgment, TempoMap, TimingWindows};

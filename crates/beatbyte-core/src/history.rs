@@ -7,6 +7,71 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::player::PlayerId;
+
+/// What one player's run looked like beyond the score.
+///
+/// Every field is optional and defaults to absent, because every
+/// field was added after the log existed: a run recorded before they
+/// did knows `None`, which reads as "not recorded" — never as a
+/// zero, which would be a lie a statistic would then average in.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct RunDetail {
+    /// Longest streak in the run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_streak: Option<u32>,
+    /// Notes judged perfect.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub perfect: Option<u32>,
+    /// Notes judged great.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub great: Option<u32>,
+    /// Notes judged good.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub good: Option<u32>,
+    /// Notes missed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub miss: Option<u32>,
+    /// Strums that matched no note.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overstrums: Option<u32>,
+    /// Mean signed `hit - note` offset in milliseconds: negative is
+    /// early, positive late. The one number that says whether a
+    /// player drifts, and whether a calibration helped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mean_offset_ms: Option<f64>,
+}
+
+impl RunDetail {
+    /// Notes judged at all — the denominator the shares are taken
+    /// over. `None` when the run predates the counts. Pure — tested.
+    #[must_use]
+    pub fn judged(&self) -> Option<u32> {
+        match (self.perfect, self.great, self.good, self.miss) {
+            (Some(p), Some(gr), Some(go), Some(m)) => Some(p + gr + go + m),
+            _ => None,
+        }
+    }
+}
+
+/// One player's part in one run: slot one's numbers, or a
+/// co-player's. The two are the same shape on purpose — a statistic
+/// that treated slot one as the real player and the rest as an
+/// afterthought would be wrong about every co-op night.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RunPart {
+    /// Who played it, when the roster knew someone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub player: Option<PlayerId>,
+    /// Score achieved.
+    pub score: u64,
+    /// Weighted accuracy, 0.0–1.0.
+    pub accuracy: f64,
+    /// The rest of the run's numbers.
+    #[serde(default)]
+    pub detail: RunDetail,
+}
+
 /// One played track.
 ///
 /// Title and artist are separate fields, never joined: the score
@@ -46,6 +111,52 @@ pub struct PlayEntry {
     pub accuracy: f64,
     /// Where the audio came from: `builtin` or `file`.
     pub source: String,
+    /// Who played slot one, when the roster knew someone. Absent for
+    /// every run played before the roster existed, and for a run
+    /// played with nobody selected — "unattributed" is a fact worth
+    /// keeping, not a gap to fill with a guess.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub player: Option<PlayerId>,
+    /// Slot one's numbers beyond score and accuracy.
+    #[serde(default)]
+    pub detail: RunDetail,
+    /// Slots two and up. Empty for a solo run, so a solo log line is
+    /// exactly as long as it always was.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub co_players: Vec<RunPart>,
+    /// Content hash of the exact chart that was played.
+    ///
+    /// Without it a rising accuracy cannot be told apart from a
+    /// chart that was redesigned easier underneath the player — and
+    /// this library is redesigned in rollovers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chart_hash: Option<String>,
+}
+
+impl PlayEntry {
+    /// Every player's part in this run, slot one first.
+    ///
+    /// The uniform view statistics read: slot one's fields are flat
+    /// on the entry for the log's own history, and this is what
+    /// hides that seam from every reader. Pure — tested.
+    #[must_use]
+    pub fn parts(&self) -> Vec<RunPart> {
+        let mut parts = Vec::with_capacity(1 + self.co_players.len());
+        parts.push(RunPart {
+            player: self.player,
+            score: self.score,
+            accuracy: self.accuracy,
+            detail: self.detail,
+        });
+        parts.extend(self.co_players.iter().cloned());
+        parts
+    }
+
+    /// This player's part in this run, if they were in it.
+    #[must_use]
+    pub fn part_of(&self, player: PlayerId) -> Option<RunPart> {
+        self.parts().into_iter().find(|p| p.player == Some(player))
+    }
 }
 
 /// Serialize one entry as a log line (no trailing newline). Pure.
@@ -55,6 +166,46 @@ pub struct PlayEntry {
 /// means a `serde_json` bug rather than bad input.
 pub fn render_entry(entry: &PlayEntry) -> Result<String, serde_json::Error> {
     serde_json::to_string(entry)
+}
+
+/// Rewrite a log, crediting unattributed runs to a player.
+///
+/// Returns the new text and how many lines changed. Used once, when
+/// the first player is created: the play log predates the roster, and
+/// those runs belong to somebody — without this the first player's
+/// statistics open empty beside a log full of their own play.
+///
+/// Three rules, each of which is a way this could destroy data:
+/// autopilot runs are never claimed (they are not a person's play), a
+/// run already credited to someone is left alone, and **a line this
+/// reader cannot parse is copied through byte for byte** rather than
+/// dropped — the log is appended to across crashes, and the reader is
+/// required to survive a half-written record. Idempotent: running it
+/// twice changes nothing the second time. Pure — tested.
+#[must_use]
+pub fn claim_unattributed(text: &str, player: crate::player::PlayerId) -> (String, usize) {
+    let mut out = String::with_capacity(text.len() + 32);
+    let mut claimed = 0;
+    for line in text.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<PlayEntry>(line) {
+            Ok(mut entry) if entry.player.is_none() && !entry.autopilot => {
+                entry.player = Some(player);
+                match render_entry(&entry) {
+                    Ok(rendered) => {
+                        out.push_str(&rendered);
+                        claimed += 1;
+                    }
+                    Err(_) => out.push_str(line),
+                }
+            }
+            _ => out.push_str(line),
+        }
+        out.push('\n');
+    }
+    (out, claimed)
 }
 
 /// Read a whole log, skipping lines that do not parse.
@@ -110,6 +261,12 @@ pub fn iso_utc(unix_ms: u64) -> String {
 }
 
 /// The CSV header, and the columns every row follows.
+///
+/// Deliberately unchanged by the roster: this export answers "what
+/// was performed, when, for how long" for a reporting body, which is
+/// one row per PERFORMANCE. Who played it — and a co-op night's
+/// second and third player — is a question the statistics answer,
+/// and bolting it on here would break every reader of the format.
 pub const CSV_HEADER: &str = "started_utc,title,artist,seconds_played,track_seconds,completed,difficulty,players,practice,autopilot,source,score,accuracy";
 
 /// Render the history as CSV — the reporting format. Pure — tested.
@@ -168,7 +325,103 @@ mod tests {
             score: 12_345,
             accuracy: 0.93,
             source: "file".to_owned(),
+            player: None,
+            detail: RunDetail::default(),
+            co_players: Vec::new(),
+            chart_hash: None,
         }
+    }
+
+    /// One log line, as the real log writes it.
+    fn claim_line(player: Option<crate::player::PlayerId>, autopilot: bool) -> String {
+        let mut entry = entry();
+        entry.player = player;
+        entry.autopilot = autopilot;
+        render_entry(&entry).expect("a plain struct serializes")
+    }
+
+    #[test]
+    fn the_adoption_claims_human_runs_and_leaves_the_rest() {
+        let log = format!(
+            "{}\n{}\n{}\n",
+            claim_line(None, false),    // a human run with nobody on it
+            claim_line(None, true),     // autopilot: never a person's play
+            claim_line(Some(9), false)  // already someone else's
+        );
+        let (out, claimed) = claim_unattributed(&log, 1);
+        assert_eq!(claimed, 1);
+        let entries = parse_log(&out);
+        assert_eq!(entries[0].player, Some(1));
+        assert_eq!(entries[1].player, None, "the autopilot run was claimed");
+        assert_eq!(entries[2].player, Some(9), "someone else's run was taken");
+    }
+
+    #[test]
+    fn a_damaged_line_survives_the_adoption_untouched() {
+        // The log is appended to across crashes and this reader is
+        // required to survive one half-written record. An adoption
+        // that dropped it would be a silent data loss.
+        let damaged = r#"{"title":"Half a reco"#;
+        let log = format!(
+            "{}\n{damaged}\n{}\n",
+            claim_line(None, false),
+            claim_line(None, false)
+        );
+        let (out, claimed) = claim_unattributed(&log, 7);
+        assert_eq!(claimed, 2);
+        assert!(out.contains(damaged), "the damaged line was dropped");
+        assert_eq!(out.lines().count(), 3);
+    }
+
+    #[test]
+    fn claiming_twice_changes_nothing_the_second_time() {
+        // The roster's flag is what stops a second run, but the
+        // rewrite has to be idempotent too: a crash between the
+        // rewrite and the save must not double-credit anyone.
+        let log = format!("{}\n", claim_line(None, false));
+        let (once, first) = claim_unattributed(&log, 3);
+        let (twice, second) = claim_unattributed(&once, 3);
+        assert_eq!((first, second), (1, 0));
+        assert_eq!(once, twice);
+    }
+
+    #[test]
+    fn an_empty_log_is_nothing_to_adopt() {
+        assert_eq!(claim_unattributed("", 1), (String::new(), 0));
+        assert_eq!(claim_unattributed("\n\n", 1), (String::new(), 0));
+    }
+
+    #[test]
+    fn a_run_splits_into_its_players_slot_one_first() {
+        let mut solo = entry();
+        assert_eq!(solo.parts().len(), 1, "a solo run is one part");
+        solo.player = Some(4);
+        solo.co_players.push(RunPart {
+            player: Some(5),
+            score: 10,
+            accuracy: 0.5,
+            detail: RunDetail::default(),
+        });
+        let parts = solo.parts();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0].player, Some(4), "slot one comes first");
+        assert_eq!(solo.part_of(5).map(|p| p.score), Some(10));
+        assert_eq!(solo.part_of(99), None);
+    }
+
+    #[test]
+    fn a_detail_counts_what_it_has_and_admits_what_it_lacks() {
+        let full = RunDetail {
+            perfect: Some(10),
+            great: Some(3),
+            good: Some(2),
+            miss: Some(1),
+            ..RunDetail::default()
+        };
+        assert_eq!(full.judged(), Some(16));
+        // A run recorded before the counts existed cannot report a
+        // denominator, and must not invent one.
+        assert_eq!(RunDetail::default().judged(), None);
     }
 
     #[test]
