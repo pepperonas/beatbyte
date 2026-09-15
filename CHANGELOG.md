@@ -14,6 +14,22 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.15.13] - 2026-09-15
+
+### Fixed
+
+- **A song swapped mid-line no longer despawns every karaoke glyph
+  twice.** `update_lyrics` cleared the row once for the changed song and
+  once more for the changed line in the same pass, with the first despawns
+  still queued — one Bevy "Entity despawned" warning per glyph (22 on
+  *Nothing Else Matters*, none on a song without lyrics; measured by
+  logging the handover's own entity ids, which were not among the warned).
+  Reached by the taste test's second side and by an MC set's handover
+  inside a sung line. The row is now cleared at most once per pass, and
+  the decision is pinned.
+- `BEATBYTE_AUTOPILOT_TASTE` now honours `BEATBYTE_AUTOPILOT_DIFFICULTY`
+  (the drill's first study-vs-old run asked for hard and got medium).
+
 ## [0.15.12] - 2026-09-15
 
 ### Fixed

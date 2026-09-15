@@ -1063,6 +1063,7 @@ fn autopilot_taste(
     cursor: Res<crate::song_select::BrowserCursor>,
     taste: Option<Res<crate::taste::TasteTest>>,
     status: Res<crate::import::ImportStatus>,
+    mut selected: ResMut<crate::song_select::SelectedDifficulty>,
     mut frame: Local<u32>,
     mut downs: Local<Option<u32>>,
     mut app_exit: MessageWriter<AppExit>,
@@ -1070,6 +1071,7 @@ fn autopilot_taste(
     let Some(target) = std::env::var("BEATBYTE_AUTOPILOT_TASTE").ok() else {
         return;
     };
+
     let needle = target.to_lowercase();
     let Some(index) = library
         .entries
@@ -1080,6 +1082,23 @@ fn autopilot_taste(
         deliver(&mut app_exit, AppExit::error());
         return;
     };
+    // The song-start system resolves BEATBYTE_AUTOPILOT_DIFFICULTY for
+    // an ordinary run but leaves the browser alone in this mode, so
+    // the drill honours it itself — once, before the first key. (The
+    // first study-vs-old run asked for hard and got medium.)
+    if *frame == 0
+        && let Ok(wanted) = std::env::var("BEATBYTE_AUTOPILOT_DIFFICULTY")
+    {
+        match resolve_difficulty(Some(&wanted), &library.entries[index].difficulties) {
+            Ok(Some(difficulty)) => selected.0 = difficulty,
+            Ok(None) => {}
+            Err(reason) => {
+                error!("autopilot: {reason}");
+                deliver(&mut app_exit, AppExit::error());
+                return;
+            }
+        }
+    }
     // The browser shows the library SORTED: the arrow count is the
     // song's row in the view minus where the cursor already sits,
     // fixed on the first frame (the cursor moves under the presses).

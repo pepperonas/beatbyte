@@ -504,10 +504,13 @@ pub fn update_lyrics(
     mut pulses: PulseQuery,
 ) {
     let lyrics = song.lyrics.as_ref().filter(|_| settings.lyrics);
-    // A song swap (MC set) or a disabled setting clears the board.
+    // A song swap (MC set, the taste test's second side) or a disabled
+    // setting clears the board.
+    let mut cleared = false;
     if song.is_changed() || lyrics.is_none() {
         if display.line.is_some() || lyrics.is_none() {
             clear_glyphs(&mut commands, &glyphs);
+            cleared = true;
             display.line = None;
             hide_chrome(&mut preview, &mut scrim, &mut highlight, &mut pulses);
         }
@@ -530,7 +533,15 @@ pub fn update_lyrics(
 
     // Rebuild the glyph row when the active line or the size changed.
     if display.line != cue.active || display.size_step != settings.lyrics_size {
-        clear_glyphs(&mut commands, &glyphs);
+        // Once per pass. A song swapped mid-line takes BOTH branches —
+        // the swap cleared above, and `None != cue.active` lands here —
+        // and the first despawns are still queued, so the glyphs are
+        // still in the query: a second despawn on each was one Bevy
+        // "Entity despawned" warning per glyph (22 on Nothing Else
+        // Matters, measured; a song without lyrics gave none).
+        if clears_again(cleared) {
+            clear_glyphs(&mut commands, &glyphs);
+        }
         display.line = cue.active;
         display.size_step = settings.lyrics_size;
         display.entered_at = time.elapsed_secs();
@@ -827,6 +838,13 @@ pub fn clear_for_outro(
     hide_chrome(&mut preview, &mut scrim, &mut highlight, &mut pulses);
 }
 
+/// Whether the rebuild branch clears the row itself: only when this
+/// pass has not already cleared it. Pure — tested.
+#[must_use]
+pub fn clears_again(already_cleared: bool) -> bool {
+    !already_cleared
+}
+
 fn clear_glyphs(commands: &mut Commands, glyphs: &GlyphQuery) {
     for (entity, _, _, _) in glyphs.iter() {
         commands.entity(entity).despawn();
@@ -856,6 +874,18 @@ fn hide_chrome(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_row_is_cleared_at_most_once_per_pass() {
+        // The swap branch and the rebuild branch both want the old
+        // glyphs gone; the second must yield to the first, or every
+        // glyph is despawned twice in one frame.
+        assert!(super::clears_again(false), "nobody cleared yet: clear");
+        assert!(
+            !super::clears_again(true),
+            "already cleared: do not clear again"
+        );
+    }
+
     use super::*;
     use beatbyte_chart::lyrics::LyricWord;
 
