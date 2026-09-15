@@ -81,8 +81,8 @@ no progress bar until the achievement is earned.
 | `first_hard` | Turning It Up | Play a Hard chart. | FirstSteps | Easy |  | `PlayEntry.difficulty` |
 | `first_hype` | Star Power | Activate Hype for the first time. | FirstSteps | Easy |  | `RunDetail.hype_activations` |
 | `first_medium` | Off the Training Wheels | Play a Medium chart. | FirstSteps | Easy |  | `PlayEntry.difficulty` |
-| `first_named` | Under Your Own Name | Play a run filed under a player. | FirstSteps | Easy |  | `RunPart.player` |
 | `first_run` | Plugged In | Play your first run. | FirstSteps | Easy |  | `PlayEntry (one per run)` |
+| `first_second_song` | Second Verse | Play two different songs. | FirstSteps | Easy |  | `PlayEntry.title + artist` |
 | `hype_10` | Crowd Pleaser | Activate Hype ten times. | Hype | Easy |  | `RunDetail.hype_activations` |
 | `hype_100` | Showman | Activate Hype a hundred times. | Hype | Medium |  | `RunDetail.hype_activations` |
 | `hype_3_in_run` | Triple Threat | Activate Hype three times in one song. | Hype | Medium |  | `RunDetail.hype_activations` |

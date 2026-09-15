@@ -14,6 +14,22 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.1] - 2026-09-15
+
+### Fixed
+
+- **One achievement asked nothing.** `Test::HasPlayer` ("the run is
+  filed under a player") could not be false: the evaluator only ever
+  sees runs `part_of` returned, and `part_of` finds the part whose
+  player is set. So "Under Your Own Name" was "Plugged In" under a
+  second title — filler wearing a name, which is the one thing a
+  hundred-entry catalogue must not contain. The test variant is gone
+  and the slot now holds **Second Verse** (play two different songs),
+  which the log has always been able to answer. Two pins guard the
+  shape from here: no two entries may ask for the same thing, and
+  every `Test` variant must be used by some achievement — a dead one
+  is likeliest to survive right after its only caller was rewritten.
+
 ## [0.17.0] - 2026-09-15
 
 ### Added

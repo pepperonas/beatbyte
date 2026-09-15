@@ -53,7 +53,6 @@ SOURCE = {
     "HourIn": "PlayEntry.started_ms",
     "OnWeekday": "PlayEntry.started_ms",
     "FromFile": "PlayEntry.source",
-    "HasPlayer": "RunPart.player",
     "AccuracyIsExactly": "RunPart.accuracy",
     "Runs": "PlayEntry (one per run)",
     "Finished_M": "PlayEntry.completed",

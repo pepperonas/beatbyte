@@ -205,8 +205,6 @@ pub enum Test {
     OnWeekday(u32),
     /// The audio came from an imported file rather than a built-in.
     FromFile,
-    /// The run is filed under a player.
-    HasPlayer,
     /// Accuracy rounds to exactly this percentage, to one decimal.
     AccuracyIsExactly(f64),
 }
@@ -536,7 +534,6 @@ pub fn passes(entry: &PlayEntry, player: PlayerId, tests: &[Test]) -> bool {
         Test::HourIn(from, to) => hour >= from && hour < to,
         Test::OnWeekday(wanted) => weekday == wanted,
         Test::FromFile => entry.source == "file",
-        Test::HasPlayer => part.player.is_some(),
         Test::AccuracyIsExactly(percent) => {
             ((part.accuracy * 1000.0).round() / 10.0 - percent).abs() < f64::EPSILON
         }
@@ -777,13 +774,17 @@ pub const CATALOGUE: &[Achievement] = &[
         },
     },
     Achievement {
-        id: "first_named",
-        title: "Under Your Own Name",
-        blurb: "Play a run filed under a player.",
+        id: "first_second_song",
+        title: "Second Verse",
+        blurb: "Play two different songs.",
         category: Category::FirstSteps,
         tier: Tier::Easy,
         hidden: false,
-        rule: Rule::OneRun(&[Test::HasPlayer]),
+        rule: Rule::Distinct {
+            facet: Facet::Song,
+            tests: &[],
+            target: 2,
+        },
     },
     Achievement {
         id: "first_finish",
@@ -1982,7 +1983,10 @@ mod tests {
         assert!(earned.contains("first_run"), "{earned:?}");
         assert!(earned.contains("first_finish"));
         assert!(earned.contains("first_80"));
-        assert!(earned.contains("first_named"));
+        assert!(
+            !earned.contains("first_second_song"),
+            "one run is not two songs"
+        );
         assert!(earned.contains("diff_medium"));
         // …and nothing that needs a career.
         assert!(!earned.contains("end_runs_100"));
@@ -2219,6 +2223,83 @@ mod tests {
         assert!(first.contains("first_80"), "slot one missed their own 95 %");
         assert!(!second.contains("first_80"), "slot two got slot one's run");
         assert!(second.contains("first_finish"), "slot two did finish it");
+    }
+
+    #[test]
+    fn no_two_achievements_ask_for_the_same_thing() {
+        // A duplicate condition is filler wearing a second name. It
+        // is also how a tautological test hides: `HasPlayer` was one
+        // — `part_of` only ever returns a part whose player is set,
+        // so the test could not be false and the achievement was
+        // "you have played a run" under a second title.
+        for (a, first) in CATALOGUE.iter().enumerate() {
+            for second in &CATALOGUE[a + 1..] {
+                assert!(
+                    first.rule != second.rule,
+                    "`{}` and `{}` ask for exactly the same thing",
+                    first.id,
+                    second.id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_test_variant_is_used_by_some_achievement() {
+        // A predicate nobody uses is dead weight in `passes`, and the
+        // place a dead one is most likely to survive is right after
+        // the achievement that was its only caller was rewritten.
+        fn note(rule: &Rule, seen: &mut BTreeSet<&'static str>) {
+            let tests: &[Test] = match rule {
+                Rule::OneRun(tests) | Rule::Runs { tests, .. } | Rule::Distinct { tests, .. } => {
+                    tests
+                }
+                Rule::AllOf(inner) => {
+                    for rule in *inner {
+                        note(rule, seen);
+                    }
+                    &[]
+                }
+                _ => &[],
+            };
+            for test in tests {
+                seen.insert(match test {
+                    Test::Finished => "finished",
+                    Test::MinAccuracy(_) => "min_accuracy",
+                    Test::MinStreak(_) => "min_streak",
+                    Test::IsDifficulty(_) => "is_difficulty",
+                    Test::MinDifficulty(_) => "min_difficulty",
+                    Test::NoMiss => "no_miss",
+                    Test::NoOverstrum => "no_overstrum",
+                    Test::MaxDriftMs(_) => "max_drift",
+                    Test::MinNotes(_) => "min_notes",
+                    Test::MinOverstrums(_) => "min_overstrums",
+                    Test::MoreOverstrumsThanHits => "more_over_than_hits",
+                    Test::MinTrackS(_) => "min_track_s",
+                    Test::NoPractice => "no_practice",
+                    Test::NoTapAssist => "no_tap_assist",
+                    Test::NoSafetyNet => "no_safety_net",
+                    Test::DidFail => "did_fail",
+                    Test::MinHype(_) => "min_hype",
+                    Test::MinSustainsHeld(_) => "min_sustains_held",
+                    Test::NoSustainDropped => "no_sustain_dropped",
+                    Test::MinPerfectShare(_) => "min_perfect_share",
+                    Test::TitleAny(_) => "title_any",
+                    Test::TitleStartsWith(_) => "title_starts_with",
+                    Test::OnDate(..) => "on_date",
+                    Test::OnDates(_) => "on_dates",
+                    Test::HourIn(..) => "hour_in",
+                    Test::OnWeekday(_) => "on_weekday",
+                    Test::FromFile => "from_file",
+                    Test::AccuracyIsExactly(_) => "accuracy_exactly",
+                });
+            }
+        }
+        let mut seen = BTreeSet::new();
+        for entry in CATALOGUE {
+            note(&entry.rule, &mut seen);
+        }
+        assert_eq!(seen.len(), 28, "unused test variants: {seen:?}");
     }
 
     #[test]
