@@ -789,6 +789,18 @@ artifact, smoke-test it (neutral CWD!), then
   game sees is the start. `PendingMusic` carries where a run begins;
   any new "start somewhere else" mode goes through that field and
   that command, never through a seek after the fact.
+- **A batch that decodes songs to scratch fills the disk while a gate
+  runs beside it — and fails quietly, one song at a time.** The first
+  library run of `tools/guitar-study.sh` (a 40 MB WAV plus two stems
+  per song) shared the machine with the quality gate and a second
+  `target/`; at 14:57 the disk hit zero and eleven consecutive songs
+  failed with `No space left on device`, after which space came back
+  and the run went on as if nothing had happened. Twelve refusals in
+  a log that ends "written 59" read like twelve hard songs. Before a
+  scratch-heavy batch: 40 GB free, no parallel builds, and delete each
+  song's scratch once its output exists (the script now reports the
+  failures by name — the first version lost that list to bash 3.2's
+  `set -u` on an empty array).
 - **An autopilot verdict could be failed by the room, and the
   telemetry says so.** Real device input went into the same session
   the injector plays into: a key, a pad button or a click at the desk

@@ -39,6 +39,9 @@ for d in "$ROOT"/*/; do
   case $rc in 0) done_n=$((done_n+1));; 3) refused+=("$name");; *) failed+=("$name: study rc=$rc");; esac
 done
 echo
+# `${arr[@]+"${arr[@]}"}`: macOS ships bash 3.2, where an EMPTY array
+# is an unbound variable under `set -u` — the first run died on this
+# line and swallowed its own list of failures.
 echo "written $done_n, already there $skip_n, refused ${#refused[@]}, failed ${#failed[@]}"
-for r in "${refused[@]}"; do echo "  refused: $r"; done
-for f in "${failed[@]}"; do echo "  failed:  $f"; done
+for r in ${refused[@]+"${refused[@]}"}; do echo "  refused: $r"; done
+for f in ${failed[@]+"${failed[@]}"}; do echo "  failed:  $f"; done
