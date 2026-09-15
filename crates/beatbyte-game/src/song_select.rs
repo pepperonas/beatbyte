@@ -295,7 +295,51 @@ fn build_order(
         let score_of = |i: &usize| scored.iter().find(|(j, _)| j == i).map_or(0, |(_, s)| *s);
         order.sort_by_key(|i| std::cmp::Reverse(score_of(i)));
     }
-    order
+    pair_twins(entries, order)
+}
+
+/// Put every `[Guitar Study]` twin directly under its original —
+/// whatever the sort, whichever way it runs, search or no search.
+///
+/// The list is sorted on the ORIGINALS: a twin never claims a place
+/// of its own (under TITLE it would sit among the G's, under NOTES
+/// wherever its lighter chart falls), it follows the song it is a
+/// version of. A twin whose original is not in the list — filtered
+/// out, or a hand-made study of a song that was since removed —
+/// keeps the place the sort gave it. User, 2026-09-15: "die guitar
+/// study tracks immer unter dem normalen track", the alphabet for
+/// everything else. Pure — tested.
+#[must_use]
+pub fn pair_twins(entries: &[SongEntry], order: Vec<usize>) -> Vec<usize> {
+    let original_of = |twin: &SongEntry| -> Option<usize> {
+        let base = beatbyte_chart::study::base_title(&twin.title)?;
+        order.iter().copied().find(|&j| {
+            beatbyte_chart::study::base_title(&entries[j].title).is_none()
+                && entries[j].title == base
+                && entries[j].artist == twin.artist
+        })
+    };
+    // Twins with an original in the list step out; everyone else
+    // keeps their order, and each twin is re-inserted right after
+    // its original.
+    let mut paired: Vec<(usize, usize)> = Vec::new(); // (twin, original)
+    let mut rest: Vec<usize> = Vec::with_capacity(order.len());
+    for &i in &order {
+        match original_of(&entries[i]) {
+            Some(original) => paired.push((i, original)),
+            None => rest.push(i),
+        }
+    }
+    let mut out: Vec<usize> = Vec::with_capacity(order.len());
+    for i in rest {
+        out.push(i);
+        for &(twin, original) in &paired {
+            if original == i {
+                out.push(twin);
+            }
+        }
+    }
+    out
 }
 
 /// Where the cursor should sit after the order changed: on the same
@@ -2152,6 +2196,91 @@ mod view_tests {
             entry("Ella, elle l'a", "France Gall", None, 250.0),
             entry("Life", "Des'ree", Some("Pop"), 200.0),
         ]
+    }
+
+    #[test]
+    fn a_twin_sits_under_its_original_whatever_the_sort() {
+        // Library order puts the twin first and far from its original;
+        // its own values (title, length, notes) would place it
+        // elsewhere under every sort. It follows its original anyway.
+        let mut lib = lib();
+        lib.insert(
+            0,
+            entry("[Guitar Study] Life", "Des'ree", Some("Pop"), 200.0),
+        );
+        lib[0].note_counts = vec![40];
+        let titles = |order: &[usize]| -> Vec<&str> {
+            order.iter().map(|i| lib[*i].title.as_str()).collect()
+        };
+        for sort in [
+            SortMode::Standard,
+            SortMode::Title,
+            SortMode::Artist,
+            SortMode::Length,
+            SortMode::Notes,
+        ] {
+            for flipped in [false, true] {
+                let order = build_order(&lib, sort, flipped, Difficulty::Medium, "", |_| None);
+                let t = titles(&order);
+                let life = t
+                    .iter()
+                    .position(|x| *x == "Life")
+                    .expect("the original is listed");
+                assert_eq!(
+                    t.get(life + 1),
+                    Some(&"[Guitar Study] Life"),
+                    "{sort:?} flipped={flipped}: {t:?}"
+                );
+                assert_eq!(t.len(), lib.len(), "nobody lost: {t:?}");
+            }
+        }
+        // A search filter too: the twin never outranks its original.
+        let order = build_order(
+            &lib,
+            SortMode::Title,
+            false,
+            Difficulty::Medium,
+            "life",
+            |_| None,
+        );
+        assert_eq!(titles(&order), vec!["Life", "[Guitar Study] Life"]);
+    }
+
+    #[test]
+    fn a_twin_without_its_original_keeps_the_place_the_sort_gave_it() {
+        // The original filtered out, or removed since: the twin is not
+        // hidden and not moved — it is where TITLE puts it, among the
+        // G's, which is honest about what it is.
+        let mut lib = lib();
+        lib.push(entry("[Guitar Study] Maria", "Blondie", None, 248.0));
+        let order = build_order(&lib, SortMode::Title, false, Difficulty::Medium, "", |_| {
+            None
+        });
+        let t: Vec<&str> = order.iter().map(|i| lib[*i].title.as_str()).collect();
+        assert_eq!(
+            t,
+            vec![
+                "Africa",
+                "Ella, elle l'a",
+                "Life",
+                "Maria",
+                "[Guitar Study] Maria"
+            ]
+        );
+        let order = build_order(
+            &lib,
+            SortMode::Title,
+            false,
+            Difficulty::Medium,
+            "guitar",
+            |_| None,
+        );
+        let t: Vec<&str> = order.iter().map(|i| lib[*i].title.as_str()).collect();
+        assert_eq!(
+            t,
+            vec!["[Guitar Study] Maria"],
+            "alone when its original is filtered out"
+        );
     }
 
     #[test]

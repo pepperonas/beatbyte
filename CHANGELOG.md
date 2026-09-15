@@ -14,6 +14,17 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.15.16] - 2026-09-15
+
+### Changed
+
+- **A `[Guitar Study]` twin always sits directly under its original in
+  the song browser** — under every sort, in both directions, with a
+  search filter or without. The list is sorted on the originals; a twin
+  claims no place of its own (under TITLE it used to sit among the G's,
+  under NOTES wherever its lighter chart fell). A twin whose original is
+  not in the list keeps the place the sort gave it.
+
 ## [0.15.15] - 2026-09-15
 
 ### Added

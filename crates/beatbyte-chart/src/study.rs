@@ -81,6 +81,13 @@ pub fn twin_title(title: &str) -> String {
     }
 }
 
+/// The original's title behind a twin's, or `None` for a title that
+/// is not a twin's. What the browser keys the pairing on. Pure — tested.
+#[must_use]
+pub fn base_title(title: &str) -> Option<&str> {
+    title.strip_prefix(TITLE_PREFIX)
+}
+
 /// Whether a file in the song folder is a chart or the pointer — the
 /// things the twin must NOT copy (it gets exactly one chart of its
 /// own); everything else (audio, lyrics, loudness) comes along.
@@ -239,6 +246,14 @@ mod tests {
         );
         assert!(is_twin_folder("guitar-study-toto---africa-m4a"));
         assert!(!is_twin_folder("toto---africa-m4a"));
+    }
+
+    #[test]
+    fn a_twin_names_its_original_and_an_original_names_nothing() {
+        assert_eq!(base_title("[Guitar Study] Africa"), Some("Africa"));
+        assert_eq!(base_title("Africa"), None);
+        // The prefix must be the title's start, not just somewhere in it.
+        assert_eq!(base_title("Africa [Guitar Study] "), None);
     }
 
     #[test]
