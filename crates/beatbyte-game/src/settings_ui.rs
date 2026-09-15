@@ -29,6 +29,8 @@ pub(crate) enum Row {
     HitLabels,
     /// Loudness matching on/off.
     LoudnessMatch,
+    /// A `[Guitar Study]` twin for every imported song.
+    GuitarStudyTwins,
     NoFail,
     /// Room Stage: the game's events drive lights on the LAN.
     RoomLights,
@@ -66,7 +68,7 @@ impl Row {
     /// Every row, in the order the screen shows them: **alphabetical
     /// by label**, and kept that way by a test — a new row goes where
     /// its name falls, not at the end of the list.
-    const ALL: [Row; 31] = [
+    const ALL: [Row; 32] = [
         Row::AiSearch,
         Row::BeatPulse,
         Row::Controls,
@@ -74,6 +76,7 @@ impl Row {
         Row::ExportHistory,
         Row::FlashSync,
         Row::Fullscreen,
+        Row::GuitarStudyTwins,
         Row::HighContrast,
         Row::HitLabels,
         Row::LatencyOffset,
@@ -113,6 +116,7 @@ impl Row {
             Row::BackdropMotion => "STAGE MOTION",
             Row::HitLabels => "HIT LABELS",
             Row::LoudnessMatch => "LOUDNESS MATCH",
+            Row::GuitarStudyTwins => "GUITAR STUDY TWINS",
             Row::NoFail => "NO FAIL",
             Row::RoomLights => "ROOM LIGHTS",
             Row::ReducedFlashing => "REDUCED FLASHING",
@@ -149,6 +153,7 @@ impl Row {
             Row::BackdropMotion => on_off(settings.backdrop_motion),
             Row::HitLabels => on_off(settings.hit_labels),
             Row::LoudnessMatch => on_off(settings.normalize_loudness),
+            Row::GuitarStudyTwins => on_off(settings.guitar_study_twins),
             Row::NoFail => on_off(settings.no_fail),
             Row::RoomLights => on_off(settings.room_lights),
             Row::SongPreview => on_off(settings.song_preview),
@@ -235,6 +240,7 @@ impl Row {
             // The one row whose value cannot say everything: WHERE
             // the model runs decides whether a key is needed at all.
             Row::AiSearch => "picks which recording a song search fetches".to_owned(),
+            Row::GuitarStudyTwins => crate::study_twin::row_subtitle(),
             _ => String::new(),
         }
     }
@@ -266,6 +272,7 @@ impl Row {
             Row::BackdropMotion => settings.backdrop_motion = !settings.backdrop_motion,
             Row::HitLabels => settings.hit_labels = !settings.hit_labels,
             Row::LoudnessMatch => settings.normalize_loudness = !settings.normalize_loudness,
+            Row::GuitarStudyTwins => settings.guitar_study_twins = !settings.guitar_study_twins,
             Row::NoFail => settings.no_fail = !settings.no_fail,
             Row::RoomLights => settings.room_lights = !settings.room_lights,
             Row::SongPreview => settings.song_preview = !settings.song_preview,
@@ -329,6 +336,7 @@ impl Row {
             | Row::BackdropMotion
             | Row::HitLabels
             | Row::LoudnessMatch
+            | Row::GuitarStudyTwins
             | Row::NoFail
             | Row::RoomLights
             | Row::SongPreview
@@ -883,7 +891,7 @@ mod tests {
             );
         }
         // And nothing is listed twice or left out.
-        assert_eq!(Row::ALL.len(), 31);
+        assert_eq!(Row::ALL.len(), 32);
     }
 
     #[test]
@@ -894,6 +902,7 @@ mod tests {
             Row::ScreenShake,
             Row::BeatPulse,
             Row::LoudnessMatch,
+            Row::GuitarStudyTwins,
             Row::BackdropMotion,
             Row::HitLabels,
             Row::NoFail,

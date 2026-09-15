@@ -369,6 +369,8 @@ fn poll_import(
     mut watch: ResMut<WatchState>,
     builtins: Option<Res<crate::boot::BuiltinSongs>>,
     library: Option<ResMut<crate::library::SongLibrary>>,
+    settings: Res<crate::config::Settings>,
+    mut twins: ResMut<crate::study_twin::StudyQueue>,
 ) {
     let Some(mut task) = task else {
         return;
@@ -388,6 +390,18 @@ fn poll_import(
                 None => (outcome, None),
             };
             queue.ok += 1;
+            // The song's `[Guitar Study]` twin, made in the background
+            // once the batch is out of the way: the folder is the one
+            // the import just wrote, by the import's own naming rule.
+            if let Some(folder) = queue
+                .current_source
+                .as_ref()
+                .and_then(|source| source.file_name())
+                .map(|name| sanitize_folder_name(&name.to_string_lossy()))
+                .and_then(|folder| import_dir().ok().map(|dir| dir.join(folder)))
+            {
+                crate::study_twin::queue_twin(&mut twins, &settings, folder);
+            }
             // Only a SUCCESSFUL import burns the fingerprint - a
             // failed one stays retryable.
             if let Some(fingerprint) = queue.current_fingerprint.take() {

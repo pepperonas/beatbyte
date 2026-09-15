@@ -50,6 +50,21 @@ Supported audio: **WAV, Ogg Vorbis, FLAC, MP3, M4A/AAC** — the
 verified list lives in
 [the chart-format spec](chart-format/chart-format-v1.md#supported-audio-formats).
 
+## The `[Guitar Study]` twin
+
+Every import also gets a second browser entry, **`[Guitar Study]
+<title>`**: the same audio in a folder of its own, charted from the
+separated instrument stem instead of the whole mix — fewer notes,
+melodically grounded, the version the ear preferred by a distance.
+It is made in the background after the import (decode → `demucs`
+`other` stem → chart), between songs, and reported on the import
+overlay. The original is never touched, so both play against each
+other. **SETTINGS → GUITAR STUDY TWINS** switches it (on by default);
+it needs `demucs` on the machine (`pipx install demucs`) — the row says
+when it is missing, and the import is then what it always was.
+`beatbyte-cli study <folder> --lead <other.wav>` writes one by hand,
+`tools/guitar-study.sh` every folder without a twin.
+
 ## The fast path: drag and drop
 
 Drop the audio file onto the BeatByte window (main menu or song

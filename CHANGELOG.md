@@ -14,6 +14,27 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.15.15] - 2026-09-15
+
+### Added
+
+- **Every import now gets its `[Guitar Study]` twin, in the background.**
+  Drop a song in (or add one by name) and, once the batch is out of the
+  way, the game decodes it, separates the `other` stem with demucs and
+  writes the twin beside the original — a second browser entry, charted
+  from the stem, the original never touched. SETTINGS → **GUITAR STUDY
+  TWINS** (on by default, also for settings files written before the row
+  existed) switches it; the row's second line says when `demucs` is
+  missing, in which case the import is exactly what it always was. The
+  chore runs between songs, never during one, and reports on the import
+  overlay like the redesign does. The writer moved into `beatbyte-chart`
+  (`study::write_twin`, decoding injected as with the redesign) so the
+  game and `beatbyte-cli study` share one rule.
+
+  Harness: under the autopilot the twin job runs only with
+  `BEATBYTE_AUTOPILOT_TWINS` set — a separation saturates the machine for
+  two minutes, and the clock-teleport rule false-fails under that load.
+
 ## [0.15.14] - 2026-09-15
 
 ### Added

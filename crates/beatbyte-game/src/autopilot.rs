@@ -738,6 +738,8 @@ fn autopilot_song_select(
     mut selected: ResMut<crate::song_select::SelectedDifficulty>,
     mut practice: ResMut<crate::gameplay::PracticeState>,
     mut next_state: ResMut<NextState<AppState>>,
+    twins: Option<Res<crate::study_twin::StudyQueue>>,
+    chore: Option<Res<crate::chore::Chore>>,
 ) {
     *delay += time.delta_secs();
     if *delay > 0.6 {
@@ -796,6 +798,32 @@ fn autopilot_song_select(
                 std::process::exit(1);
             }
             return;
+        }
+        // With twins asked for, the import's guitar-study job is part
+        // of what is being proven too: wait it out (a separation is
+        // minutes), and a job that ERRED fails the run — a skip with a
+        // reason (no demucs, too little tonal evidence) is a result.
+        if std::env::var_os("BEATBYTE_AUTOPILOT_TWINS").is_some()
+            && std::env::var_os("BEATBYTE_AUTOPILOT_DROP").is_some()
+        {
+            let busy = twins.as_ref().is_some_and(|t| !t.pending.is_empty())
+                || chore.as_ref().is_some_and(|c| c.running());
+            if busy {
+                *waited += time.delta_secs() + 0.6;
+                if *waited > 900.0 {
+                    error!("autopilot: the guitar-study job never finished");
+                    std::process::exit(1);
+                }
+                return;
+            }
+            if let Some(chore) = chore.as_ref().filter(|c| c.ran) {
+                if chore.ok {
+                    info!("autopilot: twin job PASSED — {}", chore.line);
+                } else {
+                    error!("autopilot: twin job FAILED — {}", chore.line);
+                    std::process::exit(1);
+                }
+            }
         }
         // MC-set mode: comma-separated title needles queue a set and
         // start it as one continuous performance.

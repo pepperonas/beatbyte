@@ -124,6 +124,16 @@ pub struct Settings {
     /// are.
     #[serde(default = "default_true")]
     pub normalize_loudness: bool,
+    /// Give every imported song a `[Guitar Study]` twin: a second
+    /// browser entry charted from the separated instrument stem, in a
+    /// folder of its own beside the original (which is never touched).
+    /// Runs in the background after the import, needs `demucs` on the
+    /// machine; without it the row says so and the import is what it
+    /// always was. On by default (user, 2026-09-15: "das soll so
+    /// sein") — `default = "default_true"` reaches files written
+    /// before the field existed.
+    #[serde(default = "default_true")]
+    pub guitar_study_twins: bool,
     /// Tap mode: notes hit on fret press alone, no strum required.
     /// ON by default — the first real playtest showed keyboard
     /// players press frets and nothing happens (receptors light up,
@@ -229,6 +239,7 @@ impl Default for Settings {
             room_stage_url: "http://127.0.0.1:5006".to_owned(),
             song_preview: true,
             normalize_loudness: true,
+            guitar_study_twins: true,
             tap_mode: true,
             perspective: true,
             stage_3d: true,

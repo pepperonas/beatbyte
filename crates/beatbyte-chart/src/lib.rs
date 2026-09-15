@@ -44,6 +44,7 @@ pub mod io;
 pub mod lyrics;
 pub mod redesign;
 pub mod schema;
+pub mod study;
 pub mod validate;
 pub mod versions;
 

@@ -40,6 +40,7 @@ mod shapes;
 pub mod smart_lyrics;
 pub mod song_select;
 pub mod states;
+pub mod study_twin;
 pub mod surfaces;
 pub mod taste;
 pub mod telemetry;
@@ -231,6 +232,7 @@ pub fn run() -> AppExit {
         discover::DiscoverPlugin,
         gameplay::fog::FogPlugin,
         chore::ChorePlugin,
+        study_twin::StudyTwinPlugin,
     ));
 
     // `BEATBYTE_FPS=1` turns on periodic frame-time reporting. Off by
