@@ -594,6 +594,20 @@ fn run_count_in(
         && let Some(pending) = pending
     {
         match (&pending.0, pending.1) {
+            // A run that begins mid-song asks the music thread to
+            // start THERE — one command, seek before announce — so the
+            // first position the clock ever sees is the start. Sent as
+            // play-then-seek, the clock anchored at the top of the
+            // file and teleported when the seek landed (the taste
+            // test's first drill: 0.230 → 172.339 in one frame).
+            (SongAudio::Memory(audio), None) if start_s > 0.0 => {
+                music.0.play_buffer_from(audio.clone(), start_s);
+                info!("taste test: playing from {start_s:.1}s");
+            }
+            (SongAudio::File(path), None) if start_s > 0.0 => {
+                music.0.play_file_from(path.clone(), start_s);
+                info!("taste test: playing from {start_s:.1}s");
+            }
             (SongAudio::Memory(audio), None) => music.0.play_buffer(audio.clone()),
             (SongAudio::File(path), None) => music.0.play_file(path.clone()),
             // The MC handover: the previous song keeps sounding as
@@ -618,17 +632,6 @@ fn run_count_in(
             }
         );
         music.0.set_song_gain(gain);
-        if start_s > 0.0 {
-            // The player was told to play from here, so the audio
-            // goes here too. Both commands ride the same channel, so
-            // the seek cannot overtake the play — but the DEVICE
-            // still reports the pre-seek position for a moment, and
-            // anchoring to that would drag the clock back to the top
-            // of the song (the practice loop's lesson).
-            music.0.seek_s(start_s);
-            game_clock.hold_reconcile_until = time.elapsed_secs_f64() + 0.25;
-            info!("taste test: playing from {start_s:.1}s");
-        }
         // The clock may follow THIS generation: the game asked for it.
         game_clock.expect_song = true;
         commands.remove_resource::<PendingMusic>();

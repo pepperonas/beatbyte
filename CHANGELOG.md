@@ -14,6 +14,19 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.15.12] - 2026-09-15
+
+### Fixed
+
+- **The taste test no longer teleports its clock at the start.** 0.15.11
+  counted in to the window correctly but started the music with two
+  commands — play, then seek — and the game clock anchors to the first
+  position it sees under a new song: zero, a quarter second before the
+  seek landed on an m4a. The new `BEATBYTE_AUTOPILOT_TASTE` drill caught it
+  on its first run (`song time jumped 0.230 → 172.339 in one frame`). The
+  music thread now takes one command, `play_file_from`, and seeks BEFORE it
+  announces the song, so the first position the clock sees is the start.
+
 ## [0.15.11] - 2026-09-15
 
 ### Added

@@ -525,6 +525,11 @@ use crate::decode::AudioData;
 enum MusicCommand {
     PlayFile(std::path::PathBuf),
     PlayBuffer(AudioData),
+    /// Play from `start_s` seconds in: the seek happens on this
+    /// thread BEFORE the song is announced, so no reader ever sees
+    /// the generation move while the position still reads zero.
+    PlayFileFrom(std::path::PathBuf, f64),
+    PlayBufferFrom(AudioData, f64),
     CrossfadeFile(std::path::PathBuf, f32),
     CrossfadeBuffer(AudioData, f32),
     Pause,
@@ -570,7 +575,22 @@ impl MusicShared {
     /// Two relaxed stores would permit the same stale pairing even in
     /// the right order.
     fn begin_song(&self) {
-        self.position_us.store(0, Ordering::Relaxed);
+        self.begin_song_at(0.0);
+    }
+
+    /// [`MusicShared::begin_song`] for a song that begins mid-file:
+    /// the position published WITH the new generation is where the
+    /// music actually is, never a zero the reader would anchor to.
+    ///
+    /// The game clock anchors to the first position it sees under a
+    /// new generation and only then starts holding reconciliation —
+    /// so a seek sent as a second command, however quickly it lands,
+    /// is too late: the clock has already anchored at the top of the
+    /// file and teleports when the seek arrives (measured: 0.230 →
+    /// 172.339 in one frame, the taste test's first run).
+    fn begin_song_at(&self, position_s: f64) {
+        let micros = (position_s.max(0.0) * 1_000_000.0) as u64;
+        self.position_us.store(micros, Ordering::Relaxed);
         self.generation.fetch_add(1, Ordering::Release);
     }
 }
@@ -610,6 +630,25 @@ impl MusicHandle {
     /// Play an in-memory buffer (e.g. the synthesized demo song).
     pub fn play_buffer(&self, audio: AudioData) {
         let _ = self.commands.send(MusicCommand::PlayBuffer(audio));
+    }
+
+    /// Play a song from disk starting `start_s` seconds in. One
+    /// command, not `play_file` followed by `seek_s`: the music
+    /// thread seeks BEFORE it announces the song, so the first
+    /// position the game sees under the new generation is the start
+    /// it asked for (the clock anchors to that first position, and a
+    /// zero there is a teleport waiting to happen).
+    pub fn play_file_from(&self, path: std::path::PathBuf, start_s: f64) {
+        let _ = self
+            .commands
+            .send(MusicCommand::PlayFileFrom(path, start_s));
+    }
+
+    /// [`MusicHandle::play_file_from`] for an in-memory song.
+    pub fn play_buffer_from(&self, audio: AudioData, start_s: f64) {
+        let _ = self
+            .commands
+            .send(MusicCommand::PlayBufferFrom(audio, start_s));
     }
 
     /// Pause playback.
@@ -788,6 +827,21 @@ fn handle_command(
         MusicCommand::PlayBuffer(audio) => {
             player.play_buffer(&audio);
             shared.begin_song();
+        }
+        // Seek first, announce second. If the seek is refused the
+        // song plays from wherever it is, and THAT is what gets
+        // announced — a clock anchored to the truth beats one
+        // anchored to the request.
+        MusicCommand::PlayFileFrom(path, start_s) => {
+            if player.play_file(&path).is_ok() {
+                let landed = player.seek_s(start_s).map_or(0.0, |()| start_s);
+                shared.begin_song_at(landed);
+            }
+        }
+        MusicCommand::PlayBufferFrom(audio, start_s) => {
+            player.play_buffer(&audio);
+            let landed = player.seek_s(start_s).map_or(0.0, |()| start_s);
+            shared.begin_song_at(landed);
         }
         MusicCommand::CrossfadeFile(path, fade_s) => {
             if player.crossfade_to_file(&path, fade_s).is_ok() {
@@ -984,7 +1038,7 @@ mod new_song_tests {
     /// does not match the patterns it searches for. An earlier version
     /// counted itself and reported two call sites where there was one.
     const BUMP: &str = concat!("generation", ".fetch_add(");
-    const RESET: &str = concat!("position_us", ".store(0");
+    const RESET: &str = concat!("position_us", ".store(micros");
 
     /// The module's source ABOVE this test module, with comments
     /// stripped.
@@ -1020,6 +1074,55 @@ mod new_song_tests {
             0,
             "the previous song's position survived into the new one"
         );
+    }
+
+    #[test]
+    fn a_song_that_begins_mid_file_is_announced_at_its_start() {
+        // The taste test starts inside the song. The position that
+        // travels WITH the new generation must be that start: a reader
+        // anchors to the first position it sees under a generation,
+        // and a zero there sent the clock 172 s forward in one frame.
+        let shared = MusicShared {
+            position_us: AtomicU64::new(999),
+            active: AtomicBool::new(false),
+            paused: AtomicBool::new(false),
+            generation: AtomicU64::new(3),
+            healthy: AtomicBool::new(true),
+        };
+        shared.begin_song_at(172.1);
+        assert_eq!(shared.generation.load(Ordering::Acquire), 4);
+        assert_eq!(shared.position_us.load(Ordering::Relaxed), 172_100_000);
+        // A start before the file's top is the top.
+        shared.begin_song_at(-5.0);
+        assert_eq!(shared.position_us.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn a_play_from_command_seeks_before_it_announces() {
+        // Order pinned on the source: in the play-from arms the seek
+        // must come before the announcement. Announced first, the
+        // reader sees the generation move while the position is still
+        // the file's top — exactly the two-command race this replaces.
+        //
+        // ⚠️ Anchored on the match ARMS (`… =>`), not on the variant's
+        // name: the handle's `send(MusicCommand::PlayFileFrom(…))`
+        // carries the same name earlier in the file, and a search from
+        // there found `fn seek_s` on the way and stayed green with the
+        // order reversed — a mutation probe caught this pin blind.
+        let code = code();
+        for arm in [
+            "MusicCommand::PlayFileFrom(path, start_s) =>",
+            "MusicCommand::PlayBufferFrom(audio, start_s) =>",
+        ] {
+            let start = code.find(arm).expect("the arm exists");
+            let rest = &code[start + arm.len()..];
+            // Only THIS arm: stop at the next one.
+            let end = rest.find("MusicCommand::").unwrap_or(rest.len());
+            let body = &rest[..end];
+            let seek = body.find("seek_s(").expect("the arm seeks");
+            let announce = body.find("begin_song_at(").expect("the arm announces");
+            assert!(seek < announce, "{arm}: announced before the seek");
+        }
     }
 
     #[test]

@@ -773,17 +773,22 @@ artifact, smoke-test it (neutral CWD!), then
   result against the reference before measuring anything. Pixel
   metrics prove a change happened; only looking proves it is the
   right one.
-- **A run that begins inside a song must COUNT IN there, not jump
-  there.** The blind taste test plays a window from the middle of a
-  track; the obvious build — let the count-in run to zero, start the
-  music, then seek both the clock and the audio to the window — is the
-  one shape the autopilot's teleport guard exists to catch, because a
-  clock that jumps forward plays every note it skipped perfectly in
-  one frame and passes. `PendingMusic` therefore carries WHERE the
-  run's music begins: the clock starts at `start − PREROLL`, the
-  count-in counts toward `start`, and the audio is seeked before it is
-  ever heard. Anything that adds another "start somewhere else" mode
-  goes through that field rather than through a seek after the fact.
+- **A run that begins inside a song must COUNT IN there, and the
+  music thread must START there — a seek sent after `play` is
+  already too late.** The blind taste test plays a window from the
+  middle of a track. Two wrong builds, both actually made: (1) count
+  in to zero, then seek clock and audio forward — the clock teleports,
+  which the autopilot's guard catches; (2) count in to the start, send
+  `play_file` then `seek_s`, and hold reconciliation — STILL a
+  teleport (`0.230 → 172.339`, the first drill run), because the
+  clock ANCHORS to the first position it sees under a new generation
+  and the hold only governs reconciliation after that. A seek on an
+  m4a takes ~0.25 s to land; the anchor had long grabbed zero.
+  `MusicHandle::play_file_from` is the fix: one command, the thread
+  seeks BEFORE it announces the generation, so the first position the
+  game sees is the start. `PendingMusic` carries where a run begins;
+  any new "start somewhere else" mode goes through that field and
+  that command, never through a seek after the fact.
 - **An autopilot verdict could be failed by the room, and the
   telemetry says so.** Real device input went into the same session
   the injector plays into: a key, a pad button or a click at the desk
