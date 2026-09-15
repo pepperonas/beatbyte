@@ -14,6 +14,24 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.2] - 2026-09-16
+
+### Fixed
+
+- **The achievement list could not survive a long description.**
+  `ui_kit::list_view` measures ONE row and scrolls as though every row
+  were that tall, and nothing stopped a blurb from wrapping to a
+  second line — which would have put the scroll out by a line on a
+  screen with a hundred rows. Today's entries are safe: the widest row
+  needs about 770 px of the 1085 px a row has, so nothing wraps and
+  nothing is cut off. This is the guard, not a repair. Titles, blurbs
+  and the right-hand column now refuse to wrap and clip instead, the
+  way the song browser has always treated a long title, and the
+  catalogue refuses a title over 26 or a blurb over 70 characters —
+  the pair that still fits inside 1085 px at the two font sizes a row
+  uses. Both pinned: that the rows carry no-wrap on the screen as
+  actually built, and that no entry exceeds the caps.
+
 ## [0.17.1] - 2026-09-15
 
 ### Fixed

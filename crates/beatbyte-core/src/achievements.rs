@@ -1912,6 +1912,18 @@ mod tests {
                 "{} has no readable blurb",
                 entry.id
             );
+            // The overview draws a blurb on one line beside a title,
+            // a bar and a date, and refuses to wrap it — a paragraph
+            // here would simply be cut off mid-sentence. 61 is the
+            // longest today; the cap leaves room without inviting an
+            // essay.
+            assert!(
+                entry.blurb.len() <= 70 && entry.title.len() <= 26,
+                "{} is too long to draw on one row ({} / {})",
+                entry.id,
+                entry.title.len(),
+                entry.blurb.len()
+            );
             // The id carries its category, which is what makes the
             // array readable and the overview groupable.
             let prefix = entry.id.split('_').next().unwrap();

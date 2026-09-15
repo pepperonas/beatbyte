@@ -439,24 +439,34 @@ fn spawn_row(parent: &mut ChildSpawnerCommands, font: &UiFont, index: usize, row
     parent
         .spawn((ui_kit::row(), AchievementRow(index), Interaction::default()))
         .with_children(|node| {
+            // No-wrap and clipped, both of them. `ui_kit::list_view`
+            // measures ONE row and scrolls as though every row were
+            // that tall; a blurb that wrapped to a second line would
+            // make its own row taller and put the whole scroll
+            // arithmetic out by a line. Same treatment the song
+            // browser gives a long title.
             node.spawn((
                 ui_kit::label_node(),
-                Text::new(title),
+                Text::new(font.safe(&title)),
                 font.text(ui_kit::ROW),
                 TextColor(if earned {
                     palette::TEXT
                 } else {
                     ui_kit::dimmed_subtitle()
                 }),
+                TextLayout::default().with_no_wrap(),
             ));
             node.spawn((
                 Node {
                     flex_grow: 1.0,
+                    min_width: px(0.0),
+                    overflow: Overflow::clip(),
                     ..default()
                 },
-                Text::new(blurb),
+                Text::new(font.safe(&blurb)),
                 font.text(ui_kit::SMALL),
                 TextColor(ui_kit::dimmed_subtitle()),
+                TextLayout::default().with_no_wrap(),
             ));
             // The bar: the one place the list says "how close" at a
             // glance, and the reason the secrecy rule has to cover it.
@@ -484,9 +494,11 @@ fn spawn_row(parent: &mut ChildSpawnerCommands, font: &UiFont, index: usize, row
             node.spawn((
                 Node {
                     min_width: px(96.0),
+                    flex_shrink: 0.0,
                     ..default()
                 },
-                Text::new(right),
+                Text::new(font.safe(&right)),
+                TextLayout::default().with_no_wrap(),
                 font.text(ui_kit::SMALL),
                 TextColor(if earned {
                     colour
@@ -752,6 +764,41 @@ mod tests {
         assert!(
             found.iter().any(|line| line.contains("2026-02-14")),
             "the day it happened is not on the screen"
+        );
+    }
+
+    #[test]
+    fn every_line_of_every_row_refuses_to_wrap() {
+        // `ui_kit::list_view` measures ONE row and scrolls as though
+        // every row were that tall. A blurb that wrapped would make
+        // its own row taller and put the scroll out by a line — and
+        // the longest blurb in the catalogue is 61 characters beside
+        // a 23-character title, a bar and a date, which is close
+        // enough to the panel's width to matter.
+        let mut roster = beatbyte_core::player::Roster::default();
+        roster
+            .add("Martin", 1)
+            .expect("a fresh roster takes a name");
+        let mut app = wired(vec![a_run(1)], roster, Unlocked::default());
+        app.add_systems(Update, spawn_screen);
+        app.update();
+        let (mut texts, mut wrapped) = (0, 0);
+        let mut query = app.world_mut().query::<(&Text, Option<&TextLayout>)>();
+        for (_, layout) in query.iter(app.world()) {
+            texts += 1;
+            if layout.is_none_or(|layout| layout.linebreak != LineBreak::NoWrap) {
+                wrapped += 1;
+            }
+        }
+        assert!(
+            texts > 100,
+            "the screen drew {texts} lines, so this proves little"
+        );
+        // The header, the subtitle, the tabs and the footer are free
+        // to wrap — they are not rows. Every ROW line must not.
+        assert!(
+            wrapped <= 16,
+            "{wrapped} of {texts} lines can wrap; the rows must not"
         );
     }
 
