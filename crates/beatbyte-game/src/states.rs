@@ -20,6 +20,8 @@ pub enum AppState {
     Players,
     /// One player's statistics.
     Stats,
+    /// One player's achievements.
+    Achievements,
     /// The song browser.
     SongSelect,
     /// The settings screen.

@@ -243,6 +243,15 @@ enum Command {
         #[arg(long)]
         player: Option<String>,
     },
+    /// One player's achievements — the same evaluation the game runs.
+    Awards {
+        /// Whose. Defaults to whoever is selected in the game.
+        #[arg(long)]
+        player: Option<String>,
+        /// Also list what has not been earned yet.
+        #[arg(long)]
+        locked: bool,
+    },
     /// Render the built-in songs and generate their charts.
     Demo {
         /// Directory to write the songs' WAV + chart files into.
@@ -467,6 +476,7 @@ fn main() -> ExitCode {
         Command::SetGenre { chart, genre } => set_genre(&chart, &genre),
         Command::Players { add } => players::run(add.as_deref()),
         Command::Stats { player } => players::stats(player.as_deref()),
+        Command::Awards { player, locked } => players::awards(player.as_deref(), locked),
         Command::History {
             format,
             out,

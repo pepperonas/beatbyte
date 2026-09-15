@@ -164,6 +164,23 @@ pub struct PlayerPerformance {
     /// Never unlatched — a run fails once.
     #[serde(default)]
     failed: bool,
+    /// How often Hype was activated in this run.
+    ///
+    /// `SessionEvent::HypeActivated` existed from the start and
+    /// nothing ever counted it, so the genre's signature mechanic
+    /// left no trace in the play log. Defaults keep old serialized
+    /// state readable.
+    #[serde(default)]
+    hype_activations: u32,
+    /// Energy phrases played clean in this run.
+    #[serde(default)]
+    phrases_completed: u32,
+    /// Sustains held to their end.
+    #[serde(default)]
+    sustains_held: u32,
+    /// Sustains let go early.
+    #[serde(default)]
+    sustains_dropped: u32,
 }
 
 impl PlayerPerformance {
@@ -184,6 +201,10 @@ impl PlayerPerformance {
             offset_samples: 0,
             meter: config.meter_start.clamp(0.0, 1.0),
             failed: false,
+            hype_activations: 0,
+            phrases_completed: 0,
+            sustains_held: 0,
+            sustains_dropped: 0,
         }
     }
 
@@ -262,6 +283,37 @@ impl PlayerPerformance {
     #[must_use]
     pub fn hype_active(&self) -> bool {
         self.hype_active
+    }
+
+    /// How often Hype was activated in this run.
+    #[must_use]
+    pub const fn hype_activations(&self) -> u32 {
+        self.hype_activations
+    }
+
+    /// Energy phrases played clean in this run.
+    #[must_use]
+    pub const fn phrases_completed(&self) -> u32 {
+        self.phrases_completed
+    }
+
+    /// Sustains held to their end, and sustains let go early.
+    #[must_use]
+    pub const fn sustains(&self) -> (u32, u32) {
+        (self.sustains_held, self.sustains_dropped)
+    }
+
+    /// Record how a sustain ended.
+    ///
+    /// Called by the session where it already announces
+    /// `SessionEvent::SustainEnded`, so the count and the event can
+    /// never disagree about the same tail.
+    pub const fn register_sustain(&mut self, held: bool) {
+        if held {
+            self.sustains_held += 1;
+        } else {
+            self.sustains_dropped += 1;
+        }
     }
 
     /// The streak multiplier (without Hype): ×1 up to ×`max_multiplier`.
@@ -358,12 +410,14 @@ impl PlayerPerformance {
     /// Award Hype meter for a completed special phrase.
     pub fn complete_phrase(&mut self) {
         self.hype_meter = (self.hype_meter + self.config.hype_per_phrase).min(1.0);
+        self.phrases_completed += 1;
     }
 
     /// Try to activate Hype. Returns whether activation happened.
     pub fn try_activate_hype(&mut self) -> bool {
         if !self.hype_active && self.hype_meter >= self.config.hype_activation_threshold {
             self.hype_active = true;
+            self.hype_activations += 1;
             true
         } else {
             false

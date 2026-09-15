@@ -82,6 +82,8 @@ pub enum Gesture {
     Rename,
     /// Open the selected player's statistics.
     Stats,
+    /// Open the selected player's achievements.
+    Achievements,
 }
 
 /// What a key press means, given whether a field is open.
@@ -104,6 +106,7 @@ pub fn press_means(key: KeyCode, typed: Option<char>, field_open: bool) -> Press
                 KeyCode::KeyN => Press::Gesture(Gesture::New),
                 KeyCode::KeyR => Press::Gesture(Gesture::Rename),
                 KeyCode::KeyS => Press::Gesture(Gesture::Stats),
+                KeyCode::KeyA => Press::Gesture(Gesture::Achievements),
                 _ => Press::Ignore,
             }
         }
@@ -118,7 +121,8 @@ pub fn footer_hint(field_open: bool, has_players: bool) -> String {
         return "TYPE A NAME   ENTER CONFIRM   ESC CANCEL".to_owned();
     }
     if has_players {
-        "UP/DOWN SELECT   ENTER PLAY AS   S STATS   N NEW   R RENAME   ESC BACK".to_owned()
+        "UP/DOWN SELECT   ENTER PLAY AS   S STATS   A AWARDS   N NEW   R RENAME   ESC BACK"
+            .to_owned()
     } else {
         "N NEW PLAYER   ESC BACK".to_owned()
     }
@@ -282,6 +286,7 @@ fn roster_keys(
     mut history: ResMut<crate::history::PlayHistory>,
     mut next: ResMut<NextState<AppState>>,
     mut chosen: ResMut<crate::stats_ui::StatsFor>,
+    mut awards: ResMut<crate::achievements_ui::AchievementsFor>,
 ) {
     for event in typed.read() {
         if !event.state.is_pressed() {
@@ -324,6 +329,12 @@ fn roster_keys(
                 if let Some(player) = players.0.players.get(cursor.row) {
                     chosen.0 = Some(player.id);
                     next.set(AppState::Stats);
+                }
+            }
+            Press::Gesture(Gesture::Achievements) => {
+                if let Some(player) = players.0.players.get(cursor.row) {
+                    awards.0 = Some(player.id);
+                    next.set(AppState::Achievements);
                 }
             }
             Press::Ignore => {}

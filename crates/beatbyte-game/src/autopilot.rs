@@ -307,6 +307,7 @@ pub fn shot_state(raw: &str) -> Option<AppState> {
         "about" => Some(AppState::About),
         "players" | "roster" => Some(AppState::Players),
         "stats" | "statistics" => Some(AppState::Stats),
+        "achievements" | "awards" => Some(AppState::Achievements),
         _ => None,
     }
 }
@@ -524,6 +525,7 @@ fn autopilot_screenshots(
         AppState::About => Some("about"),
         AppState::Players => Some("players"),
         AppState::Stats => Some("stats"),
+        AppState::Achievements => Some("achievements"),
         _ => None,
     };
     if let Some(name) = moment

@@ -286,6 +286,95 @@ fn truncate(text: &str, width: usize) -> String {
         + "…"
 }
 
+/// Print one player's achievements — the same evaluation the game runs.
+///
+/// Exists for the same reason `stats` does: the game's screen and this
+/// share one implementation, so a number that is wrong is wrong in
+/// both and can be cross-checked against the raw log by hand. It is
+/// also the only way to read the list on a machine whose screen
+/// cannot be photographed.
+pub fn awards(name: Option<&str>, locked: bool) -> ExitCode {
+    match award_report(name, locked) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("error: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// The body of [`awards`].
+///
+/// # Errors
+/// When no such player exists.
+pub fn award_report(name: Option<&str>, locked: bool) -> Result<(), String> {
+    use beatbyte_core::achievements::{CATALOGUE, Category, earned_at, evaluate};
+
+    let roster = load_roster();
+    let history = load_history();
+    let player = match name {
+        Some(wanted) => roster
+            .players
+            .iter()
+            .find(|p| p.name.eq_ignore_ascii_case(wanted))
+            .ok_or_else(|| format!("no player called `{wanted}`"))?,
+        None => roster
+            .current()
+            .ok_or("nobody is selected; name a player or pick one in the game")?,
+    };
+    // Straight from the log, exactly as the game sweeps it — this
+    // deliberately does NOT read `achievements.json`, so the two can
+    // be compared rather than agreeing by construction.
+    let when: std::collections::BTreeMap<String, u64> =
+        earned_at(&history, player.id).into_iter().collect();
+    let progress = evaluate(&history, player.id);
+    let hidden_found = CATALOGUE
+        .iter()
+        .filter(|entry| entry.hidden && when.contains_key(entry.id))
+        .count();
+
+    println!("{}", player.name);
+    println!(
+        "  {} of {} earned, {} of them secret",
+        when.len(),
+        CATALOGUE.len(),
+        hidden_found
+    );
+    for category in Category::ALL {
+        let rows: Vec<(usize, &beatbyte_core::achievements::Achievement)> = CATALOGUE
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.category == category)
+            .filter(|(_, entry)| locked || when.contains_key(entry.id))
+            .collect();
+        if rows.is_empty() {
+            continue;
+        }
+        println!("\n{}", category.label());
+        for (at, entry) in rows {
+            match when.get(entry.id) {
+                Some(ms) => {
+                    let day = beatbyte_core::history::iso_utc(*ms);
+                    println!("  [x] {:<22} {}", entry.title, &day[..10.min(day.len())]);
+                }
+                None if entry.hidden => println!("  [ ] {:<22} (secret)", "? ? ?"),
+                None => {
+                    let step = progress[at];
+                    if step.need > 1.0 {
+                        println!(
+                            "  [ ] {:<22} {:.0} / {:.0}",
+                            entry.title, step.have, step.need
+                        );
+                    } else {
+                        println!("  [ ] {:<22} {}", entry.title, entry.tier.label());
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

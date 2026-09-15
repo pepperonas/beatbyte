@@ -40,6 +40,25 @@ pub struct RunDetail {
     /// player drifts, and whether a calibration helped.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mean_offset_ms: Option<f64>,
+    /// How often Hype was activated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hype_activations: Option<u32>,
+    /// Energy phrases played clean.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phrases_completed: Option<u32>,
+    /// Sustains held to their end.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sustains_held: Option<u32>,
+    /// Sustains let go early.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sustains_dropped: Option<u32>,
+    /// The run ended on an empty rock meter.
+    ///
+    /// Distinct from `completed`: a failed run and an abandoned one
+    /// both stop early, and only one of them is a defeat worth
+    /// remembering.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failed: Option<bool>,
 }
 
 impl RunDetail {
@@ -131,6 +150,22 @@ pub struct PlayEntry {
     /// this library is redesigned in rollovers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chart_hash: Option<String>,
+    /// The song's genre, as the chart declares it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genre: Option<String>,
+    /// The tap assist (no strum needed) was on.
+    ///
+    /// An achievement that cannot tell an assisted run from an
+    /// unassisted one devalues itself, which is why this is logged
+    /// rather than left in `LastResults`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tap_mode: Option<bool>,
+    /// No Fail was on: the meter moved but could not end the run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub no_fail: Option<bool>,
+    /// Practice speed in percent; 100 is full speed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed_percent: Option<u32>,
 }
 
 impl PlayEntry {
@@ -329,6 +364,10 @@ mod tests {
             detail: RunDetail::default(),
             co_players: Vec::new(),
             chart_hash: None,
+            genre: None,
+            tap_mode: None,
+            no_fail: None,
+            speed_percent: None,
         }
     }
 

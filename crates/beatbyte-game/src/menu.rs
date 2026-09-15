@@ -18,6 +18,8 @@ pub enum MenuAction {
     Multiplayer,
     /// Open the roster and its statistics.
     Players,
+    /// Open the achievements overview.
+    Achievements,
     /// Open settings.
     Settings,
     /// Open latency calibration.
@@ -31,10 +33,11 @@ pub enum MenuAction {
 }
 
 impl MenuAction {
-    const ALL: [MenuAction; 8] = [
+    const ALL: [MenuAction; 9] = [
         MenuAction::Play,
         MenuAction::Multiplayer,
         MenuAction::Players,
+        MenuAction::Achievements,
         MenuAction::Settings,
         MenuAction::Calibration,
         MenuAction::InputTest,
@@ -47,6 +50,7 @@ impl MenuAction {
             MenuAction::Play => "PLAY",
             MenuAction::Multiplayer => "MULTIPLAYER",
             MenuAction::Players => "PLAYERS",
+            MenuAction::Achievements => "ACHIEVEMENTS",
             MenuAction::Settings => "SETTINGS",
             MenuAction::Calibration => "CALIBRATION",
             MenuAction::InputTest => "INPUT TEST",
@@ -198,6 +202,7 @@ pub(crate) fn menu_input(
             }
             MenuAction::Multiplayer => next_state.set(AppState::MultiplayerSetup),
             MenuAction::Players => next_state.set(AppState::Players),
+            MenuAction::Achievements => next_state.set(AppState::Achievements),
             MenuAction::Settings => next_state.set(AppState::Settings),
             MenuAction::Calibration => next_state.set(AppState::Calibration),
             MenuAction::InputTest => next_state.set(AppState::InputTest),

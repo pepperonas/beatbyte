@@ -81,6 +81,7 @@ pub fn load() -> Vec<PlayEntry> {
 #[must_use]
 fn run_detail(performance: &beatbyte_core::PlayerPerformance) -> RunDetail {
     let counts = performance.counts();
+    let (held, dropped) = performance.sustains();
     RunDetail {
         best_streak: Some(performance.best_streak()),
         perfect: Some(counts.perfect),
@@ -89,6 +90,11 @@ fn run_detail(performance: &beatbyte_core::PlayerPerformance) -> RunDetail {
         miss: Some(counts.miss),
         overstrums: Some(performance.overstrums()),
         mean_offset_ms: performance.mean_offset_ms(),
+        hype_activations: Some(performance.hype_activations()),
+        phrases_completed: Some(performance.phrases_completed()),
+        sustains_held: Some(held),
+        sustains_dropped: Some(dropped),
+        failed: Some(performance.failed()),
     }
 }
 
@@ -183,6 +189,15 @@ struct RunStart {
     at: std::time::Instant,
 }
 
+/// The set `log_run` is in, so a system that reads the log after a
+/// run can order itself behind the line being written.
+///
+/// Without it the achievement sweep races the append and credits a
+/// run one session late — which works, but the banner is supposed to
+/// arrive now.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RunLogged;
+
 /// Plugin: one line per played track.
 pub struct HistoryPlugin;
 
@@ -190,12 +205,19 @@ impl Plugin for HistoryPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(PlayHistory(load()))
             .add_systems(OnEnter(crate::states::AppState::Gameplay), begin_run)
-            .add_systems(OnExit(crate::states::AppState::Gameplay), log_run)
+            .add_systems(
+                OnExit(crate::states::AppState::Gameplay),
+                log_run.in_set(RunLogged),
+            )
             // The log is appended to while playing, so the screens
             // that read it re-read it on the way in rather than
             // trusting a copy from startup.
             .add_systems(OnEnter(crate::states::AppState::Players), reload_history)
-            .add_systems(OnEnter(crate::states::AppState::Stats), reload_history);
+            .add_systems(OnEnter(crate::states::AppState::Stats), reload_history)
+            .add_systems(
+                OnEnter(crate::states::AppState::Achievements),
+                reload_history,
+            );
     }
 }
 
@@ -233,6 +255,7 @@ fn log_run(
     results: Option<Res<crate::gameplay::LastResults>>,
     completed: Option<Res<RunCompleted>>,
     practice: Option<Res<crate::gameplay::PracticeState>>,
+    settings: Res<crate::config::Settings>,
     autopilot: Option<Res<crate::autopilot::Autopilot>>,
     roster: Option<Res<crate::multiplayer::PlayerRoster>>,
     players: Option<Res<crate::players::Players>>,
@@ -243,6 +266,11 @@ fn log_run(
         return;
     };
     let completed = completed.is_some();
+    // Read once: the resource is consumed by both the flag and the
+    // speed, and an `Option<Res<..>>` moves on first use.
+    let (practice_used, practice_speed) = practice.map_or((false, 100), |practice| {
+        (practice.used, practice.speed_percent)
+    });
     // Player one's numbers, and only from a run that actually
     // finished: `LastResults` is the LAST finished run, so reading
     // it after an abort would attribute an older score to this
@@ -294,7 +322,7 @@ fn log_run(
         track_s: song.chart.song.duration_s,
         completed,
         players: roster.map_or(1, |roster| roster.devices.len().max(1)),
-        practice: practice.is_some_and(|practice| practice.used),
+        practice: practice_used,
         autopilot: autopilot.is_some_and(|autopilot| autopilot.enabled),
         score,
         accuracy,
@@ -310,6 +338,13 @@ fn log_run(
         // be told from a chart that was redesigned easier underneath
         // the player — and this library is redesigned in rollovers.
         chart_hash: Some(beatbyte_chart::chart_hash(&song.chart)),
+        genre: song.chart.song.genre.clone(),
+        // The assists. A run played with the tap assist, with No Fail
+        // on, or at half speed is a different achievement from the
+        // same run without them, and only the log can say which.
+        tap_mode: Some(settings.tap_mode),
+        no_fail: Some(settings.no_fail),
+        speed_percent: Some(practice_speed),
     };
     append(&entry);
 }

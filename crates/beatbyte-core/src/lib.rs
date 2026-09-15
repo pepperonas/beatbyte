@@ -27,6 +27,7 @@
 //! All times are `f64` **seconds on the song timeline** (`0.0` = start
 //! of the audio). Milliseconds appear only at configuration boundaries.
 
+pub mod achievements;
 pub mod difficulty;
 pub mod history;
 pub mod lane;

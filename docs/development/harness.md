@@ -115,7 +115,8 @@ BEATBYTE_SHOT_STATE=settings BEATBYTE_SHOT_DIR=/tmp/shots …   # one screen
 ```
 
 `BEATBYTE_SHOT_STATE` accepts `menu`, `songselect`, `settings`,
-`controls`, `calibration`, `inputtest` and `join` (spelling is forgiving
+`controls`, `calibration`, `inputtest`, `join`, `players`, `stats` and
+`achievements` (spelling is forgiving
 about case, spaces, hyphens and underscores; an unknown name is rejected
 rather than guessed, because silently falling back to the main menu
 would photograph the wrong screen and look like a pass). It exists

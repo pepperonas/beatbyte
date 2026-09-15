@@ -14,6 +14,71 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.0] - 2026-09-15
+
+### Added
+
+- **One hundred achievements, and a screen that says where you
+  stand.** **ACHIEVEMENTS** on the main menu (and `A` on the roster)
+  opens one player's complete list: ten categories, a progress bar
+  and a count on every unfinished one, the date on every finished
+  one, and a banner at the moment one is earned.
+  - **Twelve of them are secret.** A hidden achievement that is
+    not yet earned shows `? ? ?` and gives up neither its
+    description **nor its progress** — a bar at three tenths says
+    "this is a count of ten", which is most of the condition. Earned,
+    it tells the whole story, which is the reward.
+  - **Three controls over the list.** Left and right walk the
+    categories (FIRST STEPS, ENDURANCE, PRECISION, COMBO,
+    DIFFICULTY, DISCOVERY, HYPE, RITUAL, CALENDAR, ODDITIES), `F`
+    filters to earned or locked, and `O` orders by catalogue, by
+    CLOSEST (what to go for next, with the finished ones out of the
+    way) or by NEWEST. Neither key is one the menu table already
+    steers with — W/A/S/D are the four directions, so a sort on `S`
+    would have cycled the order and walked the cursor on one press.
+    The footer names the state of both cycles, because a cycling key
+    whose value is not on screen is a key nobody presses twice.
+  - **Creative ones alongside the ladders.** Finish a love song on
+    Valentine's Day. Play on the twenty-ninth of February. Finish a
+    song that once beat you. Strum at more thin air than notes.
+    Finish a run at exactly fifty per cent.
+  - **Nothing here rewards excess.** No achievement asks for a number
+    of runs in a day, a sitting longer than five songs, or money.
+
+- **Nine new facts in the play log**, all optional and additive, so a
+  line written before they existed reads as "not recorded" rather
+  than as a zero: Hype activations, energy phrases completed,
+  sustains held and dropped, whether the run ended on an empty meter,
+  the song's genre, and the three assists (tap mode, No Fail,
+  practice speed). An achievement that cannot tell an assisted run
+  from an unassisted one devalues itself, which is why the assists
+  are logged rather than left in the results resource. Eight of the
+  nine are read by a rule today; `speed_percent` is recorded for the
+  record and for a later one — `NoPractice` already covers the case
+  by the flag the session sets.
+
+### Changed
+
+- **The catalogue is data in one place and the evaluator is total**
+  ([ADR-0017](docs/decisions/ADR-0017-achievements-derived-not-counted.md)).
+  Every rule is re-derived from the player's whole history on every
+  pass; the only thing stored is `{player: {achievement: when}}`.
+  Three things fall out of that: an achievement added a year from now
+  unlocks **retroactively**, from runs played before anybody thought
+  of it; no counter can drift out of step with the log that feeds it,
+  so a changed catalogue needs no migration; and a threshold raised
+  later cannot take an unlock back. Adding an achievement is adding a
+  row — the evaluator never learns a name.
+- **A date is the run that earned it, not the day the code shipped.**
+  The first launch after this credits everything the log already
+  earned, silently and with the real dates. A player who has played
+  for a year would otherwise meet fifty banners in a row, all stamped
+  today, telling them nothing.
+- **The autopilot earns nothing**, in exactly one place
+  (`achievements::runs`) that no filter can switch back on. It plays
+  perfectly; counted, a harness run would hand out the hardest
+  achievements in the catalogue.
+
 ## [0.16.0] - 2026-09-15
 
 ### Added

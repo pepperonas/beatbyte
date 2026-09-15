@@ -567,6 +567,7 @@ impl TrackSession {
         }
         if to_s >= event.end_time_s() {
             self.sustain = None;
+            self.performance.register_sustain(true);
             events.push(SessionEvent::SustainEnded {
                 event_index: active.event_index,
                 completed: true,
@@ -578,9 +579,13 @@ impl TrackSession {
     fn end_sustain(&mut self, time_s: f64, events: &mut Vec<SessionEvent>) {
         if let Some(active) = self.sustain.take() {
             let event = self.track.events()[active.event_index];
+            let completed = time_s >= event.end_time_s() - SUSTAIN_RELEASE_GRACE_S;
+            // Counted where the event is announced, so the tally and
+            // the event can never disagree about the same tail.
+            self.performance.register_sustain(completed);
             events.push(SessionEvent::SustainEnded {
                 event_index: active.event_index,
-                completed: time_s >= event.end_time_s() - SUSTAIN_RELEASE_GRACE_S,
+                completed,
             });
         }
     }

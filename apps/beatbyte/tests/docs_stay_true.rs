@@ -279,6 +279,55 @@ fn the_harness_reference_documents_every_switch() {
 }
 
 #[test]
+fn the_catalogue_document_lists_every_achievement() {
+    // `docs/achievements.md` is the engineering reference for the
+    // hundred achievements and the field each rule reads. It is
+    // written from the catalogue and read by people; without this it
+    // would be a snapshot of whatever the catalogue was on the day
+    // somebody last looked.
+    let code = read("crates/beatbyte-core/src/achievements.rs");
+    let doc = read("docs/achievements.md");
+    let ids: Vec<&str> = code
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("id: \""))
+        .filter_map(|rest| rest.split('"').next())
+        .collect();
+    assert_eq!(
+        ids.len(),
+        100,
+        "the catalogue is meant to hold exactly a hundred achievements"
+    );
+    let missing: Vec<&&str> = ids
+        .iter()
+        .filter(|id| !doc.contains(&format!("| `{id}` |")))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "docs/achievements.md does not list: {missing:?}"
+    );
+    // And nothing the catalogue has dropped may linger in the
+    // document: a row for an achievement nobody can earn is worse
+    // than a missing one, because it reads as a promise.
+    let rows = doc.lines().filter(|line| line.starts_with("| `")).count();
+    assert_eq!(
+        rows,
+        ids.len(),
+        "the document has rows the catalogue does not"
+    );
+    // The count the document states about itself.
+    let hidden = code.matches("hidden: true").count();
+    assert!(
+        doc.contains(&format!(
+            "{} achievements, {hidden} of them hidden.",
+            ids.len()
+        )),
+        "the document's own summary line disagrees with the catalogue \
+         ({} achievements, {hidden} hidden)",
+        ids.len()
+    );
+}
+
+#[test]
 fn checkable_badges_state_the_truth() {
     let readme = read("README.md");
     let manifest = read("Cargo.toml");

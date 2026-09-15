@@ -5,6 +5,8 @@
 //! in [`beatbyte_core`]; this crate turns them into pixels and sound.
 
 pub mod about;
+pub mod achievements;
+pub mod achievements_ui;
 pub mod audio_sys;
 pub mod autopilot;
 pub mod boot;
@@ -240,6 +242,8 @@ pub fn run() -> AppExit {
         players::PlayersPlugin,
         players_ui::PlayersUiPlugin,
         stats_ui::StatsUiPlugin,
+        achievements::AchievementsPlugin,
+        achievements_ui::AchievementsUiPlugin,
     ));
 
     // `BEATBYTE_FPS=1` turns on periodic frame-time reporting. Off by

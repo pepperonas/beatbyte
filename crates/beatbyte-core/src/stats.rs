@@ -509,6 +509,10 @@ mod tests {
             detail: RunDetail::default(),
             co_players: Vec::new(),
             chart_hash: None,
+            genre: None,
+            tap_mode: None,
+            no_fail: None,
+            speed_percent: None,
         }
     }
 

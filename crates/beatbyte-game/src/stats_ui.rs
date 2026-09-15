@@ -791,9 +791,14 @@ mod tests {
                 miss: Some(5),
                 overstrums: Some(2),
                 mean_offset_ms: Some(-12.0),
+                ..beatbyte_core::history::RunDetail::default()
             },
             co_players: Vec::new(),
             chart_hash: None,
+            genre: None,
+            tap_mode: Some(false),
+            no_fail: Some(false),
+            speed_percent: Some(100),
         }
     }
 
