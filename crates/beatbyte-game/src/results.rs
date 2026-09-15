@@ -54,6 +54,8 @@ struct FeedbackGiven {
     /// How many sentences this visit recorded. A rating replaces the
     /// previous one; a sentence is added to it.
     comments: usize,
+    /// The blind test's verdict and its reveal, once one was given.
+    taste: Option<String>,
 }
 
 /// The comment field: closed until `C` opens it.
@@ -103,12 +105,19 @@ fn fun_rating_for(key: KeyCode) -> Option<u8> {
 /// The footer for the current feedback offer. No session log means
 /// no rating hint — a key hint that does nothing would be a lie, and
 /// skipping must stay free of any nudge (A5: zero friction).
-fn results_footer(can_rate: bool, can_versus: bool) -> String {
+fn results_footer(can_rate: bool, can_versus: bool, taste: bool) -> String {
     let mut parts: Vec<&str> = Vec::new();
     if can_rate {
         parts.push("1-5 rate fun");
     }
-    if can_versus {
+    if taste {
+        // The blind test asks about the two runs just heard, in the
+        // order they were heard — never about "the new one", which
+        // would answer itself.
+        parts.push("LEFT the first was better");
+        parts.push("RIGHT the second");
+        parts.push("DOWN no difference");
+    } else if can_versus {
         parts.push("LEFT worse than before");
         parts.push("RIGHT better");
     }
@@ -152,12 +161,22 @@ fn needs_recalibration(mean_ms: f64) -> bool {
 }
 
 /// What the status line says for the feedback given so far.
-fn feedback_status(fun: Option<u8>, versus: Option<&str>, comments: usize) -> String {
+fn feedback_status(
+    fun: Option<u8>,
+    versus: Option<&str>,
+    taste: Option<&str>,
+    comments: usize,
+) -> String {
     let mut parts: Vec<String> = Vec::new();
     if let Some(rating) = fun {
         parts.push(format!("fun {rating}/5"));
     }
-    if let Some(verdict) = versus {
+    // The blind test's own wording, reveal included; it replaces the
+    // versus phrase rather than sitting beside it, because they are
+    // two ways of saying the same verdict.
+    if let Some(verdict) = taste {
+        parts.push(verdict.to_owned());
+    } else if let Some(verdict) = versus {
         parts.push(format!("felt {verdict} than the previous version"));
     }
     if comments > 0 {
@@ -198,6 +217,7 @@ fn spawn_results(
     song: Option<Res<crate::boot::LoadedSong>>,
     mut given: ResMut<FeedbackGiven>,
     mut field: ResMut<CommentField>,
+    taste: Option<Res<crate::taste::TasteTest>>,
     font: Res<UiFont>,
 ) {
     let Some(results) = results else {
@@ -213,6 +233,11 @@ fn spawn_results(
     // to test a bypass instead).
     let can_rate = logs.is_some_and(|l| !l.files.is_empty());
     let can_versus = can_rate && song.is_some_and(|s| s.chart.provenance.is_some());
+    // A blind test asks its own question instead: which of the two
+    // passages just heard was better. It is offered only once BOTH
+    // sides have actually played — an abandoned test has nothing to
+    // compare, and asking anyway would collect an answer about one.
+    let can_taste = can_rate && taste.is_some_and(|test| !test.has_next());
     *given = FeedbackGiven::default();
     *field = CommentField::default();
 
@@ -266,7 +291,7 @@ fn spawn_results(
             crate::prompts::device_footer(
                 parent,
                 &font,
-                &results_footer(can_rate, can_versus),
+                &results_footer(can_rate, can_versus, can_taste),
                 &results_footer_pad(),
             );
         });
@@ -715,7 +740,12 @@ fn results_comment(
         sounds.write(crate::sfx::UiSound::Back);
         say(
             &mut status,
-            feedback_status(given.fun, given.versus, given.comments),
+            feedback_status(
+                given.fun,
+                given.versus,
+                given.taste.as_deref(),
+                given.comments,
+            ),
         );
         return;
     }
@@ -731,7 +761,12 @@ fn results_comment(
         sounds.write(crate::sfx::UiSound::Confirm);
         say(
             &mut status,
-            feedback_status(given.fun, given.versus, given.comments),
+            feedback_status(
+                given.fun,
+                given.versus,
+                given.taste.as_deref(),
+                given.comments,
+            ),
         );
         return;
     }
@@ -759,6 +794,7 @@ fn results_input(
     mouse: Res<ButtonInput<MouseButton>>,
     logs: Option<Res<crate::telemetry::SessionLogFiles>>,
     song: Option<Res<crate::boot::LoadedSong>>,
+    taste: Option<Res<crate::taste::TasteTest>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
     mut status: Query<&mut Text, With<FeedbackStatus>>,
     mut given: ResMut<FeedbackGiven>,
@@ -783,11 +819,58 @@ fn results_input(
             given.fun = Some(rating);
             changed = true;
         }
+        // The blind test owns the arrows when it is the question on
+        // screen — one verdict, not two competing ones.
+        let blind = taste.as_ref().filter(|test| !test.has_next());
+        if let Some(test) = blind {
+            let choice = if keys.just_pressed(KeyCode::ArrowLeft) {
+                Some(crate::taste::Choice::First)
+            } else if keys.just_pressed(KeyCode::ArrowRight) {
+                Some(crate::taste::Choice::Second)
+            } else if keys.just_pressed(KeyCode::ArrowDown) {
+                Some(crate::taste::Choice::Same)
+            } else {
+                None
+            };
+            if let Some(choice) = choice {
+                let hashes = [
+                    test.versions[0].hash.as_str(),
+                    test.versions[1].hash.as_str(),
+                ];
+                if let Some((verdict, parent)) =
+                    crate::taste::versus_line(choice, test.order, hashes)
+                {
+                    crate::telemetry::append_feedback(
+                        logs,
+                        &beatbyte_core::telemetry::NoteLine::Versus {
+                            versus: verdict,
+                            parent,
+                        },
+                    );
+                }
+                let said = match choice {
+                    crate::taste::Choice::First => "the first one was better",
+                    crate::taste::Choice::Second => "the second one was better",
+                    crate::taste::Choice::Same => "no difference between them",
+                };
+                // The reveal comes only now: knowing which was which
+                // before answering would decide the answer.
+                let names = [
+                    test.versions[0].name.as_str(),
+                    test.versions[1].name.as_str(),
+                ];
+                given.taste = Some(format!(
+                    "{said} · {}",
+                    crate::taste::reveal(test.order, names)
+                ));
+                changed = true;
+            }
+        }
         let parent_hash = song
             .as_ref()
             .and_then(|s| s.chart.provenance.as_ref())
             .map(|p| p.parent_hash.clone());
-        if let Some(parent) = parent_hash {
+        if let Some(parent) = parent_hash.filter(|_| blind.is_none()) {
             let verdict = if keys.just_pressed(KeyCode::ArrowLeft) {
                 Some("worse")
             } else if keys.just_pressed(KeyCode::ArrowRight) {
@@ -809,7 +892,12 @@ fn results_input(
         }
         if changed {
             if let Ok(mut text) = status.single_mut() {
-                text.0 = feedback_status(given.fun, given.versus, given.comments);
+                text.0 = feedback_status(
+                    given.fun,
+                    given.versus,
+                    given.taste.as_deref(),
+                    given.comments,
+                );
             }
             sounds.write(crate::sfx::UiSound::Navigate);
         }
@@ -835,6 +923,9 @@ fn despawn_results(mut commands: Commands, entities: Query<Entity, With<ResultsS
     for entity in &entities {
         commands.entity(entity).despawn();
     }
+    // The blind test ends with its verdict. Left behind, it would
+    // crop the NEXT song to this one's window.
+    commands.remove_resource::<crate::taste::TasteTest>();
 }
 
 #[cfg(test)]
@@ -867,25 +958,37 @@ mod tests {
     fn the_footer_offers_only_what_works() {
         // Zero friction cuts both ways: no phantom hints when there
         // is no log to rate into, and the exit hint is always there.
-        assert_eq!(results_footer(false, false), "ENTER back to browser");
-        let rate_only = results_footer(true, false);
+        assert_eq!(results_footer(false, false, false), "ENTER back to browser");
+        let rate_only = results_footer(true, false, false);
         assert!(rate_only.contains("1-5 rate fun"));
         assert!(
             rate_only.contains("C comment"),
             "a run that can be rated can be described: {rate_only}"
         );
         assert!(
-            !results_footer(false, false).contains("C comment"),
+            !results_footer(false, false, false).contains("C comment"),
             "no log, no offer — a hint that does nothing is a lie"
         );
         assert!(
             !rate_only.contains("worse"),
             "no versus hint without a parent"
         );
-        let full = results_footer(true, true);
+        let full = results_footer(true, true, false);
         assert!(full.contains("LEFT worse"));
         assert!(full.contains("RIGHT better"));
         assert!(full.ends_with("ENTER back to browser"));
+        // A blind test asks about the two runs just heard — and asks
+        // it INSTEAD of the versus question, never beside it: two
+        // verdicts on the same arrows would record whichever the code
+        // happened to reach first.
+        let blind = results_footer(true, true, true);
+        assert!(blind.contains("LEFT the first was better"), "{blind}");
+        assert!(blind.contains("RIGHT the second"), "{blind}");
+        assert!(blind.contains("DOWN no difference"), "{blind}");
+        assert!(
+            !blind.contains("worse than before"),
+            "the blind question replaces the versus one: {blind}"
+        );
     }
 
     #[test]
@@ -907,23 +1010,38 @@ mod tests {
 
     #[test]
     fn the_status_line_reads_back_what_was_recorded() {
-        assert_eq!(feedback_status(None, None, 0), "");
-        assert_eq!(feedback_status(Some(4), None, 0), "recorded: fun 4/5");
+        assert_eq!(feedback_status(None, None, None, 0), "");
+        assert_eq!(feedback_status(Some(4), None, None, 0), "recorded: fun 4/5");
         assert_eq!(
-            feedback_status(Some(4), Some("better"), 0),
+            feedback_status(Some(4), Some("better"), None, 0),
             "recorded: fun 4/5 · felt better than the previous version"
         );
         assert_eq!(
-            feedback_status(None, Some("worse"), 0),
+            feedback_status(None, Some("worse"), None, 0),
             "recorded: felt worse than the previous version"
         );
         // A sentence ADDS to a rating; a second one adds again,
         // because unlike a rating it does not replace the first.
         assert_eq!(
-            feedback_status(Some(3), None, 1),
+            feedback_status(Some(3), None, None, 1),
             "recorded: fun 3/5 · a comment"
         );
-        assert_eq!(feedback_status(None, None, 2), "recorded: 2 comments");
+        assert_eq!(feedback_status(None, None, None, 2), "recorded: 2 comments");
+        // The blind verdict carries its own wording AND the reveal,
+        // and it stands in for the versus phrase rather than beside
+        // it — one verdict must not read as two.
+        let blind = feedback_status(
+            Some(5),
+            Some("better"),
+            Some("the second one was better · you heard chart.json first, then chart.v2.json"),
+            0,
+        );
+        assert_eq!(
+            blind,
+            "recorded: fun 5/5 · the second one was better · you heard chart.json first, then \
+             chart.v2.json"
+        );
+        assert!(!blind.contains("previous version"));
     }
 
     #[test]

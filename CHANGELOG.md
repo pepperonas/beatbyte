@@ -14,6 +14,50 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.15.11] - 2026-09-15
+
+### Added
+
+- **The blind taste test.** `T` in the song browser plays the same half minute
+  of a song **twice**, on two chart versions, without saying which is which.
+  Afterwards the results screen asks one question — was the first one better,
+  the second, or neither — and only then reveals which was which.
+
+  This is the fast half of the adaptive loop (ADR-0011). Rating a whole run
+  measures the song, the day and how awake you are all at once, and two ratings
+  from two evenings are barely comparable; hearing one passage twice in a row
+  compares the charting and nothing else. Knowing which one is "the new one"
+  decides the answer before the music starts, so the order comes from a seed and
+  the names stay hidden until the verdict is in.
+
+  How it picks what to play: the folder's active chart and the version it came
+  from (a redesign writes the next number and moves the pointer, so the
+  neighbour is the parent); the window is the chart's own preview anchor — where
+  the generator decided the song shows itself — or, without one, the busiest
+  thirty seconds of the difficulty being played. Both sides get the same run-up
+  and the same passage, and both charts are **cropped** to it, so each side ends
+  by running out rather than by a timer, and every rule downstream — the end of
+  the run, the results snapshot, the telemetry total — works unchanged.
+
+  The verdict is recorded as the existing pairwise `versus` line against the
+  other version's hash, so `beatbyte-cli review` and `dossier` tally blind tests
+  and ordinary better/worse verdicts in one place. The 1–5 rating and the
+  comment field are offered as always.
+
+  New harness switch `BEATBYTE_AUTOPILOT_TASTE=<title>`: real arrows to the
+  song, a real `T`, then the built test is checked for being blind at all — two
+  different charts, both sides scheduled, one shared window — and on the results
+  screen a real arrow answers it and the session log has to show the line.
+
+### Fixed
+
+- The count-in now counts toward wherever the run's music begins instead of
+  always toward zero, and the audio is placed there before it is heard. A run
+  that starts inside a song would otherwise have to teleport its clock forward
+  once the music was already playing — which is exactly what the autopilot's
+  teleport guard exists to catch, and for good reason: a clock that jumps plays
+  every note it skipped perfectly, in one frame, and passes.
+
 ## [0.15.10] - 2026-09-15
 
 ### Added

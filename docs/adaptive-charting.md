@@ -173,6 +173,29 @@ documented step by step in
    untouched). The smallest honest human signal, and the only one
    the plans asked for that telemetry cannot derive.
 
+6. **A6 — The blind taste test** *(v0.15.11)*: `T` in the browser
+   plays one thirty-second window of a song **twice**, on two chart
+   versions, in a seeded order and unlabelled; the results screen
+   asks which was better and reveals which was which only after the
+   answer. It records the existing pairwise `versus` line, so blind
+   tests and ordinary better/worse verdicts tally in one place.
+
+   The reason it exists: a rating of a whole run measures the song,
+   the day and how awake the player is all at once, and two ratings
+   from two evenings are barely comparable — which makes the loop's
+   slowest step the human one. Hearing the same passage twice in a
+   row compares the charting and nothing else, and blind because
+   knowing which one is "the new one" decides the answer before the
+   music starts.
+
+   What it picks: the folder's active version and the one it came
+   from (a redesign writes the next number and moves the pointer, so
+   the neighbour is the parent); the window is the chart's own
+   preview anchor, or the busiest thirty seconds of the difficulty
+   being played. Both charts are **cropped** to it, so each side ends
+   by running out rather than by a timer — the end of the run, the
+   results snapshot and the telemetry total then work unchanged.
+
 **Parked** with reopen criteria (a real player population, or an
 explicit request): population percentiles, automated rollout/A-B
 infrastructure, ML preference and skill models, personalization.

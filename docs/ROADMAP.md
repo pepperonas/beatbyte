@@ -834,6 +834,23 @@ before the one it depends on is checked:
   the untagged-serde collision (a field named `o` on the new line
   kind gets mis-parsed as an overstrum — seen to fail).
 
+- [x] **A6 — The blind taste test** *(v0.15.11)*. `T` in the browser
+  plays the same thirty-second window twice, on two chart versions,
+  in a seeded order and unlabelled; the results screen asks which was
+  better (LEFT first / RIGHT second / DOWN neither) and reveals the
+  names only after the verdict, which is recorded as the existing
+  pairwise `versus` line against the other version's hash. The pair
+  is the folder's active version and its parent; both charts are
+  cropped to the window so each side runs out rather than being
+  stopped, and both get the same run-up. Verified: 15 pins on the
+  decisions (the pair, the crop, the run-up, the order, and the
+  verdict naming the version the session log names rather than the
+  slot it played in), plus a new `BEATBYTE_AUTOPILOT_TASTE` drill
+  that presses the real `T`, checks the built test is actually blind
+  — two DIFFERENT charts, both sides scheduled, one shared window —
+  and answers it on the results screen with a real arrow, requiring
+  the verdict to appear in the session log.
+
 Parked with reopen criteria (a real player population, or an explicit
 request): population percentiles, automated rollout/A-B
 infrastructure, ML preference and skill models, personalization.

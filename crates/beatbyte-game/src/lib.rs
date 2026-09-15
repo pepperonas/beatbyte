@@ -41,6 +41,7 @@ pub mod smart_lyrics;
 pub mod song_select;
 pub mod states;
 pub mod surfaces;
+pub mod taste;
 pub mod telemetry;
 mod theme;
 pub mod transition;

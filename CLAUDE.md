@@ -773,6 +773,17 @@ artifact, smoke-test it (neutral CWD!), then
   result against the reference before measuring anything. Pixel
   metrics prove a change happened; only looking proves it is the
   right one.
+- **A run that begins inside a song must COUNT IN there, not jump
+  there.** The blind taste test plays a window from the middle of a
+  track; the obvious build — let the count-in run to zero, start the
+  music, then seek both the clock and the audio to the window — is the
+  one shape the autopilot's teleport guard exists to catch, because a
+  clock that jumps forward plays every note it skipped perfectly in
+  one frame and passes. `PendingMusic` therefore carries WHERE the
+  run's music begins: the clock starts at `start − PREROLL`, the
+  count-in counts toward `start`, and the audio is seeked before it is
+  ever heard. Anything that adds another "start somewhere else" mode
+  goes through that field rather than through a seek after the fact.
 - **An autopilot verdict could be failed by the room, and the
   telemetry says so.** Real device input went into the same session
   the injector plays into: a key, a pad button or a click at the desk

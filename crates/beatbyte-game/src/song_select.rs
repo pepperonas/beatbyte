@@ -711,7 +711,7 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
             crate::prompts::device_footer(
                 parent,
                 font,
-                "UP/DOWN song  LEFT/RIGHT difficulty  S sort  F search  ENTER rock  D add  L lyrics  K align  G redesign  Q queue MC set  P play set  E edit  DEL delete  ESC back",
+                "UP/DOWN song  LEFT/RIGHT difficulty  S sort  F search  ENTER rock  D add  L lyrics  K align  G redesign  T taste test  Q queue MC set  P play set  E edit  DEL delete  ESC back",
                 "D-PAD song and difficulty  SOUTH rock  EAST back",
             );
             ui_kit::back_button(parent, font, "MAIN MENU");
@@ -1186,6 +1186,10 @@ fn browser_input(
         sounds.write(crate::sfx::UiSound::Confirm);
         match prepare_song(entry, &start.builtins) {
             Ok(song) => {
+                // An ordinary run is not a blind test: a leftover one
+                // would crop this song to a window and ask for a
+                // verdict nobody gave.
+                commands.remove_resource::<crate::taste::TasteTest>();
                 commands.insert_resource(song);
                 next_state.set(AppState::Gameplay);
             }
@@ -1297,6 +1301,61 @@ fn browser_input(
             }
         }
     }
+    // T hears the same half minute twice, on two chart versions, in
+    // an order that is not told: the blind taste test. The verdict
+    // and the rating land on the results screen like any other run's.
+    if !searching && keys.just_pressed(KeyCode::KeyT) {
+        match &entry.source {
+            SongSource::Builtin(_) => {
+                sounds.write(crate::sfx::UiSound::Error);
+                status.0 = "the built-in songs have only one version".to_owned();
+            }
+            SongSource::File { chart_path, .. } => {
+                // The seed is the clock: a fresh order every test, and
+                // the order it chose is in the log.
+                let seed = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_nanos() as u64);
+                match crate::taste::build(chart_path, selected.0, seed) {
+                    Ok(test) => {
+                        let Some(index) = test.current() else {
+                            return;
+                        };
+                        let mut song = match prepare_song(entry, &start.builtins) {
+                            Ok(song) => song,
+                            Err(reason) => {
+                                sounds.write(crate::sfx::UiSound::Error);
+                                status.0 = format!("taste test: {reason}");
+                                return;
+                            }
+                        };
+                        song.chart = test.versions[index].chart.clone();
+                        info!(
+                            "taste test: \"{}\" on {} — {} against {}, {:.1}-{:.1}s",
+                            entry.title,
+                            selected.0,
+                            test.versions[0].name,
+                            test.versions[1].name,
+                            test.window.0,
+                            test.window.1
+                        );
+                        sounds.write(crate::sfx::UiSound::Confirm);
+                        // A set left over from an earlier P would
+                        // take the handover away from the test.
+                        commands.remove_resource::<crate::mc::McSet>();
+                        commands.insert_resource(test);
+                        commands.insert_resource(song);
+                        next_state.set(AppState::Gameplay);
+                        return;
+                    }
+                    Err(reason) => {
+                        sounds.write(crate::sfx::UiSound::Error);
+                        status.0 = format!("taste test: {reason}");
+                    }
+                }
+            }
+        }
+    }
     // Q queues the highlighted song for an MC set (again removes it);
     // P plays the queued set as one continuous DJ performance.
     if !searching && keys.just_pressed(KeyCode::KeyQ) {
@@ -1340,6 +1399,7 @@ fn browser_input(
         };
         info!("mc set: starting with {} song(s)", songs.len());
         sounds.write(crate::sfx::UiSound::Confirm);
+        commands.remove_resource::<crate::taste::TasteTest>();
         commands.insert_resource(crate::mc::McSet { songs, position: 0 });
         commands.insert_resource(first);
         start.mc_queue.0.clear();

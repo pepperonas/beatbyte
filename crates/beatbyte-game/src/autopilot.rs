@@ -218,6 +218,24 @@ impl Plugin for AutopilotPlugin {
                         .run_if(in_state(AppState::SongSelect)),
                 );
             }
+            if std::env::var_os("BEATBYTE_AUTOPILOT_TASTE").is_some() {
+                // Blind-test validation: real arrow keys to the song,
+                // a real `T`, then the built test is the verdict —
+                // and on the results screen a real arrow answers it
+                // and the session log has to show the line.
+                app.add_systems(
+                    PreUpdate,
+                    autopilot_taste
+                        .after(bevy::input::InputSystems)
+                        .run_if(in_state(AppState::SongSelect)),
+                )
+                .add_systems(
+                    PreUpdate,
+                    autopilot_taste_verdict
+                        .after(bevy::input::InputSystems)
+                        .run_if(in_state(AppState::Results)),
+                );
+            }
             if std::env::var_os("BEATBYTE_AUTOPILOT_MODEL").is_some() {
                 // Model-download validation: into the settings screen,
                 // real arrow keys to the LYRICS MODEL row, real Enter,
@@ -763,6 +781,7 @@ fn autopilot_song_select(
         // a song.
         if std::env::var_os("BEATBYTE_AUTOPILOT_DELETE").is_some()
             || std::env::var_os("BEATBYTE_AUTOPILOT_ALIGN").is_some()
+            || std::env::var_os("BEATBYTE_AUTOPILOT_TASTE").is_some()
         {
             return;
         }
@@ -1025,6 +1044,167 @@ fn autopilot_rate_return(
         }
         _ => {}
     }
+}
+
+/// `BEATBYTE_AUTOPILOT_TASTE=<title>`: drive the blind taste test
+/// from the browser with REAL keys — arrows to the song, then `T` —
+/// and verify the test that came out of it is actually blind: two
+/// DIFFERENT charts, both sides scheduled, one shared window.
+///
+/// A test built from one chart twice, or from a window of zero
+/// length, would still play and still ask its question; the answer
+/// would simply mean nothing. That is the failure this drill exists
+/// to make loud.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
+fn autopilot_taste(
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    library: Res<crate::library::SongLibrary>,
+    view: Res<crate::song_select::BrowserView>,
+    cursor: Res<crate::song_select::BrowserCursor>,
+    taste: Option<Res<crate::taste::TasteTest>>,
+    status: Res<crate::import::ImportStatus>,
+    mut frame: Local<u32>,
+    mut downs: Local<Option<u32>>,
+    mut app_exit: MessageWriter<AppExit>,
+) {
+    let Some(target) = std::env::var("BEATBYTE_AUTOPILOT_TASTE").ok() else {
+        return;
+    };
+    let needle = target.to_lowercase();
+    let Some(index) = library
+        .entries
+        .iter()
+        .position(|e| e.title.to_lowercase().contains(&needle))
+    else {
+        error!("autopilot: no song matching `{target}` to taste-test");
+        deliver(&mut app_exit, AppExit::error());
+        return;
+    };
+    // The browser shows the library SORTED: the arrow count is the
+    // song's row in the view minus where the cursor already sits,
+    // fixed on the first frame (the cursor moves under the presses).
+    let downs = *downs.get_or_insert_with(|| {
+        let row = view.order.iter().position(|&i| i == index).unwrap_or(0);
+        row.saturating_sub(cursor.0) as u32
+    });
+    let step = *frame / 2;
+    let pressing = (*frame).is_multiple_of(2);
+    if step < downs {
+        if pressing {
+            keys.press(KeyCode::ArrowDown);
+        } else {
+            keys.release(KeyCode::ArrowDown);
+        }
+    } else if step == downs {
+        if pressing {
+            keys.press(KeyCode::KeyT);
+        } else {
+            keys.release(KeyCode::KeyT);
+        }
+    } else if step > downs + 2 {
+        let Some(test) = taste else {
+            error!(
+                "autopilot: taste drill FAILED — T built no test ({})",
+                status.0
+            );
+            deliver(&mut app_exit, AppExit::error());
+            *frame += 1;
+            return;
+        };
+        let same = test.versions[0].hash == test.versions[1].hash;
+        let span = test.window.1 - test.window.0;
+        let both_sides = test.order[0] != test.order[1];
+        if same || span <= 0.0 || !both_sides || test.played != 0 {
+            error!(
+                "autopilot: taste drill FAILED — same chart {same}, window {span:.1}s, order \
+                 {:?}, played {}",
+                test.order, test.played
+            );
+            deliver(&mut app_exit, AppExit::error());
+            *frame += 1;
+            return;
+        }
+        info!(
+            "autopilot: taste drill PASSED — {} against {}, {:.1}s from {:.1}s",
+            test.versions[0].name, test.versions[1].name, span, test.window.0
+        );
+        // The run itself now plays both sides; the verdict arm on the
+        // results screen finishes the drill.
+    }
+    *frame += 1;
+}
+
+/// The second half of the taste drill: on the results screen, press a
+/// real arrow to name a side, then read the session log back and
+/// verify the pairwise verdict actually landed in it.
+fn autopilot_taste_verdict(
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    logs: Option<Res<crate::telemetry::SessionLogFiles>>,
+    taste: Option<Res<crate::taste::TasteTest>>,
+    mut frame: Local<u32>,
+    mut app_exit: MessageWriter<AppExit>,
+) {
+    if std::env::var_os("BEATBYTE_AUTOPILOT_TASTE").is_none() {
+        return;
+    }
+    match *frame {
+        4 => keys.press(KeyCode::ArrowRight),
+        5 => keys.release(KeyCode::ArrowRight),
+        10 => {
+            let Some(test) = taste else {
+                error!("autopilot: taste verdict FAILED — the test is gone");
+                deliver(&mut app_exit, AppExit::error());
+                *frame += 1;
+                return;
+            };
+            // RIGHT means "the second one", and the log names the
+            // chart that played second — so the line must read
+            // "better" against the FIRST side's hash.
+            let want = test.versions[test.order[0]].hash.clone();
+            let Some(logs) = logs.as_ref().filter(|l| !l.files.is_empty()) else {
+                error!("autopilot: taste verdict FAILED — no session log");
+                deliver(&mut app_exit, AppExit::error());
+                *frame += 1;
+                return;
+            };
+            for path in &logs.files {
+                let content = std::fs::read_to_string(path).unwrap_or_default();
+                let Some((_, lines)) = beatbyte_core::telemetry::parse_session(&content) else {
+                    error!(
+                        "autopilot: taste verdict FAILED — {} unparseable",
+                        path.display()
+                    );
+                    deliver(&mut app_exit, AppExit::error());
+                    *frame += 1;
+                    return;
+                };
+                let landed = lines.iter().any(|line| {
+                    matches!(
+                        line,
+                        beatbyte_core::telemetry::NoteLine::Versus { versus, parent }
+                            if versus == "better" && *parent == want
+                    )
+                });
+                if !landed {
+                    error!(
+                        "autopilot: taste verdict FAILED — {} has no `better` against {want}",
+                        path.display()
+                    );
+                    deliver(&mut app_exit, AppExit::error());
+                    *frame += 1;
+                    return;
+                }
+            }
+            info!(
+                "autopilot: taste verdict PASSED — \"the second one\" recorded against {want} in \
+                 {} log(s)",
+                logs.files.len()
+            );
+            deliver(&mut app_exit, AppExit::Success);
+        }
+        _ => {}
+    }
+    *frame += 1;
 }
 
 /// `BEATBYTE_AUTOPILOT_SPEED=<50-150>`: verify mid-run that song

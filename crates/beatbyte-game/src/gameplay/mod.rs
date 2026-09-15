@@ -315,9 +315,13 @@ impl PracticeState {
 #[derive(Component)]
 pub struct GameplayScreen;
 
-/// The song audio waiting for the count-in to elapse.
+/// The song audio waiting for the count-in to elapse: what to play,
+/// the crossfade length for an MC handover, and WHERE in the song to
+/// start — zero for every ordinary run, the window's start for a
+/// taste test, which begins its count-in there instead of teleporting
+/// the clock once the music is already running.
 #[derive(Resource)]
-struct PendingMusic(SongAudio, Option<f32>);
+struct PendingMusic(SongAudio, Option<f32>, f64);
 
 /// Marker for the count-in banner.
 #[derive(Component)]
@@ -384,6 +388,7 @@ impl Plugin for GameplayPlugin {
                     )
                         .chain(),
                     lyrics::update_lyrics,
+                    taste_transition,
                     mc_transition,
                     check_song_end,
                     check_failure,
@@ -473,6 +478,7 @@ fn setup_gameplay(
     mut theme: ResMut<crate::theme::ActiveTheme>,
     mut clear: ResMut<ClearColor>,
     mut next_state: ResMut<NextState<AppState>>,
+    taste: Option<Res<crate::taste::TasteTest>>,
 ) {
     // Stage identity for this song.
     theme.0 = crate::theme::choose_theme(&settings.theme, &song.chart.song.title);
@@ -516,13 +522,16 @@ fn setup_gameplay(
         ));
     }
 
-    // Count-in: the clock starts negative; music starts at zero.
-    commands.insert_resource(PendingMusic(song.audio.clone(), None));
+    // Count-in: the clock starts a count-in BEFORE the run's first
+    // sounding moment — zero for an ordinary run, the window's start
+    // for a taste test (which plays one passage twice).
+    let start_s = taste.map_or(0.0, |test| crate::taste::side_start(test.window));
+    commands.insert_resource(PendingMusic(song.audio.clone(), None, start_s));
     // A fresh timeline: it follows no device position until THIS
     // song is anchored. The browser preview is still winding down on
     // the device for a few frames, and its position — inside a long
     // song's length — teleported the count-in before this.
-    game_clock.begin(time.elapsed_secs_f64(), -PREROLL_S);
+    game_clock.begin(time.elapsed_secs_f64(), start_s - PREROLL_S);
     // What this song's device positions can plausibly be. Anything
     // past it belongs to something else that is playing — a browser
     // preview, say — and the clock must never anchor to it.
@@ -556,6 +565,11 @@ fn run_count_in(
     let Some(now) = game_clock.song_time(&time) else {
         return;
     };
+    // Where this run's music begins. Ordinarily zero; a taste test
+    // counts in to its window instead, so the clock never has to jump
+    // once the song is already running (a forward jump is exactly
+    // what the autopilot's teleport guard exists to catch).
+    let start_s = pending.as_ref().map_or(0.0, |pending| pending.2);
     if pending.is_some() && banner.is_empty() {
         commands.spawn((
             GameplayScreen,
@@ -567,8 +581,8 @@ fn run_count_in(
         ));
     }
     if let Ok((entity, mut text)) = banner.single_mut() {
-        if now < 0.0 {
-            let count = format!("{}", (-now).ceil() as i64);
+        if now < start_s {
+            let count = format!("{}", (start_s - now).ceil() as i64);
             if text.0 != count {
                 text.0 = count;
             }
@@ -576,7 +590,7 @@ fn run_count_in(
             commands.entity(entity).despawn();
         }
     }
-    if now >= 0.0
+    if now >= start_s
         && let Some(pending) = pending
     {
         match (&pending.0, pending.1) {
@@ -604,6 +618,17 @@ fn run_count_in(
             }
         );
         music.0.set_song_gain(gain);
+        if start_s > 0.0 {
+            // The player was told to play from here, so the audio
+            // goes here too. Both commands ride the same channel, so
+            // the seek cannot overtake the play — but the DEVICE
+            // still reports the pre-seek position for a moment, and
+            // anchoring to that would drag the clock back to the top
+            // of the song (the practice loop's lesson).
+            music.0.seek_s(start_s);
+            game_clock.hold_reconcile_until = time.elapsed_secs_f64() + 0.25;
+            info!("taste test: playing from {start_s:.1}s");
+        }
         // The clock may follow THIS generation: the game asked for it.
         game_clock.expect_song = true;
         commands.remove_resource::<PendingMusic>();
@@ -623,6 +648,96 @@ pub(crate) fn advance_sessions(
         let player = &mut *player;
         player.session.advance(now, &mut player.frame_events);
     }
+}
+
+/// The blind test's handover: when the first side's cropped track
+/// runs out, the SECOND version takes over the same passage — fresh
+/// sessions on the same player entities, the note field cleared, the
+/// clock and the audio seeked back to the window's start.
+///
+/// The music is never restarted: both sides are the same file, so
+/// side two is a seek, which is exactly what the practice loop does.
+/// Runs before `check_song_end`; the reset sessions are no longer
+/// `finished()`, which is what keeps the outro from firing between
+/// the two sides.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
+fn taste_transition(
+    mut commands: Commands,
+    taste: Option<ResMut<crate::taste::TasteTest>>,
+    mut song: ResMut<LoadedSong>,
+    selected: Res<SelectedDifficulty>,
+    settings: Res<crate::config::Settings>,
+    sessions: Query<(&PlayerIndex, &mut PlayerSession)>,
+    old_notes: Query<Entity, LoopedNoteEntities>,
+    old_bars: Query<Entity, With<stage3d::FretBar>>,
+    old_bands: Query<Entity, With<stage3d::PhraseBand>>,
+    mut game_clock: ResMut<GameClock>,
+    music: Res<Music>,
+    time: Res<Time>,
+    mut swaps: MessageWriter<crate::mc::McSwapped>,
+) {
+    let Some(mut taste) = taste else {
+        return;
+    };
+    let mut players = sessions;
+    let Some(now) = game_clock.song_time(&time) else {
+        return;
+    };
+    let all_finished =
+        !players.is_empty() && players.iter().all(|(_, player)| player.session.finished());
+    let content_end = players
+        .iter()
+        .map(|(_, player)| player.session.track().content_end_s())
+        .fold(0.0, f64::max);
+    if !(all_finished && now > content_end + 1.0) {
+        return;
+    }
+    let Some(index) = taste.advance() else {
+        // Both sides heard: the results screen asks the question.
+        return;
+    };
+    let Some(version) = taste.versions.get(index).cloned() else {
+        return;
+    };
+    let track = match version.chart.to_track(selected.0) {
+        Ok(track) => track,
+        Err(error) => {
+            warn!("taste test: cannot build the second side: {error} — the test ends here");
+            return;
+        }
+    };
+    info!(
+        "taste test: second side ({} note events), back to {:.1}s",
+        track.len(),
+        taste.window.0
+    );
+    let score_config = score_config_for(settings.no_fail, players.iter().count());
+    for (_, mut player) in &mut players {
+        let mut session = TrackSession::new(track.clone(), TimingWindows::default(), score_config);
+        session.set_tap_mode(settings.tap_mode);
+        player.session = session;
+        player.frame_events.clear();
+        player.spawn_cursor = 0;
+    }
+    for entity in old_notes
+        .iter()
+        .chain(old_bars.iter())
+        .chain(old_bands.iter())
+    {
+        commands.entity(entity).despawn();
+    }
+    // The loaded song now IS the second version — which is also what
+    // the session log's header will name on the way out, and what
+    // `taste::versus_line` therefore treats as the verdict's subject.
+    song.chart = version.chart;
+    let mono = time.elapsed_secs_f64();
+    let lead = crate::taste::side_start(taste.window);
+    music.0.seek_s(lead);
+    game_clock.clock.seek(mono, lead);
+    // The seek travels to the music thread asynchronously; until it
+    // lands the device still reports the first side's end position.
+    game_clock.hold_reconcile_until = mono + 0.25;
+    swaps.write(crate::mc::McSwapped);
 }
 
 /// The MC set's handover: at the same moment the song-end trigger
@@ -722,7 +837,11 @@ fn mc_transition(
     });
     // The count-in runs while the PREVIOUS song still plays; at zero
     // the pending music CROSSFADES instead of hard-starting.
-    commands.insert_resource(PendingMusic(next.audio, Some(crate::mc::MC_CROSSFADE_S)));
+    commands.insert_resource(PendingMusic(
+        next.audio,
+        Some(crate::mc::MC_CROSSFADE_S),
+        0.0,
+    ));
     let mono = time.elapsed_secs_f64();
     game_clock.begin(mono, -PREROLL_S);
     game_clock.clock.set_rate(mono, practice.rate());
