@@ -10,8 +10,9 @@ additions, and gamification that keeps a player engaged)
 An achievement system has to answer two questions on every pass —
 "has this been earned?" and "how close am I?" — and the obvious way
 to answer them is to keep a counter per player per achievement and
-add to it as things happen. Every commercial implementation of this
-that leaks its save format looks like that.
+add to it as things happen. (That is my own expectation of how such
+systems are usually built, not a surveyed fact — no save format was
+examined for this decision, and none needed to be.)
 
 This repository had already decided the same question once, for
 statistics (`beatbyte-core::stats`, 0.16.0): those are **pure
@@ -84,12 +85,31 @@ not credit a run that cannot answer.
 
 ## Verification
 
-Pure logic: 18 tests in `achievements.rs`, seven of them mutated once
-each and seen to fail — the autopilot exclusion, the absent-signal
-rule, the never-taken-back merge, the unlock date, the assist
-exclusion, the conjunction of a rule's tests, and the day streak.
-That last pin was **blind on its first probe**: counting runs instead
-of days passed it, because no case in it played twice on one day —
-the commonest shape a real week has. Store and screen: 13 further
-tests, including that a hidden achievement gives up neither its name,
-its description, nor its progress bar.
+Pure logic: 21 tests in `beatbyte-core`. Store and screen: 17 more in
+`beatbyte-game`, including that a hidden achievement gives up neither
+its name, its description, nor its progress bar — checked on the
+screen as actually built, its `Text` nodes read back, because this
+machine's display was locked for the whole session and every capture
+would have been black.
+
+Fifteen of those pins were mutated once each and seen to fail: the
+autopilot exclusion, the absent-signal rule, the never-taken-back
+merge, the unlock date, the assist exclusion, the conjunction of a
+rule's tests, the day streak, the ban on duplicate rules, the ban on
+dead `Test` variants, the row-text caps, the covered secret on
+screen, play reaching the screen, the two screen switches not sitting
+on a menu direction, the rows refusing to wrap, and the catalogue's
+reference document.
+
+⚠️ The day-streak pin was **blind on its first probe**: counting runs
+instead of days passed it, because no case in it played twice on one
+day — the commonest shape a real week has.
+
+Against real data, three ways that share no code: the game's startup
+sweep wrote 27 unlocks to `achievements.json`; `beatbyte-cli awards`
+computed the same 27 from the log without reading that file; and an
+independent script recomputed a sample by hand and matched every one,
+including its date. 22 of the 27 carry historical dates rather than
+the day of the sweep, which is the date rule holding on a real log.
+The autopilot then played 290 notes perfectly and the store stayed at
+27 — the exclusion holds live, not only in a test.
