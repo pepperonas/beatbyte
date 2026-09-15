@@ -14,6 +14,33 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.15.18] - 2026-09-15
+
+### Fixed
+
+- **The crowd dial was lit from the wrong end.** Its band brightened
+  toward the LEFT and carried its READY step on the left half — the
+  empty end, which the needle leaves — while the needle sweeps from
+  left (empty) to right (full). A comment in the shading claimed the
+  opposite of what the arithmetic did; measured on a frame, the empty
+  end was 2.3× as bright as the full end. The gradient now runs the
+  way the needle turns.
+
+### Changed
+
+- **The crowd dial wears its zones as colours.** The dial is drawn in
+  three bands cut exactly where the meter's zones change — red for
+  the crowd turning (under a quarter), yellow for not yet won (under
+  half), green past the activation mark — so the state reads off the
+  dial without finding the needle. The band under the needle sits
+  lit, the others rest dark, and while the crowd is turning the red
+  band pulses where the whole dial used to. The texture is baked in
+  the aspect it is drawn in (twice as wide as tall) instead of
+  square, so no axis is minified three times over, and the tick
+  notches have a soft flank instead of a hard four-pixel edge — the
+  two sources of stair-steps on the face. The meter, its zones and
+  the needle's angle are untouched.
+
 ## [0.15.17] - 2026-09-15
 
 ### Changed

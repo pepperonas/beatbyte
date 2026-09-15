@@ -25,7 +25,7 @@ pub struct LaneShapes {
     glow_strip: Handle<Image>,
     bed_gradient: Handle<Image>,
     vignette: Handle<Image>,
-    gauge_arc: Handle<Image>,
+    gauge_bands: [Handle<Image>; 3],
     hype_glass: Handle<Image>,
     hype_fill: Handle<Image>,
     star: Handle<Image>,
@@ -105,12 +105,15 @@ impl LaneShapes {
         self.led_module.clone()
     }
 
-    /// The half-circle gauge track (the Hype gauge's dial): a ring
-    /// over the upper half, with tick notches at every quarter and a
-    /// stronger one at the halfway activation mark.
+    /// The half-circle gauge track (the Hype gauge's dial) in its
+    /// three zone bands, empty end first: the crowd turning, not yet
+    /// won, the room with you (cut at [`GAUGE_ZONE_MARKS`]). Each is
+    /// tinted with its zone's colour by the HUD; together they are
+    /// the ring, ticks at every quarter and a stronger one at the
+    /// halfway activation mark.
     #[must_use]
-    pub fn gauge_arc(&self) -> Handle<Image> {
-        self.gauge_arc.clone()
+    pub fn gauge_bands(&self) -> [Handle<Image>; 3] {
+        self.gauge_bands.clone()
     }
 
     /// The Hype tube's glass housing.
@@ -177,7 +180,12 @@ pub(crate) fn build_shapes(mut commands: Commands, mut images: ResMut<Assets<Ima
         glow_strip: images.add(shaded_image(glow_strip_shading)),
         bed_gradient: images.add(shaded_image(bed_shading)),
         vignette: images.add(shaded_image(vignette_shading)),
-        gauge_arc: images.add(shaded_image(gauge_arc_shading)),
+        gauge_bands: [
+            gauge_critical_shading,
+            gauge_low_shading,
+            gauge_fine_shading,
+        ]
+        .map(|band| images.add(shaded_image_wh(GAUGE_TEXTURE_W, GAUGE_TEXTURE_W / 2, band))),
         // Twice the pixels the tube occupies on a retina panel, and
         // in its own aspect so the caps stay round.
         hype_glass: images.add(shaded_image_wh(
@@ -261,38 +269,93 @@ pub fn led_module_shading(u: f32, v: f32) -> Shade {
     (0.28f32.mul_add(0.25, 0.90 * dot).min(1.0), 1.0)
 }
 
-/// The gauge dial: a ring band across the UPPER half of the tile,
-/// centred on the bottom-middle, so a needle pivoting there sweeps
-/// it. Quarter ticks notch the band brighter; the halfway tick — the
-/// activation threshold — is strongest. Pure — tested.
-#[must_use]
-pub fn gauge_arc_shading(u: f32, v: f32) -> Shade {
-    // Pivot at (0.5, 1.0); the tile is meant to be drawn twice as
-    // wide as tall, so u distances count double.
+/// The sweep marks where the gauge's zones meet, as fractions of the
+/// dial from its empty (left) end to its full (right) end: the crowd
+/// is turning under the first, not yet won under the second. The dial
+/// is drawn in three bands cut at these marks, each tinted with its
+/// zone's colour, and a test in the HUD holds them to the zone rule
+/// the meter is actually judged by.
+pub const GAUGE_ZONE_MARKS: [f32; 2] = [0.25, 0.5];
+
+/// The gauge dial's texture is baked in the aspect it is drawn in —
+/// twice as wide as tall — so no axis is minified three times over.
+pub const GAUGE_TEXTURE_W: usize = 256;
+
+/// Where on the dial a texel sits: the band's rim softness and the
+/// sweep fraction, 0 at the empty (left) horizon and 1 at the full
+/// (right) one — the same direction the needle turns
+/// (`gameplay::hud::gauge_angle`). `None` off the band.
+fn gauge_position(u: f32, v: f32) -> Option<(f32, f32)> {
+    // Pivot at (0.5, 1.0); the tile is drawn twice as wide as tall,
+    // so u distances count double.
     let dx = (u - 0.5) * 2.0;
     let dy = 1.0 - v;
     let r = (dx * dx + dy * dy).sqrt();
     if !(0.62..=0.96).contains(&r) || dy < 0.0 {
-        return (0.0, 0.0);
+        return None;
     }
     // Soft edges on both rims of the band.
     let edge = ((r - 0.62) / 0.03).min((0.96 - r) / 0.03).clamp(0.0, 1.0);
-    // Angle across the sweep: 0 at the left horizon, 1 at the right.
-    let sweep = 1.0 - (dy.atan2(-dx) / core::f32::consts::PI);
+    let sweep = dy.atan2(-dx) / core::f32::consts::PI;
+    Some((edge, sweep))
+}
+
+/// The gauge dial: a ring band across the UPPER half of the tile,
+/// centred on the bottom-middle, so a needle pivoting there sweeps
+/// it. The band brightens gently from the empty end toward the full
+/// one, and quarter ticks notch it brighter — the halfway tick, the
+/// activation threshold, strongest. The zones are the bands' colours
+/// (see [`GAUGE_ZONE_MARKS`]), not a brightness step: the first
+/// draft stepped the READY half brighter as well, on a floor so low
+/// that the red band was dark even lit. Pure — tested.
+#[must_use]
+pub fn gauge_arc_shading(u: f32, v: f32) -> Shade {
+    let Some((edge, sweep)) = gauge_position(u, v) else {
+        return (0.0, 0.0);
+    };
     // The band brightens along the sweep — the dial itself says
-    // "more is that way" — and the READY half (past the activation
-    // mark) sits a step brighter as a zone.
-    let mut value = 0.30f32.mul_add(sweep, 0.20);
-    if sweep >= 0.5 {
-        value += 0.12;
-    }
+    // "more is that way".
+    let mut value = 0.20f32.mul_add(sweep, 0.40);
+    // Ticks with a soft flank: a hard-edged notch four pixels wide,
+    // sampled without mipmaps, shimmers into stair-steps.
     for (tick, strength) in [(0.0, 0.9), (0.25, 0.7), (0.5, 1.0), (0.75, 0.7), (1.0, 0.9)] {
-        let distance = (sweep - tick).abs();
-        if distance < 0.012 {
-            value = value.max(strength);
-        }
+        let inside = ((0.012 - (sweep - tick).abs()) / 0.004).clamp(0.0, 1.0);
+        value = value.max((strength - value).mul_add(inside, value));
     }
     (value, edge * 0.9)
+}
+
+/// One zone's band of the dial: the arc, kept only between two sweep
+/// marks with a soft seam so the cut does not alias. Pure — tested
+/// through the three zone shadings.
+fn gauge_band_shading(u: f32, v: f32, from: f32, to: f32) -> Shade {
+    let Some((_, sweep)) = gauge_position(u, v) else {
+        return (0.0, 0.0);
+    };
+    let (value, alpha) = gauge_arc_shading(u, v);
+    let inside = ((sweep - from) / 0.004).clamp(0.0, 1.0) * ((to - sweep) / 0.004).clamp(0.0, 1.0);
+    (value, alpha * inside)
+}
+
+/// The dial's first band, up to the first zone mark: the crowd is
+/// turning here. Pure — tested.
+#[must_use]
+pub fn gauge_critical_shading(u: f32, v: f32) -> Shade {
+    gauge_band_shading(u, v, -1.0, GAUGE_ZONE_MARKS[0])
+}
+
+/// The dial's middle band, between the zone marks: not yet won. Pure
+/// — tested.
+#[must_use]
+pub fn gauge_low_shading(u: f32, v: f32) -> Shade {
+    gauge_band_shading(u, v, GAUGE_ZONE_MARKS[0], GAUGE_ZONE_MARKS[1])
+}
+
+/// The dial's last band, past the activation mark: the room is with
+/// you. Pure — tested.
+#[must_use]
+pub fn gauge_fine_shading(u: f32, v: f32) -> Shade {
+    gauge_band_shading(u, v, GAUGE_ZONE_MARKS[1], 2.0)
 }
 
 /// The Hype tube's glass housing: a capsule with rounded caps, a
@@ -733,6 +796,89 @@ mod shading_tests {
             "upper-left {bright} must clearly outshine lower-right {dark}"
         );
         assert!(sphere_shading(0.99, 0.99).1 < 0.05, "corner must be clear");
+    }
+
+    /// A point on the dial's band at a sweep fraction (0 = empty
+    /// left horizon, 1 = full right horizon), mid-band.
+    fn on_the_dial(sweep: f32) -> (f32, f32) {
+        let angle = sweep * core::f32::consts::PI;
+        let r = 0.79;
+        (0.5 - r * angle.cos() / 2.0, 1.0 - r * angle.sin())
+    }
+
+    #[test]
+    fn the_gauge_brightens_from_the_empty_left_to_the_full_right() {
+        let (left, _) = gauge_arc_shading(on_the_dial(0.08).0, on_the_dial(0.08).1);
+        let (right, _) = gauge_arc_shading(on_the_dial(0.92).0, on_the_dial(0.92).1);
+        assert!(
+            right > left + 0.15,
+            "the full end must outshine the empty end, as the needle turns that way: \
+             left {left} right {right}"
+        );
+        // No band is dark: the empty end must still carry its colour.
+        assert!(
+            left > 0.38,
+            "the empty end is too dark to read its colour: {left}"
+        );
+        // The zones are told apart by colour, not by a brightness
+        // step at the mark — the gradient runs smoothly across it.
+        let (before, _) = gauge_arc_shading(on_the_dial(0.46).0, on_the_dial(0.46).1);
+        let (after, _) = gauge_arc_shading(on_the_dial(0.54).0, on_the_dial(0.54).1);
+        assert!(
+            (after - before).abs() < 0.05,
+            "a brightness step at the mark: {before} -> {after}"
+        );
+        // And the activation tick itself is the brightest thing on the band.
+        let (tick, _) = gauge_arc_shading(on_the_dial(0.5).0, on_the_dial(0.5).1);
+        assert!(tick > 0.95, "halfway tick {tick}");
+        // Its flank is a slope, not a step: a hard four-pixel notch
+        // sampled without mipmaps stair-steps on screen.
+        let (flank, _) = gauge_arc_shading(on_the_dial(0.5105).0, on_the_dial(0.5105).1);
+        assert!(
+            (0.55..0.85).contains(&flank),
+            "the tick's flank must sit between the band and the tick: {flank}"
+        );
+        // Off the band there is nothing.
+        assert_eq!(gauge_arc_shading(0.5, 0.5).1, 0.0);
+        assert_eq!(gauge_arc_shading(0.5, 0.99).1, 0.0);
+    }
+
+    #[test]
+    fn the_gauge_bands_tile_the_ring_and_meet_at_the_zone_marks() {
+        let bands = [
+            gauge_critical_shading,
+            gauge_low_shading,
+            gauge_fine_shading,
+        ];
+        for step in 0..=100 {
+            let sweep = step as f32 / 100.0;
+            let (u, v) = on_the_dial(sweep);
+            let alphas = bands.map(|band| band(u, v).1);
+            let whole = gauge_arc_shading(u, v).1;
+            let seam = GAUGE_ZONE_MARKS
+                .iter()
+                .any(|mark| (sweep - mark).abs() < 0.01);
+            if seam {
+                continue;
+            }
+            let expected = match sweep {
+                s if s < GAUGE_ZONE_MARKS[0] => 0,
+                s if s < GAUGE_ZONE_MARKS[1] => 1,
+                _ => 2,
+            };
+            for (index, alpha) in alphas.iter().enumerate() {
+                if index == expected {
+                    assert!(
+                        (alpha - whole).abs() < 1e-5,
+                        "band {index} at {sweep}: {alpha} vs {whole}"
+                    );
+                } else {
+                    assert_eq!(*alpha, 0.0, "band {index} bleeds into {sweep}");
+                }
+            }
+            // The bands carry the arc's own shading, not a flat fill.
+            assert_eq!(bands[expected](u, v).0, gauge_arc_shading(u, v).0);
+        }
     }
 
     #[test]

@@ -103,9 +103,14 @@ pub struct HypeTubeState {
     pub glow: f32,
 }
 
-/// The solo plate's rock-meter dial face (the arc under the needle).
+/// The solo plate's rock-meter dial face (the arc under the needle):
+/// one band per [`MeterZone`], each carrying its zone.
 #[derive(Component)]
 pub struct MeterDial;
+
+/// Which zone's band of the dial a sprite is.
+#[derive(Component, Clone, Copy)]
+pub struct DialBand(pub MeterZone);
 
 /// A multiplayer highway's rock-meter bar (left-anchored fill).
 #[derive(Component)]
@@ -142,6 +147,32 @@ pub fn zone_color(zone: MeterZone) -> Color {
         MeterZone::Critical => palette::MISS,
         MeterZone::Low => palette::GOOD,
         MeterZone::Fine => palette::PERFECT,
+    }
+}
+
+/// The dial's three bands in the order `LaneShapes::gauge_bands`
+/// hands them out — the empty end first, which is where the crowd
+/// turns.
+pub const DIAL_BANDS: [MeterZone; 3] = [MeterZone::Critical, MeterZone::Low, MeterZone::Fine];
+
+/// How dim a band sits when the needle is not in it.
+const DIAL_BAND_REST: f32 = 0.32;
+/// How bright the band under the needle sits.
+const DIAL_BAND_LIT: f32 = 0.85;
+
+/// The tint of one band of the dial: every band wears its own zone's
+/// colour, the band the needle is in sits lit and the others rest
+/// dark, and while the crowd is turning the critical band pulses
+/// between its rest and full colour on `blend` (0..1). Pure — tested.
+#[must_use]
+pub fn dial_band_color(band: MeterZone, zone: MeterZone, blend: f32) -> Color {
+    let tone = zone_color(band);
+    if band != zone {
+        palette::dimmed(tone, DIAL_BAND_REST)
+    } else if zone == MeterZone::Critical {
+        palette::dimmed(tone, 0.55).mix(&tone, blend)
+    } else {
+        palette::dimmed(tone, DIAL_BAND_LIT)
     }
 }
 
@@ -847,19 +878,25 @@ fn spawn_solo_panels(commands: &mut Commands, font: &UiFont, shapes: &crate::sha
         "CROWD",
         Vec2::new(pivot.x, right.y + PLATE_H / 2.0 - 12.0),
     );
+    // The dial in its three zone bands, each in its zone's colour so
+    // the state reads off the dial without the needle: red for the
+    // crowd turning, yellow for not yet won, green past the mark.
     let dial = Vec2::new(150.0, 75.0);
-    commands.spawn((
-        GameplayScreen,
-        MeterDial,
-        Sprite {
-            image: shapes.gauge_arc(),
-            color: palette::dimmed(zone_color(MeterZone::Fine), 0.85),
-            custom_size: Some(dial),
-            ..default()
-        },
-        Anchor::BOTTOM_CENTER,
-        Transform::from_xyz(pivot.x, pivot.y, 3.4),
-    ));
+    for (band, image) in DIAL_BANDS.into_iter().zip(shapes.gauge_bands()) {
+        commands.spawn((
+            GameplayScreen,
+            MeterDial,
+            DialBand(band),
+            Sprite {
+                image,
+                color: dial_band_color(band, MeterZone::Fine, 0.0),
+                custom_size: Some(dial),
+                ..default()
+            },
+            Anchor::BOTTOM_CENTER,
+            Transform::from_xyz(pivot.x, pivot.y, 3.4),
+        ));
+    }
     // The Hype tube: a glass column filled from the bottom, quarter
     // ticks and a READY line etched in it, a star crowning it.
     let tube_x = right.x - PLATE_W / 2.0 + TUBE_INSET;
@@ -1721,9 +1758,10 @@ pub fn animate_hype_ornaments(
     }
 }
 
-/// Breathe the dial when it matters: the rock meter is tinted by
-/// zone, and when the crowd is turning the whole dial pulses red —
-/// the one moment the corner may shout. Sprite tints only — no
+/// Breathe the dial when it matters: every band of the rock meter
+/// wears its zone's colour, the band under the needle sits lit, and
+/// when the crowd is turning the red band pulses — the one moment
+/// the corner may shout. Sprite tints only — no
 /// material or texture writes. (The Hype tube breathes in
 /// [`animate_hype_tube`].)
 #[allow(clippy::type_complexity)]
@@ -1749,7 +1787,7 @@ pub fn pulse_gauge(
         ),
     >,
     mut dials: Query<
-        &mut Sprite,
+        (&mut Sprite, &DialBand),
         (
             With<MeterDial>,
             Without<HypeNeedle>,
@@ -1764,28 +1802,21 @@ pub fn pulse_gauge(
     let perf = player.session.performance();
     let zone = meter_zone(perf.meter() as f32);
     let zone_tone = zone_color(zone);
-    let (dial_color, needle_color, hub_color) = if zone == MeterZone::Critical {
-        let blend = ready_glow(time.elapsed_secs() * 1.5);
-        (
-            palette::dimmed(zone_tone, 0.55).mix(&zone_tone, blend),
-            palette::TEXT.mix(&zone_tone, blend),
-            palette::dimmed(zone_tone, 0.9),
-        )
+    let blend = ready_glow(time.elapsed_secs() * 1.5);
+    let needle_color = if zone == MeterZone::Critical {
+        palette::TEXT.mix(&zone_tone, blend)
     } else {
-        (
-            palette::dimmed(zone_tone, 0.85),
-            palette::TEXT,
-            palette::dimmed(zone_tone, 0.9),
-        )
+        palette::TEXT
     };
+    let hub_color = palette::dimmed(zone_tone, 0.9);
     for mut sprite in &mut needles {
         sprite.color = needle_color;
     }
     for mut sprite in &mut hubs {
         sprite.color = hub_color;
     }
-    for mut sprite in &mut dials {
-        sprite.color = dial_color;
+    for (mut sprite, band) in &mut dials {
+        sprite.color = dial_band_color(band.0, zone, blend);
     }
 }
 
@@ -1953,6 +1984,99 @@ mod ribbon_tests {
 #[cfg(test)]
 mod gauge_tests {
     use super::ribbon_title;
+
+    #[test]
+    fn the_dial_bands_meet_exactly_where_the_zones_change() {
+        use super::{DIAL_BANDS, MeterZone, meter_zone};
+        use crate::shapes::{gauge_critical_shading, gauge_fine_shading, gauge_low_shading};
+        assert_eq!(
+            DIAL_BANDS,
+            [MeterZone::Critical, MeterZone::Low, MeterZone::Fine]
+        );
+        let bands = [
+            gauge_critical_shading,
+            gauge_low_shading,
+            gauge_fine_shading,
+        ];
+        // Walk the meter across its range: the band that is painted
+        // where the needle points must be the zone the meter is
+        // judged to be in (seams excepted — they are a texel wide).
+        for step in 0..=200 {
+            let meter = step as f32 / 200.0;
+            let angle = meter * core::f32::consts::PI;
+            let (u, v) = (0.5 - 0.79 * angle.cos() / 2.0, 1.0 - 0.79 * angle.sin());
+            let painted: Vec<usize> = (0..3).filter(|&i| bands[i](u, v).1 > 0.5).collect();
+            if painted.len() != 1 {
+                continue;
+            }
+            assert_eq!(
+                DIAL_BANDS[painted[0]],
+                meter_zone(meter),
+                "at meter {meter} the dial paints one zone and the rule says another"
+            );
+        }
+    }
+
+    #[test]
+    fn the_band_under_the_needle_is_lit_and_the_rest_sit_dark() {
+        use super::{Color, MeterZone, dial_band_color, zone_color};
+        let lum = |c: Color| {
+            use bevy::color::Luminance;
+            c.luminance()
+        };
+        for zone in [MeterZone::Critical, MeterZone::Low, MeterZone::Fine] {
+            for band in [MeterZone::Critical, MeterZone::Low, MeterZone::Fine] {
+                let color = dial_band_color(band, zone, 0.0);
+                // Every band keeps its own hue: a red band is red
+                // whatever the needle does.
+                let own = zone_color(band).to_linear();
+                let got = color.to_linear();
+                let ratio = |a: f32, b: f32| if b > 0.0 { a / b } else { 0.0 };
+                assert!(
+                    (ratio(got.red, own.red) - ratio(got.green, own.green)).abs() < 1e-4,
+                    "band {band:?} under {zone:?} changed hue"
+                );
+                // Lit against resting is judged on each band's OWN
+                // scale: red is a darker colour than yellow at full,
+                // so a lit red band at the trough of its pulse is
+                // dimmer in absolute terms than a resting yellow one
+                // — the first draft of this pin compared across hues
+                // and failed on exactly that.
+                let share = lum(color) / lum(zone_color(band));
+                if band == zone {
+                    for other in [MeterZone::Critical, MeterZone::Low, MeterZone::Fine] {
+                        if other != band {
+                            let rest = dial_band_color(other, zone, 0.0);
+                            let rest_share = lum(rest) / lum(zone_color(other));
+                            assert!(
+                                share > rest_share * 1.5,
+                                "lit {band:?} ({share} of full) must clearly outshine resting \
+                                 {other:?} ({rest_share} of full)"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        // The crowd turning: the red band breathes on the blend; no
+        // other band, and no band in another zone, moves with it.
+        let dim = dial_band_color(MeterZone::Critical, MeterZone::Critical, 0.0);
+        let full = dial_band_color(MeterZone::Critical, MeterZone::Critical, 1.0);
+        assert!(
+            lum(full) > lum(dim) * 1.3,
+            "no pulse: {} -> {}",
+            lum(dim),
+            lum(full)
+        );
+        assert_eq!(
+            dial_band_color(MeterZone::Fine, MeterZone::Fine, 0.0),
+            dial_band_color(MeterZone::Fine, MeterZone::Fine, 1.0)
+        );
+        assert_eq!(
+            dial_band_color(MeterZone::Low, MeterZone::Critical, 0.0),
+            dial_band_color(MeterZone::Low, MeterZone::Critical, 1.0)
+        );
+    }
 
     #[test]
     fn the_progress_bar_runs_clear_of_the_title_it_sits_under() {
