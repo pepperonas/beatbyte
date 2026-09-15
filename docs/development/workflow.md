@@ -76,6 +76,8 @@ commit that feature into any Cargo.toml.
 
 ```bash
 beatbyte-cli chart-check <song.m4a> <chart.json> --difficulty medium [--from 63.7 --secs 30]
+beatbyte-cli study <song folder> --lead <other.wav>     # the [Guitar Study] twin, original untouched
+tools/guitar-study.sh                                   # every folder without a twin: decode → demucs → study
 ```
 
 writes the song with a **click on every chart note** and prints the two

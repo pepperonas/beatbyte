@@ -14,6 +14,24 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.15.14] - 2026-09-15
+
+### Added
+
+- **`beatbyte-cli study` — the `[Guitar Study]` twin of a song.** Given a
+  song folder and an instrument stem on the decoded timeline, it writes a
+  NEW folder beside the original with the same audio and sidecars and one
+  stem-charted `chart.json`, titled `[Guitar Study] …`, provenance
+  `lead-study` with the original's active chart as parent. The original —
+  its versions, its pointer, its telemetry — is never touched, so both
+  versions sit in the browser and can be played against each other in a
+  live session. The one-song experiment (`examples/guitar_study.rs`) is
+  the model; this is its library form, minus the four-variant comparison.
+  `tools/guitar-study.sh` drives it for every folder without a twin:
+  decode, demucs (`other` stem, MPS with CPU fallback), study — resumable,
+  and a song the study refuses for lack of tonal evidence is listed and
+  keeps its original as the only version.
+
 ## [0.15.13] - 2026-09-15
 
 ### Fixed

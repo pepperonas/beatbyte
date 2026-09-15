@@ -23,6 +23,7 @@ mod lyrics_eval;
 mod models;
 mod redesign;
 mod review;
+mod study;
 
 #[derive(Parser)]
 #[command(
@@ -76,6 +77,18 @@ enum Command {
     /// slice (from the chart's preview anchor unless `--from` says
     /// otherwise), which is what makes two variants comparable in
     /// half a minute.
+    /// Build the `[Guitar Study]` twin of a song folder from an
+    /// instrument stem: a new folder beside the original with the same
+    /// audio and one stem-charted `chart.json`, so both play in the
+    /// browser. The original is never touched.
+    Study {
+        /// The song folder (holds the audio, the charts and the pointer).
+        folder: PathBuf,
+        /// The instrument stem, full length, on the DECODED song
+        /// timeline (`beatbyte-cli decode` first, then separate).
+        #[arg(long)]
+        lead: PathBuf,
+    },
     ChartCheck {
         /// Path to the audio file (wav/ogg/flac/mp3/m4a).
         song: PathBuf,
@@ -374,6 +387,7 @@ fn main() -> ExitCode {
         } => generate(&song, title, &artist, out),
         Command::Validate { chart } => validate(&chart),
         Command::Inspect { chart } => inspect(&chart),
+        Command::Study { folder, lead } => study::run(&folder, &lead),
         Command::ChartCheck {
             song,
             chart,
