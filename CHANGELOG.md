@@ -14,6 +14,24 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.7] - 2026-09-16
+
+### Fixed
+
+- **Deleting text in the song browser deleted songs.** Reported by
+  the player: "I keep deleting songs by accident, because I mean to
+  delete text." Backspace both ASKED and ANSWERED — two presses
+  within three seconds removed the highlighted song and its audio
+  from disk. Clearing a typed name is that key tapped many times in a
+  row, so once a text field had closed, the next two taps landed on a
+  song. Two presses of the same key is no protection at all against a
+  key you are already repeating.
+  Backspace and Delete now only ever **ask**, however often they are
+  pressed; **ENTER** is the only answer, and any other key takes the
+  question away. The confirming ENTER is spent on the answer and does
+  not also start the song whose files it just removed. The footer says
+  "DEL asks to delete".
+
 ## [0.17.6] - 2026-09-16
 
 ### Fixed

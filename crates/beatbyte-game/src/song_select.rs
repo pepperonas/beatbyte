@@ -421,6 +421,70 @@ pub fn may_start(filtering: bool, prompt_open: bool, enter: bool, confirm: bool)
     }
 }
 
+/// What a key press means for deleting the highlighted song.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeleteStep {
+    /// Ask first. Nothing is removed yet.
+    Arm,
+    /// The player answered yes.
+    Confirm,
+    /// Take the question away.
+    Cancel,
+    /// Nothing to do.
+    Ignore,
+}
+
+/// The delete rule, in one place.
+///
+/// **The key that asks may never be the key that answers.** Remove is
+/// Backspace, and somebody clearing a typed name taps Backspace many
+/// times in a row; while the same key also confirmed, two of those
+/// taps landing after a field had closed deleted the song under the
+/// cursor and its audio. Reported by the player as "I keep deleting
+/// songs by accident, because I mean to delete text" — and they were
+/// right, two presses is no protection at all against a key you are
+/// already repeating.
+///
+/// So Backspace only ever ARMS, however often it is pressed, ENTER is
+/// the only answer, and any other key takes the question away.
+/// Pure — tested.
+#[must_use]
+pub fn delete_step(armed: bool, remove: bool, confirm: bool, other: bool) -> DeleteStep {
+    if !armed {
+        // Nothing is pending: only the remove key does anything, and
+        // all it does is ask.
+        return if remove {
+            DeleteStep::Arm
+        } else {
+            DeleteStep::Ignore
+        };
+    }
+    if confirm {
+        return DeleteStep::Confirm;
+    }
+    if remove {
+        // A repeat of the asking key is still only asking. It
+        // refreshes the timer and nothing else.
+        return DeleteStep::Arm;
+    }
+    if other {
+        return DeleteStep::Cancel;
+    }
+    DeleteStep::Ignore
+}
+
+/// Whether ENTER starts the highlighted song, given that it may have
+/// just answered a delete instead.
+///
+/// One press, one meaning. Without this the confirming ENTER would
+/// also start the song whose files it had just removed — the player
+/// would be dropped into a track that no longer exists.
+/// Pure — tested.
+#[must_use]
+pub fn starts_song(step: DeleteStep, may_start: bool) -> bool {
+    !matches!(step, DeleteStep::Confirm) && may_start
+}
+
 /// The status line's text for the current view state.
 fn status_text(view: &BrowserView) -> String {
     let direction = if view.flipped { " (reversed)" } else { "" };
@@ -755,7 +819,7 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
             crate::prompts::device_footer(
                 parent,
                 font,
-                "UP/DOWN song  LEFT/RIGHT difficulty  S sort  F search  ENTER rock  D add  L lyrics  K align  G redesign  T taste test  Q queue MC set  P play set  E edit  DEL delete  ESC back",
+                "UP/DOWN song  LEFT/RIGHT difficulty  S sort  F search  ENTER rock  D add  L lyrics  K align  G redesign  T taste test  Q queue MC set  P play set  E edit  DEL asks to delete  ESC back",
                 "D-PAD song and difficulty  SOUTH rock  EAST back",
             );
             ui_kit::back_button(parent, font, "MAIN MENU");
@@ -1220,11 +1284,79 @@ fn browser_input(
         selected.0 = offered[position + 1];
     }
 
-    let start_song = may_start(
-        view.searching,
-        start.prompt.open,
-        keys.just_pressed(KeyCode::Enter),
-        nav.confirm,
+    // BACKSPACE/DEL asks to remove the highlighted song from disk;
+    // only ENTER answers, and it answers the QUESTION rather than
+    // starting the song. Built-ins cannot be removed.
+    delete_armed.1 = (delete_armed.1 - time.delta_secs()).max(0.0);
+    if delete_armed.1 <= 0.0 {
+        delete_armed.0 = None;
+    }
+    let armed = delete_armed.0.is_some();
+    let enter = keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::NumpadEnter);
+    let remove = keys.just_pressed(KeyCode::Backspace) || keys.just_pressed(KeyCode::Delete);
+    let other = keys.get_just_pressed().any(|key| {
+        !matches!(
+            key,
+            KeyCode::Backspace | KeyCode::Delete | KeyCode::Enter | KeyCode::NumpadEnter
+        )
+    });
+    let step = if searching {
+        // A field is taking keys: Backspace is text there, and a
+        // question asked from a keystroke meant for a name is the
+        // whole defect this rule exists for.
+        DeleteStep::Ignore
+    } else {
+        delete_step(armed, remove, enter || nav.confirm, other)
+    };
+    // Taken by value before the match: the rescan below needs
+    // `library` mutably, and `entry` is a borrow of it.
+    let mut confirmed_delete: Option<(std::path::PathBuf, String)> = None;
+    let here = view.order.get(cursor.0).copied();
+    let title = entry.title.clone();
+    let removable = match &entry.source {
+        crate::library::SongSource::File { chart_path, .. } => Some(chart_path.clone()),
+        crate::library::SongSource::Builtin(_) => None,
+    };
+    match step {
+        DeleteStep::Arm => {
+            if removable.is_none() {
+                status.0 = "built-in songs cannot be deleted".to_owned();
+            } else {
+                // Armed by LIBRARY index: a re-sort between the
+                // question and the answer moves positions, and the
+                // question was about a song, not a row number.
+                *delete_armed = (here, 3.0);
+                status.0 = format!(
+                    "delete \"{title}\" and its files? ENTER confirms, any other key cancels"
+                );
+            }
+        }
+        DeleteStep::Confirm => {
+            // Decided here so the ENTER is spent; CARRIED OUT at the
+            // end of the function, where `entry` — a borrow of the
+            // library this rescans — is finally out of scope.
+            if delete_armed.0 == here {
+                confirmed_delete = removable.map(|path| (path, title.clone()));
+            }
+            *delete_armed = (None, 0.0);
+        }
+        DeleteStep::Cancel => {
+            *delete_armed = (None, 0.0);
+            status.0 = "delete cancelled".to_owned();
+        }
+        DeleteStep::Ignore => {}
+    }
+
+    // An ENTER that answered the delete question is spent: it must
+    // not also start the song whose files were just removed.
+    let start_song = starts_song(
+        step,
+        may_start(
+            view.searching,
+            start.prompt.open,
+            keys.just_pressed(KeyCode::Enter),
+            nav.confirm,
+        ),
     );
     if start_song || clicked_selected {
         sounds.write(crate::sfx::UiSound::Confirm);
@@ -1450,40 +1582,15 @@ fn browser_input(
         next_state.set(AppState::Gameplay);
         return;
     }
-    // BACKSPACE/DEL removes the highlighted song from disk — twice,
-    // because it deletes files. Built-ins cannot be removed.
-    delete_armed.1 = (delete_armed.1 - time.delta_secs()).max(0.0);
-    if delete_armed.1 <= 0.0 {
-        delete_armed.0 = None;
-    }
-    if !searching && (keys.just_pressed(KeyCode::Backspace) || keys.just_pressed(KeyCode::Delete)) {
-        match &entry.source {
-            crate::library::SongSource::Builtin(_) => {
-                status.0 = "built-in songs cannot be deleted".to_owned();
+    // The delete the ENTER above answered yes to. Down here the
+    // library may be rewritten: nothing borrows it any more.
+    if let Some((chart_path, title)) = confirmed_delete {
+        match crate::library::remove_song_files(&chart_path) {
+            Ok(()) => {
+                status.0 = format!("\"{title}\" deleted");
+                *library = crate::boot::scan_with_builtins(&start.builtins.0);
             }
-            crate::library::SongSource::File { chart_path, .. } => {
-                // Armed by LIBRARY index: a re-sort between the two
-                // presses moves positions, and the confirmation was
-                // asked about a song, not a row number.
-                let song_index = view.order.get(cursor.0).copied();
-                if delete_armed.0.is_some() && delete_armed.0 == song_index {
-                    let title = entry.title.clone();
-                    match crate::library::remove_song_files(chart_path) {
-                        Ok(()) => {
-                            status.0 = format!("\"{title}\" deleted");
-                            *library = crate::boot::scan_with_builtins(&start.builtins.0);
-                        }
-                        Err(reason) => status.0 = format!("cannot delete: {reason}"),
-                    }
-                    *delete_armed = (None, 0.0);
-                } else {
-                    *delete_armed = (song_index, 3.0);
-                    status.0 = format!(
-                        "delete \"{}\" and its files? press again to confirm",
-                        entry.title
-                    );
-                }
-            }
+            Err(reason) => status.0 = format!("cannot delete: {reason}"),
         }
     }
     if back {
@@ -2106,6 +2213,66 @@ fn follow_selection(
         return;
     };
     ui_kit::follow_list(cursor.0, view.order.len(), row, &mut scroll, &mut node);
+}
+
+#[cfg(test)]
+mod delete_tests {
+    use super::{DeleteStep, delete_step};
+
+    #[test]
+    fn the_key_that_asks_to_delete_never_answers() {
+        // The defect, in the player's words: "I keep deleting songs
+        // by accident, because I mean to delete text." Clearing a
+        // typed name is Backspace tapped many times; while the same
+        // key also confirmed, two taps landing after a field closed
+        // removed the song under the cursor AND its audio. Two
+        // presses is no protection against a key you are repeating.
+        assert_eq!(
+            delete_step(false, true, false, false),
+            DeleteStep::Arm,
+            "the first press must only ask"
+        );
+        // However many more times it is pressed.
+        for _ in 0..8 {
+            assert_eq!(
+                delete_step(true, true, false, false),
+                DeleteStep::Arm,
+                "a repeat of the asking key deleted a song"
+            );
+        }
+        // Only ENTER answers.
+        assert_eq!(delete_step(true, false, true, false), DeleteStep::Confirm);
+        // And ENTER means nothing until something was asked, or the
+        // key that starts a song would delete one.
+        assert_eq!(delete_step(false, false, true, false), DeleteStep::Ignore);
+    }
+
+    #[test]
+    fn the_enter_that_confirms_a_delete_does_not_also_start_the_song() {
+        // Otherwise the player is dropped into a track whose files
+        // the same keystroke just removed.
+        assert!(!super::starts_song(DeleteStep::Confirm, true));
+        // Every other step leaves ENTER alone — the browser's normal
+        // "narrow the list, then play the highlighted one" must not
+        // be collateral damage of the delete rule.
+        for step in [DeleteStep::Arm, DeleteStep::Cancel, DeleteStep::Ignore] {
+            assert!(super::starts_song(step, true), "{step:?} swallowed ENTER");
+            assert!(!super::starts_song(step, false));
+        }
+    }
+
+    #[test]
+    fn anything_else_takes_the_question_away() {
+        // An armed delete that survived until the player happened to
+        // press ENTER for something else would be a trap with a fuse.
+        assert_eq!(delete_step(true, false, false, true), DeleteStep::Cancel);
+        // Nothing pressed changes nothing — the timer does the rest.
+        assert_eq!(delete_step(true, false, false, false), DeleteStep::Ignore);
+        assert_eq!(delete_step(false, false, false, true), DeleteStep::Ignore);
+        // Both in one frame: the answer wins, or a key pressed
+        // alongside ENTER would swallow the confirmation.
+        assert_eq!(delete_step(true, false, true, true), DeleteStep::Confirm);
+    }
 }
 
 #[cfg(test)]
