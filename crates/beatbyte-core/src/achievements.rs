@@ -535,7 +535,14 @@ pub fn passes(entry: &PlayEntry, player: PlayerId, tests: &[Test]) -> bool {
         Test::OnWeekday(wanted) => weekday == wanted,
         Test::FromFile => entry.source == "file",
         Test::AccuracyIsExactly(percent) => {
-            ((part.accuracy * 1000.0).round() / 10.0 - percent).abs() < f64::EPSILON
+            // Compared as tenths of a percent, as whole numbers: the
+            // screen rounds accuracy to one decimal, and two values
+            // that print the same are the same as far as a player is
+            // concerned. The float subtraction this replaces was a
+            // coin toss for any target whose tenth is not exactly
+            // representable — it happened to work for 50.0 alone.
+            let tenths = |value: f64| (value * 10.0).round() as i64;
+            tenths(part.accuracy * 100.0) == tenths(percent)
         }
     })
 }
@@ -2018,6 +2025,32 @@ mod tests {
         assert_eq!(earned.get("first_run"), Some(&1_000));
         // 80 % was first reached by the SECOND run.
         assert_eq!(earned.get("first_80"), Some(&2_000));
+    }
+
+    #[test]
+    fn exactly_half_means_what_the_screen_would_print() {
+        // A player reads "50.0%". The rule has to agree with THAT
+        // rounding rather than with a float's last bit, or a run the
+        // results screen calls fifty per cent is refused here.
+        let at = CATALOGUE
+            .iter()
+            .position(|a| a.id == "odd_exactly_half")
+            .expect("a catalogue id");
+        for (accuracy, wanted) in [
+            (0.5, true),
+            (0.4999, true),
+            (0.500_4, true),
+            (0.4994, false),
+            (0.5006, false),
+            (0.51, false),
+        ] {
+            let played = run(1_000, accuracy, true);
+            assert_eq!(
+                evaluate(&[played], 1)[at].earned(),
+                wanted,
+                "accuracy {accuracy} judged wrongly"
+            );
+        }
     }
 
     #[test]

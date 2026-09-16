@@ -14,6 +14,20 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.5] - 2026-09-16
+
+### Fixed
+
+- **"Exactly Half" compared floats against `f64::EPSILON`.** The
+  achievement asks for a run at exactly fifty per cent, and the check
+  subtracted two floats and demanded the difference be under one
+  machine epsilon — which happened to work for fifty and would have
+  been a coin toss for any other target, because a tenth of a per
+  cent is generally not exactly representable. Accuracy is now
+  compared as whole tenths of a per cent, which is what the results
+  screen prints: two values that read the same to a player are the
+  same to the rule.
+
 ## [0.17.4] - 2026-09-16
 
 ### Fixed
