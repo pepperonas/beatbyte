@@ -361,6 +361,65 @@ fn every_screen_that_reads_the_play_log_waits_for_it_to_be_reloaded() {
 }
 
 #[test]
+fn the_decision_record_counts_the_tests_it_claims() {
+    // ADR-0017's Verification section states how many tests back the
+    // decision. Those two numbers went stale TWICE inside one
+    // session — once while the feature was being finished, once
+    // while five rounds of fixes were added on top — and nothing
+    // caught either. A record of verification that quietly stops
+    // being true is worse than one that gives no number at all.
+    let adr = read("docs/decisions/ADR-0017-achievements-derived-not-counted.md");
+    let claimed = |after: &str| -> usize {
+        let at = adr
+            .find(after)
+            .unwrap_or_else(|| panic!("`{after}` is no longer in the ADR"));
+        adr[at + after.len()..]
+            .split_whitespace()
+            .next()
+            .and_then(|word| word.parse().ok())
+            .unwrap_or_else(|| panic!("no number after `{after}`"))
+    };
+    let counted = |files: &[&str]| -> usize {
+        files
+            .iter()
+            .map(|file| read(file).matches("#[test]").count())
+            .sum()
+    };
+    assert_eq!(
+        claimed("Pure logic: "),
+        counted(&["crates/beatbyte-core/src/achievements.rs"]),
+        "the ADR's core test count is stale"
+    );
+    assert_eq!(
+        claimed("Store and screen: "),
+        counted(&[
+            "crates/beatbyte-game/src/achievements.rs",
+            "crates/beatbyte-game/src/achievements_ui.rs",
+        ]),
+        "the ADR's game test count is stale"
+    );
+}
+
+#[test]
+fn the_roadmap_and_the_readme_agree_on_the_test_total() {
+    // The roadmap's entry quotes the suite size as evidence. The
+    // README's badge quotes the same number and IS checked against
+    // the code; this ties the second copy to the first rather than
+    // leaving it to be remembered.
+    let readme = readme_test_table().iter().map(|(_, n)| n).sum::<usize>()
+        + read("crates/beatbyte-chart/src/lib.rs")
+            .matches("```")
+            .count()
+            / 2;
+    let roadmap = read("docs/ROADMAP.md");
+    let quoted = format!("*Verified: {readme} tests");
+    assert!(
+        roadmap.contains(&quoted),
+        "the roadmap's newest entry does not quote {readme} tests"
+    );
+}
+
+#[test]
 fn checkable_badges_state_the_truth() {
     let readme = read("README.md");
     let manifest = read("Cargo.toml");

@@ -85,25 +85,38 @@ not credit a run that cannot answer.
 
 ## Verification
 
-Pure logic: 21 tests in `beatbyte-core`. Store and screen: 17 more in
+Pure logic: 22 tests in `beatbyte-core`. Store and screen: 21 more in
 `beatbyte-game`, including that a hidden achievement gives up neither
 its name, its description, nor its progress bar — checked on the
 screen as actually built, its `Text` nodes read back, because this
 machine's display was locked for the whole session and every capture
 would have been black.
 
-Fifteen of those pins were mutated once each and seen to fail: the
+22 of those pins were mutated once each and seen to fail: the
 autopilot exclusion, the absent-signal rule, the never-taken-back
 merge, the unlock date, the assist exclusion, the conjunction of a
 rule's tests, the day streak, the ban on duplicate rules, the ban on
 dead `Test` variants, the row-text caps, the covered secret on
 screen, play reaching the screen, the two screen switches not sitting
-on a menu direction, the rows refusing to wrap, and the catalogue's
-reference document.
+on a menu direction, the rows refusing to wrap, the catalogue's
+reference document, both directions of the list rebuild, the roster's
+choice not sticking to the screen, where Escape leads, the ordering
+behind the log reload, the clamped category press, and the accuracy
+comparison.
 
 ⚠️ The day-streak pin was **blind on its first probe**: counting runs
 instead of days passed it, because no case in it played twice on one
-day — the commonest shape a real week has.
+day — the commonest shape a real week has. One further probe was
+**invalid** rather than blind — it read a field without comparing it,
+so it changed no behaviour; a probe that reports nothing is a
+suspect before the pin is.
+
+⚠️ Seven of the 22 come from a re-reading after the feature was first
+pushed, and six defects came with them — three of the screen's
+controls were inert, the screen kept the last player looked at, and
+three screens read the play log unordered against the system that
+reloads it. Versions 0.17.1 to 0.17.5 are that re-reading; the
+CHANGELOG has each one.
 
 Against real data, three ways that share no code: the game's startup
 sweep wrote 27 unlocks to `achievements.json`; `beatbyte-cli awards`
