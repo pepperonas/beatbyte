@@ -445,8 +445,13 @@ pub enum DeleteStep {
 /// right, two presses is no protection at all against a key you are
 /// already repeating.
 ///
-/// So Backspace only ever ARMS, however often it is pressed, ENTER is
-/// the only answer, and any other key takes the question away.
+/// So Backspace only ever ARMS, however often it is pressed, and the
+/// answer is **`Y`** — a key this screen uses for nothing else. ENTER
+/// was the first fix and was not enough: it is the key that starts a
+/// song, so a stray Backspace followed by the ENTER the player meant
+/// as "play" would still have deleted. Any key that is not the
+/// question and not the answer takes the question away, ENTER
+/// included, which then starts the song as it always did.
 /// Pure — tested.
 #[must_use]
 pub fn delete_step(armed: bool, remove: bool, confirm: bool, other: bool) -> DeleteStep {
@@ -819,7 +824,7 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
             crate::prompts::device_footer(
                 parent,
                 font,
-                "UP/DOWN song  LEFT/RIGHT difficulty  S sort  F search  ENTER rock  D add  L lyrics  K align  G redesign  T taste test  Q queue MC set  P play set  E edit  DEL asks to delete  ESC back",
+                "UP/DOWN song  LEFT/RIGHT difficulty  S sort  F search  ENTER rock  D add  L lyrics  K align  G redesign  T taste test  Q queue MC set  P play set  E edit  DEL delete (Y confirms)  ESC back",
                 "D-PAD song and difficulty  SOUTH rock  EAST back",
             );
             ui_kit::back_button(parent, font, "MAIN MENU");
@@ -1292,21 +1297,18 @@ fn browser_input(
         delete_armed.0 = None;
     }
     let armed = delete_armed.0.is_some();
-    let enter = keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::NumpadEnter);
+    let yes = keys.just_pressed(KeyCode::KeyY);
     let remove = keys.just_pressed(KeyCode::Backspace) || keys.just_pressed(KeyCode::Delete);
-    let other = keys.get_just_pressed().any(|key| {
-        !matches!(
-            key,
-            KeyCode::Backspace | KeyCode::Delete | KeyCode::Enter | KeyCode::NumpadEnter
-        )
-    });
+    let other = keys
+        .get_just_pressed()
+        .any(|key| !matches!(key, KeyCode::Backspace | KeyCode::Delete | KeyCode::KeyY));
     let step = if searching {
         // A field is taking keys: Backspace is text there, and a
         // question asked from a keystroke meant for a name is the
         // whole defect this rule exists for.
         DeleteStep::Ignore
     } else {
-        delete_step(armed, remove, enter || nav.confirm, other)
+        delete_step(armed, remove, yes, other)
     };
     // Taken by value before the match: the rescan below needs
     // `library` mutably, and `entry` is a borrow of it.
@@ -1327,7 +1329,7 @@ fn browser_input(
                 // question was about a song, not a row number.
                 *delete_armed = (here, 3.0);
                 status.0 = format!(
-                    "delete \"{title}\" and its files? ENTER confirms, any other key cancels"
+                    "delete \"{title}\" and its files? press Y to confirm, anything else cancels"
                 );
             }
         }
@@ -2240,10 +2242,9 @@ mod delete_tests {
                 "a repeat of the asking key deleted a song"
             );
         }
-        // Only ENTER answers.
+        // Only the answer key answers.
         assert_eq!(delete_step(true, false, true, false), DeleteStep::Confirm);
-        // And ENTER means nothing until something was asked, or the
-        // key that starts a song would delete one.
+        // And it means nothing until something was asked.
         assert_eq!(delete_step(false, false, true, false), DeleteStep::Ignore);
     }
 
@@ -2262,15 +2263,48 @@ mod delete_tests {
     }
 
     #[test]
+    fn the_answer_key_means_nothing_else_on_this_screen() {
+        // The whole point of moving the answer off ENTER. A key that
+        // also does something else can be pressed for that something
+        // else — which is how Backspace deleted songs, and then how
+        // ENTER nearly did. `Y` is read in exactly one place.
+        let source = include_str!("song_select.rs");
+        // Only the shipped code: the tests below name the key too,
+        // and counting this very assertion would make the pin pass
+        // for the wrong reason.
+        let code = source.split("#[cfg(test)]").next().unwrap_or(source);
+        let code: String = code
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        // The form that MAKES something happen. `KeyY` also appears
+        // in the list of keys that are neither question nor answer,
+        // which is not a second meaning — counting that spelling too
+        // was this test's own first mistake.
+        assert_eq!(
+            code.matches("just_pressed(KeyCode::KeyY)").count(),
+            1,
+            "the delete answer key triggers something else too"
+        );
+        // And the footer says so, or it is a secret handshake.
+        assert!(
+            source.contains("Y confirms"),
+            "the footer hides the answer key"
+        );
+    }
+
+    #[test]
     fn anything_else_takes_the_question_away() {
         // An armed delete that survived until the player happened to
-        // press ENTER for something else would be a trap with a fuse.
+        // press something else would be a trap with a fuse — and ENTER,
+        // the key they press to play, is one of those others now.
         assert_eq!(delete_step(true, false, false, true), DeleteStep::Cancel);
         // Nothing pressed changes nothing — the timer does the rest.
         assert_eq!(delete_step(true, false, false, false), DeleteStep::Ignore);
         assert_eq!(delete_step(false, false, false, true), DeleteStep::Ignore);
         // Both in one frame: the answer wins, or a key pressed
-        // alongside ENTER would swallow the confirmation.
+        // alongside it would swallow the confirmation.
         assert_eq!(delete_step(true, false, true, true), DeleteStep::Confirm);
     }
 }

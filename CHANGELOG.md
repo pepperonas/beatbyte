@@ -14,6 +14,20 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.8] - 2026-09-16
+
+### Fixed
+
+- **The delete confirmation moved off ENTER, onto `Y`.** 0.17.7 made
+  Backspace ask and ENTER answer, which stopped a repeated Backspace
+  from deleting — but left a smaller version of the same trap: ENTER
+  is the key that starts a song, so a stray Backspace followed by the
+  ENTER the player meant as "play" would still have removed the
+  highlighted song. `Y` does nothing else on this screen, so now no
+  key that means something else can ever confirm a delete. ENTER
+  falls in with every other key: it takes the question away and
+  starts the song, as it always did.
+
 ## [0.17.7] - 2026-09-16
 
 ### Fixed
