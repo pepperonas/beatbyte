@@ -322,6 +322,7 @@ struct ShotState(AppState);
 /// inserts the song library and the built-in songs, and a screen that
 /// needs them — the browser does — panics on a missing resource if it
 /// is entered before boot has run.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn enter_shot_state(
     target: Res<ShotState>,
     state: Res<State<AppState>>,
@@ -329,6 +330,7 @@ fn enter_shot_state(
     mut cursor: ResMut<crate::song_select::BrowserCursor>,
     mut view: ResMut<crate::song_select::BrowserView>,
     mut settings_cursor: ResMut<crate::settings_ui::SettingsCursor>,
+    mut awards: ResMut<crate::achievements_ui::AchievementsView>,
     mut done: Local<bool>,
 ) {
     if *done || *state.get() != AppState::MainMenu {
@@ -346,6 +348,11 @@ fn enter_shot_state(
         // The settings list scrolls too, and a row below its fold
         // was as unphotographable as a song below the browser's.
         settings_cursor.0 = row;
+        // So does the achievements list, and it is the one where the
+        // fold hides the thing most worth seeing: every hidden
+        // achievement sits in the last two categories, so a covered
+        // `? ? ?` row could not be photographed at all.
+        awards.row = row;
     }
     // Photograph the browser under a chosen sort - the active-column
     // marker only exists when a sort is active, so without this it

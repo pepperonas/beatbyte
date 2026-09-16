@@ -40,7 +40,7 @@ about them is compiled into a normal build.
 | `BEATBYTE_SHOT_DIR` | directory | Screenshots at named moments of a run. |
 | `BEATBYTE_SHOT_TIMES` | comma-separated song seconds | With `BEATBYTE_SHOT_DIR`, adds one gameplay frame within a second after each listed song time (`gameplay-t17.5.png`) — the lyric lead-in, the gap countdown, a line mid-fill, whatever a change touched. |
 | `BEATBYTE_SHOT_STATE` | screen name | Boots straight into one screen, photographs it and quits. |
-| `BEATBYTE_SHOT_ROW` | row index | With `BEATBYTE_SHOT_STATE`, selects that row first — in the song browser AND the settings list. A scrolling list is indistinguishable from a short one until the selection moves past the fold. |
+| `BEATBYTE_SHOT_ROW` | row index | With `BEATBYTE_SHOT_STATE`, selects that row first — in the song browser, the settings list AND the achievements list (where the fold hides every hidden achievement, so a covered `? ? ?` row could not be photographed at all). A scrolling list is indistinguishable from a short one until the selection moves past the fold. |
 | `BEATBYTE_SHOT_VIEW` | view name | With `BEATBYTE_SHOT_STATE=stats`, opens that view (overview/timing/difficulty/versus) before shooting. Without it only the first of the four could ever be photographed. |
 | `BEATBYTE_SHOT_SORT` | column name | With `BEATBYTE_SHOT_STATE=songselect`, activates that sort (title/artist/genre/length/notes/diff/best) so the active-column marker is photographable. |
 | `BEATBYTE_SHOT_SEARCH` | filter text | With `BEATBYTE_SHOT_STATE=songselect`, opens the search with that filter typed, so the prompt, the first-match selection and the empty-result hint are photographable. |
