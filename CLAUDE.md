@@ -376,8 +376,19 @@ artifact, smoke-test it (neutral CWD!), then
   is evidence, not an artifact**: the missing stage in an autopilot
   shot was waved off as a capture quirk hours before the user
   reported the same black screen.
-- **The user plays from `target/release/beatbyte` — never leave an
-  experimental build there.** During an A/B bisect the half-reverted
+- **The user plays from `target/release/beatbyte`, and that build
+  carries `--features ml`.** `ml` is NOT a default feature (ADR-0013:
+  the default is the offline game, and the shipped releases turn it
+  on). A plain `cargo build --release -p beatbyte` therefore replaces
+  the player's binary with a LESSER one: ALIGN answers "this build
+  has no aligner", the lyrics-model row says NOT IN THIS BUILD, and
+  the 450 MB of models already on the machine become unreachable.
+  Rebuilding their binary means
+  `cargo build --release -p beatbyte --features ml` — measured, not
+  assumed: `ls target/release/deps | grep -c beatbyte_lyrics` is 0
+  without it. Cost an evening's confusion once, reported as a bug in
+  the game.
+- **Never leave an experimental build there.** During an A/B bisect the half-reverted
   binary blacked out the user's LIVE game mid-song ("ich sehe
   highway und die töne nicht mehr"). Experiment builds go to a
   separate target dir (`CARGO_TARGET_DIR=/tmp/...`), and the real

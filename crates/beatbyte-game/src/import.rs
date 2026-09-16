@@ -396,9 +396,7 @@ fn poll_import(
             if let Some(folder) = queue
                 .current_source
                 .as_ref()
-                .and_then(|source| source.file_name())
-                .map(|name| sanitize_folder_name(&name.to_string_lossy()))
-                .and_then(|folder| import_dir().ok().map(|dir| dir.join(folder)))
+                .and_then(|source| landing_folder(source))
             {
                 crate::study_twin::queue_twin(&mut twins, &settings, folder);
             }
@@ -711,11 +709,26 @@ pub(crate) fn import_fetched(
     import_song(source, title, artist)
 }
 
+/// The folder a source file lands in, by the import's naming rule.
+///
+/// One rule, one place. Both paths that finish an import need to name
+/// the folder it wrote — to hand it to the study twin — and a second
+/// copy of the rule is exactly how the two drifted: a dropped file
+/// got a `[Guitar Study]` twin and a song found through the search
+/// did not, because only one path knew where the song had landed.
+#[must_use]
+pub(crate) fn landing_folder(source: &Path) -> Option<PathBuf> {
+    let name = source.file_name()?;
+    import_dir()
+        .ok()
+        .map(|dir| dir.join(sanitize_folder_name(&name.to_string_lossy())))
+}
+
 fn import_song(source: &Path, title: &str, artist: &str) -> Result<Option<String>, String> {
     let file_name = source
         .file_name()
         .ok_or_else(|| "file has no name".to_owned())?;
-    let folder = import_dir()?.join(sanitize_folder_name(&file_name.to_string_lossy()));
+    let folder = landing_folder(source).ok_or_else(|| "file has no name".to_owned())?;
     std::fs::create_dir_all(&folder).map_err(|e| format!("cannot create folder: {e}"))?;
     let audio_dest = folder.join(file_name);
     std::fs::copy(source, &audio_dest).map_err(|e| format!("cannot copy audio: {e}"))?;

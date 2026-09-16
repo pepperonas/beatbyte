@@ -827,6 +827,21 @@ pub fn file_stem_for(artist: &str, title: &str) -> String {
 pub const MAX_ATTEMPTS: usize = 3;
 
 /// Run the whole thing: search, choose, fetch, measure, look up the
+/// What a finished search leaves behind.
+///
+/// The line alone was not enough: the study twin is queued from the
+/// FOLDER the song landed in, and until this carried one, a song
+/// found through the search never got a twin while a dropped file
+/// always did. The same omission cost the library rescan on this
+/// path once already — see [`poll_discovery`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Found {
+    /// The line for the status row.
+    pub line: String,
+    /// Where the song landed, by the import's own naming rule.
+    pub folder: Option<std::path::PathBuf>,
+}
+
 /// lyrics, chart it.
 ///
 /// Every step reports through `say` so the panel can show where it
@@ -835,7 +850,7 @@ pub const MAX_ATTEMPTS: usize = 3;
 ///
 /// # Errors
 /// When nothing usable was found, or the import itself failed.
-pub fn discover(query: &str, backend: &Backend, say: &dyn Fn(Step)) -> Result<String, String> {
+pub fn discover(query: &str, backend: &Backend, say: &dyn Fn(Step)) -> Result<Found, String> {
     let (typed_artist, typed_title) = split_query(query);
     if typed_title.is_empty() {
         return Err("type a song name first".to_owned());
@@ -927,9 +942,16 @@ pub fn discover(query: &str, backend: &Backend, say: &dyn Fn(Step)) -> Result<St
                 );
                 say(Step::new(Phase::Chart, format!("charting \"{title}\"...")));
                 let imported = crate::import::import_fetched(&audio, &title, &artist)?;
+                // Where it landed, taken from the file the import was
+                // handed rather than re-derived from the title: one
+                // naming rule, one place.
+                let folder = crate::import::landing_folder(&audio);
                 let _ = std::fs::remove_file(&audio);
                 let _ = std::fs::remove_file(audio.with_extension("lrc"));
-                return Ok(finished_line(&title, &words, imported.as_deref()));
+                return Ok(Found {
+                    line: finished_line(&title, &words, imported.as_deref()),
+                    folder,
+                });
             }
             Ok(verdict) => {
                 last = verdict.reason;
@@ -1049,7 +1071,7 @@ pub struct Discovery {
 }
 
 /// The search's background task.
-struct DiscoverTask(bevy::tasks::Task<Result<String, String>>);
+struct DiscoverTask(bevy::tasks::Task<Result<Found, String>>);
 
 impl Discovery {
     /// Whether a search is in flight.
@@ -1116,6 +1138,12 @@ pub fn poll_discovery(
     mut status: bevy::prelude::ResMut<crate::import::ImportStatus>,
     builtins: Option<bevy::prelude::Res<crate::boot::BuiltinSongs>>,
     library: Option<bevy::prelude::ResMut<crate::library::SongLibrary>>,
+    // Optional, like the two above and for the same reason: this
+    // system is deliberately registered on the bare app so a search
+    // survives a song starting, and a REQUIRED resource from another
+    // plugin would panic it there. A test pins that.
+    settings: Option<bevy::prelude::Res<crate::config::Settings>>,
+    twins: Option<bevy::prelude::ResMut<crate::study_twin::StudyQueue>>,
 ) {
     let delta = time.delta_secs();
     if !discovery.running() {
@@ -1153,9 +1181,9 @@ pub fn poll_discovery(
         return;
     };
     let found = result.is_ok();
-    let line = match result {
-        Ok(line) => line,
-        Err(reason) => format!("search: {reason}"),
+    let (line, folder) = match result {
+        Ok(found) => (found.line, found.folder),
+        Err(reason) => (format!("search: {reason}"), None),
     };
     status.0.clone_from(&line);
     discovery.line = line;
@@ -1170,6 +1198,92 @@ pub fn poll_discovery(
     // one now does too.
     if found && let (Some(builtins), Some(mut library)) = (builtins, library) {
         *library = crate::boot::scan_with_builtins(&builtins.0);
+    }
+    // And its `[Guitar Study]` twin. The import queue is the only
+    // other caller of this, and the search never went through it —
+    // it calls `import_fetched` straight from its own task — so a
+    // downloaded song arrived without the twin every song is meant
+    // to carry. Same omission as the rescan above, one line later.
+    if let (Some(folder), Some(settings), Some(mut twins)) = (folder, settings, twins) {
+        crate::study_twin::queue_twin(&mut twins, &settings, folder);
+    }
+}
+
+#[cfg(test)]
+mod twin_tests {
+    use super::*;
+    use bevy::prelude::*;
+
+    /// An app with exactly what `poll_discovery` reads.
+    fn wired() -> App {
+        let mut app = App::new();
+        app.add_plugins(bevy::MinimalPlugins)
+            .init_resource::<crate::import::ImportStatus>()
+            .init_resource::<crate::study_twin::StudyQueue>()
+            .init_resource::<crate::config::Settings>()
+            .init_resource::<Discovery>()
+            .add_systems(bevy::prelude::Update, poll_discovery);
+        app
+    }
+
+    /// Hand the resource a search that has already finished.
+    fn finished(app: &mut App, result: Result<Found, String>) {
+        let task = bevy::tasks::AsyncComputeTaskPool::get().spawn(async move { result });
+        let mut discovery = app.world_mut().resource_mut::<Discovery>();
+        discovery.ran = true;
+        discovery.task = Some(DiscoverTask(task));
+    }
+
+    fn queued(app: &mut App) -> Vec<std::path::PathBuf> {
+        app.world()
+            .resource::<crate::study_twin::StudyQueue>()
+            .pending
+            .iter()
+            .cloned()
+            .collect()
+    }
+
+    #[test]
+    fn a_song_found_by_the_search_gets_its_study_twin() {
+        // A dropped file has always got one: the import queue is the
+        // only caller of `queue_twin`, and the search never went
+        // through it — it calls `import_fetched` straight from its
+        // own task. So every song the player downloaded arrived
+        // without the twin they had asked every song to carry.
+        let folder = std::path::PathBuf::from("/songs/imported/Toto - Africa");
+        let mut app = wired();
+        finished(
+            &mut app,
+            Ok(Found {
+                line: "added \"Africa\"".to_owned(),
+                folder: Some(folder.clone()),
+            }),
+        );
+        app.update();
+        assert_eq!(queued(&mut app), vec![folder], "no twin was queued");
+    }
+
+    #[test]
+    fn a_search_that_found_nothing_queues_nothing() {
+        // The counterpart: a failed search must not put a folder that
+        // was never written in front of a two-minute separation.
+        let mut app = wired();
+        finished(&mut app, Err("no usable recording".to_owned()));
+        app.update();
+        assert!(queued(&mut app).is_empty());
+
+        // Nor may a success without a folder — the import wrote
+        // something the naming rule could not name.
+        let mut app = wired();
+        finished(
+            &mut app,
+            Ok(Found {
+                line: "added something".to_owned(),
+                folder: None,
+            }),
+        );
+        app.update();
+        assert!(queued(&mut app).is_empty());
     }
 }
 
@@ -1193,6 +1307,12 @@ mod tests {
         // started and nobody collected the result. This app has no
         // `AppState` and no browser — if the system asked for either,
         // it would not run here.
+        //
+        // It also catches a REQUIRED resource sneaking in from
+        // another plugin: adding the study queue and the settings as
+        // plain `Res`/`ResMut` panicked this test, which is what a
+        // player would have got the first time a search finished on a
+        // screen that does not own them.
         use bevy::prelude::*;
         let mut app = App::new();
         app.add_plugins((bevy::time::TimePlugin, DiscoverPlugin))

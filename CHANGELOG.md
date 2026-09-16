@@ -14,6 +14,23 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.6] - 2026-09-16
+
+### Fixed
+
+- **A song found through the in-game search never got its
+  `[Guitar Study]` twin.** A dropped file always did. The reason is
+  that `study_twin::queue_twin` had exactly one caller — the import
+  queue's poll — and the search does not go through that queue: it
+  calls `import_fetched` straight from its own background task and
+  hands back only a status line, so nothing downstream knew which
+  folder had been written. The search result now carries that folder
+  and the poll queues the twin from it, which is the same omission
+  that once cost this path its library rescan, fixed one line above.
+- **The folder an import lands in was worked out in two places.**
+  That is how the two paths drifted apart in the first place. There
+  is one `import::landing_folder` now, and both use it.
+
 ## [0.17.5] - 2026-09-16
 
 ### Fixed
