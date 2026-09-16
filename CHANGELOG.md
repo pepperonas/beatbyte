@@ -14,6 +14,17 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.4] - 2026-09-16
+
+### Fixed
+
+- **A category press that changed nothing threw the cursor to the
+  top.** Left at the leftmost category and right at the rightmost
+  both clamp, as every list cursor in this game does — but the row
+  was reset anyway, so on a hundred-row list a press that altered
+  nothing visible sent the player back to row one. Only a press that
+  actually moves the category resets the row now.
+
 ## [0.17.3] - 2026-09-16
 
 ### Fixed

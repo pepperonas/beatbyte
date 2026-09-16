@@ -131,6 +131,13 @@ impl AchievementsView {
             .and_then(|group| Category::ALL.iter().position(|c| *c == group))
             .map_or(0, |index| index + 1);
         let next = ui_kit::step_cursor(at, Category::ALL.len() + 1, delta);
+        if next == at {
+            // At either end the cursor clamps and the category does
+            // not move. Resetting the row anyway would throw the
+            // player back to the top of a hundred rows for a press
+            // that changed nothing they can see.
+            return;
+        }
         self.group = if next == 0 {
             None
         } else {
@@ -1290,6 +1297,17 @@ mod tests {
         view.row = 40;
         view.step_group(-1);
         assert_eq!(view.row, 0);
+        // But a press that changes nothing must change nothing. At
+        // the far right the category clamps, and throwing the cursor
+        // back to the top of a hundred rows for that would be a jump
+        // the player cannot account for.
+        for _ in 0..40 {
+            view.step_group(1);
+        }
+        view.row = 37;
+        view.step_group(1);
+        assert_eq!(view.row, 37, "a clamped press moved the cursor");
+        assert_eq!(view.group, Some(Category::ALL[Category::ALL.len() - 1]));
     }
 
     #[test]
