@@ -214,6 +214,14 @@ now, and this is it.)*
 - 🔊 **A menu that answers** — every screen speaks keyboard *and*
   gamepad (prompts follow the device in your hand), navigation is
   remappable, and UI feedback is procedural sound events
+- 📈 **Players and their history** — a local roster, every run filed
+  under whoever is playing, and four views of one player over time and
+  against the others, drawn in the game's own hand rather than by a
+  plotting library
+- 🏅 **A hundred achievements** — ten categories, twelve of them secret
+  until earned. Every one is re-derived from the whole play log rather
+  than counted as you go, so one added later unlocks retroactively,
+  with the date it really happened, and none can be taken back
 - 🏆 **High scores**, persistent settings, procedural SFX — and an
   autopilot that must play every build flawlessly before release
 - 🖥️ **Cross-platform** — macOS (.dmg), Windows (portable), Linux
