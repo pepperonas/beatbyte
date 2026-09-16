@@ -14,6 +14,38 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.3] - 2026-09-16
+
+### Fixed
+
+- **The achievement screen's three controls did nothing.** Category,
+  filter and sort each edited a resource, and nothing rebuilt the
+  list — so the footer said "FILTER: EARNED" over the unfiltered
+  hundred. Every key worked, every value was read correctly the next
+  time the screen was opened, and the screen in between was a lie.
+  The list is now rebuilt whenever the category, the filter or the
+  sort has moved since it was drawn, and deliberately NOT when the
+  cursor moves: a hundred-row list must not be thrown away and
+  re-scrolled on every arrow key. Both directions pinned.
+- **The screen stuck to whoever you last looked at.** `A` on the
+  roster opens the list for a named player, and nothing ever cleared
+  that: after one such visit, ACHIEVEMENTS on the main menu went on
+  showing that player rather than whoever is at the guitar, with
+  nothing on screen to say so. Leaving the screen clears it, and
+  Escape now returns to the roster when that is where the screen was
+  opened from and to the main menu otherwise.
+- **A cursor left over from a previous visit** could sit past the end
+  of a shorter list, leaving no row drawn as selected at all. It is
+  clamped when the screen is built.
+- **Three screens read the play log on the state entry that reloads
+  it, ordered by nothing.** Two systems in one schedule, one writing
+  what the other reads, have no defined order — so the achievements
+  screen could draw "3 / 10" from a copy of the log that predates the
+  run the player had just finished, and the roster and statistics
+  screens had the same ambiguity since 0.16.0. The reload now sits in
+  a `HistoryReloaded` set and all three order behind it, checked so a
+  later edit cannot drop it quietly.
+
 ## [0.17.2] - 2026-09-16
 
 ### Fixed

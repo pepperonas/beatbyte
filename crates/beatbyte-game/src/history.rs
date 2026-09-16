@@ -189,6 +189,17 @@ struct RunStart {
     at: std::time::Instant,
 }
 
+/// The set `reload_history` is in.
+///
+/// Three screens read `PlayHistory` on the same state entry that
+/// reloads it, and a system that reads a resource another system in
+/// the same schedule is writing is ordered by nothing at all: the
+/// achievements screen could draw "3 / 10" from a copy that predates
+/// the run the player just finished. Screens order themselves behind
+/// this instead of hoping.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct HistoryReloaded;
+
 /// The set `log_run` is in, so a system that reads the log after a
 /// run can order itself behind the line being written.
 ///
@@ -212,11 +223,17 @@ impl Plugin for HistoryPlugin {
             // The log is appended to while playing, so the screens
             // that read it re-read it on the way in rather than
             // trusting a copy from startup.
-            .add_systems(OnEnter(crate::states::AppState::Players), reload_history)
-            .add_systems(OnEnter(crate::states::AppState::Stats), reload_history)
+            .add_systems(
+                OnEnter(crate::states::AppState::Players),
+                reload_history.in_set(HistoryReloaded),
+            )
+            .add_systems(
+                OnEnter(crate::states::AppState::Stats),
+                reload_history.in_set(HistoryReloaded),
+            )
             .add_systems(
                 OnEnter(crate::states::AppState::Achievements),
-                reload_history,
+                reload_history.in_set(HistoryReloaded),
             );
     }
 }

@@ -328,6 +328,39 @@ fn the_catalogue_document_lists_every_achievement() {
 }
 
 #[test]
+fn every_screen_that_reads_the_play_log_waits_for_it_to_be_reloaded() {
+    // Three screens read `PlayHistory` on the same state entry that
+    // reloads it. Two systems in one schedule, one writing what the
+    // other reads, are ordered by nothing — the achievements screen
+    // could draw "3 / 10" from a copy that predates the run the
+    // player just finished. `history::HistoryReloaded` is the set
+    // they order behind, and this is what stops it being quietly
+    // dropped by a later edit.
+    let order = "after(crate::history::HistoryReloaded)";
+    for file in [
+        "crates/beatbyte-game/src/achievements_ui.rs",
+        "crates/beatbyte-game/src/achievements.rs",
+        "crates/beatbyte-game/src/stats_ui.rs",
+        "crates/beatbyte-game/src/players_ui.rs",
+    ] {
+        assert!(
+            read(file).contains(order),
+            "{file} reads the play log on a state entry without ordering behind the reload"
+        );
+    }
+    // And the set has to be on every reload, or ordering behind it
+    // means nothing for the screen whose reload was left out.
+    let history = read("crates/beatbyte-game/src/history.rs");
+    assert_eq!(
+        history
+            .matches("reload_history.in_set(HistoryReloaded)")
+            .count(),
+        3,
+        "not every screen's reload is in the set"
+    );
+}
+
+#[test]
 fn checkable_badges_state_the_truth() {
     let readme = read("README.md");
     let manifest = read("Cargo.toml");

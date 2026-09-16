@@ -154,7 +154,10 @@ pub struct PlayersUiPlugin;
 impl Plugin for PlayersUiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<RosterCursor>()
-            .add_systems(OnEnter(AppState::Players), spawn_roster)
+            .add_systems(
+                OnEnter(AppState::Players),
+                spawn_roster.after(crate::history::HistoryReloaded),
+            )
             .add_systems(
                 Update,
                 (roster_keys, roster_nav, refresh_rows)

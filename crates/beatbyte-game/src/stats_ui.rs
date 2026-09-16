@@ -127,7 +127,9 @@ impl Plugin for StatsUiPlugin {
             .init_resource::<StatsView>()
             .add_systems(
                 OnEnter(AppState::Stats),
-                (pick_shot_view, spawn_stats).chain(),
+                (pick_shot_view, spawn_stats)
+                    .chain()
+                    .after(crate::history::HistoryReloaded),
             )
             .add_systems(Update, stats_nav.run_if(in_state(AppState::Stats)))
             .add_systems(OnExit(AppState::Stats), despawn_stats);

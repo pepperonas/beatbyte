@@ -305,6 +305,34 @@ const fn tier_colour(tier: Tier) -> Color {
 #[derive(Component)]
 struct AchievementsScreen;
 
+/// What the list currently on screen was built from.
+///
+/// The category, the filter and the sort each change which rows
+/// exist, and a resource that changes without a rebuild is a control
+/// that does nothing. The cursor is deliberately NOT in here: a
+/// hundred-row list must not be thrown away and re-scrolled on every
+/// arrow key.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+struct DrawnFrom {
+    /// The category the rows were filtered to.
+    group: Option<Category>,
+    /// The filter they were drawn under.
+    show: Show,
+    /// The order they were drawn in.
+    sort: Sort,
+}
+
+impl DrawnFrom {
+    /// What a view asks the list to look like.
+    const fn of(view: &AchievementsView) -> DrawnFrom {
+        DrawnFrom {
+            group: view.group,
+            show: view.show,
+            sort: view.sort,
+        }
+    }
+}
+
 /// A row, by its position in the visible list.
 #[derive(Component)]
 struct AchievementRow(usize);
@@ -320,14 +348,39 @@ impl Plugin for AchievementsUiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AchievementsFor>()
             .init_resource::<AchievementsView>()
-            .add_systems(OnEnter(AppState::Achievements), spawn_screen)
+            .add_systems(
+                OnEnter(AppState::Achievements),
+                // Behind the reload: this reads `PlayHistory`, and
+                // the same state entry rewrites it.
+                spawn_screen.after(crate::history::HistoryReloaded),
+            )
             .add_systems(
                 Update,
-                (screen_keys, screen_nav, follow_selection)
+                (
+                    screen_keys,
+                    screen_nav,
+                    redraw_when_the_list_changes,
+                    follow_selection,
+                )
                     .chain()
                     .run_if(in_state(AppState::Achievements)),
             )
             .add_systems(OnExit(AppState::Achievements), despawn_screen);
+    }
+}
+
+/// Where Escape leads from this screen.
+///
+/// The roster opens it for one named player and the main menu opens
+/// it for whoever is playing; going back to the main menu from a list
+/// reached through the roster would lose your place in the roster.
+/// Pure — tested.
+#[must_use]
+pub const fn back_to(opened_for_somebody: bool) -> AppState {
+    if opened_for_somebody {
+        AppState::Players
+    } else {
+        AppState::MainMenu
     }
 }
 
@@ -352,11 +405,15 @@ fn spawn_screen(
     history: Res<crate::history::PlayHistory>,
     store: Res<Unlocked>,
     chosen: Res<AchievementsFor>,
-    view: Res<AchievementsView>,
+    mut view: ResMut<AchievementsView>,
 ) {
     let Some((id, name)) = subject(&chosen, &players) else {
         commands
-            .spawn((ui_kit::screen_root(), AchievementsScreen))
+            .spawn((
+                ui_kit::screen_root(),
+                AchievementsScreen,
+                DrawnFrom::of(&view),
+            ))
             .with_children(|root| {
                 ui_kit::header(root, &font, "ACHIEVEMENTS", "NO PLAYER CHOSEN");
                 root.spawn(ui_kit::panel()).with_children(|panel| {
@@ -373,13 +430,20 @@ fn spawn_screen(
     let unlocks = store.of(id);
     let progress = evaluate(&history.0, id);
     let rows = visible_rows(&progress, &unlocks, &view);
+    // A cursor left over from a previous visit can sit past the end
+    // of a shorter list, and then no row is drawn as selected at all.
+    view.row = view.row.min(rows.len().saturating_sub(1));
     let hidden_found = CATALOGUE
         .iter()
         .filter(|entry| entry.hidden && unlocks.has(entry.id))
         .count();
 
     commands
-        .spawn((ui_kit::screen_root(), AchievementsScreen))
+        .spawn((
+            ui_kit::screen_root(),
+            AchievementsScreen,
+            DrawnFrom::of(&view),
+        ))
         .with_children(|root| {
             ui_kit::header(
                 root,
@@ -536,7 +600,7 @@ fn screen_keys(
 }
 
 /// Cursor, category, leaving.
-#[allow(clippy::needless_pass_by_value)] // Bevy system params
+#[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)] // Bevy system params
 fn screen_nav(
     map: Res<InputMap>,
     keys: Res<ButtonInput<KeyCode>>,
@@ -545,6 +609,7 @@ fn screen_nav(
     mut view: ResMut<AchievementsView>,
     mut next: ResMut<NextState<AppState>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
+    chosen: Res<AchievementsFor>,
 ) {
     let nav = MenuNav::read(&map, &keys, pads.iter());
     let count = rows.iter().count();
@@ -567,7 +632,7 @@ fn screen_nav(
         sounds.write(crate::sfx::UiSound::Navigate);
     }
     if nav.back {
-        next.set(AppState::MainMenu);
+        next.set(back_to(chosen.0.is_some()));
     }
 }
 
@@ -611,10 +676,47 @@ fn follow_selection(
     }
 }
 
-fn despawn_screen(mut commands: Commands, entities: Query<Entity, With<AchievementsScreen>>) {
+/// Rebuild the list when the category, the filter or the sort has
+/// moved since it was drawn.
+///
+/// The statistics screen does the same inline in its navigation
+/// system; here it is its own system because three different keys can
+/// change the shape, and a rebuild started by two of them in one
+/// frame would spawn the screen twice.
+#[allow(clippy::needless_pass_by_value)] // Bevy system params
+fn redraw_when_the_list_changes(
+    view: Res<AchievementsView>,
+    mut commands: Commands,
+    screens: Query<(Entity, &DrawnFrom)>,
+) {
+    let wanted = DrawnFrom::of(&view);
+    let mut stale = false;
+    for (entity, drawn) in &screens {
+        if *drawn != wanted {
+            commands.entity(entity).despawn();
+            stale = true;
+        }
+    }
+    if stale {
+        commands.run_system_cached(spawn_screen);
+    }
+}
+
+/// Leave nothing behind — including WHO the screen was opened for.
+///
+/// The roster sets that when it opens the list for a named player,
+/// and nothing else ever cleared it: after one visit through the
+/// roster, ACHIEVEMENTS on the main menu went on showing that player
+/// instead of whoever is at the guitar.
+fn despawn_screen(
+    mut commands: Commands,
+    entities: Query<Entity, With<AchievementsScreen>>,
+    mut chosen: ResMut<AchievementsFor>,
+) {
     for entity in &entities {
         commands.entity(entity).despawn();
     }
+    chosen.0 = None;
 }
 
 #[cfg(test)]
@@ -800,6 +902,147 @@ mod tests {
             wrapped <= 16,
             "{wrapped} of {texts} lines can wrap; the rows must not"
         );
+    }
+
+    #[test]
+    fn changing_the_filter_actually_changes_the_list_on_screen() {
+        // The three controls the commission asks for are a category,
+        // a filter and a sort. Each of them only edits a resource —
+        // if nothing rebuilds the list, all three are inert and the
+        // screen lies about what it is showing.
+        let mut roster = beatbyte_core::player::Roster::default();
+        roster
+            .add("Martin", 1)
+            .expect("a fresh roster takes a name");
+        let mut store = Unlocked::default();
+        store
+            .0
+            .entry(1)
+            .or_default()
+            .merge(&[("first_run".to_owned(), 1_000)]);
+        // No history on purpose: a run would earn a handful of
+        // achievements through `evaluate` as well as the one in the
+        // store, and then "EARNED shows one row" would be wrong for a
+        // reason that has nothing to do with the rebuild.
+        let mut app = wired(Vec::new(), roster, store);
+        // Spawn once, the way `OnEnter` does, and leave only the
+        // redraw in `Update`. Running the spawner every frame would
+        // stack screens and the count below would mean nothing.
+        app.add_systems(Startup, spawn_screen)
+            .add_systems(Update, redraw_when_the_list_changes);
+        app.update();
+
+        let rows = |app: &mut App| {
+            app.world_mut()
+                .query::<&AchievementRow>()
+                .iter(app.world())
+                .count()
+        };
+        let all = rows(&mut app);
+        assert_eq!(all, CATALOGUE.len(), "the unfiltered list is the catalogue");
+
+        // EARNED: one row, and the screen must actually show one row.
+        app.world_mut().resource_mut::<AchievementsView>().show = Show::Earned;
+        app.update();
+        assert_eq!(
+            rows(&mut app),
+            1,
+            "the filter changed but the list on screen did not"
+        );
+
+        // A category narrows it too, and going back widens it again —
+        // a rebuild that only ever shrinks would pass the check above.
+        app.world_mut().resource_mut::<AchievementsView>().show = Show::All;
+        app.world_mut().resource_mut::<AchievementsView>().group = Some(Category::Calendar);
+        app.update();
+        let calendar = rows(&mut app);
+        assert!(calendar > 0 && calendar < all, "{calendar} calendar rows");
+
+        app.world_mut().resource_mut::<AchievementsView>().group = None;
+        app.update();
+        assert_eq!(rows(&mut app), all, "the list did not widen again");
+
+        // Exactly one screen at a time: a rebuild that forgets to
+        // despawn draws the old list underneath the new one.
+        assert_eq!(
+            app.world_mut()
+                .query_filtered::<Entity, With<AchievementsScreen>>()
+                .iter(app.world())
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn moving_the_cursor_does_not_rebuild_the_list() {
+        // The counterpart: rebuilding on every arrow key would throw
+        // the scroll position away on a hundred-row list.
+        let mut roster = beatbyte_core::player::Roster::default();
+        roster
+            .add("Martin", 1)
+            .expect("a fresh roster takes a name");
+        let mut app = wired(vec![a_run(1)], roster, Unlocked::default());
+        // Spawn once, the way `OnEnter` does, and leave only the
+        // redraw in `Update`. Running the spawner every frame would
+        // stack screens and the count below would mean nothing.
+        app.add_systems(Startup, spawn_screen)
+            .add_systems(Update, redraw_when_the_list_changes);
+        app.update();
+        let first = app
+            .world_mut()
+            .query_filtered::<Entity, With<AchievementsScreen>>()
+            .iter(app.world())
+            .next()
+            .expect("a screen");
+        app.world_mut().resource_mut::<AchievementsView>().row = 7;
+        app.update();
+        let now = app
+            .world_mut()
+            .query_filtered::<Entity, With<AchievementsScreen>>()
+            .iter(app.world())
+            .next()
+            .expect("a screen");
+        assert_eq!(first, now, "the cursor move rebuilt the whole list");
+    }
+
+    #[test]
+    fn a_visit_through_the_roster_does_not_stick_to_the_screen() {
+        // The roster opens the list for a named player. If that
+        // choice survives the visit, ACHIEVEMENTS on the main menu
+        // goes on showing whoever you last inspected instead of
+        // whoever is at the guitar — and there is nothing on the
+        // screen to say so.
+        let mut roster = beatbyte_core::player::Roster::default();
+        let mine = roster
+            .add("Martin", 1)
+            .expect("a fresh roster takes a name");
+        let theirs = roster.add("Kim", 2).expect("a second name is free");
+        roster.select(mine);
+
+        let mut app = wired(Vec::new(), roster, Unlocked::default());
+        app.world_mut().resource_mut::<AchievementsFor>().0 = Some(theirs);
+        app.add_systems(Startup, spawn_screen)
+            .add_systems(Update, despawn_screen);
+        app.update();
+        assert_eq!(
+            app.world().resource::<AchievementsFor>().0,
+            None,
+            "leaving the screen kept the roster's choice"
+        );
+
+        // And with it cleared, the screen is the playing player's.
+        let (id, name) = subject(
+            app.world().resource::<AchievementsFor>(),
+            app.world().resource::<crate::players::Players>(),
+        )
+        .expect("somebody is playing");
+        assert_eq!((id, name.as_str()), (mine, "Martin"));
+    }
+
+    #[test]
+    fn escape_goes_back_where_the_screen_was_opened_from() {
+        assert_eq!(back_to(true), AppState::Players);
+        assert_eq!(back_to(false), AppState::MainMenu);
     }
 
     #[test]

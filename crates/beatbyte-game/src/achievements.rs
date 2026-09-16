@@ -139,7 +139,10 @@ impl Plugin for AchievementsPlugin {
                 OnExit(AppState::Gameplay),
                 announce_new.after(crate::history::RunLogged),
             )
-            .add_systems(OnEnter(AppState::Achievements), credit_quietly)
+            .add_systems(
+                OnEnter(AppState::Achievements),
+                credit_quietly.after(crate::history::HistoryReloaded),
+            )
             .add_systems(Update, run_banner);
     }
 }
