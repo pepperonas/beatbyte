@@ -221,7 +221,9 @@ now, and this is it.)*
 - 🏅 **A hundred achievements** — ten categories, twelve of them secret
   until earned. Every one is re-derived from the whole play log rather
   than counted as you go, so one added later unlocks retroactively,
-  with the date it really happened, and none can be taken back
+  with the date it really happened, and none can be taken back. The
+  full list, with the field each rule reads:
+  [docs/achievements.md](docs/achievements.md)
 - 🏆 **High scores**, persistent settings, procedural SFX — and an
   autopilot that must play every build flawlessly before release
 - 🖥️ **Cross-platform** — macOS (.dmg), Windows (portable), Linux
