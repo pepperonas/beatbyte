@@ -9,9 +9,91 @@ file wins over habit; the roadmap wins over improvisation.
 
 **BeatByte** — an original five-lane rhythm game in **Rust + Bevy
 0.19** (repo `pepperonas/beatbyte`, MIT, © 2026 Martin Pfeffer, public).
-Cargo workspace: `crates/beatbyte-{core,chart,audio,editor,cli,game,ml,lyrics,meter}`
-+ `apps/beatbyte` (thin launcher; all logic lives in the crates). UI
-language is English; the game is fully keyboard/gamepad driven.
+A Cargo workspace of nine crates plus a thin launcher (map below);
+all logic lives in the crates. UI language is English; the game is
+fully keyboard/gamepad driven.
+
+## Orientation
+
+### Crate map
+
+Dependencies point one way only, and `beatbyte-game` is the only crate
+that may touch Bevy (the full layering and its invariants:
+[`docs/architecture/overview.md`](docs/architecture/overview.md)).
+
+- **`beatbyte-core`** — the domain model, dependency-free: lanes,
+  notes, timing, judgment, scoring, `TrackSession`, telemetry.
+- **`beatbyte-chart`** (core) — the versioned JSON chart format:
+  schema, validation of untrusted input, conversion into core tracks.
+- **`beatbyte-audio`** (core) — decode, playback + `SongClock`,
+  the analysis pipeline (BPM, beats, onsets, energy), and the
+  synthesized `demo` reference tracks.
+- **`beatbyte-editor`** (core, chart) — invertible `EditOp`s and
+  `EditorSession` with undo/redo.
+- **`beatbyte-ml`** (—) — the local ONNX runtime: compiled-in
+  registry, verified store, inference. Behind the `ml` feature.
+- **`beatbyte-lyrics`** (ml, audio) — forced alignment of lyrics the
+  player already has → `words.json`.
+- **`beatbyte-meter`** (ml, audio, core) — beats and downbeats from
+  the Beat This! model pair.
+- **`beatbyte-game`** (everything above) — the only Bevy crate:
+  screens, HUD, 3D stage, input routing, library, settings, harnesses.
+- **`beatbyte-cli`** (all but game and editor) — the offline tool.
+- **`apps/beatbyte`** — thin launcher; it also holds the two gates
+  that watch the repository itself: `tests/docs_stay_true.rs` (the
+  documents must state what the code actually is) and
+  `tests/rock_is_unchanged.rs` (the built-in songs' charts are
+  fingerprinted — when a change to the default IS intended, updating
+  the constant is the deliberate act of recording that).
+
+`beatbyte-game` is by far the largest crate. `src/gameplay/` is the
+playing screen (input, notes, HUD, lyrics, 3D stage, light show); the
+files beside it are roughly one screen each; `ui_kit.rs` owns the
+shared look. Screens are `AppState` variants (`states.rs`), and
+gameplay is split further by `PlayState` (Playing / Paused / Outro).
+
+### Commands
+
+```bash
+cargo run -p beatbyte                          # run the game (debug)
+cargo run -p beatbyte --features ml            # …with the learned features
+cargo test -p beatbyte-core --lib judge        # one crate, filtered by name
+cargo test -p beatbyte --test docs_stay_true   # one test file
+cargo run -p beatbyte-cli -- --help            # the offline tool's subcommands
+```
+
+The gate that must pass before every commit, and the harnesses that
+stand in for a player, are further down this file.
+
+⚠️ The binary the user plays is `target/release/beatbyte`, and it is
+built **with** `--features ml` — a plain release build silently
+replaces it with a lesser one (gotchas below).
+
+### Where the runtime data lives
+
+None of this is in the repository; it is per-machine state the game
+writes. On macOS both directories below are
+`~/Library/Application Support`.
+
+- `songs/` (repo-relative) and `<data>/beatbyte/songs/` — the library.
+  Imports land in `songs/imported/<song>/`, which is gitignored.
+- `<config>/beatbyte/settings.json` — settings. The game REWRITES it
+  on exit; read the gotcha before editing it to set up a run.
+- `<data>/beatbyte/` — `scores.json`, `players.json`, `history.jsonl`,
+  `achievements.json`, `telemetry/` (one JSONL per played session,
+  which is what a suspicious autopilot verdict is read against), and
+  the downloaded ML models.
+
+### Where to look before deriving something twice
+
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — the work itself, in order
+- [`docs/decisions/`](docs/decisions/) — ADRs; `README.md` is the index
+- [`docs/development/workflow.md`](docs/development/workflow.md) —
+  daily commands, toolchain, and what in `target/` may be deleted
+- [`docs/development/harness.md`](docs/development/harness.md) — every
+  `BEATBYTE_*` switch (a test enforces that the list stays complete)
+- `docs/gameplay/`, `docs/audio/`, `docs/chart-format/`,
+  `docs/lyrics/`, `docs/ui/`, `docs/releases/` — the living specs
 
 ## Autonomous execution protocol
 
@@ -36,7 +118,7 @@ tech writer, release manager. Operate accordingly:
    disproven.
 5. **Record what you learn.** New gotchas go into this file's gotcha
    section; scope/plan changes go into the roadmap; decisions with
-   alternatives go into `docs/adr/`.
+   alternatives go into `docs/decisions/`.
 6. **Keep both sources of truth current.** A completed task is not
    done until the roadmap reflects it. A changed rule is not real
    until it is written here.
@@ -186,8 +268,9 @@ CI (happened twice).
   the newest heading is the unreleased state until a tag publishes it.
 - **README.md** stays truthful to the shipped state — features,
   controls, screenshots. Screenshots must show the *current* build.
-- **`docs/adr/`** records architecture decisions (numbered ADRs) when a
-  choice had real alternatives. Update, don't silently contradict.
+- **`docs/decisions/`** records architecture decisions (numbered
+  ADRs) when a choice had real alternatives. Update, don't silently
+  contradict.
 - **`docs/`** holds the living specs (chart format, gameplay rules,
   audio analysis, workflow). A behavior change that touches a spec
   updates the spec in the same commit.
