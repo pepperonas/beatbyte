@@ -66,8 +66,10 @@ pub fn injector_owns_input(enabled: bool, key_play: bool) -> bool {
     enabled && !key_play
 }
 
-/// Marker for [`injector_owns_input`]: while it exists,
-/// [`crate::gameplay::input::gameplay_input`] ignores real devices.
+/// Marker for [`injector_owns_input`]: while it exists, the gameplay
+/// input system (`gameplay::input::gameplay_input`) ignores real
+/// devices. Named, not linked: the system is `pub(super)`, so a link
+/// to it fails the `-D warnings` rustdoc build CI runs.
 #[derive(Resource)]
 pub struct InjectorOwnsInput;
 
