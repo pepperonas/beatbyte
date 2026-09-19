@@ -245,6 +245,13 @@ feature on, and the default-feature docs are what CI builds (an
 `[`beatbyte_lyrics::…`]` link in the game crate went red in CI after
 passing locally with `--all-features`).
 
+⚠️ The four gate commands above do **not** cover rustdoc, so a broken
+doc link reaches main and sits there. Tightening an item's visibility
+— a `pub` Bevy system to `pub(super)`, a normal refactor — turns every
+intra-doc link that names its path into an unresolved link, and only
+this step says so; main was red for four hours that way (0.17.10).
+Link to what is public and name the rest in a plain code span.
+
 CI installs the **latest stable** — keep the local toolchain current
 (`rustup update stable`); a stale local clippy passes locally and fails
 CI (happened twice).
