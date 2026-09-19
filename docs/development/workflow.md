@@ -9,6 +9,12 @@ cargo fmt --all                  # format
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
 
+`cargo run -p beatbyte` builds and launches the current checkout, so
+changed source files are applied automatically on the next start. When
+working with changes pushed by another checkout, update this checkout
+first with `git pull --ff-only`; launching an already-built binary does
+not rebuild it.
+
 ## Quality gate (must pass before every commit)
 
 ```bash

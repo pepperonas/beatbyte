@@ -25,6 +25,31 @@ throws out live takes, remixes and hour-long loops *before* anything
 is downloaded. Without the dash it still searches, but the choice
 rests on the titles alone.
 
+## Direct YouTube links
+
+The browser currently accepts song names through the **D** field. A
+direct YouTube-link input is not enabled yet. It must share the same
+download and import path as the name search so duplicate handling is
+applied exactly once.
+
+The safe identity for a YouTube import is the canonical video ID:
+
+| Input | Result |
+|---|---|
+| The same video ID again | Rejected as an already imported recording. |
+| A different video ID for the same title and artist | Allowed as a separate version, such as a live take, remix, cover, or radio edit. |
+| An invalid or unreachable URL | Rejected with a readable error before the app can crash. |
+
+The current chart metadata stores title, artist, and audio path, but no
+YouTube video ID. The existing search keeps its candidate ID only while
+it is running, and the local-file import index stores audio fingerprints
+instead. As a result, an older song imported through the search cannot
+be matched to a newly entered link with certainty. The link feature
+needs to persist the video ID for new search and link imports before it
+can promise exact duplicate detection across both input paths. A
+title-plus-artist check is deliberately insufficient because it would
+reject legitimate alternate versions.
+
 It needs **`yt-dlp`** on your machine (`brew install yt-dlp`); the
 game ships no downloader of its own and says so if the tool is
 missing. ⚠️ Downloading from YouTube is against its terms of service —
