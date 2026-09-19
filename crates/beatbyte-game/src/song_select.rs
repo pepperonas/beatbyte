@@ -298,7 +298,7 @@ fn build_order(
     pair_twins(entries, order)
 }
 
-/// Put every `[Guitar Study]` twin directly under its original —
+/// Put every `[GS]` twin directly under its original —
 /// whatever the sort, whichever way it runs, search or no search.
 ///
 /// The list is sorted on the ORIGINALS: a twin never claims a place
@@ -2405,10 +2405,7 @@ mod view_tests {
         // its own values (title, length, notes) would place it
         // elsewhere under every sort. It follows its original anyway.
         let mut lib = lib();
-        lib.insert(
-            0,
-            entry("[Guitar Study] Life", "Des'ree", Some("Pop"), 200.0),
-        );
+        lib.insert(0, entry("[GS] Life", "Des'ree", Some("Pop"), 200.0));
         lib[0].note_counts = vec![40];
         let titles = |order: &[usize]| -> Vec<&str> {
             order.iter().map(|i| lib[*i].title.as_str()).collect()
@@ -2429,7 +2426,7 @@ mod view_tests {
                     .expect("the original is listed");
                 assert_eq!(
                     t.get(life + 1),
-                    Some(&"[Guitar Study] Life"),
+                    Some(&"[GS] Life"),
                     "{sort:?} flipped={flipped}: {t:?}"
                 );
                 assert_eq!(t.len(), lib.len(), "nobody lost: {t:?}");
@@ -2444,7 +2441,7 @@ mod view_tests {
             "life",
             |_| None,
         );
-        assert_eq!(titles(&order), vec!["Life", "[Guitar Study] Life"]);
+        assert_eq!(titles(&order), vec!["Life", "[GS] Life"]);
     }
 
     #[test]
@@ -2453,33 +2450,27 @@ mod view_tests {
         // hidden and not moved — it is where TITLE puts it, among the
         // G's, which is honest about what it is.
         let mut lib = lib();
-        lib.push(entry("[Guitar Study] Maria", "Blondie", None, 248.0));
+        lib.push(entry("[GS] Maria", "Blondie", None, 248.0));
         let order = build_order(&lib, SortMode::Title, false, Difficulty::Medium, "", |_| {
             None
         });
         let t: Vec<&str> = order.iter().map(|i| lib[*i].title.as_str()).collect();
         assert_eq!(
             t,
-            vec![
-                "Africa",
-                "Ella, elle l'a",
-                "Life",
-                "Maria",
-                "[Guitar Study] Maria"
-            ]
+            vec!["Africa", "Ella, elle l'a", "Life", "Maria", "[GS] Maria"]
         );
         let order = build_order(
             &lib,
             SortMode::Title,
             false,
             Difficulty::Medium,
-            "guitar",
+            "gs",
             |_| None,
         );
         let t: Vec<&str> = order.iter().map(|i| lib[*i].title.as_str()).collect();
         assert_eq!(
             t,
-            vec!["[Guitar Study] Maria"],
+            vec!["[GS] Maria"],
             "alone when its original is filtered out"
         );
     }

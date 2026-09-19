@@ -1794,11 +1794,11 @@ pub const CATALOGUE: &[Achievement] = &[
     Achievement {
         id: "odd_guitar_study",
         title: "The Study",
-        blurb: "Finish one of the [Guitar Study] charts.",
+        blurb: "Finish one of the [GS] charts.",
         category: Category::Oddities,
         tier: Tier::Easy,
         hidden: true,
-        rule: Rule::OneRun(&[Test::Finished, Test::TitleStartsWith("[Guitar Study]")]),
+        rule: Rule::OneRun(&[Test::Finished, Test::TitleStartsWith("[GS]")]),
     },
     Achievement {
         id: "odd_failed",

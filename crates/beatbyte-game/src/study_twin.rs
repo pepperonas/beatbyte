@@ -1,4 +1,4 @@
-//! The `[Guitar Study]` twin for every imported song, made in the
+//! The `[GS]` twin for every imported song, made in the
 //! background after the import.
 //!
 //! The player's verdict on the stem-charted study was "by a distance

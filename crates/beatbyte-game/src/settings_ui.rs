@@ -29,7 +29,7 @@ pub(crate) enum Row {
     HitLabels,
     /// Loudness matching on/off.
     LoudnessMatch,
-    /// A `[Guitar Study]` twin for every imported song.
+    /// A `[GS]` twin for every imported song.
     GuitarStudyTwins,
     NoFail,
     /// Room Stage: the game's events drive lights on the LAN.
@@ -361,7 +361,7 @@ pub(crate) const SUBTITLE_CHARS: usize = 56;
 
 /// Shorten a path to fit, keeping the END.
 ///
-/// The tail is the informative part — `.../beat-bytes/songs` says
+/// The tail is the informative part — `.../beat-byte/songs` says
 /// what the head never does — so an over-long path loses its front
 /// to an ellipsis, and the home directory collapses to `~` first.
 /// Pure — tested.
@@ -714,12 +714,12 @@ mod tests {
 
     #[test]
     fn a_long_path_keeps_its_end() {
-        // The tail says what the head never does: ".../beat-bytes/
+        // The tail says what the head never does: ".../beat-byte/
         // songs" answers "which folder", a truncated head does not.
-        let long = "/Users/someone/very/deeply/nested/place/that/keeps/going/beat-bytes/songs";
+        let long = "/Users/someone/very/deeply/nested/place/that/keeps/going/beat-byte/songs";
         let shown = short_path(long, 30);
         assert!(shown.starts_with("..."), "the FRONT is what goes: {shown}");
-        assert!(shown.ends_with("beat-bytes/songs"), "the tail survives");
+        assert!(shown.ends_with("beat-byte/songs"), "the tail survives");
         assert_eq!(shown.chars().count(), 30);
         // Short enough already: left exactly alone.
         assert_eq!(short_path("/songs", 30), "/songs");

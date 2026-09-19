@@ -6,7 +6,7 @@ Placeholders resolved from the repository rather than guessed:
 
 | Placeholder | Value | How it was established |
 |---|---|---|
-| `<REPO_PFAD>` | `/Users/martin/claude/beat-bytes` | working directory |
+| `<REPO_PFAD>` | `/Users/martin/claude/beat-byte` | working directory |
 | `<ANALYSE_MODUL>` | `crates/beatbyte-audio/src/analysis/` | `mod.rs` there defines the `Analyzer` trait and the only implementation |
 | `<TESTKORPUS_PFAD>` | **not resolvable** | no corpus directory exists anywhere in the tree, and none is referenced in code or docs. See "Open questions". |
 

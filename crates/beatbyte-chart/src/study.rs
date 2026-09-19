@@ -1,4 +1,4 @@
-//! The `[Guitar Study]` twin of a song folder.
+//! The `[GS]` (Guitar Study) twin of a song folder.
 //!
 //! The study charts ONE instrument source (a separated stem) instead
 //! of the whole mix — fewer, melodically grounded notes — and the
@@ -23,7 +23,7 @@ use crate::{
 };
 
 /// The title prefix the browser shows the twin under.
-pub const TITLE_PREFIX: &str = "[Guitar Study] ";
+pub const TITLE_PREFIX: &str = "[GS] ";
 
 /// Who the provenance names.
 pub const DESIGNER: &str = "lead-study";
@@ -250,17 +250,17 @@ mod tests {
 
     #[test]
     fn a_twin_names_its_original_and_an_original_names_nothing() {
-        assert_eq!(base_title("[Guitar Study] Africa"), Some("Africa"));
+        assert_eq!(base_title("[GS] Africa"), Some("Africa"));
         assert_eq!(base_title("Africa"), None);
         // The prefix must be the title's start, not just somewhere in it.
-        assert_eq!(base_title("Africa [Guitar Study] "), None);
+        assert_eq!(base_title("Africa [GS] "), None);
     }
 
     #[test]
     fn the_title_is_prefixed_exactly_once() {
-        assert_eq!(twin_title("Africa"), "[Guitar Study] Africa");
-        // A twin of a twin would read "[Guitar Study] [Guitar Study] …".
-        assert_eq!(twin_title("[Guitar Study] Africa"), "[Guitar Study] Africa");
+        assert_eq!(twin_title("Africa"), "[GS] Africa");
+        // A twin of a twin would read "[GS] [GS] …".
+        assert_eq!(twin_title("[GS] Africa"), "[GS] Africa");
     }
 
     #[test]

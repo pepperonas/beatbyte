@@ -124,7 +124,7 @@ pub struct Settings {
     /// are.
     #[serde(default = "default_true")]
     pub normalize_loudness: bool,
-    /// Give every imported song a `[Guitar Study]` twin: a second
+    /// Give every imported song a `[GS]` twin: a second
     /// browser entry charted from the separated instrument stem, in a
     /// folder of its own beside the original (which is never touched).
     /// Runs in the background after the import, needs `demucs` on the

@@ -390,7 +390,7 @@ fn poll_import(
                 None => (outcome, None),
             };
             queue.ok += 1;
-            // The song's `[Guitar Study]` twin, made in the background
+            // The song's `[GS]` twin, made in the background
             // once the batch is out of the way: the folder is the one
             // the import just wrote, by the import's own naming rule.
             if let Some(folder) = queue
@@ -714,7 +714,7 @@ pub(crate) fn import_fetched(
 /// One rule, one place. Both paths that finish an import need to name
 /// the folder it wrote — to hand it to the study twin — and a second
 /// copy of the rule is exactly how the two drifted: a dropped file
-/// got a `[Guitar Study]` twin and a song found through the search
+/// got a `[GS]` twin and a song found through the search
 /// did not, because only one path knew where the song had landed.
 #[must_use]
 pub(crate) fn landing_folder(source: &Path) -> Option<PathBuf> {

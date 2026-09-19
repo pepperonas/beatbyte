@@ -10,7 +10,7 @@ of the workspace rather than assumed.
 
 | Field | Value | Source |
 |---|---|---|
-| Repo path | `/Users/martin/claude/beat-bytes` | — |
+| Repo path | `/Users/martin/claude/beat-byte` | — |
 | Game framework | **Bevy 0.19** | `Cargo.toml:35` |
 | Audio backend | **rodio 0.22** (Symphonia decoders), own thread + atomics | `Cargo.toml:38`, `beatbyte-audio/src/playback.rs:149-180` |
 | Existing chart logic | `crates/beatbyte-chart/` (format, validate, generate), `crates/beatbyte-core/` (timing, notes, session), `crates/beatbyte-editor/` (ops, session) | — |

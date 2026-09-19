@@ -78,7 +78,7 @@ enum Command {
     /// slice (from the chart's preview anchor unless `--from` says
     /// otherwise), which is what makes two variants comparable in
     /// half a minute.
-    /// Build the `[Guitar Study]` twin of a song folder from an
+    /// Build the `[GS]` twin of a song folder from an
     /// instrument stem: a new folder beside the original with the same
     /// audio and one stem-charted `chart.json`, so both play in the
     /// browser. The original is never touched.

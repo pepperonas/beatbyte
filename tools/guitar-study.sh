@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build the [Guitar Study] twin of every song folder that has none.
+# Build the [GS] twin of every song folder that has none.
 #
 #   tools/guitar-study.sh [<songs/imported>] [<scratch dir>]
 #

@@ -1199,7 +1199,7 @@ pub fn poll_discovery(
     if found && let (Some(builtins), Some(mut library)) = (builtins, library) {
         *library = crate::boot::scan_with_builtins(&builtins.0);
     }
-    // And its `[Guitar Study]` twin. The import queue is the only
+    // And its `[GS]` twin. The import queue is the only
     // other caller of this, and the search never went through it —
     // it calls `import_fetched` straight from its own task — so a
     // downloaded song arrived without the twin every song is meant

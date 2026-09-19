@@ -88,7 +88,7 @@ dem Songnamen abgeleitet.
 ## Spielbarer Eintrag und Prüfung
 
 Installiert unter `songs/imported/guitar-study-metallica/` als
-**[Guitar Study] Nothing Else Matters**. Audio, Lautstärke-Sidecar, LRC und
+**[GS] Nothing Else Matters**. Audio, Lautstärke-Sidecar, LRC und
 Wortausrichtung sind bytegleiche Kopien des Originals. Audio-Priming und
 gespeichertes Raster bleiben gleich. Originalsong und aktiver Versionszeiger
 bleiben erhalten. Musik, Lyrics und Charts bleiben lokale Nutzerinhalte.

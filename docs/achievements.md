@@ -93,7 +93,7 @@ no progress bar until the achievement is earned.
 | `odd_dead_on` | Dead On | Finish a run with a mean timing drift inside one millisecond. | Oddities | Rare | yes | `PlayEntry.completed` · `RunDetail.mean_offset_ms` |
 | `odd_exactly_half` | Exactly Half | Finish a run at exactly fifty per cent accuracy. | Oddities | Rare | yes | `PlayEntry.completed` · `RunPart.accuracy` |
 | `odd_failed` | That Went Badly | Let the crowd turn on you completely. | Oddities | Easy | yes | `RunDetail.failed` |
-| `odd_guitar_study` | The Study | Finish one of the [Guitar Study] charts. | Oddities | Easy | yes | `PlayEntry.completed` · `PlayEntry.title` |
+| `odd_guitar_study` | The Study | Finish one of the [GS] charts. | Oddities | Easy | yes | `PlayEntry.completed` · `PlayEntry.title` |
 | `odd_more_overstrums` | Air Guitar | Strum at more thin air than notes in a single run. | Oddities | Medium | yes | `RunDetail.overstrums + perfect/great/good` · `RunDetail.overstrums` |
 | `odd_redemption` | Redemption | Finish a song that once beat you. | Oddities | Medium | yes | `RunDetail.failed + PlayEntry.completed` |
 | `odd_same_song_10` | On Repeat | Finish the same song ten times. | Oddities | Medium | yes | `PlayEntry.title + artist + completed` |
@@ -120,4 +120,3 @@ no progress bar until the achievement is earned.
 | `ritual_streak_3` | Three Days Running | Play three days in a row. | Ritual | Easy |  | `PlayEntry.started_ms` |
 | `ritual_streak_30` | A Month Straight | Play thirty days in a row. | Ritual | Rare |  | `PlayEntry.started_ms` |
 | `ritual_streak_7` | A Full Week | Play seven days in a row. | Ritual | Medium |  | `PlayEntry.started_ms` |
-

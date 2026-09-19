@@ -51,7 +51,7 @@ the manifest ever carries a version this file does not describe.
 ### Fixed
 
 - **A song found through the in-game search never got its
-  `[Guitar Study]` twin.** A dropped file always did. The reason is
+  `[GS]` twin.** A dropped file always did. The reason is
   that `study_twin::queue_twin` had exactly one caller — the import
   queue's poll — and the search does not go through that queue: it
   calls `import_fetched` straight from its own background task and
@@ -316,7 +316,7 @@ the manifest ever carries a version this file does not describe.
 
 ### Changed
 
-- **A `[Guitar Study]` twin always sits directly under its original in
+- **A `[GS]` twin always sits directly under its original in
   the song browser** — under every sort, in both directions, with a
   search filter or without. The list is sorted on the originals; a twin
   claims no place of its own (under TITLE it used to sit among the G's,
@@ -327,7 +327,7 @@ the manifest ever carries a version this file does not describe.
 
 ### Added
 
-- **Every import now gets its `[Guitar Study]` twin, in the background.**
+- **Every import now gets its `[GS]` twin, in the background.**
   Drop a song in (or add one by name) and, once the batch is out of the
   way, the game decodes it, separates the `other` stem with demucs and
   writes the twin beside the original — a second browser entry, charted
@@ -348,10 +348,10 @@ the manifest ever carries a version this file does not describe.
 
 ### Added
 
-- **`beatbyte-cli study` — the `[Guitar Study]` twin of a song.** Given a
+- **`beatbyte-cli study` — the `[GS]` twin of a song.** Given a
   song folder and an instrument stem on the decoded timeline, it writes a
   NEW folder beside the original with the same audio and sidecars and one
-  stem-charted `chart.json`, titled `[Guitar Study] …`, provenance
+  stem-charted `chart.json`, titled `[GS] …`, provenance
   `lead-study` with the original's active chart as parent. The original —
   its versions, its pointer, its telemetry — is never touched, so both
   versions sit in the browser and can be played against each other in a

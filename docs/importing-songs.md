@@ -50,9 +50,9 @@ Supported audio: **WAV, Ogg Vorbis, FLAC, MP3, M4A/AAC** — the
 verified list lives in
 [the chart-format spec](chart-format/chart-format-v1.md#supported-audio-formats).
 
-## The `[Guitar Study]` twin
+## The `[GS]` twin
 
-Every import also gets a second browser entry, **`[Guitar Study]
+Every import also gets a second browser entry, **`[GS]
 <title>`**: the same audio in a folder of its own, charted from the
 separated instrument stem instead of the whole mix — fewer notes,
 melodically grounded, the version the ear preferred by a distance.

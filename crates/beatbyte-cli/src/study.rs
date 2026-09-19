@@ -1,4 +1,4 @@
-//! `beatbyte-cli study`: the `[Guitar Study]` twin of a song folder.
+//! `beatbyte-cli study`: the `[GS]` twin of a song folder.
 //!
 //! The writer lives in [`beatbyte_chart::study`] so the game's import
 //! and this command share one rule; this file only decodes and

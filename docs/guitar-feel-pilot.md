@@ -126,7 +126,7 @@ Lokal enthält `local/guitar-study/comparison-0157/` beide Analysen, vier Charts
 vorherigen Chart als Archiv, die dekodierte Aufnahme und `report.json`.
 `original.json` ist ein Archiv mit ursprünglicher Audio-Referenz, kein eigenständig
 spielbares Paket. Der Pilot ist separat unter
-`songs/imported/guitar-study-van-halen/` als **[Guitar Study] Ain't Talkin' 'Bout Love**
+`songs/imported/guitar-study-van-halen/` als **[GS] Ain't Talkin' 'Bout Love**
 installiert. Der bisherige Song bleibt als direkter Vergleich erhalten.
 Der installierte Pilot spielt eine bytegleiche Kopie der ursprünglichen
 Stereo-M4A mit deren Lautstärke-Sidecar und Encoder-Priming-Angabe ab. Der Stem

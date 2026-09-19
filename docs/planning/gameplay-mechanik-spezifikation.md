@@ -1,4 +1,4 @@
-# beat-bytes — Gameplay-Mechanik-Spezifikation (Guitar-Hero-Modell)
+# beat-byte — Gameplay-Mechanik-Spezifikation (Guitar-Hero-Modell)
 
 > Referenzdokument, vom Nutzer am 2026-08-30 übergeben. Zweck:
 > Vollständigkeitsprüfung von Implementierungsplänen. Jeder Punkt ist
