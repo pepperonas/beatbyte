@@ -25,6 +25,9 @@ use crate::{
 /// The title prefix the browser shows the twin under.
 pub const TITLE_PREFIX: &str = "[GS] ";
 
+/// The title prefix written by older BeatByte versions.
+const LEGACY_TITLE_PREFIX: &str = "[Guitar Study] ";
+
 /// Who the provenance names.
 pub const DESIGNER: &str = "lead-study";
 
@@ -74,18 +77,26 @@ pub fn is_twin_folder(name: &str) -> bool {
 /// The twin's title: prefixed once, never twice. Pure — tested.
 #[must_use]
 pub fn twin_title(title: &str) -> String {
-    if title.starts_with(TITLE_PREFIX) {
-        title.to_owned()
-    } else {
-        format!("{TITLE_PREFIX}{title}")
-    }
+    format!("{TITLE_PREFIX}{}", base_title(title).unwrap_or(title))
 }
 
 /// The original's title behind a twin's, or `None` for a title that
 /// is not a twin's. What the browser keys the pairing on. Pure — tested.
 #[must_use]
 pub fn base_title(title: &str) -> Option<&str> {
-    title.strip_prefix(TITLE_PREFIX)
+    title
+        .strip_prefix(TITLE_PREFIX)
+        .or_else(|| title.strip_prefix(LEGACY_TITLE_PREFIX))
+}
+
+/// Canonical browser title for a study, including titles saved by versions
+/// that used the long prefix. The chart file itself is left untouched.
+#[must_use]
+pub fn display_title(title: &str) -> String {
+    match base_title(title) {
+        Some(base) => format!("{TITLE_PREFIX}{base}"),
+        None => title.to_owned(),
+    }
 }
 
 /// Whether a file in the song folder is a chart or the pointer — the
@@ -261,6 +272,14 @@ mod tests {
         assert_eq!(twin_title("Africa"), "[GS] Africa");
         // A twin of a twin would read "[GS] [GS] …".
         assert_eq!(twin_title("[GS] Africa"), "[GS] Africa");
+        assert_eq!(twin_title("[Guitar Study] Africa"), "[GS] Africa");
+    }
+
+    #[test]
+    fn legacy_titles_are_displayed_with_the_short_prefix() {
+        assert_eq!(display_title("[Guitar Study] Africa"), "[GS] Africa");
+        assert_eq!(display_title("[GS] Africa"), "[GS] Africa");
+        assert_eq!(display_title("Africa"), "Africa");
     }
 
     #[test]

@@ -21,13 +21,18 @@ APPDIR="$OUT/BeatByte.AppDir"
 [ -f "$BIN" ] || { echo "missing binary: $BIN" >&2; exit 1; }
 
 rm -rf "$APPDIR"
-mkdir -p "$APPDIR/usr/bin"
+mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications"
 
 cp "$BIN" "$APPDIR/usr/bin/beatbyte"
 cp -R "$ROOT/assets" "$APPDIR/usr/bin/assets"
 
-python3 "$ROOT/packaging/make-icon.py"
-cp "$ROOT/packaging/icon.png" "$APPDIR/beatbyte.png"
+cp "$ROOT/packaging/icons/linux/beatbyte-512.png" "$APPDIR/beatbyte.png"
+for size in 16 32 48 64 128 256 512; do
+  icon_dir="$APPDIR/usr/share/icons/hicolor/${size}x${size}/apps"
+  mkdir -p "$icon_dir"
+  cp "$ROOT/packaging/icons/linux/beatbyte-${size}.png" \
+    "$icon_dir/beatbyte.png"
+done
 
 cat > "$APPDIR/beatbyte.desktop" <<DESKTOP
 [Desktop Entry]
@@ -39,6 +44,7 @@ Icon=beatbyte
 Categories=Game;
 Terminal=false
 DESKTOP
+cp "$APPDIR/beatbyte.desktop" "$APPDIR/usr/share/applications/beatbyte.desktop"
 
 cat > "$APPDIR/AppRun" <<'APPRUN'
 #!/bin/sh

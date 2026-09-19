@@ -1,143 +1,130 @@
 #!/usr/bin/env python3
-"""Generate the BeatByte app icon as a PNG — procedurally, no deps.
+"""Build all BeatByte desktop icon assets from bb-app-icon.png.
 
-Draws the icon: deep-navy rounded tile with faint lane guides, a
-chunky yellow "B", and the five round gems (green red yellow blue
-orange, white core + dark ring — the game's receptor row) along the
-bottom. Writes icon.png (1024x1024) next to this script. The PNG
-encoder is hand-rolled (zlib + struct are in the standard library),
-keeping the repository free of binary sources.
+Developer tool: requires Pillow. Release packaging consumes the generated,
+committed assets and therefore does not need Pillow on CI.
 """
 
+from __future__ import annotations
+
+import math
+import shutil
 import struct
-import zlib
+import subprocess
 from pathlib import Path
 
-SIZE = 1024
-CELL = SIZE // 16  # 16x16 pixel-art grid
+from PIL import Image
 
-NAVY = (11, 11, 22, 255)
-NAVY_LIGHT = (19, 20, 33, 255)
-BRAND = (255, 217, 64, 255)
-LANES = [
-    (61, 219, 133, 255),
-    (255, 82, 82, 255),
-    (255, 214, 64, 255),
-    (64, 196, 255, 255),
-    (255, 171, 64, 255),
-]
-
-# A chunky 8x10 "B" on the 16x16 grid (col, row) cells.
-B_CELLS = [
-    (4, 3), (5, 3), (6, 3), (7, 3), (8, 3),
-    (4, 4), (8, 4), (9, 4),
-    (4, 5), (8, 5), (9, 5),
-    (4, 6), (5, 6), (6, 6), (7, 6), (8, 6),
-    (4, 7), (8, 7), (9, 7),
-    (4, 8), (9, 8),
-    (4, 9), (8, 9), (9, 9),
-    (4, 10), (5, 10), (6, 10), (7, 10), (8, 10),
-]
-
-# A few falling note squares above the gem row (col, row, lane).
-NOTES = [
-    (11, 3, 3), (2, 5, 4), (12, 6, 0), (3, 9, 1),
-]
+ROOT = Path(__file__).parent
+SOURCE = ROOT / "bb-app-icon.png"
+MASTER = ROOT / "icon.png"
+ICONS = ROOT / "icons"
+MASTER_SIZE = 1024
+LINUX_SIZES = (16, 32, 48, 64, 128, 256, 512)
+WINDOWS_SIZES = (16, 24, 32, 48, 64, 128, 256)
+MAC_SIZES = (16, 32, 64, 128, 256, 512)
 
 
-def build_pixels():
-    px = [[NAVY for _ in range(SIZE)] for _ in range(SIZE)]
-    # Rounded tile: cut the outer cells at the corners.
-    corner = CELL
-    for y in range(SIZE):
-        for x in range(SIZE):
-            in_corner = (
-                (x < corner and y < corner)
-                or (x >= SIZE - corner and y < corner)
-                or (x < corner and y >= SIZE - corner)
-                or (x >= SIZE - corner and y >= SIZE - corner)
+def rounded_rect_distance(x: float, y: float) -> float:
+    """Signed distance to the measured opaque face in the source artwork."""
+    x0, y0 = 0.073 * MASTER_SIZE, 0.064 * MASTER_SIZE
+    x1, y1 = 0.928 * MASTER_SIZE, 0.937 * MASTER_SIZE
+    radius = 0.19 * MASTER_SIZE
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    qx = abs(x - cx) - ((x1 - x0) / 2 - radius)
+    qy = abs(y - cy) - ((y1 - y0) / 2 - radius)
+    return math.hypot(max(qx, 0.0), max(qy, 0.0)) + min(max(qx, qy), 0.0) - radius
+
+
+def build_master() -> Image.Image:
+    source = Image.open(SOURCE).convert("RGB").resize(
+        (MASTER_SIZE, MASTER_SIZE), Image.Resampling.LANCZOS
+    )
+    pixels = source.load()
+    rgba = Image.new("RGBA", source.size, (0, 0, 0, 0))
+    output = rgba.load()
+    for y in range(MASTER_SIZE):
+        for x in range(MASTER_SIZE):
+            r, g, b = pixels[x, y]
+            distance = rounded_rect_distance(x + 0.5, y + 0.5)
+            if distance <= -2.0:
+                alpha = 255
+            elif distance < 2.0:
+                alpha = round(255 * (2.0 - distance) / 4.0)
+            else:
+                # Outside the face, only coloured neon energy survives.
+                # Pure/near black becomes fully transparent with RGB zero.
+                alpha = max(0, min(190, round((max(r, g, b) - 4) * 2.2)))
+            output[x, y] = (r, g, b, alpha) if alpha else (0, 0, 0, 0)
+    return rgba
+
+
+def save_png(image: Image.Image, path: Path, size: int) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    resized = image.resize((size, size), Image.Resampling.LANCZOS)
+    if size <= 48:
+        # A light sharpen keeps the b stem and equalizer bars separate at
+        # launcher/taskbar sizes without redrawing or changing the mark.
+        from PIL import ImageFilter
+
+        resized = resized.filter(ImageFilter.UnsharpMask(radius=0.65, percent=145, threshold=2))
+    # Resampling can leave invisible colour data below fully transparent
+    # pixels. Clear it so launchers never reveal a dark fringe.
+    pixels = resized.load()
+    for y in range(size):
+        for x in range(size):
+            if pixels[x, y][3] == 0:
+                pixels[x, y] = (0, 0, 0, 0)
+    resized.save(path, "PNG", optimize=True)
+
+
+def write_ico(path: Path, entries: list[tuple[int, bytes]]) -> None:
+    """ICO container with one PNG payload per requested size."""
+    offset = 6 + 16 * len(entries)
+    directory = bytearray(struct.pack("<HHH", 0, 1, len(entries)))
+    payload = bytearray()
+    for size, png in entries:
+        dimension = 0 if size == 256 else size
+        directory.extend(
+            struct.pack(
+                "<BBBBHHII", dimension, dimension, 0, 0, 1, 32, len(png), offset
             )
-            if in_corner:
-                px[y][x] = (0, 0, 0, 0)
-    # Subtle top glow rows.
-    for y in range(CELL, 3 * CELL):
-        for x in range(CELL, SIZE - CELL):
-            px[y][x] = NAVY_LIGHT
-
-    def cell(col, row, color, inset=6):
-        x0, y0 = col * CELL + inset, row * CELL + inset
-        x1, y1 = (col + 1) * CELL - inset, (row + 1) * CELL - inset
-        for y in range(y0, y1):
-            for x in range(x0, x1):
-                px[y][x] = color
-
-    # Faint vertical lane guides behind everything.
-    for lane in range(5):
-        gx = int((lane + 1.5) * SIZE / 8)
-        for y in range(CELL, SIZE - CELL):
-            for x in range(gx - 2, gx + 3):
-                if px[y][x][3] != 0 and px[y][x] != NAVY_LIGHT:
-                    px[y][x] = (24, 25, 40, 255)
-
-    for col, row in B_CELLS:
-        cell(col, row, BRAND, inset=3)
-    for col, row, lane in NOTES:
-        cell(col, row, LANES[lane], inset=10)
-
-    def disc(cx, cy, radius, color):
-        # Anti-aliased filled circle blended onto the tile.
-        for y in range(int(cy - radius - 2), int(cy + radius + 3)):
-            for x in range(int(cx - radius - 2), int(cx + radius + 3)):
-                if not (0 <= x < SIZE and 0 <= y < SIZE) or px[y][x][3] == 0:
-                    continue
-                d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
-                a = max(0.0, min(1.0, radius - d + 0.5))
-                if a <= 0.0:
-                    continue
-                br, bg, bb, _ = px[y][x]
-                r, g, b, _ = color
-                px[y][x] = (
-                    int(r * a + br * (1 - a)),
-                    int(g * a + bg * (1 - a)),
-                    int(b * a + bb * (1 - a)),
-                    255,
-                )
-
-    # The receptor row: five round gems, white core, dark ring.
-    gem_y = SIZE * 13.1 / 16
-    radius = SIZE * 0.052
-    for lane, color in enumerate(LANES):
-        gem_x = (lane + 1.5) * SIZE / 8
-        disc(gem_x, gem_y, radius, color)
-        disc(gem_x, gem_y, radius * 0.72, tuple(int(c * 0.35) for c in color[:3]) + (255,))
-        disc(gem_x, gem_y, radius * 0.55, color)
-        disc(gem_x, gem_y, radius * 0.28, (255, 255, 255, 255))
-    return px
-
-
-def write_png(path, px):
-    raw = b"".join(
-        b"\x00" + b"".join(struct.pack("4B", *px[y][x]) for x in range(SIZE))
-        for y in range(SIZE)
-    )
-
-    def chunk(tag, data):
-        block = tag + data
-        return struct.pack(">I", len(data)) + block + struct.pack(
-            ">I", zlib.crc32(block) & 0xFFFFFFFF
         )
+        payload.extend(png)
+        offset += len(png)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(directory + payload)
 
-    header = struct.pack(">IIBBBBB", SIZE, SIZE, 8, 6, 0, 0, 0)
-    png = (
-        b"\x89PNG\r\n\x1a\n"
-        + chunk(b"IHDR", header)
-        + chunk(b"IDAT", zlib.compress(raw, 9))
-        + chunk(b"IEND", b"")
-    )
-    path.write_bytes(png)
+
+def main() -> None:
+    if not SOURCE.is_file():
+        raise SystemExit(f"missing source artwork: {SOURCE}")
+    master = build_master()
+    master.save(MASTER, "PNG", optimize=True)
+
+    for size in LINUX_SIZES:
+        save_png(master, ICONS / "linux" / f"beatbyte-{size}.png", size)
+
+    mac = ICONS / "macos" / "BeatByte.iconset"
+    for size in MAC_SIZES:
+        save_png(master, mac / f"icon_{size}x{size}.png", size)
+        save_png(master, mac / f"icon_{size}x{size}@2x.png", size * 2)
+
+    windows_entries = []
+    for size in WINDOWS_SIZES:
+        png_path = ICONS / "windows" / f"beatbyte-{size}.png"
+        save_png(master, png_path, size)
+        windows_entries.append((size, png_path.read_bytes()))
+    write_ico(ICONS / "windows" / "BeatByte.ico", windows_entries)
+
+    iconutil = shutil.which("iconutil")
+    if iconutil:
+        subprocess.run(
+            [iconutil, "-c", "icns", str(mac), "-o", str(ICONS / "macos" / "BeatByte.icns")],
+            check=True,
+        )
+    print(f"wrote RGBA master {MASTER} and platform icons in {ICONS}")
 
 
 if __name__ == "__main__":
-    out = Path(__file__).parent / "icon.png"
-    write_png(out, build_pixels())
-    print(f"wrote {out} ({out.stat().st_size} bytes)")
+    main()

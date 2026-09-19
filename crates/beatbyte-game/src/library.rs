@@ -322,7 +322,7 @@ pub fn scan_library(builtins: &[ChartFile]) -> SongLibrary {
         .enumerate()
         .map(|(index, chart)| SongEntry {
             loudness: None,
-            title: chart.song.title.clone(),
+            title: beatbyte_chart::study::display_title(&chart.song.title),
             artist: chart.song.artist.clone(),
             preview_start_s: chart.song.preview_start_s,
             bpm: chart.song.bpm,
@@ -675,7 +675,7 @@ fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String>
     Ok(Some(SongEntry {
         polish,
         loudness,
-        title: chart.song.title.clone(),
+        title: beatbyte_chart::study::display_title(&chart.song.title),
         artist: chart.song.artist.clone(),
         bpm: chart.song.bpm,
         duration_s: chart.song.duration_s,

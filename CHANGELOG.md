@@ -14,6 +14,21 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.9] - 2026-09-19
+
+### Fixed
+
+- **Guitar Study entries use `[GS]` consistently.** Existing charts that
+  still carry the former `[Guitar Study]` title are normalized in the song
+  browser, and study entries remain directly below their normal song in every
+  sort order.
+
+### Changed
+
+- **Desktop packaging now uses the BeatByte icon asset.** The RGBA master,
+  macOS `.icns`, Windows multi-size `.ico`, Linux PNG sizes and platform build
+  integration are included in the release artifacts.
+
 ## [0.17.8] - 2026-09-16
 
 ### Fixed

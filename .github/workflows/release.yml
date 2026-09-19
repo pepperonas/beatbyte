@@ -83,6 +83,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist/beatbyte-${{ matrix.target }}
           Copy-Item target/${{ matrix.target }}/release/beatbyte.exe dist/beatbyte-${{ matrix.target }}/
           Copy-Item target/${{ matrix.target }}/release/beatbyte-cli.exe dist/beatbyte-${{ matrix.target }}/
+          Copy-Item packaging/icons/windows/BeatByte.ico dist/beatbyte-${{ matrix.target }}/
           Copy-Item -Recurse assets dist/beatbyte-${{ matrix.target }}/assets
           Copy-Item README.md,LICENSE,CHANGELOG.md dist/beatbyte-${{ matrix.target }}/
           Compress-Archive -Path dist/beatbyte-${{ matrix.target }} -DestinationPath beatbyte-${{ github.ref_name }}-${{ matrix.target }}.zip

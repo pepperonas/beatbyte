@@ -26,19 +26,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/beatbyte"
 cp -R "$ROOT/assets" "$APP/Contents/Resources/assets"
 
-# Icon: PNG → iconset → icns.
-python3 "$ROOT/packaging/make-icon.py"
-ICONSET="$OUT/BeatByte.iconset"
-rm -rf "$ICONSET" && mkdir -p "$ICONSET"
-for size in 16 32 64 128 256 512; do
-  sips -z "$size" "$size" "$ROOT/packaging/icon.png" \
-    --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
-  double=$((size * 2))
-  sips -z "$double" "$double" "$ROOT/packaging/icon.png" \
-    --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
-done
-iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/BeatByte.icns"
-rm -rf "$ICONSET"
+cp "$ROOT/packaging/icons/macos/BeatByte.icns" \
+  "$APP/Contents/Resources/BeatByte.icns"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
