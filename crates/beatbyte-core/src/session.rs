@@ -39,6 +39,10 @@ use crate::timing::{Judgment, TimingWindows};
 /// Releasing a sustain this close to its end still counts as completed.
 pub const SUSTAIN_RELEASE_GRACE_S: f64 = 0.05;
 
+/// Notes in this window after a successful Hype activation are hit
+/// automatically, so reaching for an activation gesture cannot break the run.
+pub const HYPE_ACTIVATION_GRACE_S: f64 = 0.5;
+
 /// A player input on the song timeline.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct GameInput {
@@ -172,6 +176,8 @@ pub struct TrackSession {
     event_phrase: Vec<usize>,
     /// Progress per phrase.
     phrases: Vec<PhraseProgress>,
+    /// End of the short automatic-hit window opened by Hype activation.
+    hype_grace_until_s: f64,
 }
 
 impl TrackSession {
@@ -215,6 +221,7 @@ impl TrackSession {
             sustain: None,
             event_phrase,
             phrases,
+            hype_grace_until_s: f64::NEG_INFINITY,
         }
     }
 
@@ -333,6 +340,7 @@ impl TrackSession {
         self.sustain = None;
         self.hopo_chain = false;
         self.fret_hit = None;
+        self.hype_grace_until_s = f64::NEG_INFINITY;
         for progress in &mut self.phrases {
             progress.hits = 0;
             progress.broken = false;
@@ -374,7 +382,12 @@ impl TrackSession {
             }
         }
 
-        // 3. Miss detection: pending events whose window has passed.
+        // 3. A successful Hype activation gives the player's activating hand
+        // half a second to return. Hit notes on their own timestamps so this
+        // changes neither timing statistics nor the existing Hype path.
+        self.auto_hit_hype_notes(to_s, events);
+
+        // 4. Miss detection: pending events whose window has passed.
         let deadline = to_s - self.windows.good_s;
         for index in self.scan_from..self.states.len() {
             let event = self.track.events()[index];
@@ -418,13 +431,36 @@ impl TrackSession {
             InputKind::Strum => self.strum(time_s, events),
             InputKind::ActivateHype => {
                 if self.performance.try_activate_hype() {
+                    self.hype_grace_until_s = time_s + HYPE_ACTIVATION_GRACE_S;
                     events.push(SessionEvent::HypeActivated);
+                    self.auto_hit_hype_notes(time_s, events);
                 }
             }
         }
     }
 
     // ---- internals -----------------------------------------------------
+
+    fn auto_hit_hype_notes(&mut self, through_s: f64, events: &mut Vec<SessionEvent>) {
+        let through_s = through_s.min(self.hype_grace_until_s);
+        if !through_s.is_finite() {
+            return;
+        }
+        while let Some(index) = self
+            .states
+            .iter()
+            .enumerate()
+            .skip(self.scan_from)
+            .find(|(index, state)| {
+                matches!(state, NoteState::Pending)
+                    && self.track.events()[*index].time_s <= through_s
+            })
+            .map(|(index, _)| index)
+        {
+            let note_time = self.track.events()[index].time_s;
+            self.hit(index, note_time, events);
+        }
+    }
 
     fn strum(&mut self, time_s: f64, events: &mut Vec<SessionEvent>) {
         // Earliest pending event in the window whose frets match.
@@ -1366,6 +1402,67 @@ mod tests {
         s.advance(10.6, &mut events);
         assert!(events.contains(&SessionEvent::HypeEnded));
         assert_eq!(s.performance().multiplier(), 1);
+    }
+
+    #[test]
+    fn successful_hype_activation_auto_hits_for_half_a_second() {
+        let mut s = session(track_with_phrases(
+            vec![
+                tap(1.0, Lane::One),
+                tap(2.0, Lane::One),
+                tap(2.5, Lane::Two),
+                tap(2.99, Lane::Three),
+                tap(3.01, Lane::Four),
+            ],
+            vec![
+                Phrase {
+                    start_s: 0.9,
+                    end_s: 1.1,
+                },
+                Phrase {
+                    start_s: 1.9,
+                    end_s: 2.1,
+                },
+            ],
+        ));
+        play(&mut s, 1.0, Lane::One);
+        play(&mut s, 2.0, Lane::One);
+        let mut events = Vec::new();
+        s.handle(
+            GameInput {
+                time_s: 2.5,
+                kind: InputKind::ActivateHype,
+            },
+            &mut events,
+        );
+        s.advance(3.3, &mut events);
+
+        assert!(matches!(
+            s.note_state(2),
+            Some(NoteState::Hit(Judgment::Perfect))
+        ));
+        assert!(matches!(
+            s.note_state(3),
+            Some(NoteState::Hit(Judgment::Perfect))
+        ));
+        assert_eq!(s.note_state(4), Some(NoteState::Missed));
+        assert_eq!(s.performance().best_streak(), 4);
+    }
+
+    #[test]
+    fn failed_hype_attempt_opens_no_automatic_hit_window() {
+        let mut s = session(track(vec![tap(1.0, Lane::One)]));
+        let mut events = Vec::new();
+        s.handle(
+            GameInput {
+                time_s: 0.8,
+                kind: InputKind::ActivateHype,
+            },
+            &mut events,
+        );
+        s.advance(1.3, &mut events);
+        assert_eq!(s.note_state(0), Some(NoteState::Missed));
+        assert!(!events.contains(&SessionEvent::HypeActivated));
     }
 
     #[test]

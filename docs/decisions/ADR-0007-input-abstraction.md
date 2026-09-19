@@ -38,12 +38,24 @@ Gameplay / menus      only ever see actions
   D-pad + South/East merged with arrows + Enter/Esc).
 - **Remap screen** (Settings → Controls): select an action, press the
   new key/button; Backspace restores that action's defaults.
+- **Derived Hype inputs stay above physical mappings.** Either four adjacent
+  logical frets activates `Hype`, independent of their keys or pad buttons.
+  Five frets are one held chord, not two activations. The wired RedOctane
+  Xplorer (`1430:4748`) is the hardware-specific exception at the controller
+  boundary: its 20-byte XInput report carries tilt as signed little-endian RY
+  in bytes 12–13. The native USB bridge and driver-backed gamepad path both
+  turn that verified axis into the existing `RightTrigger` Hype binding.
+  Activation is edge-only above 50%, and re-arms below 40%.
 
 ## Consequences
 
 - The judgment engine remains input-agnostic (ADR-0004): it receives
   timestamped fret/strum events and never learns what produced them.
-- Whammy/tilt axes are ignored for now; when a mechanic wants them,
-  they become new actions, not special cases.
+- Windows XInput/WGI and Linux evdev may expose Xplorer RY as right-stick Y;
+  BeatByte accepts it only when the device reports the verified VID/PID.
+  macOS has no classic-XInput driver, so BeatByte reads the report directly.
+  Other guitars, wireless receivers and adapters are deliberately not guessed:
+  their tilt continues to work only when their driver maps it to an existing
+  Hype button, until their VID/PID and axis report are measured.
 - Per-player binding *profiles* (different maps per player) are a
   data extension of `InputMap`, not a redesign.

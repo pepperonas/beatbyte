@@ -17,6 +17,7 @@
 use beatbyte_core::{GameInput, InputKind};
 use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
+use std::collections::HashMap;
 
 use super::{PlayerDevice, PlayerSession};
 use crate::audio_sys::GameClock;
@@ -36,18 +37,34 @@ pub fn mouse_strums(device: DeviceId, clicked: bool) -> bool {
     clicked && device == DeviceId::Keyboard
 }
 
+/// Edge detector for either valid four-adjacent-fret activation chord.
+#[derive(Debug, Default)]
+pub(super) struct HypeChordLatch {
+    active: bool,
+}
+
+impl HypeChordLatch {
+    fn update(&mut self, frets: [bool; 5]) -> bool {
+        let active = frets[..4].iter().all(|held| *held) || frets[1..].iter().all(|held| *held);
+        let triggered = active && !self.active;
+        self.active = active;
+        triggered
+    }
+}
+
 /// Feed this frame's inputs into each player's session.
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI
-pub fn gameplay_input(
+pub(super) fn gameplay_input(
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     pads: Query<(Entity, &Gamepad)>,
     map: Res<InputMap>,
-    mut players: Query<(&PlayerDevice, &mut PlayerSession)>,
+    mut players: Query<(Entity, &PlayerDevice, &mut PlayerSession)>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
     settings: Res<Settings>,
     injector: Option<Res<crate::autopilot::InjectorOwnsInput>>,
+    mut chord_latches: Local<HashMap<Entity, HypeChordLatch>>,
 ) {
     // While the autopilot's note injector owns the session it plays
     // every note itself: a key, a pad button or a click from the desk
@@ -70,7 +87,7 @@ pub fn gameplay_input(
     // a second player exists. (Field find: a guitar played into the
     // void because solo always routed as Keyboard.)
     let solo = players.iter().count() == 1;
-    for (device, mut player) in &mut players {
+    for (player_entity, device, mut player) in &mut players {
         let sources = match device.0 {
             DeviceId::Keyboard => InputSources {
                 keys: &keys,
@@ -113,7 +130,13 @@ pub fn gameplay_input(
         {
             send(InputKind::Strum);
         }
-        if sources.just_pressed(&map, GameAction::Hype) {
+        let frets =
+            std::array::from_fn(|index| sources.pressed(&map, GameAction::Fret(index as u8)));
+        let chord_triggered = chord_latches
+            .entry(player_entity)
+            .or_default()
+            .update(frets);
+        if sources.just_pressed(&map, GameAction::Hype) || chord_triggered {
             send(InputKind::ActivateHype);
         }
     }
@@ -141,6 +164,30 @@ mod tests {
             !mouse_strums(DeviceId::Keyboard, false),
             "and no click is no strum"
         );
+    }
+
+    #[test]
+    fn only_four_adjacent_frets_trigger_hype_on_the_rising_edge() {
+        let mut latch = HypeChordLatch::default();
+        assert!(!latch.update([true, true, true, false, false]));
+        assert!(!latch.update([true, true, false, true, true]));
+        assert!(latch.update([true, true, true, true, false]));
+        assert!(!latch.update([true, true, true, true, false]), "held chord");
+        assert!(!latch.update([false, false, false, false, false]));
+        assert!(latch.update([false, true, true, true, true]));
+    }
+
+    #[test]
+    fn all_five_frets_are_one_activation_until_the_chord_is_left() {
+        let mut latch = HypeChordLatch::default();
+        assert!(latch.update([true; 5]));
+        assert!(
+            !latch.update([true; 5]),
+            "five frets must not double-trigger"
+        );
+        assert!(!latch.update([false, true, true, true, true]));
+        assert!(!latch.update([false, true, true, false, true]));
+        assert!(latch.update([true, true, true, true, false]));
     }
 
     /// The real system in a real (headless) app: one player on the

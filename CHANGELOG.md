@@ -14,6 +14,16 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.10] - 2026-09-19
+
+### Added
+
+- **Hype can be activated by lifting a wired Xplorer or by holding four
+  adjacent frets.** Both four-fret shapes work through the logical fret
+  actions, while the verified `1430:4748` Xplorer tilt uses its RY axis with
+  50%/40% hysteresis. Every successful activation route receives the same
+  0.5-second automatic-hit window so the gesture cannot break the streak.
+
 ## [0.17.9] - 2026-09-19
 
 ### Fixed

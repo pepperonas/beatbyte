@@ -309,6 +309,8 @@ chart format v1 can be frozen as a promise.
 
 - [x] G42 **Desktop icon and Guitar Study naming cleanup** *(v0.17.9)*. Legacy `[Guitar Study]` titles are shown as `[GS]`, and the browser keeps each study directly below its normal song in every sort order. Desktop packaging now carries the RGBA master plus macOS, Windows and Linux icon formats. *Verified: 1251 tests, docs gate green.*
 
+- [x] G43 **Xplorer tilt and four-fret Hype activation** *(v0.17.10)*. The verified Xplorer RY report and both four-adjacent logical fret shapes feed the existing Hype action through edge latches; 50%/40% tilt hysteresis prevents chatter, and every successful activation opens one shared 0.5-second automatic-hit window. Unknown guitar variants are not guessed. *Verified: 1257 tests, native USB decode, driver-axis bridge, chord edges and grace boundary pinned.*
+
 ### F — Release engineering to 1.0
 
 - [x] F0 **v0.9.0 — content, accessibility, editor v2.** Amendment (2026-08-24): every unblocked B/C/D/E task landed while the A tasks wait on human playtesting — that body of work (second song, song-selector harness, import guide + scan fix, format truth, forward-compat pins, Linux/Windows CI smokes, Stage Motion, colorblind lane shapes, HOPO visibility, editor move/bulk/audition, harness integrity) ships now instead of idling behind A2. *SHIPPED 2026-08-24: all 7 assets auto-attached via the recursive glob; aarch64 tarball smoke + flawless artifact autopilot from neutral CWD + DMG .app smoke; two release-run attempts (spurious hdiutil ENOSPC → retry mitigation).*

@@ -66,7 +66,13 @@ Chords score per lane (a 3-lane Perfect chord = 150 base points).
   light stays off and only the crown's (halved) swell remains — the
   fill's own rise is the step.
 - Activation requires **≥50%** meter and doubles the multiplier
-  (up to ×8).
+  (up to ×8). It can come from the mapped Hype action, an Xplorer neck
+  tilt, or either four-adjacent-fret shape (green–blue / red–orange).
+  A held tilt or fret shape activates once and must return to neutral
+  before it can activate again; all five frets count as one activation.
+- A successful activation automatically hits notes for **0.5 s**, on their
+  exact timestamps. This applies to every activation method and gives the
+  activating hand time to return without sacrificing the streak.
 - A full meter drains over **32 beats** of song time.
 
 ## Rock meter (the crowd)
