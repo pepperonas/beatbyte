@@ -856,11 +856,11 @@ mod telemetry_tests {
 /// The overlay's own systems in a real (headless) app.
 ///
 /// The rows above are pure and pinned; this is the call site, which a
-/// pure test cannot reach. It matters here more than usual: the
-/// screen was locked for this whole session, so nobody has SEEN the
-/// overlay — reading the text back out of the entity is the strongest
-/// evidence available, and it is a different thing from having
-/// looked.
+/// pure test cannot reach. It was written while the screen was locked
+/// and every capture would have been black, so reading the text back
+/// out of the entity was the only evidence available — and it is a
+/// different thing from having looked, which is why the run was
+/// photographed as soon as the screen came back.
 #[cfg(test)]
 mod wired_tests {
     use super::*;

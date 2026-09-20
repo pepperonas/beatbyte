@@ -11,6 +11,22 @@ engine read it, how it was judged — recorded as evidence rather than
 as a log. Reasoning and alternatives: [ADR-0018](decisions/ADR-0018-gameplay-telemetry-store.md).
 The feedback loop it feeds: [`adaptive-charting.md`](adaptive-charting.md).
 
+- [x] **T10 The Definition of Done, measured** *(v0.17.18)*. The one
+  item nothing else had answered: **does recording cost frames?**
+  A/B on the release binary, same song, same machine, `BEATBYTE_FPS`:
+
+  | | windows | median of medians | median p99 | p99 over 40 ms | worst p99 |
+  |---|---:|---:|---:|---:|---:|
+  | `DIAGNOSTIC` (the most talkative level) | 27 | **16.65 ms** | 21.75 ms | 5 | 100 ms |
+  | `OFF` (no store opened at all) | 29 | **16.66 ms** | 22.87 ms | 7 | 125 ms |
+
+  The run WITHOUT telemetry was very slightly worse on every measure,
+  which is the honest reading: the difference is the machine, not the
+  recording. Both runs PASSED (375 perfect, 0 misses, 0 overstrums).
+  ⚠️ Vsync-capped at 60 Hz, so this answers "does it drop frames"
+  and not "what does it cost" — the queue hand-off is a `try_send`
+  and an atomic, and the cost of that is below what a frame timer can
+  see.
 - [x] **T6 What the song was doing there** *(v0.17.17)*. The gap
   that no amount of telemetry could close: `SongAnalysis` is computed
   at import and **never persisted**, so by the time anybody misses a
@@ -64,11 +80,14 @@ The feedback loop it feeds: [`adaptive-charting.md`](adaptive-charting.md).
   faster (221 → 28 ms) and costs **8.5 % of the whole store**. For a
   query that runs offline in under half a second, that is not a
   trade; the numbers are in the ADR so nobody has to re-derive them.
-  ⚠️ **The overlay has not been SEEN.** The screen was locked for this
-  entire session, so every capture would be black by definition. Its
-  rows are pinned pure and its call site is read back out of the
-  entity in a headless app — which is the strongest evidence
-  available and a different thing from having looked.
+  **The overlay was photographed** once the screen came back:
+  `TELEM level ACTIONS wrote 70 queue 0 dropped 0` and
+  `STORE flush 716ms write 193us events 147703 size 7.8MB`, on a
+  running song at 35.0 s. (It was written under a locked screen and
+  verified at ECS level first — the rows pinned pure, the call site
+  read back out of the entity in a headless app. That was the
+  strongest evidence available at the time and a different thing
+  from having looked; now both exist.)
   *Verified: 1503 tests (+11), gate green.*
 - [x] **T5 + T7 The command line, and the history moves in**
   *(v0.17.15)*. `beatbyte-cli telemetry {status,import,list,show,

@@ -27,6 +27,13 @@ the manifest ever carries a version this file does not describe.
   holds chart contexts too, so dividing the whole thing by the event count said
   321 bytes for events that cost 51. It reports the pieces instead.
 
+### Notes
+
+- Recording costs no frames, measured rather than argued: at `DIAGNOSTIC` the
+  median frame time over 27 five-second windows was **16.65 ms**; with
+  telemetry **off** it was 16.66 ms over 29, with *more* outliers. Both runs
+  passed the autopilot.
+
 ## [0.17.17] - 2026-09-20
 
 ### Added
