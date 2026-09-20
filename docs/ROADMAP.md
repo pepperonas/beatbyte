@@ -432,9 +432,36 @@ that will not start.
   no ear has judged this chart, only its spectrum.*
 - [ ] V2c **Old songs and words.** Lazily analyse a library the scan
   finds unanalysed, and link the aligner's words to the notes.
-- [ ] V3 **Microphone engine.** One shared capture stream for the
-  stage meters and vocal play, bounded ring buffer, realtime pitch,
-  timestamped frames onto `song_time`.
+- [x] V3 **Microphone engine.** `beatbyte_audio::mic` is the pure
+  half — a **streaming integer decimator** (a windowed-sinc resampler
+  called per block has an edge at every block boundary, and measuring
+  periodicity across those boundaries is the detector's whole job),
+  hop scheduling, and the three subtractions that put a captured
+  frame on the song's timeline: the anchor where the two clocks were
+  seen together, the detector's own half-window delay which is
+  arithmetic, and the per-device microphone offset which can only be
+  measured. `listen.rs` gains a `VocalTap` on the **one** stream it
+  already owns, because opening the same device twice can fail, can
+  land on different configurations, and leaves two capture clocks
+  that cannot be compared. Off until something asks; a game that
+  stops collecting loses the oldest singing, not the newest.
+  ⚠️ Two defects the tests found: frames produced by one push all
+  carried the **same stamp** (a whole block of estimates landing on
+  one instant — the counter advanced before they were emitted), and
+  the aliasing test used 7 kHz, which is under the filter's cutoff
+  and never aliases at all; what it caught was a subharmonic, and a
+  test has to reproduce the mechanism it claims to be about.
+  *Verified: 1373 tests (+23), gate green. And the claim that the
+  offline and live paths are ONE estimator was measured rather than
+  asserted — both run over the real Maria vocal stem, matched frame
+  to frame by time: **98.1 % agree within 50 cents, mean absolute
+  difference 25.9 cents**, and the remaining 1.0 % are exactly an
+  octave apart, which is the known ambiguity the offline pass
+  corrects with context and octave-independent scoring absorbs live.
+  ⚠️ The first run of that comparison said 81 %: it indexed offline
+  frames by `time / hop` and forgot that they are stamped at window
+  CENTRES, so it was comparing frames 32 ms apart. The measurement
+  was wrong, not the code.*
 - [x] V4 **`VocalSession` and scoring.** `beatbyte_core::vocal_session`
   judges a singer the way `session` judges a guitarist: frames in,
   note and phrase outcomes out, deterministic and engine-free. The

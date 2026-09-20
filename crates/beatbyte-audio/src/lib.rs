@@ -30,6 +30,7 @@ pub mod eval;
 pub mod listen;
 pub mod loudness;
 pub mod mark;
+pub mod mic;
 pub mod pitch;
 pub mod playback;
 pub mod priming;

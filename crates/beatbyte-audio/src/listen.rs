@@ -39,7 +39,9 @@
 //! file through it; the device code is exercised by the game, as
 //! the player is.
 
+use std::collections::VecDeque;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
 
@@ -104,6 +106,109 @@ impl ListenState {
     }
 }
 
+/// Frames the vocal path may hold before the oldest is dropped.
+/// Four seconds: long enough that a stalled frame does not lose a
+/// phrase, short enough that a stalled GAME does not accumulate one.
+pub const VOCAL_QUEUE: usize = 256;
+
+/// The vocal path's share of the one input stream.
+///
+/// ## Why it hangs off the listener rather than opening its own
+///
+/// Two things want this microphone: the stage monitors, which show
+/// the room's level and tempo, and vocal play. Opening the same
+/// device twice can simply fail, can land on different configurations
+/// and leaves two capture clocks that cannot be compared. So there is
+/// one stream, one worker, and this is the second thing it does with
+/// each block.
+///
+/// It costs what it costs: the detector is 1.6 % of a core per hop,
+/// measured, against a worker that is otherwise idle between blocks.
+pub struct VocalTap {
+    on: AtomicBool,
+    frames: Mutex<VecDeque<crate::mic::CapturedFrame>>,
+    dropped: AtomicU64,
+    /// f32 bits: the detector's own delay in seconds, 0 until a
+    /// stream exists.
+    latency_s: AtomicU32,
+    /// The rate the detector runs at, 0 until a stream exists.
+    rate: AtomicU32,
+}
+
+impl Default for VocalTap {
+    fn default() -> VocalTap {
+        VocalTap {
+            on: AtomicBool::new(false),
+            frames: Mutex::new(VecDeque::with_capacity(VOCAL_QUEUE)),
+            dropped: AtomicU64::new(0),
+            latency_s: AtomicU32::new(0f32.to_bits()),
+            rate: AtomicU32::new(0),
+        }
+    }
+}
+
+impl VocalTap {
+    /// Turn pitch detection on or off. Off costs nothing at all —
+    /// the worker skips the whole path.
+    pub fn enable(&self, on: bool) {
+        self.on.store(on, Ordering::Release);
+    }
+
+    /// Whether it is running.
+    #[must_use]
+    pub fn enabled(&self) -> bool {
+        self.on.load(Ordering::Acquire)
+    }
+
+    /// Take every frame produced since the last call.
+    ///
+    /// Appends rather than replaces, so a caller can collect from
+    /// several sources into one buffer.
+    pub fn drain(&self, out: &mut Vec<crate::mic::CapturedFrame>) {
+        if let Ok(mut frames) = self.frames.lock() {
+            out.extend(frames.drain(..));
+        }
+    }
+
+    /// Frames dropped because the game did not collect them. A
+    /// number that climbs is a stall, and the debug overlay says so.
+    #[must_use]
+    pub fn dropped(&self) -> u64 {
+        self.dropped.load(Ordering::Relaxed)
+    }
+
+    /// The detector's own delay: half its window, known exactly.
+    /// Zero until the device has been opened.
+    #[must_use]
+    pub fn known_latency_s(&self) -> f64 {
+        f64::from(f32::from_bits(self.latency_s.load(Ordering::Relaxed)))
+    }
+
+    /// The rate the detector runs at, or 0 before it exists.
+    #[must_use]
+    pub fn rate(&self) -> u32 {
+        self.rate.load(Ordering::Relaxed)
+    }
+
+    /// Hand the worker's frames over, dropping the OLDEST when the
+    /// game is not keeping up: the newest singing is the singing that
+    /// is being judged, and a backlog of stale pitch is worse than
+    /// no pitch. Pure but for the counter — tested through
+    /// [`VocalTap::drain`].
+    fn publish(&self, produced: &[crate::mic::CapturedFrame]) {
+        let Ok(mut frames) = self.frames.lock() else {
+            return;
+        };
+        for frame in produced {
+            if frames.len() >= VOCAL_QUEUE {
+                frames.pop_front();
+                self.dropped.fetch_add(1, Ordering::Relaxed);
+            }
+            frames.push_back(*frame);
+        }
+    }
+}
+
 /// The numbers the device thread shares with the game.
 struct Shared {
     state: AtomicU8,
@@ -116,6 +221,8 @@ struct Shared {
     /// Blocks analysed so far (diagnostics).
     blocks: AtomicU64,
     stop: AtomicBool,
+    /// The vocal path's share of the same stream.
+    vocals: VocalTap,
 }
 
 /// The handle the game holds: two floats and a state, and the
@@ -137,6 +244,7 @@ impl Listener {
             bpm: AtomicU32::new(0f32.to_bits()),
             blocks: AtomicU64::new(0),
             stop: AtomicBool::new(false),
+            vocals: VocalTap::default(),
         });
         let worker = Arc::clone(&shared);
         let spawned = std::thread::Builder::new()
@@ -163,6 +271,7 @@ impl Listener {
                 bpm: AtomicU32::new(bpm.unwrap_or(0.0).to_bits()),
                 blocks: AtomicU64::new(0),
                 stop: AtomicBool::new(false),
+                vocals: VocalTap::default(),
             }),
         }
     }
@@ -198,6 +307,12 @@ impl Listener {
     pub fn bpm(&self) -> Option<f32> {
         let bpm = f32::from_bits(self.shared.bpm.load(Ordering::Relaxed));
         (bpm > 0.0).then_some(bpm)
+    }
+
+    /// The vocal path riding on the same stream.
+    #[must_use]
+    pub fn vocals(&self) -> &VocalTap {
+        &self.shared.vocals
     }
 
     /// Blocks analysed so far.
@@ -540,6 +655,17 @@ mod device {
             .state
             .store(ListenState::Listening as u8, Ordering::Release);
         let mut analyzer = LiveAnalyzer::new(rate);
+        // The vocal path is built once the device's rate is known,
+        // and only if anything wants it: a player who never sings
+        // pays nothing for this.
+        #[expect(
+            clippy::cast_sign_loss,
+            clippy::cast_possible_truncation,
+            reason = "a device sample rate, positive and small"
+        )]
+        let device_rate = rate as u32;
+        let mut pitch: Option<crate::mic::PitchStream> = None;
+        let mut produced: Vec<crate::mic::CapturedFrame> = Vec::with_capacity(8);
         while !shared.stop.load(Ordering::Acquire) {
             if errored.load(Ordering::Acquire) {
                 fail(shared);
@@ -548,6 +674,30 @@ mod device {
             match rx.recv_timeout(Duration::from_millis(50)) {
                 Ok(block) => {
                     analyzer.push(&block);
+                    if shared.vocals.enabled() {
+                        let stream = pitch.get_or_insert_with(|| {
+                            let stream = crate::mic::PitchStream::new(
+                                device_rate,
+                                crate::pitch::PitchConfig::default(),
+                            );
+                            #[expect(
+                                clippy::cast_possible_truncation,
+                                reason = "seconds of latency, a small positive f64"
+                            )]
+                            let latency = stream.known_latency_s() as f32;
+                            shared
+                                .vocals
+                                .latency_s
+                                .store(latency.to_bits(), Ordering::Relaxed);
+                            shared.vocals.rate.store(stream.rate(), Ordering::Relaxed);
+                            stream
+                        });
+                        produced.clear();
+                        stream.push(&block, &mut produced);
+                        if !produced.is_empty() {
+                            shared.vocals.publish(&produced);
+                        }
+                    }
                     if heard.load(Ordering::Acquire) {
                         shared.heard.store(true, Ordering::Release);
                     }
@@ -782,6 +932,68 @@ mod tests {
         assert!(onset_config_for(96_000).window.is_power_of_two());
     }
 
+    fn captured(capture_s: f64) -> crate::mic::CapturedFrame {
+        crate::mic::CapturedFrame {
+            capture_s,
+            pitch: crate::pitch::PitchFrame {
+                hz: Some(220.0),
+                clarity: 0.9,
+                rms_dbfs: -18.0,
+                voiced: true,
+                clipped: false,
+            },
+        }
+    }
+
+    #[test]
+    fn the_vocal_tap_is_off_until_something_asks_for_it() {
+        let tap = VocalTap::default();
+        assert!(!tap.enabled(), "a player who never sings pays nothing");
+        assert_eq!(tap.rate(), 0, "no device, no rate to claim");
+        assert_eq!(tap.known_latency_s(), 0.0);
+        tap.enable(true);
+        assert!(tap.enabled());
+        tap.enable(false);
+        assert!(!tap.enabled());
+    }
+
+    #[test]
+    fn draining_the_tap_takes_each_frame_exactly_once() {
+        let tap = VocalTap::default();
+        tap.publish(&[captured(0.0), captured(0.016)]);
+        let mut out = Vec::new();
+        tap.drain(&mut out);
+        assert_eq!(out.len(), 2);
+        tap.drain(&mut out);
+        assert_eq!(out.len(), 2, "a frame came out twice");
+        // And it appends rather than replacing.
+        tap.publish(&[captured(0.032)]);
+        tap.drain(&mut out);
+        assert_eq!(out.len(), 3);
+        assert_eq!(tap.dropped(), 0);
+    }
+
+    #[test]
+    fn a_game_that_stops_collecting_loses_the_oldest_singing_not_the_newest() {
+        // A stalled frame must not leave the session judging four
+        // seconds of stale pitch when it comes back.
+        let tap = VocalTap::default();
+        let flood: Vec<crate::mic::CapturedFrame> = (0..VOCAL_QUEUE + 50)
+            .map(|i| captured(f64::from(u16::try_from(i).unwrap_or(0)) * 0.016))
+            .collect();
+        tap.publish(&flood);
+        assert_eq!(tap.dropped(), 50, "the overflow was not counted");
+        let mut out = Vec::new();
+        tap.drain(&mut out);
+        assert_eq!(out.len(), VOCAL_QUEUE);
+        // What survived is the END of the flood, not its beginning.
+        assert_eq!(out.first().map(|f| f.capture_s), Some(50.0 * 0.016));
+        assert_eq!(
+            out.last().map(|f| f.capture_s),
+            flood.last().map(|f| f.capture_s)
+        );
+    }
+
     #[test]
     fn a_fresh_listener_shows_nothing_until_it_is_heard() {
         // The state machine without a device: a handle whose thread
@@ -793,6 +1005,7 @@ mod tests {
             bpm: AtomicU32::new(0f32.to_bits()),
             blocks: AtomicU64::new(0),
             stop: AtomicBool::new(false),
+            vocals: VocalTap::default(),
         });
         let listener = Listener {
             shared: Arc::clone(&shared),
