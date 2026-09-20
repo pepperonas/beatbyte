@@ -543,8 +543,33 @@ that will not start.
   gain/gate/sensitivity knobs, which want a real microphone in a real
   room to tune and this session had neither.
   *Verified: 1401 tests (+5), gate green.*
-- [ ] V7 **Karaoke playback.** Sample-synchronous stem mixing,
-  original vocals at zero by default, assisted runs marked.
+- [x] V7 **Karaoke playback.** A karaoke run plays the backing rather
+  than the song. The trick is the default: with the original singer
+  at zero, the karaoke track **IS** the instrumental stem — nothing
+  is mixed, nothing is written, and a song starts as fast as it
+  always did. Above zero the mix is built once and kept beside the
+  stems under a name that carries the level, so the same setting
+  plays instantly next time and a changed one is not silently
+  ignored. It is handed over as a plain `SongAudio::File`, so the
+  loudness gain, the crossfade and the seek all work on it unchanged,
+  and the stems were separated from BeatByte's own decode so the
+  backing sits on the chart's timeline. The instrumental gets its
+  **own** loudness measurement when it is kept: it is quieter than
+  the song it came from by however much the singer contributed, and
+  borrowing the original's number would play it at the wrong level.
+  Any run with the original above silence is marked **assisted** —
+  a microphone cannot tell the player from a voice out of the
+  speakers, and a score that quietly compares the two is worse than
+  one that admits which it is. ⚠️ Not used for a taste test: that
+  compares two charts of one recording, and swapping the recording
+  under it would compare something else.
+  *Verified: 1406 tests (+5), gate green, and three mutation probes
+  that were BLIND first. Two of them measured a result that looks the
+  same either way — adding zero changes nothing, and a rebuilt file
+  holds the same bytes — so the tests now check what actually
+  differs: that asking for no original singer succeeds even against a
+  stem the mixer could not have used, and that a marker written into
+  the mix survives a second call.*
 - [~] V8 **Events, results and polish.** Shipped: `LastResults` gains
   `vocalists`, the run's last phrase is CLOSED before the result is
   taken (a song ends with a phrase still open, and a run whose final

@@ -197,6 +197,13 @@ pub struct VocalResult {
     /// The numbers it was judged by, so the results screen can grade
     /// it the same way the run did.
     pub config: beatbyte_core::vocal_session::VocalScoreConfig,
+    /// Whether the original singer was audible in the room.
+    ///
+    /// A microphone cannot tell the player from a voice coming out of
+    /// the speakers, so such a run is not comparable with one sung
+    /// against the backing alone — and says so rather than quietly
+    /// sitting beside it.
+    pub assisted: bool,
 }
 
 /// The last finished run, for the results screen.
@@ -241,7 +248,10 @@ pub struct LastResults {
 /// `finish` matters: the last phrase is still open when the song
 /// ends, and a run whose final line simply vanished would be scored
 /// one phrase short of what was sung.
-fn close_vocals(vocal: Option<ResMut<vocal::VocalRun>>) -> Vec<VocalResult> {
+fn close_vocals(
+    vocal: Option<ResMut<vocal::VocalRun>>,
+    settings: &crate::config::Settings,
+) -> Vec<VocalResult> {
     let Some(mut run) = vocal else {
         return Vec::new();
     };
@@ -258,6 +268,7 @@ fn close_vocals(vocal: Option<ResMut<vocal::VocalRun>>) -> Vec<VocalResult> {
     vec![VocalResult {
         performance,
         config,
+        assisted: vocal::assisted(settings),
     }]
 }
 
@@ -573,7 +584,14 @@ fn setup_gameplay(
     // sounding moment — zero for an ordinary run, the window's start
     // for a taste test (which plays one passage twice).
     let start_s = taste.map_or(0.0, |test| crate::taste::side_start(test.window));
-    commands.insert_resource(PendingMusic(song.audio.clone(), None, start_s));
+    // A karaoke run plays the backing rather than the song. Only an
+    // ORDINARY run: a taste test compares two charts of one recording
+    // and swapping the recording under it would compare something
+    // else, so it keeps the song it was asked about.
+    let audio = vocal::karaoke_audio(&song, &settings)
+        .filter(|_| start_s <= 0.0)
+        .unwrap_or_else(|| song.audio.clone());
+    commands.insert_resource(PendingMusic(audio, None, start_s));
     // A fresh timeline: it follows no device position until THIS
     // song is anchored. The browser preview is still winding down on
     // the device for a few frames, and its position — inside a long
@@ -919,6 +937,7 @@ fn check_song_end(
     game_clock: Res<GameClock>,
     practice: Res<PracticeState>,
     time: Res<Time>,
+    settings: Res<crate::config::Settings>,
     vocal: Option<ResMut<vocal::VocalRun>>,
     mut next_phase: ResMut<NextState<GamePhase>>,
 ) {
@@ -940,7 +959,7 @@ fn check_song_end(
             })
             .collect();
         results.sort_by_key(|result| result.index);
-        let vocalists = close_vocals(vocal);
+        let vocalists = close_vocals(vocal, &settings);
         // The history's completion flag: `LastResults` persists
         // across runs, so its presence cannot say whether THIS run
         // reached the end. This marker is inserted only here and
@@ -990,6 +1009,7 @@ fn check_failure(
     game_clock: Res<GameClock>,
     practice: Res<PracticeState>,
     time: Res<Time>,
+    settings: Res<crate::config::Settings>,
     vocal: Option<ResMut<vocal::VocalRun>>,
     mut next_phase: ResMut<NextState<GamePhase>>,
 ) {
@@ -1010,7 +1030,7 @@ fn check_failure(
         })
         .collect();
     results.sort_by_key(|result| result.index);
-    let vocalists = close_vocals(vocal);
+    let vocalists = close_vocals(vocal, &settings);
     commands.insert_resource(LastResults {
         title: song.chart.song.title.clone(),
         artist: song.chart.song.artist.clone(),

@@ -646,6 +646,16 @@ fn spawn_vocal(
                 ui_kit::value_node(),
             ));
         });
+        if result.assisted {
+            // Said plainly rather than hidden in a footnote: this
+            // score is not comparable with one sung against the
+            // backing alone, and nothing about the numbers shows it.
+            panel.spawn((
+                Text::new("assisted - the original singer was audible"),
+                font.text(ui_kit::SMALL),
+                TextColor(palette::TEXT_DIM),
+            ));
+        }
         for (label, value) in vocal_rows(result) {
             panel.spawn(ui_kit::row()).with_children(|row| {
                 row.spawn((
@@ -1080,6 +1090,7 @@ mod tests {
         let bare = crate::gameplay::VocalResult {
             performance: VocalPerformance::default(),
             config,
+            assisted: false,
         };
         let rows = vocal_rows(&bare);
         let labels: Vec<&str> = rows.iter().map(|(label, _)| *label).collect();
@@ -1139,6 +1150,7 @@ mod tests {
         let result = crate::gameplay::VocalResult {
             performance: session.performance().clone(),
             config,
+            assisted: false,
         };
         let rows = vocal_rows(&result);
         let labels: Vec<&str> = rows.iter().map(|(label, _)| *label).collect();

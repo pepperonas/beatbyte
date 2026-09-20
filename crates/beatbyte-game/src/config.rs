@@ -167,6 +167,18 @@ pub struct Settings {
     /// rather than for their singing.
     #[serde(default)]
     pub vocal_pitch_mode: beatbyte_core::vocal::PitchMode,
+    /// How much of the original singer stays in the karaoke backing,
+    /// 0.0–1.0.
+    ///
+    /// Zero by default, and that default is what makes the feature
+    /// cheap: with the original silent, the karaoke track IS the
+    /// instrumental stem — nothing is mixed, nothing is written, and
+    /// a song starts as fast as it always did. It is also the setting
+    /// that makes a vocal score mean anything: a microphone cannot
+    /// tell the player from a singer coming out of the speakers, so
+    /// any run with this above zero is marked **assisted**.
+    #[serde(default)]
+    pub original_vocals: f32,
     /// Tap mode: notes hit on fret press alone, no strum required.
     /// ON by default — the first real playtest showed keyboard
     /// players press frets and nothing happens (receptors light up,
@@ -276,6 +288,7 @@ impl Default for Settings {
             vocal_charts: false,
             mic_offset_ms: 0.0,
             vocal_pitch_mode: beatbyte_core::vocal::PitchMode::OctaveIndependent,
+            original_vocals: 0.0,
             tap_mode: true,
             perspective: true,
             stage_3d: true,

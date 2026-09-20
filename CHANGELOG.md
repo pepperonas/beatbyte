@@ -68,8 +68,15 @@ the manifest ever carries a version this file does not describe.
   question is answered from the sidecars, so finding out costs nothing.
 - **The `[GS]` twin of a song can be sung as well.** It keeps its own copy of
   the audio, so the chart beside the original was invisible from there.
-- Not yet: the karaoke backing mix, the calibration screen itself, and vocal
-  phrases driving the stage lights.
+- **A karaoke run plays the backing, not the song.** With vocals on and a
+  song whose stems are ready, the instrumental is what comes out of the
+  speakers — so the microphone hears you and not the record. `ORIGINAL
+  VOCALS` brings the original singer back at any level you like, and any run
+  above zero is marked **assisted** on the results: a microphone cannot tell
+  you from a voice coming out of the speakers, and a score that quietly
+  compares the two would be worth less than one that says which it is.
+- Not yet: the calibration screen itself, and vocal phrases driving the stage
+  lights.
 
 ## [0.17.11] - 2026-09-20
 

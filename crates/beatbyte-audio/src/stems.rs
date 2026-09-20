@@ -450,6 +450,17 @@ pub fn persist(
     manifest
         .stems
         .push(stem_file(StemKind::Instrumental, &backing, &backing_path)?);
+    // The karaoke track is levelled like any other song, so it needs
+    // its OWN measurement rather than the mix's: the instrumental is
+    // quieter than the song it came from by however much the singer
+    // contributed, and borrowing the original's number would play it
+    // at the wrong level. One pass over audio that has already cost
+    // minutes of separation.
+    if let Ok(report) =
+        crate::loudness::measure_file(&backing_path, &format!("beatbyte-stems {}", crate::VERSION))
+    {
+        let _ = crate::loudness::write_report(&backing_path, &report);
+    }
 
     write_manifest(audio_path, &manifest)?;
     Ok(manifest)
@@ -502,6 +513,89 @@ fn sum_sources(separation: &Separation, names: &[&str]) -> Result<Channels, Stri
         *sample = sample.clamp(-1.0, 1.0);
     }
     Ok(sum)
+}
+
+/// Sum the vocal stem back into the backing at `level`, in place.
+///
+/// `level` 0 leaves the backing untouched, which is the default and
+/// the reason the common case costs nothing at all: with the original
+/// singer silent, the karaoke track IS the instrumental stem and
+/// there is no mixing to do.
+///
+/// The two stems came out of one separation, so they agree on rate
+/// and width and their sum is the mix they were made from. A sum that
+/// would overshoot is clamped rather than wrapped. Pure — tested.
+pub fn mix_in_vocals(backing: &mut Channels, vocals: &Channels, level: f32) -> bool {
+    let level = level.clamp(0.0, 1.0);
+    if level <= 0.0 {
+        return true;
+    }
+    if vocals.sample_rate != backing.sample_rate || vocals.channels != backing.channels {
+        return false;
+    }
+    let len = backing.interleaved.len().min(vocals.interleaved.len());
+    for (into, from) in backing.interleaved[..len]
+        .iter_mut()
+        .zip(&vocals.interleaved[..len])
+    {
+        *into = (*into + from * level).clamp(-1.0, 1.0);
+    }
+    true
+}
+
+/// Where a mixed karaoke track is kept, so a second play of the same
+/// song at the same level does not build it again.
+///
+/// The level is in the name: a player who moves the slider gets a new
+/// file rather than the old one silently reused. Pure — tested.
+#[must_use]
+pub fn karaoke_path(audio_path: &Path, level: f32) -> PathBuf {
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "a percentage from a clamped 0..=1"
+    )]
+    let percent = (level.clamp(0.0, 1.0) * 100.0).round() as u32;
+    stems_dir(audio_path).join(format!("karaoke-{percent:03}.wav"))
+}
+
+/// The audio a karaoke run should play.
+///
+/// At the default level this is simply the instrumental stem — no
+/// mixing, no temporary file, no delay before a song starts. Above
+/// it, the mix is built once and kept beside the stems under a name
+/// that carries the level, so the same setting plays instantly next
+/// time and a changed one is not silently ignored.
+///
+/// `None` when there is nothing to play from: no manifest, no stems,
+/// or a read that failed. The caller then plays the song itself,
+/// which is what it always did.
+#[must_use]
+pub fn karaoke_track(audio_path: &Path, level: f32) -> Option<PathBuf> {
+    let manifest = read_manifest(audio_path)?;
+    if !manifest.state.is_ready() {
+        return None;
+    }
+    let backing_path = manifest.stem_path(audio_path, StemKind::Instrumental)?;
+    if !backing_path.is_file() {
+        return None;
+    }
+    let level = level.clamp(0.0, 1.0);
+    if level <= 0.0 {
+        return Some(backing_path);
+    }
+    let mixed = karaoke_path(audio_path, level);
+    if mixed.is_file() {
+        return Some(mixed);
+    }
+    let mut backing = decode_file_channels(&backing_path).ok()?;
+    let vocals_path = manifest.stem_path(audio_path, StemKind::Vocals)?;
+    let vocals = decode_file_channels(&vocals_path).ok()?;
+    if !mix_in_vocals(&mut backing, &vocals, level) {
+        return None;
+    }
+    crate::decode::write_wav16(&mixed, &backing).ok()?;
+    Some(mixed)
 }
 
 /// Whether this machine can separate a song at all.
@@ -983,6 +1077,160 @@ mod tests {
         assert!(
             hot.interleaved.iter().all(|s| (-1.0..=1.0).contains(s)),
             "a clipped sum must not wrap to the opposite rail"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_default_level_needs_no_mixing_at_all() {
+        // The point of the whole arrangement: with the original
+        // singer silent, the karaoke track IS the instrumental stem.
+        let mut backing = Channels {
+            interleaved: vec![0.25; 100],
+            channels: 2,
+            sample_rate: 44_100,
+            truncated: false,
+        };
+        let vocals = Channels {
+            interleaved: vec![0.5; 100],
+            ..backing.clone()
+        };
+        let before = backing.interleaved.clone();
+        assert!(mix_in_vocals(&mut backing, &vocals, 0.0));
+        assert_eq!(backing.interleaved, before, "silence changed the backing");
+
+        // ⚠️ Adding zero changes nothing, so "did the samples move"
+        // cannot tell the early return from the full pass — a
+        // mutation probe that removed it went unnoticed. The
+        // observable difference is here: asking for NO original
+        // singer succeeds even against a stem the mixer could not
+        // have used, because nothing had to be used.
+        let incompatible = Channels {
+            interleaved: vec![0.5; 50],
+            channels: 1,
+            sample_rate: 22_050,
+            truncated: false,
+        };
+        assert!(
+            mix_in_vocals(&mut backing, &incompatible, 0.0),
+            "zero vocals should need nothing from the vocal stem"
+        );
+        assert!(
+            !mix_in_vocals(&mut backing, &incompatible, 0.5),
+            "and above zero it does need it"
+        );
+    }
+
+    #[test]
+    fn the_original_singer_comes_back_at_the_level_asked_for() {
+        let mut backing = Channels {
+            interleaved: vec![0.2; 100],
+            channels: 2,
+            sample_rate: 44_100,
+            truncated: false,
+        };
+        let vocals = Channels {
+            interleaved: vec![0.4; 100],
+            ..backing.clone()
+        };
+        assert!(mix_in_vocals(&mut backing, &vocals, 0.5));
+        assert!(
+            (backing.interleaved[0] - 0.4).abs() < 1e-6,
+            "{}",
+            backing.interleaved[0]
+        );
+
+        // Clamped, never wrapped to the opposite rail.
+        let mut hot = Channels {
+            interleaved: vec![0.9; 10],
+            channels: 2,
+            sample_rate: 44_100,
+            truncated: false,
+        };
+        let loud = Channels {
+            interleaved: vec![0.9; 10],
+            ..hot.clone()
+        };
+        assert!(mix_in_vocals(&mut hot, &loud, 1.0));
+        assert!(hot.interleaved.iter().all(|s| (-1.0..=1.0).contains(s)));
+
+        // Stems that disagree about their format are refused rather
+        // than interleaved into noise.
+        let odd = Channels {
+            interleaved: vec![0.4; 100],
+            channels: 1,
+            sample_rate: 44_100,
+            truncated: false,
+        };
+        assert!(!mix_in_vocals(&mut backing, &odd, 0.5));
+    }
+
+    #[test]
+    fn a_mixed_track_is_named_after_its_level() {
+        let audio = Path::new("/songs/x/Song.m4a");
+        assert_eq!(
+            karaoke_path(audio, 0.0),
+            PathBuf::from("/songs/x/Song.stems/karaoke-000.wav")
+        );
+        assert_eq!(
+            karaoke_path(audio, 0.35),
+            PathBuf::from("/songs/x/Song.stems/karaoke-035.wav")
+        );
+        // A different level is a different file: moving the slider
+        // must not silently replay the old mix.
+        assert_ne!(karaoke_path(audio, 0.35), karaoke_path(audio, 0.4));
+        assert_eq!(
+            karaoke_path(audio, 5.0),
+            karaoke_path(audio, 1.0),
+            "clamped"
+        );
+    }
+
+    #[test]
+    fn the_karaoke_track_is_the_instrumental_when_nothing_is_mixed_in() {
+        let dir = std::env::temp_dir().join(format!("bb-karaoke-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let audio = dir.join("song.wav");
+        std::fs::write(&audio, b"x").unwrap();
+        // Nothing separated: the caller plays the song itself.
+        assert_eq!(karaoke_track(&audio, 0.0), None);
+
+        let mut m = ready();
+        m.audio_sha256 = audio_sha256(&audio).unwrap();
+        std::fs::create_dir_all(stems_dir(&audio)).unwrap();
+        let tone = Channels {
+            interleaved: (0..8_000)
+                .map(|i| 0.3 * (core::f32::consts::TAU * 220.0 * i as f32 / 44_100.0).sin())
+                .collect(),
+            channels: 2,
+            sample_rate: 44_100,
+            truncated: false,
+        };
+        crate::decode::write_wav16(&stems_dir(&audio).join("instrumental.wav"), &tone).unwrap();
+        crate::decode::write_wav16(&stems_dir(&audio).join("vocals.wav"), &tone).unwrap();
+        write_manifest(&audio, &m).unwrap();
+
+        let track = karaoke_track(&audio, 0.0).expect("the instrumental");
+        assert!(track.ends_with("instrumental.wav"), "{track:?}");
+        assert!(
+            !karaoke_path(&audio, 0.0).is_file(),
+            "the default level built a file it did not need"
+        );
+
+        // A level above zero builds a mix once and reuses it.
+        let mixed = karaoke_track(&audio, 0.5).expect("a mix");
+        assert!(mixed.ends_with("karaoke-050.wav"), "{mixed:?}");
+        assert!(mixed.is_file());
+        // ⚠️ Comparing the file's SIZE cannot tell a reuse from a
+        // rebuild — a rebuild writes the same bytes. A marker can:
+        // if it survives, nothing rewrote the file.
+        std::fs::write(&mixed, b"a marker, not audio").unwrap();
+        assert_eq!(karaoke_track(&audio, 0.5).as_deref(), Some(mixed.as_path()));
+        assert_eq!(
+            std::fs::read(&mixed).unwrap(),
+            b"a marker, not audio",
+            "the mix was built a second time"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

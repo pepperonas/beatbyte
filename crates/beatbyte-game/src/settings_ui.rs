@@ -37,6 +37,8 @@ pub(crate) enum Row {
     MicOffset,
     /// Whether the written octave is the target.
     VocalPitch,
+    /// How much of the original singer stays in the karaoke backing.
+    OriginalVocals,
     NoFail,
     /// Room Stage: the game's events drive lights on the LAN.
     RoomLights,
@@ -74,7 +76,7 @@ impl Row {
     /// Every row, in the order the screen shows them: **alphabetical
     /// by label**, and kept that way by a test — a new row goes where
     /// its name falls, not at the end of the list.
-    const ALL: [Row; 35] = [
+    const ALL: [Row; 36] = [
         Row::AiSearch,
         Row::BeatPulse,
         Row::Controls,
@@ -95,6 +97,7 @@ impl Row {
         Row::MicOffset,
         Row::MusicVolume,
         Row::NoFail,
+        Row::OriginalVocals,
         Row::Particles,
         Row::ReducedFlashing,
         Row::RoomLights,
@@ -129,6 +132,7 @@ impl Row {
             Row::VocalCharts => "VOCAL CHARTS",
             Row::MicOffset => "MIC OFFSET",
             Row::VocalPitch => "VOCAL PITCH",
+            Row::OriginalVocals => "ORIGINAL VOCALS",
             Row::NoFail => "NO FAIL",
             Row::RoomLights => "ROOM LIGHTS",
             Row::ReducedFlashing => "REDUCED FLASHING",
@@ -168,6 +172,7 @@ impl Row {
             Row::GuitarStudyTwins => on_off(settings.guitar_study_twins),
             Row::VocalCharts => on_off(settings.vocal_charts),
             Row::MicOffset => format!("{:+.0} ms", settings.mic_offset_ms),
+            Row::OriginalVocals => format!("{:.0}%", settings.original_vocals * 100.0),
             Row::VocalPitch => match settings.vocal_pitch_mode {
                 beatbyte_core::vocal::PitchMode::OctaveIndependent => "ANY OCTAVE".to_owned(),
                 beatbyte_core::vocal::PitchMode::Strict => "AS WRITTEN".to_owned(),
@@ -261,6 +266,7 @@ impl Row {
             Row::GuitarStudyTwins => crate::study_twin::row_subtitle(),
             Row::VocalCharts => crate::study_twin::vocal_row_subtitle(),
             Row::MicOffset => "how late the microphone hears the song".to_owned(),
+            Row::OriginalVocals => "above zero marks a vocal run assisted".to_owned(),
             Row::VocalPitch => "an octave out: forgiven, or counted".to_owned(),
             _ => String::new(),
         }
@@ -298,6 +304,10 @@ impl Row {
             Row::MicOffset => {
                 settings.mic_offset_ms =
                     (settings.mic_offset_ms + 5.0 * direction).clamp(-250.0, 500.0);
+            }
+            Row::OriginalVocals => {
+                settings.original_vocals =
+                    (settings.original_vocals + 0.05 * direction).clamp(0.0, 1.0);
             }
             Row::VocalPitch => {
                 settings.vocal_pitch_mode = match settings.vocal_pitch_mode {

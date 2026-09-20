@@ -362,6 +362,46 @@ pub fn score_config(
     }
 }
 
+/// The backing a karaoke run plays instead of the song, when there is
+/// one.
+///
+/// `None` is the ordinary case and means exactly what it looks like:
+/// play the song. That happens when vocals are off, when this song
+/// has no chart, or when its stems are not on disk — and in every one
+/// of those the game is what it always was.
+///
+/// ⚠️ It is `SongAudio::File`, so every path the music thread already
+/// has — the loudness gain, the crossfade, the seek — works on it
+/// unchanged. The stems were separated from BeatByte's own decode, so
+/// the backing sits on the same timeline as the chart.
+#[must_use]
+pub fn karaoke_audio(
+    song: &crate::boot::LoadedSong,
+    settings: &crate::config::Settings,
+) -> Option<crate::boot::SongAudio> {
+    if !settings.vocal_charts || song.vocals.is_none() {
+        return None;
+    }
+    let crate::boot::SongAudio::File(audio_path) = &song.audio else {
+        return None;
+    };
+    let track = beatbyte_audio::stems::karaoke_track(audio_path, settings.original_vocals)?;
+    info!("vocals: playing the karaoke backing ({})", track.display());
+    Some(crate::boot::SongAudio::File(track))
+}
+
+/// Whether the original singer is audible in the room.
+///
+/// A microphone cannot tell a player from a voice coming out of the
+/// speakers, so a run with the original above silence is **assisted**
+/// and says so. No pitch-only algorithm can prove otherwise, and a
+/// score that quietly compares the two is worse than one that admits
+/// which it is. Pure — tested.
+#[must_use]
+pub fn assisted(settings: &crate::config::Settings) -> bool {
+    settings.vocal_charts && settings.original_vocals > 0.0
+}
+
 /// Wire vocal play into the app.
 pub fn register(app: &mut App) {
     // ⚠️ AFTER the ears open. Both run on the same state entry, and
@@ -1102,6 +1142,33 @@ mod tests {
         run.last = Some(frame(Some(60.0), true, false));
         let line = readout_line(&run, 50.0, &config);
         assert!(line.ends_with("Hz"), "{line}");
+    }
+
+    #[test]
+    fn a_run_is_assisted_exactly_when_the_original_singer_is_audible() {
+        // No pitch-only algorithm can prove who made a matching note
+        // when the record is playing in the room, so the honest thing
+        // is to say which kind of run it was.
+        let off = crate::config::Settings::default();
+        assert!(!assisted(&off), "the default is not assisted");
+        let backing_only = crate::config::Settings {
+            vocal_charts: true,
+            original_vocals: 0.0,
+            ..crate::config::Settings::default()
+        };
+        assert!(!assisted(&backing_only), "a backing track is not help");
+        let with_singer = crate::config::Settings {
+            original_vocals: 0.05,
+            ..backing_only
+        };
+        assert!(assisted(&with_singer), "five percent is still audible");
+        // Vocals off: there is no vocal run to assist.
+        let no_vocals = crate::config::Settings {
+            vocal_charts: false,
+            original_vocals: 1.0,
+            ..crate::config::Settings::default()
+        };
+        assert!(!assisted(&no_vocals));
     }
 
     #[test]
