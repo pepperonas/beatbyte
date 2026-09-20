@@ -185,6 +185,20 @@ pub struct PlayerResult {
     pub performance: PlayerPerformance,
 }
 
+/// One singer's final outcome.
+///
+/// A `Vec` of them on [`LastResults`] rather than one, because a duet
+/// is a format change away and a shape that cannot hold two would
+/// have to be changed to allow it.
+#[derive(Debug, Clone)]
+pub struct VocalResult {
+    /// What they sang and how it went.
+    pub performance: beatbyte_core::vocal_session::VocalPerformance,
+    /// The numbers it was judged by, so the results screen can grade
+    /// it the same way the run did.
+    pub config: beatbyte_core::vocal_session::VocalScoreConfig,
+}
+
 /// The last finished run, for the results screen.
 #[derive(Resource, Clone)]
 pub struct LastResults {
@@ -198,6 +212,8 @@ pub struct LastResults {
     pub mode: MultiplayerMode,
     /// Every player's outcome, in player order.
     pub players: Vec<PlayerResult>,
+    /// Every singer's, when anyone sang. Empty is the ordinary case.
+    pub vocalists: Vec<VocalResult>,
     /// Whether tap mode (no-strum assist) was active — such runs stay
     /// out of the scoreboard.
     pub tap_mode: bool,
@@ -218,6 +234,31 @@ pub struct LastResults {
     pub finished_at_s: f64,
     /// Where the played chart's content ends.
     pub content_end_s: f64,
+}
+
+/// Close the vocal run and take what it says.
+///
+/// `finish` matters: the last phrase is still open when the song
+/// ends, and a run whose final line simply vanished would be scored
+/// one phrase short of what was sung.
+fn close_vocals(vocal: Option<ResMut<vocal::VocalRun>>) -> Vec<VocalResult> {
+    let Some(mut run) = vocal else {
+        return Vec::new();
+    };
+    let mut events = Vec::new();
+    run.session.finish(&mut events);
+    let performance = run.session.performance().clone();
+    // Nothing sung at all is not a result to show. A player with
+    // vocals on who never opened their mouth gets the guitar screen
+    // they would have had anyway.
+    if performance.notes == 0 {
+        return Vec::new();
+    }
+    let config = *run.session.config();
+    vec![VocalResult {
+        performance,
+        config,
+    }]
 }
 
 /// The scoring rules for a run.
@@ -878,6 +919,7 @@ fn check_song_end(
     game_clock: Res<GameClock>,
     practice: Res<PracticeState>,
     time: Res<Time>,
+    vocal: Option<ResMut<vocal::VocalRun>>,
     mut next_phase: ResMut<NextState<GamePhase>>,
 ) {
     let Some(now) = game_clock.song_time(&time) else {
@@ -898,6 +940,7 @@ fn check_song_end(
             })
             .collect();
         results.sort_by_key(|result| result.index);
+        let vocalists = close_vocals(vocal);
         // The history's completion flag: `LastResults` persists
         // across runs, so its presence cannot say whether THIS run
         // reached the end. This marker is inserted only here and
@@ -909,6 +952,7 @@ fn check_song_end(
             difficulty: selected.0,
             mode: roster.mode,
             players: results,
+            vocalists,
             tap_mode: players.iter().any(|(_, p)| p.session.tap_mode()),
             practice: practice.used,
             failed: false,
@@ -946,6 +990,7 @@ fn check_failure(
     game_clock: Res<GameClock>,
     practice: Res<PracticeState>,
     time: Res<Time>,
+    vocal: Option<ResMut<vocal::VocalRun>>,
     mut next_phase: ResMut<NextState<GamePhase>>,
 ) {
     let Some(now) = game_clock.song_time(&time) else {
@@ -965,12 +1010,14 @@ fn check_failure(
         })
         .collect();
     results.sort_by_key(|result| result.index);
+    let vocalists = close_vocals(vocal);
     commands.insert_resource(LastResults {
         title: song.chart.song.title.clone(),
         artist: song.chart.song.artist.clone(),
         difficulty: selected.0,
         mode: roster.mode,
         players: results,
+        vocalists,
         tap_mode: players.iter().any(|(_, p)| p.session.tap_mode()),
         practice: practice.used,
         failed: true,

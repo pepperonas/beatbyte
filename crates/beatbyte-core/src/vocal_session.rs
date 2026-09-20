@@ -345,6 +345,38 @@ impl VocalPerformance {
         mean(self.abs_cents_sum, self.abs_cents_weight)
     }
 
+    /// The run as one number, `0..=1`, under the same weighting a
+    /// single note is scored by.
+    ///
+    /// A component nobody produced — pitch on an all-rap part, or
+    /// anything at all on a run where the microphone never worked —
+    /// leaves the denominator instead of scoring zero. A part that
+    /// was never sung is [`None`], which is a different thing from
+    /// having sung it badly.
+    #[must_use]
+    pub fn overall(&self, config: &VocalScoreConfig) -> Option<f32> {
+        let mut total = 0.0f32;
+        let mut weight = 0.0f32;
+        let mut take = |value: Option<f32>, w: f32| {
+            if let Some(value) = value {
+                total += value * w;
+                weight += w;
+            }
+        };
+        take(self.pitch_accuracy(), config.weight_pitch);
+        take(self.timing_accuracy(), config.weight_timing);
+        take(self.coverage(), config.weight_coverage);
+        take(self.stability(), config.weight_stability);
+        (weight > 0.0).then(|| (total / weight).clamp(0.0, 1.0))
+    }
+
+    /// The grade the run earns as a whole.
+    #[must_use]
+    pub fn grade(&self, config: &VocalScoreConfig) -> VocalGrade {
+        self.overall(config)
+            .map_or(VocalGrade::Miss, |score| config.grade_for_score(score))
+    }
+
     /// The share of asked-for notes that were hit.
     #[must_use]
     pub fn hit_rate(&self) -> f32 {
@@ -1464,6 +1496,40 @@ mod tests {
         session.finish(&mut events);
         assert_eq!(events.len(), 2, "the note and its phrase");
         assert!(session.performance().score > 0);
+    }
+
+    #[test]
+    fn a_run_sums_itself_up_without_counting_what_nobody_sang() {
+        let config = VocalScoreConfig::default();
+        let p = part(vec![note(1.0, 2.0, 60.0), note(2.5, 3.5, 64.0)]);
+        let (good, _) = sing(&p, Singer::default(), config);
+        let overall = good.overall(&config).expect("something was sung");
+        assert!(overall > 0.95, "a flawless run summed to {overall}");
+        assert_eq!(good.grade(&config), VocalGrade::Perfect);
+
+        // An all-rap part has no pitch and no steadiness, and its
+        // summary must not be dragged down by their absence.
+        let mut rap = note(1.0, 2.0, 60.0);
+        rap.kind = VocalKind::Rap;
+        rap.target_midi = None;
+        let (rapped, _) = sing(&part(vec![rap]), Singer::default(), config);
+        assert_eq!(rapped.pitch_accuracy(), None);
+        assert!(
+            rapped.overall(&config).expect("delivered") > 0.95,
+            "rap was penalised for having no pitch: {:?}",
+            rapped.overall(&config)
+        );
+
+        // Nothing sung at all is not a bad performance — it is no
+        // performance, and the two must not read the same.
+        let silent = Singer {
+            coverage: 0.0,
+            ..Singer::default()
+        };
+        let (nothing, _) = sing(&p, silent, config);
+        assert_eq!(nothing.grade(&config), VocalGrade::Miss);
+        let never = VocalPerformance::default();
+        assert_eq!(never.overall(&config), None, "an empty run has no score");
     }
 
     #[test]

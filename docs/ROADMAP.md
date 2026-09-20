@@ -492,7 +492,7 @@ that will not start.
   *Verified: 1360 tests (+20), gate green, nine mutation probes bite
   (including one that makes a louder frame buy coverage, against the
   test that sings the same phrase at a whisper and a shout).*
-- [~] V5 **Vocal presentation.** `gameplay::vocal` draws the ribbon —
+- [x] V5 **Vocal presentation.** `gameplay::vocal` draws the ribbon —
   the target melody as bars sliding past a playhead, the microphone's
   recent pitch as a trace over them, coloured by how far off it is,
   with the phrase's verdict and a readout that says LISTENING, NO
@@ -505,7 +505,7 @@ that will not start.
   the time. **Remaining:** the Reduced Motion / Reduced Flashing /
   High Contrast variants, and feeding the phrase outcomes to the
   existing Hype and effects (V8).
-  *Verified: 1389 tests (+16), gate green, six mutation probes bite —
+  *Verified: 1396 tests (+23), gate green, ten mutation probes bite —
   including the arrow pointing the wrong way, which is the single
   most confusing thing this HUD could do. Live in the game: a run on
   a song that has a chart logs `vocals: holding the singer to 19
@@ -524,7 +524,19 @@ that will not start.
   measured by loopback — never the controller's latency value.
 - [ ] V7 **Karaoke playback.** Sample-synchronous stem mixing,
   original vocals at zero by default, assisted runs marked.
-- [ ] V8 **Events, results and polish.**
+- [~] V8 **Events, results and polish.** Shipped: `LastResults` gains
+  `vocalists`, the run's last phrase is CLOSED before the result is
+  taken (a song ends with a phrase still open, and a run whose final
+  line simply vanished would be scored one phrase short), and the
+  results screen grows a vocal panel — grade, score, pitch, average
+  cents off, timing, hold, steadiness, notes, perfect phrases, best
+  run, and the range **you** reached written as note names. A
+  measurement nobody produced is left out rather than printed as
+  0 %, which reads as "you were terrible" instead of "there is
+  nothing to report"; a run where nobody opened their mouth shows no
+  panel at all. **Remaining:** routing phrase outcomes into the
+  existing feedback bus so the lights, the particles and Room Stage
+  see them, and the vocal debug overlay.
 - [ ] V9 **Release gate.**
 
 ## Stage monitors and the room's light show (2026-09-07, v0.14.39–)

@@ -48,8 +48,18 @@ the manifest ever carries a version this file does not describe.
 - The microphone's clock and the song's clock are two crystals. They are kept
   together the way the song clock is kept to the audio device: a large
   disagreement snaps, a small one is eased out.
-- Not yet: the accessibility variants of the ribbon, the karaoke backing mix,
-  and vocal results on the results screen.
+- The ribbon honours the accessibility settings: **Reduced Motion** freezes
+  its pitch range (frozen, it holds the whole song rather than a window),
+  **Reduced Flashing** keeps each phrase's verdict without the swell, and
+  **High Contrast** thickens the target bars and the trace — a ribbon whose
+  only distinction between your line and your voice is hue is unreadable to a
+  good share of players.
+- The results screen grows a **vocal panel**: grade and score, pitch accuracy,
+  how many cents off on average, timing, hold, steadiness, notes hit, perfect
+  phrases, longest run, and the range you actually reached, in note names. A
+  measurement nobody produced is left out rather than shown as 0 %.
+- Not yet: the karaoke backing mix, and vocal phrases driving the stage
+  lights.
 
 ## [0.17.11] - 2026-09-20
 

@@ -279,6 +279,12 @@ fn spawn_results(
             } else {
                 spawn_multi(parent, &results, &font);
             }
+            // The singer's own panel, when somebody sang. It is a
+            // panel of its own rather than rows in the guitarist's:
+            // they are two performances, and one run can hold both.
+            for vocal in &results.vocalists {
+                spawn_vocal(parent, vocal, &font);
+            }
             // The confirmation line sits above the footer, empty
             // until feedback is given — no visual noise for the
             // player who just wants out.
@@ -538,6 +544,124 @@ fn spawn_solo(
                 ui_kit::value_node(),
             ));
         });
+    });
+}
+
+/// A pitch as a note name, e.g. `A4`, `C#5`.
+///
+/// Sharps rather than flats throughout: one spelling, consistently,
+/// because a range printed `A#3-Db5` reads as two different
+/// conventions arguing. Pure — tested.
+#[must_use]
+pub fn note_name(midi: f32) -> String {
+    const NAMES: [&str; 12] = [
+        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+    ];
+    if !midi.is_finite() {
+        return "-".to_owned();
+    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a MIDI note number, 0..127 after clamping"
+    )]
+    let rounded = midi.round().clamp(0.0, 127.0) as i32;
+    let octave = rounded / 12 - 1;
+    let name = NAMES[(rounded % 12) as usize];
+    format!("{name}{octave}")
+}
+
+/// The lines a vocal result puts on the screen, in order.
+///
+/// Pure, so what the screen says can be tested without building one.
+/// A measurement nobody produced is left OUT rather than printed as
+/// zero: a run with no pitch in it (all rap, or a microphone that
+/// never worked) must not claim 0 % accuracy, which reads as "you
+/// were terrible" rather than "there is nothing to report".
+#[must_use]
+pub fn vocal_rows(result: &crate::gameplay::VocalResult) -> Vec<(&'static str, String)> {
+    let perf = &result.performance;
+    let mut rows = Vec::with_capacity(8);
+    let percent = |value: f32| format!("{:.0}%", value * 100.0);
+    if let Some(pitch) = perf.pitch_accuracy() {
+        rows.push(("PITCH", percent(pitch)));
+    }
+    if let Some(cents) = perf.mean_abs_cents() {
+        rows.push(("AVERAGE OFF", format!("{cents:.0} cents")));
+    }
+    if let Some(timing) = perf.timing_accuracy() {
+        rows.push(("TIMING", percent(timing)));
+    }
+    if let Some(hold) = perf.coverage() {
+        rows.push(("HOLD", percent(hold)));
+    }
+    if let Some(steady) = perf.stability() {
+        rows.push(("STEADY", percent(steady)));
+    }
+    rows.push(("NOTES", format!("{} of {}", perf.notes_hit, perf.notes)));
+    rows.push((
+        "PHRASES",
+        format!("{} perfect of {}", perf.perfect_phrases, perf.phrases),
+    ));
+    rows.push(("BEST RUN", format!("{} phrases", perf.best_streak)));
+    if let Some(range) = perf.range {
+        rows.push((
+            "YOUR RANGE",
+            format!(
+                "{} - {}  ({:.0} semitones)",
+                note_name(range.low_midi),
+                note_name(range.high_midi),
+                range.semitones()
+            ),
+        ));
+    }
+    rows
+}
+
+/// The singer's panel, under the player's.
+fn spawn_vocal(
+    parent: &mut ChildSpawnerCommands,
+    result: &crate::gameplay::VocalResult,
+    font: &UiFont,
+) {
+    let perf = &result.performance;
+    let grade = perf.grade(&result.config);
+    let tone = match grade {
+        beatbyte_core::vocal_session::VocalGrade::Perfect => palette::PERFECT,
+        beatbyte_core::vocal_session::VocalGrade::Great => palette::GREAT,
+        beatbyte_core::vocal_session::VocalGrade::Good => palette::GOOD,
+        _ => palette::MISS,
+    };
+    parent.spawn(ui_kit::panel()).with_children(|panel| {
+        panel.spawn(ui_kit::row()).with_children(|row| {
+            row.spawn((
+                Text::new("VOCALS"),
+                font.text(ui_kit::ROW),
+                TextColor(palette::TEXT_DIM),
+                ui_kit::label_node(),
+            ));
+            row.spawn((
+                Text::new(format!("{}   {}", grade.label(), perf.score)),
+                font.text(ui_kit::ROW),
+                TextColor(tone),
+                ui_kit::value_node(),
+            ));
+        });
+        for (label, value) in vocal_rows(result) {
+            panel.spawn(ui_kit::row()).with_children(|row| {
+                row.spawn((
+                    Text::new(label),
+                    font.text(ui_kit::ROW),
+                    TextColor(palette::TEXT_DIM),
+                    ui_kit::label_node(),
+                ));
+                row.spawn((
+                    Text::new(value),
+                    font.text(ui_kit::ROW),
+                    TextColor(palette::TEXT),
+                    ui_kit::value_node(),
+                ));
+            });
+        }
     });
 }
 
@@ -930,9 +1054,123 @@ fn despawn_results(mut commands: Commands, entities: Query<Entity, With<ResultsS
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_pitch_reads_as_the_note_a_singer_would_name() {
+        assert_eq!(note_name(60.0), "C4", "middle C");
+        assert_eq!(note_name(69.0), "A4", "concert A");
+        assert_eq!(note_name(21.0), "A0", "the bottom of a piano");
+        assert_eq!(note_name(61.0), "C#4");
+        // Fractional pitches round to the nearest name.
+        assert_eq!(note_name(60.4), "C4");
+        assert_eq!(note_name(60.6), "C#4");
+        // Nonsense does not panic or print an octave from nowhere.
+        assert_eq!(note_name(f32::NAN), "-");
+        assert_eq!(note_name(-500.0), "C-1");
+        assert_eq!(note_name(9999.0), "G9");
+    }
+
+    #[test]
+    fn the_vocal_panel_leaves_out_what_nobody_produced() {
+        use beatbyte_core::vocal_session::{VocalPerformance, VocalScoreConfig};
+        let config = VocalScoreConfig::default();
+        // A result with nothing measured: no pitch line claiming 0 %,
+        // which would read as "you were terrible" rather than as
+        // "there is nothing to report".
+        let bare = crate::gameplay::VocalResult {
+            performance: VocalPerformance::default(),
+            config,
+        };
+        let rows = vocal_rows(&bare);
+        let labels: Vec<&str> = rows.iter().map(|(label, _)| *label).collect();
+        assert!(!labels.contains(&"PITCH"), "{labels:?}");
+        assert!(!labels.contains(&"AVERAGE OFF"), "{labels:?}");
+        assert!(!labels.contains(&"YOUR RANGE"), "{labels:?}");
+        // The counts are always there: zero of zero is a fact.
+        assert!(labels.contains(&"NOTES"), "{labels:?}");
+        assert!(labels.contains(&"PHRASES"), "{labels:?}");
+    }
+
+    #[test]
+    fn a_real_vocal_run_reports_every_number_the_plan_asks_for() {
+        use beatbyte_core::Difficulty;
+        use beatbyte_core::vocal::{VocalKind, VocalNote, VocalPart, VocalPhrase, VocalRole};
+        use beatbyte_core::vocal_session::{VocalInputFrame, VocalScoreConfig, VocalSession};
+
+        let config = VocalScoreConfig::for_difficulty(Difficulty::Medium);
+        let part = VocalPart {
+            id: "lead".to_owned(),
+            role: VocalRole::Lead,
+            name: None,
+            phrases: vec![VocalPhrase {
+                start_s: 0.0,
+                end_s: 2.0,
+                confidence: 1.0,
+                tokens: Vec::new(),
+                notes: vec![VocalNote {
+                    start_s: 0.0,
+                    end_s: 2.0,
+                    kind: VocalKind::Pitched,
+                    target_midi: Some(64.0),
+                    contour: Vec::new(),
+                    confidence: 1.0,
+                    token_range: None,
+                }],
+            }],
+        };
+        let mut session = VocalSession::new(part, config);
+        let mut events = Vec::new();
+        let mut t = 0.0f64;
+        while t < 2.0 {
+            session.feed(
+                VocalInputFrame {
+                    song_time_s: t,
+                    midi: Some(64.0),
+                    confidence: 0.9,
+                    rms_dbfs: -18.0,
+                    voiced: true,
+                    clipped: false,
+                },
+                &mut events,
+            );
+            t += 0.016;
+        }
+        session.finish(&mut events);
+        let result = crate::gameplay::VocalResult {
+            performance: session.performance().clone(),
+            config,
+        };
+        let rows = vocal_rows(&result);
+        let labels: Vec<&str> = rows.iter().map(|(label, _)| *label).collect();
+        for wanted in [
+            "PITCH",
+            "AVERAGE OFF",
+            "TIMING",
+            "HOLD",
+            "STEADY",
+            "NOTES",
+            "PHRASES",
+            "BEST RUN",
+            "YOUR RANGE",
+        ] {
+            assert!(labels.contains(&wanted), "{wanted} missing from {labels:?}");
+        }
+        let range = rows
+            .iter()
+            .find(|(label, _)| *label == "YOUR RANGE")
+            .map(|(_, value)| value.clone())
+            .expect("a range");
+        assert!(range.starts_with("E4 - E4"), "{range}");
+        let notes = rows
+            .iter()
+            .find(|(label, _)| *label == "NOTES")
+            .map(|(_, value)| value.clone())
+            .expect("the counts");
+        assert_eq!(notes, "1 of 1");
+    }
     use super::{
-        EnterMeans, enter_means, feedback_status, field_line, fun_rating_for, grade_for,
-        results_footer,
+        EnterMeans, enter_means, feedback_status, field_line, fun_rating_for, grade_for, note_name,
+        results_footer, vocal_rows,
     };
     use bevy::prelude::KeyCode;
 

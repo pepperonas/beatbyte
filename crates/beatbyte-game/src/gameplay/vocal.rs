@@ -212,6 +212,72 @@ pub fn error_colour(cents: f32, config: &VocalScoreConfig) -> Color {
     }
 }
 
+/// How much of the ribbon's motion and flash the player has asked
+/// for.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct VocalLook {
+    /// Whether the visible range may move at all.
+    pub range_moves: bool,
+    /// Whether a phrase's verdict may flash.
+    pub banner_flashes: bool,
+    /// Whether the bars and the trace need to stand apart by more
+    /// than colour.
+    pub high_contrast: bool,
+}
+
+impl VocalLook {
+    /// Read it off the settings.
+    ///
+    /// **Reduced Motion** freezes the range: the whole ribbon sliding
+    /// under a singer is exactly the kind of large-field movement the
+    /// setting exists to stop, and a fixed range is perfectly
+    /// readable — it is just wider. **Reduced Flashing** keeps the
+    /// verdict on screen without the swell. **High Contrast** makes
+    /// the target bars brighter and thicker, because a ribbon whose
+    /// only distinction between "your line" and "your voice" is hue
+    /// is unreadable to a good share of players. Pure — tested.
+    #[must_use]
+    pub fn of(settings: &crate::config::Settings) -> VocalLook {
+        VocalLook {
+            range_moves: settings.backdrop_motion,
+            banner_flashes: !settings.reduced_flashing,
+            high_contrast: settings.high_contrast,
+        }
+    }
+
+    /// The whole span a frozen ribbon draws, when the range may not
+    /// follow the music.
+    ///
+    /// It has to hold the WHOLE part rather than a comfortable
+    /// window: a range that cannot move must fit everything that will
+    /// ever be asked for, or the notes it does not fit are pinned to
+    /// an edge for the rest of the song. Pure — tested.
+    #[must_use]
+    pub fn fixed_range(part: &VocalPart) -> (f32, f32) {
+        part.pitch_range().map_or((54.0, 72.0), |range| {
+            pad_range(range.low_midi, range.high_midi)
+        })
+    }
+
+    /// How thick a target bar is drawn.
+    #[must_use]
+    pub fn bar_thickness(self) -> f32 {
+        if self.high_contrast { 10.0 } else { 6.0 }
+    }
+
+    /// How opaque it is.
+    #[must_use]
+    pub fn bar_alpha(self) -> f32 {
+        if self.high_contrast { 1.0 } else { 0.85 }
+    }
+
+    /// How thick the live trace is.
+    #[must_use]
+    pub fn trace_thickness(self) -> f32 {
+        if self.high_contrast { 5.0 } else { 3.0 }
+    }
+}
+
 /// One remembered instant of the microphone.
 #[derive(Debug, Clone, Copy)]
 pub struct TracePoint {
@@ -561,10 +627,19 @@ fn draw(
     let Some(drawn_now) = clock.visual_time(&time, &settings) else {
         return;
     };
+    let look = VocalLook::of(&settings);
     // The range follows the music, eased: a phrase that jumps an
-    // octave must not make the whole ribbon jump with it.
-    if let Some(wanted) = wanted_range(run.session.part(), drawn_now) {
-        run.range = ease_range(run.range, wanted, time.delta_secs());
+    // octave must not make the whole ribbon jump with it. Under
+    // Reduced Motion it does not follow at all — a fixed range that
+    // holds the whole song is wider but perfectly readable, and the
+    // ribbon sliding under a singer is exactly the large-field
+    // movement that setting exists to stop.
+    if look.range_moves {
+        if let Some(wanted) = wanted_range(run.session.part(), drawn_now) {
+            run.range = ease_range(run.range, wanted, time.delta_secs());
+        }
+    } else {
+        run.range = VocalLook::fixed_range(run.session.part());
     }
     let view = run.view(drawn_now);
     let config = *run.session.config();
@@ -582,7 +657,7 @@ fn draw(
             if slot >= BAR_POOL {
                 break 'outer;
             }
-            if let Some((centre, size, colour)) = bar_of(note, &view) {
+            if let Some((centre, size, colour)) = bar_of(note, &view, look) {
                 placed.push((slot, centre, size, colour));
                 slot += 1;
             }
@@ -629,7 +704,7 @@ fn draw(
             continue;
         }
         sprite.color = colour;
-        sprite.custom_size = Some(Vec2::new(len, 3.0));
+        sprite.custom_size = Some(Vec2::new(len, look.trace_thickness()));
         transform.translation.x = from.x + delta.x / 2.0;
         transform.translation.y = from.y + delta.y / 2.0;
         transform.rotation = Quat::from_rotation_z(delta.y.atan2(delta.x));
@@ -648,12 +723,22 @@ fn draw(
                     outcome.multiplier,
                     outcome.points
                 );
-                colour.0 = match outcome.grade {
+                // Reduced Flashing keeps the verdict and drops the
+                // swell: the words are the information, the flash was
+                // only ever the celebration.
+                let swell = if look.banner_flashes {
+                    let (_, age) = run.banner.unwrap_or((outcome, BANNER_S));
+                    1.0 - (age / BANNER_S).clamp(0.0, 1.0) * 0.35
+                } else {
+                    1.0
+                };
+                colour.0 = (match outcome.grade {
                     VocalGrade::Perfect => palette::PERFECT,
                     VocalGrade::Great => palette::GREAT,
                     VocalGrade::Good => palette::GOOD,
                     VocalGrade::Weak | VocalGrade::Miss => palette::MISS,
-                };
+                })
+                .with_alpha(swell);
             }
             None => text.0.clear(),
         }
@@ -663,7 +748,7 @@ fn draw(
 /// Where a note's bar goes, and what colour. `None` when it carries
 /// no pitch to draw. Pure — tested.
 #[must_use]
-pub fn bar_of(note: &VocalNote, view: &VocalView) -> Option<(Vec2, Vec2, Color)> {
+pub fn bar_of(note: &VocalNote, view: &VocalView, look: VocalLook) -> Option<(Vec2, Vec2, Color)> {
     let midi = note
         .target_midi
         .or_else(|| note.contour.first().map(|point| point.midi))?;
@@ -687,8 +772,8 @@ pub fn bar_of(note: &VocalNote, view: &VocalView) -> Option<(Vec2, Vec2, Color)>
     };
     Some((
         Vec2::new(left + width / 2.0, y),
-        Vec2::new(width, 6.0),
-        colour.with_alpha(0.85),
+        Vec2::new(width, look.bar_thickness()),
+        colour.with_alpha(look.bar_alpha()),
     ))
 }
 
@@ -754,6 +839,14 @@ mod tests {
                 tokens: Vec::new(),
                 notes,
             }],
+        }
+    }
+
+    fn plain() -> VocalLook {
+        VocalLook {
+            range_moves: true,
+            banner_flashes: true,
+            high_contrast: false,
         }
     }
 
@@ -917,15 +1010,17 @@ mod tests {
     #[test]
     fn a_bar_covers_the_time_its_note_covers() {
         let v = view(10.0);
-        let (centre, size, _) = bar_of(&note(10.0, 11.0, 63.0), &v).expect("a visible note");
+        let (centre, size, _) =
+            bar_of(&note(10.0, 11.0, 63.0), &v, plain()).expect("a visible note");
         assert!((centre.y - v.y_of(63.0)).abs() < 1e-3);
         let expected = v.x_of(11.0) - v.x_of(10.0);
         assert!((size.x - expected).abs() < 1e-3, "{size:?}");
         // A note running off the left edge is clipped, not moved.
-        let (centre, size, _) = bar_of(&note(5.0, 10.2, 63.0), &v).expect("partly visible");
+        let (centre, size, _) =
+            bar_of(&note(5.0, 10.2, 63.0), &v, plain()).expect("partly visible");
         assert!(centre.x - size.x / 2.0 >= BAND_LEFT - 1e-3);
         // One that has gone entirely is not drawn.
-        assert!(bar_of(&note(1.0, 2.0, 63.0), &v).is_none());
+        assert!(bar_of(&note(1.0, 2.0, 63.0), &v, plain()).is_none());
     }
 
     #[test]
@@ -933,10 +1028,10 @@ mod tests {
         // It is still something to reach for, and the range is
         // already easing toward it.
         let v = view(10.0);
-        let (centre, _, _) = bar_of(&note(10.0, 11.0, 96.0), &v).expect("a high note");
+        let (centre, _, _) = bar_of(&note(10.0, 11.0, 96.0), &v, plain()).expect("a high note");
         assert!(centre.y <= BAND_TOP, "drawn off the top of the band");
         assert!(centre.y > BAND_BOTTOM);
-        let (centre, _, _) = bar_of(&note(10.0, 11.0, 30.0), &v).expect("a low note");
+        let (centre, _, _) = bar_of(&note(10.0, 11.0, 30.0), &v, plain()).expect("a low note");
         assert!(centre.y >= BAND_BOTTOM);
     }
 
@@ -951,8 +1046,8 @@ mod tests {
             midi: 60.0,
             confidence: 1.0,
         }];
-        let (_, _, colour) = bar_of(&rap, &v).expect("rap is still drawn");
-        assert_eq!(colour.alpha(), palette::HYPE.with_alpha(0.85).alpha());
+        let (_, _, colour) = bar_of(&rap, &v, plain()).expect("rap is still drawn");
+        assert!((colour.alpha() - plain().bar_alpha()).abs() < 1e-6);
         assert_ne!(colour, palette::TEXT_DIM.with_alpha(0.85));
     }
 
@@ -993,6 +1088,90 @@ mod tests {
         run.last = Some(frame(Some(60.0), true, false));
         let line = readout_line(&run, 50.0, &config);
         assert!(line.ends_with("Hz"), "{line}");
+    }
+
+    #[test]
+    fn reduced_motion_freezes_a_range_that_still_holds_the_whole_song() {
+        // A frozen range that does not fit everything would pin
+        // whatever it misses to an edge for the rest of the song, so
+        // it has to hold the WHOLE part rather than a comfortable
+        // window.
+        let p = VocalPart {
+            id: "lead".to_owned(),
+            role: VocalRole::Lead,
+            name: None,
+            phrases: vec![
+                VocalPhrase {
+                    start_s: 0.0,
+                    end_s: 2.0,
+                    confidence: 1.0,
+                    tokens: Vec::new(),
+                    notes: vec![note(0.0, 2.0, 50.0)],
+                },
+                VocalPhrase {
+                    start_s: 60.0,
+                    end_s: 62.0,
+                    confidence: 1.0,
+                    tokens: Vec::new(),
+                    notes: vec![note(60.0, 62.0, 80.0)],
+                },
+            ],
+        };
+        let (low, high) = VocalLook::fixed_range(&p);
+        assert!(low < 50.0, "the low phrase is off the bottom: {low}");
+        assert!(
+            high > 80.0,
+            "the phrase a minute away is off the top: {high}"
+        );
+        // An empty part still has something drawable.
+        let empty = VocalPart {
+            id: "lead".to_owned(),
+            role: VocalRole::Lead,
+            name: None,
+            phrases: Vec::new(),
+        };
+        let (low, high) = VocalLook::fixed_range(&empty);
+        assert!(high > low);
+    }
+
+    #[test]
+    fn high_contrast_makes_the_line_stand_apart_by_more_than_colour() {
+        let plain = plain();
+        let strong = VocalLook {
+            high_contrast: true,
+            ..plain
+        };
+        assert!(strong.bar_thickness() > plain.bar_thickness());
+        assert!(strong.trace_thickness() > plain.trace_thickness());
+        assert!(strong.bar_alpha() > plain.bar_alpha());
+        // And it reaches the drawing, not just the struct.
+        let v = view(10.0);
+        let (_, thin, _) = bar_of(&note(10.0, 11.0, 63.0), &v, plain).expect("a bar");
+        let (_, thick, _) = bar_of(&note(10.0, 11.0, 63.0), &v, strong).expect("a bar");
+        assert!(thick.y > thin.y, "{thick:?} against {thin:?}");
+    }
+
+    #[test]
+    fn the_settings_reach_the_look() {
+        let settings = crate::config::Settings {
+            backdrop_motion: true,
+            reduced_flashing: false,
+            high_contrast: false,
+            ..crate::config::Settings::default()
+        };
+        let look = VocalLook::of(&settings);
+        assert!(look.range_moves && look.banner_flashes && !look.high_contrast);
+
+        let settings = crate::config::Settings {
+            backdrop_motion: false,
+            reduced_flashing: true,
+            high_contrast: true,
+            ..crate::config::Settings::default()
+        };
+        let look = VocalLook::of(&settings);
+        assert!(!look.range_moves, "reduced motion did not reach the ribbon");
+        assert!(!look.banner_flashes, "reduced flashing did not reach it");
+        assert!(look.high_contrast);
     }
 
     #[test]
