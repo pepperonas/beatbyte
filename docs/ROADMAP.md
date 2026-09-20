@@ -11,6 +11,24 @@ engine read it, how it was judged — recorded as evidence rather than
 as a log. Reasoning and alternatives: [ADR-0018](decisions/ADR-0018-gameplay-telemetry-store.md).
 The feedback loop it feeds: [`adaptive-charting.md`](adaptive-charting.md).
 
+- [x] **T11 One sink** *(v0.17.19)*. The JSONL writer is gone. The
+  readers moved first and the writer followed — the order that cannot
+  lose evidence — so the store is now the only thing the game writes
+  telemetry to, and what the player says on the results screen goes
+  there too. The old files stay on disk and `telemetry import` takes
+  them in.
+  ⚠️ **The blind-test drill could not reach a single song in a real
+  library.** Every `[GS]` twin's title contains its original's and
+  the twins come first, so a substring search always landed on the
+  twin — which has one chart version and therefore no test to build.
+  The only songs with several versions are exactly the ones that also
+  have a twin, so the drill was unrunnable here and nobody had
+  noticed. An exact title now wins over a substring.
+  *Verified by running both drills against the store:* the rating
+  drill landed `fun 4` and a `better` verdict in 1 session; the blind
+  test played `chart.v7` against `chart.v8` of *Life Is a Flower* and
+  recorded "the second one" against the first side's hash.
+  *Verified: 1522 tests (+2), gate green.*
 - [x] **T10 The Definition of Done, measured** *(v0.17.18)*. The one
   item nothing else had answered: **does recording cost frames?**
   A/B on the release binary, same song, same machine, `BEATBYTE_FPS`:

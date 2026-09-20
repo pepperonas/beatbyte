@@ -282,9 +282,13 @@ something a default should do. Hence the opt-in level.
   counts what has been applied. An older store opened by a newer
   build gains the new shape and keeps its rows; that property has its
   own test.
-- `beatbyte-cli review` and the design dossier move onto the store,
-  and the JSONL writer retires once they have. Until then the old
-  files remain readable and importable.
+- `beatbyte-cli review` and the design dossier moved onto the store,
+  and the JSONL writer then retired — that order, because it is the
+  one that cannot lose evidence. The old files remain on disk,
+  readable, and importable; nothing writes them. The results screen's
+  feedback (rating, sentence, pairwise verdict) goes to the store
+  too, and the two harness drills that verify it read the store back
+  through the writer's one synchronous call.
 - The per-note musical context (`onset strength`, energy, section,
   beat position) has to be **written at chart-generation time** into
   a sidecar beside the chart: it exists only inside the analysis

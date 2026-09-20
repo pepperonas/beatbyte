@@ -213,7 +213,7 @@ fn spawn_results(
     mut commands: Commands,
     results: Option<Res<LastResults>>,
     mut scores: ResMut<ScoreBoard>,
-    logs: Option<Res<crate::telemetry::SessionLogFiles>>,
+    last_run: Res<crate::telemetry::LastRun>,
     song: Option<Res<crate::boot::LoadedSong>>,
     mut given: ResMut<FeedbackGiven>,
     mut field: ResMut<CommentField>,
@@ -223,15 +223,15 @@ fn spawn_results(
     let Some(results) = results else {
         return;
     };
-    // Feedback (A5) is offered when this run left a session log and
-    // a human played: the fun rating appends to that log, and the
+    // Feedback (A5) is offered when this run left a session open in
+    // the store: the fun rating is recorded against it, and the
     // versus verdict additionally needs a parent version to compare
     // against (the played chart's provenance carries it).
-    // Autopilot sessions stay ratable on purpose: the header marks
-    // them and the review excludes them by default, and the rating
+    // Autopilot sessions stay ratable on purpose: the session marks
+    // them and the analytics exclude them by default, and the rating
     // drill needs the REAL path (a gate here would force the drill
     // to test a bypass instead).
-    let can_rate = logs.is_some_and(|l| !l.files.is_empty());
+    let can_rate = last_run.open();
     let can_versus = can_rate && song.is_some_and(|s| s.chart.provenance.is_some());
     // A blind test asks its own question instead: which of the two
     // passages just heard was better. It is offered only once BOTH
@@ -830,7 +830,8 @@ fn count_up_score(time: Res<Time>, mut scores: Query<(&mut ScoreCountUp, &mut Te
 fn results_comment(
     keys: Res<ButtonInput<KeyCode>>,
     mut typed: MessageReader<bevy::input::keyboard::KeyboardInput>,
-    logs: Option<Res<crate::telemetry::SessionLogFiles>>,
+    store: Res<crate::telemetry::TelemetryStore>,
+    last_run: Res<crate::telemetry::LastRun>,
     mut field: ResMut<CommentField>,
     mut given: ResMut<FeedbackGiven>,
     mut status: Query<&mut Text, With<FeedbackStatus>>,
@@ -838,7 +839,7 @@ fn results_comment(
 ) {
     use bevy::input::keyboard::Key;
 
-    let can_rate = logs.as_ref().is_some_and(|l| !l.files.is_empty());
+    let can_rate = last_run.open();
     if !field.open {
         let opening = can_rate && keys.just_pressed(KeyCode::KeyC);
         for _ in typed.read() {}
@@ -886,8 +887,8 @@ fn results_comment(
     if keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::NumpadEnter) {
         debug_assert_eq!(enter_means(true), EnterMeans::CommitComment);
         let line = beatbyte_core::telemetry::comment_line(&field.text);
-        if let (Some(logs), Some(line)) = (logs.as_ref(), line) {
-            crate::telemetry::append_feedback(logs, &line);
+        if let Some(line) = line.filter(|_| last_run.open()) {
+            crate::telemetry::append_feedback(&store, &last_run, &line);
             given.comments += 1;
         }
         field.open = false;
@@ -926,7 +927,8 @@ fn results_input(
     map: Res<crate::controls::InputMap>,
     pads: Query<&bevy::input::gamepad::Gamepad>,
     mouse: Res<ButtonInput<MouseButton>>,
-    logs: Option<Res<crate::telemetry::SessionLogFiles>>,
+    store: Res<crate::telemetry::TelemetryStore>,
+    last_run: Res<crate::telemetry::LastRun>,
     song: Option<Res<crate::boot::LoadedSong>>,
     taste: Option<Res<crate::taste::TasteTest>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
@@ -942,12 +944,12 @@ fn results_input(
         return;
     }
     // Feedback first, so a digit or arrow never doubles as an exit.
-    let can_rate = logs.as_ref().is_some_and(|l| !l.files.is_empty());
-    if can_rate && let Some(logs) = logs.as_ref() {
+    if last_run.open() {
         let mut changed = false;
         if let Some(rating) = keys.get_just_pressed().find_map(|k| fun_rating_for(*k)) {
             crate::telemetry::append_feedback(
-                logs,
+                &store,
+                &last_run,
                 &beatbyte_core::telemetry::NoteLine::Fun { fun: rating },
             );
             given.fun = Some(rating);
@@ -975,7 +977,8 @@ fn results_input(
                     crate::taste::versus_line(choice, test.order, hashes)
                 {
                     crate::telemetry::append_feedback(
-                        logs,
+                        &store,
+                        &last_run,
                         &beatbyte_core::telemetry::NoteLine::Versus {
                             versus: verdict,
                             parent,
@@ -1014,7 +1017,8 @@ fn results_input(
             };
             if let Some(verdict) = verdict {
                 crate::telemetry::append_feedback(
-                    logs,
+                    &store,
+                    &last_run,
                     &beatbyte_core::telemetry::NoteLine::Versus {
                         versus: verdict.to_owned(),
                         parent,

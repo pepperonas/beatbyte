@@ -27,34 +27,85 @@ ear has approved. Nothing overwrites anything.
 
 ## Layer 1 — Telemetry (foundation; everything depends on it)
 
-> **This layer is moving to a store.** [ADR-0018](decisions/ADR-0018-gameplay-telemetry-store.md)
-> replaces the per-session JSONL files described below with a local
-> SQLite database (`beatbyte-telemetry`) that records the same
-> observations plus the ones this format cannot hold: the logical
-> action behind every judgment, the device and the calibration in
-> force, pauses and seeks, how the run ended, and the full set of
-> version fields a comparison needs. The old files are imported once
-> and idempotently, and keep every fact they carried — except *when*,
-> which they never recorded. Until the readers below have moved, both
-> exist; this section describes what is still being written.
+A local, versioned **event store**
+([ADR-0018](decisions/ADR-0018-gameplay-telemetry-store.md)):
+`<data_dir>/beatbyte/telemetry.db`, written off the frame thread and
+never uploaded. The game does not read it back to decide anything;
+the results screen only ever ADDS what the player says.
 
-A session log, written by beatbyte-game beside `scores.json`
-(`<data_dir>/beatbyte/telemetry/`), append-only JSONL, one file per
-session. Never uploaded; the game never reads it back to decide
-anything (the results screen only ever APPENDS its feedback lines).
+Every song start opens one session per player, carrying what the run
+was played under:
 
-Session header (first line):
+```text
+uid · started/ended · title · artist · genre
+chart_hash (chart identity AND version in one value) · difficulty
+game version · chart format · generator · scoring version
+  · analysis version · vocal pipeline · telemetry schema
+device · input offset · video offset · mic offset
+tap mode · no fail · practice · autopilot
+completion · notes_total · dropped_events · telemetry_complete
+```
+
+and then one small row per thing that happened — a logical action, a
+judgment with its microsecond offset, a hold that ended, an
+overstrum, a hype window, a pause, a seek, a sung note or phrase.
+What the player says afterwards (the fun rating, a sentence, the
+pairwise verdict) is kept beside the session rather than in the event
+stream.
+
+Rules that are load-bearing:
+
+- **`chart_hash` is the content hash of the chart.** Evidence binds
+  to the exact notes that were played; an edited or regenerated chart
+  starts with zero evidence.
+- **Title and artist are separate fields.** The score board's
+  `title|artist` key is a known collision (roadmap C5); a new schema
+  does not copy a known defect.
+- **Sustain endings are recorded**, because dropped holds are the
+  evidence that separates "too hard" from "too easy".
+- **`autopilot` and `practice` are marked**, and every analysis
+  excludes both by default: a perfect robot makes every chart look
+  easy and a run at half speed is not a run.
+- **Nothing derivable is stored** — no combo, no score, no accuracy,
+  no per-judgment counts, no "early / late". `analytics::summary`
+  recomputes them from the raw events, which is what makes the play
+  history's copy a cache rather than a second truth.
+- **Schema-versioned and migrated**, and a shipped migration is never
+  edited. An older store opened by a newer build keeps its rows.
+- **A lost event is never silent**: a full queue drops it, counts it,
+  leaves a gap in the sequence numbers where it happened, and clears
+  `telemetry_complete`.
+- Writing never affects gameplay: a non-blocking hand-off to a
+  bounded queue, batched commits on a worker thread, and a failure
+  that warns and drops rather than panicking. Measured: at the most
+  talkative level the median frame time is 16.65 ms against 16.66 ms
+  with telemetry off.
+
+### The older JSONL files
+
+Layer 1 shipped as one JSONL file per session
+(`<data_dir>/beatbyte/telemetry/*.jsonl`): a header line, then one
+line per observation. **Nothing writes them any more.** They are
+still on disk and still readable, and
+
+```bash
+beatbyte-cli telemetry import
+```
+
+takes them into the store, once and idempotently. What they cannot
+carry survives as a lower detail level rather than as a hole: they
+recorded WHICH note but never WHEN, and they had no action stream, no
+device and no offsets — so an imported session says
+`detail = results` and stays `telemetry_complete`, because nothing
+was dropped.
+
+Their format, for reading an old file by hand:
 
 ```json
 {"schema": 1, "title": "Maria", "artist": "Blondie",
  "difficulty": "medium", "chart_hash": "…", "generator": "0.11.10",
  "started_ms": 1756500000000, "player": 0, "autopilot": false,
  "notes_total": 463}
-```
-
-One line per observation thereafter:
-
-```json
 {"i": 41, "j": "perfect", "off_ms": -12.3}
 {"i": 42, "j": "miss"}
 {"s": 41, "done": false}
@@ -65,46 +116,12 @@ One line per observation thereafter:
 ```
 
 (`i` = event index into the played track, `j` = judgment, `off_ms` =
-signed offset in ms; `s`/`done` = a sustain ended, played out or
-dropped; `o` = an overstrum, `near` = the most recently judged event
-when it happened — the session does not position an overstrum, so
-this is how analytics localize one. Optional: absent before the first
-note and in files written before the field existed. `fun` = the
-one-key rating from the results screen, 1–5; `versus` = the pairwise
-verdict on a designed version against `parent`, its provenance hash.
-Both are appended after the session was written; when several
-appear, the LAST one is the player's word. `comment` = a sentence
-typed on the results screen (`C`), capped at 280 characters — and the
-one line kind that does NOT collapse to the last one: two remarks
-about two passages are two pieces of evidence, so `review` prints all
-of them verbatim and a design pass reads them as written.)
-
-Rules that are load-bearing:
-
-- **`chart_hash` is the content hash of the chart** (canonical
-  serialization, so builtin songs hash too and formatting cannot
-  matter). Evidence binds to the exact notes that were played; an
-  edited or regenerated chart starts with zero evidence.
-- **Title and artist are separate fields.** The score board's
-  `title|artist` key is a known collision (roadmap C5); a new schema
-  does not copy a known defect.
-- **Sustain endings are recorded** (`done`), because dropped holds are
-  the evidence that separates "too hard" from "too easy" — judgment
-  lines alone cannot show them. (From the gameplay mechanics
-  reference: sustain state is its own signal, not a judgment.)
-- **`autopilot` is marked.** The autopilot plays perfectly; a reader
-  that cannot exclude it concludes every chart is too easy.
-- **Completion is derived, never stored**: a session is complete when
-  judged events (hits + misses) equal `notes_total`. A stored flag
-  could disagree with the lines; a derived one cannot. The session
-  score is deliberately absent — it is derivable, and `scores.json`
-  already keeps the best.
-- **Schema versioned from day one** (`schema: 1`); readers skip lines
-  they do not understand rather than failing.
-- Writing must never affect gameplay: buffered in memory, written once
-  when gameplay is left (abandonments included — fewer judged events
-  than `notes_total` *is* the abandonment signal); a write failure
-  logs and drops, never panics.
+signed offset in ms; `s`/`done` = a sustain ended; `o` = an
+overstrum, `near` = the most recently judged event when it happened.
+`fun` = the one-key rating, `versus` = the pairwise verdict against
+`parent`, `comment` = a sentence. `beatbyte-cli telemetry show`
+prints a stored session in the same spirit, and
+`telemetry export --what session` gives it back as JSON.)
 
 ## Layer 2 — Analytics (`beatbyte-cli review`)
 

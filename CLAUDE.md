@@ -87,10 +87,11 @@ writes. On macOS both directories below are
   on exit; read the gotcha before editing it to set up a run.
 - `<data>/beatbyte/` — `scores.json`, `players.json`, `history.jsonl`,
   `achievements.json`, **`telemetry.db`** (the gameplay store,
-  ADR-0018 — `beatbyte-cli telemetry status` to look), `telemetry/`
-  (the older per-session JSONL files, now imported into the store and
-  kept; still what a suspicious autopilot verdict is quickest to read
-  against), and the downloaded ML models.
+  ADR-0018 — `beatbyte-cli telemetry status` to look; a suspicious
+  autopilot verdict reads quickest with `telemetry show <id>`),
+  `telemetry/` (the older per-session JSONL files — **nothing writes
+  them any more**; they are imported by `telemetry import` and kept),
+  and the downloaded ML models.
 - Beside each chart version in a song folder: **`*.context.json`**,
   what the analysis said at each of its notes. Generated with the
   chart, or backfilled by `beatbyte-cli context --all songs/imported`;

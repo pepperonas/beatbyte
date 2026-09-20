@@ -14,6 +14,25 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.19] - 2026-09-20
+
+### Changed
+
+- **The per-session JSONL writer is retired.** The store is the one sink now:
+  the readers moved first (`review`, `dossier`), then the writer followed,
+  which is the order that cannot lose evidence. The old files are still on
+  disk, still readable, and `beatbyte-cli telemetry import` takes them in.
+- **What you say on the results screen goes to the store** — the fun rating,
+  a sentence, the pairwise verdict on a redesigned chart. A practised run is
+  still not offered for a verdict: what would be rated is the speed.
+
+### Fixed
+
+- **The blind-test drill could not reach any song in a real library.** Every
+  `[GS]` twin's title contains its original's, and the twins come first — so a
+  substring search always landed on the twin, which has one chart version and
+  no test to build. An exact title now wins over a substring.
+
 ## [0.17.18] - 2026-09-20
 
 ### Fixed

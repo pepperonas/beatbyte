@@ -977,7 +977,8 @@ pub fn song_ended_sanely(finished_at_s: f64, content_end_s: f64) -> bool {
 /// run loudly.
 fn autopilot_rate(
     mut keys: ResMut<ButtonInput<KeyCode>>,
-    logs: Option<Res<crate::telemetry::SessionLogFiles>>,
+    store: Res<crate::telemetry::TelemetryStore>,
+    last_run: Res<crate::telemetry::LastRun>,
     song: Option<Res<crate::boot::LoadedSong>>,
     mut frame: Local<u32>,
     mut app_exit: MessageWriter<AppExit>,
@@ -1004,38 +1005,42 @@ fn autopilot_rate(
         8 if has_parent => keys.press(KeyCode::ArrowRight),
         9 if has_parent => keys.release(KeyCode::ArrowRight),
         14 => {
-            let Some(logs) = logs.as_ref().filter(|l| !l.files.is_empty()) else {
-                error!("autopilot: rate drill FAILED — no session log to rate into");
+            if !last_run.open() {
+                error!("autopilot: rate drill FAILED — no open session to rate into");
+                deliver(&mut app_exit, AppExit::error());
+                *frame += 1;
+                return;
+            }
+            let Some(writer) = store.writer() else {
+                error!("autopilot: rate drill FAILED — the store is not open");
                 deliver(&mut app_exit, AppExit::error());
                 *frame += 1;
                 return;
             };
-            for path in &logs.files {
-                let content = std::fs::read_to_string(path).unwrap_or_default();
-                let Some((_, lines)) = beatbyte_core::telemetry::parse_session(&content) else {
-                    error!(
-                        "autopilot: rate drill FAILED — {} unparseable",
-                        path.display()
-                    );
+            for slot in &last_run.slots {
+                // Recording is asynchronous; this is the one call
+                // that waits for the worker, and it exists so a drill
+                // can prove the rating LANDED rather than that it was
+                // sent.
+                let Some(notes) = writer.notes_for(*slot, std::time::Duration::from_secs(5)) else {
+                    error!("autopilot: rate drill FAILED — the writer did not answer");
                     deliver(&mut app_exit, AppExit::error());
                     *frame += 1;
                     return;
                 };
-                let fun_ok = lines.iter().any(|line| {
-                    matches!(line, beatbyte_core::telemetry::NoteLine::Fun { fun } if *fun == rating)
-                });
+                let fun_ok = notes.iter().any(
+                    |note| matches!(note, beatbyte_telemetry::PlayerNote::Fun(v) if *v == rating),
+                );
                 let versus_ok = !has_parent
-                    || lines.iter().any(|line| {
+                    || notes.iter().any(|note| {
                         matches!(
-                            line,
-                            beatbyte_core::telemetry::NoteLine::Versus { versus, .. }
-                                if versus == "better"
+                            note,
+                            beatbyte_telemetry::PlayerNote::Versus { better, .. } if *better
                         )
                     });
                 if !fun_ok || !versus_ok {
                     error!(
-                        "autopilot: rate drill FAILED — {} lacks fun={fun_ok} versus={versus_ok}",
-                        path.display()
+                        "autopilot: rate drill FAILED — slot {slot} lacks fun={fun_ok} versus={versus_ok}"
                     );
                     deliver(&mut app_exit, AppExit::error());
                     *frame += 1;
@@ -1043,9 +1048,9 @@ fn autopilot_rate(
                 }
             }
             info!(
-                "autopilot: rate drill PASSED — fun {rating} (versus: {}) landed in {} log(s)",
+                "autopilot: rate drill PASSED — fun {rating} (versus: {}) landed in {} session(s)",
                 if has_parent { "better" } else { "no parent" },
-                logs.files.len()
+                last_run.slots.len()
             );
         }
         // Then leave the screen the way a player does and prove the
@@ -1115,12 +1120,10 @@ fn autopilot_taste(
         return;
     };
 
-    let needle = target.to_lowercase();
-    let Some(index) = library
-        .entries
-        .iter()
-        .position(|e| e.title.to_lowercase().contains(&needle))
-    else {
+    let Some(index) = title_match(
+        library.entries.iter().map(|entry| entry.title.as_str()),
+        &target,
+    ) else {
         error!("autopilot: no song matching `{target}` to taste-test");
         deliver(&mut app_exit, AppExit::error());
         return;
@@ -1201,7 +1204,8 @@ fn autopilot_taste(
 /// verify the pairwise verdict actually landed in it.
 fn autopilot_taste_verdict(
     mut keys: ResMut<ButtonInput<KeyCode>>,
-    logs: Option<Res<crate::telemetry::SessionLogFiles>>,
+    store: Res<crate::telemetry::TelemetryStore>,
+    last_run: Res<crate::telemetry::LastRun>,
     taste: Option<Res<crate::taste::TasteTest>>,
     mut frame: Local<u32>,
     mut app_exit: MessageWriter<AppExit>,
@@ -1223,34 +1227,36 @@ fn autopilot_taste_verdict(
             // chart that played second — so the line must read
             // "better" against the FIRST side's hash.
             let want = test.versions[test.order[0]].hash.clone();
-            let Some(logs) = logs.as_ref().filter(|l| !l.files.is_empty()) else {
-                error!("autopilot: taste verdict FAILED — no session log");
+            if !last_run.open() {
+                error!("autopilot: taste verdict FAILED — no open session");
+                deliver(&mut app_exit, AppExit::error());
+                *frame += 1;
+                return;
+            }
+            let Some(writer) = store.writer() else {
+                error!("autopilot: taste verdict FAILED — the store is not open");
                 deliver(&mut app_exit, AppExit::error());
                 *frame += 1;
                 return;
             };
-            for path in &logs.files {
-                let content = std::fs::read_to_string(path).unwrap_or_default();
-                let Some((_, lines)) = beatbyte_core::telemetry::parse_session(&content) else {
-                    error!(
-                        "autopilot: taste verdict FAILED — {} unparseable",
-                        path.display()
-                    );
+            for slot in &last_run.slots {
+                let Some(notes) = writer.notes_for(*slot, std::time::Duration::from_secs(5)) else {
+                    error!("autopilot: taste verdict FAILED — the writer did not answer");
                     deliver(&mut app_exit, AppExit::error());
                     *frame += 1;
                     return;
                 };
-                let landed = lines.iter().any(|line| {
+                let landed = notes.iter().any(|note| {
                     matches!(
-                        line,
-                        beatbyte_core::telemetry::NoteLine::Versus { versus, parent }
-                            if versus == "better" && *parent == want
+                        note,
+                        beatbyte_telemetry::PlayerNote::Versus { better, parent }
+                            if *better && *parent == want
                     )
                 });
                 if !landed {
                     error!(
-                        "autopilot: taste verdict FAILED — {} has no `better` against {want}",
-                        path.display()
+                        "autopilot: taste verdict FAILED — slot {slot} has no `better` against \
+                         {want}"
                     );
                     deliver(&mut app_exit, AppExit::error());
                     *frame += 1;
@@ -1259,8 +1265,8 @@ fn autopilot_taste_verdict(
             }
             info!(
                 "autopilot: taste verdict PASSED — \"the second one\" recorded against {want} in \
-                 {} log(s)",
-                logs.files.len()
+                 {} session(s)",
+                last_run.slots.len()
             );
             deliver(&mut app_exit, AppExit::Success);
         }
@@ -1593,6 +1599,24 @@ fn resolve_difficulty(
     Ok(Some(difficulty))
 }
 
+/// Find a song by title: an exact match first, a substring second.
+///
+/// The exactness matters on a real library. Every `[GS]` twin's title
+/// CONTAINS its original's, so a plain substring search can never
+/// reach the original — on this machine's library that made the blind
+/// test unrunnable for every song in it, because the only songs with
+/// several chart versions are ones that also have a twin. Pure —
+/// tested, in both directions.
+#[must_use]
+pub fn title_match<'a>(titles: impl Iterator<Item = &'a str>, target: &str) -> Option<usize> {
+    let needle = target.to_lowercase();
+    let lowered: Vec<String> = titles.map(str::to_lowercase).collect();
+    lowered
+        .iter()
+        .position(|title| *title == needle)
+        .or_else(|| lowered.iter().position(|title| title.contains(&needle)))
+}
+
 /// Resolve which library song the autopilot plays.
 ///
 /// `BEATBYTE_AUTOPILOT_SONG` selects it: a number is an index into the
@@ -1618,10 +1642,8 @@ fn select_song<'a>(
             )
         });
     }
-    let needle = selector.to_lowercase();
-    entries
-        .iter()
-        .find(|entry| entry.title.to_lowercase().contains(&needle))
+    title_match(entries.iter().map(|entry| entry.title.as_str()), selector)
+        .and_then(|index| entries.get(index))
         .ok_or_else(|| {
             let titles: Vec<&str> = entries.iter().map(|e| e.title.as_str()).collect();
             format!("no song title contains \"{selector}\" (library: {titles:?})")
@@ -1741,12 +1763,10 @@ fn autopilot_align(
     let Some(target) = std::env::var("BEATBYTE_AUTOPILOT_ALIGN").ok() else {
         return;
     };
-    let needle = target.to_lowercase();
-    let Some(index) = library
-        .entries
-        .iter()
-        .position(|e| e.title.to_lowercase().contains(&needle))
-    else {
+    let Some(index) = title_match(
+        library.entries.iter().map(|entry| entry.title.as_str()),
+        &target,
+    ) else {
         error!("autopilot: no song matching `{target}` to align");
         deliver(&mut app_exit, AppExit::error());
         return;
@@ -2291,7 +2311,30 @@ fn autopilot_results(
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::shot_state;
+    use super::title_match;
     use crate::states::AppState;
+
+    #[test]
+    fn an_exact_title_beats_a_twin_that_merely_contains_it() {
+        // Every `[GS]` twin's title CONTAINS its original's, and the
+        // twins come first in library order — so a plain substring
+        // search could never reach the original. On the author's
+        // library that made the blind test unrunnable for every song
+        // in it, because the only songs with several chart versions
+        // are exactly the ones that also have a twin.
+        let titles = ["[GS] Life Is a Flower", "Life Is a Flower", "Lifeboat"];
+        assert_eq!(
+            title_match(titles.into_iter(), "Life Is a Flower"),
+            Some(1),
+            "an exact title is the one that was asked for"
+        );
+        // …and a substring still works when nothing matches exactly.
+        assert_eq!(title_match(titles.into_iter(), "flower"), Some(0));
+        assert_eq!(title_match(titles.into_iter(), "boat"), Some(2));
+        assert_eq!(title_match(titles.into_iter(), "nothing here"), None);
+        // Case is not part of the question.
+        assert_eq!(title_match(titles.into_iter(), "LIFE IS A FLOWER"), Some(1));
+    }
 
     #[test]
     fn the_injector_owns_the_inputs_unless_the_autopilot_plays_by_key() {

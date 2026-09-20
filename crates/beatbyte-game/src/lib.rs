@@ -228,7 +228,6 @@ pub fn run() -> AppExit {
         results::ResultsPlugin,
         prompts::PromptsPlugin,
         sfx::SfxPlugin,
-        telemetry::TelemetryPlugin,
         history::HistoryPlugin,
         crt::CrtPlugin,
         transition::TransitionPlugin,

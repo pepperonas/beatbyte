@@ -104,6 +104,14 @@ enum Control {
         slot: u8,
         outcome: Outcome,
     },
+    /// Commit everything and hand back what the player has said about
+    /// this slot. The one synchronous call in the whole module, and
+    /// it exists for one reason: a harness that wants to prove a
+    /// rating LANDED cannot do it against an asynchronous queue.
+    Notes {
+        slot: u8,
+        reply: std::sync::mpsc::Sender<Vec<PlayerNote>>,
+    },
     Flush,
     Stop,
 }
@@ -257,6 +265,20 @@ impl Telemetry {
             written_ms: now_ms(),
             note: Box::new(note),
         });
+    }
+
+    /// Commit, then read back what the player has said about a slot.
+    ///
+    /// Blocking, with a timeout, and deliberately the only call here
+    /// that waits: recording is asynchronous, and a caller that needs
+    /// to prove a note arrived has nothing else to wait on. `None`
+    /// means the worker did not answer in time — never that the note
+    /// is absent.
+    #[must_use]
+    pub fn notes_for(&self, slot: u8, timeout: Duration) -> Option<Vec<PlayerNote>> {
+        let (reply, answer) = std::sync::mpsc::channel();
+        self.control(Control::Notes { slot, reply });
+        answer.recv_timeout(timeout).ok()
     }
 
     /// Ask the worker to commit what it has.
@@ -465,6 +487,17 @@ fn run(
                 {
                     note_error(shared, &error);
                 }
+                pending = 0;
+            }
+            Ok(Control::Notes { slot, reply }) => {
+                drain_events(events, &mut slots, shared);
+                flush(&mut store, &mut slots, shared, &mut last_flush);
+                let notes = slots
+                    .get(&slot)
+                    .and_then(|slot| slot.session)
+                    .and_then(|id| store.notes(id).ok())
+                    .unwrap_or_default();
+                let _ = reply.send(notes);
                 pending = 0;
             }
             Ok(Control::Flush) => force = true,
@@ -751,6 +784,29 @@ mod tests {
         let notes = store.notes(session.id).expect("reads");
         assert_eq!(notes.len(), 2);
         assert_eq!(notes[0], PlayerNote::Fun(5));
+        let _ = std::fs::remove_dir_all(path.parent().unwrap_or(&path));
+    }
+
+    #[test]
+    fn what_the_player_said_can_be_read_back_without_stopping_the_writer() {
+        // The harness that proves a rating landed cannot wait on an
+        // asynchronous queue, so this is the one call that blocks.
+        let path = scratch("readback");
+        let mut writer = Telemetry::open(path.clone()).expect("opens");
+        writer.begin(0, a_session("run", 0));
+        writer.finish(0, 1, Completion::Completed, false);
+        writer.note(0, PlayerNote::Fun(5));
+        let notes = writer
+            .notes_for(0, Duration::from_secs(5))
+            .expect("the worker answers");
+        assert_eq!(notes, vec![PlayerNote::Fun(5)]);
+        // A slot nothing was recorded for answers with nothing rather
+        // than with a wait.
+        assert_eq!(
+            writer.notes_for(3, Duration::from_secs(5)),
+            Some(Vec::new())
+        );
+        writer.shutdown();
         let _ = std::fs::remove_dir_all(path.parent().unwrap_or(&path));
     }
 
