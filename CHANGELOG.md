@@ -37,6 +37,14 @@ the manifest ever carries a version this file does not describe.
   which is the property it was always about: the star flash is the brighter
   of the two.
 
+### Documentation
+
+- The README shows the impact — a frame from the instant a phrase lands —
+  names it in the feature list with what REDUCED FLASHING does to it, and
+  extends "what is deliberately not automated" from chart feel to how an
+  effect looks: every automatable check was green on the version that was
+  a whiteout.
+
 ## [0.17.20] - 2026-09-20
 
 ### Added

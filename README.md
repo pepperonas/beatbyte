@@ -151,6 +151,19 @@ described a second note style you could switch to; there is one style
 now, and this is it.)*
 
 <p align="center">
+  <img src="docs/media/beatbyte-star-power.png" alt="BeatByte gameplay at the instant a star-power phrase lands whole: every ceiling head white at once, the neck and its rails lifted, a white flash over the picture — with the score, the hit label and the karaoke line all still readable" width="800"/>
+</p>
+
+*The instant a star-power phrase lands whole. All twelve ceiling heads
+go white in the same frame — which the room's own strobe never does —
+the neck takes the energy in along its rails and hit line, and a short
+white flash catches the whole picture. It is one impulse on one clock,
+read by three systems, and it is gone inside half a second. Readable
+throughout, deliberately: the score, the hit label and the sung line
+are all still legible in this frame, which is 2.1× the brightness of
+the one before it.*
+
+<p align="center">
   <img src="docs/media/beatbyte-results.png" alt="BeatByte results screen: S rank, 100% accuracy, 117 perfect notes" width="800"/>
 </p>
 
@@ -199,6 +212,14 @@ now, and this is it.)*
   3D concert venue with real spotlights and shadows, full PA stacks, an
   LED wall and a crowd of people dancing to the song across six themes;
   every asset generated or openly licensed
+- ⚡ **The moment a star-power phrase lands** — play every note of a
+  marked phrase and the room answers: the neck takes the energy in,
+  all twelve ceiling heads flash white at once, and a short white
+  flash catches the picture — one impulse on one clock, gone inside
+  half a second. Under REDUCED FLASHING the full-screen flash is
+  absent rather than dimmer and the ceiling swells once instead of
+  pulsing, with the neck's glow carrying the moment; the
+  effect-intensity slider scales all of it
 - 🕹️ **Controllers** — keyboard, gamepads and guitar-style controllers,
   fully remappable in-game; a controller unplugged mid-song pauses the
   song and, plugged back in, hands the same player their seat back
@@ -606,6 +627,15 @@ noticeably worse; it was reverted. Any change to charting is A/B'd
 against the tag `chart-feel-good-20260826` on real music before it
 touches a chart on disk. The harness is a regression guard, not a
 verdict on how a song feels to play.
+
+The same holds for how an effect **looks**. The star-power impact
+shipped with every automatable check green — it fired on the right
+note to within a frame, reached its designed values, left a tail of
+exactly zero, and cleared the closest note in the library by 100 ms —
+and on screen it was a whiteout that hid the score, the crowd and the
+neck's own glow. Two values were twice too bright; a picture said so
+in a second and no measurement had. **Pixel metrics prove a change
+happened; only looking proves it is the right one.**
 
 ## Release Process
 
