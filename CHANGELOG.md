@@ -14,6 +14,31 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.15] - 2026-09-20
+
+### Added
+
+- **`beatbyte-cli telemetry`** — `status`, `import`, `list`, `show`, `export`,
+  `problems`, `generators`, `calibration`, `input`. Everything a database can
+  answer that a folder of files could not, and `show` keeps what the files gave
+  for free: a run you can read without a query.
+- **The older sessions are imported**, once and idempotently. On this machine
+  that is 471 files and 140 955 observations, in about a second; a second run
+  imports nothing.
+
+### Changed
+
+- **`review` and `dossier` read the store.** One loader decides where a
+  session comes from: the store when there is one, the old files when there is
+  not, and exactly the named directory when `--telemetry-dir` names one. Both
+  commands now print which. Verified by running a review both ways on the same
+  song: **byte-identical output**.
+
+### Notes
+
+- The store's numbers were cross-checked against their source files, not
+  assumed: one session read back 504 hits and 166 misses from both.
+
 ## [0.17.14] - 2026-09-20
 
 ### Added

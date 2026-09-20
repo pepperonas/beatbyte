@@ -150,3 +150,38 @@ configuration happens once and is never rebuilt — a full-workspace
 `clippy --all-features` or `cargo doc` pass writes caches nothing will
 ever read. Put `CARGO_INCREMENTAL=0` in front of those when disk is
 tight.
+
+## Reading the telemetry store
+
+The gameplay store ([ADR-0018](../decisions/ADR-0018-gameplay-telemetry-store.md))
+lives beside `scores.json` as `telemetry.db` and never leaves the
+machine. Everything below is a read.
+
+```bash
+beatbyte-cli telemetry status                 # what is in it, and whether anything was lost
+beatbyte-cli telemetry import                 # the older JSONL sessions, once (idempotent)
+beatbyte-cli telemetry list --limit 20        # sessions, newest first
+beatbyte-cli telemetry show 471               # one run, as lines a person reads
+beatbyte-cli telemetry problems <chart_hash> --difficulty 1
+beatbyte-cli telemetry generators --genre rock --difficulty 1
+beatbyte-cli telemetry calibration --min-hits 200
+beatbyte-cli telemetry input                  # strums that reached the engine and did nothing
+beatbyte-cli telemetry export --what dataset --out runs.csv
+```
+
+`--store <path>` points any of them at another database, which is how
+to try something without touching the one the game writes.
+
+Two things worth knowing before reading a number out of it:
+
+- **The autopilot and practice runs are excluded from every analysis**
+  in `beatbyte-cli telemetry`. A perfect robot makes every chart look
+  easy, and a run played at half speed is not a run.
+- **A single miss means nothing.** Every ranking takes a minimum
+  sample count and reports the one it had; `confidence` is a
+  saturating curve on that count, not a statistical interval.
+
+The `TELEMETRY` row in SETTINGS decides how much is recorded —
+`OFF` · `RESULTS` · `ACTIONS` (the default) · `DIAGNOSTIC`. The
+`input` analysis needs `ACTIONS` or above, because it asks about the
+action stream.

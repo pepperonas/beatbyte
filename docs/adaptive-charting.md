@@ -109,7 +109,25 @@ Rules that are load-bearing:
 ## Layer 2 — Analytics (`beatbyte-cli review`)
 
 Reads all sessions for one (song, difficulty, chart_hash), joins with
-the chart, and answers *where*, not just *how well*:
+the chart, and answers *where*, not just *how well*.
+
+**Where it reads from** is decided in one place
+(`beatbyte-cli`'s `telemetry::sessions_for`): the store
+([ADR-0018](decisions/ADR-0018-gameplay-telemetry-store.md)) when
+there is one, the older JSONL directory when there is not, and
+exactly the named directory when `--telemetry-dir` names one. The
+review prints which. The two sources were checked against each other
+on the same song and produced byte-identical output — the port
+changed no answer.
+
+`beatbyte-cli telemetry` sits beside it and asks the questions a
+folder of files could not: `problems` (notes of one chart version
+missed far more than the rest), `generators` (two generator versions
+on comparable material), `calibration` (whether a player lands early
+or late), `input` (strums that reached the engine and did nothing),
+plus `status`, `list`, `show`, `export` and the one-time `import`.
+
+It answers:
 
 - accuracy, timing mean and stddev **per section** (sections derived
   from the bar grid and energy envelope until charts carry them);

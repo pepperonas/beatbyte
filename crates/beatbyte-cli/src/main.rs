@@ -25,6 +25,7 @@ mod players;
 mod redesign;
 mod review;
 mod study;
+mod telemetry;
 mod vocals;
 
 #[derive(Parser)]
@@ -37,6 +38,114 @@ mod vocals;
 struct Cli {
     #[command(subcommand)]
     command: Command,
+}
+
+/// The store's own subcommands.
+#[derive(Subcommand)]
+enum TelemetryCommand {
+    /// What is in the store, and whether any of it has a hole in it.
+    Status {
+        /// The database (defaults to the game's own).
+        #[arg(long)]
+        store: Option<PathBuf>,
+    },
+    /// Import the older per-session JSONL files. Idempotent: a second
+    /// run imports nothing.
+    Import {
+        /// The database (defaults to the game's own).
+        #[arg(long)]
+        store: Option<PathBuf>,
+        /// The directory of `*.jsonl` files (defaults to the game's).
+        #[arg(long)]
+        dir: Option<PathBuf>,
+    },
+    /// List sessions, newest first.
+    List {
+        /// The database (defaults to the game's own).
+        #[arg(long)]
+        store: Option<PathBuf>,
+        /// How many.
+        #[arg(long, default_value_t = 30)]
+        limit: usize,
+    },
+    /// Print one session the way a person reads one.
+    Show {
+        /// The session id, as `list` prints it.
+        session: i64,
+        /// The database (defaults to the game's own).
+        #[arg(long)]
+        store: Option<PathBuf>,
+    },
+    /// Hand the store to another tool.
+    Export {
+        /// What to write.
+        #[arg(long, value_enum, default_value_t = telemetry::ExportWhat::Sessions)]
+        what: telemetry::ExportWhat,
+        /// The session, for `--what session`.
+        #[arg(long)]
+        session: Option<i64>,
+        /// How many rows at most.
+        #[arg(long, default_value_t = 100_000)]
+        limit: usize,
+        /// Write here instead of to standard output.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// The database (defaults to the game's own).
+        #[arg(long)]
+        store: Option<PathBuf>,
+    },
+    /// Notes of one chart version that are missed far more than the
+    /// rest — candidates, never verdicts.
+    Problems {
+        /// The chart's content hash, as a session row names it.
+        chart_hash: String,
+        /// Difficulty index (0 easy … 3 expert).
+        #[arg(long, default_value_t = 1)]
+        difficulty: u8,
+        /// Plays a note needs before it is reported at all.
+        #[arg(long, default_value_t = 5)]
+        min_samples: u32,
+        /// Report notes hit at most this often (0.0–1.0).
+        #[arg(long, default_value_t = 0.7)]
+        max_hit_rate: f64,
+        /// How many to list.
+        #[arg(long, default_value_t = 25)]
+        limit: usize,
+        /// The database (defaults to the game's own).
+        #[arg(long)]
+        store: Option<PathBuf>,
+    },
+    /// Compare generator versions on comparable material.
+    Generators {
+        /// Restrict to one genre (the comparison measures the songs
+        /// otherwise, not the generator).
+        #[arg(long)]
+        genre: Option<String>,
+        /// Difficulty index (0 easy … 3 expert).
+        #[arg(long, default_value_t = 1)]
+        difficulty: u8,
+        /// The database (defaults to the game's own).
+        #[arg(long)]
+        store: Option<PathBuf>,
+    },
+    /// Whether a player lands consistently early or late.
+    Calibration {
+        /// Restrict to one roster player.
+        #[arg(long)]
+        player: Option<u64>,
+        /// Hits needed per device and offset before anything is said.
+        #[arg(long, default_value_t = 200)]
+        min_hits: u32,
+        /// The database (defaults to the game's own).
+        #[arg(long)]
+        store: Option<PathBuf>,
+    },
+    /// Strums that reached the engine and produced nothing.
+    Input {
+        /// The database (defaults to the game's own).
+        #[arg(long)]
+        store: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -110,6 +219,11 @@ enum Command {
         /// `<chart>.chart-check.wav`).
         #[arg(long)]
         out: Option<PathBuf>,
+    },
+    /// Read the gameplay telemetry store (ADR-0018).
+    Telemetry {
+        #[command(subcommand)]
+        what: TelemetryCommand,
     },
     /// Review a chart against recorded play sessions (ADR-0011).
     Review {
@@ -453,6 +567,45 @@ fn main() -> ExitCode {
                 eprintln!("unknown difficulty `{difficulty}`");
                 ExitCode::from(2)
             }
+        },
+        Command::Telemetry { what } => match what {
+            TelemetryCommand::Status { store } => telemetry::run_status(store),
+            TelemetryCommand::Import { store, dir } => telemetry::run_import(store, dir),
+            TelemetryCommand::List { store, limit } => telemetry::run_list(store, limit),
+            TelemetryCommand::Show { session, store } => telemetry::run_show(store, session),
+            TelemetryCommand::Export {
+                what,
+                session,
+                limit,
+                out,
+                store,
+            } => telemetry::run_export(store, what, session, limit, out),
+            TelemetryCommand::Problems {
+                chart_hash,
+                difficulty,
+                min_samples,
+                max_hit_rate,
+                limit,
+                store,
+            } => telemetry::run_problems(
+                store,
+                &chart_hash,
+                difficulty,
+                min_samples,
+                max_hit_rate,
+                limit,
+            ),
+            TelemetryCommand::Generators {
+                genre,
+                difficulty,
+                store,
+            } => telemetry::run_generators(store, genre, difficulty),
+            TelemetryCommand::Calibration {
+                player,
+                min_hits,
+                store,
+            } => telemetry::run_calibration(store, player, min_hits),
+            TelemetryCommand::Input { store } => telemetry::run_input(store),
         },
         Command::Review {
             chart,
@@ -980,8 +1133,6 @@ fn run_review(
     include_autopilot: bool,
     directives_out: Option<&Path>,
 ) -> ExitCode {
-    use beatbyte_core::telemetry::parse_session;
-
     let text = match std::fs::read_to_string(chart_path) {
         Ok(text) => text,
         Err(error) => {
@@ -1007,44 +1158,25 @@ fn run_review(
             return ExitCode::from(1);
         }
     };
-    let dir =
-        telemetry_dir.or_else(|| dirs::data_dir().map(|d| d.join("beatbyte").join("telemetry")));
-    let Some(dir) = dir else {
-        eprintln!("no telemetry directory on this platform; pass --telemetry-dir");
-        return ExitCode::from(2);
-    };
-    let entries = match std::fs::read_dir(&dir) {
-        Ok(entries) => entries,
+    // Where a session comes from is decided in one place
+    // (`telemetry::sessions_for`): the store when there is one, the
+    // old files when there is not, and exactly the named directory
+    // when one is named.
+    let wanted_difficulty = difficulty.to_lowercase();
+    let (sessions, source) = match telemetry::sessions_for(
+        &chart.song.title,
+        &chart.song.artist,
+        &wanted_difficulty,
+        telemetry_dir.as_deref(),
+    ) {
+        Ok(value) => value,
         Err(error) => {
-            eprintln!("cannot read `{}`: {error}", dir.display());
+            eprintln!("{error}");
             eprintln!("(no sessions recorded yet? play the song first)");
             return ExitCode::from(2);
         }
     };
-
-    // Every parseable session for this song + difficulty, whatever
-    // chart version it was played on — the review reports the stale
-    // ones rather than hiding them.
-    let wanted_difficulty = difficulty.to_lowercase();
-    let mut sessions = Vec::new();
-    for entry in entries.filter_map(Result::ok) {
-        let path = entry.path();
-        if path.extension().is_none_or(|e| e != "jsonl") {
-            continue;
-        }
-        let Ok(content) = std::fs::read_to_string(&path) else {
-            continue;
-        };
-        let Some((header, lines)) = parse_session(&content) else {
-            continue;
-        };
-        if header.title == chart.song.title
-            && header.artist == chart.song.artist
-            && header.difficulty == wanted_difficulty
-        {
-            sessions.push(review::Session { header, lines });
-        }
-    }
+    println!("evidence: {source}");
 
     let thresholds = review::Thresholds {
         min_sessions,
@@ -1174,7 +1306,6 @@ fn run_dossier(
     out: Option<PathBuf>,
 ) -> ExitCode {
     use beatbyte_chart::versions;
-    use beatbyte_core::telemetry::parse_session;
 
     let Some(folder) = chart_path.parent().map(Path::to_path_buf) else {
         eprintln!("`{}` has no parent folder", chart_path.display());
@@ -1229,34 +1360,19 @@ fn run_dossier(
     let mut analysis = SpectralAnalyzer::default().analyze(&audio);
     meter(&mut analysis, &audio);
 
-    // Evidence, straight from the telemetry — same code path as
-    // `review`, so the two cannot disagree.
-    let dir =
-        telemetry_dir.or_else(|| dirs::data_dir().map(|d| d.join("beatbyte").join("telemetry")));
-    let mut sessions = Vec::new();
-    if let Some(dir) = dir
-        && let Ok(entries) = std::fs::read_dir(&dir)
-    {
-        let wanted = difficulty.to_lowercase();
-        for entry in entries.filter_map(Result::ok) {
-            let path = entry.path();
-            if path.extension().is_none_or(|e| e != "jsonl") {
-                continue;
-            }
-            let Ok(content) = std::fs::read_to_string(&path) else {
-                continue;
-            };
-            let Some((header, lines)) = parse_session(&content) else {
-                continue;
-            };
-            if header.title == chart.song.title
-                && header.artist == chart.song.artist
-                && header.difficulty == wanted
-            {
-                sessions.push(review::Session { header, lines });
-            }
-        }
-    }
+    // Evidence, straight from the telemetry — same loader as
+    // `review`, so the two cannot disagree about what was played or
+    // about where it was read from. A dossier is still worth writing
+    // for a song nobody has played, so a missing source is empty
+    // evidence rather than an error.
+    let sessions = telemetry::sessions_for(
+        &chart.song.title,
+        &chart.song.artist,
+        &difficulty.to_lowercase(),
+        telemetry_dir.as_deref(),
+    )
+    .map(|(sessions, _)| sessions)
+    .unwrap_or_default();
     let current_hash = beatbyte_chart::chart_hash(&chart);
     let outcome = review::review(
         &track,

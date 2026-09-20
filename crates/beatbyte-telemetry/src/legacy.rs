@@ -186,6 +186,88 @@ pub fn completion_of(header: &SessionHeader, lines: &[NoteLine]) -> Completion {
     }
 }
 
+/// A stored session in the older shape.
+///
+/// The direction back out, so that the readers written against the
+/// JSONL format — `beatbyte-cli review` and the design dossier — can
+/// move onto the store without their tested logic changing. The
+/// conversion is total: everything those readers look at survives it.
+/// What does not survive is what the old shape has no room for (the
+/// action stream, the device, the offsets), and neither reader asks.
+#[must_use]
+pub fn to_legacy(
+    session: &crate::store::StoredSession,
+    events: &[(u32, Event)],
+    notes: &[PlayerNote],
+) -> (SessionHeader, Vec<NoteLine>) {
+    let row = &session.row;
+    let header = SessionHeader {
+        schema: beatbyte_core::telemetry::SCHEMA_VERSION,
+        title: row.title.clone(),
+        artist: row.artist.clone(),
+        difficulty: Difficulty::ALL
+            .get(row.difficulty as usize)
+            .copied()
+            .unwrap_or(Difficulty::Medium)
+            .id()
+            .to_owned(),
+        chart_hash: row.chart_hash.clone(),
+        generator: row.provenance.game.clone(),
+        started_ms: row.started_ms,
+        player: row.player_slot as usize,
+        autopilot: row.autopilot,
+        notes_total: row.notes_total as usize,
+    };
+    let mut lines = Vec::new();
+    for (_, event) in events {
+        let index = event.note_index.map(|index| index as usize);
+        match event.kind {
+            EventType::NoteHit => {
+                if let Some(index) = index {
+                    lines.push(NoteLine::Hit {
+                        i: index,
+                        j: event.rating.unwrap_or(Rating::Good).label().to_owned(),
+                        off_ms: f64::from(event.delta_us.unwrap_or(0)) / 1000.0,
+                    });
+                }
+            }
+            EventType::NoteMiss => {
+                if let Some(index) = index {
+                    lines.push(NoteLine::Miss {
+                        i: index,
+                        j: "miss".to_owned(),
+                    });
+                }
+            }
+            EventType::SustainEnded => {
+                if let Some(index) = index {
+                    lines.push(NoteLine::Sustain {
+                        s: index,
+                        done: event.flags.has(crate::model::Flags::DONE),
+                    });
+                }
+            }
+            EventType::Overstrum => lines.push(NoteLine::Overstrum { o: 1, near: index }),
+            // Everything else is either derivable or has no place in
+            // the old shape; a reader of that shape never asked.
+            _ => {}
+        }
+    }
+    for note in notes {
+        match note {
+            PlayerNote::Fun(score) => lines.push(NoteLine::Fun { fun: *score }),
+            PlayerNote::Comment(text) => lines.push(NoteLine::Comment {
+                comment: text.clone(),
+            }),
+            PlayerNote::Versus { better, parent } => lines.push(NoteLine::Versus {
+                versus: if *better { "better" } else { "worse" }.to_owned(),
+                parent: parent.clone(),
+            }),
+        }
+    }
+    (header, lines)
+}
+
 /// Import one file.
 pub fn import_file(store: &mut Store, path: &Path) -> Result<bool> {
     let text = std::fs::read_to_string(path)?;
@@ -437,6 +519,33 @@ mod tests {
                 .is_empty()
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// In and out again: the readers written against the old shape
+    /// have to see exactly what they saw before, or moving them onto
+    /// the store would change their answers.
+    #[test]
+    fn a_session_survives_the_round_trip_through_the_store() {
+        let mut store = Store::open_in_memory().expect("a store");
+        let (row, events, notes) = convert(&header(), &lines());
+        let id = store.begin(&row).expect("begins");
+        let numbered: Vec<(u32, Event)> = events
+            .into_iter()
+            .enumerate()
+            .map(|(index, event)| (index as u32, event))
+            .collect();
+        store.append(id, &numbered).expect("appends");
+        for note in &notes {
+            store.add_note(id, 1, note).expect("adds");
+        }
+        let stored = store.session(id).expect("reads").expect("is there");
+        let (header_back, lines_back) = to_legacy(
+            &stored,
+            &store.events(id).expect("reads"),
+            &store.notes(id).expect("reads"),
+        );
+        assert_eq!(header_back, header(), "the header is what it was");
+        assert_eq!(lines_back, lines(), "and so is every observation, in order");
     }
 
     #[test]

@@ -11,6 +11,26 @@ engine read it, how it was judged — recorded as evidence rather than
 as a log. Reasoning and alternatives: [ADR-0018](decisions/ADR-0018-gameplay-telemetry-store.md).
 The feedback loop it feeds: [`adaptive-charting.md`](adaptive-charting.md).
 
+- [x] **T5 + T7 The command line, and the history moves in**
+  *(v0.17.15)*. `beatbyte-cli telemetry {status,import,list,show,
+  export,problems,generators,calibration,input}`, and `review` and
+  `dossier` moved onto the store behind one loader that decides where
+  a session comes from. `show` keeps the thing a folder of JSONL gave
+  for free and a database does not: a run a person can read.
+  *Verified on the real corpus:* **471 files, 140 955 observations,
+  about a second**, and a second run imports nothing. One session
+  read back 504 hits and 166 misses from the store and from its own
+  file. A review run both ways produced **byte-identical** output, so
+  the port changed no answer. The store now holds 475 sessions and
+  146 290 events in 7.1 MB — **51 bytes an event**, which is the
+  number the whole design was sized on.
+  ⚠️ First real reading, and it is the kind this exists for: over the
+  medium corpus the store says **44.2 %** accuracy where the play log
+  says 63.8 %. Not a defect in either — the log records accuracy only
+  for runs that FINISHED, and a run is usually abandoned because it
+  was going badly. Two populations, one of which nobody could see
+  before.
+  *Verified: 1492 tests (+5), gate green, review cross-checked both ways.*
 - [x] **T4 The game records into it** *(v0.17.14)*. A session per
   player at the first frame that has one, every judgment and hold
   and hype window and pause and seek, and the **logical action
