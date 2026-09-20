@@ -4,6 +4,33 @@
 Rules of engagement live in [`CLAUDE.md`](../CLAUDE.md); this file
 holds the work itself.
 
+## Gameplay telemetry (2026-09-20, v0.17.13–)
+
+The blackbox: what the chart expected, what the player did, how the
+engine read it, how it was judged — recorded as evidence rather than
+as a log. Reasoning and alternatives: [ADR-0018](decisions/ADR-0018-gameplay-telemetry-store.md).
+The feedback loop it feeds: [`adaptive-charting.md`](adaptive-charting.md).
+
+- [x] **T1–T3 The crate, the store and the writer** *(v0.17.13)*.
+  `beatbyte-telemetry`: the vocabulary and its stable integer codes,
+  the schema with a migration runner, the SQLite store, and the
+  bounded queue plus worker thread the game will record through.
+  Engine-free and Bevy-free, so all of it is testable with plain
+  values and a database in memory.
+  ⚠️ **Two real defects, both found by the tests rather than by
+  reasoning.** The first draft put the lifecycle messages on the same
+  bounded queue as the events and sent them blocking: a full queue
+  then made `shutdown` — which `Drop` calls — wait for a reader that
+  was never coming, and the whole test binary hung for ten minutes.
+  Control and events now travel on two channels, each with one job.
+  The second: nothing orders those two channels against each other,
+  so an event can reach the worker **before** the message that opens
+  its session — which is exactly what the game does, both within one
+  frame. The first draft discarded those events, and every recorded
+  run came back empty. A session that opens now adopts what was
+  already waiting for it.
+  *Verified: 1477 tests (+59), gate green.*
+
 ## How to work this roadmap
 
 - [x] Guitar-feel technical pilot (0.15.6): audit import/redesign, research instrument

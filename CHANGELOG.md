@@ -14,6 +14,41 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.13] - 2026-09-20
+
+### Added
+
+- **`beatbyte-telemetry`, the gameplay blackbox** (ADR-0018). A new crate
+  that records what a run actually was: the chart it played and the exact
+  version of it, the game, scoring and generator versions it ran under, the
+  device and the calibration in force, every logical action, every judgment
+  with its microsecond offset, and how the run ended. Compact integer rows in
+  a local SQLite store, written off the frame thread through a bounded queue
+  and committed in batches.
+- **Nothing is recorded twice.** An event names the note, never the song: the
+  tempo, the genre, the section and the onset strength are a join away in the
+  chart and the analysis, and duplicating them per event would have cost the
+  entire storage budget for data already on disk. Nothing derivable is stored
+  either — no combo, no score, no accuracy, no "early / late".
+- **A lost event is never silent.** A full queue drops the event, counts it,
+  leaves a gap in the sequence numbers at the exact place it happened, and
+  clears the session's `telemetry_complete` flag, so an analysis cannot read a
+  hole as a quiet passage.
+- **The older per-session JSONL files import into it**, once and idempotently.
+  They recorded which note but never when, so those observations keep a null
+  time rather than a zero that would read as the start of the song.
+- **Analytics that answer the questions it was shaped for**: which notes of a
+  chart version are missed far more than the rest (and never from thin
+  evidence), how two generator versions compare on comparable material,
+  whether a player has a constant calibration bias, and whether a device's
+  inputs reach the engine and produce nothing at all.
+
+### Notes
+
+- Nothing writes to the store yet — the game is wired up in the next version.
+  Local only: the crate opens no socket, keeps no microphone audio, and records
+  only the actions BeatByte itself is bound to.
+
 ## [0.17.12] - 2026-09-20
 
 ### Added

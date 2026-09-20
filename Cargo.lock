@@ -421,7 +421,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "beatbyte"
-version = "0.17.12"
+version = "0.17.13"
 dependencies = [
  "beatbyte-audio",
  "beatbyte-chart",
@@ -435,7 +435,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-audio"
-version = "0.17.12"
+version = "0.17.13"
 dependencies = [
  "beatbyte-core",
  "cpal",
@@ -451,7 +451,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-chart"
-version = "0.17.12"
+version = "0.17.13"
 dependencies = [
  "beatbyte-core",
  "serde",
@@ -461,7 +461,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-cli"
-version = "0.17.12"
+version = "0.17.13"
 dependencies = [
  "beatbyte-audio",
  "beatbyte-chart",
@@ -477,7 +477,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-core"
-version = "0.17.12"
+version = "0.17.13"
 dependencies = [
  "serde",
  "serde_json",
@@ -485,7 +485,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-editor"
-version = "0.17.12"
+version = "0.17.13"
 dependencies = [
  "beatbyte-chart",
  "beatbyte-core",
@@ -494,7 +494,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-game"
-version = "0.17.12"
+version = "0.17.13"
 dependencies = [
  "beatbyte-audio",
  "beatbyte-chart",
@@ -513,7 +513,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-lyrics"
-version = "0.17.12"
+version = "0.17.13"
 dependencies = [
  "beatbyte-audio",
  "beatbyte-ml",
@@ -524,7 +524,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-meter"
-version = "0.17.12"
+version = "0.17.13"
 dependencies = [
  "beatbyte-audio",
  "beatbyte-core",
@@ -534,7 +534,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-ml"
-version = "0.17.12"
+version = "0.17.13"
 dependencies = [
  "dirs",
  "rten",
@@ -542,6 +542,17 @@ dependencies = [
  "sha2",
  "thiserror 2.0.20",
  "ureq",
+]
+
+[[package]]
+name = "beatbyte-telemetry"
+version = "0.17.13"
+dependencies = [
+ "beatbyte-core",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -2801,6 +2812,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af9673d8203fcb076b19dfd17e38b3d4ae9f44959416ea532ce72415a6020365"
 
 [[package]]
+name = "fallible-iterator"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
+
+[[package]]
+name = "fallible-streaming-iterator"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3265,6 +3288,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hashlink"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a596f1b20ed2cc5ecac41a164aaebc7258057060f06c0cf7a2ba3991ee7990fb"
+dependencies = [
+ "hashbrown 0.17.1",
+]
+
+[[package]]
 name = "heapless"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3719,6 +3751,17 @@ dependencies = [
  "libc",
  "plain",
  "redox_syscall 0.9.3",
+]
+
+[[package]]
+name = "libsqlite3-sys"
+version = "0.38.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1d20bef17f513b9b3004532233187769cd072d790971f4e4da0e346eb6401e8"
+dependencies = [
+ "cc",
+ "pkg-config",
+ "vcpkg",
 ]
 
 [[package]]
@@ -4986,6 +5029,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rsqlite-vfs"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c51c9ae4df8a7fba42103df5c621fa3c37eccf3a3c650879e90fc48b11cc192c"
+dependencies = [
+ "hashbrown 0.16.1",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "rten"
 version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5096,6 +5149,21 @@ checksum = "ab9f9ff05b63a786553a4c02943b74b34a988448671001e9a27e2f0565cc05a4"
 dependencies = [
  "libc",
  "libusb1-sys",
+]
+
+[[package]]
+name = "rusqlite"
+version = "0.40.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23f2a97da3e3873c73cb2a2e71b35c40ff95e0b1eefa8d72d8499a6928c3b5b3"
+dependencies = [
+ "bitflags 2.13.1",
+ "fallible-iterator",
+ "fallible-streaming-iterator",
+ "hashlink",
+ "libsqlite3-sys",
+ "smallvec",
+ "sqlite-wasm-rs",
 ]
 
 [[package]]
@@ -5449,6 +5517,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9571ea910ebd84c86af4b3ed27f9dbdc6ad06f17c5f96146b2b671e2976744f"
 dependencies = [
  "bitflags 2.13.1",
+]
+
+[[package]]
+name = "sqlite-wasm-rs"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc3efc0da82635d7e1ced0053bbbfa8c7ab9645d0bf36ceb4f7127bb85315d75"
+dependencies = [
+ "cc",
+ "js-sys",
+ "rsqlite-vfs",
+ "wasm-bindgen",
 ]
 
 [[package]]

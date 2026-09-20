@@ -27,6 +27,17 @@ ear has approved. Nothing overwrites anything.
 
 ## Layer 1 — Telemetry (foundation; everything depends on it)
 
+> **This layer is moving to a store.** [ADR-0018](decisions/ADR-0018-gameplay-telemetry-store.md)
+> replaces the per-session JSONL files described below with a local
+> SQLite database (`beatbyte-telemetry`) that records the same
+> observations plus the ones this format cannot hold: the logical
+> action behind every judgment, the device and the calibration in
+> force, pauses and seeks, how the run ended, and the full set of
+> version fields a comparison needs. The old files are imported once
+> and idempotently, and keep every fact they carried — except *when*,
+> which they never recorded. Until the readers below have moved, both
+> exist; this section describes what is still being written.
+
 A session log, written by beatbyte-game beside `scores.json`
 (`<data_dir>/beatbyte/telemetry/`), append-only JSONL, one file per
 session. Never uploaded; the game never reads it back to decide

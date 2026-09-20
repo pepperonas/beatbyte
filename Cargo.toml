@@ -10,11 +10,12 @@ members = [
     "crates/beatbyte-ml",
     "crates/beatbyte-lyrics",
     "crates/beatbyte-meter",
+    "crates/beatbyte-telemetry",
     "apps/beatbyte",
 ]
 
 [workspace.package]
-version = "0.17.12"
+version = "0.17.13"
 edition = "2024"
 license = "MIT"
 authors = ["Martin Pfeffer"]
@@ -26,15 +27,16 @@ categories = ["games"]
 
 [workspace.dependencies]
 # Internal crates
-beatbyte-core = { path = "crates/beatbyte-core", version = "0.17.12" }
-beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.17.12" }
-beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.17.12" }
-beatbyte-game = { path = "crates/beatbyte-game", version = "0.17.12" }
-beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.17.12" }
-beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.17.12" }
-beatbyte-ml = { path = "crates/beatbyte-ml", version = "0.17.12" }
-beatbyte-lyrics = { path = "crates/beatbyte-lyrics", version = "0.17.12" }
-beatbyte-meter = { path = "crates/beatbyte-meter", version = "0.17.12" }
+beatbyte-core = { path = "crates/beatbyte-core", version = "0.17.13" }
+beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.17.13" }
+beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.17.13" }
+beatbyte-game = { path = "crates/beatbyte-game", version = "0.17.13" }
+beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.17.13" }
+beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.17.13" }
+beatbyte-ml = { path = "crates/beatbyte-ml", version = "0.17.13" }
+beatbyte-lyrics = { path = "crates/beatbyte-lyrics", version = "0.17.13" }
+beatbyte-meter = { path = "crates/beatbyte-meter", version = "0.17.13" }
+beatbyte-telemetry = { path = "crates/beatbyte-telemetry", version = "0.17.13" }
 
 # Engine ("wav" lets bevy_audio play our procedurally generated SFX;
 # "serialize" gives input types serde for the persisted bindings table)
@@ -53,6 +55,13 @@ hound = "3.5"
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# The gameplay telemetry store (ADR-0018). `bundled` compiles
+# SQLite itself rather than linking whatever the machine happens to
+# have: the same behaviour on every platform, and no system package
+# to install before the game will build. The precedent for a vendored
+# C dependency in this workspace is `rusb`.
+rusqlite = { version = "0.40", features = ["bundled"] }
 
 # Errors
 thiserror = "2"
