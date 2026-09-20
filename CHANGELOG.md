@@ -79,8 +79,15 @@ the manifest ever carries a version this file does not describe.
   note in its vocal chart knows which word it is sung on — a word held across
   several notes is on all of them, and a word sung where the pitch analysis
   found nothing is left out rather than placed on notes it is not on.
-- Not yet: the calibration screen itself, and vocal phrases driving the stage
-  lights.
+- **A sung phrase lights the room.** Room Stage gets the singer's verdicts in
+  the same vocabulary a guitarist's phrases already use — the lights do not
+  know which instrument earned the accent, only how big it was.
+- The debug overlay (`F3`) grows three microphone rows: device and state,
+  level, clarity, the pitch heard against the pitch asked for, the offset in
+  use, and how many frames the game dropped. "The vocals feel off" is
+  unanswerable without them.
+- Not yet: the calibration screen itself, and vocal phrases in the particles
+  and sound effects.
 
 ## [0.17.11] - 2026-09-20
 

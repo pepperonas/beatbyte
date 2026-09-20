@@ -93,6 +93,118 @@ pub fn row(label: &str, cells: &[(&str, String)]) -> String {
     out.trim_end().to_owned()
 }
 
+/// The microphone's rows, or nothing when nobody is singing.
+///
+/// Everything a vocal complaint needs answering with: is the device
+/// open, is it hearing anything, what pitch does it think that is,
+/// what was being asked for, how far apart are those two, and how
+/// many frames the game has dropped on the floor. A report of "the
+/// vocals feel off" is unanswerable without this and obvious with it.
+///
+/// ⚠️ Read from ONE borrow of the run. Sampling the same values in
+/// several places across a frame would show a state that never
+/// existed — the worker writes between reads. Pure — tested.
+#[must_use]
+pub fn vocal_rows(
+    run: Option<&super::vocal::VocalRun>,
+    ears: Option<&super::monitors::Ears>,
+    settings: &Settings,
+) -> Vec<String> {
+    let Some(run) = run else {
+        return Vec::new();
+    };
+    let tap = ears.and_then(|ears| ears.0.as_ref()).map(|l| l.vocals());
+    let mut lines = Vec::with_capacity(3);
+    lines.push(row(
+        "MIC",
+        &[
+            (
+                "state",
+                match tap {
+                    None => "no device".to_owned(),
+                    Some(tap) if !tap.enabled() => "idle".to_owned(),
+                    Some(_) => "live".to_owned(),
+                },
+            ),
+            (
+                "rate",
+                tap.map_or_else(|| "-".to_owned(), |t| format!("{}", t.rate())),
+            ),
+            (
+                "lag",
+                tap.map_or_else(
+                    || "-".to_owned(),
+                    |t| format!("{:.0}ms", t.known_latency_s() * 1000.0),
+                ),
+            ),
+            ("offset", format!("{:+.0}ms", settings.mic_offset_ms)),
+            (
+                "dropped",
+                tap.map_or_else(|| "-".to_owned(), |t| t.dropped().to_string()),
+            ),
+        ],
+    ));
+    let heard = run.last;
+    lines.push(row(
+        "",
+        &[
+            (
+                "level",
+                heard.map_or_else(|| "-".to_owned(), |f| format!("{:.0}dB", f.rms_dbfs)),
+            ),
+            (
+                "clarity",
+                heard.map_or_else(|| "-".to_owned(), |f| format!("{:.2}", f.confidence)),
+            ),
+            (
+                "midi",
+                heard
+                    .and_then(|f| f.midi)
+                    .map_or_else(|| "-".to_owned(), |m| format!("{m:.2}")),
+            ),
+            (
+                "hz",
+                heard.and_then(|f| f.midi).map_or_else(
+                    || "-".to_owned(),
+                    |m| format!("{:.0}", beatbyte_core::vocal::midi_to_hz(m)),
+                ),
+            ),
+            (
+                "clip",
+                if heard.is_some_and(|f| f.clipped) {
+                    "on"
+                } else {
+                    "off"
+                }
+                .to_owned(),
+            ),
+        ],
+    ));
+    let perf = run.session.performance();
+    lines.push(row(
+        "",
+        &[
+            (
+                "target",
+                run.session
+                    .active_note()
+                    .and_then(|n| n.target_midi)
+                    .map_or_else(|| "-".to_owned(), |m| format!("{m:.1}")),
+            ),
+            (
+                "off",
+                perf.mean_abs_cents()
+                    .map_or_else(|| "-".to_owned(), |c| format!("{c:.0}c")),
+            ),
+            ("notes", format!("{}/{}", perf.notes_hit, perf.notes)),
+            ("streak", perf.streak.to_string()),
+            ("score", perf.score.to_string()),
+            ("trace", run.trace.len().to_string()),
+        ],
+    ));
+    lines
+}
+
 /// The frame rate's colour: the game targets the display's rate, and
 /// a figure below 55 is a stutter worth seeing at a glance.
 #[must_use]
@@ -203,6 +315,8 @@ pub fn update_debug_overlay(
     music: Res<Music>,
     autopilot: Option<Res<crate::autopilot::Autopilot>>,
     heat: Option<Res<FretHeat>>,
+    vocal: Option<Res<super::vocal::VocalRun>>,
+    ears: Option<Res<super::monitors::Ears>>,
     players: Query<(&PlayerIndex, &PlayerSession)>,
     entities: Query<Entity>,
     mut text: Query<&mut Text2d, (With<DebugText>, Without<DebugFps>)>,
@@ -399,6 +513,9 @@ pub fn update_debug_overlay(
         }
         lines.push(row("", &tail));
     }
+    for line in vocal_rows(vocal.as_deref(), ears.as_deref(), &settings) {
+        lines.push(line);
+    }
     lines.push(row(
         "SET",
         &[
@@ -429,6 +546,72 @@ pub fn update_debug_overlay(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_microphone_rows_appear_only_when_somebody_is_singing() {
+        use crate::config::Settings;
+        let settings = Settings::default();
+        assert!(
+            vocal_rows(None, None, &settings).is_empty(),
+            "the overlay grew microphone rows with no vocal run"
+        );
+    }
+
+    #[test]
+    fn the_microphone_rows_answer_what_a_vocal_complaint_asks() {
+        use crate::config::Settings;
+        use beatbyte_core::vocal::{VocalKind, VocalNote, VocalPart, VocalPhrase, VocalRole};
+        use beatbyte_core::vocal_session::{VocalInputFrame, VocalScoreConfig};
+
+        let part = VocalPart {
+            id: "lead".to_owned(),
+            role: VocalRole::Lead,
+            name: None,
+            phrases: vec![VocalPhrase {
+                start_s: 0.0,
+                end_s: 2.0,
+                confidence: 1.0,
+                tokens: Vec::new(),
+                notes: vec![VocalNote {
+                    start_s: 0.0,
+                    end_s: 2.0,
+                    kind: VocalKind::Pitched,
+                    target_midi: Some(64.0),
+                    contour: Vec::new(),
+                    confidence: 1.0,
+                    token_range: None,
+                }],
+            }],
+        };
+        let mut run = super::super::vocal::VocalRun::new(part, VocalScoreConfig::default());
+        run.last = Some(VocalInputFrame {
+            song_time_s: 1.0,
+            midi: Some(63.5),
+            confidence: 0.82,
+            rms_dbfs: -21.0,
+            voiced: true,
+            clipped: true,
+        });
+        let settings = Settings {
+            mic_offset_ms: 40.0,
+            ..Settings::default()
+        };
+        let lines = vocal_rows(Some(&run), None, &settings);
+        let all = lines.join("\n");
+        assert_eq!(lines.len(), 3, "{all}");
+        // Without ears there is no device to report, and the overlay
+        // must say so rather than printing a plausible zero.
+        assert!(all.contains("no device"), "{all}");
+        assert!(all.contains("+40ms"), "the offset is missing: {all}");
+        assert!(all.contains("-21dB"), "the level is missing: {all}");
+        assert!(all.contains("0.82"), "the clarity is missing: {all}");
+        assert!(all.contains("63.50"), "the heard pitch is missing: {all}");
+        assert!(all.contains("64.0"), "the target is missing: {all}");
+        assert!(
+            all.contains("clip") && all.contains("on"),
+            "clipping: {all}"
+        );
+    }
     use super::*;
     use beatbyte_core::LaneSet;
 

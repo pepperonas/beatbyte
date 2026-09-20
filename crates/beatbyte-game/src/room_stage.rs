@@ -29,6 +29,7 @@
 
 use std::sync::mpsc::{SyncSender, TrySendError, sync_channel};
 
+use beatbyte_core::vocal_session::{PhraseOutcome, VocalGrade};
 use beatbyte_core::{Judgment, Lane, LaneSet, SessionEvent};
 use bevy::prelude::*;
 
@@ -150,6 +151,32 @@ pub fn post_for(event: SessionEvent, lanes: LaneSet, bpm: f64) -> Option<Post> {
         // failing is the song ending, which releases the scene.
         SessionEvent::PhraseBroken { .. } | SessionEvent::Failed => None,
     }
+}
+
+/// What a finished sung phrase asks the room to do.
+///
+/// The same idea as [`post_for`] and deliberately the same vocabulary
+/// — the room does not know or care which instrument earned the
+/// accent, only how big it was. A phrase nobody sang lights nothing:
+/// the room is not a second scoreboard, and a missed phrase is
+/// already silence in it.
+///
+/// Scaled by the GRADE rather than by the score, because the grade is
+/// what the player is told and the two should not disagree about how
+/// well that line went. Pure — tested.
+#[must_use]
+pub fn post_for_vocal(outcome: PhraseOutcome) -> Option<Post> {
+    let kind = match outcome.grade {
+        VocalGrade::Perfect => "meteor",
+        VocalGrade::Great => "sweep",
+        VocalGrade::Good => "burst",
+        VocalGrade::Weak => "shimmer",
+        VocalGrade::Miss => return None,
+    };
+    Some(Post::new(
+        "/api/warn_event",
+        format!("{{\"kind\":\"{kind}\"}}"),
+    ))
 }
 
 /// The post that engages the scene when a song starts, and the one
@@ -424,6 +451,52 @@ mod tests {
 
     fn lane(index: usize) -> LaneSet {
         LaneSet::single(Lane::ALL[index])
+    }
+
+    fn phrase_outcome(grade: VocalGrade) -> PhraseOutcome {
+        PhraseOutcome {
+            index: 0,
+            score: 0.9,
+            grade,
+            notes: 4,
+            notes_hit: 4,
+            points: 400,
+            streak: 1,
+            multiplier: 1,
+        }
+    }
+
+    #[test]
+    fn a_sung_phrase_lights_the_room_in_the_same_vocabulary_as_a_played_one() {
+        // The room does not know which instrument earned the accent,
+        // only how big it was — so a vocal phrase uses the kinds the
+        // guitar already sends rather than a second dialect.
+        let perfect = post_for_vocal(phrase_outcome(VocalGrade::Perfect)).expect("a cue");
+        assert_eq!(perfect.path, "/api/warn_event");
+        assert!(perfect.body.contains("meteor"), "{}", perfect.body);
+        assert!(
+            post_for_vocal(phrase_outcome(VocalGrade::Great))
+                .expect("a cue")
+                .body
+                .contains("sweep")
+        );
+        assert!(
+            post_for_vocal(phrase_outcome(VocalGrade::Good))
+                .expect("a cue")
+                .body
+                .contains("burst")
+        );
+        // The biggest accent belongs to the best grade, and the same
+        // one the guitar's Hype sends.
+        let hype = post_for(SessionEvent::HypeActivated, LaneSet::EMPTY, 120.0).expect("a cue");
+        assert_eq!(hype.body, perfect.body);
+    }
+
+    #[test]
+    fn a_phrase_nobody_sang_lights_nothing() {
+        // The room is not a second scoreboard, and a missed phrase is
+        // already silence in it.
+        assert!(post_for_vocal(phrase_outcome(VocalGrade::Miss)).is_none());
     }
 
     #[test]

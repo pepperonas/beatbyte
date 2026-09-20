@@ -474,6 +474,7 @@ fn feed(
     clock: Res<GameClock>,
     time: Res<Time>,
     settings: Res<crate::config::Settings>,
+    room: Res<crate::room_stage::RoomStage>,
 ) {
     let (Some(run), Some(listener)) = (run.as_mut(), ears.0.as_ref()) else {
         return;
@@ -551,6 +552,12 @@ fn feed(
     for event in events.drain(..) {
         if let VocalEvent::Phrase(outcome) = event {
             run.banner = Some((outcome, 0.0));
+            // The room hears the singer too. Same bridge, same
+            // vocabulary as a guitar phrase — the lights do not know
+            // or care which instrument earned the accent.
+            if let Some(post) = crate::room_stage::post_for_vocal(outcome) {
+                room.send(post);
+            }
         }
     }
     run.events = events;

@@ -593,9 +593,19 @@ that will not start.
   measurement nobody produced is left out rather than printed as
   0 %, which reads as "you were terrible" instead of "there is
   nothing to report"; a run where nobody opened their mouth shows no
-  panel at all. **Remaining:** routing phrase outcomes into the
-  existing feedback bus so the lights, the particles and Room Stage
-  see them, and the vocal debug overlay.
+  panel at all. The debug overlay grows three microphone rows —
+  device and state, level, clarity, the pitch heard and the pitch
+  asked for, the offset, and the frames the game dropped — read from
+  ONE borrow of the run, because sampling the same values in several
+  places across a frame would show a state that never existed. And a
+  finished sung phrase now lights the room: `post_for_vocal` speaks
+  the **same vocabulary** as a played phrase, because the room does
+  not know or care which instrument earned the accent, only how big
+  it was; a phrase nobody sang lights nothing, since the room is not
+  a second scoreboard. **Remaining:** the particles and sound
+  effects, which are visual and audible glue and nobody could look at
+  or listen to them this session.
+  *Verified: 1417 tests (+4), gate green.*
 - [ ] V9 **Release gate.**
 
 ## Stage monitors and the room's light show (2026-09-07, v0.14.39–)
