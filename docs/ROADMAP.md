@@ -606,7 +606,37 @@ that will not start.
   effects, which are visual and audible glue and nobody could look at
   or listen to them this session.
   *Verified: 1417 tests (+4), gate green.*
-- [ ] V9 **Release gate.**
+- [~] V9 **Release gate.** The suite, the docs gate and the chart
+  fingerprints pass at every commit. Measured rather than assumed:
+  the detector is **256.6 µs a hop in release = 1.6 % of one core**
+  at 16 ms hops with **zero heap allocations** across 600 of them;
+  its unavoidable delay is **32 ms**, half a window, which the
+  calibration subtracts before measuring the rest. **Isolation
+  proved by A/B**: four autopilot runs of one song — vocals off,
+  vocals on without a chart, vocals on with a chart, and vocals on
+  with the ribbon live — all produced 428 perfect notes, 0 misses and
+  a score within three points. Vocal play does not touch guitar
+  judgment.
+  ⚠️ **The gate run found a real defect, and it was the hiding kind.**
+  A song with a vocal chart but no stems beside it plays its ORIGINAL
+  MIX — the record sings every note — while the settings look exactly
+  like a clean run, so the score was not marked assisted. It is now:
+  `assisted` asks what was PLAYED, not what was configured. Found by
+  the autopilot picking a `[GS]` twin, which carries the chart but
+  not the stems.
+  ⚠️ Also found: the decode caps at 20 minutes, so a longer song
+  would get stems SHORTER than itself and a backing that runs out
+  mid-song. Refused as a settled failure with a reason a player can
+  read.
+  **Remaining, and none of it doable here:** the platform pass on
+  Windows and Linux devices, and a real singer at a real microphone.
+  ⚠️ **Nothing vocal has been heard or seen.** The screen was locked
+  for this entire session — every capture is black by definition and
+  `caffeinate -u` cannot unlock one — and there was no singer. The
+  whole feature is verified wired, measured and mutation-probed, and
+  that is a different thing from verified good. It is **off by
+  default**, which is what makes shipping it in that state honest.
+  *Verified: 1418 tests, gate green, four autopilot runs.*
 
 ## Stage monitors and the room's light show (2026-09-07, v0.14.39–)
 

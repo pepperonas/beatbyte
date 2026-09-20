@@ -396,6 +396,21 @@ pub fn separate_song(audio_path: &Path, scratch: &Path) -> Result<Separation, St
         reason: format!("cannot decode the song: {error}"),
         retryable: false,
     })?;
+    // ⚠️ The decode stops at `MAX_ANALYSIS_SECONDS`. For the chart
+    // generator that is a sensible cap; here it would produce stems
+    // SHORTER than the song, and a karaoke backing that runs out
+    // while the song goes on is worse than no karaoke at all — the
+    // player is left singing to silence with no idea why. A settled
+    // failure, so the question is asked once.
+    if audio.truncated {
+        return Err(StemState::Failed {
+            reason: format!(
+                "the song is longer than the {:.0} minute analysis limit",
+                crate::decode::MAX_ANALYSIS_SECONDS / 60.0
+            ),
+            retryable: false,
+        });
+    }
     separate(&audio, scratch, None).map_err(|error| match error {
         SeparateError::NotInstalled => StemState::NeedsSeparator,
         // A run that died and a stem that is not there could both be
@@ -1083,6 +1098,30 @@ mod tests {
             "a clipped sum must not wrap to the opposite rail"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_song_longer_than_the_decode_limit_is_refused_rather_than_half_separated() {
+        // The state is what matters here, and it has to be SETTLED:
+        // a backing that runs out while the song goes on leaves the
+        // player singing to silence, and asking again would spend
+        // minutes to learn the same thing.
+        let truncated = StemState::Failed {
+            reason: format!(
+                "the song is longer than the {:.0} minute analysis limit",
+                crate::decode::MAX_ANALYSIS_SECONDS / 60.0
+            ),
+            retryable: false,
+        };
+        assert!(truncated.is_settled());
+        assert!(!truncated.retry_when(true), "it would be spent again");
+        // And the reason a player reads names the limit rather than
+        // saying "failed".
+        let StemState::Failed { reason, .. } = &truncated else {
+            panic!("the wrong shape");
+        };
+        assert!(reason.contains("20 minute"), "{reason}");
+        assert_eq!(truncated.summary(), "failed");
     }
 
     #[test]

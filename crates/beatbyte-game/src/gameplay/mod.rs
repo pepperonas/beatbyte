@@ -251,6 +251,7 @@ pub struct LastResults {
 fn close_vocals(
     vocal: Option<ResMut<vocal::VocalRun>>,
     settings: &crate::config::Settings,
+    backing: Option<&vocal::KaraokeBacking>,
 ) -> Vec<VocalResult> {
     let Some(mut run) = vocal else {
         return Vec::new();
@@ -268,7 +269,7 @@ fn close_vocals(
     vec![VocalResult {
         performance,
         config,
-        assisted: vocal::assisted(settings),
+        assisted: vocal::assisted(settings, backing.is_some_and(|b| b.0)),
     }]
 }
 
@@ -938,6 +939,7 @@ fn check_song_end(
     practice: Res<PracticeState>,
     time: Res<Time>,
     settings: Res<crate::config::Settings>,
+    backing: Option<Res<vocal::KaraokeBacking>>,
     vocal: Option<ResMut<vocal::VocalRun>>,
     mut next_phase: ResMut<NextState<GamePhase>>,
 ) {
@@ -959,7 +961,7 @@ fn check_song_end(
             })
             .collect();
         results.sort_by_key(|result| result.index);
-        let vocalists = close_vocals(vocal, &settings);
+        let vocalists = close_vocals(vocal, &settings, backing.as_deref());
         // The history's completion flag: `LastResults` persists
         // across runs, so its presence cannot say whether THIS run
         // reached the end. This marker is inserted only here and
@@ -1010,6 +1012,7 @@ fn check_failure(
     practice: Res<PracticeState>,
     time: Res<Time>,
     settings: Res<crate::config::Settings>,
+    backing: Option<Res<vocal::KaraokeBacking>>,
     vocal: Option<ResMut<vocal::VocalRun>>,
     mut next_phase: ResMut<NextState<GamePhase>>,
 ) {
@@ -1030,7 +1033,7 @@ fn check_failure(
         })
         .collect();
     results.sort_by_key(|result| result.index);
-    let vocalists = close_vocals(vocal, &settings);
+    let vocalists = close_vocals(vocal, &settings, backing.as_deref());
     commands.insert_resource(LastResults {
         title: song.chart.song.title.clone(),
         artist: song.chart.song.artist.clone(),

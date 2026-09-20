@@ -390,16 +390,50 @@ pub fn karaoke_audio(
     Some(crate::boot::SongAudio::File(track))
 }
 
+/// Whether a karaoke backing exists for this song at this level.
+///
+/// The same question [`karaoke_audio`] answers, asked without
+/// building anything: at the default level the answer is a manifest
+/// read, and above it the mix has already been built by the time
+/// this runs.
+#[must_use]
+fn karaoke_track_exists(
+    song: Option<&crate::boot::LoadedSong>,
+    settings: &crate::config::Settings,
+) -> bool {
+    song.is_some_and(|song| karaoke_audio(song, settings).is_some())
+}
+
+/// Whether a karaoke backing was actually used for this run.
+///
+/// Set at the start and read at the end, because what was PLAYED is
+/// what decides whether a score is comparable — and the setting
+/// alone cannot say. A song with a vocal chart but no stems beside
+/// it plays its original mix, the record sings along with the
+/// player, and nothing about the configuration shows that.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KaraokeBacking(pub bool);
+
 /// Whether the original singer is audible in the room.
 ///
 /// A microphone cannot tell a player from a voice coming out of the
-/// speakers, so a run with the original above silence is **assisted**
-/// and says so. No pitch-only algorithm can prove otherwise, and a
-/// score that quietly compares the two is worse than one that admits
-/// which it is. Pure — tested.
+/// speakers, so such a run is **assisted** and says so. No pitch-only
+/// algorithm can prove otherwise, and a score that quietly compares
+/// the two is worse than one that admits which it is.
+///
+/// ⚠️ Two ways to be assisted, and the second is the one that hides.
+/// The obvious one is turning the original vocals up. The other is
+/// having no karaoke backing at all — a song whose chart is there but
+/// whose stems are not plays its ORIGINAL MIX, with the record
+/// singing every note, and the settings look exactly like a clean
+/// run. Found by running the gate against a `[GS]` twin, which
+/// carries the chart but not the stems. Pure — tested.
 #[must_use]
-pub fn assisted(settings: &crate::config::Settings) -> bool {
-    settings.vocal_charts && settings.original_vocals > 0.0
+pub fn assisted(settings: &crate::config::Settings, backing_used: bool) -> bool {
+    if !settings.vocal_charts {
+        return false;
+    }
+    !backing_used || settings.original_vocals > 0.0
 }
 
 /// Wire vocal play into the app.
@@ -449,6 +483,11 @@ fn start(
         return;
     };
     listener.vocals().enable(true);
+    let backing = karaoke_track_exists(song.as_deref(), &settings);
+    if !backing {
+        info!("vocals: no karaoke backing for this song - the run is assisted");
+    }
+    commands.insert_resource(KaraokeBacking(backing));
     info!(
         "vocals: holding the singer to {} phrases, {} notes",
         part.phrases.len(),
@@ -464,6 +503,7 @@ fn stop(mut commands: Commands, ears: Res<super::monitors::Ears>) {
         listener.vocals().enable(false);
     }
     commands.remove_resource::<VocalRun>();
+    commands.remove_resource::<KaraokeBacking>();
 }
 
 /// Take the microphone's frames, put them on the song's timeline and
@@ -1157,25 +1197,42 @@ mod tests {
         // when the record is playing in the room, so the honest thing
         // is to say which kind of run it was.
         let off = crate::config::Settings::default();
-        assert!(!assisted(&off), "the default is not assisted");
+        assert!(!assisted(&off, true), "the default is not assisted");
         let backing_only = crate::config::Settings {
             vocal_charts: true,
             original_vocals: 0.0,
             ..crate::config::Settings::default()
         };
-        assert!(!assisted(&backing_only), "a backing track is not help");
+        assert!(
+            !assisted(&backing_only, true),
+            "a backing track is not help"
+        );
         let with_singer = crate::config::Settings {
             original_vocals: 0.05,
-            ..backing_only
+            ..backing_only.clone()
         };
-        assert!(assisted(&with_singer), "five percent is still audible");
+        assert!(
+            assisted(&with_singer, true),
+            "five percent is still audible"
+        );
+
+        // ⚠️ The way that HIDES: no backing at all. The song's own
+        // mix plays, the record sings every note, and the settings
+        // look exactly like a clean run. Found by running the gate
+        // against a `[GS]` twin, which carries the chart but not the
+        // stems.
+        assert!(
+            assisted(&backing_only, false),
+            "a run against the original mix is not a clean vocal score"
+        );
+
         // Vocals off: there is no vocal run to assist.
         let no_vocals = crate::config::Settings {
             vocal_charts: false,
             original_vocals: 1.0,
             ..crate::config::Settings::default()
         };
-        assert!(!assisted(&no_vocals));
+        assert!(!assisted(&no_vocals, false));
     }
 
     #[test]

@@ -86,6 +86,12 @@ the manifest ever carries a version this file does not describe.
   level, clarity, the pitch heard against the pitch asked for, the offset in
   use, and how many frames the game dropped. "The vocals feel off" is
   unanswerable without them.
+- **A run against the original mix is marked assisted too.** A song whose
+  vocal chart is there but whose stems are not plays its own recording — the
+  record sings every note — and the settings look exactly like a clean run.
+  The mark now asks what was *played*, not what was configured.
+- A song longer than twenty minutes is refused for separation with a reason
+  rather than given stems shorter than itself.
 - Not yet: the calibration screen itself, and vocal phrases in the particles
   and sound effects.
 
