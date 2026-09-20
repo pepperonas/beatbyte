@@ -490,6 +490,86 @@ impl VocalPart {
     }
 }
 
+/// Attach a song's aligned words to the phrases and notes they are
+/// sung on.
+///
+/// The two halves of a vocal chart are made independently — the notes
+/// come from the pitch of the stem, the words from forced alignment
+/// against the same stem — and this is where they meet. A note that
+/// knows its word can be shown with it; a phrase that knows its words
+/// is a line of lyrics with a melody.
+///
+/// Rules, and each one is a decision:
+///
+/// - A word belongs to the phrase it **overlaps most**. Phrase
+///   boundaries come from silence in the singing and word boundaries
+///   from the aligner; they will not agree exactly, and a word that
+///   straddles a boundary has to land somewhere rather than in both.
+/// - A word that overlaps no phrase at all is dropped. It was sung
+///   somewhere the pitch analysis found nothing, and putting it in
+///   the nearest phrase would place it over a note it is not on.
+/// - A note's range covers every token it overlaps, so a word held
+///   across two notes is on both and a melisma's notes all carry it.
+/// - A note that overlaps nothing keeps `None`, which is what an
+///   instrumental run or an unaligned word looks like.
+///
+/// Existing tokens are replaced: this is the linking step, run once,
+/// and appending would double a re-run. Pure — tested.
+pub fn link_tokens(phrases: &mut [VocalPhrase], words: &[VocalToken]) {
+    for phrase in phrases.iter_mut() {
+        phrase.tokens.clear();
+    }
+    for word in words {
+        let mut best: Option<(usize, f64)> = None;
+        for (index, phrase) in phrases.iter().enumerate() {
+            let overlap =
+                (word.end_s.min(phrase.end_s) - word.start_s.max(phrase.start_s)).max(0.0);
+            if overlap <= 0.0 {
+                continue;
+            }
+            if best.is_none_or(|(_, most)| overlap > most) {
+                best = Some((index, overlap));
+            }
+        }
+        if let Some((index, _)) = best
+            && let Some(phrase) = phrases.get_mut(index)
+        {
+            phrase.tokens.push(word.clone());
+        }
+    }
+    for phrase in phrases.iter_mut() {
+        // The aligner's order is the song's order, but a word
+        // reassigned across a boundary can arrive out of turn.
+        phrase
+            .tokens
+            .sort_by(|a, b| a.start_s.total_cmp(&b.start_s));
+        let spans: Vec<(f64, f64)> = phrase
+            .tokens
+            .iter()
+            .map(|token| (token.start_s, token.end_s))
+            .collect();
+        for note in &mut phrase.notes {
+            let mut first: Option<u32> = None;
+            let mut last: Option<u32> = None;
+            for (index, (start, end)) in spans.iter().enumerate() {
+                if end.min(note.end_s) - start.max(note.start_s) <= 0.0 {
+                    continue;
+                }
+                let index = u32::try_from(index).unwrap_or(u32::MAX);
+                first.get_or_insert(index);
+                last = Some(index);
+            }
+            note.token_range = match (first, last) {
+                (Some(start), Some(end)) => Some(TokenRange {
+                    start,
+                    end: end.saturating_add(1),
+                }),
+                _ => None,
+            };
+        }
+    }
+}
+
 /// Everything wrong with a vocal part, in the order it was found.
 ///
 /// Same shape as the chart validator's findings and for the same
@@ -851,6 +931,132 @@ mod tests {
         let u = r.union(VocalRange::at(70.0));
         assert_eq!(u.high_midi, 70.0);
         assert_eq!(u.low_midi, 58.0);
+    }
+
+    fn token(text: &str, start: f64, end: f64) -> VocalToken {
+        VocalToken {
+            text: text.to_owned(),
+            start_s: start,
+            end_s: end,
+            confidence: 0.9,
+            source_word: None,
+        }
+    }
+
+    #[test]
+    fn words_land_on_the_notes_they_are_sung_on() {
+        let mut phrases = vec![phrase(
+            0.0,
+            4.0,
+            vec![
+                note(0.0, 1.0, 60.0),
+                note(1.0, 2.0, 62.0),
+                note(3.0, 4.0, 64.0),
+            ],
+        )];
+        link_tokens(
+            &mut phrases,
+            &[
+                token("hel", 0.0, 0.9),
+                token("lo", 1.0, 1.8),
+                token("world", 3.1, 3.9),
+            ],
+        );
+        assert_eq!(phrases[0].tokens.len(), 3);
+        let ranges: Vec<Option<TokenRange>> =
+            phrases[0].notes.iter().map(|n| n.token_range).collect();
+        assert_eq!(ranges[0], Some(TokenRange { start: 0, end: 1 }));
+        assert_eq!(ranges[1], Some(TokenRange { start: 1, end: 2 }));
+        assert_eq!(ranges[2], Some(TokenRange { start: 2, end: 3 }));
+        assert_eq!(
+            phrases[0].notes[0].token_range.map(TokenRange::len),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn a_word_held_across_two_notes_is_on_both() {
+        // A melisma: one syllable, several notes. Each of them has to
+        // know the word, or the display shows a word appearing and
+        // vanishing inside its own vowel.
+        let mut phrases = vec![phrase(
+            0.0,
+            3.0,
+            vec![
+                note(0.0, 1.0, 60.0),
+                note(1.0, 2.0, 62.0),
+                note(2.0, 3.0, 64.0),
+            ],
+        )];
+        link_tokens(&mut phrases, &[token("oh", 0.1, 2.9)]);
+        for note in &phrases[0].notes {
+            assert_eq!(
+                note.token_range,
+                Some(TokenRange { start: 0, end: 1 }),
+                "a note of the melisma lost its word"
+            );
+        }
+        // And a note spanning two words covers both.
+        let mut wide = vec![phrase(0.0, 3.0, vec![note(0.0, 3.0, 60.0)])];
+        link_tokens(&mut wide, &[token("one", 0.1, 1.0), token("two", 1.5, 2.5)]);
+        assert_eq!(
+            wide[0].notes[0].token_range,
+            Some(TokenRange { start: 0, end: 2 })
+        );
+    }
+
+    #[test]
+    fn a_word_that_straddles_a_boundary_lands_where_most_of_it_is() {
+        let mut phrases = vec![
+            phrase(0.0, 2.0, vec![note(0.0, 2.0, 60.0)]),
+            phrase(2.0, 4.0, vec![note(2.0, 4.0, 62.0)]),
+        ];
+        // Mostly in the second phrase.
+        link_tokens(&mut phrases, &[token("over", 1.8, 3.0)]);
+        assert!(phrases[0].tokens.is_empty(), "it went in both");
+        assert_eq!(phrases[1].tokens.len(), 1);
+        // Mostly in the first.
+        link_tokens(&mut phrases, &[token("over", 1.0, 2.2)]);
+        assert_eq!(phrases[0].tokens.len(), 1);
+        assert!(phrases[1].tokens.is_empty());
+    }
+
+    #[test]
+    fn a_word_sung_where_no_phrase_was_found_is_dropped() {
+        // Putting it in the nearest phrase would place it over notes
+        // it is not on, which is worse than not showing it.
+        let mut phrases = vec![phrase(0.0, 2.0, vec![note(0.0, 2.0, 60.0)])];
+        link_tokens(&mut phrases, &[token("elsewhere", 30.0, 31.0)]);
+        assert!(phrases[0].tokens.is_empty());
+        assert_eq!(phrases[0].notes[0].token_range, None);
+    }
+
+    #[test]
+    fn linking_twice_does_not_double_the_words() {
+        let mut phrases = vec![phrase(0.0, 2.0, vec![note(0.0, 2.0, 60.0)])];
+        let words = [token("hi", 0.1, 0.5)];
+        link_tokens(&mut phrases, &words);
+        link_tokens(&mut phrases, &words);
+        assert_eq!(phrases[0].tokens.len(), 1, "a re-run appended");
+        // And the ranges a linked chart carries still validate.
+        let mut part = part(phrases);
+        part.id = "lead".to_owned();
+        assert_eq!(part_problems(&part, 600.0), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_rest_between_words_leaves_its_note_unlettered() {
+        let mut phrases = vec![phrase(
+            0.0,
+            4.0,
+            vec![note(0.0, 1.0, 60.0), note(2.0, 3.0, 62.0)],
+        )];
+        link_tokens(&mut phrases, &[token("just-one", 0.1, 0.9)]);
+        assert_eq!(
+            phrases[0].notes[0].token_range,
+            Some(TokenRange { start: 0, end: 1 })
+        );
+        assert_eq!(phrases[0].notes[1].token_range, None);
     }
 
     #[test]

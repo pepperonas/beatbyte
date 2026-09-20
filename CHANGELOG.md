@@ -75,6 +75,10 @@ the manifest ever carries a version this file does not describe.
   above zero is marked **assisted** on the results: a microphone cannot tell
   you from a voice coming out of the speakers, and a score that quietly
   compares the two would be worth less than one that says which it is.
+- **The words meet the notes.** When a song has a word-level alignment, each
+  note in its vocal chart knows which word it is sung on — a word held across
+  several notes is on all of them, and a word sung where the pitch analysis
+  found nothing is left out rather than placed on notes it is not on.
 - Not yet: the calibration screen itself, and vocal phrases driving the stage
   lights.
 

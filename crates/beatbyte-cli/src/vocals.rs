@@ -17,7 +17,7 @@ use std::process::ExitCode;
 
 use beatbyte_audio::singing::SingingConfig;
 use beatbyte_audio::stems::{
-    self, StemKind, StemState, VocalWork, analyse_existing_stems, analyse_song, audio_sha256,
+    self, StemKind, StemState, VocalWork, analyse_existing_stems, analyse_song, file_sha256,
     read_manifest, wants_separation,
 };
 use beatbyte_chart::vocals::{
@@ -86,7 +86,7 @@ pub fn run(path: &Path, args: &Args) -> ExitCode {
 
 fn one(song: &Path, args: &Args) -> Result<String, String> {
     let audio = audio_of(song)?;
-    let hash = audio_sha256(&audio).map_err(|error| format!("cannot hash the audio: {error}"))?;
+    let hash = file_sha256(&audio).map_err(|error| format!("cannot hash the audio: {error}"))?;
     let manifest = read_manifest(&audio);
     let existing = load_vocals(&vocals_path(&audio)).ok();
     let name = name_of(song);
@@ -146,22 +146,30 @@ fn file_it(audio: &Path, name: &str, work: VocalWork) -> Result<String, String> 
         }
     }
     let notes: usize = work.phrases.iter().map(|p| p.notes.len()).sum();
+    let mut phrases = work.phrases;
+    // The two halves of a vocal chart are made independently — the
+    // notes from the stem's pitch, the words from forced alignment
+    // against the same stem — and this is where they meet.
+    let (words, lyrics_sha256) = aligned_words(audio);
+    let linked = !words.is_empty();
+    beatbyte_core::vocal::link_tokens(&mut phrases, &words);
     let part = VocalPart {
         id: "lead".to_owned(),
         role: VocalRole::Lead,
         name: None,
-        phrases: work.phrases,
+        phrases,
     };
     let range = part.pitch_range();
-    let file = VocalChartFile::new(
+    let mut file = VocalChartFile::new(
         &work.audio_sha256,
         VocalProvenance {
             separator: work.separator,
             analyzer: analyzer(),
-            aligner: None,
+            aligner: linked.then(|| "words.json".to_owned()),
         },
         vec![part],
     );
+    file.lyrics_sha256 = lyrics_sha256;
     // A chart that does not validate is never written: a bad target
     // is worse than no target, and the game would have to refuse it
     // at load time anyway.
@@ -183,9 +191,31 @@ fn file_it(audio: &Path, name: &str, work: VocalWork) -> Result<String, String> 
         |r| format!("{:.0}-{:.0} MIDI", r.low_midi, r.high_midi),
     );
     Ok(format!(
-        "{name}: {notes} notes in {} phrases, {span}",
-        file.parts.first().map_or(0, |p| p.phrases.len())
+        "{name}: {notes} notes in {} phrases, {span}{}",
+        file.parts.first().map_or(0, |p| p.phrases.len()),
+        if linked { ", words linked" } else { "" }
     ))
+}
+
+/// The song's aligned words, and the hash of the file they came from.
+///
+/// Only a word-level alignment is of any use here: a line-timed
+/// `.lrc` cannot say which note carries which word. The hash
+/// identifies the snapshot, so a chart can be known to be talking
+/// about an alignment that has since been recomputed.
+fn aligned_words(audio: &Path) -> (Vec<beatbyte_core::vocal::VocalToken>, Option<String>) {
+    let words_path = beatbyte_chart::lyrics::words_path(audio);
+    if !words_path.is_file() {
+        return (Vec::new(), None);
+    }
+    let Some(lyrics) = beatbyte_chart::lyrics::lyrics_beside(audio, audio) else {
+        return (Vec::new(), None);
+    };
+    let tokens = beatbyte_chart::vocals::tokens_from_lyrics(&lyrics);
+    if tokens.is_empty() {
+        return (Vec::new(), None);
+    }
+    (tokens, file_sha256(&words_path).ok())
 }
 
 fn status_line(

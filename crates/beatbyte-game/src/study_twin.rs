@@ -365,21 +365,37 @@ fn file_vocal_chart(audio_path: &Path, work: beatbyte_audio::stems::VocalWork) -
         }
     }
     let notes: usize = work.phrases.iter().map(|p| p.notes.len()).sum();
+    let mut phrases = work.phrases;
+    // Where the two halves of a vocal chart meet: the notes came from
+    // the stem's pitch, the words from forced alignment against the
+    // same stem.
+    let words_path = beatbyte_chart::lyrics::words_path(audio_path);
+    let words = words_path
+        .is_file()
+        .then(|| beatbyte_chart::lyrics::lyrics_beside(audio_path, audio_path))
+        .flatten()
+        .map(|lyrics| beatbyte_chart::vocals::tokens_from_lyrics(&lyrics))
+        .unwrap_or_default();
+    let linked = !words.is_empty();
+    beatbyte_core::vocal::link_tokens(&mut phrases, &words);
     let part = beatbyte_core::vocal::VocalPart {
         id: "lead".to_owned(),
         role: beatbyte_core::vocal::VocalRole::Lead,
         name: None,
-        phrases: work.phrases,
+        phrases,
     };
-    let file = beatbyte_chart::vocals::VocalChartFile::new(
+    let mut file = beatbyte_chart::vocals::VocalChartFile::new(
         &work.audio_sha256,
         beatbyte_chart::vocals::VocalProvenance {
             separator: work.separator,
             analyzer: format!("beatbyte-singing {}", env!("CARGO_PKG_VERSION")),
-            aligner: None,
+            aligner: linked.then(|| "words.json".to_owned()),
         },
         vec![part],
     );
+    if linked {
+        file.lyrics_sha256 = beatbyte_audio::stems::file_sha256(&words_path).ok();
+    }
     // A chart the loader would refuse is never written: a wrong
     // target is worse than no target, and half a file is worse still.
     if !file.is_playable() {
@@ -390,7 +406,11 @@ fn file_vocal_chart(audio_path: &Path, work: beatbyte_audio::stems::VocalWork) -
     match beatbyte_chart::vocals::save_vocals(&path, &file) {
         Ok(()) => {
             share_with_twin(audio_path, &path);
-            format!("vocals: {notes} notes")
+            if linked {
+                format!("vocals: {notes} notes, words linked")
+            } else {
+                format!("vocals: {notes} notes")
+            }
         }
         Err(error) => {
             warn!("vocals: cannot write {}: {error}", path.display());

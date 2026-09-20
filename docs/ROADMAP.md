@@ -430,7 +430,7 @@ that will not start.
   phrase-by-phrase listing says why: they are the verses (~56) and
   the choruses (~69). The chart is musically right. ⚠️ Never heard —
   no ear has judged this chart, only its spectrum.*
-- [~] V2c **Old songs, words, and the twin.** Shipped: a one-time
+- [x] V2c **Old songs, words, and the twin.** Shipped: a one-time
   **backfill** puts the library's outstanding vocal work on the same
   one-at-a-time queue, found from the sidecars alone — two hundred
   tiny reads, no separator runs, because the expensive question was
@@ -439,8 +439,21 @@ that will not start.
   disk. And the vocal chart is now placed beside the `[GS]` twin too:
   the twin keeps its own byte-identical COPY of the audio, so the
   sidecar beside the original was invisible from there and selecting
-  the study entry silently got no vocals. **Remaining:** linking the
-  aligner's words to the notes.
+  the study entry silently got no vocals. And the aligner's words now
+  meet the notes: `link_tokens` puts each word on the phrase it
+  overlaps **most** — phrase boundaries come from silence in the
+  singing and word boundaries from the aligner, they will not agree,
+  and a word that straddles one has to land somewhere rather than in
+  both — and each note's range covers every word it overlaps, so a
+  melisma's notes all carry their syllable and a word sung across two
+  notes is on both. A word sung where no phrase was found is dropped
+  rather than put on notes it is not on.
+  *Verified: 1413 tests (+7), gate green. Run on the real Maria:
+  178 words across 19 phrases, **57 % of notes carry one**, and the
+  second phrase reads "Smooth | as | silk | cool | as | air" note by
+  note. The chart records the alignment's own hash, so it can be
+  known to be talking about an alignment that has since been
+  recomputed.*
 - [x] V3 **Microphone engine.** `beatbyte_audio::mic` is the pure
   half — a **streaming integer decimator** (a windowed-sinc resampler
   called per block has an edge at every block boundary, and measuring

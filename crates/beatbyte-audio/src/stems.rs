@@ -328,9 +328,13 @@ pub const INSTRUMENTAL_BELOW: f32 = 0.01;
 /// SHA-256 of a file, lowercase hex — what ties a sidecar to the
 /// exact bytes it was computed from.
 ///
+/// Any file: the audio a chart was made from, and the alignment its
+/// words came from. Both are snapshots a sidecar has to be able to
+/// say it matches.
+///
 /// Read in chunks: a song is tens of megabytes and this runs on the
 /// import path.
-pub fn audio_sha256(path: &Path) -> std::io::Result<String> {
+pub fn file_sha256(path: &Path) -> std::io::Result<String> {
     use std::io::Read;
     let mut file = std::fs::File::open(path)?;
     let mut hasher = Sha256::new();
@@ -632,7 +636,7 @@ pub fn analyse_existing_stems(
     audio_path: &Path,
     config: &crate::singing::SingingConfig,
 ) -> Option<VocalWork> {
-    let hash = audio_sha256(audio_path).ok()?;
+    let hash = file_sha256(audio_path).ok()?;
     let manifest = read_manifest(audio_path)?;
     if !manifest.is_current_for(&hash) || !manifest.state.is_ready() {
         return None;
@@ -675,7 +679,7 @@ pub fn analyse_song(
     config: &crate::singing::SingingConfig,
     with_other: impl FnOnce(&Path),
 ) -> VocalWork {
-    let audio_sha256 = audio_sha256(audio_path).unwrap_or_default();
+    let audio_sha256 = file_sha256(audio_path).unwrap_or_default();
     let unknown = |state: StemState| VocalWork {
         state,
         audio_sha256: audio_sha256.clone(),
@@ -1011,15 +1015,15 @@ mod tests {
         std::fs::write(&path, b"").unwrap();
         // The empty digest, which is a value anyone can check.
         assert_eq!(
-            audio_sha256(&path).unwrap(),
+            file_sha256(&path).unwrap(),
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         );
         // Bigger than one read buffer, so the chunking is exercised.
         std::fs::write(&path, vec![7u8; 200_000]).unwrap();
-        let big = audio_sha256(&path).unwrap();
+        let big = file_sha256(&path).unwrap();
         assert_eq!(big.len(), 64);
         std::fs::write(&path, vec![7u8; 200_001]).unwrap();
-        assert_ne!(audio_sha256(&path).unwrap(), big, "one byte changes it");
+        assert_ne!(file_sha256(&path).unwrap(), big, "one byte changes it");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1197,7 +1201,7 @@ mod tests {
         assert_eq!(karaoke_track(&audio, 0.0), None);
 
         let mut m = ready();
-        m.audio_sha256 = audio_sha256(&audio).unwrap();
+        m.audio_sha256 = file_sha256(&audio).unwrap();
         std::fs::create_dir_all(stems_dir(&audio)).unwrap();
         let tone = Channels {
             interleaved: (0..8_000)

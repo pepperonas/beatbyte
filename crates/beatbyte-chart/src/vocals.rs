@@ -221,6 +221,41 @@ fn is_sha256(hex: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
+/// The words a song's alignment places, as vocal tokens.
+///
+/// Only word-timed lyrics count: a line-timed `.lrc` says when a LINE
+/// starts and nothing about which note carries which word, so linking
+/// from it would put every word of a line on its first note. An empty
+/// result means "there is nothing here to link", which is a state the
+/// chart records rather than an error.
+#[must_use]
+pub fn tokens_from_lyrics(lyrics: &crate::lyrics::Lyrics) -> Vec<beatbyte_core::vocal::VocalToken> {
+    if !lyrics.has_word_timing() {
+        return Vec::new();
+    }
+    let mut tokens = Vec::new();
+    for line in &lyrics.lines {
+        for word in &line.words {
+            if word.end <= word.start {
+                continue;
+            }
+            tokens.push(beatbyte_core::vocal::VocalToken {
+                text: word.text.clone(),
+                start_s: word.start,
+                end_s: word.end,
+                // The alignment's own confidence does not reach this
+                // type, and inventing one would be a claim. 1.0 says
+                // "the aligner placed it", which is all that is
+                // known here; the chart's own confidence is separate.
+                confidence: 1.0,
+                source_word: None,
+            });
+        }
+    }
+    tokens.sort_by(|a, b| a.start_s.total_cmp(&b.start_s));
+    tokens
+}
+
 /// Where a song's vocal chart lives: `<audio stem>.vocals.json` beside
 /// the audio (the `words.json` convention).
 #[must_use]
@@ -446,6 +481,56 @@ mod tests {
         let mut broken = file();
         broken.parts[0].phrases[0].notes[0].end_s = 0.0;
         assert!(!broken.is_playable());
+    }
+
+    #[test]
+    fn only_word_timed_lyrics_become_tokens() {
+        use crate::lyrics::{LyricLine, LyricWord, Lyrics};
+        // A line-timed file says when a LINE starts and nothing about
+        // which note carries which word; linking from it would put a
+        // whole line on its first note.
+        let line_timed = Lyrics {
+            lines: vec![LyricLine {
+                start: 1.0,
+                end: 3.0,
+                text: "hello world".to_owned(),
+                words: Vec::new(),
+            }],
+        };
+        assert!(tokens_from_lyrics(&line_timed).is_empty());
+
+        let word_timed = Lyrics {
+            lines: vec![LyricLine {
+                start: 1.0,
+                end: 3.0,
+                text: "hello world".to_owned(),
+                words: vec![
+                    LyricWord {
+                        text: "world".to_owned(),
+                        start: 2.0,
+                        end: 2.8,
+                        chars: Vec::new(),
+                    },
+                    LyricWord {
+                        text: "hello".to_owned(),
+                        start: 1.0,
+                        end: 1.8,
+                        chars: Vec::new(),
+                    },
+                    // A zero-length word places nothing and is left out.
+                    LyricWord {
+                        text: "".to_owned(),
+                        start: 2.9,
+                        end: 2.9,
+                        chars: Vec::new(),
+                    },
+                ],
+            }],
+        };
+        let tokens = tokens_from_lyrics(&word_timed);
+        assert_eq!(tokens.len(), 2);
+        assert_eq!(tokens[0].text, "hello", "they come back in song order");
+        assert_eq!(tokens[1].text, "world");
     }
 
     #[test]
