@@ -344,6 +344,24 @@ impl VocalRun {
 /// How long a phrase's verdict stays up, in seconds.
 pub const BANNER_S: f32 = 1.6;
 
+/// The rules this run is judged by: the difficulty's tolerances, with
+/// the player's own answer to the octave question.
+///
+/// The tolerances follow the DIFFICULTY rather than a vocal setting
+/// of their own — a player who picked Expert asked for Expert — while
+/// the octave is a fact about the singer's voice and not about how
+/// hard they want it. Pure — tested.
+#[must_use]
+pub fn score_config(
+    settings: &crate::config::Settings,
+    difficulty: beatbyte_core::Difficulty,
+) -> VocalScoreConfig {
+    VocalScoreConfig {
+        mode: settings.vocal_pitch_mode,
+        ..VocalScoreConfig::for_difficulty(difficulty)
+    }
+}
+
 /// Wire vocal play into the app.
 pub fn register(app: &mut App) {
     // ⚠️ AFTER the ears open. Both run on the same state entry, and
@@ -396,11 +414,7 @@ fn start(
         part.phrases.len(),
         part.note_count()
     );
-    let difficulty = selected.0;
-    commands.insert_resource(VocalRun::new(
-        part,
-        VocalScoreConfig::for_difficulty(difficulty),
-    ));
+    commands.insert_resource(VocalRun::new(part, score_config(&settings, selected.0)));
     spawn_layer(&mut commands, &font);
 }
 
@@ -1088,6 +1102,37 @@ mod tests {
         run.last = Some(frame(Some(60.0), true, false));
         let line = readout_line(&run, 50.0, &config);
         assert!(line.ends_with("Hz"), "{line}");
+    }
+
+    #[test]
+    fn the_difficulty_sets_the_tolerances_and_the_player_sets_the_octave() {
+        use beatbyte_core::Difficulty;
+        use beatbyte_core::vocal::PitchMode;
+        let strict = crate::config::Settings {
+            vocal_pitch_mode: PitchMode::Strict,
+            ..crate::config::Settings::default()
+        };
+        let config = score_config(&strict, Difficulty::Expert);
+        assert_eq!(
+            config.mode,
+            PitchMode::Strict,
+            "the setting did not reach it"
+        );
+        assert_eq!(
+            config.perfect_cents,
+            VocalScoreConfig::for_difficulty(Difficulty::Expert).perfect_cents,
+            "the difficulty's tolerances were not kept"
+        );
+        // And the default forgives the octave.
+        let plain = crate::config::Settings::default();
+        assert_eq!(
+            score_config(&plain, Difficulty::Easy).mode,
+            PitchMode::OctaveIndependent
+        );
+        assert!(
+            score_config(&plain, Difficulty::Easy).perfect_cents
+                > score_config(&plain, Difficulty::Expert).perfect_cents
+        );
     }
 
     #[test]

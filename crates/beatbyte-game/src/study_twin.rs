@@ -65,7 +65,7 @@ pub struct StudyTwinPlugin;
 impl Plugin for StudyTwinPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<StudyQueue>()
-            .add_systems(Update, drive_queue);
+            .add_systems(Update, (backfill, drive_queue).chain());
     }
 }
 
@@ -167,6 +167,100 @@ pub fn queue_twin(queue: &mut StudyQueue, settings: &Settings, folder: PathBuf) 
             work.vocals
         );
         queue.pending.push_back(work);
+    }
+}
+
+/// Songs in the library that still want vocal work, in browser order.
+///
+/// Reads only the sidecars — the manifest and the chart beside each
+/// audio file — so a library of two hundred songs costs two hundred
+/// tiny reads and no separator runs at all. That is the whole point
+/// of [`beatbyte_audio::stems::wants_separation`]: the expensive
+/// question is answered once and written down. Pure but for the file
+/// stats — tested through that function.
+#[must_use]
+pub fn songs_wanting_vocals(
+    library: &crate::library::SongLibrary,
+    separator_available: bool,
+) -> Vec<PathBuf> {
+    if !separator_available {
+        return Vec::new();
+    }
+    let mut folders = Vec::new();
+    for entry in &library.entries {
+        let crate::library::SongSource::File { audio_path, .. } = &entry.source else {
+            continue;
+        };
+        // A chart that is already current needs nothing, and asking
+        // costs one read rather than a hash of the whole song.
+        if beatbyte_chart::vocals::vocals_path(audio_path).is_file() {
+            continue;
+        }
+        let manifest = beatbyte_audio::stems::read_manifest(audio_path);
+        // A settled answer — instrumental, no usable vocals, a hard
+        // failure — is never paid for again. `wants_separation` is
+        // asked WITHOUT the audio's hash, which would mean reading
+        // every song off the disk: a stale manifest simply retries,
+        // which is the safe direction.
+        let stale_is_fine = manifest.as_ref().is_some_and(|m| m.state.is_settled());
+        if stale_is_fine {
+            continue;
+        }
+        let wanted = manifest
+            .as_ref()
+            .is_none_or(|m| m.state.retry_when(separator_available));
+        if let Some(folder) = audio_path.parent().filter(|_| wanted) {
+            folders.push(folder.to_path_buf());
+        }
+    }
+    folders
+}
+
+/// Put the library's outstanding vocal work on the queue, once.
+///
+/// It runs between songs like everything else here, and it says out
+/// loud what it is about to spend: a library of two hundred songs is
+/// hours of a saturated machine and gigabytes of stems, and a player
+/// who turned the setting on deserves to see the size of what they
+/// asked for rather than discover it as a full disk.
+fn backfill(
+    library: Option<Res<crate::library::SongLibrary>>,
+    settings: Res<Settings>,
+    mut queue: ResMut<StudyQueue>,
+    state: Res<State<AppState>>,
+    mut swept: Local<bool>,
+) {
+    if *swept || !settings.vocal_charts || matches!(state.get(), AppState::Gameplay) {
+        return;
+    }
+    let Some(library) = library else {
+        return;
+    };
+    if library.entries.is_empty() {
+        return;
+    }
+    *swept = true;
+    let autopilot = std::env::var_os("BEATBYTE_AUTOPILOT").is_some();
+    let vocals_switch = std::env::var_os("BEATBYTE_AUTOPILOT_VOCALS").is_some();
+    if !vocals_wanted(settings.vocal_charts, autopilot, vocals_switch) {
+        return;
+    }
+    let folders = songs_wanting_vocals(&library, demucs_available());
+    if folders.is_empty() {
+        return;
+    }
+    info!(
+        "vocals: {} song(s) still to analyse - roughly {} minute(s) of work and {} GB of stems,          one at a time between songs",
+        folders.len(),
+        folders.len(),
+        folders.len() * 80 / 1024
+    );
+    for folder in folders {
+        queue.pending.push_back(SongWork {
+            folder,
+            twin: false,
+            vocals: true,
+        });
     }
 }
 
@@ -294,11 +388,46 @@ fn file_vocal_chart(audio_path: &Path, work: beatbyte_audio::stems::VocalWork) -
     }
     let path = beatbyte_chart::vocals::vocals_path(audio_path);
     match beatbyte_chart::vocals::save_vocals(&path, &file) {
-        Ok(()) => format!("vocals: {notes} notes"),
+        Ok(()) => {
+            share_with_twin(audio_path, &path);
+            format!("vocals: {notes} notes")
+        }
         Err(error) => {
             warn!("vocals: cannot write {}: {error}", path.display());
             "vocals: not written".to_owned()
         }
+    }
+}
+
+/// Put the same vocal chart beside the song's `[GS]` twin.
+///
+/// The twin keeps its own COPY of the audio, so the sidecar beside
+/// the original is invisible from the twin's folder and selecting the
+/// study entry would silently get no vocals. The copy is a byte copy
+/// — the chart's `audio_sha256` matches it exactly — so the same file
+/// is simply valid in both places, and it is 400 KB against the
+/// hundred megabytes the audio already costs twice.
+///
+/// Best effort: a twin that is not there, or a folder that cannot be
+/// written, is not a reason to fail a chart that was written.
+fn share_with_twin(audio_path: &Path, written: &Path) {
+    let Some(folder) = audio_path.parent() else {
+        return;
+    };
+    let Some(twin) = beatbyte_chart::study::twin_folder_for(folder) else {
+        return;
+    };
+    let Some(name) = audio_path.file_name() else {
+        return;
+    };
+    let twin_audio = twin.join(name);
+    if !twin_audio.is_file() {
+        return;
+    }
+    let target = beatbyte_chart::vocals::vocals_path(&twin_audio);
+    match std::fs::copy(written, &target) {
+        Ok(_) => info!("vocals: also placed beside the study twin"),
+        Err(error) => warn!("vocals: cannot reach the twin: {error}"),
     }
 }
 
@@ -410,6 +539,97 @@ mod tests {
             !twin_wanted(false, true, true),
             "and never against the setting"
         );
+    }
+
+    fn entry(audio: &Path) -> crate::library::SongEntry {
+        crate::library::SongEntry {
+            title: "T".to_owned(),
+            artist: "A".to_owned(),
+            bpm: 120.0,
+            duration_s: None,
+            difficulties: Vec::new(),
+            note_counts: Vec::new(),
+            genre: None,
+            preview_start_s: None,
+            source: crate::library::SongSource::File {
+                chart_path: audio.with_extension("json"),
+                audio_path: audio.to_path_buf(),
+            },
+            polish: crate::library::Polish::default(),
+            loudness: None,
+            has_lyrics: false,
+        }
+    }
+
+    #[test]
+    fn the_backfill_asks_for_the_work_nobody_has_done_and_nothing_else() {
+        use beatbyte_audio::stems::{StemManifest, StemState, write_manifest};
+        let dir = std::env::temp_dir().join(format!("bb-backfill-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let make = |name: &str| {
+            let folder = dir.join(name);
+            std::fs::create_dir_all(&folder).expect("a scratch folder");
+            let audio = folder.join("song.wav");
+            std::fs::write(&audio, b"not really audio").expect("a file");
+            audio
+        };
+        let hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+        // Never touched: wants the work.
+        let fresh = make("fresh");
+        // Already charted: wants nothing, and asking must not cost a
+        // hash of the whole song.
+        let charted = make("charted");
+        std::fs::write(beatbyte_chart::vocals::vocals_path(&charted), "{}").expect("a sidecar");
+        // A settled answer: instrumental. Never paid for again — this
+        // is the whole reason the state is written down.
+        let instrumental = make("instrumental");
+        write_manifest(
+            &instrumental,
+            &StemManifest::new(hash, "demucs", StemState::Instrumental),
+        )
+        .expect("a manifest");
+        // A hard failure: equally settled.
+        let broken = make("broken");
+        write_manifest(
+            &broken,
+            &StemManifest::new(
+                hash,
+                "demucs",
+                StemState::Failed {
+                    reason: "cannot decode".to_owned(),
+                    retryable: false,
+                },
+            ),
+        )
+        .expect("a manifest");
+        // The separator arrived since last time.
+        let waiting = make("waiting");
+        write_manifest(
+            &waiting,
+            &StemManifest::new(hash, "demucs", StemState::NeedsSeparator),
+        )
+        .expect("a manifest");
+
+        let library = crate::library::SongLibrary {
+            entries: vec![
+                entry(&fresh),
+                entry(&charted),
+                entry(&instrumental),
+                entry(&broken),
+                entry(&waiting),
+            ],
+        };
+        let wanted = songs_wanting_vocals(&library, true);
+        let names: Vec<String> = wanted
+            .iter()
+            .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+            .collect();
+        assert_eq!(names, vec!["fresh", "waiting"], "{names:?}");
+
+        // Without a separator there is nothing to queue at all.
+        assert!(songs_wanting_vocals(&library, false).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

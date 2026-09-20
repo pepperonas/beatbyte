@@ -58,8 +58,18 @@ the manifest ever carries a version this file does not describe.
   how many cents off on average, timing, hold, steadiness, notes hit, perfect
   phrases, longest run, and the range you actually reached, in note names. A
   measurement nobody produced is left out rather than shown as 0 %.
-- Not yet: the karaoke backing mix, and vocal phrases driving the stage
-  lights.
+- **`MIC OFFSET`** and **`VOCAL PITCH`** are settings now — the second
+  chooses whether an octave out is forgiven (the default) or counted. The
+  difficulty still sets how close you have to be; the octave is about your
+  voice, not about how hard you want it.
+- **Songs you already have get vocal charts too.** With the setting on, the
+  library's outstanding work goes on the same one-at-a-time background queue,
+  and the log says up front roughly how long and how much disk that is. The
+  question is answered from the sidecars, so finding out costs nothing.
+- **The `[GS]` twin of a song can be sung as well.** It keeps its own copy of
+  the audio, so the chart beside the original was invisible from there.
+- Not yet: the karaoke backing mix, the calibration screen itself, and vocal
+  phrases driving the stage lights.
 
 ## [0.17.11] - 2026-09-20
 

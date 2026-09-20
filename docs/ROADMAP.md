@@ -430,13 +430,17 @@ that will not start.
   phrase-by-phrase listing says why: they are the verses (~56) and
   the choruses (~69). The chart is musically right. ⚠️ Never heard —
   no ear has judged this chart, only its spectrum.*
-- [ ] V2c **Old songs, words, and the twin.** Lazily analyse a
-  library the scan finds unanalysed, and link the aligner's words to
-  the notes. ⚠️ Found while testing: a `[GS]` twin keeps its **own
-  copy** of the audio, so `vocals_beside` looks in the twin's folder
-  and finds nothing — selecting the study entry silently gets no
-  vocals. The bytes are identical (checked), so the chart is valid
-  for both; the twin writer should carry the sidecar across.
+- [~] V2c **Old songs, words, and the twin.** Shipped: a one-time
+  **backfill** puts the library's outstanding vocal work on the same
+  one-at-a-time queue, found from the sidecars alone — two hundred
+  tiny reads, no separator runs, because the expensive question was
+  answered once and written down — and it says out loud what it is
+  about to spend rather than letting a player discover it as a full
+  disk. And the vocal chart is now placed beside the `[GS]` twin too:
+  the twin keeps its own byte-identical COPY of the audio, so the
+  sidecar beside the original was invisible from there and selecting
+  the study entry silently got no vocals. **Remaining:** linking the
+  aligner's words to the notes.
 - [x] V3 **Microphone engine.** `beatbyte_audio::mic` is the pure
   half — a **streaming integer decimator** (a windowed-sinc resampler
   called per block has an edge at every block boundary, and measuring
@@ -520,8 +524,25 @@ that will not start.
   same three notes, so it is a property of that stem-charted twin and
   the injector, deterministic and reproducible. Filed, not fixed: it
   is outside this plan.
-- [ ] V6 **Calibration and settings.** A per-device microphone offset
-  measured by loopback — never the controller's latency value.
+- [~] V6 **Calibration and settings.** Shipped: `MIC OFFSET` and
+  `VOCAL PITCH` (ANY OCTAVE / AS WRITTEN) in SETTINGS, the octave
+  answer reaching the judgment while the **difficulty** keeps setting
+  the tolerances — a player who picked Expert asked for Expert, and
+  the octave is a fact about their voice rather than about how hard
+  they want it — and the measurement the calibration screen exists to
+  produce: `round_trip_offset`, a normalised cross-correlation
+  against a swept chirp, right to within a millisecond at four
+  delays through noise and refusing to answer at all when the room
+  returned nothing. ⚠️ Two defects on the way, both the classic ones:
+  normalising by the captured energy ALONE lets a nearly-silent
+  window win (its energy falls faster than its correlation does), and
+  the confidence margin compared the peak against **its own
+  neighbour**, which is the same match one sample over — so every
+  correct measurement was rejected. **Remaining:** the screen that
+  plays the chirp and applies the number, device selection, and the
+  gain/gate/sensitivity knobs, which want a real microphone in a real
+  room to tune and this session had neither.
+  *Verified: 1401 tests (+5), gate green.*
 - [ ] V7 **Karaoke playback.** Sample-synchronous stem mixing,
   original vocals at zero by default, assisted runs marked.
 - [~] V8 **Events, results and polish.** Shipped: `LastResults` gains

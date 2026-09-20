@@ -33,6 +33,10 @@ pub(crate) enum Row {
     GuitarStudyTwins,
     /// A vocal chart and karaoke stems for every imported song.
     VocalCharts,
+    /// The microphone's measured round-trip latency.
+    MicOffset,
+    /// Whether the written octave is the target.
+    VocalPitch,
     NoFail,
     /// Room Stage: the game's events drive lights on the LAN.
     RoomLights,
@@ -70,7 +74,7 @@ impl Row {
     /// Every row, in the order the screen shows them: **alphabetical
     /// by label**, and kept that way by a test — a new row goes where
     /// its name falls, not at the end of the list.
-    const ALL: [Row; 33] = [
+    const ALL: [Row; 35] = [
         Row::AiSearch,
         Row::BeatPulse,
         Row::Controls,
@@ -88,6 +92,7 @@ impl Row {
         Row::LyricsModel,
         Row::LyricsOffset,
         Row::LyricsSize,
+        Row::MicOffset,
         Row::MusicVolume,
         Row::NoFail,
         Row::Particles,
@@ -104,6 +109,7 @@ impl Row {
         Row::TextScale,
         Row::VideoOffset,
         Row::VocalCharts,
+        Row::VocalPitch,
     ];
 
     pub(crate) const fn label(self) -> &'static str {
@@ -121,6 +127,8 @@ impl Row {
             Row::LoudnessMatch => "LOUDNESS MATCH",
             Row::GuitarStudyTwins => "GUITAR STUDY TWINS",
             Row::VocalCharts => "VOCAL CHARTS",
+            Row::MicOffset => "MIC OFFSET",
+            Row::VocalPitch => "VOCAL PITCH",
             Row::NoFail => "NO FAIL",
             Row::RoomLights => "ROOM LIGHTS",
             Row::ReducedFlashing => "REDUCED FLASHING",
@@ -159,6 +167,11 @@ impl Row {
             Row::LoudnessMatch => on_off(settings.normalize_loudness),
             Row::GuitarStudyTwins => on_off(settings.guitar_study_twins),
             Row::VocalCharts => on_off(settings.vocal_charts),
+            Row::MicOffset => format!("{:+.0} ms", settings.mic_offset_ms),
+            Row::VocalPitch => match settings.vocal_pitch_mode {
+                beatbyte_core::vocal::PitchMode::OctaveIndependent => "ANY OCTAVE".to_owned(),
+                beatbyte_core::vocal::PitchMode::Strict => "AS WRITTEN".to_owned(),
+            },
             Row::NoFail => on_off(settings.no_fail),
             Row::RoomLights => on_off(settings.room_lights),
             Row::SongPreview => on_off(settings.song_preview),
@@ -247,6 +260,8 @@ impl Row {
             Row::AiSearch => "picks which recording a song search fetches".to_owned(),
             Row::GuitarStudyTwins => crate::study_twin::row_subtitle(),
             Row::VocalCharts => crate::study_twin::vocal_row_subtitle(),
+            Row::MicOffset => "how late the microphone hears the song".to_owned(),
+            Row::VocalPitch => "an octave out: forgiven, or counted".to_owned(),
             _ => String::new(),
         }
     }
@@ -280,6 +295,20 @@ impl Row {
             Row::LoudnessMatch => settings.normalize_loudness = !settings.normalize_loudness,
             Row::GuitarStudyTwins => settings.guitar_study_twins = !settings.guitar_study_twins,
             Row::VocalCharts => settings.vocal_charts = !settings.vocal_charts,
+            Row::MicOffset => {
+                settings.mic_offset_ms =
+                    (settings.mic_offset_ms + 5.0 * direction).clamp(-250.0, 500.0);
+            }
+            Row::VocalPitch => {
+                settings.vocal_pitch_mode = match settings.vocal_pitch_mode {
+                    beatbyte_core::vocal::PitchMode::OctaveIndependent => {
+                        beatbyte_core::vocal::PitchMode::Strict
+                    }
+                    beatbyte_core::vocal::PitchMode::Strict => {
+                        beatbyte_core::vocal::PitchMode::OctaveIndependent
+                    }
+                };
+            }
             Row::NoFail => settings.no_fail = !settings.no_fail,
             Row::RoomLights => settings.room_lights = !settings.room_lights,
             Row::SongPreview => settings.song_preview = !settings.song_preview,

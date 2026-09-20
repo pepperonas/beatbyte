@@ -362,6 +362,148 @@ pub fn to_song_time(
     anchor.song_time_s + since_anchor - known_latency_s - f64::from(mic_offset_ms) / 1000.0
 }
 
+/// The longest round trip worth looking for, in seconds. Bluetooth
+/// can be a third of a second; beyond half a second something else
+/// is wrong and a number found out there would be noise.
+pub const MAX_ROUND_TRIP_S: f64 = 0.5;
+
+/// How much better the best match must be than the runner-up to be
+/// believed.
+pub const CALIBRATION_MARGIN: f32 = 1.5;
+
+/// Measure the round trip: how long after the game plays a sound the
+/// microphone hears it.
+///
+/// This is the number the calibration screen exists to produce, and
+/// it is the one part of a microphone's latency that cannot be
+/// derived — it is the output buffer, the speaker, the air, the
+/// input buffer and the driver, and only the room can say.
+///
+/// ## Why it is not a player tapping along
+///
+/// The controller's offset is measured by asking someone to tap on
+/// the beat, so it contains their reaction time. A microphone has no
+/// reaction time, and reusing that number would make every singer
+/// late by however long the player's hands take. So the game plays a
+/// known signal and looks for it coming back.
+///
+/// The signal must be one that correlates sharply with itself and
+/// with nothing else in a room — a short swept chirp, which is what
+/// [`chirp`] builds. Returns `None` when the best match is not
+/// clearly better than the next best: a room that returned nothing
+/// useful must say so rather than hand back its loudest accident.
+/// Pure — tested.
+#[must_use]
+pub fn round_trip_offset(played: &[f32], captured: &[f32], sample_rate: u32) -> Option<f64> {
+    let rate = f64::from(sample_rate.max(1));
+    #[expect(
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        reason = "a positive lag in samples from positive seconds"
+    )]
+    let max_lag = (MAX_ROUND_TRIP_S * rate) as usize;
+    if played.is_empty() || captured.len() <= played.len() {
+        return None;
+    }
+    let max_lag = max_lag.min(captured.len() - played.len());
+    // The played signal's own energy, once: the correlation is
+    // normalised by BOTH sides.
+    let played_energy: f64 = played.iter().map(|s| f64::from(*s) * f64::from(*s)).sum();
+    if played_energy <= 0.0 {
+        return None;
+    }
+    let score_at = |lag: usize| -> f32 {
+        let mut sum = 0.0f64;
+        let mut energy = 0.0f64;
+        for (i, &sample) in played.iter().enumerate() {
+            let heard = f64::from(captured[lag + i]);
+            sum += f64::from(sample) * heard;
+            energy += heard * heard;
+        }
+        // ⚠️ Normalised by BOTH sides — the NCC, bounded in [-1, 1].
+        // Dividing by the captured energy alone looks equivalent and
+        // is not: as a window approaches silence its energy goes to
+        // zero faster than its correlation does, so a sliver of room
+        // noise scores arbitrarily high and wins. The first version
+        // did exactly that and could not find a chirp it had placed
+        // at zero delay.
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "a correlation in [-1, 1]; f32 is the precision compared"
+        )]
+        let score = if energy > 0.0 {
+            (sum / (played_energy * energy).sqrt()) as f32
+        } else {
+            0.0
+        };
+        score
+    };
+
+    let mut best = (0usize, f32::NEG_INFINITY);
+    for lag in 0..=max_lag {
+        let score = score_at(lag);
+        if score > best.1 {
+            best = (lag, score);
+        }
+    }
+    if best.1 <= 0.0 {
+        return None;
+    }
+    // ⚠️ The runner-up must come from OUTSIDE the peak's own
+    // neighbourhood. A lag one sample either side of the answer
+    // scores almost exactly as well — of course it does, it is the
+    // same match — so comparing against it rejects every correct
+    // measurement there is. The first version did, and could not
+    // confirm a chirp sitting at zero delay. The exclusion is the
+    // chirp's own width, which is how far its match can plausibly
+    // smear.
+    let guard = played.len() / 2;
+    let mut runner_up = f32::NEG_INFINITY;
+    for lag in 0..=max_lag {
+        if lag.abs_diff(best.0) <= guard {
+            continue;
+        }
+        runner_up = runner_up.max(score_at(lag));
+    }
+    // Nothing outside the peak at all: the signal is shorter than the
+    // search, which is a clean match rather than an ambiguous one.
+    if runner_up.is_finite() && best.1 < runner_up * CALIBRATION_MARGIN {
+        return None;
+    }
+    Some(best.0 as f64 / rate)
+}
+
+/// A short swept chirp: the signal the calibration plays.
+///
+/// A sweep rather than a tone or a click. A tone correlates with
+/// itself at every period, so the answer would be ambiguous by whole
+/// periods; a click is broadband but tiny, so a room swallows it.
+/// A sweep is long enough to be heard and correlates sharply only
+/// with itself. Pure — tested.
+#[must_use]
+pub fn chirp(sample_rate: u32, seconds: f32, from_hz: f32, to_hz: f32) -> Vec<f32> {
+    let rate = sample_rate.max(1) as f32;
+    #[expect(
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        reason = "a positive sample count from positive seconds"
+    )]
+    let n = (seconds.max(0.0) * rate) as usize;
+    let mut out = Vec::with_capacity(n);
+    let mut phase = 0.0f32;
+    for i in 0..n {
+        let t = i as f32 / n.max(1) as f32;
+        let hz = from_hz + (to_hz - from_hz) * t;
+        // A raised-cosine envelope: a chirp that starts and stops
+        // abruptly is a click at each end, and the click correlates
+        // better than the sweep does.
+        let window = 0.5 - 0.5 * (core::f32::consts::TAU * t).cos();
+        out.push(0.7 * window * phase.sin());
+        phase += core::f32::consts::TAU * hz / rate;
+    }
+    out
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -605,6 +747,91 @@ mod tests {
         let before = anchor;
         assert!(!anchor.reconcile(6.0, 21.0));
         assert_eq!(anchor, before, "an exact agreement was corrected anyway");
+    }
+
+    #[test]
+    fn the_round_trip_is_found_where_it_was_put() {
+        let rate = 48_000u32;
+        let played = chirp(rate, 0.08, 300.0, 4_000.0);
+        for delay_ms in [0.0f64, 12.0, 45.0, 210.0] {
+            let delay = (delay_ms / 1000.0 * f64::from(rate)) as usize;
+            let mut captured = vec![0.0f32; delay];
+            // The room: quieter, and with noise on top.
+            let mut state = 0x1234_5678_9ABC_DEF0u64;
+            captured.extend(played.iter().map(|s| {
+                state = state
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1);
+                let noise = ((state >> 40) as f32 / 16_777_216.0 - 0.5) * 0.02;
+                s * 0.3 + noise
+            }));
+            captured.extend(std::iter::repeat_n(0.0, 4_000));
+            let found = round_trip_offset(&played, &captured, rate)
+                .unwrap_or_else(|| panic!("{delay_ms} ms was not found at all"));
+            let error_ms = (found * 1000.0 - delay_ms).abs();
+            assert!(
+                error_ms < 1.0,
+                "{delay_ms} ms read as {:.1} ms",
+                found * 1000.0
+            );
+        }
+    }
+
+    #[test]
+    fn a_room_that_heard_nothing_says_so_rather_than_guessing() {
+        // The failure that matters: a wrong offset silently makes
+        // every note late for the rest of the game.
+        let rate = 48_000u32;
+        let played = chirp(rate, 0.08, 300.0, 4_000.0);
+        let mut state = 0xDEAD_BEEF_CAFE_1234u64;
+        let noise: Vec<f32> = (0..rate as usize)
+            .map(|_| {
+                state = state
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1);
+                (state >> 40) as f32 / 16_777_216.0 - 0.5
+            })
+            .collect();
+        assert_eq!(
+            round_trip_offset(&played, &noise, rate),
+            None,
+            "noise was taken for the chirp"
+        );
+        assert_eq!(
+            round_trip_offset(&played, &vec![0.0; rate as usize], rate),
+            None,
+            "silence produced an offset"
+        );
+        // And nonsense inputs are not a panic.
+        assert_eq!(round_trip_offset(&[], &noise, rate), None);
+        assert_eq!(round_trip_offset(&played, &played[..10], rate), None);
+    }
+
+    #[test]
+    fn the_chirp_is_a_sweep_that_starts_and_ends_quietly() {
+        let c = chirp(48_000, 0.08, 300.0, 4_000.0);
+        assert_eq!(c.len(), 3_840);
+        // The envelope: a chirp that starts abruptly is a click, and
+        // a click correlates better than the sweep it is attached to.
+        assert!(c[0].abs() < 0.01, "it starts at {}", c[0]);
+        assert!(c[c.len() - 1].abs() < 0.01);
+        let peak = c.iter().fold(0.0f32, |a, b| a.max(b.abs()));
+        assert!(peak > 0.5 && peak <= 0.7, "peak {peak}");
+        // It really sweeps: the second half crosses zero far more
+        // often than the first.
+        let crossings = |half: &[f32]| half.windows(2).filter(|p| p[0] * p[1] < 0.0).count();
+        let half = c.len() / 2;
+        // 300 Hz to 4 kHz: the halves average about 1.1 and 3.1 kHz,
+        // so the second crosses zero roughly two and a half times as
+        // often. Asking for three was my arithmetic, not the signal's.
+        assert!(
+            crossings(&c[half..]) > crossings(&c[..half]) * 2,
+            "{} against {}",
+            crossings(&c[half..]),
+            crossings(&c[..half])
+        );
+        // A zero-length request is empty, not a panic.
+        assert!(chirp(48_000, 0.0, 300.0, 4_000.0).is_empty());
     }
 
     #[test]

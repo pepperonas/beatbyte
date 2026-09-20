@@ -158,6 +158,15 @@ pub struct Settings {
     /// honest way to get it is to measure the round trip.
     #[serde(default)]
     pub mic_offset_ms: f32,
+    /// Whether the written octave is the target, or any octave of it
+    /// will do.
+    ///
+    /// Octave-free by default: a chart carries one melody and the
+    /// people at the microphone have different voices, so holding a
+    /// bass to a soprano's octave would fail them for their range
+    /// rather than for their singing.
+    #[serde(default)]
+    pub vocal_pitch_mode: beatbyte_core::vocal::PitchMode,
     /// Tap mode: notes hit on fret press alone, no strum required.
     /// ON by default — the first real playtest showed keyboard
     /// players press frets and nothing happens (receptors light up,
@@ -266,6 +275,7 @@ impl Default for Settings {
             guitar_study_twins: true,
             vocal_charts: false,
             mic_offset_ms: 0.0,
+            vocal_pitch_mode: beatbyte_core::vocal::PitchMode::OctaveIndependent,
             tap_mode: true,
             perspective: true,
             stage_3d: true,
