@@ -33,6 +33,13 @@ the manifest ever carries a version this file does not describe.
   substring search always landed on the twin, which has one chart version and
   no test to build. An exact title now wins over a substring.
 
+### Notes
+
+- That fix immediately surfaced a chart defect the quirk had hidden: with the
+  harness reaching originals, `Girls Just Want to Have Fun` on Medium produces
+  **one overstrum, at note 601**. The store says where without anybody reading
+  a log; the twin still plays clean, so judgment is untouched.
+
 ## [0.17.18] - 2026-09-20
 
 ### Fixed

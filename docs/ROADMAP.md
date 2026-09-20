@@ -24,11 +24,22 @@ The feedback loop it feeds: [`adaptive-charting.md`](adaptive-charting.md).
   The only songs with several versions are exactly the ones that also
   have a twin, so the drill was unrunnable here and nobody had
   noticed. An exact title now wins over a substring.
+  ⚠️⚠️ **And the fix immediately found a chart defect that the quirk
+  had been hiding.** With the harness reaching originals for the
+  first time, `Girls Just Want to Have Fun` on Medium — 690 notes,
+  the original rather than its 375-note twin — produced **one
+  overstrum**, at note 601, 373.1 s into the song. The store says
+  that without anybody reading a log. The twin still passes (375
+  perfect, 0 misses, 0 overstrums) on the same build, so judgment is
+  untouched; the defect is the chart's, and it had simply never been
+  played by the harness.
   *Verified by running both drills against the store:* the rating
   drill landed `fun 4` and a `better` verdict in 1 session; the blind
   test played `chart.v7` against `chart.v8` of *Life Is a Flower* and
-  recorded "the second one" against the first side's hash.
-  *Verified: 1522 tests (+2), gate green.*
+  recorded "the second one" against the first side's hash. And the
+  release binary wrote **no JSONL file at all** (474 before, 474
+  after) — the retirement, checked rather than assumed.
+  *Verified: 1522 tests (+2), gate green, four autopilot runs.*
 - [x] **T10 The Definition of Done, measured** *(v0.17.18)*. The one
   item nothing else had answered: **does recording cost frames?**
   A/B on the release binary, same song, same machine, `BEATBYTE_FPS`:
