@@ -1239,7 +1239,7 @@ mod twin_tests {
             .resource::<crate::study_twin::StudyQueue>()
             .pending
             .iter()
-            .cloned()
+            .map(|work| work.folder.clone())
             .collect()
     }
 

@@ -25,6 +25,7 @@ mod players;
 mod redesign;
 mod review;
 mod study;
+mod vocals;
 
 #[derive(Parser)]
 #[command(
@@ -183,6 +184,30 @@ enum Command {
         /// Write `<audio>.loudness.json` beside each audio file.
         #[arg(long)]
         write: bool,
+    },
+    /// Make a song's vocal chart: separate the stems, read the sung
+    /// line off the vocal one and write `<audio>.vocals.json` beside
+    /// the song.
+    ///
+    /// Separation costs minutes of a saturated machine, so a song
+    /// that already has a current chart — or a settled answer such as
+    /// "instrumental" — is skipped unless `--force` says otherwise.
+    /// Needs a local `demucs`; without one nothing is analysed and
+    /// the songs stay exactly as playable as they were.
+    Vocals {
+        /// A song folder, a chart file, or an audio file.
+        path: PathBuf,
+        /// Treat the path as a library and work every song folder in
+        /// it.
+        #[arg(long)]
+        all: bool,
+        /// Analyse even where a current chart or a settled state
+        /// already exists.
+        #[arg(long)]
+        force: bool,
+        /// Report what is there; run nothing.
+        #[arg(long)]
+        status: bool,
     },
     /// Set a song's genre (display metadata; hash-neutral, so
     /// recorded sessions survive).
@@ -473,6 +498,12 @@ fn main() -> ExitCode {
                 loudness::run(&path, write)
             }
         }
+        Command::Vocals {
+            path,
+            all,
+            force,
+            status,
+        } => vocals::run(&path, &vocals::Args { all, force, status }),
         Command::SetGenre { chart, genre } => set_genre(&chart, &genre),
         Command::Players { add } => players::run(add.as_deref()),
         Command::Stats { player } => players::stats(player.as_deref()),

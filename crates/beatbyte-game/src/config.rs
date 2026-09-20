@@ -134,6 +134,19 @@ pub struct Settings {
     /// before the field existed.
     #[serde(default = "default_true")]
     pub guitar_study_twins: bool,
+    /// Make a vocal chart for every imported song: separate the
+    /// stems in the background, read the sung line off the vocal one,
+    /// and keep the karaoke backing.
+    ///
+    /// **Off by default, and deliberately so.** This is the one
+    /// setting in the game that spends the player's disk without
+    /// being asked: a separation is minutes of a saturated machine
+    /// and the two kept stems are roughly 80 MB per song, so a
+    /// library of two hundred songs is fifteen gigabytes. A feature
+    /// that quietly does that is a feature that gets discovered as a
+    /// full disk. The row says the cost; the player decides.
+    #[serde(default)]
+    pub vocal_charts: bool,
     /// Tap mode: notes hit on fret press alone, no strum required.
     /// ON by default — the first real playtest showed keyboard
     /// players press frets and nothing happens (receptors light up,
@@ -240,6 +253,7 @@ impl Default for Settings {
             song_preview: true,
             normalize_loudness: true,
             guitar_study_twins: true,
+            vocal_charts: false,
             tap_mode: true,
             perspective: true,
             stage_3d: true,

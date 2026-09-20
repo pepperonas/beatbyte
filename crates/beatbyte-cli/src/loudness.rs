@@ -18,7 +18,7 @@ fn measured_by() -> String {
 }
 
 /// The audio file a chart path or song folder points at.
-fn audio_of(path: &Path) -> Result<PathBuf, String> {
+pub(crate) fn audio_of(path: &Path) -> Result<PathBuf, String> {
     let (folder, chart_path) = if path.is_dir() {
         let names: Vec<String> = std::fs::read_dir(path)
             .map_err(|error| format!("cannot list `{}`: {error}", path.display()))?

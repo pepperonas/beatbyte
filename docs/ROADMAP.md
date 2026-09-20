@@ -405,10 +405,33 @@ that will not start.
   proved not to see another thread's. ⚠️ The allocator's first
   version was global and duly reported five phantom allocations —
   the test harness runs tests in parallel.*
-- [ ] V2b **Wiring it into the game.** Queue the shared separation
-  from the import, hand the Guitar Study twin the `other` stem out of
-  that same run, lazily analyse old songs from the library scan, and
-  link the aligner's words to the notes.
+- [~] V2b **Wiring it into the game** *(v0.17.11)*. Shipped: the
+  `VOCAL CHARTS` setting (**off by default and saying why** — a
+  separation is minutes of a saturated machine and the two kept stems
+  are ~80 MB a song, so two hundred songs is fifteen gigabytes), the
+  import queue carrying both jobs so **one** four-source run serves
+  the vocal chart and the Guitar Study twin, and
+  `beatbyte-cli vocals` for a song or a library with `--status` to
+  ask without paying. ⚠️ Fixed in passing: a failed chore start
+  re-queued a path rebuilt from the song's NAME, so the retry looked
+  for the folder in the working directory. **Remaining:** lazy
+  analysis of old songs from the library scan, and linking the
+  aligner's words to the notes.
+  *Verified: 1340 tests (+5), gate green, and the whole chain run on
+  a real song — Blondie's* Maria*: 52 s end to end, 426 notes in 19
+  phrases. ⚠️ Its pitch histogram had two peaks exactly twelve
+  semitones apart, which is the octave-error signature, so it was
+  checked against the stem's own spectrum rather than assumed: of the
+  notes charted at the upper peak, 21 % also had a partial an octave
+  below. That found a real defect — a local octave correction now
+  folds a frame back when a ±12 shift lands it MUCH closer to the
+  median of the second around it, which removed the outliers at MIDI
+  86, 81, 78, 48, 46 and 44. The two peaks themselves stayed, and the
+  phrase-by-phrase listing says why: they are the verses (~56) and
+  the choruses (~69). The chart is musically right. ⚠️ Never heard —
+  no ear has judged this chart, only its spectrum.*
+- [ ] V2c **Old songs and words.** Lazily analyse a library the scan
+  finds unanalysed, and link the aligner's words to the notes.
 - [ ] V3 **Microphone engine.** One shared capture stream for the
   stage meters and vocal play, bounded ring buffer, realtime pitch,
   timestamped frames onto `song_time`.

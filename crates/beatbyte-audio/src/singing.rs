@@ -71,6 +71,12 @@ pub struct SingingConfig {
     /// through its neighbours before it is worth keeping, in
     /// semitones.
     pub contour_tolerance_semitones: f32,
+    /// The window the octave correction takes its local reference
+    /// from, in seconds.
+    pub octave_window_s: f32,
+    /// How much closer an octave-shifted pitch must land to the local
+    /// reference before the shift is believed, in semitones.
+    pub octave_gain_semitones: f32,
 }
 
 impl Default for SingingConfig {
@@ -90,6 +96,8 @@ impl Default for SingingConfig {
             phrase_gap_s: 0.8,
             min_confidence: 0.5,
             contour_tolerance_semitones: 0.25,
+            octave_window_s: 1.0,
+            octave_gain_semitones: 3.0,
         }
     }
 }
@@ -196,6 +204,89 @@ pub fn bridge_gaps(frames: &[SungFrame], max_gap: usize) -> Vec<SungFrame> {
         for (step, slot) in out[start..index].iter_mut().enumerate() {
             let t = (step + 1) as f32 / (length + 1) as f32;
             slot.midi = Some(before + (after - before) * t);
+        }
+    }
+    out
+}
+
+/// Fold frames that are an octave away from what is being sung
+/// around them back onto it.
+///
+/// ## Why this is needed, measured rather than assumed
+///
+/// A voice's second harmonic is frequently louder than its
+/// fundamental, and McLeod's key maximum is a *threshold* on that:
+/// take the earliest crest that is nearly as tall as the tallest.
+/// Set it forgiving and half-period crests get taken (an octave too
+/// high); set it strict and the true crest gets skipped (an octave
+/// too low). There is no value that is right for every voice.
+///
+/// Measured on a real song — Blondie's *Maria*, checked against the
+/// stem's own spectrum rather than by ear — the pitch histogram had
+/// two peaks exactly twelve semitones apart, and of the notes charted
+/// at the upper one, **21 % also had a partial an octave below**:
+/// their fundamental was down there and the chart had taken the
+/// harmonic.
+///
+/// The fix is not a better threshold but a second look with context.
+/// A singer does not leap an octave and come straight back; a
+/// detector does. So each frame is compared with the median of the
+/// second around it, and a shift of ±12 or ±24 is applied only when
+/// it lands the frame **much** closer to that median — a genuine
+/// seven-semitone leap improves by two and is left alone, while a
+/// thirteen-semitone jump improves by twelve and is folded. Pure —
+/// tested.
+#[must_use]
+pub fn correct_octaves(frames: &[SungFrame], window_s: f32, gain_semitones: f32) -> Vec<SungFrame> {
+    let mut out = frames.to_vec();
+    if frames.len() < 3 {
+        return out;
+    }
+    let half = f64::from(window_s) / 2.0;
+    let mut neighbourhood: Vec<f32> = Vec::new();
+    for index in 0..frames.len() {
+        let Some(midi) = frames[index].midi else {
+            continue;
+        };
+        neighbourhood.clear();
+        // Walk outwards from the frame rather than scanning the whole
+        // list: the window is a second and the list is a whole song.
+        for other in frames[..index].iter().rev() {
+            if frames[index].time_s - other.time_s > half {
+                break;
+            }
+            if let Some(m) = other.midi {
+                neighbourhood.push(m);
+            }
+        }
+        for other in &frames[index + 1..] {
+            if other.time_s - frames[index].time_s > half {
+                break;
+            }
+            if let Some(m) = other.midi {
+                neighbourhood.push(m);
+            }
+        }
+        // Too little context to judge by. Leaving the frame alone is
+        // the conservative choice: an uncorrected frame is one frame,
+        // a wrongly corrected one is a wrong target.
+        if neighbourhood.len() < 5 {
+            continue;
+        }
+        let reference = median_of(&neighbourhood);
+        let here = (midi - reference).abs();
+        let mut best = midi;
+        let mut best_distance = here;
+        for shift in [-24.0f32, -12.0, 12.0, 24.0] {
+            let candidate = midi + shift;
+            let distance = (candidate - reference).abs();
+            if distance < best_distance {
+                best_distance = distance;
+                best = candidate;
+            }
+        }
+        if here - best_distance >= gain_semitones {
+            out[index].midi = Some(best);
         }
     }
     out
@@ -332,6 +423,14 @@ pub fn notes_from_frames(raw: &[SungFrame], config: &SingingConfig) -> Vec<Vocal
         return Vec::new();
     }
     let smoothed = median_filter(raw, config.median_frames);
+    // After the median (so a lone spike is already gone and cannot
+    // drag the local reference) and before the bridging (so an
+    // interpolated gap is drawn between corrected pitches).
+    let smoothed = correct_octaves(
+        &smoothed,
+        config.octave_window_s,
+        config.octave_gain_semitones,
+    );
     #[expect(
         clippy::cast_sign_loss,
         clippy::cast_possible_truncation,

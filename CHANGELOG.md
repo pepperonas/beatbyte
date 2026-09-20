@@ -14,6 +14,37 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.11] - 2026-09-20
+
+### Added
+
+- **Vocal charts: BeatByte can now read the sung line off a song.** With
+  the new `VOCAL CHARTS` setting on, an imported song is separated in the
+  background and what the singer sings is written beside it as
+  `<audio>.vocals.json` — phrases, notes, and a pitch contour per note so a
+  bend stays a bend. The karaoke backing and the isolated vocal are kept as
+  `<audio>.stems/`. Nothing is played against this yet; it is the target the
+  microphone will be judged against.
+- **`beatbyte-cli vocals`** makes or inspects the same chart from a terminal,
+  over one song or a whole library, through the same code the game runs.
+  `--status` reports what is there without spending a minute finding out.
+
+### Changed
+
+- **One separation now serves both background jobs.** With vocal charts on,
+  the Guitar Study twin rides along on the same four-source run instead of
+  asking for its own — the separator computes all four sources whatever it is
+  asked for, so the second run was pure cost.
+
+### Notes
+
+- `VOCAL CHARTS` is **off by default and says why**: a separation is minutes
+  of a saturated machine and the two kept stems are roughly 80 MB per song,
+  so a library of two hundred songs is fifteen gigabytes. The row names the
+  cost; the player decides.
+- Without a local `demucs` nothing changes: the setting row says how to get
+  it, imports are exactly what they were, and every song stays playable.
+
 ## [0.17.10] - 2026-09-19
 
 ### Added

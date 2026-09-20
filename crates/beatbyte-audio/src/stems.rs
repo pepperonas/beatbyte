@@ -504,6 +504,183 @@ fn sum_sources(separation: &Separation, names: &[&str]) -> Result<Channels, Stri
     Ok(sum)
 }
 
+/// Whether this machine can separate a song at all.
+///
+/// Re-exported here so a caller deciding what vocal work to queue
+/// does not have to know which tool does the separating.
+#[must_use]
+pub fn separator_available() -> bool {
+    crate::separate::available()
+}
+
+/// Everything one separation run produced, for the caller to file.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VocalWork {
+    /// What happened, in the form that gets written down.
+    pub state: StemState,
+    /// SHA-256 of the audio this ran on.
+    pub audio_sha256: String,
+    /// The separator and device, for the chart's provenance.
+    pub separator: String,
+    /// The phrases the singer is held to. Empty unless the state is
+    /// [`StemState::Ready`].
+    pub phrases: Vec<beatbyte_core::vocal::VocalPhrase>,
+}
+
+/// Read the vocal line off stems that are already on disk.
+///
+/// `None` when there is nothing current to read. This is what makes a
+/// better analysis cheap: improving the segmentation should re-chart
+/// a library in seconds, not re-separate it in hours, and the stems
+/// are the expensive half.
+#[must_use]
+pub fn analyse_existing_stems(
+    audio_path: &Path,
+    config: &crate::singing::SingingConfig,
+) -> Option<VocalWork> {
+    let hash = audio_sha256(audio_path).ok()?;
+    let manifest = read_manifest(audio_path)?;
+    if !manifest.is_current_for(&hash) || !manifest.state.is_ready() {
+        return None;
+    }
+    if !manifest.files_present(audio_path) {
+        return None;
+    }
+    let (samples, rate) = decode_stem_at(&manifest, audio_path, StemKind::Vocals)?;
+    let phrases = crate::singing::analyse(&samples, rate, config);
+    let state = if phrases.is_empty() {
+        StemState::NoReliableVocals
+    } else {
+        StemState::Ready
+    };
+    Some(VocalWork {
+        state,
+        audio_sha256: hash,
+        separator: manifest.separator,
+        phrases,
+    })
+}
+
+/// Separate a song, keep its stems and read the vocal line off them.
+///
+/// The one path the command line and the game both take, so they
+/// cannot drift into producing different charts from the same song.
+/// Every failure is a [`StemState`] rather than an error: each one is
+/// a fact worth writing down, and a song whose vocals cannot be made
+/// must still be playable on guitar.
+///
+/// `with_other` is handed the separator's `other` stem before the
+/// scratch is cleaned — that is how the Guitar Study twin rides along
+/// on the same run instead of paying for a second one. It is called
+/// only when the separation itself succeeded.
+///
+/// `scratch` is removed before returning, whatever happened.
+pub fn analyse_song(
+    audio_path: &Path,
+    scratch: &Path,
+    config: &crate::singing::SingingConfig,
+    with_other: impl FnOnce(&Path),
+) -> VocalWork {
+    let audio_sha256 = audio_sha256(audio_path).unwrap_or_default();
+    let unknown = |state: StemState| VocalWork {
+        state,
+        audio_sha256: audio_sha256.clone(),
+        separator: format!("demucs {}", crate::separate::DEMUCS_MODEL),
+        phrases: Vec::new(),
+    };
+    if audio_sha256.is_empty() {
+        return unknown(StemState::Failed {
+            reason: "cannot read the audio file".to_owned(),
+            retryable: false,
+        });
+    }
+    let separation = match separate_song(audio_path, scratch) {
+        Ok(separation) => separation,
+        Err(state) => {
+            let _ = std::fs::remove_dir_all(scratch);
+            let work = unknown(state);
+            let manifest =
+                StemManifest::new(&work.audio_sha256, &work.separator, work.state.clone());
+            let _ = write_manifest(audio_path, &manifest);
+            return work;
+        }
+    };
+    with_other(&separation.source("other"));
+
+    let manifest = persist(audio_path, &audio_sha256, &separation);
+    let _ = std::fs::remove_dir_all(scratch);
+    let manifest = match manifest {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            // Writing failed: a full disk or a read-only folder, both
+            // worth one retry.
+            let work = unknown(StemState::Failed {
+                reason: format!("cannot keep the stems: {error}"),
+                retryable: true,
+            });
+            let m = StemManifest::new(&work.audio_sha256, &work.separator, work.state.clone());
+            let _ = write_manifest(audio_path, &m);
+            return work;
+        }
+    };
+    let separator = manifest.separator.clone();
+    if !manifest.state.is_ready() {
+        // `Instrumental`: nothing was kept and there is nothing to
+        // read. The manifest already says so.
+        return VocalWork {
+            state: manifest.state,
+            audio_sha256,
+            separator,
+            phrases: Vec::new(),
+        };
+    }
+
+    let Some(stem) = decode_stem_at(&manifest, audio_path, StemKind::Vocals) else {
+        return VocalWork {
+            state: StemState::Failed {
+                reason: "the kept vocal stem cannot be decoded".to_owned(),
+                retryable: true,
+            },
+            audio_sha256,
+            separator,
+            phrases: Vec::new(),
+        };
+    };
+    let phrases = crate::singing::analyse(&stem.0, stem.1, config);
+    if phrases.is_empty() {
+        // There WAS singing in the stem — presence let it through —
+        // but nothing survived the confidence and length guards. That
+        // is its own answer: a wrong target is worse than no target.
+        let mut settled = StemManifest::new(&audio_sha256, &separator, StemState::NoReliableVocals);
+        settled.stems = manifest.stems;
+        let _ = write_manifest(audio_path, &settled);
+        return VocalWork {
+            state: StemState::NoReliableVocals,
+            audio_sha256,
+            separator,
+            phrases: Vec::new(),
+        };
+    }
+    VocalWork {
+        state: StemState::Ready,
+        audio_sha256,
+        separator,
+        phrases,
+    }
+}
+
+/// A stem decoded to mono, with the rate it decoded at.
+fn decode_stem_at(
+    manifest: &StemManifest,
+    audio_path: &Path,
+    kind: StemKind,
+) -> Option<(Vec<f32>, u32)> {
+    let path = manifest.stem_path(audio_path, kind)?;
+    let audio = decode_file(&path).ok()?;
+    let rate = audio.sample_rate();
+    Some((audio.samples().to_vec(), rate))
+}
+
 /// Decode a stem for analysis: mono, at the stem's own rate.
 pub fn decode_stem(manifest: &StemManifest, audio_path: &Path, kind: StemKind) -> Option<Vec<f32>> {
     let path = manifest.stem_path(audio_path, kind)?;
