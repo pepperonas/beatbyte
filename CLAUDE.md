@@ -489,7 +489,15 @@ artifact, smoke-test it (neutral CWD!), then
   intuition badly underestimates it: a selection fill written as
   `BRAND.with_alpha(0.12)` rendered as sRGB (99, 84, 35) — a solid
   olive bar, not the whisper intended. Sample the rendered pixel
-  rather than reasoning about the constant.
+  rather than reasoning about the constant. The same trap sits in a chain of
+  `Color::mix`: `mix` converts the right operand into the LEFT one's
+  space, so `palette::dimmed(c, 0.16).mix(&c, 1.0).mix(&WHITE, 0.3)`
+  mixes that white in LINEAR — where 0.3 is most of the way there,
+  not a sheen. And when the emissive is computed FROM the base
+  colour, whitening a surface raises what the bloom pass sees on it
+  just as surely as raising its glow would: the star impulse's
+  whitening had to be weighted per surface for exactly the reason
+  its glow already was.
 - **A second on-screen camera makes every untargeted UI root
   invisible.** With the 3D stage camera active alongside the 2D
   camera and no `IsDefaultUiCamera` marked, bevy_ui cannot pick a
@@ -843,7 +851,11 @@ artifact, smoke-test it (neutral CWD!), then
   `target/<profile>` (a full rebuild is cheaper than a broken cache),
   and keep an eye on it: it had grown to 70 GB and filled the disk
   mid-session, at which point no tool could even open its output
-  file. **The one part that IS safe to prune is `incremental/`**, and
+  file. A lasting symptom of one of those episodes is
+  `couldn't read .../libsqlite3-sys-*/out/bindgen.rs`: the crate's
+  build-script output went and cargo does not notice it is gone.
+  `cargo clean -p libsqlite3-sys` is the whole fix, and it comes
+  back every few weeks. **The one part that IS safe to prune is `incremental/`**, and
   it is the part that grows while you work: cargo collects a superseded
   session only when it rebuilds that same unit, so a configuration that
   ran once (`clippy --all-features`, `cargo doc`, a one-off `-p <crate>`

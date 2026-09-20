@@ -51,12 +51,19 @@ the manifest ever carries a version this file does not describe.
 
 ### Notes
 
-- **Not yet confirmed by eye.** Whether it is too bright, too long, or costs
-  the next pattern any readability is a question for a screen, and this
-  machine's was locked: every capture, harness and system alike, comes back
-  black. The numbers are reasoned against the effect this game already ships
-  — the combo-break flash's long-settled 0.10 — and against this file's own
-  recorded failure of a lifted fretboard turning into a lamp.
+- **Measured in the running game.** A full autopilot run of *"Heroes"* on
+  Medium — 297 perfect, 0 miss, 0 overstrum — produced **exactly 12
+  impulses for the chart's 12 phrases**, each landing on the phrase's last
+  note inside one frame, each reaching its design values (neck 0.95, ceiling
+  1.00, screen 0.27 of 0.28) over 26–27 frames ≈ 0.45 s, and each leaving a
+  tail of **0.000** on every part. The earliest a note
+  can follow a completed phrase anywhere in the library is **100 ms** (over
+  26 512 phrase endings in 688 charts; median 481 ms) — the flash's bright
+  half is over by then.
+- **Not confirmed by eye.** Whether it is too bright, too long, or costs the
+  next pattern any readability is a question for a screen, and this machine's
+  was locked — checked rather than assumed: five engine-side captures came
+  back byte-identical at mean luma 0.00.
 - The impulse **reports itself**: one line per completed phrase naming the
   song time it fired at, the peaks that were really applied, and the values
   left behind — which is the whole of "does the stage return".

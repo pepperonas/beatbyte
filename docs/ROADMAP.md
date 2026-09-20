@@ -47,17 +47,38 @@ same handle every frame.
   satisfied, a multiplayer test that called the resource directly
   instead of going through the bus that carries the player index,
   and a restart test that never exercised the entry half.
-  ⚠️ **Not yet confirmed by eye.** §15 of the commission asks for the
-  effect to be judged in the running game — is it too bright, too
-  long, does it obscure the next notes, do the three parts read as
-  one impact. The machine's screen was locked for this session and
-  every capture comes back black, harness and `screencapture` alike,
-  so the numbers are reasoned and measured rather than looked at.
-  What can be checked without a screen is: the impulse now **reports
-  itself** — one `info!` line per completed phrase naming the song
-  time it fired at, the peaks that were really applied after the
-  intensity setting and the accessibility rules, and the values left
-  behind, which is the whole of "does the stage return".
+  *Measured in the running game* (`"Heroes"`, Medium, a full
+  autopilot run end to end — **297 perfect, 0 miss, 0 overstrum,
+  exit 0**, so judgment is untouched — plus a two-player run and a
+  flat-view run, with no warning or error in any of them):
+  - **Exactly one impulse per completed phrase**: the chart has 12
+    phrases on Medium, all 12 were completed, and the log carries
+    **12 firings**. Not one on a star note along the way, not two
+    for one phrase.
+  - **The trigger lands on the phrase's last note**: reported at
+    19.97 / 37.04 / 54.11 s against the chart's 19.96 / 37.04 /
+    54.10 — inside one frame, which is where the report is taken.
+  - **The shapes reach their design values and leave nothing
+    behind**: neck 0.95, ceiling 1.00, screen 0.27 of an intended
+    0.28, over 26–27 frames ≈ 0.45 s, and a tail of **0.000 on every
+    part of all twelve**.
+  - **The earliest a note can follow a completed phrase is 100 ms** —
+    measured over 26 512 phrase endings in 688 charts; the median is
+    481 ms and nothing in the library is tighter than 100. The flash
+    is above half its peak for the first ~85 ms, so its bright half
+    is over before the earliest possible next note; in the tightest
+    23 % of endings that note is judged under a veil of 0.14 and
+    falling.
+  ⚠️ **Not confirmed by eye.** §15 asks for the effect to be judged
+  in the running game — is it too bright, too long, does it obscure
+  the next notes, do the three parts read as one impact. The
+  machine's screen was locked and this was **checked rather than
+  assumed**: five engine-side captures came back byte-identical at
+  mean luma 0.00. Two questions are waiting for a screen: the peak
+  itself, and that **the flash is a true full-screen overlay** —
+  the quad sits at z 20, above the HUD (z 3–5) and the lyric line
+  (z 3.8–4.1), which is what was commissioned ("über dem gesamten
+  Bild") and also the one place §6's readability rule could bite.
 
 ## Gameplay telemetry (2026-09-20, v0.17.13–)
 
