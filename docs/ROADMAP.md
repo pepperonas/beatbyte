@@ -34,7 +34,21 @@ The feedback loop it feeds: [`adaptive-charting.md`](adaptive-charting.md).
   sidecar records which **repeated span** a note is in and nothing
   calls it a chorus. Writing a guess into a file is how a guess
   becomes a fact.
-  *Verified: 1519 tests (+16), gate green.*
+  ⚠️ **Importing every sidecar was wrong, and the number said so.**
+  The first import put all 1 664 chart-version × difficulty
+  combinations into the store — 970 904 note contexts — and turned a
+  7 MB store into 45 MB for **exactly the same analysis**, because
+  only 72 of them have a session to join to. The default is now what
+  can be joined; `--all` takes the rest. 7.8 MB, identical answers.
+  *Measured on the real library:* 171 songs, 416 sidecars, 18 MB, 0
+  failed; 36 139 note contexts in the store; the §20 question
+  answered across 18 919 judged notes. The first readings, as
+  questions rather than conclusions: notes inside a **repeated span**
+  are missed less (33.9 % against 42.1 %), and notes with **no onset
+  under them** are missed LESS (34.7 %) than notes on a firm one
+  (47.6 %) — the opposite of a reasonable guess, and exactly the kind
+  of thing somebody now has to go and listen to.
+  *Verified: 1520 tests (+17), gate green.*
 - [x] **T8 + T9 The debug view, singing, and the benchmark**
   *(v0.17.16)*. The overlay says what the writer is doing and shouts
   a dropped event; vocal verdicts are recorded as cents and grades

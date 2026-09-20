@@ -330,6 +330,20 @@ impl Store {
         }
     }
 
+    /// Every `(chart_hash, difficulty)` the store has a session for.
+    ///
+    /// What makes importing only the joinable contexts possible: the
+    /// library's charts outnumber the played ones by an order of
+    /// magnitude, and a context nothing can join to is a row that
+    /// costs space and answers nothing.
+    pub fn played_charts(&self) -> Result<Vec<(String, u8)>> {
+        self.query(
+            "SELECT DISTINCT chart_hash, difficulty FROM gameplay_session",
+            &[],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+    }
+
     /// How many chart notes the store knows the music of.
     pub fn context_count(&self) -> Result<u64> {
         let count: i64 = self
@@ -815,6 +829,26 @@ mod tests {
             .expect("replaces");
         assert_eq!(store.context_count().expect("counts"), 1);
         assert_eq!(store.context("chart-a", 1, 1).expect("reads"), None);
+    }
+
+    #[test]
+    fn the_store_knows_which_charts_were_actually_played() {
+        let mut store = Store::open_in_memory().expect("a store");
+        store.begin(&a_session("one")).expect("begins");
+        let mut other = a_session("two");
+        other.chart_hash = "other".to_owned();
+        other.difficulty = 3;
+        store.begin(&other).expect("begins");
+        // Two runs of the same chart are one chart.
+        let mut again = a_session("three");
+        again.chart_hash = "abc123".to_owned();
+        store.begin(&again).expect("begins");
+        let mut played = store.played_charts().expect("asks");
+        played.sort();
+        assert_eq!(
+            played,
+            vec![("abc123".to_owned(), 1), ("other".to_owned(), 3)]
+        );
     }
 
     #[test]

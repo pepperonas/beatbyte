@@ -369,15 +369,24 @@ pub fn session_report(store: &Store, session: SessionId) -> Result<String> {
 pub fn overview(store: &Store) -> Result<String> {
     let sessions = store.session_count()?;
     let events = store.event_count()?;
+    let contexts = store.context_count()?;
     let bytes = store.size_bytes()?;
     let incomplete = analytics::incomplete_sessions(store)?.len();
     let per_session = events.checked_div(sessions).unwrap_or(0);
-    let per_event = bytes.checked_div(events).unwrap_or(0);
-    Ok(format!(
+    let mut out = format!(
         "{sessions} sessions, {events} events ({per_session} per session), \
-         {:.1} MB ({per_event} bytes per event), {incomplete} incomplete\n",
-        bytes as f64 / 1_048_576.0
-    ))
+         {incomplete} incomplete\n"
+    );
+    if contexts > 0 {
+        out.push_str(&format!(
+            "{contexts} chart notes with their music beside them\n"
+        ));
+    }
+    // Deliberately NOT "bytes per event": the file holds the chart
+    // contexts too, and dividing the whole thing by the event count
+    // reported 321 bytes an event for a store whose events cost 51.
+    out.push_str(&format!("{:.1} MB on disk\n", bytes as f64 / 1_048_576.0));
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -534,6 +543,11 @@ mod tests {
         let text = overview(&store).expect("summarises");
         assert!(text.starts_with("1 sessions, 3 events"), "{text}");
         assert!(text.contains("0 incomplete"));
+        assert!(
+            !text.contains("per event"),
+            "the file holds chart contexts too; bytes-per-event over \
+             the whole file is a number about nothing: {text}"
+        );
     }
 
     #[test]

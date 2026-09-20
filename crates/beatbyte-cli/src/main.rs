@@ -151,6 +151,12 @@ enum TelemetryCommand {
     Context {
         /// The songs directory.
         library: PathBuf,
+        /// Import every chart version, not only the ones a session
+        /// can join to. Most of a library has never been played, and
+        /// a context nothing joins to costs space and answers
+        /// nothing.
+        #[arg(long)]
+        all: bool,
         /// The database (defaults to the game's own).
         #[arg(long)]
         store: Option<PathBuf>,
@@ -661,7 +667,11 @@ fn main() -> ExitCode {
                 store,
             } => telemetry::run_calibration(store, player, min_hits),
             TelemetryCommand::Input { store } => telemetry::run_input(store),
-            TelemetryCommand::Context { library, store } => telemetry::run_context(store, &library),
+            TelemetryCommand::Context {
+                library,
+                all,
+                store,
+            } => telemetry::run_context(store, &library, all),
             TelemetryCommand::Music { min_judged, store } => {
                 telemetry::run_music(store, min_judged)
             }

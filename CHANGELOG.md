@@ -14,6 +14,19 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.18] - 2026-09-20
+
+### Fixed
+
+- **`telemetry context` imports only what can be joined.** A library holds an
+  order of magnitude more chart versions than anyone has played; importing all
+  of them turned a 7 MB store into 45 MB and produced **exactly the same
+  analysis**, because a context nothing joins to answers nothing. `--all`
+  imports the rest.
+- **`telemetry status` no longer reports a bytes-per-event figure.** The file
+  holds chart contexts too, so dividing the whole thing by the event count said
+  321 bytes for events that cost 51. It reports the pieces instead.
+
 ## [0.17.17] - 2026-09-20
 
 ### Added

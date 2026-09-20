@@ -454,16 +454,34 @@ pub fn run_input(path: Option<PathBuf>) -> ExitCode {
 
 /// `telemetry context --library <dir>`: load the sidecars a library
 /// carries into the store, so the §20 join has something to join to.
-pub fn run_context(store: Option<PathBuf>, library: &Path) -> ExitCode {
+pub fn run_context(store: Option<PathBuf>, library: &Path, everything: bool) -> ExitCode {
     let (mut database, path) = match open(store) {
         Ok(value) => value,
         Err(error) => return fail(&error),
     };
     println!("reading {} into {}", library.display(), path.display());
-    let found = crate::context::load_library(library);
+    let mut found = crate::context::load_library(library);
+    if !everything {
+        // Only the charts the store can actually join to. A library
+        // holds an order of magnitude more chart versions than anyone
+        // has played, and a context nothing can join to costs space
+        // and answers nothing. (Measured: importing all of them made
+        // a 7 MB store 45 MB.)
+        let played: std::collections::HashSet<(String, u8)> = match database.played_charts() {
+            Ok(rows) => rows.into_iter().collect(),
+            Err(error) => return fail(&error.to_string()),
+        };
+        let before = found.len();
+        found.retain(|(hash, difficulty, _)| played.contains(&(hash.clone(), *difficulty)));
+        println!(
+            "{} of {before} chart version(s) have a session to join to (`--all` for the rest)",
+            found.len()
+        );
+    }
     if found.is_empty() {
         eprintln!(
-            "no context sidecar found — run `beatbyte-cli context --all {}` first",
+            "nothing to import — run `beatbyte-cli context --all {}` first, and play \
+             something (or pass `--all` to import charts nobody has played)",
             library.display()
         );
         return ExitCode::from(2);
