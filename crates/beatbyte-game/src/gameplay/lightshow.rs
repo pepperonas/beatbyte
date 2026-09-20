@@ -224,11 +224,19 @@ pub const STROBE_WHITE: Color = Color::srgb(1.0, 1.0, 1.0);
 pub const STROBE_DIP: f32 = 0.6;
 /// How hard the ceiling is driven by a completed star-power phrase.
 ///
-/// Under the room-level strobe's own [`STROBE_FLASH`]: the phrase
-/// impulse hits EVERY lamp at once rather than a shuffled pair, so
-/// the same per-lamp number would be five times the light on the
-/// stage and would read as a white-out rather than as a hit.
-pub const STAR_FLASH: f32 = 2_400_000.0;
+/// Far under the room-level strobe's own [`STROBE_FLASH`], because
+/// the phrase impulse hits **every one of the twelve heads at once**
+/// rather than a shuffled pair: at the strobe's per-lamp number the
+/// venue would take 60 M against the strobe's 12 M. The first cut
+/// used 2.4 M — 28.8 M all at once, still 2.4× the strobe's total —
+/// and on screen the beams flooded the room and washed the score,
+/// the crowd and the PA out (mean frame luma 2.5× the baseline a
+/// twentieth of a second in, with the flash itself already lowered).
+/// One million puts the impulse's TOTAL at the strobe's, which is
+/// the loudest thing the room does; that every fixture goes white in
+/// the same instant — which the strobe never does — is what makes it
+/// read as bigger.
+pub const STAR_FLASH: f32 = 1_000_000.0;
 
 /// How long the strobe stays armed after the last sample over the
 /// threshold. The bit is live and flickers with the music (no

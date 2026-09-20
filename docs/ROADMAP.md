@@ -69,16 +69,44 @@ same handle every frame.
     is over before the earliest possible next note; in the tightest
     23 % of endings that note is judged under a veil of 0.14 and
     falling.
-  ⚠️ **Not confirmed by eye.** §15 asks for the effect to be judged
-  in the running game — is it too bright, too long, does it obscure
-  the next notes, do the three parts read as one impact. The
-  machine's screen was locked and this was **checked rather than
-  assumed**: five engine-side captures came back byte-identical at
-  mean luma 0.00. Two questions are waiting for a screen: the peak
-  itself, and that **the flash is a true full-screen overlay** —
-  the quad sits at z 20, above the HUD (z 3–5) and the lyric line
-  (z 3.8–4.1), which is what was commissioned ("über dem gesamten
-  Bild") and also the one place §6's readability rule could bite.
+- [x] **S2 Looked at, and twice too bright** *(v0.17.21)*. §15's
+  eyes-on pass, once the screen was unlocked. Both numbers that
+  could only be reasoned about were wrong, and in a way no
+  measurement without a picture would have caught.
+  - **The screen flash, 0.28 → 0.12.** On screen 0.28 was a
+    whiteout: mean frame luma **2.86×** the baseline, the score
+    digits, the hit label, the crowd and the PA all behind a veil —
+    and the neck's own lift invisible under it, which is the exact
+    opposite of "the highway lights up". The frame that looked right
+    was the one 0.12 s into that flash, at 1.90×, where the alpha is
+    ~0.10 — the combo-break flash's long-settled value. **The number
+    this game had already tuned was the right order all along**, and
+    the reasoning that white needs less than red got the direction
+    right and the amount 2.8× wrong.
+  - **The ceiling, 2 400 000 → 1 000 000 per lamp.** Lowering the
+    flash barely moved the peak (2.48× at +50 ms), which said the
+    veil was mostly NOT the overlay: the impulse hits **all twelve
+    heads at once** where the room strobe hits a shuffled pair, so
+    2.4 M per lamp is 28.8 M against the strobe's 12 M. At 1.0 M the
+    impulse's total equals the strobe's — still the loudest thing
+    the room does, and every fixture going white in the same instant
+    (which the strobe never does) is what makes it read as bigger.
+  *Measured after* (fire at 19.96 s, frames by song time): −20 ms
+  1.00× · **+20 ms 2.50×** · +30 ms 2.33× · +40 ms 2.20× · +50 ms
+  1.67× · +60 ms 1.10× · +330 ms 0.96×. **Looked at:** at the peak
+  the score reads, the hit label reads, the lyric line reads, the
+  crowd and the PA are there, and the beams are visibly white; at
+  +60 ms the neck's rails and hit line carry the afterglow; by
+  +330 ms it is gone. One impact, readable throughout.
+  ⚠️ The lesson is the one this file already carries in another
+  form: **pixel metrics prove a change happened, only looking proves
+  it is the right one.** Everything checkable without a screen —
+  the trigger, the timings, the tails, the 100 ms note gap — was
+  green on a version that was unusable.
+  ⚠️ And a test that pinned the peak as a literal (`> 0.2`) went red
+  on the first tuning step. A tuned number does not belong in an
+  assertion: the test now derives its threshold from the miss
+  profile, which is the property it actually means.
 
 ## Gameplay telemetry (2026-09-20, v0.17.13–)
 

@@ -14,6 +14,29 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.21] - 2026-09-21
+
+### Changed
+
+- **The star-power impact was twice too bright, and only looking showed it.**
+  The screen flash drops from 0.28 to **0.12** and the ceiling burst from
+  2 400 000 to **1 000 000** per lamp. At the old values the peak frame was
+  2.86× the baseline brightness: the score, the hit label, the crowd and the
+  PA all disappeared behind a white veil — and the neck's own lift with
+  them, which is the opposite of what the effect is for. Two things it turned
+  out to be: the overlay, and — much more of it — twelve ceiling heads firing
+  at once where the room strobe only ever hits a shuffled pair.
+- After the change, measured frame by frame from the moment it fires: 2.50×
+  at +20 ms, 1.67× at +50 ms, 1.10× at +60 ms, back to baseline by +330 ms.
+  At the peak the score, the hit label and the lyric line all still read.
+
+### Fixed
+
+- A test pinned the flash's peak as a literal and went red the first time
+  anybody tuned it. It now derives its threshold from the miss profile —
+  which is the property it was always about: the star flash is the brighter
+  of the two.
+
 ## [0.17.20] - 2026-09-20
 
 ### Added

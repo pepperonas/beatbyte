@@ -191,17 +191,18 @@ impl FlashProfile {
 
 /// How white the screen goes when a star-power phrase lands.
 ///
-/// **Not yet confirmed by eye.** The number is reasoned, not looked
-/// at: 0.28 is the middle of the range the effect was commissioned
-/// with, and it is 2.8× the combo-break flash's long-settled 0.10 —
-/// which understates it, because these alphas blend in LINEAR space
-/// and white carries far more luma than the break flash's red. On a
-/// dark frame it adds roughly 0.27 luma against the break flash's
-/// 0.02, and it is above half its own peak for about a tenth of a
-/// second. That is a camera flash, which is what was asked for; the
-/// open question is only whether it costs the next pattern any
-/// readability, and that question needs a screen.
-pub const STAR_FLASH_PEAK: f32 = 0.28;
+/// **Tuned by looking, after reasoning got it badly wrong.** The
+/// first value was 0.28 — the middle of the commissioned range, and
+/// defensible on every number available without a screen. On screen
+/// it was a whiteout: mean frame luma 2.86× the baseline, the score
+/// digits, the hit label, the crowd and the PA all behind a veil,
+/// and the neck's own lift invisible underneath it — the opposite of
+/// "the highway lights up". The frame that looked right was the one
+/// 0.12 s into that flash, at 1.90× and an alpha of ~0.10, which is
+/// the combo-break flash's long-settled value. So this sits just
+/// above it: a bigger, positive moment in the same class of
+/// brightness, not a different order of it.
+pub const STAR_FLASH_PEAK: f32 = 0.12;
 
 /// The flash's shape `age` seconds in, 0..1.
 ///
@@ -946,7 +947,13 @@ mod tests {
         flash.request(FlashProfile::star(false, 1.0));
         flash.advance(0.03);
         let bright = flash.alpha();
-        assert!(bright > 0.2, "{bright}");
+        // Derived, not a literal: the peak is a tuned number, and a
+        // test that pins it would go red every time somebody looks at
+        // the effect. What has to hold is that the star flash really
+        // IS the brighter of the two, or the rest of this proves
+        // nothing.
+        let miss_peak = FlashProfile::miss(false, 1.0).peak;
+        assert!(bright > miss_peak, "star {bright} vs miss {miss_peak}");
         flash.request(FlashProfile::miss(false, 1.0));
         assert_eq!(
             flash.alpha(),
