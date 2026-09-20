@@ -435,9 +435,31 @@ that will not start.
 - [ ] V3 **Microphone engine.** One shared capture stream for the
   stage meters and vocal play, bounded ring buffer, realtime pitch,
   timestamped frames onto `song_time`.
-- [ ] V4 **`VocalSession` and scoring.** Pitch/timing/coverage/stability
-  weighting, rap and spoken notes judged without a pitch penalty, and
-  the shared performance core so there is one Hype, not two.
+- [x] V4 **`VocalSession` and scoring.** `beatbyte_core::vocal_session`
+  judges a singer the way `session` judges a guitarist: frames in,
+  note and phrase outcomes out, deterministic and engine-free. The
+  plan's weighting (pitch 65 %, timing 15 %, hold 15 %, steadiness
+  5 %), the cent bands scaled per difficulty, and two rules that are
+  the point of the whole thing — **loudness is never a reward** (it
+  decides whether a frame counts, and nothing else; a game that pays
+  for volume teaches people to shout) and **rap and speech leave
+  pitch out of their denominator** rather than scoring zero in it.
+  ⚠️ The first design capped a note's grade by its TOTAL score, which
+  already contains pitch — so the cent table was almost decorative: a
+  note 15 cents out is Perfect by the table and came back Great.
+  The cap is by **delivery** (timing and hold) now, which is the one
+  thing it was ever for: a note perfectly in tune for a third of its
+  length is not a Perfect. ⚠️ A blind mutation probe found the
+  rewind guard untested — a single rewound frame clamps its own span
+  to zero, so removing the guard changed nothing; it takes a rewind
+  **followed by a replay**, which is what a clock snap actually looks
+  like, and that pays for the same second twice.
+  Deliberately NOT here: Hype, the rock meter and the combo ladder's
+  owner. This produces outcomes and the game feeds them to the one
+  implementation that exists — a second Hype would be two Hypes.
+  *Verified: 1360 tests (+20), gate green, nine mutation probes bite
+  (including one that makes a louder frame buy coverage, against the
+  test that sings the same phrase at a whisper and a shout).*
 - [ ] V5 **Vocal presentation.** Target bars, the live pitch trace,
   high/low, phrase feedback, and the accessibility variants.
 - [ ] V6 **Calibration and settings.** A per-device microphone offset

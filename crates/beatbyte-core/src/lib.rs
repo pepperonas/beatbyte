@@ -23,6 +23,7 @@
 //! - [`stats`] — what a roster and a play log say about a player
 //! - [`vocal`] — vocal charts: the melody a singer is held to, and
 //!   the pitch arithmetic that judges one
+//! - [`vocal_session`] — judging a singer against one
 //!
 //! ## Time convention
 //!
@@ -42,6 +43,7 @@ pub mod stats;
 pub mod telemetry;
 pub mod timing;
 pub mod vocal;
+pub mod vocal_session;
 
 pub use difficulty::Difficulty;
 pub use lane::{Lane, LaneSet};
@@ -54,6 +56,10 @@ pub use timing::{Judgment, TempoMap, TimingWindows};
 pub use vocal::{
     PitchMode, VocalKind, VocalNote, VocalPart, VocalPhrase, VocalPitchPoint, VocalRange,
     VocalRole, VocalToken,
+};
+pub use vocal_session::{
+    NoteOutcome, PhraseOutcome, VocalEvent, VocalGrade, VocalInputFrame, VocalPerformance,
+    VocalScoreConfig, VocalSession,
 };
 
 /// The crate version, kept in sync with the workspace version.
