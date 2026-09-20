@@ -442,6 +442,31 @@ pub fn parse_shot_times(raw: &str) -> Vec<f64> {
         .collect()
 }
 
+/// The file name a requested moment is saved under.
+#[must_use]
+pub fn shot_name(at: f64) -> String {
+    format!("gameplay-t{at}")
+}
+
+/// Which requested moment this frame belongs to, if any.
+///
+/// A moment stays claimable for a second after its time so that a
+/// frame arrives even on a machine that stutters. That window is far
+/// wider than the moments themselves need to be: photographing a
+/// 300 ms effect means asking for times a few hundredths apart, and
+/// their windows all overlap. So a moment that has already been
+/// photographed steps aside for the next one instead of swallowing
+/// its window — which is the whole difference between one picture of
+/// an impulse and a series of them.
+#[must_use]
+pub fn next_shot(times: &[f64], now: f64, already: impl Fn(f64) -> bool) -> Option<f64> {
+    times
+        .iter()
+        .copied()
+        .filter(|&at| (at..at + 1.0).contains(&now))
+        .find(|&at| !already(at))
+}
+
 /// Take one screenshot per named moment of the run (state screens
 /// wait out the transition fade first).
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI
@@ -506,13 +531,13 @@ fn autopilot_screenshots(
             // a frame within a second after each listed song time,
             // named by it — for looking at a lyric lead-in, a
             // countdown, a line mid-fill, whatever a change touched.
-            let requested = shot_times()
-                .into_iter()
-                .find(|&at| (at..at + 1.0).contains(&now));
+            let requested = next_shot(&shot_times(), now, |at| {
+                taken.contains(shot_name(at).as_str())
+            });
             if let Some(at) = requested {
                 // One leak per requested moment: the set of names is
                 // `&'static str`, and a run asks for a handful.
-                let name: &'static str = Box::leak(format!("gameplay-t{at}").into_boxed_str());
+                let name: &'static str = Box::leak(shot_name(at).into_boxed_str());
                 Some(name)
             } else if hype {
                 Some("gameplay-hype")
@@ -2372,6 +2397,37 @@ mod tests {
             vec![17.5, 39.0]
         );
         assert!(super::parse_shot_times("").is_empty());
+    }
+
+    #[test]
+    fn moments_a_tenth_apart_each_get_their_own_frame() {
+        // Photographing an impulse: three moments inside one window.
+        let times = [18.80, 18.87, 19.00];
+        let mut shot: Vec<f64> = Vec::new();
+        let mut frames = Vec::new();
+        // One frame every 10 ms across the impulse.
+        for step in 0..30u16 {
+            let now = 18.78 + f64::from(step) * 0.01;
+            if let Some(at) = super::next_shot(&times, now, |at| shot.contains(&at)) {
+                shot.push(at);
+                frames.push(at);
+            }
+        }
+        assert_eq!(
+            frames,
+            vec![18.80, 18.87, 19.00],
+            "a moment already photographed must step aside, or the first \
+             one swallows the second's window for a whole second"
+        );
+    }
+
+    #[test]
+    fn a_moment_is_claimable_for_a_second_and_not_before_its_time() {
+        let times = [30.0];
+        assert_eq!(super::next_shot(&times, 29.99, |_| false), None);
+        assert_eq!(super::next_shot(&times, 30.0, |_| false), Some(30.0));
+        assert_eq!(super::next_shot(&times, 30.99, |_| false), Some(30.0));
+        assert_eq!(super::next_shot(&times, 31.01, |_| false), None);
     }
 
     #[test]

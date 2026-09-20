@@ -222,6 +222,14 @@ pub const STROBE_WHITE: Color = Color::srgb(1.0, 1.0, 1.0);
 /// which flashed the spots and left the wash alone — put white on
 /// the stage that could not be seen in a single photographed frame.
 pub const STROBE_DIP: f32 = 0.6;
+/// How hard the ceiling is driven by a completed star-power phrase.
+///
+/// Under the room-level strobe's own [`STROBE_FLASH`]: the phrase
+/// impulse hits EVERY lamp at once rather than a shuffled pair, so
+/// the same per-lamp number would be five times the light on the
+/// stage and would read as a white-out rather than as a hit.
+pub const STAR_FLASH: f32 = 2_400_000.0;
+
 /// How long the strobe stays armed after the last sample over the
 /// threshold. The bit is live and flickers with the music (no
 /// hysteresis, deliberately); without a hold the strobe stutters in
@@ -618,6 +626,7 @@ pub fn drive_highlight(
     ears: Res<Ears>,
     time: Res<Time>,
     mut highlight: ResMut<Highlight>,
+    star: Res<super::starpower::StarPower>,
     mut lamps: Query<(
         Entity,
         &mut SpotLight,
@@ -700,9 +709,15 @@ pub fn drive_highlight(
     let strobe = position
         .filter(|_| strobing(now, highlight.strobe_until, settings.reduced_flashing))
         .map(|pos| highlight.burst.tick(now, pos, plan));
+    // A completed star-power phrase, layered OVER all of the above:
+    // it never touches the threshold, the arming or the burst clock,
+    // it adds light for a fraction of a second and then contributes
+    // exactly zero, and the lamps go back to their own colour and
+    // intensity through the same path everything else here uses.
+    let star_hit = star.ceiling(settings.reduced_flashing) * settings.fx_intensity.clamp(0.0, 1.0);
     // Nothing to say and nothing said last frame: every lamp already
     // sits at its own colour and intensity.
-    let active = highlight.punch > 0.0 || strobe.is_some();
+    let active = highlight.punch > 0.0 || strobe.is_some() || star_hit > 0.0;
     if !active && !highlight.was_active {
         return;
     }
@@ -746,11 +761,18 @@ pub fn drive_highlight(
         if hit > 0.0 && hits.len() == 1 {
             tally.1 += 1;
         }
-        if hit > 0.0 {
+        // A phrase impulse lights the ceiling whether or not the
+        // room-level strobe happens to be firing, and the two simply
+        // add: two reasons for the same lamp to be bright are not a
+        // reason to pick one.
+        let star = if rig_lamp.is_some() { star_hit } else { 0.0 };
+        if hit > 0.0 || star > 0.0 {
             // White for the whole flash: a xenon tube does not tint.
             // The brightness carries the shape.
             light.color = STROBE_WHITE;
-            light.intensity = base.intensity.mul_add(gain, STROBE_FLASH * hit);
+            light.intensity = base
+                .intensity
+                .mul_add(gain, STAR_FLASH.mul_add(star, STROBE_FLASH * hit));
         } else {
             light.color = base.color;
             light.intensity = base.intensity * gain * dip;
@@ -1823,6 +1845,9 @@ mod tests {
             ..Settings::default()
         });
         app.init_resource::<Highlight>();
+        // The star-power impulse the ceiling reads: idle here, so the
+        // light show's own behaviour is what these tests measure.
+        app.init_resource::<crate::gameplay::starpower::StarPower>();
         app.init_resource::<GameClock>();
         // A loud room: over the governor's opening threshold.
         app.insert_resource(Ears(Some(beatbyte_audio::listen::Listener::stub(
@@ -1981,6 +2006,9 @@ mod tests {
                 ..Settings::default()
             });
             app.init_resource::<Highlight>();
+            // The star-power impulse the ceiling reads: idle here, so the
+            // light show's own behaviour is what these tests measure.
+            app.init_resource::<crate::gameplay::starpower::StarPower>();
             // No input device: nothing is measured, ever.
             app.insert_resource(Ears(None));
             app.init_resource::<GameClock>();

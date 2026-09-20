@@ -4,6 +4,61 @@
 Rules of engagement live in [`CLAUDE.md`](../CLAUDE.md); this file
 holds the work itself.
 
+## The star-power impact (2026-09-20, v0.17.20)
+
+A phrase every note of which was hit credits the Hype meter, and the
+only sign of it was the meter itself moving in the corner. One
+impulse, read by three systems: the neck takes the energy in, the
+ceiling flashes, the screen catches it. `gameplay/starpower.rs` owns
+the clock and the shapes and writes no pixels — the systems that
+already own the neck, the lamps and the screen read it, because each
+of those has exactly one writer and a second would fight it for the
+same handle every frame.
+
+- [x] **S1 The impulse** *(v0.17.20)*. The trigger is
+  `SessionEvent::PhraseCompleted`, which already existed and is
+  already exactly right: the session emits it when a phrase's last
+  note is hit AND the phrase was never broken, in the same breath as
+  the meter is credited. **No star-power rule is duplicated in a
+  visual system** — this reads the event and knows none of them. The
+  screen flash is shared code with the combo-break flash
+  (`FlashProfile`), one pre-spawned quad, so the alpha cannot
+  accumulate and nothing is allocated at the trigger. Under REDUCED
+  FLASHING the screen flash is **absent** rather than dimmer — the
+  promise this game already makes — the ceiling swells once instead
+  of pulsing twice, and the neck's glow carries the moment.
+  ⚠️ **The whitening had to obey the same rule as the glow.** This
+  file's own recorded failure is a lifted fretboard becoming a lamp
+  and the bloom pass washing the whole venue; the first version
+  guarded the *glow* against it and then whitened every surface
+  equally at 0.55 — and the emissive is computed FROM the base
+  colour, so that would have raised what the bloom pass sees on the
+  largest surface just as surely. Both terms are now weighted by each
+  surface's own `glow_lift`: the rails and trim carry the flash, the
+  board gets a floor.
+  ⚠️ **A harness limit surfaced while trying to photograph it.**
+  `BEATBYTE_SHOT_TIMES` claimed each moment for a whole second, so
+  two moments a tenth apart collided and only the first was ever
+  shot — which is exactly the spacing a 300 ms effect needs. An
+  already-photographed moment now steps aside for the next one.
+  *Verified: 1555 tests (+33), gate green.* Every new pin mutated
+  once and seen to fail; three of the first attempts did **not**
+  fail and were rewritten — a colour test that a white wash alone
+  satisfied, a multiplayer test that called the resource directly
+  instead of going through the bus that carries the player index,
+  and a restart test that never exercised the entry half.
+  ⚠️ **Not yet confirmed by eye.** §15 of the commission asks for the
+  effect to be judged in the running game — is it too bright, too
+  long, does it obscure the next notes, do the three parts read as
+  one impact. The machine's screen was locked for this session and
+  every capture comes back black, harness and `screencapture` alike,
+  so the numbers are reasoned and measured rather than looked at.
+  What can be checked without a screen is: the impulse now **reports
+  itself** — one `info!` line per completed phrase naming the song
+  time it fired at, the peaks that were really applied after the
+  intensity setting and the accessibility rules, and the values left
+  behind, which is the whole of "does the stage return".
+
 ## Gameplay telemetry (2026-09-20, v0.17.13–)
 
 The blackbox: what the chart expected, what the player did, how the

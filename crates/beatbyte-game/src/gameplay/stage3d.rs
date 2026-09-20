@@ -644,6 +644,68 @@ pub struct HypeTinted {
     pub reach: f32,
 }
 
+/// How much of the way to white the BOARD goes at the peak of a
+/// completed star-power phrase.
+///
+/// The board's own colour brightening is what reads as "the HIGHWAY
+/// lit up"; the emissive below is what the bloom pass sees. Both
+/// terms are weighted by the surface's `glow_lift`, and for the same
+/// recorded reason: the emissive is computed FROM the base colour,
+/// so whitening the largest surface raises what the bloom pass sees
+/// there just as surely as raising its glow would. An early version
+/// of this impulse whitened every surface equally at 0.55 and the
+/// board — mixed in LINEAR space, where a half is most of the way to
+/// white — would have gone pale grey and glowed it back at the room.
+pub const STAR_BOARD_WHITE: f32 = 0.12;
+
+/// …and the extra the surfaces that frame the neck go, in proportion
+/// to how much of a lamp each already is.
+pub const STAR_EDGE_WHITE: f32 = 0.45;
+
+/// The emissive a surface that is not a lamp gets at the peak.
+///
+/// Small on purpose. The recorded failure of this file's own hype
+/// wash was a lifted fretboard — by far the largest tinted surface —
+/// turning into a lamp and washing the whole venue through the bloom
+/// pass. A bounded spike that is gone in under half a second is a
+/// different thing from a sustained lift, but only by degree, so it
+/// stays modest and the edges carry the brightness.
+pub const STAR_BOARD_GLOW: f32 = 0.9;
+
+/// …and the extra a surface that IS a lamp gets, in proportion to how
+/// much of a lamp it already is.
+pub const STAR_EDGE_GLOW: f32 = 7.0;
+
+/// How hard the five receptors flare at the peak.
+///
+/// The hit line is where the phrase was actually finished, so the
+/// impulse starts there. Kept under a clean hit's own 9.0 so that a
+/// note landing during the tail still reads louder than the glow it
+/// lands in — the effect may not make the next note harder to judge.
+pub const STAR_RECEPTOR_GLOW: f32 = 6.0;
+
+/// How hard one surface glows at a star-power phrase's completion.
+///
+/// Proportional to the surface's own `glow_lift`, so the rails and
+/// the trim — which exist to light — carry the flash, and the board
+/// gets a floor that makes the highway read as lit without making it
+/// a lamp. Pure — tested.
+#[must_use]
+pub fn star_glow(glow_lift: f32, lift: f32) -> f32 {
+    STAR_EDGE_GLOW.mul_add(glow_lift, STAR_BOARD_GLOW) * lift.clamp(0.0, 1.0)
+}
+
+/// How far toward white one surface goes at a phrase's completion.
+///
+/// The same shape as [`star_glow`] and for the same reason: the
+/// rails and the trim carry the flash, the board gets a floor.
+/// Never reaches white — a neck that goes pure white is a neck the
+/// player cannot read. Pure — tested.
+#[must_use]
+pub fn star_white(glow_lift: f32, lift: f32) -> f32 {
+    (STAR_EDGE_WHITE.mul_add(glow_lift, STAR_BOARD_WHITE) * lift.clamp(0.0, 1.0)).min(0.75)
+}
+
 // ── Burning edges while Star Power runs ─────────────────────────────
 
 /// Wash the neck with the energy colour while hype is running — and
@@ -654,12 +716,13 @@ pub fn tint_stage_for_hype(
     settings: Res<Settings>,
     time: Res<Time>,
     theme: Res<crate::theme::ActiveTheme>,
+    star: Res<super::starpower::StarPower>,
     players: Query<(&PlayerIndex, &PlayerSession)>,
     surfaces: Query<(&HypeTinted, &MeshMaterial3d<StandardMaterial>)>,
     assets: Option<Res<NoteAssets>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut blend: Local<Vec<f32>>,
-    mut written: Local<Vec<f32>>,
+    mut written: Local<Vec<(f32, f32)>>,
 ) {
     if !active(&settings) {
         return;
@@ -684,27 +747,45 @@ pub fn tint_stage_for_hype(
     // settled blend must write NOTHING — before this gate, every
     // tinted surface was re-uploaded every frame of every song,
     // hype or no hype.
-    let moved = |written: &mut Vec<f32>, slot: usize, eased: f32| {
+    // The pair, not just the wash: while a star-power impulse runs
+    // the wash is perfectly still, so comparing it alone would hold
+    // every surface at its last painted value and the flash would
+    // never be drawn at all.
+    let moved = |written: &mut Vec<(f32, f32)>, slot: usize, value: (f32, f32)| {
         if written.len() <= slot {
-            written.resize(slot + 1, f32::NAN);
+            written.resize(slot + 1, (f32::NAN, f32::NAN));
         }
-        let changed = (written[slot] - eased).abs() > 0.0005 || written[slot].is_nan();
+        let (was, now) = (written[slot], value);
+        let changed = (was.0 - now.0).abs() > 0.0005
+            || (was.1 - now.1).abs() > 0.0005
+            || was.0.is_nan()
+            || was.1.is_nan();
         if changed {
-            written[slot] = eased;
+            written[slot] = now;
         }
         changed
     };
+    // The impulse is an effect like any other: the intensity slider
+    // scales it, and at zero the player asked for none.
+    let star_scale = settings.fx_intensity.clamp(0.0, 1.0);
     for (surface, material) in &surfaces {
         let Some(&eased) = blend.get(surface.player) else {
             continue;
         };
-        if !moved(&mut written, surface.player, eased) {
+        let lift = star.neck(surface.player) * star_scale;
+        if !moved(&mut written, surface.player, (eased, lift)) {
             continue;
         }
         let amount = eased * surface.reach;
         if let Some(mut paint) = materials.get_mut(&material.0) {
-            paint.base_color = surface.base.mix(&palette::HYPE, amount);
-            let glow = surface.glow_lift.mul_add(amount, surface.base_glow);
+            // Toward the energy colour while hype runs, and toward
+            // WHITE for the instant a phrase lands — a different
+            // direction on purpose, so the two states never read as
+            // more of the same thing.
+            let washed = surface.base.mix(&palette::HYPE, amount);
+            paint.base_color = washed.mix(&Color::WHITE, star_white(surface.glow_lift, lift));
+            let glow = surface.glow_lift.mul_add(amount, surface.base_glow)
+                + star_glow(surface.glow_lift, lift);
             paint.emissive = paint.base_color.to_linear() * glow;
         }
     }
@@ -715,10 +796,14 @@ pub fn tint_stage_for_hype(
     let (solo, more) = (solo_players.next(), solo_players.next());
     if let (Some((index, _)), None, Some(assets)) = (solo, more, assets) {
         let eased = blend.get(index.0).copied().unwrap_or(0.0);
+        // The gems themselves are deliberately left out of the star
+        // impulse: they are what the player is reading, and a note
+        // that whitens at the moment the next pattern arrives is a
+        // note that got harder to see.
         if moved(
             &mut written,
             crate::multiplayer::MAX_PLAYERS + index.0,
-            eased,
+            (eased, 0.0),
         ) {
             for (lane, handle) in Lane::ALL.iter().zip(&assets.lane_material) {
                 if let Some(mut paint) = materials.get_mut(handle) {
@@ -1972,6 +2057,7 @@ pub fn update_receptors(
     time: Res<Time>,
     settings: Res<Settings>,
     theme: Res<crate::theme::ActiveTheme>,
+    star: Res<super::starpower::StarPower>,
     players: Query<(&PlayerIndex, &PlayerSession)>,
     mut feedback: MessageReader<super::SessionFeedback>,
     // Disjoint by construction: the receptor ring and the burst both
@@ -2094,9 +2180,14 @@ pub fn update_receptors(
 
         if let Some(mut surface) = materials.get_mut(&material.0) {
             let colour = theme.0.lane_color(receptor.lane);
-            let glow = 4.5f32.mul_add(press, 0.4) + 9.0 * hit;
+            // The hit line flares with the phrase, which is where the
+            // energy actually went in — the one spatial part of the
+            // impulse, and it costs nothing because this material is
+            // already written every frame.
+            let flare = star.neck(receptor.player) * settings.fx_intensity.clamp(0.0, 1.0);
+            let glow = 4.5f32.mul_add(press, 0.4) + 9.0f32.mul_add(hit, STAR_RECEPTOR_GLOW * flare);
             surface.emissive = colour.to_linear() * glow;
-            surface.base_color = colour.mix(&Color::WHITE, 0.6 * hit);
+            surface.base_color = colour.mix(&Color::WHITE, 0.6f32.mul_add(hit, 0.5 * flare));
         }
         remembered.push((receptor.player, receptor.lane, press, hit));
     }
@@ -4029,6 +4120,74 @@ mod instrument_neck_tests {
             "the venue must never vanish into a hole, got {wall}"
         );
         assert!(wall > end, "the venue must recede further than the neck");
+    }
+}
+
+#[cfg(test)]
+mod star_impulse_tests {
+    use super::*;
+
+    /// The recorded failure of this file's own hype wash: a lifted
+    /// fretboard — by far the largest tinted surface — became a lamp
+    /// and the bloom pass washed the whole venue. The star impulse is
+    /// far brighter than that wash, so the same rule binds it: the
+    /// edges carry the flash, the board gets a floor.
+    #[test]
+    fn the_edges_carry_the_flash_and_the_board_only_a_floor() {
+        // The board (`glow_lift` 0.0) against a rail (0.8).
+        let board = star_glow(0.0, 1.0);
+        let rail = star_glow(0.8, 1.0);
+        assert!(board > 0.0, "the HIGHWAY must visibly light up");
+        assert!(
+            rail > board * 5.0,
+            "but the surfaces that exist to light must dominate it: \
+             board {board}, rail {rail}"
+        );
+        // Nothing at rest, and nothing past the impulse.
+        assert_eq!(star_glow(0.8, 0.0), 0.0);
+        assert_eq!(star_glow(0.0, 0.0), 0.0);
+        // A lift out of range cannot drive it past its peak.
+        assert_eq!(star_glow(0.8, 9.0), star_glow(0.8, 1.0));
+        assert_eq!(star_glow(0.8, -1.0), 0.0);
+    }
+
+    /// The impulse may not outshine the thing the player is reading.
+    #[test]
+    fn a_landing_note_still_reads_louder_than_the_glow_it_lands_in() {
+        // A clean hit drives a receptor to 9.0; the impulse's flare
+        // must stay under that, or a note hit during the tail would
+        // be less visible than the tail.
+        // The effect may never make the next note harder to judge,
+        // and the neck never goes pure white.
+        const { assert!(STAR_RECEPTOR_GLOW < 9.0) };
+        assert!(star_white(1.0, 1.0) < 1.0, "the neck stays readable");
+    }
+
+    /// The whitening obeys the same rule as the glow, because the
+    /// emissive is computed FROM the base colour: a board whitened
+    /// like a rail would glow like one.
+    #[test]
+    fn the_board_whitens_a_fraction_of_what_the_rails_do() {
+        let board = star_white(0.0, 1.0);
+        let rail = star_white(0.8, 1.0);
+        assert!(board > 0.0, "the board still visibly brightens");
+        assert!(
+            rail > board * 3.0,
+            "but the frame carries the flash: board {board}, rail {rail}"
+        );
+        assert_eq!(star_white(0.8, 0.0), 0.0, "nothing at rest");
+        assert_eq!(
+            star_white(0.8, 9.0),
+            star_white(0.8, 1.0),
+            "and a lift out of range cannot drive it past its peak"
+        );
+        assert_eq!(star_white(0.0, -1.0), 0.0);
+        assert_eq!(
+            star_white(10.0, 1.0),
+            0.75,
+            "and a surface that is nothing but lamp still stops short \
+             of white — a neck the player cannot read is not feedback"
+        );
     }
 }
 

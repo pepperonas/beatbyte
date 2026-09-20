@@ -31,6 +31,7 @@ pub mod pa;
 pub mod rig;
 pub mod spark3d;
 pub mod stage3d;
+pub mod starpower;
 pub mod vocal;
 
 use beatbyte_core::{
@@ -395,6 +396,10 @@ impl Plugin for GameplayPlugin {
         // venue — only the microphone, which the monitors' `Ears`
         // already own.
         vocal::register(app);
+        // The star-power impulse: one clock, read by the neck, the
+        // ceiling and the screen. Registered here because it belongs
+        // to gameplay, not to any one of the three.
+        starpower::register(app);
         app.add_message::<SessionFeedback>()
             .add_plugins(fx::FxPlugin)
             .add_systems(
@@ -433,6 +438,7 @@ impl Plugin for GameplayPlugin {
                     notes::move_fret_lines,
                     notes::animate_sustains,
                     notes::update_receptors,
+                    notes::star_lift_guides,
                     notes::apply_note_events,
                     feedback::spawn_feedback,
                     feedback::coach_strum,

@@ -14,6 +14,57 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.20] - 2026-09-20
+
+### Added
+
+- **A star-power phrase landing whole is now an impact.** Until now the only
+  sign that a phrase had been banked was the Hype meter moving in the corner.
+  One impulse, half a second, read by three systems at once: the neck takes
+  the energy in, the ceiling flashes twice, and the screen catches it like a
+  camera flash. It fires on a **complete** phrase and on nothing else — not
+  on a single star note on the way through one, and not on a phrase with a
+  miss in it.
+- **The flat view gets its share.** Without the 3D stage there are no neck
+  surfaces and no ceiling, so the lane guide strips run from their dim rest
+  to their own lane colour instead, and the screen flash happens in both
+  views. Nothing behind a gem brightens, in either view.
+
+### Changed
+
+- **The two full-screen flashes are one effect with two sets of numbers.**
+  The red combo-break flash and the white star flash share `FlashProfile`
+  and a single pre-spawned quad: nothing is allocated at the trigger, the
+  brighter event wins so the screen can never jump down, and the alpha
+  cannot accumulate however much lands at once.
+- **`BEATBYTE_SHOT_TIMES` can photograph a series.** A requested moment used
+  to claim the next whole second, so two moments a tenth of a second apart
+  collided and only the first was ever shot — which is exactly the spacing
+  an effect this short needs. An already-photographed moment now steps aside.
+
+### Accessibility
+
+- Under **REDUCED FLASHING** the star flash is **absent**, not dimmer — the
+  same promise the combo-break flash already makes — the ceiling swells once
+  instead of pulsing twice, and the neck's glow carries the moment. **FX
+  INTENSITY** scales all three parts, and at zero there is nothing.
+
+### Notes
+
+- **Not yet confirmed by eye.** Whether it is too bright, too long, or costs
+  the next pattern any readability is a question for a screen, and this
+  machine's was locked: every capture, harness and system alike, comes back
+  black. The numbers are reasoned against the effect this game already ships
+  — the combo-break flash's long-settled 0.10 — and against this file's own
+  recorded failure of a lifted fretboard turning into a lamp.
+- The impulse **reports itself**: one line per completed phrase naming the
+  song time it fired at, the peaks that were really applied, and the values
+  left behind — which is the whole of "does the stage return".
+- **No sound.** Nothing in the game plays one when a phrase is banked, so
+  there was nothing to synchronise with and no audio system was built for
+  this. A short charge sound would fit, and `starpower.rs` says where it
+  would go.
+
 ## [0.17.19] - 2026-09-20
 
 ### Changed

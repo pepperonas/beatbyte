@@ -124,10 +124,163 @@ pub struct HighwayBed;
 #[derive(Component)]
 struct HypeOverlay(usize);
 
-/// Marker: full-screen flash on combo break.
+/// Marker: the one full-screen flash quad, spawned once with the rest
+/// of the scenery and never again.
+///
+/// One entity, not one per event. Two reasons, and the second is the
+/// important one: a flash at the moment a star-power phrase lands is
+/// exactly the moment a stutter would be felt, so nothing is created
+/// at the trigger — and with a single quad the alpha CANNOT
+/// accumulate, whatever lands on top of whatever.
 #[derive(Component)]
-struct BreakFlash {
+struct ScreenFlashQuad;
+
+/// What one kind of full-screen flash looks like.
+///
+/// The red combo-break flash and the white star-power flash are the
+/// same effect with different numbers, so they are the same code with
+/// different numbers. A third one is a constant, not a system.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FlashProfile {
+    /// What colour the screen goes.
+    pub color: Color,
+    /// How opaque it gets at its brightest.
+    pub peak: f32,
+    /// How long the rise takes.
+    pub attack: f32,
+    /// How long the whole thing lasts.
+    pub life: f32,
+}
+
+impl FlashProfile {
+    /// A missed note: red, faint, and over in a quarter of a second.
+    #[must_use]
+    pub fn miss(reduced_flashing: bool, intensity: f32) -> FlashProfile {
+        FlashProfile {
+            color: palette::MISS,
+            peak: flash_alpha(reduced_flashing, intensity),
+            attack: 0.0,
+            life: 0.25,
+        }
+    }
+
+    /// A star-power phrase landing whole: white, brighter, and
+    /// shorter — a camera flash rather than a wash.
+    ///
+    /// The peak is held well under half: this fires while notes are
+    /// still coming down the neck, and the one thing the effect may
+    /// not do is make the next pattern harder to read.
+    #[must_use]
+    pub fn star(reduced_flashing: bool, intensity: f32) -> FlashProfile {
+        FlashProfile {
+            color: Color::WHITE,
+            // The same accessibility promise the combo-break flash
+            // makes, and for the same reason: under REDUCED FLASHING
+            // a full-screen flash is not dimmer, it is absent. The
+            // neck's glow carries the moment instead.
+            peak: if reduced_flashing {
+                0.0
+            } else {
+                STAR_FLASH_PEAK * intensity.clamp(0.0, 1.0)
+            },
+            attack: 0.03,
+            life: super::starpower::SCREEN_S,
+        }
+    }
+}
+
+/// How white the screen goes when a star-power phrase lands.
+///
+/// **Not yet confirmed by eye.** The number is reasoned, not looked
+/// at: 0.28 is the middle of the range the effect was commissioned
+/// with, and it is 2.8× the combo-break flash's long-settled 0.10 —
+/// which understates it, because these alphas blend in LINEAR space
+/// and white carries far more luma than the break flash's red. On a
+/// dark frame it adds roughly 0.27 luma against the break flash's
+/// 0.02, and it is above half its own peak for about a tenth of a
+/// second. That is a camera flash, which is what was asked for; the
+/// open question is only whether it costs the next pattern any
+/// readability, and that question needs a screen.
+pub const STAR_FLASH_PEAK: f32 = 0.28;
+
+/// The flash's shape `age` seconds in, 0..1.
+///
+/// A rise and a square fall — sparks die, they do not switch, which
+/// is this game's own recipe everywhere else. With a zero attack the
+/// rise is instantaneous, which is what a combo break wants. Pure —
+/// tested.
+#[must_use]
+pub fn flash_curve(age: f32, attack: f32, life: f32) -> f32 {
+    if !(0.0..life).contains(&age) || life <= 0.0 {
+        return 0.0;
+    }
+    if attack > 0.0 && age < attack {
+        return age / attack;
+    }
+    let fall = (life - age) / (life - attack).max(f32::EPSILON);
+    (fall * fall).clamp(0.0, 1.0)
+}
+
+/// The one full-screen flash, and what it is currently doing.
+#[derive(Resource, Debug, Default)]
+pub struct ScreenFlash {
+    /// The profile that is running, if any.
+    profile: Option<FlashProfile>,
+    /// How far into it.
     age: f32,
+}
+
+impl ScreenFlash {
+    /// How opaque the screen is right now.
+    #[must_use]
+    pub fn alpha(&self) -> f32 {
+        self.profile.map_or(0.0, |profile| {
+            profile.peak * flash_curve(self.age, profile.attack, profile.life)
+        })
+    }
+
+    /// Ask for a flash.
+    ///
+    /// **The brighter event wins**, and that is the whole priority
+    /// rule: a request is taken when its peak is at least what the
+    /// screen already shows. So a star-power phrase always interrupts
+    /// a combo-break flash, a combo break never cuts a star flash
+    /// short at its brightest — and the overlay can never jump DOWN
+    /// when one replaces the other, which is the thing that would
+    /// actually be seen. Pure — tested.
+    pub fn request(&mut self, profile: FlashProfile) {
+        if profile.peak <= 0.0 {
+            return;
+        }
+        if profile.peak >= self.alpha() {
+            self.profile = Some(profile);
+            self.age = 0.0;
+        }
+    }
+
+    /// Age it, and forget it once it is over.
+    pub fn advance(&mut self, dt: f32) {
+        let Some(profile) = self.profile else {
+            return;
+        };
+        self.age += dt;
+        if self.age >= profile.life {
+            self.profile = None;
+            self.age = 0.0;
+        }
+    }
+
+    /// Back to nothing.
+    pub fn clear(&mut self) {
+        self.profile = None;
+        self.age = 0.0;
+    }
+
+    /// What colour it is, for the one quad that draws it.
+    #[must_use]
+    pub fn color(&self) -> Color {
+        self.profile.map_or(Color::WHITE, |profile| profile.color)
+    }
 }
 
 /// The game-feel plugin (registered by the gameplay plugin).
@@ -137,6 +290,7 @@ impl Plugin for FxPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<EffectSettings>()
             .init_resource::<Shake>()
+            .init_resource::<ScreenFlash>()
             .add_systems(
                 Update,
                 (react_to_feedback, sustain_sparks, beat_pulse, hype_ambience)
@@ -146,13 +300,24 @@ impl Plugin for FxPlugin {
                 Update,
                 (
                     simulate_particles,
-                    animate_break_flash,
+                    drive_screen_flash,
                     apply_shake,
                     celebrate_outro,
                 )
                     .run_if(in_state(AppState::Gameplay)),
             )
-            .add_systems(OnExit(AppState::Gameplay), reset_camera);
+            .add_systems(
+                Update,
+                flash_on_star_power
+                    .after(super::drain_feedback)
+                    .before(drive_screen_flash)
+                    .run_if(in_state(AppState::Gameplay)),
+            )
+            .add_systems(
+                OnExit(AppState::Gameplay),
+                (reset_camera, clear_screen_flash),
+            )
+            .add_systems(OnEnter(AppState::Gameplay), clear_screen_flash);
     }
 }
 
@@ -179,6 +344,18 @@ pub fn spawn_fx_scenery(
     settings: Res<crate::config::Settings>,
     players: Query<&PlayerIndex, With<PlayerSession>>,
 ) {
+    // The one full-screen flash quad, spawned here and reused for
+    // every flash of the song — a combo break, a star-power phrase,
+    // whatever comes next. It starts hidden and is only ever made
+    // visible by `drive_screen_flash`, so nothing has to remember to
+    // clean it up.
+    commands.spawn((
+        GameplayScreen,
+        ScreenFlashQuad,
+        Sprite::from_color(Color::WHITE.with_alpha(0.0), Vec2::new(4000.0, 4000.0)),
+        Transform::from_xyz(0.0, 0.0, 20.0),
+        Visibility::Hidden,
+    ));
     // The overlay is a 900-pixel-tall vertical band the width of the
     // bed — which is exactly the shape of a highway in the flat and
     // depth views, and nothing like one in 3D. There the neck is a
@@ -213,6 +390,7 @@ fn react_to_feedback(
     settings: Res<EffectSettings>,
     shapes: Res<crate::shapes::LaneShapes>,
     mut shake: ResMut<Shake>,
+    mut flash: ResMut<ScreenFlash>,
     particles: Query<(), With<Particle>>,
 ) {
     let mut live_particles = particles.iter().count();
@@ -273,18 +451,10 @@ fn react_to_feedback(
                 if settings.screen_shake {
                     shake.add(0.30 * settings.intensity);
                 }
-                let alpha = flash_alpha(settings.reduced_flashing, settings.intensity);
-                if alpha > 0.0 {
-                    commands.spawn((
-                        GameplayScreen,
-                        BreakFlash { age: 0.0 },
-                        Sprite::from_color(
-                            palette::MISS.with_alpha(alpha),
-                            Vec2::new(4000.0, 4000.0),
-                        ),
-                        Transform::from_xyz(0.0, 0.0, 20.0),
-                    ));
-                }
+                flash.request(FlashProfile::miss(
+                    settings.reduced_flashing,
+                    settings.intensity,
+                ));
             }
             SessionEvent::Overstrum if settings.screen_shake => {
                 shake.add(0.20 * settings.intensity);
@@ -579,20 +749,58 @@ fn celebrate_outro(
     );
 }
 
-/// Fade the combo-break flash.
-fn animate_break_flash(
-    mut commands: Commands,
-    time: Res<Time>,
-    mut flashes: Query<(Entity, &mut BreakFlash, &mut Sprite)>,
+/// Ask for the white flash when a star-power phrase lands whole.
+///
+/// Its own system rather than another arm of `react_to_feedback`,
+/// because the two read the bus for different reasons and this one
+/// has to be ordered against the drain as well as against the driver.
+fn flash_on_star_power(
+    settings: Res<EffectSettings>,
+    mut flash: ResMut<ScreenFlash>,
+    mut feedback: MessageReader<SessionFeedback>,
 ) {
-    for (entity, mut flash, mut sprite) in &mut flashes {
-        flash.age += time.delta_secs();
-        let life = 1.0 - flash.age / 0.25;
-        if life <= 0.0 {
-            commands.entity(entity).despawn();
+    let landed = feedback
+        .read()
+        .any(|message| matches!(message.event, SessionEvent::PhraseCompleted { .. }));
+    if landed {
+        flash.request(FlashProfile::star(
+            settings.reduced_flashing,
+            settings.intensity,
+        ));
+    }
+}
+
+/// Drive the one flash quad: age the effect and put its colour on the
+/// sprite. Hidden the instant it is over, so nothing can be left
+/// tinting the screen.
+fn drive_screen_flash(
+    time: Res<Time>,
+    mut flash: ResMut<ScreenFlash>,
+    mut quad: Query<(&mut Sprite, &mut Visibility), With<ScreenFlashQuad>>,
+) {
+    flash.advance(time.delta_secs());
+    let alpha = flash.alpha();
+    let colour = flash.color();
+    for (mut sprite, mut visibility) in &mut quad {
+        if alpha <= 0.0 {
+            if *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
             continue;
         }
-        sprite.color = sprite.color.with_alpha(0.10 * life);
+        *visibility = Visibility::Visible;
+        sprite.color = colour.with_alpha(alpha);
+    }
+}
+
+/// Leave no tint behind when gameplay is entered or left.
+fn clear_screen_flash(
+    mut flash: ResMut<ScreenFlash>,
+    mut quad: Query<&mut Visibility, With<ScreenFlashQuad>>,
+) {
+    flash.clear();
+    for mut visibility in &mut quad {
+        *visibility = Visibility::Hidden;
     }
 }
 
@@ -682,5 +890,111 @@ mod tests {
             flash_alpha(false, 0.5) < flash_alpha(false, 1.0),
             "intensity dims the flash when it is allowed at all"
         );
+    }
+
+    use super::{FlashProfile, ScreenFlash, flash_curve};
+    use bevy::prelude::Color;
+
+    #[test]
+    fn a_flash_rises_and_dies_and_is_gone() {
+        // Zero attack: a combo break has no rise you could see.
+        assert!(flash_curve(0.0, 0.0, 0.25) > 0.99);
+        assert_eq!(flash_curve(0.25, 0.0, 0.25), 0.0);
+        assert_eq!(flash_curve(-0.1, 0.0, 0.25), 0.0);
+        assert_eq!(flash_curve(9.0, 0.0, 0.25), 0.0);
+        // With an attack it rises through it and then falls.
+        assert_eq!(flash_curve(0.0, 0.03, 0.26), 0.0);
+        assert!(flash_curve(0.03, 0.03, 0.26) > 0.99);
+        assert!(flash_curve(0.15, 0.03, 0.26) < 0.5);
+        // A zero-length profile is a no-op, not a division.
+        assert_eq!(flash_curve(0.0, 0.0, 0.0), 0.0);
+    }
+
+    #[test]
+    fn the_two_profiles_read_as_opposite_things() {
+        let miss = FlashProfile::miss(false, 1.0);
+        let star = FlashProfile::star(false, 1.0);
+        assert_eq!(miss.color, crate::palette::MISS, "a miss is red");
+        assert_eq!(star.color, Color::WHITE, "a landed phrase is white");
+        assert!(
+            star.peak > miss.peak,
+            "the positive event is the bigger one — otherwise a combo \
+             break would outshine an achievement"
+        );
+        assert!(star.life < miss.life * 1.2, "and it is not a longer wash");
+        assert!(star.peak < 0.4, "but never enough to hide the notes");
+    }
+
+    #[test]
+    fn reduced_flashing_removes_the_star_flash_too() {
+        // Not dimmer. The promise this game already makes for full
+        // screen flashes is none, and a new effect does not get to
+        // soften an existing promise — the neck's glow carries the
+        // moment in that mode instead.
+        assert_eq!(FlashProfile::star(true, 1.0).peak, 0.0);
+        assert_eq!(FlashProfile::miss(true, 1.0).peak, 0.0);
+        assert!(FlashProfile::star(false, 0.5).peak < FlashProfile::star(false, 1.0).peak);
+        assert_eq!(FlashProfile::star(false, 0.0).peak, 0.0);
+    }
+
+    #[test]
+    fn the_brighter_event_wins_and_the_screen_never_jumps_down() {
+        let mut flash = ScreenFlash::default();
+        assert_eq!(flash.alpha(), 0.0);
+
+        // A star flash at its brightest is not cut short by a miss.
+        flash.request(FlashProfile::star(false, 1.0));
+        flash.advance(0.03);
+        let bright = flash.alpha();
+        assert!(bright > 0.2, "{bright}");
+        flash.request(FlashProfile::miss(false, 1.0));
+        assert_eq!(
+            flash.alpha(),
+            bright,
+            "a dimmer request may not replace a brighter running flash \
+             — the overlay would visibly jump down"
+        );
+        assert_eq!(flash.color(), Color::WHITE);
+
+        // …but once it has faded past the miss's own peak, it may.
+        flash.advance(0.18);
+        assert!(flash.alpha() < FlashProfile::miss(false, 1.0).peak);
+        flash.request(FlashProfile::miss(false, 1.0));
+        assert_eq!(flash.color(), crate::palette::MISS);
+    }
+
+    #[test]
+    fn alpha_never_accumulates_however_much_lands_at_once() {
+        let mut flash = ScreenFlash::default();
+        let star = FlashProfile::star(false, 1.0);
+        for _ in 0..50 {
+            flash.request(star);
+            flash.request(FlashProfile::miss(false, 1.0));
+            flash.advance(0.001);
+            assert!(
+                flash.alpha() <= star.peak + 1e-6,
+                "fifty requests may not add up to a white screen: {}",
+                flash.alpha()
+            );
+        }
+    }
+
+    #[test]
+    fn a_flash_forgets_itself_and_can_be_cleared() {
+        let mut flash = ScreenFlash::default();
+        flash.request(FlashProfile::star(false, 1.0));
+        for _ in 0..40 {
+            flash.advance(0.016);
+        }
+        assert_eq!(flash.alpha(), 0.0, "it ends on its own");
+        flash.request(FlashProfile::star(false, 1.0));
+        flash.advance(0.03);
+        assert!(flash.alpha() > 0.0);
+        flash.clear();
+        assert_eq!(flash.alpha(), 0.0, "and a cleared screen is clear");
+        // A profile that cannot be seen is never taken at all, so a
+        // reduced-flashing request cannot park an invisible timer.
+        flash.request(FlashProfile::star(true, 1.0));
+        assert_eq!(flash.alpha(), 0.0);
     }
 }

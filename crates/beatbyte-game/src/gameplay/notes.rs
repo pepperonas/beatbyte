@@ -132,6 +132,7 @@ pub fn spawn_highways(
             };
             commands.spawn((
                 GameplayScreen,
+                LaneGuide { player, lane },
                 Sprite {
                     image: shapes.glow_strip(),
                     color: palette::dimmed(theme.lane_color(lane), 0.16),
@@ -703,6 +704,71 @@ const PRESS_RELEASE: f32 = 13.0;
 /// own burst instead of smearing into one glow.
 const HIT_DECAY: f32 = 7.5;
 
+/// Marker: one flat-view lane guide strip, and whose neck it is on.
+///
+/// The strips are the flat view's version of the rails and trim the
+/// 3D stage lights: they run the length of the neck and nothing sits
+/// behind a gem, so brightening them says "the highway took the
+/// energy in" without costing the notes any contrast — which is the
+/// same reason the 3D lift weights each surface by its own glow and
+/// leaves the board and the lanes alone.
+#[derive(Component)]
+pub struct LaneGuide {
+    /// Which player's highway this strip belongs to.
+    pub player: usize,
+    /// Which lane boundary it draws.
+    pub lane: Lane,
+}
+
+/// How much white a fully lit guide strip carries.
+///
+/// Small on purpose: these mixes happen in LINEAR space, where a
+/// tenth is already a visible sheen and a third is most of the way
+/// to white — the strip is meant to read as its own lane at full
+/// brightness, not as a fog laid over the neck.
+pub const GUIDE_SHEEN: f32 = 0.15;
+
+/// The colour of a lane guide at a given star-power lift, 0..1.
+///
+/// At rest it is the dim strip the highway always has; at full lift
+/// it is the lane's own colour with a little white in it, so the
+/// strip reads as energy rather than merely as more saturation.
+/// Pure — tested.
+#[must_use]
+pub fn guide_color(lane: Color, lift: f32) -> Color {
+    let lift = lift.clamp(0.0, 1.0);
+    palette::dimmed(lane, 0.16)
+        .mix(&lane, lift)
+        .mix(&Color::WHITE, GUIDE_SHEEN * lift)
+}
+
+/// The flat view's share of the star impulse.
+///
+/// In the 3D view the neck's own surfaces carry it; without that
+/// stage the guide strips are what the highway has. The screen flash
+/// happens in both views, so the moment is never silent — this is
+/// the part that makes it come from the highway itself.
+pub fn star_lift_guides(
+    star: Res<super::starpower::StarPower>,
+    settings: Res<crate::config::Settings>,
+    theme: Res<crate::theme::ActiveTheme>,
+    mut guides: Query<(&LaneGuide, &mut Sprite)>,
+    mut written: Local<bool>,
+) {
+    // Nothing to do, and nothing to undo: the strips already carry
+    // their resting colour and writing it again every frame would be
+    // pure noise.
+    if !star.running() && !*written {
+        return;
+    }
+    *written = star.running();
+    let intensity = settings.fx_intensity.clamp(0.0, 1.0);
+    for (guide, mut sprite) in &mut guides {
+        let lift = star.neck(guide.player) * intensity;
+        sprite.color = guide_color(theme.0.lane_color(guide.lane), lift);
+    }
+}
+
 /// Receptors light up while their player holds the fret.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)] // Bevy system: params are DI
 pub fn update_receptors(
@@ -1057,5 +1123,124 @@ mod depth_tests {
         let far = depth::lane_x(0.0, 300.0, depth::project(4000.0).1);
         assert!((near - 300.0).abs() < 1e-4);
         assert!(far.abs() < 60.0, "far lanes must pull toward center: {far}");
+    }
+}
+
+#[cfg(test)]
+mod guide_tests {
+    use super::{LaneGuide, guide_color, star_lift_guides};
+    use crate::gameplay::starpower::StarPower;
+    use beatbyte_core::Lane;
+    use bevy::prelude::*;
+
+    /// How bright a colour is, roughly — enough to say "brighter".
+    fn luma(color: Color) -> f32 {
+        let c = color.to_linear();
+        0.2126f32.mul_add(c.red, 0.7152f32.mul_add(c.green, 0.0722 * c.blue))
+    }
+
+    /// Same colour to within a rounding error.
+    fn close(left: Color, right: Color) -> bool {
+        let (a, b) = (left.to_linear(), right.to_linear());
+        (a.red - b.red).abs() < 1e-4
+            && (a.green - b.green).abs() < 1e-4
+            && (a.blue - b.blue).abs() < 1e-4
+    }
+
+    #[test]
+    fn a_guide_strip_runs_from_its_own_dim_rest_to_its_own_lane_colour() {
+        let lane = Color::srgb(0.2, 0.55, 1.0);
+        let rest = guide_color(lane, 0.0);
+        let lit = guide_color(lane, 1.0);
+        assert!(
+            close(rest, crate::palette::dimmed(lane, 0.16)),
+            "at rest it is exactly the strip the highway always has"
+        );
+        let (lane_lin, lit_lin) = (lane.to_linear(), lit.to_linear());
+        assert!(
+            lit_lin.red >= lane_lin.red
+                && lit_lin.green >= lane_lin.green
+                && lit_lin.blue >= lane_lin.blue - 1e-4,
+            "at full lift the dim is gone — the strip is at least its \
+             own lane colour: {lit_lin:?} against {lane_lin:?}"
+        );
+        assert!(
+            lit_lin.blue > lit_lin.red * 2.0,
+            "and it is still the LANE's colour, not a white fog laid \
+             over the neck: {lit_lin:?}"
+        );
+        assert!(
+            luma(lit) > luma(rest) * 2.0,
+            "and the swing is a swing, not a nudge: {} → {}",
+            luma(rest),
+            luma(lit)
+        );
+        assert!(
+            luma(guide_color(lane, 0.5)) > luma(rest) && luma(guide_color(lane, 0.5)) < luma(lit),
+            "with the way there in between"
+        );
+        assert!(
+            close(guide_color(lane, -1.0), rest),
+            "it clamps rather than darkening below its own rest"
+        );
+        assert!(close(guide_color(lane, 5.0), lit), "or blowing past white");
+    }
+
+    #[test]
+    fn the_flat_highway_lights_only_for_the_player_who_earned_it() {
+        let mut app = App::new();
+        app.init_resource::<StarPower>()
+            .init_resource::<crate::config::Settings>()
+            .init_resource::<crate::theme::ActiveTheme>()
+            .add_systems(Update, star_lift_guides);
+        let theme = app.world().resource::<crate::theme::ActiveTheme>().0;
+        let mine = app
+            .world_mut()
+            .spawn((
+                LaneGuide {
+                    player: 0,
+                    lane: Lane::One,
+                },
+                Sprite::default(),
+            ))
+            .id();
+        let theirs = app
+            .world_mut()
+            .spawn((
+                LaneGuide {
+                    player: 1,
+                    lane: Lane::One,
+                },
+                Sprite::default(),
+            ))
+            .id();
+        app.world_mut().resource_mut::<StarPower>().fire(0);
+        app.world_mut().resource_mut::<StarPower>().advance(0.04);
+        app.update();
+        let color = |app: &App, entity: Entity| {
+            app.world()
+                .get::<Sprite>(entity)
+                .expect("a guide strip has a sprite")
+                .color
+        };
+        assert!(
+            luma(color(&app, mine)) > luma(guide_color(theme.lane_color(Lane::One), 0.0)) * 2.0,
+            "the neck that earned it takes the energy in"
+        );
+        assert_eq!(
+            color(&app, theirs),
+            guide_color(theme.lane_color(Lane::One), 0.0),
+            "and the other player's neck does not"
+        );
+
+        // And when it is over, both are back at rest — nothing stays
+        // lit because a system stopped writing.
+        app.world_mut().resource_mut::<StarPower>().clear();
+        app.update();
+        assert_eq!(
+            color(&app, mine),
+            guide_color(theme.lane_color(Lane::One), 0.0),
+            "the strip must come back down, not merely stop rising"
+        );
     }
 }
