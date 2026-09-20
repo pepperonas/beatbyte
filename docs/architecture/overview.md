@@ -18,10 +18,52 @@ BeatByte follows a layered architecture. Dependencies point downward only.
 └───────────────────────────────────────┘
 ```
 
-Two crates sit beside that stack rather than inside it, because both
-are tools built ON the domain layer and nothing depends on them:
-`beatbyte-editor` (invertible chart edits) and `beatbyte-cli`
-(analyze / generate / validate / inspect / demo).
+Three crates sit beside that stack rather than inside it, because
+each is built ON the domain layer and nothing in the stack depends on
+them: `beatbyte-editor` (invertible chart edits), `beatbyte-telemetry`
+(the gameplay event store — the presentation layer writes to it, and
+that is the only edge that points at it) and `beatbyte-cli`
+(analyze / generate / validate / inspect / review / read the store).
+
+## The loop the data closes
+
+Everything above is one direction: a song becomes a chart becomes a
+game. Telemetry is what makes the arrow come back.
+
+```text
+  SONG ──▶ ANALYSIS ──▶ SONG GRAPH ──▶ CHART GENERATOR ──▶ CHART
+                                                             │
+                                                             ▼
+                                                         GAMEPLAY
+                                                             │
+                                                             ▼
+   IMPROVEMENT ◀── EVIDENCE ◀── ANALYTICS ◀────────────── TELEMETRY
+        │                           ▲                        │
+        │                           └── chart + note context ┘
+        ▼
+  A NEW CHART VERSION  ──▶  the ear decides  ──▶  measured again
+```
+
+Two things about that last arrow, and they are the whole point:
+
+- **Analytics produce evidence, never a change.** Nothing in
+  `beatbyte-telemetry` writes a chart, a score, a difficulty or a
+  setting, and the game never reads the store back to decide
+  anything. A note that is missed by everyone becomes a candidate on
+  a list; a person listens, and a new chart VERSION is written beside
+  the old one. That is [ADR-0011](../decisions/ADR-0011-adaptive-charting.md)'s
+  rule and [ADR-0018](../decisions/ADR-0018-gameplay-telemetry-store.md)
+  keeps it.
+- **There is no self-learning here, deliberately.** No training, no
+  automatic regeneration, no adaptive difficulty. Those would each be
+  their own decision, with their own versioning, and none of them is
+  made easier by pretending the loop already closes itself.
+
+The fourth arrow — `chart + note context` — is why a
+`*.context.json` sidecar sits beside each chart version: the analysis
+that made the notes is otherwise gone by the time anybody misses one,
+and "was that a weak onset in a loud passage?" is unanswerable
+without it.
 
 ## Key invariants
 
@@ -41,6 +83,15 @@ are tools built ON the domain layer and nothing depends on them:
   own. See [ADR-0010](../decisions/ADR-0010-ui-design-system.md).
 - **Editor operations are invertible.** `EditOp::apply` returns the
   inverse, which is what makes undo/redo correct by construction.
+- **Telemetry is events, never frames — and never on the frame
+  thread.** A recorded event is a thing that happened, not a sample of
+  state; it names its note and its session and joins the rest. It is
+  handed to a bounded queue with a non-blocking send and committed in
+  batches by a worker thread. A full queue drops, counts, and says so.
+  See [ADR-0018](../decisions/ADR-0018-gameplay-telemetry-store.md).
+- **Nothing derivable is stored.** Not combo, not score, not accuracy,
+  not "early / late" — those are computed from the raw events, and two
+  copies of one fact are two facts that can disagree.
 
 ## Documentation map
 
@@ -48,6 +99,7 @@ are tools built ON the domain layer and nothing depends on them:
 - `docs/gameplay/` — gameplay rules, judgment windows, scoring
 - `docs/audio/` — analysis pipeline, known limitations
 - `docs/chart-format/` — the versioned chart file format
-- `docs/development/` — developer workflow, asset licensing
+- `docs/development/` — developer workflow (including how to read
+  the telemetry store), asset licensing
 - `docs/ui/` — the menu and settings design system, and the 3D stage
 - `docs/releases/` — release process

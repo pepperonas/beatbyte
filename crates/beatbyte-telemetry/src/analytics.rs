@@ -411,6 +411,211 @@ pub fn timing_histogram(
     )
 }
 
+/// A run's numbers, recomputed from its raw events.
+///
+/// The play history (`history.jsonl`) stores these too, and that copy
+/// is a **cache**: this is the proof that it is one. Everything here
+/// is derived — which is exactly why none of it is stored in the
+/// event stream (ADR-0018).
+///
+/// One field of the history's own summary is missing and cannot be
+/// here: completed phrases. A phrase is a span of the CHART, and the
+/// telemetry deliberately does not carry the chart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Summary {
+    /// Notes judged.
+    pub judged: u32,
+    /// Hit dead on.
+    pub perfect: u32,
+    /// Inside the great window.
+    pub great: u32,
+    /// Inside the good window.
+    pub good: u32,
+    /// Missed.
+    pub miss: u32,
+    /// Strums that matched nothing.
+    pub overstrums: u32,
+    /// The longest run of hits, broken by a miss or an overstrum.
+    pub best_streak: u32,
+    /// Sustains held to the end.
+    pub sustains_held: u32,
+    /// …and dropped early.
+    pub sustains_dropped: u32,
+    /// Hype activations.
+    pub hype_activations: u32,
+    /// Whether the rock meter emptied.
+    pub failed: bool,
+    /// The mean signed timing offset in microseconds, over the hits
+    /// that carry one.
+    pub mean_offset_us: i32,
+}
+
+impl Summary {
+    /// Hits over judgments, `0.0`–`1.0`.
+    #[must_use]
+    pub fn accuracy(&self) -> f64 {
+        if self.judged == 0 {
+            return 0.0;
+        }
+        f64::from(self.judged - self.miss) / f64::from(self.judged)
+    }
+}
+
+/// Recompute one session's summary from its events.
+pub fn summary(store: &Store, session: crate::store::SessionId) -> Result<Summary> {
+    let mut out = Summary::default();
+    let mut streak = 0u32;
+    let mut offsets = 0i64;
+    let mut offset_count = 0u32;
+    for (_, event) in store.events(session)? {
+        match event.kind {
+            EventType::NoteHit => {
+                out.judged += 1;
+                streak += 1;
+                out.best_streak = out.best_streak.max(streak);
+                match event.rating {
+                    Some(crate::model::Rating::Perfect) => out.perfect += 1,
+                    Some(crate::model::Rating::Great) => out.great += 1,
+                    _ => out.good += 1,
+                }
+                if let Some(delta) = event.delta_us {
+                    offsets += i64::from(delta);
+                    offset_count += 1;
+                }
+            }
+            EventType::NoteMiss => {
+                out.judged += 1;
+                out.miss += 1;
+                streak = 0;
+            }
+            EventType::Overstrum => {
+                out.overstrums += 1;
+                // An overstrum breaks the streak but is not a missed
+                // note — the same rule the scoring engine follows.
+                streak = 0;
+            }
+            EventType::SustainEnded => {
+                if event.flags.has(crate::model::Flags::DONE) {
+                    out.sustains_held += 1;
+                } else {
+                    out.sustains_dropped += 1;
+                }
+            }
+            EventType::HypeActivated => out.hype_activations += 1,
+            EventType::Failed => out.failed = true,
+            _ => {}
+        }
+    }
+    out.mean_offset_us = if offset_count == 0 {
+        0
+    } else {
+        i32::try_from(offsets / i64::from(offset_count)).unwrap_or(0)
+    };
+    Ok(out)
+}
+
+/// How a group of musically similar notes has played.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContextBucket {
+    /// What the group is: a readable label, not a number to parse.
+    pub label: String,
+    /// Notes judged in it.
+    pub judged: u32,
+    /// How often one was missed, `0.0`–`1.0`.
+    pub miss_rate: f64,
+    /// Mean absolute timing error in milliseconds.
+    pub mean_abs_ms: f64,
+}
+
+/// Misses against what the song was doing (ADR-0018 §20).
+///
+/// The question the whole context sidecar exists for: do the notes
+/// people miss have something in common musically? Grouped by onset
+/// salience in five bands, plus whether the note sits on a beat and
+/// whether it is inside a span that repeats.
+///
+/// Returns nothing at all when no chart's context has been imported —
+/// which is honest: the question cannot be answered without it, and
+/// an empty answer is not the same as "nothing correlates".
+pub fn misses_by_context(store: &Store, min_judged: u32) -> Result<Vec<ContextBucket>> {
+    let mut out = Vec::new();
+    // Onset salience in five bands. The bands are wide on purpose:
+    // the byte is a dimension to group by, not a measurement, and
+    // twenty narrow buckets would be twenty thin readings.
+    let bands = [
+        ("onset: none", -1i64, 0i64),
+        ("onset: faint", 1, 63),
+        ("onset: soft", 64, 127),
+        ("onset: firm", 128, 191),
+        ("onset: hard", 192, 255),
+    ];
+    for (label, low, high) in bands {
+        out.extend(bucket(
+            store,
+            label,
+            "c.onset BETWEEN ?3 AND ?4",
+            &[&low, &high],
+            min_judged,
+        )?);
+    }
+    for (label, clause) in [
+        ("on a beat", "c.flags & 1 = 1"),
+        ("off the beat", "c.flags & 1 = 0"),
+        ("on a downbeat", "c.flags & 2 = 2"),
+        ("in a repeated span", "c.repeat_id > 0"),
+        ("heard once", "c.repeat_id = 0"),
+    ] {
+        out.extend(bucket(store, label, clause, &[], min_judged)?);
+    }
+    Ok(out)
+}
+
+/// One grouping of the §20 join.
+fn bucket(
+    store: &Store,
+    label: &str,
+    clause: &str,
+    extra: &[&dyn rusqlite::ToSql],
+    min_judged: u32,
+) -> Result<Option<ContextBucket>> {
+    let sql = format!(
+        "SELECT COUNT(*),
+                SUM(CASE WHEN e.event_type = ?1 THEN 1 ELSE 0 END),
+                AVG(ABS(COALESCE(e.delta_us, 0)))
+           FROM gameplay_event e
+           JOIN gameplay_session s USING (session_id)
+           JOIN note_context c
+             ON c.chart_hash = s.chart_hash
+            AND c.difficulty = s.difficulty
+            AND c.note_index = e.note_index
+          WHERE e.event_type IN (?1, ?2) AND {HONEST_RUNS} AND {clause}"
+    );
+    // Bound to locals first: a `&expr.code()` inside the vector is a
+    // temporary that dies at the end of the statement.
+    let miss = EventType::NoteMiss.code();
+    let hit = EventType::NoteHit.code();
+    let mut params: Vec<&dyn rusqlite::ToSql> = vec![&miss, &hit];
+    params.extend_from_slice(extra);
+    let rows = store.query(&sql, &params, |row| {
+        let judged: u32 = row.get(0)?;
+        let misses: Option<u32> = row.get(1)?;
+        let mean: Option<f64> = row.get(2)?;
+        Ok((judged, misses.unwrap_or(0), mean.unwrap_or(0.0)))
+    })?;
+    let Some((judged, misses, mean_us)) = rows.first().copied() else {
+        return Ok(None);
+    };
+    if judged < min_judged {
+        return Ok(None);
+    }
+    Ok(Some(ContextBucket {
+        label: label.to_owned(),
+        judged,
+        miss_rate: f64::from(misses) / f64::from(judged.max(1)),
+        mean_abs_ms: mean_us / 1000.0,
+    }))
+}
+
 /// Sessions whose recording is known to have a hole in it.
 ///
 /// A reader that filters on this is reading whole runs; a reader that
@@ -741,6 +946,138 @@ mod tests {
             "12–15 ms late belongs in the +10 ms bucket, not around \
              zero: {histogram:?}"
         );
+    }
+
+    #[test]
+    fn misses_can_be_asked_what_the_song_was_doing() {
+        use crate::model::NoteContextRow;
+        let (mut store, _) = a_played_chart();
+        // Note 2 (missed by everyone) sits off the beat with no
+        // onset; note 0 (hit by everyone) is a hard downbeat.
+        let rows = vec![
+            NoteContextRow {
+                onset: 250,
+                energy: 200,
+                brightness: 40,
+                bar_phase: 0,
+                repeat: 0,
+                flags: 0b11,
+            },
+            NoteContextRow {
+                onset: 200,
+                flags: 0b01,
+                ..NoteContextRow::default()
+            },
+            NoteContextRow {
+                onset: 0,
+                flags: 0b100,
+                ..NoteContextRow::default()
+            },
+            NoteContextRow {
+                onset: 30,
+                flags: 0,
+                ..NoteContextRow::default()
+            },
+        ];
+        store.set_context("chart-a", 1, &rows).expect("writes");
+
+        let buckets = misses_by_context(&store, 1).expect("reads");
+        let find = |label: &str| {
+            buckets
+                .iter()
+                .find(|bucket| bucket.label == label)
+                .unwrap_or_else(|| panic!("no bucket {label}: {buckets:?}"))
+        };
+        assert!(
+            (find("onset: none").miss_rate - 1.0).abs() < 1e-9,
+            "the notes with nothing audible under them are the missed              ones: {buckets:?}"
+        );
+        assert!((find("onset: hard").miss_rate - 0.0).abs() < 1e-9);
+        assert!(find("on a beat").miss_rate < find("off the beat").miss_rate);
+        assert_eq!(find("on a beat").judged, 8, "four runs, two on-beat notes");
+    }
+
+    #[test]
+    fn without_a_context_the_question_returns_nothing_rather_than_a_guess() {
+        let (store, _) = a_played_chart();
+        assert!(
+            misses_by_context(&store, 1).expect("reads").is_empty(),
+            "a library whose music was never imported cannot answer              this, and must not appear to"
+        );
+    }
+
+    #[test]
+    fn a_run_s_numbers_come_back_out_of_its_raw_events() {
+        // §18: the play history's summary is a cache. This is the
+        // proof — nothing in the event stream stores a count, a
+        // streak or an accuracy, and all of them come back.
+        let mut store = Store::open_in_memory().expect("a store");
+        let id = store
+            .begin(&session("run", None, InputDevice::Keyboard, 0.0))
+            .expect("begins");
+        let hit = |index: u32, rating, offset| {
+            Event::new(EventType::NoteHit, micros(f64::from(index)))
+                .about(index as usize)
+                .off_by(offset)
+                .judged(rating)
+        };
+        store
+            .append(
+                id,
+                &[
+                    (1, hit(0, Rating::Perfect, 0.002)),
+                    (2, hit(1, Rating::Great, 0.010)),
+                    (3, hit(2, Rating::Good, 0.030)),
+                    (4, Event::new(EventType::NoteMiss, micros(3.0)).about(3)),
+                    (5, hit(4, Rating::Perfect, 0.000)),
+                    (6, hit(5, Rating::Perfect, 0.000)),
+                    (7, Event::new(EventType::Overstrum, micros(6.0))),
+                    (8, hit(6, Rating::Perfect, 0.000)),
+                    (
+                        9,
+                        Event::new(EventType::SustainEnded, micros(7.0))
+                            .about(6)
+                            .flagged(crate::model::Flags::DONE),
+                    ),
+                    (
+                        10,
+                        Event::new(EventType::SustainEnded, micros(8.0)).about(7),
+                    ),
+                    (11, Event::new(EventType::HypeActivated, micros(9.0))),
+                    (12, Event::new(EventType::Failed, micros(10.0))),
+                ],
+            )
+            .expect("appends");
+
+        let run = summary(&store, id).expect("recomputes");
+        assert_eq!(run.judged, 7);
+        assert_eq!(run.perfect, 4);
+        assert_eq!(run.great, 1);
+        assert_eq!(run.good, 1);
+        assert_eq!(run.miss, 1);
+        assert_eq!(run.overstrums, 1);
+        assert_eq!(
+            run.best_streak, 3,
+            "the miss breaks it at 3, and so does the overstrum — an \
+             overstrum is not a missed note but it does end a run"
+        );
+        assert_eq!(run.sustains_held, 1);
+        assert_eq!(run.sustains_dropped, 1);
+        assert_eq!(run.hype_activations, 1);
+        assert!(run.failed);
+        assert_eq!(
+            run.mean_offset_us, 7_000,
+            "42 ms over the SIX hits, not over the seven judgments"
+        );
+        assert!((run.accuracy() - 6.0 / 7.0).abs() < 1e-9);
+
+        // An empty run divides by nothing.
+        let empty = store
+            .begin(&session("empty", None, InputDevice::Keyboard, 0.0))
+            .expect("begins");
+        let blank = summary(&store, empty).expect("recomputes");
+        assert_eq!(blank, Summary::default());
+        assert!((blank.accuracy() - 0.0).abs() < 1e-9);
     }
 
     #[test]

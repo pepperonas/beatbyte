@@ -35,6 +35,7 @@
 //! assert_eq!(track.len(), 1);
 //! ```
 
+pub mod context;
 pub mod convert;
 pub mod escalation;
 pub mod fit;
@@ -49,6 +50,7 @@ pub mod validate;
 pub mod versions;
 pub mod vocals;
 
+pub use context::{ChartContext, NoteContext, context_for};
 pub use convert::ConvertError;
 pub use generate::{DifficultyProfile, GenerateMeta, generate_chart, repeat_consistency};
 pub use io::{ChartIoError, load_chart_file, resolve_audio_path, save_chart_file};

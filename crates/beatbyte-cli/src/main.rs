@@ -14,6 +14,7 @@ use clap::{Parser, Subcommand};
 #[cfg(feature = "ml")]
 mod align;
 mod chart_check;
+mod context;
 mod dossier;
 mod history;
 mod loudness;
@@ -146,6 +147,24 @@ enum TelemetryCommand {
         #[arg(long)]
         store: Option<PathBuf>,
     },
+    /// Load a library's context sidecars into the store.
+    Context {
+        /// The songs directory.
+        library: PathBuf,
+        /// The database (defaults to the game's own).
+        #[arg(long)]
+        store: Option<PathBuf>,
+    },
+    /// What the missed notes have in common musically (needs
+    /// `telemetry context` first).
+    Music {
+        /// Notes a group needs before it is reported.
+        #[arg(long, default_value_t = 50)]
+        min_judged: u32,
+        /// The database (defaults to the game's own).
+        #[arg(long)]
+        store: Option<PathBuf>,
+    },
     /// Fill a throwaway store with a lifetime of playing and time it.
     Bench {
         /// How many sessions.
@@ -243,6 +262,16 @@ enum Command {
     Telemetry {
         #[command(subcommand)]
         what: TelemetryCommand,
+    },
+    /// Write the musical context sidecar beside a chart: what the
+    /// analysis says at each note, so a miss recorded later can be
+    /// asked what the song was doing there (ADR-0018).
+    Context {
+        /// A chart file, or a songs directory with `--all`.
+        path: PathBuf,
+        /// Walk every song folder under `path`.
+        #[arg(long)]
+        all: bool,
     },
     /// Review a chart against recorded play sessions (ADR-0011).
     Review {
@@ -587,6 +616,13 @@ fn main() -> ExitCode {
                 ExitCode::from(2)
             }
         },
+        Command::Context { path, all } => {
+            if all {
+                context::run_all(&path)
+            } else {
+                context::run_one(&path)
+            }
+        }
         Command::Telemetry { what } => match what {
             TelemetryCommand::Status { store } => telemetry::run_status(store),
             TelemetryCommand::Import { store, dir } => telemetry::run_import(store, dir),
@@ -625,6 +661,10 @@ fn main() -> ExitCode {
                 store,
             } => telemetry::run_calibration(store, player, min_hits),
             TelemetryCommand::Input { store } => telemetry::run_input(store),
+            TelemetryCommand::Context { library, store } => telemetry::run_context(store, &library),
+            TelemetryCommand::Music { min_judged, store } => {
+                telemetry::run_music(store, min_judged)
+            }
             TelemetryCommand::Bench {
                 sessions,
                 notes,
@@ -991,6 +1031,16 @@ fn generate(song: &Path, title: Option<String>, artist: &str, out: Option<PathBu
     if let Err(error) = beatbyte_chart::save_chart_file(&out_path, &chart) {
         eprintln!("cannot write chart: {error}");
         return ExitCode::from(2);
+    }
+    // What the analysis said at each note, kept beside the chart so
+    // that a miss recorded a year from now can still be asked what
+    // the song was doing there (ADR-0018 §20).
+    match beatbyte_chart::context::save_context(
+        &out_path,
+        &beatbyte_chart::context_for(&chart, &analysis),
+    ) {
+        Ok(path) => println!("Context   `{}`", path.display()),
+        Err(error) => eprintln!("context sidecar not written: {error}"),
     }
 
     println!(

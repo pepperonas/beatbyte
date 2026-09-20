@@ -11,6 +11,30 @@ engine read it, how it was judged — recorded as evidence rather than
 as a log. Reasoning and alternatives: [ADR-0018](decisions/ADR-0018-gameplay-telemetry-store.md).
 The feedback loop it feeds: [`adaptive-charting.md`](adaptive-charting.md).
 
+- [x] **T6 What the song was doing there** *(v0.17.17)*. The gap
+  that no amount of telemetry could close: `SongAnalysis` is computed
+  at import and **never persisted**, so by the time anybody misses a
+  note, the onset it came from, the energy around it and the bar it
+  sat in are gone. A `*.context.json` sidecar beside each chart
+  version keeps them — six bytes a note, indexed by **merged track
+  event** (the thing the store records), and a separate file so
+  `chart_hash` never moves and no session loses its evidence.
+  Written by the generator and by `redesign`, backfilled by
+  `beatbyte-cli context --all`, loaded into the store by
+  `telemetry context`, and asked by `telemetry music`: *do the notes
+  everybody misses have something in common?*
+  ⚠️ **A backfilled sidecar is today's analysis, not the generator's.**
+  The pipeline has moved since some of these charts were made (a
+  meter model arrived, the grid changed). The numbers are still
+  measured from the song rather than guessed, and they are still the
+  right dimensions to group by — they are not a reconstruction of a
+  historical run, and the document says so where a reader will see
+  it.
+  ⚠️ No section names. BeatByte has no structure segmentation, so the
+  sidecar records which **repeated span** a note is in and nothing
+  calls it a chorus. Writing a guess into a file is how a guess
+  becomes a fact.
+  *Verified: 1519 tests (+16), gate green.*
 - [x] **T8 + T9 The debug view, singing, and the benchmark**
   *(v0.17.16)*. The overlay says what the writer is doing and shouts
   a dropped event; vocal verdicts are recorded as cents and grades

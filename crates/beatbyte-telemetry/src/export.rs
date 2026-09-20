@@ -320,6 +320,24 @@ pub fn session_report(store: &Store, session: SessionId) -> Result<String> {
             "RECORDING INCOMPLETE"
         }
     ));
+    // The numbers, recomputed from the events below rather than
+    // stored beside them — which is the point of not storing them.
+    let run = analytics::summary(store, session)?;
+    out.push_str(&format!(
+        "  {} judged: {} perfect, {} great, {} good, {} miss — {:.1} % \
+         (streak {}, {} overstrum(s), {}/{} sustains held, {:+.1} ms mean)\n",
+        run.judged,
+        run.perfect,
+        run.great,
+        run.good,
+        run.miss,
+        run.accuracy() * 100.0,
+        run.best_streak,
+        run.overstrums,
+        run.sustains_held,
+        run.sustains_held + run.sustains_dropped,
+        f64::from(run.mean_offset_us) / 1000.0,
+    ));
     for (sequence, event) in store.events(session)? {
         let when = event.song_time_us.map_or_else(
             || "     ?   ".to_owned(),
@@ -484,6 +502,10 @@ mod tests {
 
         let report = session_report(&store, id).expect("renders");
         assert!(report.contains("Maria"));
+        assert!(
+            report.contains("2 judged: 1 perfect"),
+            "the summary is recomputed from the events, not stored: {report}"
+        );
         assert!(report.contains("recording whole"));
         assert!(report.contains("note 0"));
         assert!(report.contains("-4.0 ms"), "{report}");

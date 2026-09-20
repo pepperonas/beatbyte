@@ -452,6 +452,83 @@ pub fn run_input(path: Option<PathBuf>) -> ExitCode {
     }
 }
 
+/// `telemetry context --library <dir>`: load the sidecars a library
+/// carries into the store, so the §20 join has something to join to.
+pub fn run_context(store: Option<PathBuf>, library: &Path) -> ExitCode {
+    let (mut database, path) = match open(store) {
+        Ok(value) => value,
+        Err(error) => return fail(&error),
+    };
+    println!("reading {} into {}", library.display(), path.display());
+    let found = crate::context::load_library(library);
+    if found.is_empty() {
+        eprintln!(
+            "no context sidecar found — run `beatbyte-cli context --all {}` first",
+            library.display()
+        );
+        return ExitCode::from(2);
+    }
+    let mut notes = 0usize;
+    for (chart_hash, difficulty, contexts) in &found {
+        let rows: Vec<beatbyte_telemetry::model::NoteContextRow> = contexts
+            .iter()
+            .map(|context| beatbyte_telemetry::model::NoteContextRow {
+                onset: context.onset,
+                energy: context.energy,
+                brightness: context.brightness,
+                bar_phase: context.bar_phase,
+                repeat: context.repeat,
+                flags: context.flags,
+            })
+            .collect();
+        if let Err(error) = database.set_context(chart_hash, *difficulty, &rows) {
+            return fail(&error.to_string());
+        }
+        notes += rows.len();
+    }
+    println!(
+        "{} chart version(s) × difficulty, {notes} note(s)",
+        found.len()
+    );
+    ExitCode::SUCCESS
+}
+
+/// `telemetry music`: what the missed notes have in common.
+pub fn run_music(store: Option<PathBuf>, min_judged: u32) -> ExitCode {
+    let (database, _) = match open(store) {
+        Ok(value) => value,
+        Err(error) => return fail(&error),
+    };
+    match analytics::misses_by_context(&database, min_judged) {
+        Ok(rows) if rows.is_empty() => {
+            println!(
+                "nothing to join — import the library's context sidecars first \
+                 (`telemetry context --library <songs>`), and play a little"
+            );
+            ExitCode::SUCCESS
+        }
+        Ok(rows) => {
+            println!("group                 judged   miss    |off|");
+            for row in rows {
+                println!(
+                    "{:<20}  {:>6}  {:>4.1}%  {:>5.1}ms",
+                    row.label,
+                    row.judged,
+                    row.miss_rate * 100.0,
+                    row.mean_abs_ms
+                );
+            }
+            println!(
+                "\n(the groups overlap on purpose — a note is in an onset band AND \
+                 on or off the beat. A correlation here is a question to go and \
+                 listen to, not a verdict on a chart.)"
+            );
+            ExitCode::SUCCESS
+        }
+        Err(error) => fail(&error.to_string()),
+    }
+}
+
 /// `telemetry bench`.
 ///
 /// Writes into a database of its own — never the one the game uses.

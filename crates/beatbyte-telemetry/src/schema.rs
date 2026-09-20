@@ -46,10 +46,16 @@ pub struct Migration {
 }
 
 /// The schema's history, oldest first. Append only.
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    name: "sessions, events and player notes",
-    sql: M1,
-}];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        name: "sessions, events and player notes",
+        sql: M1,
+    },
+    Migration {
+        name: "what the analysis said at each chart note",
+        sql: M2,
+    },
+];
 
 /// v1 — the whole store as first shipped.
 const M1: &str = r"
@@ -117,6 +123,27 @@ CREATE INDEX ix_sess_chart ON gameplay_session(chart_hash, difficulty, started_m
 CREATE INDEX ix_sess_song  ON gameplay_session(title, artist, started_ms);
 CREATE INDEX ix_sess_gen   ON gameplay_session(generator_version, chart_hash);
 CREATE INDEX ix_note_session ON session_note(session_id);
+";
+
+/// v2 — the musical context of each chart note (ADR-0018 §20).
+///
+/// Keyed by `(chart_hash, difficulty, note_index)`, which is exactly
+/// the reference a gameplay event carries, so the join needs nothing
+/// invented. It is chart data, not telemetry: replaced wholesale when
+/// a chart is, and deleted with nothing.
+const M2: &str = r"
+CREATE TABLE note_context (
+    chart_hash TEXT    NOT NULL,
+    difficulty INTEGER NOT NULL,
+    note_index INTEGER NOT NULL,
+    onset      INTEGER NOT NULL,
+    energy     INTEGER NOT NULL,
+    brightness INTEGER NOT NULL,
+    bar_phase  INTEGER NOT NULL,
+    repeat_id  INTEGER NOT NULL,
+    flags      INTEGER NOT NULL,
+    PRIMARY KEY (chart_hash, difficulty, note_index)
+) WITHOUT ROWID;
 ";
 
 /// Run every migration the connection has not seen yet, and report

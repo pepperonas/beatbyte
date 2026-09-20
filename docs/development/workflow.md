@@ -172,6 +172,26 @@ beatbyte-cli telemetry export --what dataset --out runs.csv
 `--store <path>` points any of them at another database, which is how
 to try something without touching the one the game writes.
 
+### …and what the song was doing there
+
+A miss on its own says a note is hard. What it cannot say is *why*.
+The analysis that made the chart — the onset each note came from, the
+energy around it, where in the bar it fell — is computed at import and
+never kept, so it has to be written down beside the chart:
+
+```bash
+beatbyte-cli context --all songs/imported     # a sidecar per chart version
+beatbyte-cli telemetry context songs/imported # load them into the store
+beatbyte-cli telemetry music                  # what the misses have in common
+```
+
+New charts get a sidecar from the generator, which has the analysis
+in hand. ⚠️ A **backfilled** one is today's analysis of the song, not
+the one the generator saw: the pipeline has moved since some charts
+were made. The numbers are still measured from the song and still the
+right dimensions to group by; they are not a reconstruction of a
+historical run.
+
 Two things worth knowing before reading a number out of it:
 
 - **The autopilot and practice runs are excluded from every analysis**

@@ -627,6 +627,35 @@ pub struct Outcome {
     pub practice: bool,
 }
 
+// ── The song's own shape, per note ──────────────────────────────────
+
+/// What the analysis said at one chart note's moment.
+///
+/// The store keeps this so that §20 of the commission — *do the notes
+/// everybody misses have something in common musically?* — can be
+/// asked at all. It is produced by the chart crate (which owns the
+/// analysis) and written here as six plain bytes, because this crate
+/// deliberately knows nothing about charts.
+///
+/// It is **not** telemetry: it describes the chart, not the playing,
+/// and it is replaced wholesale whenever the chart is. It lives in
+/// the same database only so the join is a join.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct NoteContextRow {
+    /// Onset salience, `0` (nothing audible there) to `255`.
+    pub onset: u8,
+    /// The energy envelope, `0`–`255`.
+    pub energy: u8,
+    /// Spectral brightness, `0` bassy to `255` bright.
+    pub brightness: u8,
+    /// Where in the bar, in sixteenths; `255` when no grid knew.
+    pub bar_phase: u8,
+    /// Which repeated span, one-based; `0` for none.
+    pub repeat: u8,
+    /// The chart crate's context flags, carried through unread.
+    pub flags: u8,
+}
+
 // ── Events ──────────────────────────────────────────────────────────
 
 /// One recorded thing.

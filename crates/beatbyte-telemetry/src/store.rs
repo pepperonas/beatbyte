@@ -261,6 +261,83 @@ impl Store {
         Ok(())
     }
 
+    /// Replace the musical context of one chart version's difficulty.
+    ///
+    /// Wholesale: a chart's notes are what they are, and a partial
+    /// update would leave a sidecar and a table disagreeing about the
+    /// same song.
+    pub fn set_context(
+        &mut self,
+        chart_hash: &str,
+        difficulty: u8,
+        rows: &[crate::model::NoteContextRow],
+    ) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        tx.execute(
+            "DELETE FROM note_context WHERE chart_hash = ?1 AND difficulty = ?2",
+            params![chart_hash, difficulty],
+        )?;
+        {
+            let mut insert = tx.prepare_cached(
+                "INSERT INTO note_context (
+                    chart_hash, difficulty, note_index,
+                    onset, energy, brightness, bar_phase, repeat_id, flags
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            )?;
+            for (index, row) in rows.iter().enumerate() {
+                insert.execute(params![
+                    chart_hash,
+                    difficulty,
+                    index as i64,
+                    row.onset,
+                    row.energy,
+                    row.brightness,
+                    row.bar_phase,
+                    row.repeat,
+                    row.flags,
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// One note's context, if the store has it.
+    pub fn context(
+        &self,
+        chart_hash: &str,
+        difficulty: u8,
+        note_index: u32,
+    ) -> Result<Option<crate::model::NoteContextRow>> {
+        let mut statement = self.conn.prepare(
+            "SELECT onset, energy, brightness, bar_phase, repeat_id, flags
+               FROM note_context
+              WHERE chart_hash = ?1 AND difficulty = ?2 AND note_index = ?3",
+        )?;
+        let mut rows = statement.query_map(params![chart_hash, difficulty, note_index], |row| {
+            Ok(crate::model::NoteContextRow {
+                onset: row.get(0)?,
+                energy: row.get(1)?,
+                brightness: row.get(2)?,
+                bar_phase: row.get(3)?,
+                repeat: row.get(4)?,
+                flags: row.get(5)?,
+            })
+        })?;
+        match rows.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
+    }
+
+    /// How many chart notes the store knows the music of.
+    pub fn context_count(&self) -> Result<u64> {
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM note_context", [], |row| row.get(0))?;
+        Ok(count.max(0) as u64)
+    }
+
     /// How many sessions are stored.
     pub fn session_count(&self) -> Result<u64> {
         let count: i64 =
@@ -698,6 +775,46 @@ mod tests {
             2,
             "…and it is still on disk, for the build that understands it"
         );
+    }
+
+    #[test]
+    fn a_chart_s_music_is_stored_wholesale_and_replaced_wholesale() {
+        use crate::model::NoteContextRow;
+        let mut store = Store::open_in_memory().expect("a store");
+        let rows = vec![
+            NoteContextRow {
+                onset: 200,
+                energy: 100,
+                brightness: 50,
+                bar_phase: 0,
+                repeat: 1,
+                flags: 3,
+            },
+            NoteContextRow {
+                onset: 10,
+                ..NoteContextRow::default()
+            },
+        ];
+        store.set_context("chart-a", 1, &rows).expect("writes");
+        assert_eq!(store.context_count().expect("counts"), 2);
+        assert_eq!(
+            store.context("chart-a", 1, 0).expect("reads"),
+            Some(rows[0])
+        );
+        assert_eq!(store.context("chart-a", 1, 5).expect("reads"), None);
+        assert_eq!(
+            store.context("chart-b", 1, 0).expect("reads"),
+            None,
+            "another chart's notes are another chart's"
+        );
+
+        // A shorter chart replaces the longer one completely: a
+        // leftover row would describe a note that no longer exists.
+        store
+            .set_context("chart-a", 1, &rows[..1])
+            .expect("replaces");
+        assert_eq!(store.context_count().expect("counts"), 1);
+        assert_eq!(store.context("chart-a", 1, 1).expect("reads"), None);
     }
 
     #[test]

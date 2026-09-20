@@ -14,6 +14,29 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.17] - 2026-09-20
+
+### Added
+
+- **Each chart version carries what the analysis said at its notes** — a
+  `*.context.json` sidecar: onset salience, energy, brightness, where in the
+  bar, and whether the passage repeats. Six bytes a note. Without it the
+  question "do the notes everybody misses have something in common musically?"
+  could not be asked at all: the analysis that made the chart was never kept.
+- **`beatbyte-cli context [--all]`** writes them for charts made before this
+  existed, **`telemetry context`** loads them into the store, and
+  **`telemetry music`** asks the question.
+
+### Notes
+
+- The sidecar indexes **merged chord events**, the same index the telemetry
+  store records — a sidecar keyed to chart notes would join to the wrong note
+  on every chord.
+- It is a separate file on purpose: a chart that gains one keeps its
+  `chart_hash`, and every session ever recorded against it keeps its evidence.
+- A backfilled sidecar is **today's** analysis of the song, not the one the
+  generator saw; the pipeline has moved since some charts were made.
+
 ## [0.17.16] - 2026-09-20
 
 ### Added

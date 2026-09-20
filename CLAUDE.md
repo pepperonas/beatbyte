@@ -9,7 +9,7 @@ file wins over habit; the roadmap wins over improvisation.
 
 **BeatByte** — an original five-lane rhythm game in **Rust + Bevy
 0.19** (repo `pepperonas/beatbyte`, MIT, © 2026 Martin Pfeffer, public).
-A Cargo workspace of nine crates plus a thin launcher (map below);
+A Cargo workspace of ten crates plus a thin launcher (map below);
 all logic lives in the crates. UI language is English; the game is
 fully keyboard/gamepad driven.
 
@@ -36,6 +36,12 @@ that may touch Bevy (the full layering and its invariants:
   player already has → `words.json`.
 - **`beatbyte-meter`** (ml, audio, core) — beats and downbeats from
   the Beat This! model pair.
+- **`beatbyte-telemetry`** (core) — the gameplay blackbox (ADR-0018):
+  the versioned event history a played song leaves behind, the local
+  SQLite store that keeps it, the bounded queue and worker thread the
+  game records through, the analytics that read it, and the import of
+  the older per-session JSONL files. Engine-free; chart identity
+  enters as a hash string.
 - **`beatbyte-game`** (everything above) — the only Bevy crate:
   screens, HUD, 3D stage, input routing, library, settings, harnesses.
 - **`beatbyte-cli`** (all but game and editor) — the offline tool.
@@ -80,9 +86,15 @@ writes. On macOS both directories below are
 - `<config>/beatbyte/settings.json` — settings. The game REWRITES it
   on exit; read the gotcha before editing it to set up a run.
 - `<data>/beatbyte/` — `scores.json`, `players.json`, `history.jsonl`,
-  `achievements.json`, `telemetry/` (one JSONL per played session,
-  which is what a suspicious autopilot verdict is read against), and
-  the downloaded ML models.
+  `achievements.json`, **`telemetry.db`** (the gameplay store,
+  ADR-0018 — `beatbyte-cli telemetry status` to look), `telemetry/`
+  (the older per-session JSONL files, now imported into the store and
+  kept; still what a suspicious autopilot verdict is quickest to read
+  against), and the downloaded ML models.
+- Beside each chart version in a song folder: **`*.context.json`**,
+  what the analysis said at each of its notes. Generated with the
+  chart, or backfilled by `beatbyte-cli context --all songs/imported`;
+  gitignored like everything else under `songs/imported/`.
 
 ### Where to look before deriving something twice
 
@@ -191,6 +203,50 @@ tech writer, release manager. Operate accordingly:
   when the user's ask was the look.)
 - **No secrets in the repo.** No tokens, keys, or credentials, not
   even in CI logs or test fixtures.
+- **Telemetry is a first-class domain, not a log** (ADR-0018). It is
+  **event-based, never frame-based**; it runs **off the frame thread**
+  behind a bounded queue and never blocks; it **references** song and
+  chart data (session, chart hash, note index) instead of copying it;
+  it stores **nothing derivable** from what it already stores; it is
+  **schema-versioned and migratable**, and a shipped migration is
+  never edited; it keeps **physical input, logical action and gameplay
+  result** distinguishable; it records the **versions** a run happened
+  under, because two sessions from different scoring rules are two
+  different measurements; and it is **local-first** — no upload, no
+  microphone audio, no key that BeatByte is not bound to.
+
+  Analytics over it produce **evidence**, never a change. Nothing
+  reads the store back into the game.
+
+## Data-driven gameplay
+
+BeatByte is meant to improve from what it measures. That only works
+if the measuring stays honest, so when a new gameplay system is
+added, ask these in order:
+
+1. Does it create a **player action** that matters?
+2. Does the **engine make a decision** that matters?
+3. Is there an **outcome** worth analysing later?
+4. Can any of it already be **reconstructed** from existing events?
+   (Combo, score, accuracy, sustain *starts*, phrase completions and
+   "early / late" all can — and so are deliberately not stored.)
+5. If not: does it need a new [`EventType`], or does an existing one
+   plus a flag say it?
+6. Can it **reference** song or chart data instead of carrying a copy?
+7. Does it carry the **version** of whatever produced it?
+8. Is the write **off the frame thread** and non-blocking?
+9. Does it avoid personal data, raw audio, and inputs the game is not
+   bound to?
+
+If the answer to 1–3 is no, it does not belong in persistent
+telemetry. The question that settles most cases: *will this event
+help explain what the player did, what BeatByte expected, or why the
+engine produced a particular result?*
+
+Two things that are **out of scope on purpose**: automatic training,
+and a chart generator that rewrites itself. Telemetry produces
+observability, then data, then analytics, then evidence. What is done
+with the evidence stays a deliberate, versioned act.
 
 ## Testing requirements
 

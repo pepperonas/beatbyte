@@ -237,6 +237,16 @@ pub fn redesign_folder(
         format!("{{\"active\": \"{next_name}\"}}\n"),
     )
     .map_err(|error| format!("cannot write the pointer: {error}"))?;
+    // The analysis that made this version, kept per note beside it
+    // (ADR-0018 §20). A separate file, so `chart_hash` — and with it
+    // every session ever recorded against this chart — is untouched.
+    // A failure here costs a dimension in a later analysis and must
+    // not cost the redesign.
+    if let Err(error) =
+        crate::context::save_context(&next_path, &crate::context::context_for(&merged, &analysis))
+    {
+        note(format!("context sidecar not written: {error}"));
+    }
 
     let counts = |chart: &ChartFile, d: Difficulty| chart.chart_for(d).map_or(0, |c| c.notes.len());
     Ok(format!(
