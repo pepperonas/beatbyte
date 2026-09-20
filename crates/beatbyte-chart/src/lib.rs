@@ -47,6 +47,7 @@ pub mod schema;
 pub mod study;
 pub mod validate;
 pub mod versions;
+pub mod vocals;
 
 pub use convert::ConvertError;
 pub use generate::{DifficultyProfile, GenerateMeta, generate_chart, repeat_consistency};
@@ -58,6 +59,10 @@ pub use schema::{
     AudioTrim, ChartDef, ChartFile, ChartNote, ChartPhrase, Provenance, SongMeta, chart_hash,
 };
 pub use validate::{Issue, Severity};
+pub use vocals::{
+    VOCAL_PIPELINE_VERSION, VOCAL_SCHEMA, VocalChartFile, VocalProvenance, load_vocals,
+    save_vocals, vocals_beside, vocals_path,
+};
 
 /// The chart format version this crate reads and writes.
 pub const FORMAT_VERSION: u32 = 1;

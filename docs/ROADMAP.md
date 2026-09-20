@@ -332,6 +332,68 @@ project. Milestones when picked up:
 - [x] H3 **3D particles; depth of field measured and rejected** *(v0.14.3)*. The sustain-tube half of this line shipped as H2b and the text had gone stale. What was left: hit sparks in world space (`gameplay/spark3d.rs` — they arc from the struck receptor in perspective, shrink rather than fade, round neck only, capped and scaled by EFFECT INTENSITY; 5 tests, 5 mutation probes, no measurable frame cost against H4's baseline), and the lens. The lens was built and removed: at a usable aperture it does nothing (far/near sharpness 0.962 → 0.969), and wide enough to see it blurs the strike line first (612 → 475). The venue separation it was wanted for is already the stage fog's job. Bloom reviewed, left alone. The flat burst that was left unexplained here was diagnosed the next session (v0.14.4): not invisible but MISPLACED — the 3D solo neck is 1.45× wider than the flat layout it is positioned with — and it now stands down on the stage, the outro fireworks excepted.
 - [~] H4 Performance pass + packaging size check. Measured on this machine: the 3D stage holds a vsync-locked 60 fps during a full song with a 99th-percentile frame of 19.4 ms — no stalls, so it costs no notes. `BEATBYTE_FPS=1` now reports median and 99th-percentile frame times (an average would hide exactly the stutters that lose notes). Still open: a low-end GPU and the artifact size check.
 
+## Vocal/karaoke gameplay (IN PROGRESS 2026-09-20 — docs/plans/vocal-karaoke-gameplay.md)
+
+The architecture plan was approved on 2026-09-20 and its nine
+milestones are worked in order. The instrumental game stays playable
+throughout: every vocal prerequisite that is missing — a microphone,
+a separator, a model, lyrics, a reliable vocal chart — is a state the
+game **records and shows**, never a failed import and never a song
+that will not start.
+
+- [x] V0 **Technical and licensing spike.** The plan's largest open
+  risk was whether Spotify's Basic Pitch ONNX runs under `rten` at
+  all; it does. Loaded through the existing runtime it takes a
+  `[batch, 43844, 1]` window of 22 050 Hz mono and returns note,
+  onset and contour heads (172×88, 172×88, 172×264), and on synthetic
+  tones it is right: 440 Hz reads as MIDI 69, 220 Hz as MIDI 57.
+  *Verified: run through `rten` 0.26 with the graph's own operators,
+  27.8 ms per two-second window in a debug build (≈70× realtime for
+  offline use). The file is Apache-2.0 and pins to a commit — size
+  230 444, SHA-256 `2c3c1d14…a0ec` — and the commit-pinned URL was
+  checked to serve those exact bytes. Demucs is present on this
+  machine. ⚠️ Re-hosting the model as a release asset of this
+  repository, the way the other four are, is an outward-facing
+  publish and is left for the user.*
+- [x] V1 **The vocal model and its two sidecars.** `beatbyte_core::vocal`
+  holds what a singer is asked to sing — parts, phrases, notes, a
+  sparse pitch contour per note so a bend stays a bend — plus the
+  arithmetic that judges one: Hz enters at exactly one door
+  (`hz_to_midi`), everything after it is fractional MIDI and cents,
+  and octave-independent comparison is a fold rather than a special
+  case. `beatbyte_chart::vocals` stores it as `<audio>.vocals.json`,
+  written through `.part` and a rename; `beatbyte_audio::stems` stores
+  what separation produced as `<audio>.stems.json`, and its
+  `StemState` is the piece that stops a library rescan paying for the
+  same expensive answer twice — an instrumental song, a song with no
+  usable vocals and a hard failure are *settled*, while a missing
+  separator is a fact about the machine and is retried when one
+  appears. *Verified: 1292 tests (+35), gate green. The docs gate's
+  own doc-example counter was generalised in the same commit — it
+  hard-coded "one example, in beatbyte-chart" and the second one
+  broke it, which is precisely what its comment said would happen —
+  and now counts fenced Rust blocks across the workspace, telling
+  prose blocks and closing fences apart, with a test of its own.*
+- [ ] V2 **Shared stems and offline analysis.** Generalise the Guitar
+  Study separation into one `StemService` whose single run feeds
+  vocals, the karaoke instrumental and the study's `other` stem;
+  implement `VocalAnalyzer` over Basic Pitch with deterministic Rust
+  segmentation; reuse the lyric aligner on the same stem.
+- [ ] V3 **Microphone engine.** One shared capture stream for the
+  stage meters and vocal play, bounded ring buffer, realtime pitch,
+  timestamped frames onto `song_time`.
+- [ ] V4 **`VocalSession` and scoring.** Pitch/timing/coverage/stability
+  weighting, rap and spoken notes judged without a pitch penalty, and
+  the shared performance core so there is one Hype, not two.
+- [ ] V5 **Vocal presentation.** Target bars, the live pitch trace,
+  high/low, phrase feedback, and the accessibility variants.
+- [ ] V6 **Calibration and settings.** A per-device microphone offset
+  measured by loopback — never the controller's latency value.
+- [ ] V7 **Karaoke playback.** Sample-synchronous stem mixing,
+  original vocals at zero by default, assisted runs marked.
+- [ ] V8 **Events, results and polish.**
+- [ ] V9 **Release gate.**
+
 ## Stage monitors and the room's light show (2026-09-07, v0.14.39–)
 
 - [x] **BPM and dB monitors on the PA** *(v0.14.39)*. Commissioned:

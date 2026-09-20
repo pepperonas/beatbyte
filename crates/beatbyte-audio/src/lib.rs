@@ -34,13 +34,14 @@ pub mod playback;
 pub mod priming;
 pub mod quality;
 pub mod resample;
+pub mod stems;
 pub mod synth;
 
 pub use analysis::{Analyzer, AnalyzerConfig, SpectralAnalyzer};
 pub use clock::SongClock;
 pub use decode::{
     AudioData, Channels, DecodeError, decode_file, decode_file_channels, read_genre,
-    wav_bytes_mono16, write_wav_mono16,
+    wav_bytes_mono16, wav_bytes16, write_wav_mono16, write_wav16,
 };
 pub use playback::{MusicPlayer, PlaybackError};
 

@@ -178,14 +178,18 @@ fn half_band_taps<const N: usize>() -> [f32; N] {
     taps
 }
 
-/// Encode mono audio as a 16-bit PCM WAV in memory (the header is
-/// trivial and saves a dependency). Used for demo material on disk and
-/// for procedurally generated SFX handed to the engine's audio assets.
+/// Encode interleaved audio as a 16-bit PCM WAV in memory (the header
+/// is trivial and saves a dependency).
+///
+/// `channels` is interleaved frames per sample; 0 is read as 1 so a
+/// caller cannot produce a header no decoder will accept.
 #[must_use]
-pub fn wav_bytes_mono16(audio: &AudioData) -> Vec<u8> {
-    let data_len = (audio.samples().len() * 2) as u32;
-    let rate = audio.sample_rate();
-    let byte_rate = rate * 2;
+pub fn wav_bytes16(interleaved: &[f32], channels: usize, sample_rate: u32) -> Vec<u8> {
+    let channels = u16::try_from(channels.max(1)).unwrap_or(u16::MAX);
+    let block_align = channels * 2;
+    let data_len = u32::try_from(interleaved.len() * 2).unwrap_or(u32::MAX);
+    let rate = sample_rate.max(1);
+    let byte_rate = rate * u32::from(block_align);
 
     let mut bytes = Vec::with_capacity(44 + data_len as usize);
     bytes.extend_from_slice(b"RIFF");
@@ -193,23 +197,47 @@ pub fn wav_bytes_mono16(audio: &AudioData) -> Vec<u8> {
     bytes.extend_from_slice(b"WAVEfmt ");
     bytes.extend_from_slice(&16u32.to_le_bytes()); // PCM chunk size
     bytes.extend_from_slice(&1u16.to_le_bytes()); // PCM
-    bytes.extend_from_slice(&1u16.to_le_bytes()); // mono
+    bytes.extend_from_slice(&channels.to_le_bytes());
     bytes.extend_from_slice(&rate.to_le_bytes());
     bytes.extend_from_slice(&byte_rate.to_le_bytes());
-    bytes.extend_from_slice(&2u16.to_le_bytes()); // block align
+    bytes.extend_from_slice(&block_align.to_le_bytes());
     bytes.extend_from_slice(&16u16.to_le_bytes()); // bits per sample
     bytes.extend_from_slice(b"data");
     bytes.extend_from_slice(&data_len.to_le_bytes());
-    for &sample in audio.samples() {
+    for &sample in interleaved {
         let value = (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16;
         bytes.extend_from_slice(&value.to_le_bytes());
     }
     bytes
 }
 
+/// Encode mono audio as a 16-bit PCM WAV in memory. Used for demo
+/// material on disk and for procedurally generated SFX handed to the
+/// engine's audio assets.
+#[must_use]
+pub fn wav_bytes_mono16(audio: &AudioData) -> Vec<u8> {
+    wav_bytes16(audio.samples(), 1, audio.sample_rate())
+}
+
 /// Write mono audio as a 16-bit PCM WAV file.
 pub fn write_wav_mono16(path: &Path, audio: &AudioData) -> std::io::Result<()> {
     fs::write(path, wav_bytes_mono16(audio))
+}
+
+/// Write multi-channel audio as a 16-bit PCM WAV file.
+///
+/// The separator is fed and read through this: a karaoke backing that
+/// went out mono would be a quality loss the player hears, and the
+/// stems come back at whatever width they went in.
+pub fn write_wav16(path: &Path, channels: &Channels) -> std::io::Result<()> {
+    fs::write(
+        path,
+        wav_bytes16(
+            &channels.interleaved,
+            channels.channels,
+            channels.sample_rate,
+        ),
+    )
 }
 
 /// The frames a container's declared priming amounts to at the

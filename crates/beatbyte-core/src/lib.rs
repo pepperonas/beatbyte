@@ -21,6 +21,8 @@
 //! - [`player`] — the local roster: who plays on this machine
 //! - [`history`] — the play log, one line per played track
 //! - [`stats`] — what a roster and a play log say about a player
+//! - [`vocal`] — vocal charts: the melody a singer is held to, and
+//!   the pitch arithmetic that judges one
 //!
 //! ## Time convention
 //!
@@ -39,6 +41,7 @@ pub mod session;
 pub mod stats;
 pub mod telemetry;
 pub mod timing;
+pub mod vocal;
 
 pub use difficulty::Difficulty;
 pub use lane::{Lane, LaneSet};
@@ -48,6 +51,10 @@ pub use player::{Player, PlayerId, Roster};
 pub use score::{PlayerPerformance, ScoreConfig};
 pub use session::{GameInput, InputKind, SessionEvent, TrackSession};
 pub use timing::{Judgment, TempoMap, TimingWindows};
+pub use vocal::{
+    PitchMode, VocalKind, VocalNote, VocalPart, VocalPhrase, VocalPitchPoint, VocalRange,
+    VocalRole, VocalToken,
+};
 
 /// The crate version, kept in sync with the workspace version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

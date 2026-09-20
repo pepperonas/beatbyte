@@ -112,18 +112,78 @@ fn the_readme_test_table_matches_the_code() {
     }
 }
 
+/// Documentation examples across the workspace: the fenced blocks in
+/// doc comments that rustdoc compiles and runs as tests.
+///
+/// Two things this has to get right, and neither is obvious. A
+/// ```` ```text ```` block is prose and is not run — counting it
+/// would inflate the total by one per explanatory diagram. And a
+/// block's CLOSING fence is bare, so a naive count of ```` ``` ````
+/// reads every closing fence as another example; the state has to be
+/// tracked rather than the occurrences counted.
+fn doc_examples() -> usize {
+    let mut files = Vec::new();
+    for dir in ["crates", "apps"] {
+        rust_files(&repo().join(dir), &mut files);
+    }
+    let mut count = 0;
+    for path in &files {
+        // Only a library's own sources carry doc tests; a `//!` at the
+        // top of an integration test is not compiled as one.
+        if !path.components().any(|c| c.as_os_str() == "src") {
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(path) else {
+            continue;
+        };
+        let mut open = false;
+        for line in text.lines() {
+            let trimmed = line.trim_start();
+            let Some(doc) = trimmed
+                .strip_prefix("///")
+                .or_else(|| trimmed.strip_prefix("//!"))
+            else {
+                continue;
+            };
+            let Some(info) = doc.trim_start().strip_prefix("```") else {
+                continue;
+            };
+            if open {
+                open = false;
+                continue;
+            }
+            open = true;
+            let info = info.trim();
+            if info.is_empty() || info.starts_with("rust") {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+#[test]
+fn the_documentation_example_counter_tells_prose_from_tests() {
+    // The counter decides a number the README is held to, so it gets
+    // its own proof rather than being trusted: a `text` block is
+    // prose, a bare one is a test, and a closing fence is neither.
+    assert!(
+        doc_examples() >= 2,
+        "the workspace has at least the chart crate's example and the \
+         pitch conversion's; found {}",
+        doc_examples()
+    );
+}
+
 #[test]
 fn the_readme_total_is_the_sum_of_its_parts() {
     // The command line in the README quotes what `cargo test` prints,
     // which is every test function PLUS the documentation examples it
-    // compiles and runs. There is exactly one of those, in
-    // beatbyte-chart's crate docs, so the total is the table's sum
-    // plus one. If a second doc example is added this fails, which is
-    // the right moment to notice the README needs a word about it.
-    let doc_examples = read("crates/beatbyte-chart/src/lib.rs")
-        .matches("```")
-        .count()
-        / 2;
+    // compiles and runs, and the ignored ones are in that number too.
+    // So the total is the table's sum plus however many doc examples
+    // the workspace carries — counted, because the first version of
+    // this test hard-coded "one" and the second example duly broke it.
+    let doc_examples = doc_examples();
     let sum: usize = readme_test_table().iter().map(|(_, n)| n).sum();
     let readme = read("README.md");
     let claimed: usize = readme
@@ -406,11 +466,7 @@ fn the_roadmap_and_the_readme_agree_on_the_test_total() {
     // README's badge quotes the same number and IS checked against
     // the code; this ties the second copy to the first rather than
     // leaving it to be remembered.
-    let readme = readme_test_table().iter().map(|(_, n)| n).sum::<usize>()
-        + read("crates/beatbyte-chart/src/lib.rs")
-            .matches("```")
-            .count()
-            / 2;
+    let readme = readme_test_table().iter().map(|(_, n)| n).sum::<usize>() + doc_examples();
     let roadmap = read("docs/ROADMAP.md");
     let quoted = format!("*Verified: {readme} tests");
     assert!(
@@ -453,11 +509,7 @@ fn checkable_badges_state_the_truth() {
     // (table sum + doc examples). It sat at 313 while the suite was
     // at 422 — nothing about a wrong number looks wrong, so it is
     // enforced now like the rest.
-    let doc_examples = read("crates/beatbyte-chart/src/lib.rs")
-        .matches("```")
-        .count()
-        / 2;
-    let total: usize = readme_test_table().iter().map(|(_, n)| n).sum::<usize>() + doc_examples;
+    let total: usize = readme_test_table().iter().map(|(_, n)| n).sum::<usize>() + doc_examples();
     assert!(
         readme.contains(&format!("tests-{total}%20passing")),
         "the tests badge does not say {total} passing"
