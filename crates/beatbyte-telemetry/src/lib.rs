@@ -64,10 +64,12 @@
 //! - [`store`] — the synchronous database
 //! - [`writer`] — the queue and worker thread the game records through
 //! - [`analytics`] — the questions the store was shaped to answer
+//! - [`mod@bench`] — filling it with a lifetime of playing and timing that
 //! - [`legacy`] — importing the older per-session JSONL files
 //! - [`export`] — handing a session or a dataset to another tool
 
 pub mod analytics;
+pub mod bench;
 pub mod export;
 pub mod legacy;
 pub mod model;

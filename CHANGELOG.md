@@ -14,6 +14,30 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.16] - 2026-09-20
+
+### Added
+
+- **The debug overlay says what telemetry is doing** — the level, how much has
+  been written, how much is waiting, how long since the last commit and how
+  long it took, the store's size, and the one number that may never be quiet:
+  dropped events, shouted rather than printed.
+- **Singing is recorded** (results only, never audio). A sung note becomes its
+  own number in the part, its pitch error in cents, how late the onset was and
+  a grade; a phrase becomes its index, its grade and how many of its notes were
+  hit. A run the record sang along to carries `ASSISTED` on every row.
+- **`beatbyte-cli telemetry bench`** fills a throwaway store with a lifetime of
+  playing and times it. Never the game's own store.
+
+### Notes
+
+- Measured: **1 000 sessions = 1.13 M events, 51 MB, filled in 2.7 s**;
+  **10 000 sessions = 11.3 M events, 513 MB, 29.7 s**. Reading one session
+  stays at a quarter of a millisecond either way. Full table in ADR-0018.
+- One index was measured and **rejected**: it would make the calibration
+  reading eight times faster and cost 8.5 % of the whole store, for a query
+  that already runs offline in under half a second.
+
 ## [0.17.15] - 2026-09-20
 
 ### Added

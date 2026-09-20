@@ -197,6 +197,43 @@ adaptive difficulty. Analytics produce evidence; changing an
 algorithm stays a deliberate, versioned act, exactly as ADR-0011 set
 out.
 
+## Measured
+
+`beatbyte-cli telemetry bench` fills a throwaway store with generated
+play in the proportions three real autopilot runs showed, then times
+the questions above. On this machine (M-series laptop, release
+build):
+
+| | 1 000 sessions | 10 000 sessions |
+|---|---:|---:|
+| Events | 1 128 816 | 11 287 708 |
+| Fill | 2.7 s (**424 000 events/s**) | 29.7 s (380 000 events/s) |
+| Batch commit | 0.86 ms | 0.95 ms |
+| On disk | 51 MB | **513 MB** |
+| Per event | 47.7 bytes | 47.7 bytes |
+| Every event of one session | 0.22 ms | 0.24 ms |
+| Note quality, one chart version | 1.2 ms | 14 ms |
+| Generator comparison, one genre | 106 ms | 1.8 s |
+| Calibration bias, all players | 412 ms | 4.8 s |
+| Timing histogram, everything | 130 ms | 1.7 s |
+
+Ten thousand sessions is roughly five hundred hours of playing. The
+per-session reads stay flat because the primary key is
+`(session_id, sequence)`; the whole-corpus aggregates scale linearly
+and are seconds, which is what an offline command line may cost.
+
+The **real** figures agree with the generated ones where it counts:
+three autopilot runs wrote 51.4 bytes per event, and 475 real
+sessions (471 of them imported from the JSONL era) hold 146 290
+events in 7.1 MB.
+
+**One index was measured and rejected.** A partial index on
+`(event_type, delta_us)` takes the calibration median from 221 ms to
+28 ms — an eight-fold win — and costs **3.84 MB on a 45 MB store,
+8.5 %**. For a query that runs offline, in under half a second, at a
+thousand sessions, that is not a trade worth making; the number is
+recorded here so the decision does not have to be re-derived.
+
 ## Alternatives considered
 
 **Keep JSONL and read it better.** It is greppable, it is already

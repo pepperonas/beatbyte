@@ -12,7 +12,7 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use beatbyte_telemetry::{Store, analytics, export, legacy};
+use beatbyte_telemetry::{Store, analytics, bench, export, legacy};
 
 use crate::review;
 
@@ -450,6 +450,68 @@ pub fn run_input(path: Option<PathBuf>) -> ExitCode {
         }
         Err(error) => fail(&error.to_string()),
     }
+}
+
+/// `telemetry bench`.
+///
+/// Writes into a database of its own — never the one the game uses.
+/// A benchmark that pollutes the evidence it is measuring would be
+/// worse than no benchmark.
+pub fn run_bench(
+    store: Option<PathBuf>,
+    sessions: usize,
+    notes: usize,
+    charts: usize,
+    keep: bool,
+) -> ExitCode {
+    let path = store.unwrap_or_else(|| {
+        std::env::temp_dir().join(format!(
+            "beatbyte-telemetry-bench-{}.db",
+            std::process::id()
+        ))
+    });
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(path.with_extension("db-wal"));
+    let _ = std::fs::remove_file(path.with_extension("db-shm"));
+    let mut database = match Store::open(&path) {
+        Ok(store) => store,
+        Err(error) => return fail(&error.to_string()),
+    };
+    println!(
+        "filling {}: {sessions} session(s) of {notes} note(s) over {charts} chart(s)",
+        path.display()
+    );
+    let report = match bench::run(&mut database, sessions, notes, charts, 20_260_920) {
+        Ok(report) => report,
+        Err(error) => return fail(&error.to_string()),
+    };
+    println!(
+        "\n{} sessions, {} events in {:.1}s — {:.0} events/s, {:.2} ms per batch commit",
+        report.sessions,
+        report.events,
+        report.insert_s,
+        report.events_per_second(),
+        report.batch_ms
+    );
+    println!(
+        "{:.1} MB on disk — {:.1} bytes per event, {:.1} KB per session",
+        report.bytes as f64 / 1_048_576.0,
+        report.bytes_per_event(),
+        report.bytes as f64 / report.sessions.max(1) as f64 / 1024.0
+    );
+    println!("\nquery                                    rows        time");
+    for (name, ms, rows) in &report.queries {
+        println!("{name:<40}  {rows:>5}  {ms:>8.2} ms");
+    }
+    drop(database);
+    if keep {
+        println!("\nkept: {}", path.display());
+    } else {
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("db-wal"));
+        let _ = std::fs::remove_file(path.with_extension("db-shm"));
+    }
+    ExitCode::SUCCESS
 }
 
 fn fail(message: &str) -> ExitCode {

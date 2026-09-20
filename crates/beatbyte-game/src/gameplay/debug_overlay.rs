@@ -93,6 +93,62 @@ pub fn row(label: &str, cells: &[(&str, String)]) -> String {
     out.trim_end().to_owned()
 }
 
+/// The telemetry writer's row, or nothing when it is not recording.
+///
+/// A store that is silently not writing looks exactly like a store
+/// that is, and the first thing anybody asks of one is "did that run
+/// go in?". So it says: what it is recording, how much has gone down,
+/// how much is waiting, how long since the last commit, how long that
+/// commit took, and — the number that must never be hidden — how many
+/// events were dropped. Pure, so it can be pinned without a database.
+#[must_use]
+pub fn telemetry_rows(stats: Option<&beatbyte_telemetry::WriterStats>, level: &str) -> Vec<String> {
+    let Some(stats) = stats else {
+        return vec![row("TELEM", &[("state", "off".to_owned())])];
+    };
+    let mut lines = vec![row(
+        "TELEM",
+        &[
+            ("level", level.to_owned()),
+            ("wrote", stats.written.to_string()),
+            ("queue", stats.queued.to_string()),
+            (
+                "dropped",
+                if stats.dropped == 0 {
+                    "0".to_owned()
+                } else {
+                    // Loud on purpose: a dropped event is a hole in
+                    // the evidence, and a hole nobody notices is the
+                    // failure this whole design exists to avoid.
+                    format!("!! {}", stats.dropped)
+                },
+            ),
+        ],
+    )];
+    lines.push(row(
+        "STORE",
+        &[
+            ("flush", format!("{}ms", stats.since_flush_ms)),
+            ("write", format!("{}us", stats.last_write_us)),
+            ("events", stats.events.to_string()),
+            ("size", format!("{:.1}MB", stats.bytes as f64 / 1_048_576.0)),
+        ],
+    ));
+    if stats.errors > 0 {
+        lines.push(row(
+            "STORE",
+            &[
+                ("errors", stats.errors.to_string()),
+                (
+                    "last",
+                    stats.last_error.clone().unwrap_or_else(|| "?".to_owned()),
+                ),
+            ],
+        ));
+    }
+    lines
+}
+
 /// The microphone's rows, or nothing when nobody is singing.
 ///
 /// Everything a vocal complaint needs answering with: is the device
@@ -317,6 +373,7 @@ pub fn update_debug_overlay(
     heat: Option<Res<FretHeat>>,
     vocal: Option<Res<super::vocal::VocalRun>>,
     ears: Option<Res<super::monitors::Ears>>,
+    telemetry: Option<Res<crate::telemetry::TelemetryStore>>,
     players: Query<(&PlayerIndex, &PlayerSession)>,
     entities: Query<Entity>,
     mut text: Query<&mut Text2d, (With<DebugText>, Without<DebugFps>)>,
@@ -387,6 +444,16 @@ pub fn update_debug_overlay(
                 ("state", "stopped".to_owned()),
             ],
         )),
+    }
+    for line in telemetry_rows(
+        telemetry
+            .as_deref()
+            .and_then(crate::telemetry::TelemetryStore::writer)
+            .map(beatbyte_telemetry::Telemetry::stats)
+            .as_ref(),
+        settings.telemetry.label(),
+    ) {
+        lines.push(line);
     }
     lines.push(row(
         "FRAME",
@@ -728,5 +795,109 @@ mod tests {
         assert_eq!(fps_color(60.0), palette::PERFECT);
         assert_eq!(fps_color(45.0), palette::GOOD);
         assert_eq!(fps_color(20.0), palette::MISS);
+    }
+}
+
+#[cfg(test)]
+mod telemetry_tests {
+    use super::*;
+    use beatbyte_telemetry::WriterStats;
+
+    #[test]
+    fn a_store_that_is_not_recording_says_so() {
+        let lines = telemetry_rows(None, "OFF");
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].contains("off"), "{}", lines[0]);
+    }
+
+    #[test]
+    fn a_dropped_event_is_shouted_and_a_clean_run_is_not() {
+        let clean = WriterStats {
+            queued: 3,
+            written: 1200,
+            dropped: 0,
+            since_flush_ms: 412,
+            last_write_us: 900,
+            sessions: 475,
+            events: 146_290,
+            bytes: 7_340_032,
+            errors: 0,
+            last_error: None,
+        };
+        let lines = telemetry_rows(Some(&clean), "ACTIONS");
+        assert_eq!(lines.len(), 2, "no error row when nothing failed");
+        assert!(lines[0].contains("ACTIONS"));
+        assert!(lines[0].contains("1200"));
+        assert!(
+            !lines[0].contains("!!"),
+            "a clean run must not cry wolf: {}",
+            lines[0]
+        );
+        assert!(lines[1].contains("7.0MB"), "{}", lines[1]);
+
+        let holed = WriterStats {
+            dropped: 4,
+            errors: 1,
+            last_error: Some("disk full".to_owned()),
+            ..clean
+        };
+        let lines = telemetry_rows(Some(&holed), "ACTIONS");
+        assert!(
+            lines[0].contains("!! 4"),
+            "a hole in the evidence is the one number that may not be \
+             quiet: {}",
+            lines[0]
+        );
+        assert_eq!(lines.len(), 3);
+        assert!(lines[2].contains("disk full"));
+    }
+}
+
+/// The overlay's own systems in a real (headless) app.
+///
+/// The rows above are pure and pinned; this is the call site, which a
+/// pure test cannot reach. It matters here more than usual: the
+/// screen was locked for this whole session, so nobody has SEEN the
+/// overlay — reading the text back out of the entity is the strongest
+/// evidence available, and it is a different thing from having
+/// looked.
+#[cfg(test)]
+mod wired_tests {
+    use super::*;
+    use crate::states::AppState;
+
+    #[test]
+    fn the_overlay_draws_the_telemetry_rows_it_was_given() {
+        let mut app = App::new();
+        app.add_plugins(bevy::state::app::StatesPlugin)
+            .init_resource::<Time>()
+            .init_resource::<Settings>()
+            .init_resource::<GameClock>()
+            .init_resource::<DebugOverlay>()
+            .init_state::<AppState>()
+            .insert_resource(Music(beatbyte_audio::playback::spawn_music_thread()))
+            .add_systems(Update, update_debug_overlay);
+        app.world_mut().resource_mut::<DebugOverlay>().on = true;
+        let text = app.world_mut().spawn((DebugText, Text2d::new(""))).id();
+        app.update();
+
+        let drawn = app
+            .world()
+            .entity(text)
+            .get::<Text2d>()
+            .map(|text| text.0.clone())
+            .unwrap_or_default();
+        assert!(
+            drawn.contains("TELEM"),
+            "the overlay has no telemetry row at all:\n{drawn}"
+        );
+        assert!(
+            drawn.contains("off"),
+            "with no store open it must say so rather than showing \
+             zeroes that look like a healthy recording:\n{drawn}"
+        );
+        // And the row it replaced is still there, so this did not
+        // push anything off the plate.
+        assert!(drawn.contains("FRAME"), "{drawn}");
     }
 }

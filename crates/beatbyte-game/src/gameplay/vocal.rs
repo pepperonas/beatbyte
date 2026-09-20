@@ -508,6 +508,7 @@ fn stop(mut commands: Commands, ears: Res<super::monitors::Ears>) {
 
 /// Take the microphone's frames, put them on the song's timeline and
 /// judge them.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI
 fn feed(
     mut run: Option<ResMut<VocalRun>>,
     ears: Res<super::monitors::Ears>,
@@ -515,6 +516,9 @@ fn feed(
     time: Res<Time>,
     settings: Res<crate::config::Settings>,
     room: Res<crate::room_stage::RoomStage>,
+    backing: Option<Res<KaraokeBacking>>,
+    store: Option<Res<crate::telemetry::TelemetryStore>>,
+    telemetry: Option<Res<crate::telemetry::StoreRun>>,
 ) {
     let (Some(run), Some(listener)) = (run.as_mut(), ears.0.as_ref()) else {
         return;
@@ -589,7 +593,15 @@ fn feed(
     {
         run.trace.pop_front();
     }
+    // A run whose backing still carries the original singer cannot be
+    // judged on the singer in the room; every row it writes says so.
+    let assisted_run = assisted(&settings, backing.is_some_and(|backing| backing.0));
     for event in events.drain(..) {
+        if let Some(row) =
+            crate::telemetry::vocal_event(&event, run.session.part(), now, assisted_run)
+        {
+            crate::telemetry::record_vocal(store.as_deref(), telemetry.as_deref(), row);
+        }
         if let VocalEvent::Phrase(outcome) = event {
             run.banner = Some((outcome, 0.0));
             // The room hears the singer too. Same bridge, same

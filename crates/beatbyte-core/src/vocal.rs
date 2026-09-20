@@ -432,6 +432,29 @@ pub struct VocalPart {
 }
 
 impl VocalPart {
+    /// A stable index for one sung note within this part.
+    ///
+    /// The session names a note by the phrase it is in and its place
+    /// inside that phrase; a store needs ONE number per note, the way
+    /// a played chart has one (ADR-0018 §8). Counting through the
+    /// phrases gives it, and it is stable for a given part — which is
+    /// what `(chart_hash, index)` needs to mean anything a month
+    /// later. `None` when either index is past the end.
+    #[must_use]
+    pub fn flat_index(&self, phrase: usize, note: usize) -> Option<usize> {
+        let found = self.phrases.get(phrase)?;
+        if note >= found.notes.len() {
+            return None;
+        }
+        Some(
+            self.phrases[..phrase]
+                .iter()
+                .map(|phrase| phrase.notes.len())
+                .sum::<usize>()
+                + note,
+        )
+    }
+
     /// The phrase active at `song_time_s`, if any.
     #[must_use]
     pub fn phrase_at(&self, song_time_s: f64) -> Option<&VocalPhrase> {
@@ -732,6 +755,32 @@ mod tests {
             name: None,
             phrases,
         }
+    }
+
+    #[test]
+    fn a_sung_note_has_one_number_that_names_it() {
+        let part = part(vec![
+            phrase(0.0, 2.0, vec![note(0.0, 1.0, 60.0), note(1.0, 2.0, 62.0)]),
+            phrase(3.0, 4.0, vec![note(3.0, 4.0, 64.0)]),
+        ]);
+        assert_eq!(part.flat_index(0, 0), Some(0));
+        assert_eq!(part.flat_index(0, 1), Some(1));
+        assert_eq!(
+            part.flat_index(1, 0),
+            Some(2),
+            "counting continues through the phrase boundary"
+        );
+        assert_eq!(part.flat_index(1, 1), None, "past the end of the phrase");
+        assert_eq!(part.flat_index(2, 0), None, "past the end of the part");
+        // Distinct notes, distinct numbers — the whole point.
+        let all: Vec<usize> = (0..2)
+            .flat_map(|phrase| (0..2).map(move |note| (phrase, note)))
+            .filter_map(|(phrase, note)| part.flat_index(phrase, note))
+            .collect();
+        let mut seen: Vec<usize> = all.clone();
+        seen.sort_unstable();
+        seen.dedup();
+        assert_eq!(seen.len(), all.len(), "two notes share an index");
     }
 
     #[test]

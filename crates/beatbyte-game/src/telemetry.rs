@@ -885,6 +885,101 @@ impl Plugin for TelemetryStorePlugin {
     }
 }
 
+// ── Vocal telemetry (ADR-0018 §25) ──────────────────────────────────
+//
+// Results only. No microphone audio is stored, ever: a sung note
+// becomes a cent error, an onset error and a grade, and the samples
+// it was measured from are gone by the next frame. That is a privacy
+// rule and a size rule at once — a minute of raw input would outweigh
+// a thousand sessions of everything else.
+
+/// Turn one vocal verdict into the row that records it.
+///
+/// Pure, so the mapping can be pinned without a microphone. A note
+/// carries its own place in the part ([`beatbyte_core::VocalPart::flat_index`]),
+/// its pitch error in cents and its onset error; a phrase carries its
+/// index and its grade. Coverage and stability are deliberately not
+/// stored per note: the grade already weighs them, and two more
+/// columns on the hottest table would buy a number nobody has asked a
+/// question about yet.
+#[must_use]
+pub fn vocal_event(
+    event: &beatbyte_core::VocalEvent,
+    part: &beatbyte_core::VocalPart,
+    song_time_s: f64,
+    assisted: bool,
+) -> Option<Event> {
+    let mut flags = Flags::VOCAL;
+    if assisted {
+        flags = flags.with(Flags::ASSISTED);
+    }
+    let stamp = beatbyte_telemetry::model::micros(song_time_s);
+    match event {
+        beatbyte_core::VocalEvent::Note {
+            phrase,
+            note,
+            outcome,
+        } => {
+            let index = part.flat_index(*phrase, *note)?;
+            let mut row = Event::new(EventType::VocalNote, stamp)
+                .about(index)
+                .judged(vocal_rating(outcome.grade))
+                .flagged(flags);
+            if let Some(cents) = outcome.mean_abs_cents {
+                row = row.valued(cents.round() as i64);
+            }
+            if let Some(onset) = outcome.onset_error_s {
+                row = row.off_by(f64::from(onset));
+            }
+            Some(row)
+        }
+        beatbyte_core::VocalEvent::Phrase(outcome) => Some(
+            Event::new(EventType::VocalPhrase, stamp)
+                .about(outcome.index)
+                .judged(vocal_rating(outcome.grade))
+                // The phrase's own number: how many of its notes were
+                // hit. The total is in the chart, so the share is a
+                // join and not a second column.
+                .valued(outcome.notes_hit as i64)
+                .flagged(flags),
+        ),
+    }
+}
+
+/// A sung grade as the store's rating.
+///
+/// Five grades into four: `Weak` and `Good` both land on `Good`,
+/// because the store's scale is the one the fretboard judges on and
+/// inventing a fifth for one instrument would make every cross-
+/// instrument query lie. The exact grade is recoverable from the
+/// cents and the coverage anyway.
+#[must_use]
+fn vocal_rating(grade: beatbyte_core::VocalGrade) -> Rating {
+    match grade {
+        beatbyte_core::VocalGrade::Miss => Rating::Miss,
+        beatbyte_core::VocalGrade::Weak | beatbyte_core::VocalGrade::Good => Rating::Good,
+        beatbyte_core::VocalGrade::Great => Rating::Great,
+        beatbyte_core::VocalGrade::Perfect => Rating::Perfect,
+    }
+}
+
+/// Record one vocal row against the singing player.
+///
+/// Slot zero: one microphone, one singer. A duet is a format change
+/// away and would bring its own slot with it.
+pub fn record_vocal(store: Option<&TelemetryStore>, run: Option<&StoreRun>, event: Event) {
+    let (Some(store), Some(run)) = (store, run) else {
+        return;
+    };
+    let Some(writer) = store.writer() else {
+        return;
+    };
+    if !run.records(event.kind) || !run.open(0) {
+        return;
+    }
+    writer.record(0, event);
+}
+
 #[cfg(test)]
 mod store_tests {
     use super::*;
@@ -1020,6 +1115,140 @@ mod store_tests {
         ] {
             assert!(event_for(&event, 0, None).is_some(), "{event:?}");
         }
+    }
+
+    fn a_part() -> beatbyte_core::VocalPart {
+        use beatbyte_core::{VocalKind, VocalNote, VocalPhrase, VocalRole};
+        let note = |start: f64, end: f64| VocalNote {
+            start_s: start,
+            end_s: end,
+            kind: VocalKind::Pitched,
+            target_midi: Some(60.0),
+            contour: Vec::new(),
+            confidence: 1.0,
+            token_range: None,
+        };
+        beatbyte_core::VocalPart {
+            id: "lead".to_owned(),
+            role: VocalRole::Lead,
+            name: None,
+            phrases: vec![
+                VocalPhrase {
+                    start_s: 0.0,
+                    end_s: 2.0,
+                    confidence: 1.0,
+                    tokens: Vec::new(),
+                    notes: vec![note(0.0, 1.0), note(1.0, 2.0)],
+                },
+                VocalPhrase {
+                    start_s: 3.0,
+                    end_s: 4.0,
+                    confidence: 1.0,
+                    tokens: Vec::new(),
+                    notes: vec![note(3.0, 4.0)],
+                },
+            ],
+        }
+    }
+
+    fn an_outcome(grade: beatbyte_core::VocalGrade) -> beatbyte_core::NoteOutcome {
+        beatbyte_core::NoteOutcome {
+            grade,
+            kind: beatbyte_core::VocalKind::Pitched,
+            mean_abs_cents: Some(23.4),
+            onset_error_s: Some(0.042),
+            coverage: 0.9,
+            stability: Some(0.8),
+            score: 0.7,
+            points: 100,
+        }
+    }
+
+    #[test]
+    fn a_sung_note_is_stored_as_cents_and_a_grade_and_never_as_audio() {
+        let part = a_part();
+        let event = vocal_event(
+            &beatbyte_core::VocalEvent::Note {
+                phrase: 1,
+                note: 0,
+                outcome: an_outcome(beatbyte_core::VocalGrade::Great),
+            },
+            &part,
+            7.5,
+            false,
+        )
+        .expect("a sung note is recorded");
+        assert_eq!(event.kind, EventType::VocalNote);
+        assert_eq!(
+            event.note_index,
+            Some(2),
+            "the note's own number in the part, counted through the              phrase boundary"
+        );
+        assert_eq!(event.value, Some(23), "the pitch error, in cents");
+        assert_eq!(event.delta_us, Some(42_000), "and how late the onset was");
+        assert_eq!(event.rating, Some(Rating::Great));
+        assert!(event.flags.has(Flags::VOCAL));
+        assert!(!event.flags.has(Flags::ASSISTED));
+        assert_eq!(event.song_time_us, Some(7_500_000));
+    }
+
+    #[test]
+    fn a_run_the_record_sang_along_to_says_so_on_every_row() {
+        let part = a_part();
+        let event = vocal_event(
+            &beatbyte_core::VocalEvent::Phrase(beatbyte_core::PhraseOutcome {
+                index: 1,
+                score: 0.8,
+                grade: beatbyte_core::VocalGrade::Good,
+                notes: 4,
+                notes_hit: 3,
+                points: 400,
+                streak: 2,
+                multiplier: 2,
+            }),
+            &part,
+            9.0,
+            true,
+        )
+        .expect("a phrase is recorded");
+        assert_eq!(event.kind, EventType::VocalPhrase);
+        assert_eq!(event.note_index, Some(1));
+        assert_eq!(event.value, Some(3), "how many of its notes were hit");
+        assert!(event.flags.has(Flags::ASSISTED));
+        assert!(event.flags.has(Flags::VOCAL));
+    }
+
+    #[test]
+    fn five_sung_grades_land_on_the_four_the_store_has() {
+        use beatbyte_core::VocalGrade;
+        assert_eq!(vocal_rating(VocalGrade::Miss), Rating::Miss);
+        assert_eq!(vocal_rating(VocalGrade::Weak), Rating::Good);
+        assert_eq!(
+            vocal_rating(VocalGrade::Good),
+            Rating::Good,
+            "weak and good share a rung; inventing a fifth would make              every cross-instrument query lie"
+        );
+        assert_eq!(vocal_rating(VocalGrade::Great), Rating::Great);
+        assert_eq!(vocal_rating(VocalGrade::Perfect), Rating::Perfect);
+    }
+
+    #[test]
+    fn a_note_that_is_not_in_the_part_is_recorded_as_nothing() {
+        let part = a_part();
+        assert!(
+            vocal_event(
+                &beatbyte_core::VocalEvent::Note {
+                    phrase: 9,
+                    note: 0,
+                    outcome: an_outcome(beatbyte_core::VocalGrade::Perfect),
+                },
+                &part,
+                1.0,
+                false,
+            )
+            .is_none(),
+            "a row whose note cannot be named is a row nothing can join"
+        );
     }
 
     #[test]

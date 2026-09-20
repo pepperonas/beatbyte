@@ -146,6 +146,25 @@ enum TelemetryCommand {
         #[arg(long)]
         store: Option<PathBuf>,
     },
+    /// Fill a throwaway store with a lifetime of playing and time it.
+    Bench {
+        /// How many sessions.
+        #[arg(long, default_value_t = 1000)]
+        sessions: usize,
+        /// Note events per session (the library's median is 328).
+        #[arg(long, default_value_t = 330)]
+        notes: usize,
+        /// How many distinct charts they are spread over.
+        #[arg(long, default_value_t = 100)]
+        charts: usize,
+        /// Where to build it (a temporary file by default — never the
+        /// game's own store).
+        #[arg(long)]
+        store: Option<PathBuf>,
+        /// Leave the database behind instead of deleting it.
+        #[arg(long)]
+        keep: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -606,6 +625,13 @@ fn main() -> ExitCode {
                 store,
             } => telemetry::run_calibration(store, player, min_hits),
             TelemetryCommand::Input { store } => telemetry::run_input(store),
+            TelemetryCommand::Bench {
+                sessions,
+                notes,
+                charts,
+                store,
+                keep,
+            } => telemetry::run_bench(store, sessions, notes, charts, keep),
         },
         Command::Review {
             chart,

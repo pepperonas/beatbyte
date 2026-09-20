@@ -11,6 +11,27 @@ engine read it, how it was judged — recorded as evidence rather than
 as a log. Reasoning and alternatives: [ADR-0018](decisions/ADR-0018-gameplay-telemetry-store.md).
 The feedback loop it feeds: [`adaptive-charting.md`](adaptive-charting.md).
 
+- [x] **T8 + T9 The debug view, singing, and the benchmark**
+  *(v0.17.16)*. The overlay says what the writer is doing and shouts
+  a dropped event; vocal verdicts are recorded as cents and grades
+  and **never as audio**; `telemetry bench` fills a throwaway store
+  and times it.
+  *Measured:* 1 000 sessions = 1.13 M events, 51 MB, 2.7 s (424 000
+  events/s, 0.86 ms a batch); **10 000 sessions = 11.3 M events,
+  513 MB, 29.7 s**. Reading one session stays at 0.24 ms at both
+  sizes; the whole-corpus aggregates are 1.7–4.8 s at the larger one,
+  which is what an offline command may cost.
+  ⚠️ **An index was measured and refused.** A partial index on
+  `(event_type, delta_us)` makes the calibration median eight times
+  faster (221 → 28 ms) and costs **8.5 % of the whole store**. For a
+  query that runs offline in under half a second, that is not a
+  trade; the numbers are in the ADR so nobody has to re-derive them.
+  ⚠️ **The overlay has not been SEEN.** The screen was locked for this
+  entire session, so every capture would be black by definition. Its
+  rows are pinned pure and its call site is read back out of the
+  entity in a headless app — which is the strongest evidence
+  available and a different thing from having looked.
+  *Verified: 1503 tests (+11), gate green.*
 - [x] **T5 + T7 The command line, and the history moves in**
   *(v0.17.15)*. `beatbyte-cli telemetry {status,import,list,show,
   export,problems,generators,calibration,input}`, and `review` and
