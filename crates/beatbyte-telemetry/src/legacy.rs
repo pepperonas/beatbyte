@@ -219,6 +219,9 @@ pub fn import_file(store: &mut Store, path: &Path) -> Result<bool> {
             ended_ms: header.started_ms,
             completion,
             dropped: 0,
+            // The old writer skipped practice runs entirely, so a
+            // file existing at all is evidence that this one was not.
+            practice: false,
         },
     )?;
     Ok(true)

@@ -421,7 +421,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "beatbyte"
-version = "0.17.13"
+version = "0.17.14"
 dependencies = [
  "beatbyte-audio",
  "beatbyte-chart",
@@ -435,7 +435,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-audio"
-version = "0.17.13"
+version = "0.17.14"
 dependencies = [
  "beatbyte-core",
  "cpal",
@@ -451,7 +451,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-chart"
-version = "0.17.13"
+version = "0.17.14"
 dependencies = [
  "beatbyte-core",
  "serde",
@@ -461,7 +461,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-cli"
-version = "0.17.13"
+version = "0.17.14"
 dependencies = [
  "beatbyte-audio",
  "beatbyte-chart",
@@ -477,7 +477,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-core"
-version = "0.17.13"
+version = "0.17.14"
 dependencies = [
  "serde",
  "serde_json",
@@ -485,7 +485,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-editor"
-version = "0.17.13"
+version = "0.17.14"
 dependencies = [
  "beatbyte-chart",
  "beatbyte-core",
@@ -494,7 +494,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-game"
-version = "0.17.13"
+version = "0.17.14"
 dependencies = [
  "beatbyte-audio",
  "beatbyte-chart",
@@ -503,6 +503,7 @@ dependencies = [
  "beatbyte-lyrics",
  "beatbyte-meter",
  "beatbyte-ml",
+ "beatbyte-telemetry",
  "bevy",
  "dirs",
  "rusb",
@@ -513,7 +514,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-lyrics"
-version = "0.17.13"
+version = "0.17.14"
 dependencies = [
  "beatbyte-audio",
  "beatbyte-ml",
@@ -524,7 +525,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-meter"
-version = "0.17.13"
+version = "0.17.14"
 dependencies = [
  "beatbyte-audio",
  "beatbyte-core",
@@ -534,7 +535,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-ml"
-version = "0.17.13"
+version = "0.17.14"
 dependencies = [
  "dirs",
  "rten",
@@ -546,7 +547,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-telemetry"
-version = "0.17.13"
+version = "0.17.14"
 dependencies = [
  "beatbyte-core",
  "rusqlite",

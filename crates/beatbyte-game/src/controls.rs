@@ -370,7 +370,59 @@ pub struct InputSources<'a> {
     pub pads: Vec<&'a Gamepad>,
 }
 
+/// Which physical thing delivered an action this frame.
+///
+/// The one part of the physical layer worth recording (ADR-0018). The
+/// specific key is deliberately NOT part of it: the mapping is a
+/// stateless table the settings already hold, so the key adds nothing
+/// a reader could not look up — and recording which keys a person
+/// pressed is not something any level of telemetry should do. Which
+/// DEVICE spoke is a different matter: in a solo game one player owns
+/// the keyboard and every pad at once, and a guitar that plays into
+/// the void is invisible without it (it happened).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Source {
+    /// The computer keyboard.
+    Keyboard,
+    /// The nth connected pad, in the order they are queried.
+    Pad(usize),
+}
+
+impl Source {
+    /// A small stable number for the telemetry store.
+    #[must_use]
+    pub const fn code(self) -> i64 {
+        match self {
+            Source::Keyboard => 0,
+            Source::Pad(index) => 1 + index as i64,
+        }
+    }
+}
+
 impl InputSources<'_> {
+    /// Which source just pressed a binding of this action, if any.
+    ///
+    /// The keyboard is checked first, which is the order
+    /// [`InputSources::just_pressed`] walks its bindings in; when both
+    /// fire in one frame the answer is the keyboard, and the action is
+    /// sent once either way.
+    #[must_use]
+    pub fn source_just_pressed(&self, map: &InputMap, action: GameAction) -> Option<Source> {
+        for binding in map.of(action) {
+            match binding {
+                Binding::Key(key) if self.keys.just_pressed(*key) => return Some(Source::Keyboard),
+                Binding::Pad(button) => {
+                    if let Some(index) = self.pads.iter().position(|pad| pad.just_pressed(*button))
+                    {
+                        return Some(Source::Pad(index));
+                    }
+                }
+                Binding::Key(_) => {}
+            }
+        }
+        None
+    }
+
     /// Was any binding of this action just pressed?
     #[must_use]
     pub fn just_pressed(&self, map: &InputMap, action: GameAction) -> bool {

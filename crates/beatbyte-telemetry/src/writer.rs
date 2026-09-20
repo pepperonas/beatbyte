@@ -265,7 +265,10 @@ impl Telemetry {
     }
 
     /// Close a session, carrying its drop count with it.
-    pub fn finish(&self, slot: u8, ended_ms: u64, completion: Completion) {
+    ///
+    /// `practice` is settled here rather than at the start: it is
+    /// engaged from the pause menu and sticky once used.
+    pub fn finish(&self, slot: u8, ended_ms: u64, completion: Completion, practice: bool) {
         let dropped = self
             .shared
             .dropped
@@ -277,6 +280,7 @@ impl Telemetry {
                 ended_ms,
                 completion,
                 dropped,
+                practice,
             },
         });
     }
@@ -633,7 +637,7 @@ mod tests {
                     Event::new(EventType::NoteMiss, micros(f64::from(index))).about(index as usize),
                 );
             }
-            writer.finish(0, 1_700_000_100_000, Completion::Completed);
+            writer.finish(0, 1_700_000_100_000, Completion::Completed, false);
             writer.shutdown();
             let stats = writer.stats();
             assert_eq!(stats.written, 3, "every event was committed");
@@ -677,7 +681,7 @@ mod tests {
                 writer.record(0, Event::new(EventType::Overstrum, i64::from(index)));
             }
             writer.begin(0, a_session("late-begin", 0));
-            writer.finish(0, 1, Completion::Completed);
+            writer.finish(0, 1, Completion::Completed, false);
             writer.shutdown();
         }
         let store = Store::open(&path).expect("reopens");
@@ -705,8 +709,8 @@ mod tests {
             writer.record(0, Event::new(EventType::Overstrum, 0));
             writer.record(1, Event::new(EventType::Overstrum, 0));
             writer.record(1, Event::new(EventType::Overstrum, 1));
-            writer.finish(0, 1, Completion::Aborted);
-            writer.finish(1, 1, Completion::Completed);
+            writer.finish(0, 1, Completion::Aborted, false);
+            writer.finish(1, 1, Completion::Completed, false);
             writer.shutdown();
         }
         let store = Store::open(&path).expect("reopens");
@@ -731,7 +735,7 @@ mod tests {
         {
             let mut writer = Telemetry::open(path.clone()).expect("opens");
             writer.begin(0, a_session("run", 0));
-            writer.finish(0, 1, Completion::Completed);
+            writer.finish(0, 1, Completion::Completed, false);
             // The results screen speaks AFTER the run is closed.
             writer.note(0, PlayerNote::Fun(5));
             writer.note(0, PlayerNote::Comment("the chorus drags".to_owned()));
@@ -776,6 +780,7 @@ mod tests {
             ended_ms: 1,
             completion: Completion::Completed,
             dropped: writer.dropped(0),
+            practice: false,
         };
         assert!(outcome.dropped > 0);
     }
@@ -788,7 +793,7 @@ mod tests {
             writer.begin(0, a_session("run", 0));
             // Simulate the loss the parked test proves happens.
             writer.shared.dropped[0].store(7, Ordering::Relaxed);
-            writer.finish(0, 1, Completion::Completed);
+            writer.finish(0, 1, Completion::Completed, false);
             writer.shutdown();
         }
         let store = Store::open(&path).expect("reopens");
@@ -878,7 +883,7 @@ mod tests {
         writer.begin(0, a_session("late", 0));
         writer.note(0, PlayerNote::Fun(3));
         writer.flush();
-        writer.finish(0, 1, Completion::Aborted);
+        writer.finish(0, 1, Completion::Aborted, false);
         writer.shutdown();
     }
 

@@ -235,6 +235,7 @@ pub fn run() -> AppExit {
         autopilot::AutopilotPlugin,
     ))
     .add_plugins((
+        telemetry::TelemetryStorePlugin,
         discover::DiscoverPlugin,
         gameplay::fog::FogPlugin,
         chore::ChorePlugin,

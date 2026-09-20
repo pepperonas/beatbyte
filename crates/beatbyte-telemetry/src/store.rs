@@ -225,7 +225,7 @@ impl Store {
         self.conn.execute(
             "UPDATE gameplay_session
                 SET ended_ms = ?2, completion = ?3, dropped_events = ?4,
-                    telemetry_complete = ?5
+                    telemetry_complete = ?5, practice = practice OR ?6
               WHERE session_id = ?1",
             params![
                 session,
@@ -233,6 +233,7 @@ impl Store {
                 outcome.completion.code(),
                 outcome.dropped,
                 outcome.dropped == 0,
+                outcome.practice,
             ],
         )?;
         Ok(())
@@ -601,6 +602,7 @@ mod tests {
                     ended_ms: 1_700_000_200_000,
                     completion: Completion::Completed,
                     dropped: 3,
+                    practice: false,
                 },
             )
             .expect("finishes");
@@ -612,6 +614,64 @@ mod tests {
         );
         assert_eq!(back.completion, Completion::Completed);
         assert_eq!(back.ended_ms, Some(1_700_000_200_000));
+    }
+
+    #[test]
+    fn practice_is_settled_at_the_end_and_never_unset() {
+        // It is engaged from the pause menu, so a session cannot know
+        // at its start; and it is sticky, so the end may only ever
+        // turn it on.
+        let mut store = Store::open_in_memory().expect("a store");
+        let id = store.begin(&a_session("one")).expect("begins");
+        assert!(
+            !store
+                .session(id)
+                .expect("reads")
+                .expect("there")
+                .row
+                .practice
+        );
+        store
+            .finish(
+                id,
+                Outcome {
+                    ended_ms: 2,
+                    completion: Completion::Aborted,
+                    dropped: 0,
+                    practice: true,
+                },
+            )
+            .expect("finishes");
+        assert!(
+            store
+                .session(id)
+                .expect("reads")
+                .expect("there")
+                .row
+                .practice
+        );
+        // A second close (there is none in the game, but the column
+        // must not be able to flip back) leaves it on.
+        store
+            .finish(
+                id,
+                Outcome {
+                    ended_ms: 3,
+                    completion: Completion::Aborted,
+                    dropped: 0,
+                    practice: false,
+                },
+            )
+            .expect("finishes");
+        assert!(
+            store
+                .session(id)
+                .expect("reads")
+                .expect("there")
+                .row
+                .practice,
+            "a run that was practised stays practised"
+        );
     }
 
     #[test]

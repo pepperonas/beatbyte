@@ -202,6 +202,21 @@ pub struct Settings {
     /// is a dormant setting, not a broken one.
     #[serde(default)]
     pub watch_folder: Option<std::path::PathBuf>,
+    /// How much of a run the gameplay telemetry records (ADR-0018).
+    ///
+    /// `Actions` by default, which is the complete blackbox: every
+    /// decision the engine made and every action it was asked to make
+    /// one about. `Off` records nothing at all — the store is not even
+    /// opened — and `Diagnostic` adds the physical button edges, which
+    /// is what a suspect controller needs and roughly doubles the
+    /// volume.
+    ///
+    /// ⚠️ `#[serde(default)]` fills a MISSING field with the FIELD's
+    /// default, not with this struct's — hence the named function, so
+    /// a settings file written before the row existed adopts
+    /// `Actions` rather than `Off`.
+    #[serde(default = "default_telemetry", deserialize_with = "telemetry_lenient")]
+    pub telemetry: TelemetryLevel,
     /// The bindings table (see [`crate::controls`]).
     pub input_map: InputMap,
     /// The stage theme id, or "auto" to rotate per song.
@@ -294,6 +309,7 @@ impl Default for Settings {
             stage_3d: true,
             fullscreen: false,
             watch_folder: None,
+            telemetry: TelemetryLevel::default(),
             input_map: InputMap::default(),
             theme: "auto".to_owned(),
             browser_sort: default_browser_sort(),
@@ -344,6 +360,87 @@ impl Settings {
             self.browser_sort = default_browser_sort();
         }
     }
+}
+
+/// How much of a run is recorded.
+///
+/// The game's face of [`beatbyte_telemetry::Detail`], with one more
+/// state the store itself does not need: `Off`, which means no
+/// session is opened at all.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TelemetryLevel {
+    /// Record nothing. The store is not opened.
+    Off,
+    /// Only what the engine decided: hits, misses, overstrums, holds.
+    Results,
+    /// …plus every logical action. The default, and the complete
+    /// blackbox.
+    #[default]
+    Actions,
+    /// …plus the physical button edges behind them.
+    Diagnostic,
+}
+
+impl TelemetryLevel {
+    /// Every level, least talkative first — the order the row cycles.
+    pub const ALL: [TelemetryLevel; 4] = [
+        TelemetryLevel::Off,
+        TelemetryLevel::Results,
+        TelemetryLevel::Actions,
+        TelemetryLevel::Diagnostic,
+    ];
+
+    /// What the store should record, or `None` for "do not record".
+    #[must_use]
+    pub const fn detail(self) -> Option<beatbyte_telemetry::Detail> {
+        match self {
+            TelemetryLevel::Off => None,
+            TelemetryLevel::Results => Some(beatbyte_telemetry::Detail::Results),
+            TelemetryLevel::Actions => Some(beatbyte_telemetry::Detail::Actions),
+            TelemetryLevel::Diagnostic => Some(beatbyte_telemetry::Detail::Diagnostic),
+        }
+    }
+
+    /// The label the settings row shows.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            TelemetryLevel::Off => "OFF",
+            TelemetryLevel::Results => "RESULTS",
+            TelemetryLevel::Actions => "ACTIONS",
+            TelemetryLevel::Diagnostic => "DIAGNOSTIC",
+        }
+    }
+
+    /// The next level in the cycle.
+    #[must_use]
+    pub fn next(self) -> TelemetryLevel {
+        let index = TelemetryLevel::ALL
+            .iter()
+            .position(|level| *level == self)
+            .unwrap_or(2);
+        TelemetryLevel::ALL[(index + 1) % TelemetryLevel::ALL.len()]
+    }
+}
+
+/// The default for a settings file that predates the row.
+fn default_telemetry() -> TelemetryLevel {
+    TelemetryLevel::default()
+}
+
+/// A level this build does not know reads as the default rather than
+/// failing the whole settings file — the same rule the flash-sync row
+/// follows.
+fn telemetry_lenient<'de, D>(de: D) -> Result<TelemetryLevel, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let name = String::deserialize(de)?;
+    Ok(TelemetryLevel::ALL
+        .into_iter()
+        .find(|level| level.label().eq_ignore_ascii_case(&name))
+        .unwrap_or_default())
 }
 
 /// The browser's default sort label.

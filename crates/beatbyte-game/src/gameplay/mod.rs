@@ -147,7 +147,11 @@ pub struct SessionFeedback {
 }
 
 /// Publish each player's buffered session events as messages.
-fn drain_feedback(
+///
+/// Named `pub` so consumers outside this module can order themselves
+/// behind it — the telemetry store has to see an event in the frame
+/// it happened.
+pub fn drain_feedback(
     mut players: Query<(Entity, &PlayerIndex, &mut PlayerSession)>,
     mut writer: MessageWriter<SessionFeedback>,
 ) {

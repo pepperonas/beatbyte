@@ -14,6 +14,41 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.14] - 2026-09-20
+
+### Added
+
+- **The game records into the telemetry store.** Every song start opens a
+  session per player that names what the run was played under — the chart and
+  its exact version, the game, scoring and generator versions, the device, the
+  calibration offsets, tap mode, No Fail, the autopilot — and every judgment,
+  hold, overstrum, hype window, pause, resume and seek goes into it with a
+  microsecond stamp.
+- **The logical action stream.** Every fret edge, strum and hype request the
+  engine was handed is recorded, including the ones it then did nothing with.
+  That is the difference between "the player missed" and "the input never
+  arrived", and nothing in the game could tell them apart before.
+- **A `TELEMETRY` row in SETTINGS**: `OFF` · `RESULTS` · `ACTIONS` ·
+  `DIAGNOSTIC`, defaulting to `ACTIONS`. `OFF` opens no store at all.
+  `DIAGNOSTIC` additionally records **which device** delivered an action —
+  never which key: the mapping is a table the settings already hold, and
+  recording the keys a person presses is not something any level should do.
+
+### Changed
+
+- An overstrum is stored against the note it followed. A strum that matched
+  nothing has no note of its own, and without an anchor it cannot be placed in
+  the song at all.
+- The autopilot's injected inputs are recorded like a player's. It bypasses the
+  input layer by design, and without this the action stream would be the one
+  part of the blackbox no harness run ever exercises.
+
+### Notes
+
+- Measured on three real autopilot runs: **51.4 bytes per event, 67 KB per
+  session** at the default level — within a percent of the estimate the design
+  was sized on.
+
 ## [0.17.13] - 2026-09-20
 
 ### Added

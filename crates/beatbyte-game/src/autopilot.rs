@@ -2033,12 +2033,19 @@ pub fn teleported(advanced: f64, frame_s: f64) -> bool {
 
 /// Play every note event exactly on time through the real session
 /// API — for every player.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI
 fn autopilot_play(
     mut players: Query<(&crate::gameplay::PlayerIndex, &mut PlayerSession)>,
     mut hands: ResMut<AutopilotHands>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
     fail_drill: Option<Res<FailDrill>>,
+    // The injector owns the session while it plays, so the human
+    // input path never sees these: without recording here, the action
+    // stream would be the one part of the blackbox no harness run
+    // exercises. Optional so a headless drill needs no store.
+    store: Option<Res<crate::telemetry::TelemetryStore>>,
+    run: Option<Res<crate::telemetry::StoreRun>>,
     mut last_now: Local<Option<f64>>,
     mut app_exit: MessageWriter<AppExit>,
 ) {
@@ -2069,9 +2076,12 @@ fn autopilot_play(
     }
     *last_now = Some(now);
     hands.ensure(players.iter().count());
+    let store = store.as_deref();
+    let run = run.as_deref();
 
     for (index, mut player) in &mut players {
         let slot = index.0;
+        let recorded_slot = u8::try_from(slot).unwrap_or(u8::MAX);
         let player = &mut *player;
         while hands.next_event[slot] < player.session.track().events().len() {
             let event_index = hands.next_event[slot];
@@ -2090,6 +2100,13 @@ fn autopilot_play(
             // Release frets not needed anymore, press the event's frets.
             for lane in hands.held[slot].iter() {
                 if !event.lanes.contains(lane) {
+                    crate::telemetry::record_action(
+                        store,
+                        run,
+                        recorded_slot,
+                        InputKind::FretUp(lane),
+                        stamp,
+                    );
                     player.session.handle(
                         GameInput {
                             time_s: stamp,
@@ -2101,6 +2118,13 @@ fn autopilot_play(
             }
             for lane in event.lanes.iter() {
                 if !hands.held[slot].contains(lane) {
+                    crate::telemetry::record_action(
+                        store,
+                        run,
+                        recorded_slot,
+                        InputKind::FretDown(lane),
+                        stamp,
+                    );
                     player.session.handle(
                         GameInput {
                             time_s: stamp,
@@ -2120,6 +2144,7 @@ fn autopilot_play(
                 player.session.note_state(event_index),
                 Some(NoteState::Pending)
             ) {
+                crate::telemetry::record_action(store, run, recorded_slot, InputKind::Strum, stamp);
                 player.session.handle(
                     GameInput {
                         time_s: stamp,
@@ -2136,6 +2161,13 @@ fn autopilot_play(
                     .config()
                     .hype_activation_threshold
             {
+                crate::telemetry::record_action(
+                    store,
+                    run,
+                    recorded_slot,
+                    InputKind::ActivateHype,
+                    stamp,
+                );
                 player.session.handle(
                     GameInput {
                         time_s: stamp,

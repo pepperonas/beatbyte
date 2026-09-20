@@ -540,6 +540,7 @@ mod tests {
                         ended_ms: 1_700_000_100_000,
                         completion: Completion::Completed,
                         dropped: 0,
+                        practice: false,
                     },
                 )
                 .expect("finishes");
@@ -755,6 +756,7 @@ mod tests {
                     ended_ms: 1,
                     completion: Completion::Completed,
                     dropped: 12,
+                    practice: false,
                 },
             )
             .expect("finishes");

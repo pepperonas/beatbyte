@@ -11,6 +11,32 @@ engine read it, how it was judged — recorded as evidence rather than
 as a log. Reasoning and alternatives: [ADR-0018](decisions/ADR-0018-gameplay-telemetry-store.md).
 The feedback loop it feeds: [`adaptive-charting.md`](adaptive-charting.md).
 
+- [x] **T4 The game records into it** *(v0.17.14)*. A session per
+  player at the first frame that has one, every judgment and hold
+  and hype window and pause and seek, and the **logical action
+  stream** — the part that separates "the player missed" from "the
+  input never arrived". A `TELEMETRY` row in SETTINGS chooses how
+  much (`OFF` · `RESULTS` · `ACTIONS` · `DIAGNOSTIC`, default
+  `ACTIONS`); `DIAGNOSTIC` adds which DEVICE spoke, never which key.
+  ⚠️ **The first real run showed an overstrum with nowhere to be.**
+  The session engine does not position one — it is a strum that
+  matched nothing — so it was stored without a note and could not be
+  placed in the song. It is anchored to the note it followed now, the
+  way the JSONL layer learned to do it.
+  ⚠️ The autopilot's injector **bypasses the input layer** (it owns
+  the session while it plays), so it records its own actions; without
+  that the action stream would be the one part of the blackbox no
+  harness run exercises.
+  *Verified on the machine, not estimated:* three autopilot runs
+  wrote 4 sessions and 5 335 events — **51.4 bytes per event, 67 KB
+  per session**, within a percent of the figure the design was sized
+  on. `[GS] Girls Just Want to Have Fun` **PASSED** (375 perfect, 0
+  misses, 0 overstrums), so judgment is untouched by the new input
+  path. `[GS] Maria` reproduced its **known** three overstrums at
+  notes 95, 183 and 312 — byte-identical to the four A/B runs
+  recorded before any of this work, and the store now says where they
+  are without anybody reading a log.
+  *Verified: 1487 tests (+10), gate green, three autopilot runs.*
 - [x] **T1–T3 The crate, the store and the writer** *(v0.17.13)*.
   `beatbyte-telemetry`: the vocabulary and its stable integer codes,
   the schema with a migration runner, the SQLite store, and the

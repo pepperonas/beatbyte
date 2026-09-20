@@ -9,6 +9,20 @@ use serde::{Deserialize, Serialize};
 
 use crate::timing::Judgment;
 
+/// The version of the scoring rules.
+///
+/// Bump it whenever a change here makes two scores incomparable — a
+/// different point value, a different multiplier ladder, a different
+/// meter rule. Telemetry stores it per session (ADR-0018) for exactly
+/// one reason: an accuracy from before a rule change and one from
+/// after are two different measurements, and an analysis that cannot
+/// tell them apart will quietly average them.
+///
+/// It is NOT the crate version: most releases do not touch scoring,
+/// and a number that changes for unrelated reasons splits the
+/// evidence for nothing.
+pub const SCORING_VERSION: u32 = 1;
+
 /// Data-driven scoring configuration.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ScoreConfig {

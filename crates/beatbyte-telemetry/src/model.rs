@@ -597,6 +597,11 @@ pub struct SessionRow {
     /// No Fail armed.
     pub no_fail: bool,
     /// Practice was used at some point in the run.
+    ///
+    /// Written `false` at the start and corrected by
+    /// [`Outcome::practice`] at the end: practice is engaged from the
+    /// pause menu, so at the moment a session opens it cannot yet be
+    /// true, and it is sticky once it is.
     pub practice: bool,
     /// The autopilot was driving.
     pub autopilot: bool,
@@ -614,6 +619,12 @@ pub struct Outcome {
     pub completion: Completion,
     /// How many events were dropped because the queue was full.
     pub dropped: u32,
+    /// Whether practice was used at any point.
+    ///
+    /// A condition rather than an outcome, and here regardless: it is
+    /// only knowable at the end (see [`SessionRow::practice`]), and a
+    /// run played at half speed must be excluded from every reading.
+    pub practice: bool,
 }
 
 // ── Events ──────────────────────────────────────────────────────────

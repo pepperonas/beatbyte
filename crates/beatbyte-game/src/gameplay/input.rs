@@ -19,11 +19,13 @@ use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
 use std::collections::HashMap;
 
-use super::{PlayerDevice, PlayerSession};
+use super::{PlayerDevice, PlayerIndex, PlayerSession};
 use crate::audio_sys::GameClock;
 use crate::config::Settings;
 use crate::controls::{GameAction, InputMap, InputSources};
 use crate::multiplayer::DeviceId;
+use crate::telemetry::{StoreRun, TelemetryStore};
+use beatbyte_telemetry::model::{Action, Event, EventType};
 
 /// Whether this frame's primary click is a strum for this device.
 ///
@@ -59,11 +61,15 @@ pub(super) fn gameplay_input(
     mouse: Res<ButtonInput<MouseButton>>,
     pads: Query<(Entity, &Gamepad)>,
     map: Res<InputMap>,
-    mut players: Query<(Entity, &PlayerDevice, &mut PlayerSession)>,
+    mut players: Query<(Entity, &PlayerIndex, &PlayerDevice, &mut PlayerSession)>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
     settings: Res<Settings>,
     injector: Option<Res<crate::autopilot::InjectorOwnsInput>>,
+    // Optional so a headless test app can run this system without
+    // standing up the store's plugin.
+    store: Option<Res<TelemetryStore>>,
+    run: Option<Res<StoreRun>>,
     mut chord_latches: Local<HashMap<Entity, HypeChordLatch>>,
 ) {
     // While the autopilot's note injector owns the session it plays
@@ -87,7 +93,15 @@ pub(super) fn gameplay_input(
     // a second player exists. (Field find: a guitar played into the
     // void because solo always routed as Keyboard.)
     let solo = players.iter().count() == 1;
-    for (player_entity, device, mut player) in &mut players {
+    // The logical action stream (ADR-0018): the only evidence that
+    // the player did something the engine then did nothing with.
+    let store = store.as_deref();
+    let run = run.as_deref();
+    let raw = store
+        .and_then(crate::telemetry::TelemetryStore::writer)
+        .zip(run);
+    let stamp = beatbyte_telemetry::model::micros(now);
+    for (player_entity, index, device, mut player) in &mut players {
         let sources = match device.0 {
             DeviceId::Keyboard => InputSources {
                 keys: &keys,
@@ -106,16 +120,34 @@ pub(super) fn gameplay_input(
             },
         };
         let player = &mut *player;
+        let slot = u8::try_from(index.0).unwrap_or(u8::MAX);
         let mut send = |kind: InputKind| {
+            crate::telemetry::record_action(store, run, slot, kind, now);
             player
                 .session
                 .handle(GameInput { time_s: now, kind }, &mut player.frame_events);
+        };
+        // At the diagnostic level, which device spoke as well. Only
+        // the source, never the key: see `controls::Source`.
+        let physical = |action: GameAction, logical: Action| {
+            if let Some((writer, run)) = raw
+                && run.records(EventType::RawInput)
+                && let Some(source) = sources.source_just_pressed(&map, action)
+            {
+                writer.record(
+                    slot,
+                    Event::new(EventType::RawInput, stamp)
+                        .acting(logical)
+                        .valued(source.code()),
+                );
+            }
         };
 
         for index in 0..5u8 {
             let action = GameAction::Fret(index);
             let Some(lane) = action.lane() else { continue };
             if sources.just_pressed(&map, action) {
+                physical(action, Action::FretDown(lane));
                 send(InputKind::FretDown(lane));
             }
             if sources.just_released(&map, action) {
@@ -128,6 +160,8 @@ pub(super) fn gameplay_input(
             || sources.just_pressed(&map, GameAction::StrumUp)
             || sources.just_pressed(&map, GameAction::StrumDown)
         {
+            physical(GameAction::StrumUp, Action::Strum);
+            physical(GameAction::StrumDown, Action::Strum);
             send(InputKind::Strum);
         }
         let frets =
@@ -137,6 +171,7 @@ pub(super) fn gameplay_input(
             .or_default()
             .update(frets);
         if sources.just_pressed(&map, GameAction::Hype) || chord_triggered {
+            physical(GameAction::Hype, Action::Hype);
             send(InputKind::ActivateHype);
         }
     }
@@ -223,6 +258,7 @@ mod tests {
             .expect("an empty track is a track");
             app.world_mut().spawn((
                 PlayerDevice(DeviceId::Keyboard),
+                PlayerIndex(0),
                 PlayerSession {
                     session: TrackSession::new(
                         track,

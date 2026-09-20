@@ -10,6 +10,7 @@ rust-version.workspace = true
 
 [dependencies]
 beatbyte-core = { workspace = true }
+beatbyte-telemetry = { workspace = true }
 beatbyte-chart = { workspace = true }
 beatbyte-audio = { workspace = true }
 beatbyte-editor = { workspace = true }

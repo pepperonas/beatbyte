@@ -53,6 +53,8 @@ pub(crate) enum Row {
     FlashSync,
     /// Whether a model helps a song search pick its recording.
     AiSearch,
+    /// How much of a run the gameplay telemetry records.
+    Telemetry,
     FxIntensity,
     TextScale,
     HighContrast,
@@ -76,7 +78,7 @@ impl Row {
     /// Every row, in the order the screen shows them: **alphabetical
     /// by label**, and kept that way by a test — a new row goes where
     /// its name falls, not at the end of the list.
-    const ALL: [Row; 36] = [
+    const ALL: [Row; 37] = [
         Row::AiSearch,
         Row::BeatPulse,
         Row::Controls,
@@ -109,6 +111,7 @@ impl Row {
         Row::BackdropMotion,
         Row::Theme,
         Row::TapMode,
+        Row::Telemetry,
         Row::TextScale,
         Row::VideoOffset,
         Row::VocalCharts,
@@ -131,6 +134,7 @@ impl Row {
             Row::GuitarStudyTwins => "GUITAR STUDY TWINS",
             Row::VocalCharts => "VOCAL CHARTS",
             Row::MicOffset => "MIC OFFSET",
+            Row::Telemetry => "TELEMETRY",
             Row::VocalPitch => "VOCAL PITCH",
             Row::OriginalVocals => "ORIGINAL VOCALS",
             Row::NoFail => "NO FAIL",
@@ -173,6 +177,7 @@ impl Row {
             Row::VocalCharts => on_off(settings.vocal_charts),
             Row::MicOffset => format!("{:+.0} ms", settings.mic_offset_ms),
             Row::OriginalVocals => format!("{:.0}%", settings.original_vocals * 100.0),
+            Row::Telemetry => settings.telemetry.label().to_owned(),
             Row::VocalPitch => match settings.vocal_pitch_mode {
                 beatbyte_core::vocal::PitchMode::OctaveIndependent => "ANY OCTAVE".to_owned(),
                 beatbyte_core::vocal::PitchMode::Strict => "AS WRITTEN".to_owned(),
@@ -268,6 +273,7 @@ impl Row {
             Row::MicOffset => "how late the microphone hears the song".to_owned(),
             Row::OriginalVocals => "above zero marks a vocal run assisted".to_owned(),
             Row::VocalPitch => "an octave out: forgiven, or counted".to_owned(),
+            Row::Telemetry => "what a run records, on this machine only".to_owned(),
             _ => String::new(),
         }
     }
@@ -308,6 +314,11 @@ impl Row {
             Row::OriginalVocals => {
                 settings.original_vocals =
                     (settings.original_vocals + 0.05 * direction).clamp(0.0, 1.0);
+            }
+            Row::Telemetry => {
+                // One direction only: four states cycle, and the row
+                // says which one it is on.
+                settings.telemetry = settings.telemetry.next();
             }
             Row::VocalPitch => {
                 settings.vocal_pitch_mode = match settings.vocal_pitch_mode {
