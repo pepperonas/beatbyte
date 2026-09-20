@@ -17,6 +17,8 @@ rodio = { workspace = true }
 symphonia = { workspace = true }
 realfft = { workspace = true }
 cpal = { workspace = true }
+# Identifying the exact audio a sidecar was computed against.
+sha2 = { workspace = true }
 
 [dev-dependencies]
 hound = { workspace = true }

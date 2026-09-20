@@ -25,6 +25,10 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+
+use crate::decode::{Channels, decode_file, decode_file_channels};
+use crate::separate::{SOURCES, SeparateError, Separation, separate};
 
 /// The schema this module writes.
 pub const STEM_SCHEMA: &str = "beatbyte.stems/1";
@@ -308,6 +312,214 @@ pub fn wants_separation(
     }
 }
 
+// ---------------------------------------------------------------
+// Making the stems
+// ---------------------------------------------------------------
+
+/// The level a 50 ms frame of the vocal stem must reach to count as
+/// singing.
+pub const VOCAL_GATE_DBFS: f32 = -45.0;
+
+/// Below this share of the song, the "vocal" stem is separator
+/// bleed rather than a singer, and the song is recorded as
+/// [`StemState::Instrumental`].
+pub const INSTRUMENTAL_BELOW: f32 = 0.01;
+
+/// SHA-256 of a file, lowercase hex — what ties a sidecar to the
+/// exact bytes it was computed from.
+///
+/// Read in chunks: a song is tens of megabytes and this runs on the
+/// import path.
+pub fn audio_sha256(path: &Path) -> std::io::Result<String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    let digest = hasher.finalize();
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use core::fmt::Write;
+        // `write!` into a String cannot fail; the digest is 32 bytes.
+        let _ = write!(hex, "{byte:02x}");
+    }
+    Ok(hex)
+}
+
+/// The share of a signal that is above [`VOCAL_GATE_DBFS`], measured
+/// in 50 ms frames.
+///
+/// This is the one question the separator can answer on its own:
+/// *is anyone singing at all*. Whether what they sang can be charted
+/// is the analyser's question, and it gets its own state. Pure —
+/// tested.
+#[must_use]
+pub fn vocal_presence(samples: &[f32], sample_rate: u32) -> f32 {
+    let frame = (sample_rate.max(1) as usize / 20).max(1);
+    if samples.len() < frame {
+        return 0.0;
+    }
+    let mut loud = 0usize;
+    let mut total = 0usize;
+    for chunk in samples.chunks(frame) {
+        if chunk.len() < frame {
+            break;
+        }
+        total += 1;
+        if crate::pitch::level(chunk).0 > VOCAL_GATE_DBFS {
+            loud += 1;
+        }
+    }
+    if total == 0 {
+        return 0.0;
+    }
+    loud as f32 / total as f32
+}
+
+/// Run the separator over a song, on BeatByte's own decode.
+///
+/// Errors come back as the [`StemState`] they mean, because every one
+/// of them is a fact about this song or this machine that is worth
+/// writing down rather than retrying for ever.
+pub fn separate_song(audio_path: &Path, scratch: &Path) -> Result<Separation, StemState> {
+    let audio = decode_file_channels(audio_path).map_err(|error| StemState::Failed {
+        reason: format!("cannot decode the song: {error}"),
+        retryable: false,
+    })?;
+    separate(&audio, scratch, None).map_err(|error| match error {
+        SeparateError::NotInstalled => StemState::NeedsSeparator,
+        // A run that died and a stem that is not there could both be
+        // a full disk or a killed process; both are worth one retry.
+        other => StemState::Failed {
+            reason: other.to_string(),
+            retryable: true,
+        },
+    })
+}
+
+/// Keep the two stems vocal play needs, beside the song, and write
+/// the manifest that describes them.
+///
+/// The separator's `other` stem is deliberately **not** kept: the
+/// Guitar Study twin reads it out of the same run before the scratch
+/// is cleaned, so one separation serves both and the library pays for
+/// two files rather than four.
+pub fn persist(
+    audio_path: &Path,
+    audio_sha256: &str,
+    separation: &Separation,
+) -> Result<StemManifest, std::io::Error> {
+    let separator = format!(
+        "demucs {} ({})",
+        crate::separate::DEMUCS_MODEL,
+        separation.device
+    );
+    let vocals = decode_file_channels(&separation.source("vocals"))
+        .map_err(|error| std::io::Error::other(format!("reading the vocal stem: {error}")))?;
+
+    let presence = vocal_presence(&vocals.mono(), vocals.sample_rate);
+    if presence < INSTRUMENTAL_BELOW {
+        // Nothing to keep and nothing to analyse. Writing this down
+        // is the point: the next library scan reads the answer
+        // instead of paying for the separator again.
+        let manifest = StemManifest::new(audio_sha256, &separator, StemState::Instrumental);
+        write_manifest(audio_path, &manifest)?;
+        return Ok(manifest);
+    }
+
+    let dir = stems_dir(audio_path);
+    std::fs::create_dir_all(&dir)?;
+    let mut manifest = StemManifest::new(audio_sha256, &separator, StemState::Ready);
+
+    let vocals_path = dir.join(StemKind::Vocals.file_name());
+    crate::decode::write_wav16(&vocals_path, &vocals)?;
+    manifest
+        .stems
+        .push(stem_file(StemKind::Vocals, &vocals, &vocals_path)?);
+
+    let backing = sum_sources(separation, &["drums", "bass", "other"])
+        .map_err(|error| std::io::Error::other(format!("summing the backing: {error}")))?;
+    let backing_path = dir.join(StemKind::Instrumental.file_name());
+    crate::decode::write_wav16(&backing_path, &backing)?;
+    manifest
+        .stems
+        .push(stem_file(StemKind::Instrumental, &backing, &backing_path)?);
+
+    write_manifest(audio_path, &manifest)?;
+    Ok(manifest)
+}
+
+fn stem_file(kind: StemKind, audio: &Channels, path: &Path) -> std::io::Result<StemFile> {
+    Ok(StemFile {
+        kind,
+        file: kind.file_name().to_owned(),
+        sample_rate: audio.sample_rate,
+        channels: u32::try_from(audio.channels).unwrap_or(1),
+        duration_s: audio.duration_s(),
+        bytes: std::fs::metadata(path)?.len(),
+    })
+}
+
+/// Add several of the separator's sources together, sample for
+/// sample.
+///
+/// The sources come from one run so they agree on rate and width, but
+/// the shortest one decides the length rather than an index running
+/// off the end — a truncated stem is a bad sum, not a panic.
+fn sum_sources(separation: &Separation, names: &[&str]) -> Result<Channels, String> {
+    let mut total: Option<Channels> = None;
+    for name in names {
+        let part = decode_file_channels(&separation.source(name))
+            .map_err(|error| format!("reading `{name}`: {error}"))?;
+        match &mut total {
+            None => total = Some(part),
+            Some(sum) => {
+                if part.sample_rate != sum.sample_rate || part.channels != sum.channels {
+                    return Err(format!(
+                        "`{name}` is {} Hz / {} ch against {} Hz / {} ch",
+                        part.sample_rate, part.channels, sum.sample_rate, sum.channels
+                    ));
+                }
+                let len = sum.interleaved.len().min(part.interleaved.len());
+                sum.interleaved.truncate(len);
+                for (into, from) in sum.interleaved.iter_mut().zip(&part.interleaved[..len]) {
+                    *into += *from;
+                }
+            }
+        }
+    }
+    let mut sum = total.ok_or_else(|| "nothing to sum".to_owned())?;
+    // The parts were separated from one mix, so their sum is that mix
+    // and cannot normally clip; a model that overshoots by a hair
+    // still must not wrap round to the opposite rail.
+    for sample in &mut sum.interleaved {
+        *sample = sample.clamp(-1.0, 1.0);
+    }
+    Ok(sum)
+}
+
+/// Decode a stem for analysis: mono, at the stem's own rate.
+pub fn decode_stem(manifest: &StemManifest, audio_path: &Path, kind: StemKind) -> Option<Vec<f32>> {
+    let path = manifest.stem_path(audio_path, kind)?;
+    decode_file(&path)
+        .ok()
+        .map(|audio| audio.samples().to_vec())
+}
+
+/// Every source name a full run produces — re-exported so a caller
+/// that wants the Guitar Study stem out of a shared run does not
+/// have to know the separator's vocabulary.
+#[must_use]
+pub fn source_names() -> &'static [&'static str] {
+    SOURCES
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -482,6 +694,120 @@ mod tests {
         assert_eq!(r.bytes(), 63_504_000);
         assert!(r.is_current_for(HASH));
         assert_eq!(r.state.summary(), "ready");
+    }
+
+    #[test]
+    fn presence_tells_a_singer_from_separator_bleed() {
+        let rate = 16_000u32;
+        let tone = |seconds: f32, amplitude: f32| -> Vec<f32> {
+            (0..(seconds * rate as f32) as usize)
+                .map(|i| {
+                    amplitude * (core::f32::consts::TAU * 220.0 * i as f32 / rate as f32).sin()
+                })
+                .collect()
+        };
+        // Silence is nobody.
+        assert_eq!(vocal_presence(&vec![0.0; rate as usize * 4], rate), 0.0);
+        // A loud stem throughout is a singer.
+        assert!(vocal_presence(&tone(4.0, 0.3), rate) > 0.99);
+        // Bleed: audible in the meter, far under the gate.
+        let bleed = tone(4.0, 0.001);
+        assert!(
+            vocal_presence(&bleed, rate) < INSTRUMENTAL_BELOW,
+            "bleed read as {}",
+            vocal_presence(&bleed, rate)
+        );
+        // One short line in a long instrumental still counts as
+        // singing — the separator's job is "is anyone there", not
+        // "is there enough to chart".
+        let mut sparse = vec![0.0f32; rate as usize * 60];
+        sparse[..rate as usize * 3].copy_from_slice(&tone(3.0, 0.3));
+        let share = vocal_presence(&sparse, rate);
+        assert!(
+            share > INSTRUMENTAL_BELOW,
+            "three seconds of singing in a minute read as instrumental ({share})"
+        );
+        // Too short to measure is not a claim.
+        assert_eq!(vocal_presence(&[0.5; 10], rate), 0.0);
+    }
+
+    #[test]
+    fn the_audio_hash_is_the_usual_sha256_of_the_bytes() {
+        let dir = std::env::temp_dir().join(format!("bb-hash-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("a.bin");
+        std::fs::write(&path, b"").unwrap();
+        // The empty digest, which is a value anyone can check.
+        assert_eq!(
+            audio_sha256(&path).unwrap(),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        // Bigger than one read buffer, so the chunking is exercised.
+        std::fs::write(&path, vec![7u8; 200_000]).unwrap();
+        let big = audio_sha256(&path).unwrap();
+        assert_eq!(big.len(), 64);
+        std::fs::write(&path, vec![7u8; 200_001]).unwrap();
+        assert_ne!(audio_sha256(&path).unwrap(), big, "one byte changes it");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_backing_is_the_sum_of_the_sources_and_cannot_wrap() {
+        let dir = std::env::temp_dir().join(format!("bb-sum-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let sep = Separation {
+            dir: dir.clone(),
+            device: "cpu".to_owned(),
+        };
+        let write = |name: &str, value: f32, frames: usize| {
+            let channels = Channels {
+                interleaved: vec![value; frames * 2],
+                channels: 2,
+                sample_rate: 44_100,
+                truncated: false,
+            };
+            crate::decode::write_wav16(&sep.source(name), &channels).unwrap();
+        };
+        write("drums", 0.2, 1000);
+        write("bass", 0.3, 1000);
+        write("other", 0.1, 1000);
+        let sum = sum_sources(&sep, &["drums", "bass", "other"]).unwrap();
+        assert_eq!(sum.channels, 2);
+        assert_eq!(sum.sample_rate, 44_100);
+        // 0.2 + 0.3 + 0.1, through 16-bit quantisation.
+        assert!(
+            (sum.interleaved[0] - 0.6).abs() < 1e-3,
+            "{}",
+            sum.interleaved[0]
+        );
+
+        // A shorter source truncates rather than running off the end.
+        write("bass", 0.3, 400);
+        let short = sum_sources(&sep, &["drums", "bass", "other"]).unwrap();
+        assert_eq!(short.frames(), 400);
+
+        // Sources that disagree about their format are refused, not
+        // interleaved into noise.
+        let odd = Channels {
+            interleaved: vec![0.1; 1000],
+            channels: 1,
+            sample_rate: 44_100,
+            truncated: false,
+        };
+        crate::decode::write_wav16(&sep.source("bass"), &odd).unwrap();
+        assert!(sum_sources(&sep, &["drums", "bass"]).is_err());
+
+        // And a sum that would overshoot is clamped, never wrapped.
+        write("drums", 0.9, 100);
+        write("bass", 0.9, 100);
+        let hot = sum_sources(&sep, &["drums", "bass"]).unwrap();
+        assert!(
+            hot.interleaved.iter().all(|s| (-1.0..=1.0).contains(s)),
+            "a clipped sum must not wrap to the opposite rail"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

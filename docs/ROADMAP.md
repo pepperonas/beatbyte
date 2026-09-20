@@ -374,11 +374,41 @@ that will not start.
   broke it, which is precisely what its comment said would happen —
   and now counts fenced Rust blocks across the workspace, telling
   prose blocks and closing fences apart, with a test of its own.*
-- [ ] V2 **Shared stems and offline analysis.** Generalise the Guitar
-  Study separation into one `StemService` whose single run feeds
-  vocals, the karaoke instrumental and the study's `other` stem;
-  implement `VocalAnalyzer` over Basic Pitch with deterministic Rust
-  segmentation; reuse the lyric aligner on the same stem.
+- [x] V2a **The analysis core: stem to notes.** `beatbyte_audio::pitch`
+  is McLeod's NSDF written out rather than pulled in — the plan named
+  a crate and listed the audit it would have to pass, and writing the
+  page of arithmetic satisfies the audit by construction. One
+  estimator serves the offline pass and the microphone, so the target
+  and the judgement cannot disagree about what a note is.
+  `beatbyte_audio::separate` is the shared separator: htdemucs
+  computes all four sources whatever you ask it for, so asking for
+  all four costs the same minutes and stops the Guitar Study twin
+  needing a run of its own. `beatbyte_audio::singing` is the
+  deterministic segmentation — median, bridge, split, simplify,
+  group — and `beatbyte_audio::stems` now builds and persists what
+  comes out. ⚠️ **The synthetic corpus earned its keep twice before
+  any of it ran on music**: the parabolic interpolation's sign was
+  inverted, so every pitch came back sharp (11 cents at 110 Hz, 35 at
+  440), and the "skip the first hump" rule discarded a genuine peak
+  whenever the range's short end fell inside it — at 880 Hz it did,
+  and the detector reported 440. ⚠️ **The mutation probe found five
+  blind spots**, and two of them were whole stages that could have
+  been deleted with the suite green: the median filter and the gap
+  bridging were tested as functions and by nothing as *stages*. The
+  other three were the window-centre stamp (a 32 ms systematic offset
+  on every note in the game — the defect that reads as "the lyrics
+  feel late"), the minimum note length and the confidence floor.
+  *Verified: 1335 tests (+43), gate green. Measured, not assumed:
+  256.6 µs per hop in release = 1.6 % of one core at 16 ms hops, and
+  zero heap allocations per hop across 600 of them behind a
+  thread-local counting allocator that is itself proved to count and
+  proved not to see another thread's. ⚠️ The allocator's first
+  version was global and duly reported five phantom allocations —
+  the test harness runs tests in parallel.*
+- [ ] V2b **Wiring it into the game.** Queue the shared separation
+  from the import, hand the Guitar Study twin the `other` stem out of
+  that same run, lazily analyse old songs from the library scan, and
+  link the aligner's words to the notes.
 - [ ] V3 **Microphone engine.** One shared capture stream for the
   stage meters and vocal play, bounded ring buffer, realtime pitch,
   timestamped frames onto `song_time`.

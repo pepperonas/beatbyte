@@ -30,10 +30,13 @@ pub mod eval;
 pub mod listen;
 pub mod loudness;
 pub mod mark;
+pub mod pitch;
 pub mod playback;
 pub mod priming;
 pub mod quality;
 pub mod resample;
+pub mod separate;
+pub mod singing;
 pub mod stems;
 pub mod synth;
 
