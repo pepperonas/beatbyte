@@ -147,6 +147,17 @@ pub struct Settings {
     /// full disk. The row says the cost; the player decides.
     #[serde(default)]
     pub vocal_charts: bool,
+    /// The microphone's round-trip latency in milliseconds: how long
+    /// after a sound happens the game learns about it. Positive is
+    /// the normal case; the frame is moved that much earlier.
+    ///
+    /// ⚠️ **Not** [`Settings::latency_offset_ms`]. That one is
+    /// measured by a player tapping along to a click, so it contains
+    /// their reaction time — a microphone does not have one. This is
+    /// the output path, the air and the input path, and the only
+    /// honest way to get it is to measure the round trip.
+    #[serde(default)]
+    pub mic_offset_ms: f32,
     /// Tap mode: notes hit on fret press alone, no strum required.
     /// ON by default — the first real playtest showed keyboard
     /// players press frets and nothing happens (receptors light up,
@@ -254,6 +265,7 @@ impl Default for Settings {
             normalize_loudness: true,
             guitar_study_twins: true,
             vocal_charts: false,
+            mic_offset_ms: 0.0,
             tap_mode: true,
             perspective: true,
             stage_3d: true,

@@ -35,6 +35,10 @@ pub struct LoadedSong {
     pub audio: SongAudio,
     /// Karaoke lyrics, when the song has them.
     pub lyrics: Option<beatbyte_chart::lyrics::Lyrics>,
+    /// The vocal chart beside the song, when one has been made and
+    /// still matches this audio. `None` is the ordinary case and
+    /// means exactly one thing: no vocal play for this song.
+    pub vocals: Option<beatbyte_chart::vocals::VocalChartFile>,
     /// The song's own lyric offset in milliseconds (positive = lyrics
     /// later), read from beside the audio and adjustable from the
     /// pause menu. Sources vary per song; this is where that lives.

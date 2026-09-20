@@ -430,8 +430,13 @@ that will not start.
   phrase-by-phrase listing says why: they are the verses (~56) and
   the choruses (~69). The chart is musically right. ⚠️ Never heard —
   no ear has judged this chart, only its spectrum.*
-- [ ] V2c **Old songs and words.** Lazily analyse a library the scan
-  finds unanalysed, and link the aligner's words to the notes.
+- [ ] V2c **Old songs, words, and the twin.** Lazily analyse a
+  library the scan finds unanalysed, and link the aligner's words to
+  the notes. ⚠️ Found while testing: a `[GS]` twin keeps its **own
+  copy** of the audio, so `vocals_beside` looks in the twin's folder
+  and finds nothing — selecting the study entry silently gets no
+  vocals. The bytes are identical (checked), so the chart is valid
+  for both; the twin writer should carry the sidecar across.
 - [x] V3 **Microphone engine.** `beatbyte_audio::mic` is the pure
   half — a **streaming integer decimator** (a windowed-sinc resampler
   called per block has an edge at every block boundary, and measuring
@@ -487,8 +492,34 @@ that will not start.
   *Verified: 1360 tests (+20), gate green, nine mutation probes bite
   (including one that makes a louder frame buy coverage, against the
   test that sings the same phrase at a whisper and a shout).*
-- [ ] V5 **Vocal presentation.** Target bars, the live pitch trace,
-  high/low, phrase feedback, and the accessibility variants.
+- [~] V5 **Vocal presentation.** `gameplay::vocal` draws the ribbon —
+  the target melody as bars sliding past a playhead, the microphone's
+  recent pitch as a trace over them, coloured by how far off it is,
+  with the phrase's verdict and a readout that says LISTENING, NO
+  VOCAL, TOO LOUD or which way to move. The visible pitch range
+  follows the whole visible WINDOW rather than the current phrase, so
+  a high phrase is already in frame before it arrives, and it eases
+  rather than jumping. ⚠️ Ordered `after(open_ears)`: both run on the
+  same state entry, Bevy orders same-schedule systems arbitrarily,
+  and unordered this read the microphone before it existed about half
+  the time. **Remaining:** the Reduced Motion / Reduced Flashing /
+  High Contrast variants, and feeding the phrase outcomes to the
+  existing Hype and effects (V8).
+  *Verified: 1389 tests (+16), gate green, six mutation probes bite —
+  including the arrow pointing the wrong way, which is the single
+  most confusing thing this HUD could do. Live in the game: a run on
+  a song that has a chart logs `vocals: holding the singer to 19
+  phrases, 426 notes`. ⚠️ **Never seen.** The screen was locked all
+  session, so every capture is black by definition; the ribbon is
+  verified wired and measured, not looked at.*
+  ⚠️ **A pre-existing failure found while testing, not caused by any
+  of this:** the autopilot fails `[GS] Maria` with exactly **3
+  overstrums at notes 95, 183 and 312**, every note otherwise
+  Perfect. Two runs — one with the vocal path completely inactive,
+  one with it fully live — produced byte-identical overstrums at the
+  same three notes, so it is a property of that stem-charted twin and
+  the injector, deterministic and reproducible. Filed, not fixed: it
+  is outside this plan.
 - [ ] V6 **Calibration and settings.** A per-device microphone offset
   measured by loopback — never the controller's latency value.
 - [ ] V7 **Karaoke playback.** Sample-synchronous stem mixing,

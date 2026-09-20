@@ -228,11 +228,34 @@ pub struct MonitorDot {
     pub row: usize,
 }
 
-/// Open the room's input for the venue: the listener starts on its
-/// own thread and the monitors follow what it hears. Nothing opens
-/// when the stage is not shown.
-pub fn open_ears(settings: Res<Settings>, mut ears: ResMut<Ears>) {
-    ears.0 = stage3d::active(&settings).then(Listener::open);
+/// Whether the room's input is wanted at all.
+///
+/// Two quite different things want it — the stage monitors, which
+/// show what the room is doing, and vocal play, which judges it — and
+/// they must share ONE stream. A microphone is also a thing a player
+/// can see being opened, so it stays shut when neither wants it: the
+/// vocal side asks only when this song actually has a chart to sing
+/// against. Pure — tested.
+#[must_use]
+pub fn ears_wanted(stage_shown: bool, vocals_on: bool, song_has_vocals: bool) -> bool {
+    stage_shown || (vocals_on && song_has_vocals)
+}
+
+/// Open the room's input: the listener starts on its own thread, the
+/// monitors follow what it hears, and vocal play taps the same
+/// stream.
+pub fn open_ears(
+    settings: Res<Settings>,
+    song: Option<Res<crate::boot::LoadedSong>>,
+    mut ears: ResMut<Ears>,
+) {
+    let has_vocals = song.is_some_and(|song| song.vocals.is_some());
+    ears.0 = ears_wanted(
+        stage3d::active(&settings),
+        settings.vocal_charts,
+        has_vocals,
+    )
+    .then(Listener::open);
 }
 
 /// Drop the listener with the venue: the thread stops, the device
@@ -412,6 +435,25 @@ pub fn register(app: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_microphone_opens_for_the_stage_or_for_singing_and_otherwise_stays_shut() {
+        // A microphone is a thing a player can see being opened, so
+        // "nobody wants it" has to mean shut.
+        assert!(
+            ears_wanted(true, false, false),
+            "the stage monitors want it"
+        );
+        assert!(ears_wanted(false, true, true), "and so does a song to sing");
+        assert!(
+            !ears_wanted(false, true, false),
+            "vocals on, but this song has no chart: nothing to sing against"
+        );
+        assert!(!ears_wanted(false, false, true), "the setting is off");
+        assert!(!ears_wanted(false, false, false));
+        // Both at once is still one stream, which is the whole point.
+        assert!(ears_wanted(true, true, true));
+    }
 
     #[test]
     fn every_digit_has_a_shape_of_its_own() {

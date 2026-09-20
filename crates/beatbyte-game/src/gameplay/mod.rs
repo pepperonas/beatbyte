@@ -31,6 +31,7 @@ pub mod pa;
 pub mod rig;
 pub mod spark3d;
 pub mod stage3d;
+pub mod vocal;
 
 use beatbyte_core::{
     Lane, PlayerPerformance, ScoreConfig, SessionEvent, TimingWindows, TrackSession,
@@ -332,6 +333,11 @@ pub struct GameplayPlugin;
 
 impl Plugin for GameplayPlugin {
     fn build(&self, app: &mut App) {
+        // Vocal play: its own systems, registered here rather than in
+        // the 3D stage's plugin because a singer does not need the
+        // venue — only the microphone, which the monitors' `Ears`
+        // already own.
+        vocal::register(app);
         app.add_message::<SessionFeedback>()
             .add_plugins(fx::FxPlugin)
             .add_systems(
@@ -837,6 +843,7 @@ fn mc_transition(
         audio: next.audio.clone(),
         lyrics: next.lyrics.clone(),
         lyric_offset_ms: next.lyric_offset_ms,
+        vocals: next.vocals.clone(),
     });
     // The count-in runs while the PREVIOUS song still plays; at zero
     // the pending music CROSSFADES instead of hard-starting.

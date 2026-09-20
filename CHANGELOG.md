@@ -14,6 +14,43 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.17.12] - 2026-09-20
+
+### Added
+
+- **Sing.** With `VOCAL CHARTS` on and a song that has one, the microphone
+  is now judged against it. A ribbon under the lyric line shows the melody as
+  bars sliding past a playhead and the pitch you are actually making as a
+  trace over them, coloured by how far off it is; under it, the words that
+  help — `ON PITCH`, which way to move and by how much, `NO VOCAL`, or
+  `TOO LOUD` when the input is clipping. Each phrase ends with its own
+  verdict and multiplier.
+- **Pitch is judged the way music works, not the way meters do.** Distance
+  is in cents, so twenty cents out means the same for a bass and a soprano;
+  an octave is forgiven by default, because a chart carries one melody and
+  the people at the microphone have different voices; and rap and speech are
+  judged on delivery, never on a pitch they do not have.
+- **Loudness is never a reward.** It decides whether a frame counts at all
+  and nothing else. Singing louder cannot score better.
+- **`MIC OFFSET`**, a setting of its own. It is not the controller's latency
+  value: that one is measured by tapping along to a click and contains human
+  reaction time, which a microphone does not have.
+
+### Changed
+
+- **One microphone stream serves the stage monitors and vocal play.** Opening
+  the same device twice can fail, can land on different configurations and
+  leaves two capture clocks that cannot be compared, so there is one — and it
+  stays shut unless the stage is shown or this song has something to sing.
+
+### Notes
+
+- The microphone's clock and the song's clock are two crystals. They are kept
+  together the way the song clock is kept to the audio device: a large
+  disagreement snaps, a small one is eased out.
+- Not yet: the accessibility variants of the ribbon, the karaoke backing mix,
+  and vocal results on the results screen.
+
 ## [0.17.11] - 2026-09-20
 
 ### Added

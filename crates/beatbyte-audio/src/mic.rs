@@ -305,6 +305,40 @@ pub struct CaptureAnchor {
     pub song_time_s: f64,
 }
 
+/// A step larger than this is a new correspondence, not a drift.
+pub const ANCHOR_SNAP_S: f64 = 0.050;
+
+/// How much of a small disagreement is taken out per reconciliation.
+pub const ANCHOR_SLEW: f64 = 0.10;
+
+impl CaptureAnchor {
+    /// Keep the two clocks together as they drift apart.
+    ///
+    /// The microphone and the speakers are two crystals. Over a four
+    /// minute song a hundred parts per million is twenty-four
+    /// milliseconds — small, and squarely inside the tolerances this
+    /// game judges on, so it is corrected rather than ignored.
+    ///
+    /// The shape is the one [`crate::clock::SongClock`] already uses
+    /// against the audio device, and for the same reason: a large
+    /// disagreement is a NEW correspondence and is taken in one step
+    /// (a song started, a device reopened), while a small one is
+    /// drift and is eased out, because snapping the anchor every
+    /// frame would make every note's judged time jitter. Returns
+    /// whether it snapped. Pure — tested.
+    pub fn reconcile(&mut self, capture_now_s: f64, song_now_s: f64) -> bool {
+        let implied = self.song_time_s + (capture_now_s - self.capture_s);
+        let error = song_now_s - implied;
+        if error.abs() > ANCHOR_SNAP_S {
+            self.capture_s = capture_now_s;
+            self.song_time_s = song_now_s;
+            return true;
+        }
+        self.song_time_s += error * ANCHOR_SLEW;
+        false
+    }
+}
+
 /// Put a captured frame on the song's timeline.
 ///
 /// Three things are subtracted, and each is a different kind of
@@ -525,6 +559,52 @@ mod tests {
         // A negative offset (an input ahead of the output) pushes it
         // later rather than being clamped away.
         assert!((to_song_time(11.0, anchor, 0.0, -20.0) - 31.02).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_big_disagreement_snaps_and_a_small_one_is_eased_out() {
+        // A new song, or a reopened device: one step.
+        let mut anchor = CaptureAnchor {
+            capture_s: 10.0,
+            song_time_s: 30.0,
+        };
+        assert!(
+            anchor.reconcile(11.0, 45.0),
+            "a fifteen-second jump is not drift"
+        );
+        assert_eq!(anchor.capture_s, 11.0);
+        assert_eq!(anchor.song_time_s, 45.0);
+
+        // Two crystals drifting: eased, never snapped, and it
+        // converges rather than oscillating.
+        let mut anchor = CaptureAnchor {
+            capture_s: 0.0,
+            song_time_s: 0.0,
+        };
+        let mut error = f64::MAX;
+        for step in 1..=200 {
+            let capture_now = f64::from(step) * 0.1;
+            // The song clock running 100 ppm fast.
+            let song_now = capture_now * 1.0001;
+            assert!(
+                !anchor.reconcile(capture_now, song_now),
+                "drift must not snap"
+            );
+            let implied = anchor.song_time_s + (capture_now - anchor.capture_s);
+            error = (song_now - implied).abs();
+        }
+        assert!(error < 0.001, "the anchor never caught up: {error} s out");
+    }
+
+    #[test]
+    fn reconciling_does_not_move_a_clock_that_already_agrees() {
+        let mut anchor = CaptureAnchor {
+            capture_s: 5.0,
+            song_time_s: 20.0,
+        };
+        let before = anchor;
+        assert!(!anchor.reconcile(6.0, 21.0));
+        assert_eq!(anchor, before, "an exact agreement was corrected anyway");
     }
 
     #[test]
