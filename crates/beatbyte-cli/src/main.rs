@@ -17,6 +17,7 @@ mod chart_check;
 mod context;
 mod dossier;
 mod history;
+mod library;
 mod loudness;
 #[cfg(feature = "ml")]
 mod lyrics_eval;
@@ -268,6 +269,18 @@ enum Command {
     Telemetry {
         #[command(subcommand)]
         what: TelemetryCommand,
+    },
+    /// Give every song folder the document it should carry
+    /// (ADR-0019): identity, provenance and what is already known,
+    /// read from the files that are already there. Writes exactly
+    /// one new file per song and touches nothing else; a second run
+    /// writes nothing.
+    Library {
+        /// The songs directory.
+        root: PathBuf,
+        /// Report what would change without writing anything.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Write the musical context sidecar beside a chart: what the
     /// analysis says at each note, so a miss recorded later can be
@@ -622,6 +635,7 @@ fn main() -> ExitCode {
                 ExitCode::from(2)
             }
         },
+        Command::Library { root, dry_run } => library::run(&root, dry_run),
         Command::Context { path, all } => {
             if all {
                 context::run_all(&path)

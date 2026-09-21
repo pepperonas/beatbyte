@@ -39,13 +39,39 @@ that predates this work and that M5 ends rather than extends.
   the override rule, the confidence clamp, the read-does-not-update
   rule, the id's time prefix and the placeholder filter — each seen
   to fail.*
-- [ ] **M2 Migration: folders → documents.** Read what each folder
-  already holds (chart, loudness, sidecar existence), mint a
-  `SongId`, take `imported_at` from the oldest file in the folder,
-  mark every carried value with the source it came from. Writes only
-  the new `song.json`; touches nothing else. *Verify: a real 172-song
-  library migrates with no field invented and no file changed; a
-  second run writes nothing.*
+- [x] **M2 Migration: folders → documents** *(v0.18.3)*. `library`
+  in the CLI walks a songs directory, reads what each folder already
+  holds — the active chart, the loudness sidecar, which word files
+  are there, the oldest file's time — and writes exactly one new
+  file per song. No audio decoded, nothing guessed, nothing else
+  touched.
+  ⚠️ **A chord is ONE note event, not its rows.** A chart file stores
+  a row per lane, so counting rows would make every chord-heavy
+  chart look three times as dense as it plays — and would disagree
+  with the telemetry store, which counts what the engine judged. The
+  rows are grouped by the engine's own `CHORD_EPSILON_S`, and the
+  proof is a cross-check against an independent source: the document
+  says Maria's Medium chart has **428** note events, and the
+  telemetry store recorded a session of **428**.
+  ⚠️ **The first version of the report lied.** It asked whether a
+  document existed *after* writing one, so the first run over a
+  fresh library said "171 updated, 0 created" — wrong about the one
+  thing it exists to say. Pinned as a pure function now.
+  ⚠️ **And it was stricter than the game.** `girls-just-want-to-have-fun`
+  keeps its chart as `girls.chart.json`; the version scheme resolves
+  to `chart.json`, which is not there, so the folder was skipped
+  while the game plays it happily. The migration now falls back the
+  way the scanner does.
+  *Verified on the real library — 171 folders, 2.4 GB:* 171
+  documents written, a second run writing **nothing** (171 "already
+  current"), and a checksum of every non-audio file before and
+  after: **171 new `song.json`, 0 files changed, 0 files lost**.
+  `imported_at` spreads across 2026-06, -08 and -09 rather than
+  collapsing onto today, and 25 of 171 songs carry a genre — the
+  honest number, because that is how many files carry a genre tag.
+  ⚠️ The first checksum comparison reported "1239 changed" and was
+  my own broken `join`: the paths contain spaces.
+  *Verified: 1601 tests (+17), gate green.*
 - [ ] **M3 The index.** `library.db` with its own migration list, and
   the test that matters: a rebuild from the folders equals the stored
   projection. *Verify: rebuild equality, `EXPLAIN QUERY PLAN` on the

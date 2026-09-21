@@ -14,6 +14,31 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.3] - 2026-09-21
+
+### Added
+
+- **Every song folder now carries its own document.**
+  `beatbyte-cli library <songs>` reads what a folder already holds — the
+  active chart, the loudness sidecar, which word files are beside the audio,
+  the oldest file's time — and writes one new `song.json`. It decodes no
+  audio, guesses nothing, and touches no existing file. Run it twice and the
+  second run writes nothing.
+- Each document carries the song's permanent id, where each value came from,
+  what the file is (size, codec, sample rate, channels, bitrate), what the
+  chart contains per difficulty, and when each stage last happened.
+
+### Notes
+
+- **A chord counts as one note event, not as its rows.** A chart file stores
+  a row per lane; counting rows would make every chord-heavy chart look three
+  times as dense as it plays. Cross-checked against an independent source:
+  the document says *Maria*'s Medium chart has 428 note events, and the
+  telemetry store recorded a session of 428.
+- Measured on the real library — **171 folders, 2.4 GB**: 171 documents
+  written, nothing else changed, nothing lost, and `imported_at` spread
+  across three months instead of collapsing onto the day the migration ran.
+
 ## [0.18.2] - 2026-09-21
 
 ### Added

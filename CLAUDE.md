@@ -42,10 +42,11 @@ that may touch Bevy (the full layering and its invariants:
   game records through, the analytics that read it, and the import of
   the older per-session JSONL files. Engine-free; chart identity
   enters as a hash string.
-- **`beatbyte-library`** (core) — song metadata: the portable
+- **`beatbyte-library`** (core, chart) — song metadata: the portable
   `song.json` a song FOLDER carries (ADR-0019), the stable `SongId`,
   the source/override rules a refresh obeys, and the timestamp
-  semantics. No IO, no SQL, no clock.
+  semantics, plus `build` (a document from a folder's facts,
+  pure) and `store` (the one file it writes). No SQL, no network.
 - **`beatbyte-game`** (everything above) — the only Bevy crate:
   screens, HUD, 3D stage, input routing, library, settings, harnesses.
 - **`beatbyte-cli`** (all but game and editor) — the offline tool.

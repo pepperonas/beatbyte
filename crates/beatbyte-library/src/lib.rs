@@ -25,8 +25,8 @@
 //!
 //! # What this crate deliberately does not do
 //!
-//! No IO, no SQL, no clock, no network. It is the model and its
-//! rules: [`may_replace`] decides what a refresh may overwrite,
+//! No SQL, no network, no clock — `now` is always passed in. The
+//! model and its rules: [`may_replace`] decides what a refresh may overwrite,
 //! [`clean`] decides what counts as a value at all, [`SongId`] is the
 //! name a song keeps, and [`Lifecycle`] pins what each timestamp
 //! means. Everything that touches a disk is built on top.
@@ -42,11 +42,13 @@
 //! - **`imported_at` is written once**, and `updated_at` moves only
 //!   on a real change ([`Lifecycle`]).
 
+pub mod build;
 pub mod clean;
 pub mod doc;
 pub mod id;
 pub mod lifecycle;
 pub mod source;
+pub mod store;
 
 pub use doc::{
     AnalysisRun, ChartStats, Completeness, DOC_FILE, Descriptive, ExternalIds, Features, FileInfo,

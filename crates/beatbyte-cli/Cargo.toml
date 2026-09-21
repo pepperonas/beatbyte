@@ -13,6 +13,7 @@ beatbyte-core = { workspace = true }
 beatbyte-chart = { workspace = true }
 beatbyte-audio = { workspace = true }
 beatbyte-telemetry = { workspace = true }
+beatbyte-library = { workspace = true }
 beatbyte-ml = { workspace = true, optional = true }
 beatbyte-lyrics = { workspace = true, optional = true }
 beatbyte-meter = { workspace = true, optional = true }
