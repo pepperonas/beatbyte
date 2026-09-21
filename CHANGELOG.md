@@ -14,6 +14,67 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.0] - 2026-09-21
+
+Milestone release: **it listens, it remembers, and it knows who is
+playing.** The first published release since v0.13.0 — v0.14.0 was
+tagged and built but never published, and everything it described is
+in here, so it is skipped rather than shipped late.
+
+**BeatByte can be sung.** A whole vocal path: it reads the sung line
+off a song into a vocal chart, opens the microphone, and judges pitch
+the way music works rather than the way a meter does — in cents
+against the note being held, with loudness never a reward. A karaoke
+run plays the backing instead of the record, the words meet the notes
+on one clock, and a sung phrase lights the room. `MIC OFFSET`
+calibrates the path; one microphone stream serves both the stage
+monitors and vocal play.
+
+**Every run leaves evidence.** `beatbyte-telemetry` is the gameplay
+blackbox ([ADR-0018](docs/decisions/ADR-0018-gameplay-telemetry-store.md)):
+a local SQLite store, written through a bounded queue off the frame
+thread, recording what the chart expected, what the player did, how
+the engine read it and how it was judged — plus the logical action
+stream, which is the only evidence of an input the engine then did
+nothing with. Nothing derivable is stored twice, a dropped event is
+never silent, and each chart version now carries a sidecar of what
+the analysis said at its notes, so "was that a weak onset in a loud
+passage?" stays answerable. `beatbyte-cli telemetry` reads it. It
+never leaves the machine and nothing reads it back into the game.
+
+**A roster, a history, and a hundred achievements.** Runs are filed
+under whoever is playing; four views show one player over time and
+against the others, plotted in the game's own hand. A hundred
+achievements across ten categories, twelve secret until earned, every
+one re-derived from the whole play log — so one added later unlocks
+retroactively, with the date it really happened.
+
+**Add a song by name.** Press `D`, type it: BeatByte looks the song
+up, judges the recordings it finds on their length and their own
+titles, fetches the best one, measures it, pulls the lyrics and
+charts it — filed under its own name rather than a raw query.
+
+**The room became a room.** The measured level runs a light show —
+the ceiling strobes white while it is loud, comets are thrown along
+the strips, sparks die by dimming — the PA stands where a PA stands
+with monitors that read the real level, the deck is sealed and lit to
+its back corners, and fog flows across it. Hits light real fire.
+
+**And the analysis follows the music.** A beat grid tracked through
+the song rather than one constant BPM, bar lines from the Beat This!
+meter, repeated sections charted identically, and `redesign` to move
+a carried chart onto the better grid. Every import gets a `[GS]`
+study twin in the background, and a blind taste test plays one chart
+version against another without saying which is which.
+
+**The last thing in, and the one that needed eyes:** a star-power
+phrase landing whole is now an impact — the neck takes the energy in,
+the ceiling flashes, the screen catches it, one impulse gone inside
+half a second. It shipped twice too bright with every automatable
+check green, and a picture said so in a second.
+
+Everything above is in the sections below, version by version.
+
 ## [0.17.21] - 2026-09-21
 
 ### Changed
