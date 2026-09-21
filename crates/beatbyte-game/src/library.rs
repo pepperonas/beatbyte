@@ -337,7 +337,11 @@ pub fn scan_library(builtins: &[ChartFile]) -> SongLibrary {
             bpm: chart.song.bpm,
             duration_s: chart.song.duration_s,
             difficulties: chart.charts.iter().map(|c| c.difficulty).collect(),
-            note_counts: chart.charts.iter().map(|c| c.notes.len()).collect(),
+            note_counts: chart
+                .charts
+                .iter()
+                .map(|c| beatbyte_library::build::note_events(c).len())
+                .collect(),
             genre: chart.song.genre.clone(),
             source: SongSource::Builtin(index),
             // A built-in has no folder, so it has no document and no
@@ -607,7 +611,7 @@ fn select_active_versions(files: Vec<PathBuf>) -> Vec<PathBuf> {
         .collect()
 }
 
-/// All `*.json` files under `dir`, up to two directory levels below
+/// Every file under `dir` that could be a chart, up to two levels below
 /// it — `songs/imported/<song>/chart.json` is the deepest documented
 /// layout, and the one-level scan this replaces silently ignored it
 /// (found during the import-walkthrough validation). Symlinked
@@ -625,7 +629,18 @@ fn find_chart_files(dir: &std::path::Path) -> Vec<PathBuf> {
             let path = entry.path();
             // `DirEntry::file_type` does not follow symlinks, so a
             // symlinked directory reports as symlink and is skipped.
-            if file_type.is_file() && path.extension().is_some_and(|e| e == "json") {
+            // Only files that could BE a chart. A song folder is
+            // full of JSON that is not one — this library holds
+            // 18.5 MB of word alignments and 17.7 MB of analysis
+            // context — and handing those to the chart parser means
+            // reading and parsing every byte of them to conclude
+            // they are not charts.
+            if file_type.is_file()
+                && path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(beatbyte_library::folder::is_chart_candidate)
+            {
                 found.push(path);
             } else if file_type.is_dir() && depth_left > 0 {
                 walk(&path, depth_left - 1, found);
@@ -640,7 +655,23 @@ fn find_chart_files(dir: &std::path::Path) -> Vec<PathBuf> {
 
 /// Load and validate one chart into a library entry.
 /// `Ok(None)` = not a chart file at all (ignored silently).
+///
+/// Two ways in. When the folder's document still describes this
+/// chart, the entry is built from it — 369 KB of documents against
+/// 102 MB of charts, for a list that shows what the document
+/// already holds. Otherwise the chart is opened and validated as it
+/// always was, which is also what happens for every folder that has
+/// not yet been migrated.
 fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String> {
+    let chart_dir = chart_path
+        .parent()
+        .ok_or_else(|| "chart has no parent directory".to_owned())?;
+    if let Some(name) = chart_path.file_name().and_then(|n| n.to_str())
+        && let Some(doc) = beatbyte_library::store::read(chart_dir)
+        && beatbyte_library::fresh::describes(&doc, name, modified_ms(chart_path))
+    {
+        return entry_from_document(chart_path, chart_dir, &doc).map(Some);
+    }
     let chart = match load_chart_file(chart_path) {
         Ok(chart) => chart,
         Err(beatbyte_chart::ChartIoError::Parse { .. }) => return Ok(None),
@@ -650,9 +681,6 @@ fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String>
     if let Some(worst) = issues.iter().find(|i| i.severity == Severity::Error) {
         return Err(format!("invalid chart: {worst}"));
     }
-    let chart_dir = chart_path
-        .parent()
-        .ok_or_else(|| "chart has no parent directory".to_owned())?;
     let audio_path = resolve_audio_path(chart_dir, &chart.song.audio).map_err(|e| e.to_string())?;
     if !audio_path.exists() {
         return Err(format!("audio file `{}` not found", audio_path.display()));
@@ -697,7 +725,16 @@ fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String>
         bpm: chart.song.bpm,
         duration_s: chart.song.duration_s,
         difficulties: chart.charts.iter().map(|c| c.difficulty).collect(),
-        note_counts: chart.charts.iter().map(|c| c.notes.len()).collect(),
+        // Events, not rows: a chord is several rows and ONE note
+        // to hit, so a row count overstates what the player plays.
+        // Measured against the engine's own recorded totals —
+        // "All That She Wants" medium is 302 rows and 301 events,
+        // and the telemetry store says 301.
+        note_counts: chart
+            .charts
+            .iter()
+            .map(|c| beatbyte_library::build::note_events(c).len())
+            .collect(),
         genre,
         has_lyrics,
         preview_start_s: chart.song.preview_start_s,
@@ -706,6 +743,85 @@ fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String>
             audio_path,
         },
     }))
+}
+
+/// When a file was last written, in milliseconds since the epoch.
+///
+/// `None` when the filesystem will not say — which sends the caller
+/// down the slow path, the one that is never wrong.
+fn modified_ms(path: &std::path::Path) -> Option<u64> {
+    std::fs::metadata(path)
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|since| u64::try_from(since.as_millis()).unwrap_or(u64::MAX))
+}
+
+/// Build a browser entry out of the folder's document.
+///
+/// Everything a row shows sits in the document already. What still
+/// comes off the disk is what the document does not hold: whether
+/// the audio is really there, and the loudness sidecar's gist.
+fn entry_from_document(
+    chart_path: &std::path::Path,
+    chart_dir: &std::path::Path,
+    doc: &beatbyte_library::doc::SongDoc,
+) -> Result<SongEntry, String> {
+    let audio_path =
+        resolve_audio_path(chart_dir, &doc.file.filename).map_err(|error| error.to_string())?;
+    if !audio_path.exists() {
+        return Err(format!("audio file `{}` not found", audio_path.display()));
+    }
+    let (difficulties, note_counts) = doc
+        .gameplay
+        .charts
+        .iter()
+        .flat_map(|instrument| instrument.difficulties.iter())
+        .map(|(difficulty, stats)| (*difficulty, stats.note_count as usize))
+        .unzip();
+    // Lyrics stay a question for the disk, not for the document.
+    // The document records what was true when it was written, and
+    // running the aligner does not touch the chart — so a document
+    // that answered here would leave the LYRICS column stating the
+    // wrong thing about the song the player just aligned. The
+    // shortcut replaces the chart parse, nothing else.
+    let has_lyrics = beatbyte_chart::lyrics::lyrics_exist_beside(&audio_path, chart_path);
+    Ok(SongEntry {
+        polish: Polish {
+            chart_version: chart_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .and_then(beatbyte_chart::versions::version_number),
+            aligned: beatbyte_chart::lyrics::alignment_is_word_level(
+                &beatbyte_chart::lyrics::words_path(&audio_path),
+            ),
+            has_lyrics,
+        },
+        loudness: crate::loudness::LoudnessMark::beside(&audio_path),
+        song_id: Some(doc.identity.song_id.as_str().to_owned()),
+        title: beatbyte_chart::study::display_title(&doc.identity.title.value),
+        artist: doc.identity.artists.join(", "),
+        bpm: doc.musical.bpm.as_ref().map_or(0.0, |bpm| bpm.value),
+        duration_s: doc.musical.duration_s,
+        difficulties,
+        note_counts,
+        // The first of the document's genres, not the raw tag the
+        // chart carries: `read_genre` hands back whatever the file
+        // says, and "Electronic; Deep House" is two genres wearing
+        // one string — it sorts and filters as neither.
+        genre: doc
+            .descriptive
+            .genres
+            .first()
+            .map(|genre| genre.value.clone())
+            .or_else(|| beatbyte_audio::read_genre(&audio_path)),
+        has_lyrics,
+        preview_start_s: doc.musical.preview_start_s,
+        source: SongSource::File {
+            chart_path: chart_path.to_path_buf(),
+            audio_path,
+        },
+    })
 }
 
 #[cfg(test)]
@@ -1313,5 +1429,111 @@ mod migration_tests {
         // No folder, nothing.
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(super::reresolve_chart(&dir.join("chart.v3.json")), None);
+    }
+}
+
+#[cfg(test)]
+mod document_scan_tests {
+    use super::*;
+    use beatbyte_chart::schema::ChartFile;
+    use beatbyte_library::build::{FolderFacts, LyricFacts, document_for};
+    use beatbyte_library::{SongId, SourceKind, store};
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("beatbyte-doc-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+        dir
+    }
+
+    /// One chord (three rows at one moment) and one single note:
+    /// FOUR rows, TWO notes to hit.
+    fn chart_json(title: &str) -> String {
+        format!(
+            r#"{{"format_version":1,"song":{{"title":"{title}","artist":"Chart Artist",
+                "audio":"song.m4a","bpm":120.0,"duration_s":60.0}},
+               "charts":[{{"difficulty":"medium","lanes":5,"notes":[
+                 {{"time":1.0,"lane":0}},{{"time":1.0,"lane":1}},{{"time":1.0,"lane":2}},
+                 {{"time":2.0,"lane":0}}],"phrases":[]}}]}}"#
+        )
+    }
+
+    /// A song folder with a chart, its audio, and a document whose
+    /// title differs — so the entry says which of the two was read.
+    fn folder(name: &str, document_written_ms: u64) -> (PathBuf, PathBuf) {
+        let dir = scratch(name);
+        std::fs::copy(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../beatbyte-audio/tests/fixtures/click-ffmpeg.m4a"),
+            dir.join("song.m4a"),
+        )
+        .expect("audio");
+        let chart_path = dir.join("chart.json");
+        std::fs::write(&chart_path, chart_json("From The Chart")).expect("chart");
+
+        let chart = ChartFile::from_json(&chart_json("From The Chart")).expect("parses");
+        let facts = FolderFacts {
+            chart: Some(&chart),
+            chart_version: Some(1),
+            chart_filename: Some("chart.json".to_owned()),
+            audio_filename: "song.m4a".to_owned(),
+            extension: Some("m4a".to_owned()),
+            oldest_file_ms: 1_000,
+            loudness: None,
+            lyrics: LyricFacts::default(),
+            source_kind: SourceKind::LocalFile,
+        };
+        let mut built = document_for(&facts, None, SongId::from_parts(1, 1), document_written_ms);
+        built.doc.identity.title.value = "From The Document".to_owned();
+        built.doc.identity.artists = vec!["Document Artist".to_owned()];
+        store::save(&dir, &built.doc).expect("document");
+        (dir, chart_path)
+    }
+
+    #[test]
+    fn a_document_newer_than_its_chart_is_what_the_browser_reads() {
+        // The point of the whole exercise: the list is built without
+        // opening the chart. The two titles differ, so the entry
+        // says plainly which file it came from.
+        let (dir, chart_path) = folder("fresh", 4_000_000_000_000);
+        let entry = load_entry(&chart_path).expect("loads").expect("is a song");
+        assert_eq!(entry.title, "From The Document");
+        assert_eq!(entry.artist, "Document Artist");
+        assert_eq!(entry.difficulties, vec![Difficulty::Medium]);
+        assert_eq!(entry.note_count(Difficulty::Medium), Some(2));
+        assert!(entry.song_id.is_some(), "the id comes along for free");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_chart_written_after_its_document_is_read_from_the_chart() {
+        // An editor save, a redesign, a hand edit: the document now
+        // describes the previous chart, and a list built from it
+        // would state the wrong note count for the song on disk.
+        let (dir, chart_path) = folder("stale", 1_000);
+        let entry = load_entry(&chart_path).expect("loads").expect("is a song");
+        assert_eq!(entry.title, "From The Chart");
+        assert_eq!(entry.artist, "Chart Artist");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_chord_is_one_note_to_hit_and_not_three() {
+        // Both paths must agree, because the browser's density
+        // rating is computed from this number and the player's
+        // score is not. Four rows, two notes.
+        let (fresh, fresh_chart) = folder("chord-doc", 4_000_000_000_000);
+        let (stale, stale_chart) = folder("chord-chart", 1_000);
+        for chart in [&fresh_chart, &stale_chart] {
+            let entry = load_entry(chart).expect("loads").expect("is a song");
+            assert_eq!(
+                entry.note_count(Difficulty::Medium),
+                Some(2),
+                "{} counted rows, not notes",
+                chart.display()
+            );
+        }
+        let _ = std::fs::remove_dir_all(&fresh);
+        let _ = std::fs::remove_dir_all(&stale);
     }
 }

@@ -395,6 +395,7 @@ mod tests {
         doc.gameplay = GameplayMeta {
             chart_hash: Some(format!("{id:016x}")),
             chart_version: Some(1),
+            chart_file: Some("chart.json".to_owned()),
             chart_format: Some(1),
             generator_version: None,
             charts: vec![InstrumentCharts {

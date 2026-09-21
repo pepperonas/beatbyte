@@ -75,6 +75,9 @@ pub struct FolderFacts<'a> {
     pub chart: Option<&'a ChartFile>,
     /// Which version of it is active (`None` or `1` is the original).
     pub chart_version: Option<u32>,
+    /// The chart file's name, so a reader can tell that this
+    /// document is about that file and not a sidecar beside it.
+    pub chart_filename: Option<String>,
     /// The audio file's name inside the folder.
     pub audio_filename: String,
     /// Its extension, lowercased, when it has one.
@@ -279,6 +282,9 @@ fn apply_chart(doc: &mut SongDoc, facts: &FolderFacts<'_>) {
     {
         doc.musical.duration_s = Some(duration);
     }
+    if doc.musical.preview_start_s != chart.song.preview_start_s {
+        doc.musical.preview_start_s = chart.song.preview_start_s;
+    }
 
     let hash = beatbyte_chart::schema::chart_hash(chart);
     let stats: Vec<(Difficulty, ChartStats)> = chart
@@ -289,6 +295,7 @@ fn apply_chart(doc: &mut SongDoc, facts: &FolderFacts<'_>) {
     let gameplay = GameplayMeta {
         chart_hash: Some(hash),
         chart_version: facts.chart_version,
+        chart_file: facts.chart_filename.clone(),
         chart_format: Some(chart.format_version),
         generator_version: chart
             .provenance
@@ -448,6 +455,7 @@ mod tests {
         FolderFacts {
             chart: Some(chart),
             chart_version: Some(1),
+            chart_filename: Some("chart.json".to_owned()),
             audio_filename: "maria.m4a".to_owned(),
             extension: Some("m4a".to_owned()),
             oldest_file_ms: 1_700_000_000_000,

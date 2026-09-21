@@ -129,6 +129,15 @@ one that can answer a question nobody has asked yet.
 **Good**
 
 - A song folder is self-contained and portable, and stays so.
+- The song list is built without opening a chart. This was not the
+  point of the document, and turned out to be one of its better
+  uses: the documents are 369 KB against the charts' 102 MB on a
+  168-song library. The shortcut is gated on a decision — the
+  document must name THIS chart file and be no older than it — so a
+  folder that was never migrated, or whose chart has been rewritten
+  since, reads the chart exactly as before. The shortcut being wrong
+  costs a slow scan; being wrong the other way would cost a wrong
+  song list.
 - A rename, a move, a re-tag, a re-encode and a redesign all leave
   the song's records attached to it.
 - The index may be corrupted or deleted without data loss.
@@ -155,5 +164,10 @@ one that can answer a question nobody has asked yet.
   fail.
 - The index carries a test that a rebuild from the folders equals the
   stored projection — the whole content of "it is not authoritative".
+- The freshness decision is pure and pinned as a DECISION rather than
+  as its parts: a document that names another file, one that is older
+  than its chart, one with no chart stats, and a timestamp that
+  cannot be read each send the reader to the chart. Each pin mutated
+  once and seen to fail.
 - The `scores.json` migration keeps the old file as a rollback and is
   tested against a real one.

@@ -101,9 +101,44 @@ that predates this work and that M5 ends rather than extends.
   The pragma stays — plain SQLite defaults it OFF — and the reason
   the probe cannot show it is written at the call.
   *Verified: 1607 tests (+6), gate green.*
-- [ ] **M4 The browser on the index.** Search, filter and sort read
-  the index instead of parsing charts. *Verify: no chart parse in a
-  browser frame; the existing browser tests unchanged.*
+- [x] **M4 The browser on the documents** *(v0.18.7)*. The list is
+  built from each folder's `song.json`, not from its chart. ⚠️ The
+  plan said "on the index" and the measurement said otherwise: a
+  scan of 168 songs took **1161 ms cold / 481 ms warm**, and the
+  documents are 369 KB against the charts' 102 MB — so the answer
+  was the small file beside the big one, not SQL instead of a walk.
+  A document that no longer describes the chart beside it is simply
+  not used; lyrics stay a question for the disk, because running the
+  aligner does not touch the chart.
+  ⚠️⚠️ **And the first measurement said the shortcut had changed
+  nothing** (1171 / 464 ms). It had not: the scan handed **every**
+  JSON in a song folder to the chart parser, including 18.5 MB of
+  word alignments and 17.7 MB of analysis context, to conclude they
+  were not charts. One rule now says what a chart file is, shared
+  with the migration that already had it.
+  **Measured, warm: 481 → 317 ms (sidecars) → 229 ms (documents).**
+  Cold: 1161 → 225 ms. Same 168 songs.
+  **Two defects found on the way.** The browser counted chart
+  **rows**, and a chord is several rows and one note to hit — 250 of
+  684 charts here differ, one by 183 notes, and the difficulty
+  rating is computed from that number. And a stray `foo.json` beside
+  a first-generation chart would have been listed as a second copy
+  of the song, so a document now names the file it describes.
+  *Verified: 1624 tests (+10), gate green. Eight mutation probes —
+  the shortcut never taken, the document's note count ignored, rows
+  counted again, a sidecar accepted as the chart, a chart newer than
+  its document unnoticed, a chartless document standing in, the base
+  chart no longer generation one, and a word alignment counting as a
+  chart — all seen to fail. The 481 → 229 ms split was measured by
+  switching the shortcut off in a temporary build, not estimated.*
+- [ ] **M4b The import writes the document.** A song imported in the
+  game carries no `song.json` until `beatbyte-cli library` has been
+  run over its folder — so until then it has no id, its records and
+  its recorded sessions are keyed by name, and the browser reads its
+  chart rather than the document. The import already holds
+  everything the first draft needs. Found while measuring M4.
+  *Verify: a freshly imported folder carries a document, and a
+  `library` run over it afterwards writes nothing.*
 - [~] **M5 One identity for the user's own data** *(v0.18.5)*.
   Shipped: the store carries `song_id` beside `chart_hash` (schema
   v3, nullable and staying so — a run whose song was deleted has no

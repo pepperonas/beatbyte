@@ -242,6 +242,12 @@ pub struct Musical {
     /// than being filled with a guess.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<Sourced<Key>>,
+    /// Where a browser preview should start — the loudest ten
+    /// seconds, as the generator found them. Here because it is the
+    /// last thing the song list needs, and a list that needs it from
+    /// the chart has to open the chart.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview_start_s: Option<f64>,
 }
 
 /// A musical key.
@@ -404,6 +410,14 @@ pub struct GameplayMeta {
     /// own first draft.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chart_version: Option<u32>,
+    /// The chart file this describes, by name.
+    ///
+    /// A folder holds sidecars that are also JSON — `*.words.json`,
+    /// `*.loudness.json`, a version pointer — and a reader that
+    /// trusts a document without checking WHICH file it is about
+    /// would happily describe one of those as a song.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chart_file: Option<String>,
     /// The chart file format's version.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chart_format: Option<u32>,

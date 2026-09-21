@@ -9,9 +9,11 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use beatbyte_chart::Severity;
 use beatbyte_chart::schema::ChartFile;
 use beatbyte_chart::versions;
 use beatbyte_library::build::{FolderFacts, LoudnessFacts, LyricFacts, document_for};
+use beatbyte_library::folder::is_chart_candidate;
 use beatbyte_library::{SongId, SourceKind, store};
 
 /// What one pass over a library did.
@@ -218,6 +220,16 @@ fn migrate_folder(dir: &Path, now: u64, dry_run: bool) -> Option<Outcome> {
     let chart = std::fs::read_to_string(&chart_path)
         .ok()
         .and_then(|text| ChartFile::from_json(&text).ok())?;
+    // A chart the game would refuse is not a chart a document may
+    // describe. The browser reads a document INSTEAD of the chart
+    // when it carries note counts, and it must not learn about a
+    // song it would then fail to load. Such a folder still gets a
+    // document — it is a song in the library — just one that says
+    // nothing about a chart.
+    let playable = !chart
+        .validate()
+        .iter()
+        .any(|issue| issue.severity == Severity::Error);
 
     let audio = dir.join(&chart.song.audio);
     let audio_filename = audio
@@ -228,8 +240,9 @@ fn migrate_folder(dir: &Path, now: u64, dry_run: bool) -> Option<Outcome> {
 
     let existing = store::read(dir);
     let facts = FolderFacts {
-        chart: Some(&chart),
-        chart_version: versions::version_number(&chart_name).or(Some(1)),
+        chart: playable.then_some(&chart),
+        chart_version: playable.then(|| beatbyte_library::fresh::generation(&chart_name)),
+        chart_filename: playable.then(|| chart_name.clone()),
         audio_filename,
         extension: audio
             .extension()
@@ -292,20 +305,6 @@ fn active_chart_name(dir: &Path) -> Option<String> {
     }
 }
 
-/// Whether a file name could be a chart rather than a sidecar.
-///
-/// Pure so the rule can be pinned: a sidecar mistaken for a chart
-/// would be read, fail to parse and skip a real song.
-#[must_use]
-pub fn is_chart_candidate(name: &str) -> bool {
-    name.ends_with(".json")
-        && name != versions::POINTER_FILE
-        && name != beatbyte_library::DOC_FILE
-        && !name.ends_with(".context.json")
-        && !name.ends_with(".loudness.json")
-        && !name.ends_with(".words.json")
-}
-
 /// What the loudness sidecar says, in the fields a document keeps.
 fn read_loudness(audio: &Path) -> Option<LoudnessFacts> {
     let report = beatbyte_audio::loudness::read_report(audio)?;
@@ -361,26 +360,5 @@ mod tests {
         );
         assert_eq!(outcome(true, true), Outcome::Updated);
         assert_eq!(outcome(true, false), Outcome::Unchanged);
-    }
-
-    #[test]
-    fn a_sidecar_is_not_mistaken_for_a_chart() {
-        assert!(is_chart_candidate("chart.json"));
-        assert!(is_chart_candidate("chart.v4.json"));
-        assert!(
-            is_chart_candidate("girls.chart.json"),
-            "a hand-made folder names its chart what it likes, and the \
-             game plays it — so the migration must see it too"
-        );
-        for sidecar in [
-            "chart.context.json",
-            "chart.v4.context.json",
-            "Song.loudness.json",
-            "Song.words.json",
-            "chart-active.json",
-            "song.json",
-        ] {
-            assert!(!is_chart_candidate(sidecar), "{sidecar} is not a chart");
-        }
     }
 }

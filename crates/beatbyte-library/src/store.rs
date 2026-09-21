@@ -69,6 +69,7 @@ mod tests {
         let facts = FolderFacts {
             chart: None,
             chart_version: None,
+            chart_filename: None,
             audio_filename: "maria.m4a".to_owned(),
             extension: Some("m4a".to_owned()),
             oldest_file_ms: 1_700_000_000_000,

@@ -14,6 +14,49 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.7] - 2026-09-22
+
+### Changed
+
+- **The song list is built from the documents, not from the charts.** A
+  browser row shows what the folder's `song.json` already holds — title,
+  artist, tempo, length, difficulties, note counts, genre, the preview
+  anchor — so a list of 168 songs no longer parses 102 MB of charts to
+  draw it. A document that no longer describes the chart beside it is
+  simply not used: the chart is opened instead, which is also what
+  happens for a folder that has never been migrated. Whether the song
+  has lyrics, and whether they are aligned, stays a question for the
+  disk — running the aligner does not touch the chart, and a list that
+  answered from the document would state the wrong thing about the song
+  the player just aligned.
+- **The scan stops parsing the files that are not charts.** A song folder
+  holds word alignments, analysis context and a loudness sidecar, all of
+  them JSON; this library holds 18.5 MB and 17.7 MB of the first two.
+  They were read and parsed in full, every scan, to conclude they were
+  not charts. One rule now says what a chart file is, and the scanner and
+  the migration share it.
+- Measured on a 168-song library, warm: **481 ms → 229 ms**, of which the
+  sidecars account for 164 ms and the documents for 88 ms. Cold, with
+  nothing in the file cache: 1161 ms → 225 ms.
+
+### Fixed
+
+- **The browser overstated how many notes a song has.** It counted chart
+  rows, and a chord is several rows and a single note to hit — 250 of 684
+  charts here differ, one of them by 183 notes. The count is now what the
+  player plays, which is what the engine records: "All That She Wants" on
+  medium is 302 rows, 301 notes, and the telemetry store says 301. The
+  difficulty rating is computed from this number, so it was wrong wherever
+  the chart has chords.
+- **A stray JSON file could have appeared as a second copy of a song.** The
+  shortcut above matched a document to a chart by its generation, and a
+  sidecar in a folder whose chart is the first generation answers to the
+  same number. A document now names the file it describes.
+- The migration no longer writes chart data into the document for a chart
+  the game would refuse to load. Such a folder still gets a document — it
+  is a song in the library — but one that says nothing about a chart, so
+  the browser reads the chart and rejects it exactly as before.
+
 ## [0.18.6] - 2026-09-21
 
 ### Fixed

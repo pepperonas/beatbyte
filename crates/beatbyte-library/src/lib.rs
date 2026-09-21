@@ -45,6 +45,8 @@
 pub mod build;
 pub mod clean;
 pub mod doc;
+pub mod folder;
+pub mod fresh;
 pub mod id;
 pub mod index;
 pub mod lifecycle;
