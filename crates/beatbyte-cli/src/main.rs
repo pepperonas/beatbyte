@@ -281,6 +281,11 @@ enum Command {
         /// Report what would change without writing anything.
         #[arg(long)]
         dry_run: bool,
+        /// Instead of writing documents, build the queryable index
+        /// from the documents that are already there. The index is a
+        /// projection: deleting it loses nothing.
+        #[arg(long)]
+        index: Option<PathBuf>,
     },
     /// Write the musical context sidecar beside a chart: what the
     /// analysis says at each note, so a miss recorded later can be
@@ -635,7 +640,14 @@ fn main() -> ExitCode {
                 ExitCode::from(2)
             }
         },
-        Command::Library { root, dry_run } => library::run(&root, dry_run),
+        Command::Library {
+            root,
+            dry_run,
+            index,
+        } => match index {
+            Some(db) => library::index(&root, &db),
+            None => library::run(&root, dry_run),
+        },
         Command::Context { path, all } => {
             if all {
                 context::run_all(&path)

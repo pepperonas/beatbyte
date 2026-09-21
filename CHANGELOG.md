@@ -14,6 +14,29 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.4] - 2026-09-21
+
+### Added
+
+- **A library is queryable.** `beatbyte-cli library <songs> --index <db>`
+  builds `library.db` from the documents in the song folders: 171 songs in
+  half a second into 180 KB. Genre distribution, a BPM range, what was added
+  when, how many artists and how many hours of music — all index scans.
+- The index holds **nothing of its own**. Rebuilding it from the folders
+  reproduces it exactly, which is what makes deleting it harmless.
+
+### Notes
+
+- **The two databases cost nothing in reach.** `ATTACH` joins the library to
+  the telemetry store, so "added but never played" (123 of 171 here) and
+  "accuracy between 120 and 130 BPM" work across the split.
+- ⚠️ **And that measured how much a song identity is worth.** The only key
+  available today is the chart hash, and it changes with every redesign:
+  *Maria*'s 94 recorded sessions are spread over **nine** hashes. Across the
+  whole store, **564 sessions exist and 219 are reachable** — 61 % of the
+  play history cannot answer "how often have I played this song". That is
+  what the next milestone fixes.
+
 ## [0.18.3] - 2026-09-21
 
 ### Added

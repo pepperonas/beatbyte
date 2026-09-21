@@ -27,6 +27,55 @@ pub struct Tally {
     pub skipped: usize,
 }
 
+/// Build the queryable index from the documents in a library.
+///
+/// Rebuilt wholesale rather than patched: the index is a projection
+/// (ADR-0019), and the cheapest way to keep a projection honest is to
+/// be able to throw it away. At library size this is milliseconds.
+pub fn index(root: &Path, db: &Path) -> ExitCode {
+    let mut docs: Vec<(beatbyte_library::SongDoc, String)> = Vec::new();
+    let Ok(entries) = std::fs::read_dir(root) else {
+        eprintln!("cannot read {}", root.display());
+        return ExitCode::from(2);
+    };
+    let mut folders: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir())
+        .collect();
+    folders.sort();
+    for folder in &folders {
+        if let Some(doc) = store::read(folder) {
+            let name = folder
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            docs.push((doc, name));
+        }
+    }
+    let mut index = match beatbyte_library::index::Index::open(db) {
+        Ok(index) => index,
+        Err(error) => {
+            eprintln!("cannot open {}: {error}", db.display());
+            return ExitCode::from(2);
+        }
+    };
+    match index.rebuild(docs.iter().map(|(doc, folder)| (doc, folder.as_str()))) {
+        Ok(count) => {
+            println!(
+                "{count} song(s) indexed into {} (schema v{})",
+                db.display(),
+                index.version().unwrap_or(0)
+            );
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("cannot build the index: {error}");
+            ExitCode::from(2)
+        }
+    }
+}
+
 /// Run over a songs directory.
 pub fn run(root: &Path, dry_run: bool) -> ExitCode {
     let Ok(entries) = std::fs::read_dir(root) else {

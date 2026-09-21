@@ -72,10 +72,35 @@ that predates this work and that M5 ends rather than extends.
   ⚠️ The first checksum comparison reported "1239 changed" and was
   my own broken `join`: the paths contain spaces.
   *Verified: 1601 tests (+17), gate green.*
-- [ ] **M3 The index.** `library.db` with its own migration list, and
-  the test that matters: a rebuild from the folders equals the stored
-  projection. *Verify: rebuild equality, `EXPLAIN QUERY PLAN` on the
-  commission's queries.*
+- [x] **M3 The index** *(v0.18.4)*. `library.db` with its own
+  append-only migration list, and `beatbyte-cli library --index` to
+  build it. Tables `song`, `song_genre`, `song_chart`; partial
+  indexes where a column is mostly `NULL`.
+  *Verified on the real library:* **171 songs indexed in 0.5 s into
+  180 KB** (debug build), the commission's queries answered — genre
+  distribution, 45 songs between 115 and 125 BPM, 73 artists, 13.4
+  hours of music — and their plans checked with
+  `EXPLAIN QUERY PLAN` rather than assumed.
+  ⚠️ **The cross-database question is settled, by running it:**
+  `ATTACH` joins `library.db` to `telemetry.db`, so "added but never
+  played" (123 of 171) and "accuracy between 120 and 130 BPM" work
+  across the split. The two databases cost nothing in reach.
+  ⚠️⚠️ **And it measured how badly M5 is needed.** Joining on
+  `chart_hash` is all that is possible today, and a hash changes with
+  every redesign: *Maria*'s 94 sessions are spread over **nine**
+  hashes, of which the index can reach two. Library-wide, **564
+  sessions exist and 219 are reachable** — 61 % of the play history
+  is invisible to "how often have I played this song".
+  ⚠️ Two of four mutation probes did not fire, and both were my own
+  blind tests: the rebuild was verified into an EMPTY index, so it
+  never proved that a rebuild clears; and the cascade test did not
+  prove the foreign-key pragma is on. The first is fixed. The second
+  turned out to be an **equivalent mutant**, measured rather than
+  guessed: rusqlite's bundled SQLite is compiled with
+  `DEFAULT_FOREIGN_KEYS=1`, so a raw connection already reads `1`.
+  The pragma stays — plain SQLite defaults it OFF — and the reason
+  the probe cannot show it is written at the call.
+  *Verified: 1607 tests (+6), gate green.*
 - [ ] **M4 The browser on the index.** Search, filter and sort read
   the index instead of parsing charts. *Verify: no chart parse in a
   browser frame; the existing browser tests unchanged.*
@@ -83,8 +108,14 @@ that predates this work and that M5 ends rather than extends.
   `gameplay_session`, `history.jsonl` folded into the store, and
   `scores.json` re-keyed off title+artist. ⚠️ The only milestone that
   touches data the player made; the old files stay as rollback.
+  ⚠️ **M3 measured the cost of not doing it**: joined on `chart_hash`
+  — the only key available today — **564 recorded sessions yield 219
+  reachable ones**, because a hash changes with every redesign and
+  *Maria* alone is spread over nine of them. Sixty-one per cent of
+  the history cannot answer "how often have I played this song".
   *Verify: every existing record still resolves to its song after a
-  rename.*
+  rename, and the reachable share goes to 100 % of what the library
+  still holds.*
 - [ ] **M6 Cheap enrichment as a queue.** Embedded tags beyond genre
   (Symphonia already reads them and BeatByte ignores them), file
   hash, lyric counts — in the background, never at startup, with the
