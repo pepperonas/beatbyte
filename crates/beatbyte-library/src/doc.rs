@@ -197,10 +197,15 @@ pub struct FileInfo {
     /// Size in bytes at the time of hashing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size_bytes: Option<u64>,
-    /// SHA-256 of the file. Identity of the BYTES — the same audio
-    /// re-encoded is a different hash and the same song.
+    /// A fingerprint of the file's contents, algorithm included —
+    /// `fnv1a64:<hex>:<size>`.
+    ///
+    /// What it answers is "is this the same recording": a song
+    /// imported twice, or a file swapped under a chart written for
+    /// it. Expensive to compute (every byte), so it is filled in the
+    /// background and never during a scan.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sha256: Option<String>,
+    pub content_hash: Option<String>,
     /// Container/codec as the decoder reports it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub codec: Option<String>,
@@ -543,7 +548,7 @@ impl SongDoc {
             file: FileInfo {
                 filename,
                 size_bytes: None,
-                sha256: None,
+                content_hash: None,
                 codec: None,
                 sample_rate: None,
                 bit_depth: None,

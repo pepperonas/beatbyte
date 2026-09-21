@@ -171,3 +171,13 @@ one that can answer a question nobody has asked yet.
   once and seen to fail.
 - The `scores.json` migration keeps the old file as a rollback and is
   tested against a real one.
+- The expensive fields are gated on one question — has this file been
+  fingerprinted — rather than on completeness, and that choice is
+  pinned. ⚠️ It is not a nicety: **not one of this library's 173 files
+  carries a descriptive tag** (measured 2026-09-22), so an incomplete
+  document is the normal state and a worker driven by completeness
+  would never stop.
+- Duplicate detection reports and never deletes, and tells a study
+  twin from an accident by its FOLDER rather than by its title — the
+  title is cosmetic and a real twin was flagged because its song had
+  been renamed afterwards.

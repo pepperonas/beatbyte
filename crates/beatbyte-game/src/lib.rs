@@ -22,6 +22,7 @@ pub mod gameplay;
 pub mod history;
 pub mod import;
 mod input_test;
+pub mod librarian;
 pub mod library;
 pub mod loudness;
 pub mod lyrics_fetch;
@@ -238,6 +239,7 @@ pub fn run() -> AppExit {
         discover::DiscoverPlugin,
         gameplay::fog::FogPlugin,
         chore::ChorePlugin,
+        librarian::LibrarianPlugin,
         study_twin::StudyTwinPlugin,
         players::PlayersPlugin,
         players_ui::PlayersUiPlugin,

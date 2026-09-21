@@ -44,6 +44,7 @@
 
 pub mod build;
 pub mod clean;
+pub mod completeness;
 pub mod doc;
 pub mod folder;
 pub mod fresh;
@@ -161,7 +162,7 @@ mod tests {
 
         // Renamed, moved, re-tagged, re-encoded, redesigned.
         doc.file.filename = "01 Maria (Remaster).flac".to_owned();
-        doc.file.sha256 = Some("a".repeat(64));
+        doc.file.content_hash = Some("fnv1a64:0000000000000001:2".to_owned());
         doc.identity.title = Sourced::by_user("María".to_owned());
         doc.gameplay.chart_hash = Some("beefbeefbeefbeef".to_owned());
         doc.gameplay.chart_version = Some(4);

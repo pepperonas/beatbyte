@@ -736,8 +736,9 @@ fn import_song(source: &Path, title: &str, artist: &str) -> Result<Option<String
     // tracks keep their karaoke lyrics. Best-effort: a failed copy
     // must not fail the import.
     let lyric_source = source.with_extension("lrc");
-    let has_lrc = lyric_source.is_file()
-        && std::fs::copy(&lyric_source, audio_dest.with_extension("lrc")).is_ok();
+    if lyric_source.is_file() {
+        let _ = std::fs::copy(&lyric_source, audio_dest.with_extension("lrc"));
+    }
 
     let audio = beatbyte_audio::decode_file(&audio_dest).map_err(|e| e.to_string())?;
     #[allow(unused_mut)] // mutated only under `ml`
@@ -820,7 +821,7 @@ fn import_song(source: &Path, title: &str, artist: &str) -> Result<Option<String
     // missing it. No test reaches this fork — the import decodes
     // real audio — so it is closed by construction rather than
     // pinned.
-    write_document(&folder, &chart, &chart_path, &audio_dest, facts, has_lrc);
+    write_document(&folder, &chart, &chart_path, &audio_dest, facts);
     Ok(warning)
 }
 
@@ -841,7 +842,6 @@ fn write_document(
     chart_path: &Path,
     audio: &Path,
     loudness: Option<beatbyte_library::build::LoudnessFacts>,
-    has_lrc: bool,
 ) {
     let Some(chart_name) = chart_path.file_name().and_then(|n| n.to_str()) else {
         return;
@@ -867,10 +867,14 @@ fn write_document(
         // first one: `imported_at` is written once.
         oldest_file_ms: now,
         loudness,
-        lyrics: beatbyte_library::build::LyricFacts {
-            has_lrc,
-            has_words: beatbyte_chart::lyrics::words_path(audio).exists(),
-        },
+        lyrics: beatbyte_library::folder::lyric_facts(audio, chart_path),
+        // Here rather than in the background: the file has just been
+        // copied, so it is already in the page cache, and a song
+        // that arrives fingerprinted never needs visiting again.
+        content_hash: beatbyte_library::folder::fingerprint(audio).map(|print| print.tagged()),
+        // Empty for anything that came from a video download, which
+        // is every song in this library — and empty must stay empty.
+        tags: Some(beatbyte_audio::read_tags(audio)),
         source_kind: beatbyte_library::SourceKind::LocalFile,
     };
     let existing = beatbyte_library::store::read(folder);
@@ -1418,7 +1422,7 @@ mod document_tests {
         let chart_path = dir.join("chart.json");
         beatbyte_chart::save_chart_file(&chart_path, &chart()).expect("chart");
 
-        write_document(&dir, &chart(), &chart_path, &audio, None, false);
+        write_document(&dir, &chart(), &chart_path, &audio, None);
 
         let doc = beatbyte_library::store::read(&dir).expect("a document");
         assert!(doc.identity.song_id.as_str().starts_with("bb_"));
@@ -1444,12 +1448,12 @@ mod document_tests {
         std::fs::write(&audio, b"not really audio").expect("audio");
         let chart_path = dir.join("chart.json");
         beatbyte_chart::save_chart_file(&chart_path, &chart()).expect("chart");
-        write_document(&dir, &chart(), &chart_path, &audio, None, false);
+        write_document(&dir, &chart(), &chart_path, &audio, None);
         let first = beatbyte_library::store::read(&dir).expect("a document");
 
         let second_path = dir.join("chart.v2.json");
         beatbyte_chart::save_chart_file(&second_path, &chart()).expect("chart");
-        write_document(&dir, &chart(), &second_path, &audio, None, false);
+        write_document(&dir, &chart(), &second_path, &audio, None);
         let second = beatbyte_library::store::read(&dir).expect("a document");
 
         assert_eq!(second.identity.song_id, first.identity.song_id);

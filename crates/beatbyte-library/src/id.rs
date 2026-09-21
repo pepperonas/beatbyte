@@ -13,7 +13,7 @@
 //! |---|---|
 //! | folder or file name | a rename, a move — and it is a path, which the commission rules out |
 //! | `chart_hash` | every redesign; it identifies a CHART, which is the point of it |
-//! | `sha256` of the audio | replacing the rip, normalising the loudness, re-encoding |
+//! | the audio's content fingerprint | replacing the rip, normalising the loudness, re-encoding |
 //! | title + artist | a typo fix — and it is what `scores.json` uses today, which is why renaming a song loses its records |
 //!
 //! Those are all good identities *of other things*, and they stay:

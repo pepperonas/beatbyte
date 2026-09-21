@@ -1481,6 +1481,8 @@ mod document_scan_tests {
             oldest_file_ms: 1_000,
             loudness: None,
             lyrics: LyricFacts::default(),
+            content_hash: None,
+            tags: None,
             source_kind: SourceKind::LocalFile,
         };
         let mut built = document_for(&facts, None, SongId::from_parts(1, 1), document_written_ms);

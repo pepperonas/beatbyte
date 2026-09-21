@@ -558,20 +558,69 @@ mod tests {
     }
 }
 
-/// The genre tag of an audio file, if it carries one.
+/// Everything a file says about itself in its own tags.
 ///
-/// A metadata-only probe: the container is opened and its tags read,
-/// no audio is decoded — cheap enough to run during a library scan.
-/// Every failure mode is `None`; a missing tag must never make a
-/// song fail to load.
+/// ⚠️ Measured on this library, 2026-09-22: **not one of 173 files
+/// carries a single descriptive tag** — they came from video
+/// downloads, which carry container furniture and nothing else. This
+/// exists for the other kind of import, a file the player already
+/// owns, and for the song that gets tagged later. It must never be
+/// the reason a field is claimed to be known.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Tags {
+    /// The album it belongs to.
+    pub album: Option<String>,
+    /// The album's artist, which is not always the track's.
+    pub album_artist: Option<String>,
+    /// Its place on the album.
+    pub track_number: Option<u32>,
+    /// Which disc, for a set.
+    pub disc_number: Option<u32>,
+    /// A release date as the file states it — a year, or a full
+    /// date. Kept verbatim; nothing here decides what it means.
+    pub date: Option<String>,
+    /// The genre, exactly as the file spells it (which may be two
+    /// genres in one string).
+    pub genre: Option<String>,
+    /// Who wrote it.
+    pub writers: Vec<String>,
+    /// Who composed it.
+    pub composers: Vec<String>,
+    /// Who produced it.
+    pub producers: Vec<String>,
+    /// The label that released it.
+    pub label: Option<String>,
+    /// Its copyright line.
+    pub copyright: Option<String>,
+    /// The language it is sung in, as stated.
+    pub language: Option<String>,
+    /// A free comment.
+    pub comment: Option<String>,
+}
+
+impl Tags {
+    /// Whether the file said anything at all.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        *self == Tags::default()
+    }
+}
+
+/// Read a file's tags. Empty when it has none, or cannot be read.
+///
+/// One probe for everything: the caller that wanted only the genre
+/// paid for the same work.
 #[must_use]
-pub fn read_genre(path: &Path) -> Option<String> {
+pub fn read_tags(path: &Path) -> Tags {
     use symphonia::core::formats::FormatOptions;
     use symphonia::core::io::MediaSourceStream;
     use symphonia::core::meta::{MetadataOptions, StandardTagKey};
     use symphonia::core::probe::Hint;
 
-    let file = std::fs::File::open(path).ok()?;
+    let mut tags = Tags::default();
+    let Ok(file) = std::fs::File::open(path) else {
+        return tags;
+    };
     let stream = MediaSourceStream::new(
         Box::new(file),
         symphonia::core::io::MediaSourceStreamOptions::default(),
@@ -580,40 +629,132 @@ pub fn read_genre(path: &Path) -> Option<String> {
     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
         hint.with_extension(ext);
     }
-    let mut probed = symphonia::default::get_probe()
-        .format(
-            &hint,
-            stream,
-            &FormatOptions::default(),
-            &MetadataOptions::default(),
-        )
-        .ok()?;
-    let pick = |meta: &symphonia::core::meta::MetadataRevision| -> Option<String> {
-        meta.tags()
-            .iter()
-            .find(|tag| tag.std_key == Some(StandardTagKey::Genre))
-            .map(|tag| tag.value.to_string())
-            .filter(|value| !value.trim().is_empty())
+    let Ok(mut probed) = symphonia::default::get_probe().format(
+        &hint,
+        stream,
+        &FormatOptions::default(),
+        &MetadataOptions::default(),
+    ) else {
+        return tags;
     };
-    // Tags can live in the probe metadata (ID3 before the container)
-    // or in the container itself (MP4 atoms, Vorbis comments).
+    // Tags live either in the probe metadata (ID3 ahead of the
+    // container) or in the container itself (MP4 atoms, Vorbis
+    // comments), and a file may carry both.
+    let mut take = |revision: &symphonia::core::meta::MetadataRevision| {
+        for tag in revision.tags() {
+            let value = tag.value.to_string();
+            let value = value.trim();
+            if value.is_empty() {
+                continue;
+            }
+            let Some(key) = tag.std_key else { continue };
+            let text = |slot: &mut Option<String>| {
+                if slot.is_none() {
+                    *slot = Some(value.to_owned());
+                }
+            };
+            let list = |slot: &mut Vec<String>| {
+                if !slot.iter().any(|held| held == value) {
+                    slot.push(value.to_owned());
+                }
+            };
+            // A track number is often written "3/12".
+            let number = |slot: &mut Option<u32>| {
+                if slot.is_none() {
+                    *slot = value
+                        .split(['/', '-'])
+                        .next()
+                        .and_then(|first| first.trim().parse().ok());
+                }
+            };
+            match key {
+                StandardTagKey::Album => text(&mut tags.album),
+                StandardTagKey::AlbumArtist => text(&mut tags.album_artist),
+                StandardTagKey::TrackNumber => number(&mut tags.track_number),
+                StandardTagKey::DiscNumber => number(&mut tags.disc_number),
+                StandardTagKey::Date
+                | StandardTagKey::ReleaseDate
+                | StandardTagKey::OriginalDate => text(&mut tags.date),
+                StandardTagKey::Genre => text(&mut tags.genre),
+                StandardTagKey::Writer | StandardTagKey::OriginalWriter => {
+                    list(&mut tags.writers);
+                }
+                StandardTagKey::Composer => list(&mut tags.composers),
+                StandardTagKey::Producer => list(&mut tags.producers),
+                StandardTagKey::Label => text(&mut tags.label),
+                StandardTagKey::Copyright => text(&mut tags.copyright),
+                StandardTagKey::Language => text(&mut tags.language),
+                // ffmpeg writes a comment into a Vorbis container as
+                // DESCRIPTION, so both mean the same thing here.
+                StandardTagKey::Comment | StandardTagKey::Description => {
+                    text(&mut tags.comment);
+                }
+                _ => {}
+            }
+        }
+    };
     if let Some(meta) = probed.metadata.get()
         && let Some(current) = meta.current()
-        && let Some(genre) = pick(current)
     {
-        return Some(genre);
+        take(current);
     }
-    probed
-        .format
-        .metadata()
-        .current()
-        .and_then(pick)
-        .map(|genre| genre.trim().to_owned())
+    if let Some(current) = probed.format.metadata().current() {
+        take(current);
+    }
+    tags
+}
+
+/// The genre a file states, if any.
+#[must_use]
+pub fn read_genre(path: &Path) -> Option<String> {
+    read_tags(path).genre
 }
 
 #[cfg(test)]
-mod genre_tests {
+mod tag_tests {
     use super::*;
+
+    fn fixture(name: &str) -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures")
+            .join(name)
+    }
+
+    #[test]
+    fn a_files_own_tags_are_read_in_one_pass() {
+        let tags = read_tags(&fixture("tagged.ogg"));
+        assert_eq!(tags.album.as_deref(), Some("Test Album"));
+        assert_eq!(tags.album_artist.as_deref(), Some("Album Artist"));
+        // "3/12" is how a track number is usually written.
+        assert_eq!(tags.track_number, Some(3));
+        assert_eq!(tags.disc_number, Some(1));
+        assert_eq!(tags.date.as_deref(), Some("1999-03-04"));
+        assert_eq!(tags.composers, vec!["A Composer".to_owned()]);
+        assert_eq!(tags.copyright.as_deref(), Some("(C) 2026 nobody"));
+        assert_eq!(tags.language.as_deref(), Some("deu"));
+        assert_eq!(tags.comment.as_deref(), Some("a note"));
+        // The genre comes back exactly as the file spells it — two
+        // genres in one string is the file's business, not this
+        // function's.
+        assert_eq!(tags.genre.as_deref(), Some("Electronic; Deep House"));
+        assert_eq!(read_genre(&fixture("tagged.ogg")), tags.genre);
+        // ⚠️ The fixture's SECOND tag is one nothing maps. A file is
+        // free to carry anything, and a reader that gave up at the
+        // first key it did not know would return almost nothing from
+        // a real-world file — every assertion above is downstream of
+        // that key.
+    }
+
+    #[test]
+    fn a_file_with_nothing_to_say_says_nothing() {
+        // The normal case here: every file in this library came from
+        // a video download and carries no descriptive tag at all —
+        // measured, 0 of 173. "Empty" must not read as "unknown
+        // artist, released in year 0".
+        let tags = read_tags(&fixture("tone.ogg"));
+        assert!(tags.is_empty(), "{tags:?}");
+        assert!(read_tags(std::path::Path::new("/no/such/file.m4a")).is_empty());
+    }
 
     #[test]
     fn an_untagged_file_yields_none_not_an_error() {

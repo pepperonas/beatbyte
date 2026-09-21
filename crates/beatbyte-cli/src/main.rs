@@ -294,6 +294,11 @@ enum Command {
         /// The telemetry database (defaults to the game's own).
         #[arg(long)]
         store: Option<PathBuf>,
+        /// Report songs whose files are the same recording. Reports
+        /// only — nothing here deletes anything. A study twin shares
+        /// its song's audio on purpose and is not a duplicate.
+        #[arg(long)]
+        duplicates: bool,
     },
     /// Write the musical context sidecar beside a chart: what the
     /// analysis says at each note, so a miss recorded later can be
@@ -654,10 +659,12 @@ fn main() -> ExitCode {
             index,
             backfill,
             store,
-        } => match (index, backfill) {
-            (_, Some(db)) => library::backfill(&db, store),
-            (Some(db), None) => library::index(&root, &db),
-            (None, None) => library::run(&root, dry_run),
+            duplicates,
+        } => match (index, backfill, duplicates) {
+            (_, _, true) => library::duplicates(&root),
+            (_, Some(db), _) => library::backfill(&db, store),
+            (Some(db), None, _) => library::index(&root, &db),
+            (None, None, _) => library::run(&root, dry_run),
         },
         Command::Context { path, all } => {
             if all {

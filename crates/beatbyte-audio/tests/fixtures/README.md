@@ -39,3 +39,19 @@ afconvert -f m4af -d aac -b 64000 click.wav click-apple.m4a   # macOS: 2112 prim
 ffmpeg -i click.wav -c:a aac -b:a 64k click-ffmpeg.m4a          # 1024 priming samples
 lame -b 64 click.wav click-lame.mp3                             # LAME delay in the header
 ```
+
+`tagged.ogg`: `tone.ogg` with a full set of Vorbis comments, so the tag
+reader can be tested against a real container rather than a mock. No new
+audio — the same synthesised tone. Recreate:
+
+`bb_unmapped` is deliberate: it sits ahead of every tag the reader
+wants, so a reader that stopped at an unknown key would fail the test
+rather than quietly return less.
+
+```bash
+ffmpeg -i tone.ogg -metadata bb_unmapped="a key nothing maps" -metadata album="Test Album" -metadata album_artist="Album Artist" \
+  -metadata track="3/12" -metadata disc="1/2" -metadata date="1999-03-04" \
+  -metadata genre="Electronic; Deep House" -metadata composer="A Composer" \
+  -metadata copyright="(C) 2026 nobody" -metadata language="deu" \
+  -metadata comment="a note" -c:a copy tagged.ogg
+```

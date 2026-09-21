@@ -14,6 +14,41 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.9] - 2026-09-22
+
+### Added
+
+- **A song's document now records its file's fingerprint, its lyric
+  counts, and whatever the file says in its own tags.** The import
+  fills them while the file is still warm; `beatbyte-cli library`
+  fills them for everything already on disk (2.4 GB in 5.5 seconds,
+  and a second run writes nothing); and in the game a quiet pass
+  visits one song at a time — never at start-up, never while you are
+  playing, never while you are waiting for something you asked for.
+- **`beatbyte-cli library <root> --duplicates`** reports songs whose
+  files are the same recording. It reports only; nothing there
+  deletes anything, because which copy to keep is a judgement about
+  a library only its owner can make. A study twin shares its song's
+  audio on purpose and is not a duplicate — told by its folder, not
+  by its title, since a song may be renamed after its twin is made.
+
+### Fixed
+
+- **A failed alignment was recorded in the document as word-level.**
+  It asked whether a `words.json` exists, which a failed alignment
+  also satisfies — the browser's LYRICS column had always made the
+  distinction and the document had not.
+
+### Changed
+
+- ⚠️ **Measured before building, and worth stating plainly: not one
+  of this library's 173 files carries a single descriptive tag.**
+  They came from video downloads. The tag reader is built, correct
+  and finds zero albums, years and labels here; it exists for a file
+  you already own, and never invents a value where the file is
+  silent. What the pass really gained: 171 of 171 fingerprints and
+  137 documents with line counts, 125 of them word-aligned.
+
 ## [0.18.8] - 2026-09-22
 
 ### Added

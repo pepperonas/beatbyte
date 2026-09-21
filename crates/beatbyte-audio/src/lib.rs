@@ -44,8 +44,8 @@ pub mod synth;
 pub use analysis::{Analyzer, AnalyzerConfig, SpectralAnalyzer};
 pub use clock::SongClock;
 pub use decode::{
-    AudioData, Channels, DecodeError, decode_file, decode_file_channels, read_genre,
-    wav_bytes_mono16, wav_bytes16, write_wav_mono16, write_wav16,
+    AudioData, Channels, DecodeError, Tags, decode_file, decode_file_channels, read_genre,
+    read_tags, wav_bytes_mono16, wav_bytes16, write_wav_mono16, write_wav16,
 };
 pub use playback::{MusicPlayer, PlaybackError};
 

@@ -12,7 +12,7 @@ use std::process::ExitCode;
 use beatbyte_chart::Severity;
 use beatbyte_chart::schema::ChartFile;
 use beatbyte_chart::versions;
-use beatbyte_library::build::{FolderFacts, LyricFacts, document_for};
+use beatbyte_library::build::{FolderFacts, document_for};
 use beatbyte_library::folder::{is_chart_candidate, read_loudness_facts};
 use beatbyte_library::{SongId, SourceKind, store};
 
@@ -213,6 +213,65 @@ pub fn outcome(had_document: bool, changed: bool) -> Outcome {
     }
 }
 
+/// Report songs whose files are the same recording.
+///
+/// Reports only. Which of two copies to keep is a judgement about a
+/// library nobody but its owner can make, and a tool that guessed
+/// would eventually guess wrong about the one file that mattered.
+pub fn duplicates(root: &Path) -> ExitCode {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        eprintln!("cannot read {}", root.display());
+        return ExitCode::FAILURE;
+    };
+    let mut songs = Vec::new();
+    let mut twins = 0usize;
+    let mut fingerprinted = 0usize;
+    let mut total = 0usize;
+    for dir in entries.flatten().map(|entry| entry.path()) {
+        let Some(doc) = store::read(&dir) else {
+            continue;
+        };
+        total += 1;
+        // By the FOLDER, never by the title: the player may rename
+        // a song, and one of them here had been.
+        let is_twin = dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(beatbyte_chart::study::is_twin_folder);
+        if is_twin {
+            twins += 1;
+        }
+        if let Some(print) = doc.file.content_hash.clone() {
+            fingerprinted += 1;
+            songs.push(beatbyte_library::folder::SongPrint {
+                fingerprint: print,
+                title: doc.identity.title.value.clone(),
+                is_twin,
+            });
+        }
+    }
+    let found = beatbyte_library::folder::duplicates(&songs);
+    println!("{total} song(s), {fingerprinted} fingerprinted, {twins} study twin(s)");
+    if fingerprinted < total {
+        println!(
+            "{} song(s) have not been fingerprinted yet and cannot be compared",
+            total - fingerprinted
+        );
+    }
+    if found.is_empty() {
+        println!("no duplicates");
+        return ExitCode::SUCCESS;
+    }
+    for duplicate in &found {
+        println!("{}", duplicate.fingerprint);
+        for title in &duplicate.titles {
+            println!("    {title}");
+        }
+    }
+    println!("{} duplicate(s) — nothing was deleted", found.len());
+    ExitCode::SUCCESS
+}
+
 /// One folder. `Some(outcome)` when it is a song, `None` when it is not.
 fn migrate_folder(dir: &Path, now: u64, dry_run: bool) -> Option<Outcome> {
     let chart_name = active_chart_name(dir)?;
@@ -236,7 +295,6 @@ fn migrate_folder(dir: &Path, now: u64, dry_run: bool) -> Option<Outcome> {
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| chart.song.audio.clone());
-    let stem = audio.file_stem().map(std::ffi::OsStr::to_os_string);
 
     let existing = store::read(dir);
     let facts = FolderFacts {
@@ -249,14 +307,14 @@ fn migrate_folder(dir: &Path, now: u64, dry_run: bool) -> Option<Outcome> {
             .map(|ext| ext.to_string_lossy().to_lowercase()),
         oldest_file_ms: oldest_file_ms(dir).unwrap_or(now),
         loudness: read_loudness_facts(&audio),
-        lyrics: LyricFacts {
-            has_lrc: stem
-                .as_ref()
-                .is_some_and(|stem| dir.join(stem).with_extension("lrc").exists()),
-            has_words: stem
-                .as_ref()
-                .is_some_and(|stem| dir.join(stem).with_extension("words.json").exists()),
-        },
+        lyrics: beatbyte_library::folder::lyric_facts(&audio, &chart_path),
+        // ⚠️ This reads every byte of every song — 2.4 GB here,
+        // about ten seconds. It belongs in a command the user chose
+        // to run, never in a scan and never at start-up; in the game
+        // the same work is done one song at a time in the
+        // background.
+        content_hash: beatbyte_library::folder::fingerprint(&audio).map(|print| print.tagged()),
+        tags: Some(beatbyte_audio::read_tags(&audio)),
         source_kind: SourceKind::LocalFile,
     };
 

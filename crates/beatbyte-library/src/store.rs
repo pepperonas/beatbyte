@@ -75,6 +75,8 @@ mod tests {
             oldest_file_ms: 1_700_000_000_000,
             loudness: None,
             lyrics: LyricFacts::default(),
+            content_hash: None,
+            tags: None,
             source_kind: SourceKind::LocalFile,
         };
         (dir, facts)

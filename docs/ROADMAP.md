@@ -185,11 +185,46 @@ that predates this work and that M5 ends rather than extends.
   game recording no id, the matcher guessing at an ambiguous title,
   a lookup ignoring the id, and a stale name-keyed record left
   behind — all seen to fail.*
-- [ ] **M6 Cheap enrichment as a queue.** Embedded tags beyond genre
-  (Symphonia already reads them and BeatByte ignores them), file
-  hash, lyric counts — in the background, never at startup, with the
-  library's status column saying what is still missing.
-  *Verify: a cold start does not hash 2.4 GB.*
+- [x] **M6 Cheap enrichment as a queue** *(v0.18.9)*. A document now
+  records the file's **content fingerprint** (FNV-1a 64 + size, the
+  value the import already computes, written `fnv1a64:<hex>:<size>`
+  so a later build cannot mistake it for a stronger hash), its
+  **lyric counts**, and whatever the file says in its **own tags**.
+  Three ways in: the import fills them while the file is still warm
+  in the page cache, `beatbyte-cli library` fills them for everything
+  already on disk, and in the game a quiet pass visits one song at a
+  time — never at start-up, never while the player is playing or
+  waiting for something they asked for.
+  ⚠️⚠️ **Measured before building: not one of 173 files carries a
+  single descriptive tag.** They came from video downloads, which
+  carry `major_brand` and `encoder` and nothing else. The tag reader
+  is built and correct and finds **zero** album, year or label on
+  this library — it exists for the other kind of import and must
+  never be the reason a field is claimed to be known. What the pass
+  really gained here: **171 of 171** fingerprints and **137**
+  documents with line counts, 125 of them word-aligned.
+  ⚠️ The worker asks ONE question — has this file been fingerprinted
+  — and not "is this document complete". Completeness is derived and
+  reported, but a worker driven by it would walk the whole library
+  on every start for ever, because an incomplete song is the normal
+  state here.
+  **Also fixed:** the document recorded `aligned` from "a words.json
+  exists", which a failed alignment also satisfies. And the
+  duplicate report (`library --duplicates`, reports only, never
+  deletes) tells a study twin from an accident **by its folder**: the
+  first version compared folded titles and flagged a genuine twin
+  whose song had been renamed afterwards. On this library: **85
+  twins, and 2 real duplicates** — "99 Luftballons" imported twice
+  with a twin each, and "Girls Just Want to Have Fun" in both an
+  imported and a hand-made folder.
+  *Verified: 1645 tests (+19), gate green, and the whole library
+  fingerprinted in **5.5 s for 2.4 GB** with a second run writing
+  nothing at all. Nine mutation probes — a twin counted as a duplicate, a
+  cheap pass erasing a fingerprint, a failed alignment recorded as
+  word-level, the worker chasing completeness, housekeeping running
+  while the player waits, a folder with no document queued anyway,
+  and one unmapped tag stopping the whole read — all seen to fail;
+  two of them were blind at first and were sharpened.*
 - [ ] **M7 What is not measured yet.** Key/mode and song-level audio
   features. ⚠️ Only what is genuinely measurable: danceability and
   valence have no model here and stay absent rather than invented.

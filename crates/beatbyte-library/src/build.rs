@@ -66,6 +66,16 @@ pub struct LyricFacts {
     pub has_lrc: bool,
     /// A word-level alignment is there.
     pub has_words: bool,
+    /// Whether that alignment really sings word by word. A failed
+    /// one writes the same file with every line fallen back to its
+    /// own stamps.
+    pub word_level: bool,
+    /// How many lines, when they have been read.
+    pub line_count: Option<u32>,
+    /// How many words, when they have been read.
+    pub word_count: Option<u32>,
+    /// Whether the lines carry stamps at all.
+    pub synced: Option<bool>,
 }
 
 /// Everything one folder offers, read once by the caller.
@@ -91,6 +101,16 @@ pub struct FolderFacts<'a> {
     pub loudness: Option<LoudnessFacts>,
     /// Which word files are there.
     pub lyrics: LyricFacts,
+    /// The file's content fingerprint, when somebody has paid for
+    /// it. `None` means "not measured", never "no fingerprint": a
+    /// pass that does not compute one must not erase one.
+    pub content_hash: Option<String>,
+    /// What the audio file says about itself in its own tags.
+    ///
+    /// ⚠️ Empty is the normal case for a downloaded file — measured
+    /// here, 0 of 173 carry one — and empty must stay empty rather
+    /// than becoming "Unknown".
+    pub tags: Option<beatbyte_audio::Tags>,
     /// Where the song came from, when anything says so.
     pub source_kind: SourceKind,
 }
@@ -212,6 +232,7 @@ pub fn document_for(
     let before = doc.clone();
 
     apply_chart(&mut doc, facts);
+    apply_tags(&mut doc, facts);
     apply_file(&mut doc, facts);
     apply_lyrics(&mut doc, facts);
 
@@ -316,6 +337,84 @@ fn apply_chart(doc: &mut SongDoc, facts: &FolderFacts<'_>) {
     }
 }
 
+/// What the audio file says about itself.
+///
+/// The file is an [`MetaSource::Embedded`] witness: it outranks
+/// anything inferred from a filename, and loses to the player's own
+/// hand. ⚠️ Nothing here invents: a tag the file does not carry
+/// leaves the field alone, and a placeholder ("Unknown Artist", a
+/// year of 0) is filtered by [`crate::clean`] rather than stored.
+fn apply_tags(doc: &mut SongDoc, facts: &FolderFacts<'_>) {
+    let Some(tags) = facts.tags.as_ref() else {
+        return;
+    };
+    if let Some(album) = tags.album.as_deref().and_then(crate::clean::text) {
+        let current = doc.identity.album.as_ref().map(|held| held.source);
+        if may_replace(
+            current,
+            MetaSource::Embedded,
+            doc.is_overridden(field::ALBUM),
+        ) && doc.identity.album.as_ref().map(|held| &held.value) != Some(&album)
+        {
+            doc.identity.album = Some(Sourced::stated(album, MetaSource::Embedded));
+        }
+    }
+    if doc.identity.album_artist.is_none() {
+        doc.identity.album_artist = tags.album_artist.as_deref().and_then(crate::clean::text);
+    }
+    if doc.identity.track_number.is_none() {
+        doc.identity.track_number = tags.track_number;
+    }
+    if doc.identity.disc_number.is_none() {
+        doc.identity.disc_number = tags.disc_number;
+    }
+    if let Some(date) = tags.date.as_deref() {
+        // A date is stated as a year or as a full date; take the
+        // year from the front and keep the rest only when it really
+        // is a fuller date.
+        if !doc.is_overridden(field::YEAR)
+            && doc.descriptive.release_year.is_none()
+            && let Some(year) = date
+                .get(..4)
+                .and_then(|head| head.parse::<i64>().ok())
+                .and_then(crate::clean::year)
+        {
+            doc.descriptive.release_year = Some(Sourced::stated(year, MetaSource::Embedded));
+        }
+        if doc.descriptive.release_date.is_none() && date.len() > 4 {
+            doc.descriptive.release_date =
+                Some(Sourced::stated(date.to_owned(), MetaSource::Embedded));
+        }
+    }
+    for (from, into) in [
+        (&tags.writers, &mut doc.descriptive.writers),
+        (&tags.composers, &mut doc.descriptive.composers),
+        (&tags.producers, &mut doc.descriptive.producers),
+    ] {
+        if into.is_empty() {
+            *into = from
+                .iter()
+                .filter_map(|name| crate::clean::text(name))
+                .collect();
+        }
+    }
+    if doc.descriptive.label.is_none() {
+        doc.descriptive.label = tags.label.as_deref().and_then(crate::clean::text);
+    }
+    if doc.descriptive.copyright.is_none() {
+        doc.descriptive.copyright = tags.copyright.as_deref().and_then(crate::clean::text);
+    }
+    if doc.descriptive.comment.is_none() {
+        doc.descriptive.comment = tags.comment.as_deref().and_then(crate::clean::text);
+    }
+    if !doc.is_overridden(field::LANGUAGE)
+        && doc.descriptive.language.is_none()
+        && let Some(language) = tags.language.as_deref().and_then(crate::clean::text)
+    {
+        doc.descriptive.language = Some(Sourced::stated(language, MetaSource::Embedded));
+    }
+}
+
 /// Everything the loudness sidecar knows about the file.
 fn apply_file(doc: &mut SongDoc, facts: &FolderFacts<'_>) {
     if doc.file.filename != facts.audio_filename {
@@ -326,13 +425,18 @@ fn apply_file(doc: &mut SongDoc, facts: &FolderFacts<'_>) {
     {
         doc.file.codec = Some(extension);
     }
+    // A fingerprint is expensive and therefore rare: a pass that did
+    // not compute one leaves the one that is there alone.
+    if facts.content_hash.is_some() && doc.file.content_hash != facts.content_hash {
+        doc.file.content_hash.clone_from(&facts.content_hash);
+    }
     let Some(loud) = facts.loudness else { return };
 
     let file = FileInfo {
         filename: doc.file.filename.clone(),
         size_bytes: loud.bytes.or(doc.file.size_bytes),
         // Not here: hashing 2.4 GB is a job, not a migration step.
-        sha256: doc.file.sha256.clone(),
+        content_hash: doc.file.content_hash.clone(),
         codec: doc.file.codec.clone(),
         sample_rate: loud.sample_rate.or(doc.file.sample_rate),
         bit_depth: doc.file.bit_depth,
@@ -371,7 +475,15 @@ fn apply_lyrics(doc: &mut SongDoc, facts: &FolderFacts<'_>) {
         ..LyricsMeta::default()
     });
     lyrics.has_lyrics = facts.lyrics.has_lrc;
-    lyrics.aligned = Some(facts.lyrics.has_words);
+    // ⚠️ Not `has_words`. A failed alignment writes the same file
+    // with every line fallen back to its own stamps, and a document
+    // claiming WORD for that states the wrong thing about the song.
+    lyrics.aligned = Some(facts.lyrics.word_level);
+    if facts.lyrics.line_count.is_some() {
+        lyrics.line_count = facts.lyrics.line_count;
+        lyrics.word_count = facts.lyrics.word_count;
+        lyrics.synced = facts.lyrics.synced;
+    }
     if doc.lyrics.as_ref() != Some(&lyrics) {
         doc.lyrics = Some(lyrics);
     }
@@ -461,6 +573,8 @@ mod tests {
             oldest_file_ms: 1_700_000_000_000,
             loudness: None,
             lyrics: LyricFacts::default(),
+            content_hash: None,
+            tags: None,
             source_kind: SourceKind::LocalFile,
         }
     }
@@ -571,6 +685,162 @@ mod tests {
         );
     }
 
+    fn tagged(album: &str) -> beatbyte_audio::Tags {
+        beatbyte_audio::Tags {
+            album: Some(album.to_owned()),
+            album_artist: Some("Album Artist".to_owned()),
+            track_number: Some(3),
+            disc_number: Some(1),
+            date: Some("1999-03-04".to_owned()),
+            composers: vec!["A Composer".to_owned()],
+            label: Some("A Label".to_owned()),
+            language: Some("deu".to_owned()),
+            ..beatbyte_audio::Tags::default()
+        }
+    }
+
+    #[test]
+    fn a_failed_alignment_is_not_recorded_as_word_level() {
+        // ⚠️ A words.json EXISTING is not the same as it singing
+        // word by word: a failed alignment writes the same file with
+        // every line fallen back to its own stamps, and a document
+        // claiming WORD for that states the wrong thing about the
+        // song. The browser's LYRICS column makes the same
+        // distinction; the document used to make none.
+        let chart = chart(vec![]);
+        let mut facts = facts(&chart);
+        facts.lyrics = LyricFacts {
+            has_lrc: true,
+            has_words: true,
+            word_level: false,
+            line_count: Some(30),
+            word_count: Some(180),
+            synced: Some(true),
+        };
+        let doc = document_for(&facts, None, SongId::from_parts(1, 1), 5_000).doc;
+        let lyrics = doc.lyrics.expect("the song has words");
+        assert_eq!(
+            lyrics.aligned,
+            Some(false),
+            "the file exists; it is not aligned"
+        );
+        assert_eq!(lyrics.line_count, Some(30));
+        assert_eq!(lyrics.word_count, Some(180));
+        assert_eq!(lyrics.synced, Some(true));
+
+        facts.lyrics.word_level = true;
+        let aligned = document_for(&facts, None, SongId::from_parts(1, 1), 5_000).doc;
+        assert_eq!(aligned.lyrics.expect("words").aligned, Some(true));
+    }
+
+    #[test]
+    fn a_files_own_tags_become_the_document() {
+        let chart = chart(vec![]);
+        let mut facts = facts(&chart);
+        facts.tags = Some(tagged("Parallel Lines"));
+        let doc = document_for(&facts, None, SongId::from_parts(1, 1), 5_000).doc;
+
+        assert_eq!(
+            doc.identity.album.as_ref().map(|a| a.value.as_str()),
+            Some("Parallel Lines")
+        );
+        assert_eq!(
+            doc.identity.album.as_ref().map(|a| a.source),
+            Some(MetaSource::Embedded),
+            "the file itself said so, and that must be recorded"
+        );
+        assert_eq!(doc.identity.track_number, Some(3));
+        assert_eq!(doc.identity.disc_number, Some(1));
+        // A date gives both the year and, only when it really is a
+        // date, the rest of it.
+        assert_eq!(doc.descriptive.release_year.map(|y| y.value), Some(1999));
+        assert_eq!(
+            doc.descriptive
+                .release_date
+                .as_ref()
+                .map(|d| d.value.as_str()),
+            Some("1999-03-04")
+        );
+        assert_eq!(doc.descriptive.composers, vec!["A Composer".to_owned()]);
+        assert_eq!(doc.descriptive.label.as_deref(), Some("A Label"));
+    }
+
+    #[test]
+    fn a_file_with_no_tags_leaves_every_field_absent() {
+        // The normal case here — 0 of 173 files carry a tag. Absent
+        // must stay absent: no "Unknown", no year 0, no empty
+        // strings standing in for a fact nobody knows.
+        let chart = chart(vec![]);
+        let mut facts = facts(&chart);
+        facts.tags = Some(beatbyte_audio::Tags::default());
+        let doc = document_for(&facts, None, SongId::from_parts(1, 1), 5_000).doc;
+        assert_eq!(doc.identity.album, None);
+        assert_eq!(doc.identity.album_artist, None);
+        assert_eq!(doc.identity.track_number, None);
+        assert_eq!(doc.descriptive.release_year, None);
+        assert_eq!(doc.descriptive.release_date, None);
+        assert!(doc.descriptive.composers.is_empty());
+        assert_eq!(doc.descriptive.label, None);
+    }
+
+    #[test]
+    fn a_placeholder_tag_is_not_a_fact() {
+        let chart = chart(vec![]);
+        let mut facts = facts(&chart);
+        facts.tags = Some(beatbyte_audio::Tags {
+            album: Some("Unknown Album".to_owned()),
+            album_artist: Some("  ".to_owned()),
+            date: Some("0000".to_owned()),
+            ..beatbyte_audio::Tags::default()
+        });
+        let doc = document_for(&facts, None, SongId::from_parts(1, 1), 5_000).doc;
+        assert_eq!(
+            doc.identity.album, None,
+            "\"Unknown Album\" is not an album"
+        );
+        assert_eq!(doc.identity.album_artist, None);
+        assert_eq!(doc.descriptive.release_year, None, "year 0 is not a year");
+    }
+
+    #[test]
+    fn the_players_own_album_survives_a_tagged_file() {
+        let chart = chart(vec![]);
+        let mut facts = facts(&chart);
+        facts.tags = Some(tagged("What The File Says"));
+        let mut doc = document_for(&facts, None, SongId::from_parts(1, 1), 5_000).doc;
+        doc.identity.album = Some(Sourced::by_user("What I Say".to_owned()));
+        doc.overrides.insert(field::ALBUM.to_owned());
+
+        let again = document_for(&facts, Some(doc), SongId::from_parts(2, 2), 6_000).doc;
+        assert_eq!(
+            again.identity.album.as_ref().map(|a| a.value.as_str()),
+            Some("What I Say")
+        );
+    }
+
+    #[test]
+    fn a_fingerprint_is_never_erased_by_a_pass_that_did_not_compute_one() {
+        // Every scan builds a document; almost none of them pay for
+        // a fingerprint. If absence meant "no fingerprint" the
+        // expensive work would be undone by the next cheap pass.
+        let chart = chart(vec![]);
+        let mut facts = facts(&chart);
+        facts.content_hash = Some("fnv1a64:00000000000000ff:7".to_owned());
+        let doc = document_for(&facts, None, SongId::from_parts(1, 1), 5_000).doc;
+        assert_eq!(
+            doc.file.content_hash.as_deref(),
+            Some("fnv1a64:00000000000000ff:7")
+        );
+
+        facts.content_hash = None;
+        let again = document_for(&facts, Some(doc), SongId::from_parts(2, 2), 6_000);
+        assert_eq!(
+            again.doc.file.content_hash.as_deref(),
+            Some("fnv1a64:00000000000000ff:7")
+        );
+        assert!(!again.changed, "and nothing was rewritten");
+    }
+
     #[test]
     fn the_players_genre_survives_a_rebuild_from_the_chart() {
         let chart = chart(vec![note(1.0, 0, 0.0)]);
@@ -596,7 +866,7 @@ mod tests {
             "no measurement is not a measurement of zero"
         );
         assert_eq!(
-            built.doc.file.sha256, None,
+            built.doc.file.content_hash, None,
             "and a migration does not hash 2.4 GB"
         );
     }

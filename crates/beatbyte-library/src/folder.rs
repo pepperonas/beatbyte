@@ -59,9 +59,223 @@ pub fn read_loudness_facts(audio: &Path) -> Option<LoudnessFacts> {
         .map(loudness_facts)
 }
 
+/// A file's content fingerprint: FNV-1a 64 over every byte, plus
+/// the size as a nearly free second factor.
+///
+/// Not a cryptographic hash, and the value says so — it is written
+/// as `fnv1a64:<hex>:<size>`, so a later build that has a reason to
+/// use a stronger one can tell the two apart instead of silently
+/// comparing apples to pears. What it is FOR is "is this the same
+/// recording": spotting a song imported twice, and noticing that a
+/// file has been replaced under a chart that was written for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FileFingerprint {
+    /// FNV-1a 64 of the file's bytes.
+    pub hash: u64,
+    /// The file's size in bytes.
+    pub size: u64,
+}
+
+impl FileFingerprint {
+    /// The form the document stores, algorithm included.
+    #[must_use]
+    pub fn tagged(&self) -> String {
+        format!("fnv1a64:{:016x}:{}", self.hash, self.size)
+    }
+}
+
+/// The FNV-1a 64 offset basis (the empty input's hash).
+pub const FNV_BASIS: u64 = 0xCBF2_9CE4_8422_2325;
+
+/// FNV-1a 64, one chunk at a time. Pure — tested against the
+/// published vectors.
+#[must_use]
+pub fn fnv1a_update(mut hash: u64, chunk: &[u8]) -> u64 {
+    const PRIME: u64 = 0x0000_0100_0000_01B3;
+    for byte in chunk {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(PRIME);
+    }
+    hash
+}
+
+/// Fingerprint a file by streaming it. `None` when it cannot be read.
+///
+/// ⚠️ This reads every byte. On this library that is 2.4 GB, which is
+/// why nothing calls it during a scan or a start-up.
+#[must_use]
+pub fn fingerprint(path: &Path) -> Option<FileFingerprint> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut hash = FNV_BASIS;
+    let mut size = 0u64;
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer).ok()?;
+        if read == 0 {
+            break;
+        }
+        size += read as u64;
+        hash = fnv1a_update(hash, &buffer[..read]);
+    }
+    Some(FileFingerprint { hash, size })
+}
+
+/// What the lyric files beside a song say about themselves.
+///
+/// ⚠️ `aligned` is not "a `words.json` exists". A failed alignment
+/// writes the same file with every line fallen back to its own
+/// stamps, and a document claiming WORD for that would state the
+/// wrong thing about the song — the same distinction the browser's
+/// LYRICS column makes.
+#[must_use]
+pub fn lyric_facts(audio: &Path, chart: &Path) -> crate::build::LyricFacts {
+    let words = beatbyte_chart::lyrics::words_path(audio);
+    let mut facts = crate::build::LyricFacts {
+        has_lrc: beatbyte_chart::lyrics::lyrics_exist_beside(audio, chart),
+        has_words: words.exists(),
+        word_level: beatbyte_chart::lyrics::alignment_is_word_level(&words),
+        ..crate::build::LyricFacts::default()
+    };
+    if let Some(lyrics) = beatbyte_chart::lyrics::lyrics_beside(audio, chart) {
+        facts.line_count = u32::try_from(lyrics.lines.len()).ok();
+        let words: usize = lyrics.lines.iter().map(|line| line.words.len()).sum();
+        facts.word_count = u32::try_from(words).ok();
+        // Every line carrying a start is what makes a lyric file
+        // singable; a plain text dump does not.
+        facts.synced = Some(!lyrics.lines.is_empty());
+    }
+    facts
+}
+
+/// One song, as the duplicate report sees it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SongPrint {
+    /// Its file's fingerprint.
+    pub fingerprint: String,
+    /// Its title, as its document states it.
+    pub title: String,
+    /// Whether it lives in a study-twin folder.
+    pub is_twin: bool,
+}
+
+/// Two songs that are the same recording.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Duplicate {
+    /// The fingerprint they share.
+    pub fingerprint: String,
+    /// Every title that shares it, twins included, for context.
+    pub titles: Vec<String>,
+}
+
+/// Songs whose files are byte-for-byte the same recording.
+///
+/// ⚠️ A **study twin is not a duplicate.** BeatByte deliberately keeps
+/// a second folder over the same audio for the slowed-down practice
+/// chart, and on this library that is every single match — 85 of 85
+/// measured.
+///
+/// ⚠️ And a twin is told by its **folder**, not by its title. The
+/// first version of this compared folded titles and reported
+/// "Nothing Else Matters" against "Metallica- Nothing Else Matters"
+/// — a real pair, a genuine twin, whose parent had simply been
+/// renamed afterwards. The folder relationship is structural; the
+/// title is cosmetic and the player may change it.
+///
+/// Pure, and it **never deletes anything**: it says what it found.
+#[must_use]
+pub fn duplicates(songs: &[SongPrint]) -> Vec<Duplicate> {
+    let mut by_print: std::collections::BTreeMap<&str, Vec<&SongPrint>> =
+        std::collections::BTreeMap::new();
+    for song in songs {
+        by_print
+            .entry(song.fingerprint.as_str())
+            .or_default()
+            .push(song);
+    }
+    by_print
+        .into_iter()
+        // A twin shares its song's audio on purpose. What is left
+        // after setting the twins aside is what nobody asked for.
+        .filter(|(_, group)| group.iter().filter(|song| !song.is_twin).count() > 1)
+        .map(|(fingerprint, group)| Duplicate {
+            fingerprint: fingerprint.to_owned(),
+            titles: group.iter().map(|song| song.title.clone()).collect(),
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fnv1a_matches_the_published_vectors() {
+        assert_eq!(fnv1a_update(FNV_BASIS, b""), FNV_BASIS);
+        assert_eq!(fnv1a_update(FNV_BASIS, b"a"), 0xaf63_dc4c_8601_ec8c);
+        assert_eq!(fnv1a_update(FNV_BASIS, b"foobar"), 0x85944171f73967e8_u64);
+    }
+
+    #[test]
+    fn a_fingerprint_names_the_algorithm_it_used() {
+        // A bare hex string invites a later build to compare it with
+        // a stronger hash's and find every file "changed".
+        let print = FileFingerprint {
+            hash: 0xaf63_dc4c_8601_ec8c,
+            size: 1,
+        };
+        assert_eq!(print.tagged(), "fnv1a64:af63dc4c8601ec8c:1");
+    }
+
+    fn song(print: &str, title: &str, is_twin: bool) -> SongPrint {
+        SongPrint {
+            fingerprint: print.to_owned(),
+            title: title.to_owned(),
+            is_twin,
+        }
+    }
+
+    #[test]
+    fn a_song_and_its_study_twin_are_not_a_duplicate() {
+        // Measured on this library: every one of the 85 matching
+        // pairs was a song and its own practice twin. A report that
+        // called those duplicates would be one nobody could act on.
+        let found = duplicates(&[
+            song("fnv1a64:1:1", "Maria", false),
+            song("fnv1a64:1:1", "[GS] Maria", true),
+        ]);
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    #[test]
+    fn a_twin_whose_song_was_renamed_is_still_a_twin() {
+        // The real pair this rule was written for: the twin says
+        // "Nothing Else Matters" and its song was renamed to
+        // "Metallica- Nothing Else Matters" afterwards. Folding the
+        // titles reported it; the folder never lied.
+        let found = duplicates(&[
+            song("fnv1a64:1:1", "Metallica- Nothing Else Matters", false),
+            song("fnv1a64:1:1", "[GS] Nothing Else Matters", true),
+        ]);
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    #[test]
+    fn the_same_recording_imported_twice_is_a_duplicate() {
+        let found = duplicates(&[
+            song("fnv1a64:1:1", "Maria", false),
+            song("fnv1a64:1:1", "maria (1)", false),
+            song("fnv1a64:1:1", "[GS] Maria", true),
+            song("fnv1a64:2:2", "Something Else", false),
+        ]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(
+            found[0].titles.len(),
+            3,
+            "the twin is listed for context, it is just not the reason"
+        );
+        // And it only ever reports. Nothing here deletes a file.
+    }
 
     #[test]
     fn a_sidecar_is_not_mistaken_for_a_chart() {
