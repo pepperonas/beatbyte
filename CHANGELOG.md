@@ -14,6 +14,20 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.8] - 2026-09-22
+
+### Added
+
+- **A song imported in the game now gets its document straight away.**
+  Until now it had none until `beatbyte-cli library` was run over its
+  folder, and a song without a document has no id — so its records and
+  its recorded sessions were keyed by its name, which is the one thing
+  about a song that changes. Re-importing keeps the id and the moment
+  the song first arrived, and follows the chart version that now plays.
+  A failed loudness measurement no longer costs the song its identity:
+  the document is written once, from one place, whatever the
+  measurement did.
+
 ## [0.18.7] - 2026-09-22
 
 ### Changed

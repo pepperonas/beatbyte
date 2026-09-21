@@ -736,9 +736,8 @@ fn import_song(source: &Path, title: &str, artist: &str) -> Result<Option<String
     // tracks keep their karaoke lyrics. Best-effort: a failed copy
     // must not fail the import.
     let lyric_source = source.with_extension("lrc");
-    if lyric_source.is_file() {
-        let _ = std::fs::copy(&lyric_source, audio_dest.with_extension("lrc"));
-    }
+    let has_lrc = lyric_source.is_file()
+        && std::fs::copy(&lyric_source, audio_dest.with_extension("lrc")).is_ok();
 
     let audio = beatbyte_audio::decode_file(&audio_dest).map_err(|e| e.to_string())?;
     #[allow(unused_mut)] // mutated only under `ml`
@@ -789,9 +788,10 @@ fn import_song(source: &Path, title: &str, artist: &str) -> Result<Option<String
     // from its first play. A failed measurement is a warning, not a
     // failed import — the chart is on disk.
     let measured_by = format!("beatbyte {}", env!("CARGO_PKG_VERSION"));
-    match beatbyte_audio::loudness::measure_file(&audio_dest, &measured_by) {
+    let measured = beatbyte_audio::loudness::measure_file(&audio_dest, &measured_by);
+    let (facts, warning) = match &measured {
         Ok(report) => {
-            if let Err(error) = beatbyte_audio::loudness::write_report(&audio_dest, &report) {
+            if let Err(error) = beatbyte_audio::loudness::write_report(&audio_dest, report) {
                 warn!("import: cannot write the loudness sidecar: {error}");
             }
             info!(
@@ -804,9 +804,89 @@ fn import_song(source: &Path, title: &str, artist: &str) -> Result<Option<String
                 report.gain_db(),
                 report.quality.verdict.label()
             );
-            Ok(crate::loudness::import_warning(&report))
+            (
+                Some(beatbyte_library::folder::loudness_facts(report)),
+                crate::loudness::import_warning(report),
+            )
         }
-        Err(error) => Ok(Some(format!("loudness not measured: {error}"))),
+        // No measurement is not a measurement of zero: the song
+        // still gets its document, just one that says nothing about
+        // the file's loudness.
+        Err(error) => (None, Some(format!("loudness not measured: {error}"))),
+    };
+    // ONE call, deliberately. Whether the loudness measurement
+    // worked has nothing to do with whether the song gets its
+    // identity, and a second call site is how one of the two ends up
+    // missing it. No test reaches this fork — the import decodes
+    // real audio — so it is closed by construction rather than
+    // pinned.
+    write_document(&folder, &chart, &chart_path, &audio_dest, facts, has_lrc);
+    Ok(warning)
+}
+
+/// Give the freshly imported song the document it will carry from
+/// now on (ADR-0019).
+///
+/// Without this a song imported in the game has no id until someone
+/// runs `beatbyte-cli library` over its folder — and until then its
+/// records and its recorded sessions are keyed by its NAME, which is
+/// the one thing about a song that changes.
+///
+/// A failure here is a warning, never a failed import: the chart and
+/// the audio are on disk, the song plays, and the next migration
+/// run writes the document that is missing.
+fn write_document(
+    folder: &Path,
+    chart: &beatbyte_chart::ChartFile,
+    chart_path: &Path,
+    audio: &Path,
+    loudness: Option<beatbyte_library::build::LoudnessFacts>,
+    has_lrc: bool,
+) {
+    let Some(chart_name) = chart_path.file_name().and_then(|n| n.to_str()) else {
+        return;
+    };
+    let Some(audio_filename) = audio.file_name().map(|n| n.to_string_lossy().into_owned()) else {
+        return;
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| {
+            u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
+        });
+    let facts = beatbyte_library::build::FolderFacts {
+        chart: Some(chart),
+        chart_version: Some(beatbyte_library::fresh::generation(chart_name)),
+        chart_filename: Some(chart_name.to_owned()),
+        audio_filename,
+        extension: audio
+            .extension()
+            .map(|ext| ext.to_string_lossy().to_lowercase()),
+        // The folder was made a moment ago, so this IS the import
+        // moment. A re-import into an existing folder keeps the
+        // first one: `imported_at` is written once.
+        oldest_file_ms: now,
+        loudness,
+        lyrics: beatbyte_library::build::LyricFacts {
+            has_lrc,
+            has_words: beatbyte_chart::lyrics::words_path(audio).exists(),
+        },
+        source_kind: beatbyte_library::SourceKind::LocalFile,
+    };
+    let existing = beatbyte_library::store::read(folder);
+    let built = beatbyte_library::build::document_for(
+        &facts,
+        existing,
+        beatbyte_library::SongId::new(now),
+        now,
+    );
+    match beatbyte_library::store::save_if_changed(folder, &built) {
+        Ok(true) => info!(
+            "import: document written, song id {}",
+            built.doc.identity.song_id.as_str()
+        ),
+        Ok(false) => {}
+        Err(error) => warn!("import: cannot write the document: {error}"),
     }
 }
 
@@ -1302,5 +1382,83 @@ mod panel_tests {
         );
         // And with nothing running the overlay stays off.
         assert_eq!(panel_source(0, false, 0.0, false, false), None);
+    }
+}
+
+#[cfg(test)]
+mod document_tests {
+    use super::*;
+    use beatbyte_chart::ChartFile;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("beatbyte-imp-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+        dir
+    }
+
+    fn chart() -> ChartFile {
+        ChartFile::from_json(
+            r#"{"format_version":1,"song":{"title":"Maria","artist":"Blondie",
+               "audio":"maria.m4a","bpm":128.0,"duration_s":200.0},
+               "charts":[{"difficulty":"medium","lanes":5,
+                 "notes":[{"time":1.0,"lane":0}],"phrases":[]}]}"#,
+        )
+        .expect("parses")
+    }
+
+    #[test]
+    fn an_imported_song_carries_a_document_the_browser_can_read() {
+        // Without this the song has no id until someone runs the
+        // migration, and until then its records and its recorded
+        // sessions are keyed by its name.
+        let dir = scratch("fresh");
+        let audio = dir.join("maria.m4a");
+        std::fs::write(&audio, b"not really audio").expect("audio");
+        let chart_path = dir.join("chart.json");
+        beatbyte_chart::save_chart_file(&chart_path, &chart()).expect("chart");
+
+        write_document(&dir, &chart(), &chart_path, &audio, None, false);
+
+        let doc = beatbyte_library::store::read(&dir).expect("a document");
+        assert!(doc.identity.song_id.as_str().starts_with("bb_"));
+        assert_eq!(doc.gameplay.chart_file.as_deref(), Some("chart.json"));
+        // The point of writing it here: the row the browser draws
+        // comes from this file, not from the chart.
+        let modified = crate::library::modified_ms(&chart_path);
+        assert!(
+            beatbyte_library::fresh::describes(&doc, "chart.json", modified),
+            "the document must describe the chart it was written beside"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn re_importing_a_song_keeps_its_id_and_the_moment_it_arrived() {
+        // A re-import writes a new chart version into the same
+        // folder. The song is the same song: its id and the day it
+        // entered the library must survive, or every record and
+        // every recorded session hanging off them is orphaned.
+        let dir = scratch("again");
+        let audio = dir.join("maria.m4a");
+        std::fs::write(&audio, b"not really audio").expect("audio");
+        let chart_path = dir.join("chart.json");
+        beatbyte_chart::save_chart_file(&chart_path, &chart()).expect("chart");
+        write_document(&dir, &chart(), &chart_path, &audio, None, false);
+        let first = beatbyte_library::store::read(&dir).expect("a document");
+
+        let second_path = dir.join("chart.v2.json");
+        beatbyte_chart::save_chart_file(&second_path, &chart()).expect("chart");
+        write_document(&dir, &chart(), &second_path, &audio, None, false);
+        let second = beatbyte_library::store::read(&dir).expect("a document");
+
+        assert_eq!(second.identity.song_id, first.identity.song_id);
+        assert_eq!(second.lifecycle.imported_at, first.lifecycle.imported_at);
+        assert_eq!(
+            second.gameplay.chart_file.as_deref(),
+            Some("chart.v2.json"),
+            "the document follows the chart that now plays"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

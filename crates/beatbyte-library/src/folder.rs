@@ -8,7 +8,12 @@
 //! scanner and the migration disagreeing about it is how a folder
 //! ends up with two songs, or none.
 
+use std::path::Path;
+
+use beatbyte_audio::loudness::Report;
 use beatbyte_chart::versions;
+
+use crate::build::LoudnessFacts;
 
 /// Whether a file name could be a chart rather than a sidecar.
 ///
@@ -24,6 +29,34 @@ pub fn is_chart_candidate(name: &str) -> bool {
         && !name.ends_with(".context.json")
         && !name.ends_with(".loudness.json")
         && !name.ends_with(".words.json")
+}
+
+/// What the loudness sidecar tells a document about the file.
+///
+/// One conversion, because the import has the report in hand and the
+/// migration reads it back off the disk — and two copies of "which
+/// field goes where" is how a document ends up describing a file
+/// that no longer exists.
+#[must_use]
+pub fn loudness_facts(report: &Report) -> LoudnessFacts {
+    LoudnessFacts {
+        bytes: Some(report.bytes),
+        duration_s: Some(report.measurement.duration_s),
+        integrated_lufs: report.measurement.integrated_lufs,
+        loudness_range_lu: report.measurement.loudness_range_lu,
+        sample_rate: Some(report.quality.sample_rate),
+        channels: u16::try_from(report.quality.channels).ok(),
+        bitrate_kbps: report.quality.bitrate_kbps,
+        lossy: Some(report.quality.lossy),
+    }
+}
+
+/// The same, read back from the sidecar beside `audio`.
+#[must_use]
+pub fn read_loudness_facts(audio: &Path) -> Option<LoudnessFacts> {
+    beatbyte_audio::loudness::read_report(audio)
+        .as_ref()
+        .map(loudness_facts)
 }
 
 #[cfg(test)]

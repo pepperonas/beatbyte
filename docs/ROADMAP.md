@@ -131,14 +131,26 @@ that predates this work and that M5 ends rather than extends.
   chart no longer generation one, and a word alignment counting as a
   chart — all seen to fail. The 481 → 229 ms split was measured by
   switching the shortcut off in a temporary build, not estimated.*
-- [ ] **M4b The import writes the document.** A song imported in the
-  game carries no `song.json` until `beatbyte-cli library` has been
-  run over its folder — so until then it has no id, its records and
-  its recorded sessions are keyed by name, and the browser reads its
-  chart rather than the document. The import already holds
-  everything the first draft needs. Found while measuring M4.
-  *Verify: a freshly imported folder carries a document, and a
-  `library` run over it afterwards writes nothing.*
+- [x] **M4b The import writes the document** *(v0.18.8)*. Found while
+  measuring M4: a song imported in the game carried no `song.json`
+  until `beatbyte-cli library` had been run over its folder, so until
+  then it had no id — its records and its recorded sessions were keyed
+  by its NAME, the one thing about a song that changes. The import now
+  writes the document itself, from the facts it already holds. A
+  re-import keeps the id and the moment the song first arrived, and
+  follows the chart version that now plays.
+  ⚠️ The loudness fork is closed **by construction, not by a pin**:
+  there is one call site, because no test reaches that branch (the
+  import decodes real audio) and two call sites is how one of them
+  ends up missing the document. A blind mutation probe said so, and
+  restructuring was the honest answer to it rather than inventing a
+  test that would only have read the source back.
+  Also: the conversion from a loudness report into document facts now
+  lives in one place, which is why `beatbyte-library` may read what a
+  song folder already holds.
+  *Verified: 1626 tests (+2), gate green. Two mutation probes — a
+  re-import forgetting the song's id and arrival, and a document that
+  does not name its chart — both seen to fail.*
 - [~] **M5 One identity for the user's own data** *(v0.18.5)*.
   Shipped: the store carries `song_id` beside `chart_hash` (schema
   v3, nullable and staying so — a run whose song was deleted has no

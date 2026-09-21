@@ -12,8 +12,8 @@ use std::process::ExitCode;
 use beatbyte_chart::Severity;
 use beatbyte_chart::schema::ChartFile;
 use beatbyte_chart::versions;
-use beatbyte_library::build::{FolderFacts, LoudnessFacts, LyricFacts, document_for};
-use beatbyte_library::folder::is_chart_candidate;
+use beatbyte_library::build::{FolderFacts, LyricFacts, document_for};
+use beatbyte_library::folder::{is_chart_candidate, read_loudness_facts};
 use beatbyte_library::{SongId, SourceKind, store};
 
 /// What one pass over a library did.
@@ -248,7 +248,7 @@ fn migrate_folder(dir: &Path, now: u64, dry_run: bool) -> Option<Outcome> {
             .extension()
             .map(|ext| ext.to_string_lossy().to_lowercase()),
         oldest_file_ms: oldest_file_ms(dir).unwrap_or(now),
-        loudness: read_loudness(&audio),
+        loudness: read_loudness_facts(&audio),
         lyrics: LyricFacts {
             has_lrc: stem
                 .as_ref()
@@ -303,21 +303,6 @@ fn active_chart_name(dir: &Path) -> Option<String> {
         [only] => Some(only.clone()),
         _ => None,
     }
-}
-
-/// What the loudness sidecar says, in the fields a document keeps.
-fn read_loudness(audio: &Path) -> Option<LoudnessFacts> {
-    let report = beatbyte_audio::loudness::read_report(audio)?;
-    Some(LoudnessFacts {
-        bytes: Some(report.bytes),
-        duration_s: Some(report.measurement.duration_s),
-        integrated_lufs: report.measurement.integrated_lufs,
-        loudness_range_lu: report.measurement.loudness_range_lu,
-        sample_rate: Some(report.quality.sample_rate),
-        channels: u16::try_from(report.quality.channels).ok(),
-        bitrate_kbps: report.quality.bitrate_kbps,
-        lossy: Some(report.quality.lossy),
-    })
 }
 
 /// The oldest modification time in a folder, Unix milliseconds.

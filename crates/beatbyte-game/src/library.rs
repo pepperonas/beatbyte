@@ -749,7 +749,7 @@ fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String>
 ///
 /// `None` when the filesystem will not say — which sends the caller
 /// down the slow path, the one that is never wrong.
-fn modified_ms(path: &std::path::Path) -> Option<u64> {
+pub(crate) fn modified_ms(path: &std::path::Path) -> Option<u64> {
     std::fs::metadata(path)
         .and_then(|meta| meta.modified())
         .ok()
