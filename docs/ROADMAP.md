@@ -125,10 +125,19 @@ that predates this work and that M5 ends rather than extends.
   appears in a most-played list keyed by song and is entirely absent
   from one keyed by chart hash, because its chart was redesigned
   four times.
-  **Remaining:** `scores.json` is still keyed on title + artist +
-  difficulty, so renaming a song still orphans its records; and
-  `history.jsonl` is still written beside the store.
-  *Verified: 1611 tests (+4), gate green.*
+  Also shipped *(v0.18.6)*: **`scores.json` is keyed by the song**.
+  A record set under a song id survives a corrected title; one set
+  before the library had documents still counts, and **moves** to the
+  id the first time that song is played after — two records for one
+  song would diverge. A song with no document (a built-in) keeps the
+  old key, because a record under a guessed id is worse than one
+  under a name. File v3; every v2 file reads unchanged.
+  **Remaining:** `history.jsonl` is still written beside the store,
+  which is the last place one event is recorded twice.
+  *Verified: 1614 tests (+7), gate green. Four mutation probes — the
+  game recording no id, the matcher guessing at an ambiguous title,
+  a lookup ignoring the id, and a stale name-keyed record left
+  behind — all seen to fail.*
 - [ ] **M6 Cheap enrichment as a queue.** Embedded tags beyond genre
   (Symphonia already reads them and BeatByte ignores them), file
   hash, lyric counts — in the background, never at startup, with the

@@ -57,6 +57,15 @@ pub struct SongEntry {
     /// The loudness sidecar's gist (gain, verdict, worst issue), when
     /// one sits beside the audio — read once at scan time.
     pub loudness: Option<crate::loudness::LoudnessMark>,
+    /// The song's permanent id, from the document in its folder
+    /// (ADR-0019). `None` for a built-in, which has no folder, and
+    /// for a folder that has not been migrated yet.
+    ///
+    /// Read at scan time: one small file per folder, next to the
+    /// chart the scan already parses, which is an order of magnitude
+    /// larger. It is what lets the browser show a record that
+    /// survived a rename.
+    pub song_id: Option<String>,
     /// Whether karaoke lyrics sit beside this song.
     ///
     /// Existence only — a stat, not a parse: the browser rebuilds
@@ -331,6 +340,10 @@ pub fn scan_library(builtins: &[ChartFile]) -> SongLibrary {
             note_counts: chart.charts.iter().map(|c| c.notes.len()).collect(),
             genre: chart.song.genre.clone(),
             source: SongSource::Builtin(index),
+            // A built-in has no folder, so it has no document and no
+            // id: its records stay keyed by name, which is what they
+            // have always been.
+            song_id: None,
             // Filled in by the caller: only the game knows which
             // built-in carries lyrics, and it is loaded, not scanned.
             has_lyrics: false,
@@ -675,6 +688,10 @@ fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String>
     Ok(Some(SongEntry {
         polish,
         loudness,
+        song_id: chart_path
+            .parent()
+            .and_then(beatbyte_library::store::read)
+            .map(|doc| doc.identity.song_id.as_str().to_owned()),
         title: beatbyte_chart::study::display_title(&chart.song.title),
         artist: chart.song.artist.clone(),
         bpm: chart.song.bpm,

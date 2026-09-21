@@ -1629,7 +1629,12 @@ fn spawn_rows_into(
                 entry.difficulties.first().copied().unwrap_or(selected)
             };
             let best = scores
-                .best(&entry.title, &entry.artist, effective)
+                .best(
+                    entry.song_id.as_deref(),
+                    &entry.title,
+                    &entry.artist,
+                    effective,
+                )
                 .map_or_else(|| "-".to_owned(), |b| b.score.to_string());
             panel
                 .spawn((SongRow(position), Button, ui_kit::row()))
@@ -2040,7 +2045,12 @@ fn refresh_browser(
     if let Ok(mut text) = texts.p0().single_mut() {
         let line = detail_line(cursor.0, view.order.len(), entry, selected.0, |entry| {
             scores
-                .best(&entry.title, &entry.artist, selected.0)
+                .best(
+                    entry.song_id.as_deref(),
+                    &entry.title,
+                    &entry.artist,
+                    selected.0,
+                )
                 .map(|b| (b.score, b.accuracy))
         });
         if text.0 != line {
@@ -2153,7 +2163,12 @@ fn sync_view(
         &view.filter,
         |entry| {
             scores
-                .best(&entry.title, &entry.artist, difficulty)
+                .best(
+                    entry.song_id.as_deref(),
+                    &entry.title,
+                    &entry.artist,
+                    difficulty,
+                )
                 .map(|b| b.score)
         },
     );
@@ -2395,6 +2410,7 @@ mod view_tests {
             source: SongSource::Builtin(0),
             has_lyrics: false,
             polish: crate::library::Polish::default(),
+            song_id: None,
         }
     }
 

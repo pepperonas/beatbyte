@@ -212,6 +212,7 @@ mod tests {
             genre: None,
             preview_start_s: preview,
             source: SongSource::Builtin(0),
+            song_id: None,
             has_lyrics: false,
             polish: crate::library::Polish::default(),
         }
@@ -342,6 +343,7 @@ mod tests {
                     // A path that does not exist: the command reaches
                     // the music thread either way, and the point here
                     // is the wiring, not the sound.
+                    song_id: None,
                     source: SongSource::File {
                         chart_path: std::path::PathBuf::from("none.json"),
                         audio_path: std::path::PathBuf::from("none.m4a"),

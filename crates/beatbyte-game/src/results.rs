@@ -257,6 +257,7 @@ fn spawn_results(
     {
         let perf = &player.performance;
         new_record = scores.record(
+            results.song_id.as_deref(),
             &results.title,
             &results.artist,
             results.difficulty,

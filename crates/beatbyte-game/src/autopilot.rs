@@ -2476,6 +2476,7 @@ mod tests {
             source: SongSource::Builtin(0),
             has_lyrics: false,
             polish: crate::library::Polish::default(),
+            song_id: None,
         }
     }
 

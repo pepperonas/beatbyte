@@ -218,6 +218,10 @@ pub struct LastResults {
     pub title: String,
     /// The artist.
     pub artist: String,
+    /// The song's permanent id, when its folder has a document
+    /// (ADR-0019). What the scoreboard keys on, so a corrected title
+    /// no longer orphans a record.
+    pub song_id: Option<String>,
     /// The difficulty played.
     pub difficulty: beatbyte_core::Difficulty,
     /// The mode (relevant for more than one player).
@@ -981,6 +985,7 @@ fn check_song_end(
         commands.insert_resource(LastResults {
             title: song.chart.song.title.clone(),
             artist: song.chart.song.artist.clone(),
+            song_id: song.song_id.clone(),
             difficulty: selected.0,
             mode: roster.mode,
             players: results,
@@ -1048,6 +1053,7 @@ fn check_failure(
     commands.insert_resource(LastResults {
         title: song.chart.song.title.clone(),
         artist: song.chart.song.artist.clone(),
+        song_id: song.song_id.clone(),
         difficulty: selected.0,
         mode: roster.mode,
         players: results,

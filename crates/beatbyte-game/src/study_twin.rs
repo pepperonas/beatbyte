@@ -570,6 +570,7 @@ mod tests {
             difficulties: Vec::new(),
             note_counts: Vec::new(),
             genre: None,
+            song_id: None,
             preview_start_s: None,
             source: crate::library::SongSource::File {
                 chart_path: audio.with_extension("json"),

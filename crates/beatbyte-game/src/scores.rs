@@ -18,6 +18,28 @@ pub struct BestScore {
     pub best_streak: u32,
 }
 
+/// Which song a record belongs to.
+///
+/// ⚠️ **A name is not an identity.** Records were keyed on title and
+/// artist, so correcting a typo in a title orphaned that song's
+/// records — silently, and for ever. A song that has a document in
+/// its folder is keyed by its permanent id (ADR-0019) and survives
+/// every rename; one that has none — a built-in, or a folder not yet
+/// migrated — keeps the old key, because a record under a guessed id
+/// would be worse than one under a name.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum SongRef {
+    /// The song's permanent id.
+    Id(String),
+    /// Title and artist, for a song that has no id.
+    Named {
+        /// The song's title.
+        title: String,
+        /// The song's artist.
+        artist: String,
+    },
+}
+
 /// A record's identity: the song and the difficulty, as a struct.
 ///
 /// It used to be the string `title|artist|difficulty`, and a title
@@ -26,50 +48,110 @@ pub struct BestScore {
 /// record. Fields cannot run into each other.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RecordKey {
-    /// The song's title.
-    pub title: String,
-    /// The song's artist.
-    pub artist: String,
+    /// Which song.
+    pub song: SongRef,
     /// The difficulty played.
     pub difficulty: Difficulty,
+}
+
+/// One record and the name it was set under.
+///
+/// The name rides along with the value rather than being part of the
+/// key: a record keyed by a song id still has to say which song it
+/// is about when the file is read by a human — and the key must not
+/// change when a title is corrected, which is the whole point.
+#[derive(Debug, Clone, PartialEq)]
+struct Record {
+    best: BestScore,
+    title: String,
+    artist: String,
 }
 
 /// All best results, keyed by song + difficulty.
 #[derive(Resource, Debug, Clone, Default, PartialEq)]
 pub struct ScoreBoard {
-    entries: HashMap<RecordKey, BestScore>,
+    entries: HashMap<RecordKey, Record>,
 }
 
 impl ScoreBoard {
-    fn key(title: &str, artist: &str, difficulty: Difficulty) -> RecordKey {
+    fn named(title: &str, artist: &str, difficulty: Difficulty) -> RecordKey {
         RecordKey {
-            title: title.to_owned(),
-            artist: artist.to_owned(),
+            song: SongRef::Named {
+                title: title.to_owned(),
+                artist: artist.to_owned(),
+            },
+            difficulty,
+        }
+    }
+
+    fn by_id(song_id: &str, difficulty: Difficulty) -> RecordKey {
+        RecordKey {
+            song: SongRef::Id(song_id.to_owned()),
             difficulty,
         }
     }
 
     /// The stored best for a song/difficulty.
+    ///
+    /// The id first, then the name: a record set before the library
+    /// had documents is still that song's record, and must keep
+    /// showing until the song is played again.
     #[must_use]
-    pub fn best(&self, title: &str, artist: &str, difficulty: Difficulty) -> Option<BestScore> {
-        self.entries
-            .get(&Self::key(title, artist, difficulty))
-            .copied()
+    pub fn best(
+        &self,
+        song_id: Option<&str>,
+        title: &str,
+        artist: &str,
+        difficulty: Difficulty,
+    ) -> Option<BestScore> {
+        song_id
+            .and_then(|id| self.entries.get(&Self::by_id(id, difficulty)))
+            .or_else(|| self.entries.get(&Self::named(title, artist, difficulty)))
+            .map(|record| record.best)
     }
 
     /// Record a result. Returns `true` when it is a new record.
+    ///
+    /// Writing under an id **retires the name-keyed twin**, so a song
+    /// carries its record forward the first time it is played after
+    /// gaining a document — rather than keeping two records that
+    /// slowly diverge.
     pub fn record(
         &mut self,
+        song_id: Option<&str>,
         title: &str,
         artist: &str,
         difficulty: Difficulty,
         result: BestScore,
     ) -> bool {
-        let key = Self::key(title, artist, difficulty);
-        match self.entries.get(&key) {
-            Some(best) if best.score >= result.score => false,
+        let key = match song_id {
+            Some(id) => Self::by_id(id, difficulty),
+            None => Self::named(title, artist, difficulty),
+        };
+        let previous = song_id
+            .and_then(|id| self.entries.get(&Self::by_id(id, difficulty)))
+            .or_else(|| self.entries.get(&Self::named(title, artist, difficulty)))
+            .cloned();
+        if song_id.is_some() {
+            self.entries.remove(&Self::named(title, artist, difficulty));
+        }
+        let named = Record {
+            best: result,
+            title: title.to_owned(),
+            artist: artist.to_owned(),
+        };
+        match previous {
+            Some(best) if best.best.score >= result.score => {
+                // Not a record — but the entry may still have to move
+                // to the id, or the removal above would lose it.
+                self.entries.entry(key).or_insert(Record {
+                    best: best.best,
+                    ..named
+                });
+                false
+            }
             _ => {
-                self.entries.insert(key, result);
+                self.entries.insert(key, named);
                 true
             }
         }
@@ -97,8 +179,14 @@ struct ScoresFile {
 }
 
 /// One record on disk.
+///
+/// The name is written even for a record keyed by id: a file a human
+/// opens should say which song a row is about, and a v3 file read by
+/// a v2 build still finds the fields it knows.
 #[derive(Debug, Serialize, Deserialize)]
 struct StoredRecord {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    song_id: Option<String>,
     title: String,
     artist: String,
     difficulty: Difficulty,
@@ -123,7 +211,10 @@ enum OnDisk {
 }
 
 /// The current on-disk version.
-const FILE_VERSION: u32 = 2;
+///
+/// v3 adds the song id. A v2 file reads unchanged — every record in
+/// it is simply keyed by name, which is what it was.
+const FILE_VERSION: u32 = 3;
 
 /// Whether a file's text is the pre-version-2 map. Pure — tested.
 #[must_use]
@@ -144,8 +235,10 @@ pub fn migrate_legacy_key(key: &str) -> Option<RecordKey> {
     let difficulty = Difficulty::from_id(id)?;
     let (title, artist) = rest.split_once('|')?;
     Some(RecordKey {
-        title: title.to_owned(),
-        artist: artist.to_owned(),
+        song: SongRef::Named {
+            title: title.to_owned(),
+            artist: artist.to_owned(),
+        },
         difficulty,
     })
 }
@@ -161,14 +254,23 @@ impl ScoreBoard {
                 for r in file.records {
                     board.entries.insert(
                         RecordKey {
-                            title: r.title,
-                            artist: r.artist,
+                            song: match r.song_id {
+                                Some(id) => SongRef::Id(id),
+                                None => SongRef::Named {
+                                    title: r.title.clone(),
+                                    artist: r.artist.clone(),
+                                },
+                            },
                             difficulty: r.difficulty,
                         },
-                        BestScore {
-                            score: r.score,
-                            accuracy: r.accuracy,
-                            best_streak: r.best_streak,
+                        Record {
+                            best: BestScore {
+                                score: r.score,
+                                accuracy: r.accuracy,
+                                best_streak: r.best_streak,
+                            },
+                            title: r.title,
+                            artist: r.artist,
                         },
                     );
                 }
@@ -177,7 +279,20 @@ impl ScoreBoard {
                 for (key, best) in file.entries {
                     match migrate_legacy_key(&key) {
                         Some(record) => {
-                            board.entries.insert(record, best);
+                            let (title, artist) = match &record.song {
+                                SongRef::Named { title, artist } => (title.clone(), artist.clone()),
+                                // A legacy key is always a name: the
+                                // format predates song ids entirely.
+                                SongRef::Id(_) => (String::new(), String::new()),
+                            };
+                            board.entries.insert(
+                                record,
+                                Record {
+                                    best,
+                                    title,
+                                    artist,
+                                },
+                            );
                         }
                         None => warn!("scores: legacy record {key:?} is unreadable; dropped"),
                     }
@@ -196,19 +311,23 @@ impl ScoreBoard {
     /// the file reads the same after every save.
     #[must_use]
     pub fn to_json(&self) -> String {
-        let mut records: Vec<(&RecordKey, &BestScore)> = self.entries.iter().collect();
+        let mut records: Vec<(&RecordKey, &Record)> = self.entries.iter().collect();
         records.sort_by(|a, b| a.0.cmp(b.0));
         let file = ScoresFile {
             version: FILE_VERSION,
             records: records
                 .into_iter()
                 .map(|(k, b)| StoredRecord {
-                    title: k.title.clone(),
-                    artist: k.artist.clone(),
+                    song_id: match &k.song {
+                        SongRef::Id(id) => Some(id.clone()),
+                        SongRef::Named { .. } => None,
+                    },
+                    title: b.title.clone(),
+                    artist: b.artist.clone(),
                     difficulty: k.difficulty,
-                    score: b.score,
-                    accuracy: b.accuracy,
-                    best_streak: b.best_streak,
+                    score: b.best.score,
+                    accuracy: b.best.accuracy,
+                    best_streak: b.best.best_streak,
                 })
                 .collect(),
         };
@@ -294,10 +413,10 @@ mod tests {
     #[test]
     fn a_first_result_is_always_a_record() {
         let mut board = ScoreBoard::default();
-        assert!(board.record("Song", "Artist", Difficulty::Medium, score(100)));
+        assert!(board.record(None, "Song", "Artist", Difficulty::Medium, score(100)));
         assert_eq!(
             board
-                .best("Song", "Artist", Difficulty::Medium)
+                .best(None, "Song", "Artist", Difficulty::Medium)
                 .map(|b| b.score),
             Some(100)
         );
@@ -306,16 +425,16 @@ mod tests {
     #[test]
     fn only_a_higher_score_replaces_the_record() {
         let mut board = ScoreBoard::default();
-        board.record("Song", "Artist", Difficulty::Medium, score(100));
-        assert!(!board.record("Song", "Artist", Difficulty::Medium, score(80)));
+        board.record(None, "Song", "Artist", Difficulty::Medium, score(100));
+        assert!(!board.record(None, "Song", "Artist", Difficulty::Medium, score(80)));
         assert!(
-            !board.record("Song", "Artist", Difficulty::Medium, score(100)),
+            !board.record(None, "Song", "Artist", Difficulty::Medium, score(100)),
             "matching the record is not beating it"
         );
-        assert!(board.record("Song", "Artist", Difficulty::Medium, score(101)));
+        assert!(board.record(None, "Song", "Artist", Difficulty::Medium, score(101)));
         assert_eq!(
             board
-                .best("Song", "Artist", Difficulty::Medium)
+                .best(None, "Song", "Artist", Difficulty::Medium)
                 .map(|b| b.score),
             Some(101)
         );
@@ -325,27 +444,107 @@ mod tests {
     fn difficulties_keep_separate_records() {
         // Playing Easy well must never overwrite an Expert record.
         let mut board = ScoreBoard::default();
-        board.record("Song", "Artist", Difficulty::Easy, score(500));
-        board.record("Song", "Artist", Difficulty::Expert, score(200));
+        board.record(None, "Song", "Artist", Difficulty::Easy, score(500));
+        board.record(None, "Song", "Artist", Difficulty::Expert, score(200));
         assert_eq!(
             board
-                .best("Song", "Artist", Difficulty::Expert)
+                .best(None, "Song", "Artist", Difficulty::Expert)
                 .map(|b| b.score),
             Some(200)
         );
-        assert!(board.best("Song", "Artist", Difficulty::Hard).is_none());
+        assert!(
+            board
+                .best(None, "Song", "Artist", Difficulty::Hard)
+                .is_none()
+        );
     }
 
     #[test]
     fn songs_are_told_apart_by_title_and_artist() {
         let mut board = ScoreBoard::default();
-        board.record("Song", "One", Difficulty::Medium, score(100));
-        board.record("Song", "Two", Difficulty::Medium, score(200));
+        board.record(None, "Song", "One", Difficulty::Medium, score(100));
+        board.record(None, "Song", "Two", Difficulty::Medium, score(200));
         assert_eq!(
             board
-                .best("Song", "One", Difficulty::Medium)
+                .best(None, "Song", "One", Difficulty::Medium)
                 .map(|b| b.score),
             Some(100)
+        );
+    }
+
+    #[test]
+    fn a_record_keyed_by_the_song_survives_a_rename() {
+        // The defect this exists to end: correcting a typo in a title
+        // orphaned that song's records, silently and for ever.
+        let mut board = ScoreBoard::default();
+        board.record(
+            Some("bb_song"),
+            "Marai",
+            "Blondie",
+            Difficulty::Hard,
+            score(9000),
+        );
+        assert_eq!(
+            board
+                .best(Some("bb_song"), "Maria", "Blondie", Difficulty::Hard)
+                .map(|b| b.score),
+            Some(9000),
+            "the title was corrected; the record is the same record"
+        );
+    }
+
+    #[test]
+    fn a_record_set_before_the_song_had_an_id_is_carried_forward() {
+        // A library that has just been migrated is full of these. The
+        // record must keep showing, and must MOVE the first time the
+        // song is played — two records for one song would diverge.
+        let mut board = ScoreBoard::default();
+        board.record(None, "Maria", "Blondie", Difficulty::Hard, score(9000));
+        assert_eq!(
+            board
+                .best(Some("bb_song"), "Maria", "Blondie", Difficulty::Hard)
+                .map(|b| b.score),
+            Some(9000),
+            "an older record still counts"
+        );
+
+        // Played again, worse. Not a new record — but it moves.
+        assert!(!board.record(
+            Some("bb_song"),
+            "Maria",
+            "Blondie",
+            Difficulty::Hard,
+            score(10)
+        ));
+        assert_eq!(board.len(), 1, "one song, one record");
+        assert_eq!(
+            board
+                .best(Some("bb_song"), "Anything", "At All", Difficulty::Hard)
+                .map(|b| b.score),
+            Some(9000),
+            "and it is now keyed by the song, not by the name"
+        );
+    }
+
+    #[test]
+    fn a_version_two_file_reads_as_records_keyed_by_name() {
+        // Every file on every existing machine is one of these.
+        let text = r#"{"version":2,"records":[
+            {"title":"Maria","artist":"Blondie","difficulty":"hard",
+             "score":9000,"accuracy":0.9,"best_streak":3}]}"#;
+        let board = ScoreBoard::from_json(text).expect("reads");
+        assert_eq!(
+            board
+                .best(None, "Maria", "Blondie", Difficulty::Hard)
+                .map(|b| b.score),
+            Some(9000)
+        );
+        assert_eq!(
+            board
+                .best(Some("bb_song"), "Maria", "Blondie", Difficulty::Hard)
+                .map(|b| b.score),
+            Some(9000),
+            "and a song that has since gained an id still finds it"
         );
     }
 
@@ -357,10 +556,12 @@ mod tests {
         // come from file names, where "|" is legal on macOS and
         // Linux. The key is a struct now.
         let mut board = ScoreBoard::default();
-        board.record("A|B", "C", Difficulty::Medium, score(100));
-        assert_eq!(board.best("A", "B|C", Difficulty::Medium), None);
+        board.record(None, "A|B", "C", Difficulty::Medium, score(100));
+        assert_eq!(board.best(None, "A", "B|C", Difficulty::Medium), None);
         assert_eq!(
-            board.best("A|B", "C", Difficulty::Medium).map(|b| b.score),
+            board
+                .best(None, "A|B", "C", Difficulty::Medium)
+                .map(|b| b.score),
             Some(100)
         );
     }
@@ -368,13 +569,24 @@ mod tests {
     #[test]
     fn legacy_keys_migrate_and_malformed_ones_are_dropped() {
         let key = migrate_legacy_key("All That She Wants|Ace of Base|medium").expect("well-formed");
-        assert_eq!(key.title, "All That She Wants");
-        assert_eq!(key.artist, "Ace of Base");
+        assert_eq!(
+            key.song,
+            SongRef::Named {
+                title: "All That She Wants".to_owned(),
+                artist: "Ace of Base".to_owned(),
+            }
+        );
         assert_eq!(key.difficulty, Difficulty::Medium);
         // The one ambiguous shape: a pipe inside title or artist. The
         // title ends at the first pipe, as the old lookup read it.
         let key = migrate_legacy_key("A|B|C|expert").expect("readable");
-        assert_eq!((key.title.as_str(), key.artist.as_str()), ("A", "B|C"));
+        assert_eq!(
+            key.song,
+            SongRef::Named {
+                title: "A".to_owned(),
+                artist: "B|C".to_owned(),
+            }
+        );
         assert_eq!(migrate_legacy_key("no-artist|medium"), None);
         assert_eq!(migrate_legacy_key("Song|Artist|ludicrous"), None);
         assert_eq!(migrate_legacy_key(""), None);
@@ -394,19 +606,22 @@ mod tests {
         assert_eq!(board.len(), 3);
         assert_eq!(
             board
-                .best("The Passenger", "Iggy Pop", Difficulty::Medium)
+                .best(None, "The Passenger", "Iggy Pop", Difficulty::Medium)
                 .map(|b| b.score),
             Some(147_680)
         );
         assert_eq!(
             board
-                .best("Maria", "Blondie", Difficulty::Hard)
+                .best(None, "Maria", "Blondie", Difficulty::Hard)
                 .map(|b| b.best_streak),
             Some(3)
         );
-        // Saved, it is version 2 — and reads back identical.
+        // Saved, it is the current version — and reads back
+        // identical. Derived from the constant rather than typed, so
+        // a version bump does not need this line edited: what the
+        // test means is "the file it writes is the file it reads".
         let text = board.to_json();
-        assert!(text.contains("\"version\": 2"));
+        assert!(text.contains(&format!("\"version\": {FILE_VERSION}")));
         assert!(!text.contains('|'), "no key strings in the new file");
         assert_eq!(ScoreBoard::from_json(&text).expect("v2 parses"), board);
     }
@@ -414,18 +629,20 @@ mod tests {
     #[test]
     fn the_new_file_round_trips_pipes_and_is_stable() {
         let mut board = ScoreBoard::default();
-        board.record("A|B", "C", Difficulty::Medium, score(100));
-        board.record("A", "B|C", Difficulty::Medium, score(200));
-        board.record("Zed", "Y", Difficulty::Easy, score(1));
+        board.record(None, "A|B", "C", Difficulty::Medium, score(100));
+        board.record(None, "A", "B|C", Difficulty::Medium, score(200));
+        board.record(None, "Zed", "Y", Difficulty::Easy, score(1));
         let text = board.to_json();
         let back = ScoreBoard::from_json(&text).expect("parses");
         assert_eq!(back, board);
         assert_eq!(
-            back.best("A|B", "C", Difficulty::Medium).map(|b| b.score),
+            back.best(None, "A|B", "C", Difficulty::Medium)
+                .map(|b| b.score),
             Some(100)
         );
         assert_eq!(
-            back.best("A", "B|C", Difficulty::Medium).map(|b| b.score),
+            back.best(None, "A", "B|C", Difficulty::Medium)
+                .map(|b| b.score),
             Some(200)
         );
         // Stable order: the same board writes the same bytes.

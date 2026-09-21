@@ -14,6 +14,21 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.6] - 2026-09-21
+
+### Fixed
+
+- **Correcting a typo in a song's title no longer loses its records.** The
+  scoreboard was keyed on title and artist, so a rename orphaned everything
+  that song had earned — silently, and for ever. Records now belong to the
+  song. One set before the library had documents still counts, and moves to
+  the song the first time it is played after; a built-in, which has no
+  folder and so no id, keeps the old key, because a record under a guessed
+  id would be worse than one under a name.
+- The scores file is version 3. Every existing version-2 file reads
+  unchanged — each of its records is simply keyed by name, which is what it
+  already was.
+
 ## [0.18.5] - 2026-09-21
 
 ### Added
