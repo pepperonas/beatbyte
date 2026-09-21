@@ -9,7 +9,7 @@ file wins over habit; the roadmap wins over improvisation.
 
 **BeatByte** — an original five-lane rhythm game in **Rust + Bevy
 0.19** (repo `pepperonas/beatbyte`, MIT, © 2026 Martin Pfeffer, public).
-A Cargo workspace of ten crates plus a thin launcher (map below);
+A Cargo workspace of eleven crates plus a thin launcher (map below);
 all logic lives in the crates. UI language is English; the game is
 fully keyboard/gamepad driven.
 
@@ -42,6 +42,10 @@ that may touch Bevy (the full layering and its invariants:
   game records through, the analytics that read it, and the import of
   the older per-session JSONL files. Engine-free; chart identity
   enters as a hash string.
+- **`beatbyte-library`** (core) — song metadata: the portable
+  `song.json` a song FOLDER carries (ADR-0019), the stable `SongId`,
+  the source/override rules a refresh obeys, and the timestamp
+  semantics. No IO, no SQL, no clock.
 - **`beatbyte-game`** (everything above) — the only Bevy crate:
   screens, HUD, 3D stage, input routing, library, settings, harnesses.
 - **`beatbyte-cli`** (all but game and editor) — the offline tool.

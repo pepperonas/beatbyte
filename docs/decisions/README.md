@@ -25,6 +25,7 @@ contradicted** — if a decision is reversed, the ADR says so.
 | [0016](ADR-0016-drawing-diagrams.md) | Statistics diagrams drawn in `ui_kit`'s own hand (`plot.rs`), not by a plotting library — the one crate that fits Bevy 0.19 is a second UI toolkit | Accepted |
 | [0017](ADR-0017-achievements-derived-not-counted.md) | Achievements re-derived from the whole play log on every pass; only the date each was earned is stored, so a new one unlocks retroactively and none can be taken back | Accepted |
 | [0018](ADR-0018-gameplay-telemetry-store.md) | Gameplay telemetry as a versioned local event store: events never frames, nothing derivable stored, the song referenced rather than copied, and the physical input layer opt-in | Accepted |
+| [0019](ADR-0019-song-metadata-and-the-library-index.md) | A song's metadata lives in its own folder and the queryable index is a rebuildable projection; a given `SongId` rather than a derived one; playing stays an event, never a counter | Accepted |
 
 ## The gap at 0009
 

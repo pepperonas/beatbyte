@@ -14,6 +14,29 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.2] - 2026-09-21
+
+### Added
+
+- **A song's metadata gets a home of its own** ([ADR-0019](docs/decisions/ADR-0019-song-metadata-and-the-library-index.md)).
+  The first piece: `beatbyte-library`, the model for the document each song
+  folder will carry. Nothing reads or writes it yet — this is the shape and
+  its rules, so that the rules are testable before anything touches a disk.
+- **A song finally has a name that survives.** Until now nothing identified a
+  song: the scoreboard keys on title and artist, so fixing a typo in a title
+  orphaned that song's records; the chart hash identifies a chart and changes
+  on every redesign; the audio hash identifies bytes and changes with a new
+  rip. A `SongId` is given once at import and survives a rename, a move, a
+  re-tag, a re-encode and a redesign.
+- **Provenance where values are contested.** Genre, year, title, key and
+  tempo carry who said them — and a confidence only where the source really
+  estimates, because a tag that says 2018 is not 82 % sure of anything.
+  A field the player has edited is closed to every later refresh, however
+  authoritative the new source claims to be.
+- **Absent means absent.** No `""`, no `"Unknown"`, no release year of 0 —
+  while `Unknown Mortal Orchestra` survives, which is why the placeholder
+  list is matched whole and kept short.
+
 ## [0.18.1] - 2026-09-21
 
 ### Fixed

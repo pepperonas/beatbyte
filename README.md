@@ -36,14 +36,14 @@
 [![SemVer](https://img.shields.io/badge/versioning-SemVer-blue)](CHANGELOG.md)
 [![Keep a Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735)](CHANGELOG.md)
 [![Conventional Commits](https://img.shields.io/badge/commits-Conventional-FE5196)](https://www.conventionalcommits.org/)
-[![Tests](https://img.shields.io/badge/tests-1559%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1584%20passing-brightgreen)](#testing)
 [![Clippy](https://img.shields.io/badge/clippy-%E2%80%91D%20warnings-brightgreen?logo=rust)](Cargo.toml)
 [![rustfmt](https://img.shields.io/badge/style-rustfmt-orange?logo=rust)](Cargo.toml)
 [![Rustdoc](https://img.shields.io/badge/public%20API-documented-blue)](Cargo.toml)
 [![Unsafe](https://img.shields.io/badge/unsafe-1%20audited%20block-yellow)](crates/beatbyte-game/src/lib.rs)
 [![Deterministic](https://img.shields.io/badge/engine-deterministic-blueviolet)](#how-your-music-becomes-a-playable-track)
 [![Autopilot](https://img.shields.io/badge/releases-autopilot%20verified-success)](#testing)
-[![ADRs](https://img.shields.io/badge/decisions-17%20ADRs-lightgrey)](docs/decisions/README.md)
+[![ADRs](https://img.shields.io/badge/decisions-18%20ADRs-lightgrey)](docs/decisions/README.md)
 [![MSRV](https://img.shields.io/badge/MSRV-1.95-orange?logo=rust)](Cargo.toml)
 [![Harnesses](https://img.shields.io/badge/harness%20switches-38-success)](docs/development/harness.md)
 [![Docs](https://img.shields.io/badge/docs-architecture%20%C2%B7%20ADRs%20%C2%B7%20specs-blue)](docs/)
@@ -66,7 +66,7 @@
 [![Bevy](https://img.shields.io/badge/Bevy-0.19-blueviolet)](https://bevy.org/)
 [![Audio](https://img.shields.io/badge/audio-rodio%20%2B%20Symphonia-9cf)](crates/beatbyte-audio)
 [![USB](https://img.shields.io/badge/guitar%20driver-libusb%20(rusb)-9cf)](crates/beatbyte-game/src/xplorer.rs)
-[![Workspace](https://img.shields.io/badge/workspace-11%20crates-informational)](#development)
+[![Workspace](https://img.shields.io/badge/workspace-12%20crates-informational)](#development)
 [![Toolchain](https://img.shields.io/badge/build%20deps-Rust%20only-informational)](#building-from-source)
 [![Made with Rust](https://img.shields.io/badge/made%20with-%F0%9F%A6%80%20Rust-red)](https://www.rust-lang.org/)
 
@@ -494,6 +494,7 @@ The repository is a Cargo workspace:
 | `beatbyte-lyrics` | Word- and character-level karaoke timing: known lyric text force-aligned against the song's own audio (CTC Viterbi over `wav2vec2-base-960h` emissions, windowed and stitched), gated so it never ships worse than the line-level lyrics (per word, per line, and a verdict on the source's stamps), written as `words.json` beside the audio. Behind `ml`. |
 | `beatbyte-meter` | Beats and **downbeats** from a local model: the *Beat This!* ONNX pair (ISMIR 2024, MIT) driven through `beatbyte-ml` — chunked keep-first over 30 s pieces, the reference peak picker, downbeats snapped onto beats — and the two policies by which a model's answer enters the analysis (its downbeats on the analyzer's grid, or its whole grid). Behind `ml`; without the models installed the analysis is exactly the analyzer's. |
 | `beatbyte-telemetry` | Gameplay telemetry (ADR-0018): the versioned event history a played song leaves behind — session provenance, logical actions, judgments and outcomes as compact integer rows — the local SQLite store that keeps it, the queue and worker thread it is written through (never on the frame thread), the analytics that read it, and the import of the older per-session JSONL files. Engine-free. |
+| `beatbyte-library` | 25 | The document a song folder carries (ADR-0019): the one name a song keeps and what cannot change it — a rename, a move, a re-tag, a re-encode, a redesign; that a field the player edited is closed to every later refresh however authoritative, while an untouched one takes the stronger source and an empty one takes anything; that only a source which ESTIMATES may carry a confidence, and a nonsense one is dropped rather than stored because it reads exactly as authoritative as a real one; that absent is `None` and never `""`, `"Unknown"` or a release year of 0 — while `Unknown Mortal Orchestra` survives, which is why the placeholder list is matched whole and kept short; that `imported_at` is written once and no refresh may make a song look newly added, and that reading a song does not update it; and that a document from a newer build still reads, keeping the version it was written with so a migration can tell where it came from |
 | `apps/beatbyte` | The shippable game binary. |
 
 Architecture decisions are documented as ADRs in
@@ -569,7 +570,7 @@ beatbyte-cli telemetry status      # what is in the gameplay store
 ## Testing
 
 ```bash
-cargo test --workspace          # 1559 tests
+cargo test --workspace          # 1584 tests
 ```
 
 | Crate | Tests | Covers |

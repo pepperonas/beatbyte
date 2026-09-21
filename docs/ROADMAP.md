@@ -4,6 +4,78 @@
 Rules of engagement live in [`CLAUDE.md`](../CLAUDE.md); this file
 holds the work itself.
 
+## Song metadata and the library index (2026-09-21, ADR-0019)
+
+Every song should carry a structured, migratable record — the ground
+for search, filters, sorting, statistics, history, recommendations
+and playlists. The shape and the reasons, including what was
+rejected: [ADR-0019](decisions/ADR-0019-song-metadata-and-the-library-index.md).
+Three domains, and the middle one is disposable: the **document** in
+the song's folder is authoritative and portable, the **index** is a
+projection that can be rebuilt from it, and **events** stay in the
+telemetry store that already holds them.
+
+⚠️ The analysis found three things worth carrying into every
+milestone below. There is **no song identity today** — `scores.json`
+keys on title and artist, so fixing a typo in a title orphans that
+song's records. **SQLite with migrations already exists here**, and
+its runner was written to take an arbitrary migration list, so a
+second database is nearly free. And **`history.jsonl` and
+`gameplay_session` are two records of one event** — a duplication
+that predates this work and that M5 ends rather than extends.
+
+- [x] **M1 The model** *(v0.18.1)*. `beatbyte-library`: `SongDoc` and
+  its sections, `SongId`, `Sourced<T>` with the source ranking, the
+  placeholder rules and the lifecycle semantics. Pure — no IO, no
+  SQL, no clock, no network — so every rule in it is testable
+  without a disk. The judgement calls it encodes: a provenance
+  wrapper only on **contested** fields (a file size has one answer);
+  a confidence only from a source that **estimates**; `imported_at`
+  written once; and absent meaning `None` rather than `""`,
+  `"Unknown"` or a year of `0` — with `Unknown Mortal Orchestra` as
+  the counter-case that keeps the placeholder list short and matched
+  whole.
+  *Verified: 1584 tests (+25), gate green. Five mutation probes —
+  the override rule, the confidence clamp, the read-does-not-update
+  rule, the id's time prefix and the placeholder filter — each seen
+  to fail.*
+- [ ] **M2 Migration: folders → documents.** Read what each folder
+  already holds (chart, loudness, sidecar existence), mint a
+  `SongId`, take `imported_at` from the oldest file in the folder,
+  mark every carried value with the source it came from. Writes only
+  the new `song.json`; touches nothing else. *Verify: a real 172-song
+  library migrates with no field invented and no file changed; a
+  second run writes nothing.*
+- [ ] **M3 The index.** `library.db` with its own migration list, and
+  the test that matters: a rebuild from the folders equals the stored
+  projection. *Verify: rebuild equality, `EXPLAIN QUERY PLAN` on the
+  commission's queries.*
+- [ ] **M4 The browser on the index.** Search, filter and sort read
+  the index instead of parsing charts. *Verify: no chart parse in a
+  browser frame; the existing browser tests unchanged.*
+- [ ] **M5 One identity for the user's own data.** `song_id` into
+  `gameplay_session`, `history.jsonl` folded into the store, and
+  `scores.json` re-keyed off title+artist. ⚠️ The only milestone that
+  touches data the player made; the old files stay as rollback.
+  *Verify: every existing record still resolves to its song after a
+  rename.*
+- [ ] **M6 Cheap enrichment as a queue.** Embedded tags beyond genre
+  (Symphonia already reads them and BeatByte ignores them), file
+  hash, lyric counts — in the background, never at startup, with the
+  library's status column saying what is still missing.
+  *Verify: a cold start does not hash 2.4 GB.*
+- [ ] **M7 What is not measured yet.** Key/mode and song-level audio
+  features. ⚠️ Only what is genuinely measurable: danceability and
+  valence have no model here and stay absent rather than invented.
+  *Verify: each feature documented with algorithm, range and meaning.*
+- [ ] **M8 The developer view.** One screen showing a song's whole
+  document — why it is Deep House, when it was imported, which
+  analyser said what, what is missing.
+- [ ] **M9 External enrichment, optional and encapsulated.**
+  MusicBrainz behind a feature and a setting, rate-limited, with the
+  source recorded. ⚠️ A song must stay fully playable with no network
+  at all.
+
 ## The star-power impact (2026-09-20, v0.17.20)
 
 A phrase every note of which was hit credits the Hype meter, and the
