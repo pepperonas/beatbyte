@@ -622,6 +622,7 @@ mod tests {
             artist: "Blondie".to_owned(),
             genre: None,
             chart_hash: "abc".to_owned(),
+            song_id: None,
             chart_file: None,
             difficulty: 1,
             player_slot: slot,

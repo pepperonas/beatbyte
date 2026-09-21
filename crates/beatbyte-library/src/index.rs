@@ -265,6 +265,46 @@ impl Index {
         Ok(self.len()? == 0)
     }
 
+    /// How a session was matched to a song.
+    ///
+    /// Recorded so a backfill can say what it did rather than only
+    /// how many: a match on a chart hash is a fact, a match on a
+    /// title is a judgement, and a reader deserves to know which.
+    pub fn resolve(
+        &self,
+        chart_hash: &str,
+        title: &str,
+        artist: &str,
+    ) -> rusqlite::Result<Option<(String, Match)>> {
+        let by_chart: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT song_id FROM song WHERE chart_hash = ?1",
+                params![chart_hash],
+                |row| row.get(0),
+            )
+            .ok();
+        if let Some(id) = by_chart {
+            return Ok(Some((id, Match::ByChart)));
+        }
+        // A title alone is a weaker claim, so it must be an
+        // unambiguous one: two songs with the same title and artist
+        // (a library really does hold duplicates) resolve to NOTHING
+        // rather than to whichever row came first.
+        let mut statement = self.conn.prepare(
+            "SELECT song_id FROM song
+             WHERE title = ?1 COLLATE NOCASE AND IFNULL(artist,'') = ?2 COLLATE NOCASE
+             LIMIT 2",
+        )?;
+        let ids: Vec<String> = statement
+            .query_map(params![title, artist], |row| row.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        match ids.as_slice() {
+            [only] => Ok(Some((only.clone(), Match::ByName))),
+            _ => Ok(None),
+        }
+    }
+
     /// Every row of every table, in a fixed order, as one string.
     ///
     /// Only for comparing two databases — which is how "a rebuild
@@ -300,6 +340,18 @@ impl Index {
     pub fn connection(&self) -> &Connection {
         &self.conn
     }
+}
+
+/// How a song was identified.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Match {
+    /// The chart hash is in the library: the session played exactly
+    /// this chart, so the song is a fact.
+    ByChart,
+    /// Only the title and artist matched — the chart has since been
+    /// redesigned, or the song re-imported. A judgement, and the
+    /// reason a backfill reports the two separately.
+    ByName,
 }
 
 /// The stable integer an instrument is stored under.
@@ -487,6 +539,60 @@ mod tests {
         assert_eq!(first, MIGRATIONS.len() as u32);
         let again = Index::prepare(&mut conn, MIGRATIONS).expect("is idempotent");
         assert_eq!(again, first, "a second pass must apply nothing");
+    }
+
+    #[test]
+    fn a_chart_hash_is_a_fact_and_a_title_is_a_judgement() {
+        let mut index = Index::in_memory().expect("an index");
+        let song = doc(1, "Alpha", 120.0, &["House"]);
+        index.put(&song, "a").expect("indexes");
+        let id = song.identity.song_id.as_str().to_owned();
+
+        assert_eq!(
+            index
+                .resolve(song.gameplay.chart_hash.as_deref().unwrap_or(""), "", "")
+                .expect("resolves"),
+            Some((id.clone(), Match::ByChart)),
+            "the hash is in the library, so the song is certain"
+        );
+        assert_eq!(
+            index
+                .resolve("a hash nobody has", "Alpha", "Someone")
+                .expect("resolves"),
+            Some((id, Match::ByName)),
+            "a redesigned chart still belongs to its song"
+        );
+        assert_eq!(
+            index
+                .resolve("a hash nobody has", "ALPHA", "someone")
+                .expect("resolves")
+                .map(|(_, how)| how),
+            Some(Match::ByName),
+            "and case is not an identity"
+        );
+        assert_eq!(
+            index
+                .resolve("nothing", "Not In The Library", "Nobody")
+                .expect("resolves"),
+            None
+        );
+    }
+
+    #[test]
+    fn two_songs_of_one_name_resolve_to_neither() {
+        // A real library holds duplicates. Picking whichever row came
+        // first would attach a run to the wrong song and be invisible
+        // for ever after.
+        let mut index = Index::in_memory().expect("an index");
+        index.put(&doc(1, "Twin", 120.0, &[]), "a").expect("first");
+        index.put(&doc(2, "Twin", 120.0, &[]), "b").expect("second");
+        assert_eq!(
+            index
+                .resolve("no hash", "Twin", "Someone")
+                .expect("resolves"),
+            None,
+            "ambiguous is not a match"
+        );
     }
 
     #[test]

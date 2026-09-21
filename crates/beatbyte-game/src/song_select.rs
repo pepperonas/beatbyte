@@ -1767,6 +1767,13 @@ pub fn prepare_song(entry: &SongEntry, builtins: &BuiltinSongs) -> Result<Loaded
                 lyrics: beatbyte_chart::lyrics::lyrics_beside(audio_path, chart_path),
                 lyric_offset_ms: beatbyte_chart::lyrics::load_song_lyric_offset(audio_path),
                 vocals: beatbyte_chart::vocals::vocals_beside(audio_path),
+                // One small read beside the chart, at the moment a
+                // song is chosen — not per frame, and not at scan
+                // time for a hundred and seventy folders.
+                song_id: chart_path
+                    .parent()
+                    .and_then(beatbyte_library::store::read)
+                    .map(|doc| doc.identity.song_id.as_str().to_owned()),
             })
         }
     }

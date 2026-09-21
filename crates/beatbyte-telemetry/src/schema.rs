@@ -55,6 +55,10 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "what the analysis said at each chart note",
         sql: M2,
     },
+    Migration {
+        name: "the song a session belongs to",
+        sql: M3,
+    },
 ];
 
 /// v1 — the whole store as first shipped.
@@ -144,6 +148,28 @@ CREATE TABLE note_context (
     flags      INTEGER NOT NULL,
     PRIMARY KEY (chart_hash, difficulty, note_index)
 ) WITHOUT ROWID;
+";
+
+/// v3 — which SONG a session belongs to (ADR-0019).
+///
+/// ⚠️ The store already carries `chart_hash`, and that is the right
+/// identity for a CHART: it changes with every redesign, which is
+/// what makes "did this version play better" answerable. It is the
+/// wrong identity for a song, and until now it was the only one
+/// there. Measured on the author's library at the time this was
+/// added: 564 recorded sessions, of which **219** could be joined
+/// back to a song that still exists — *Maria* alone is spread over
+/// nine hashes. Sixty-one per cent of a play history that cannot
+/// answer "how often have I played this song".
+///
+/// Nullable, and it stays nullable: a session recorded before the
+/// library had documents, or one whose song has since been deleted,
+/// has no song id, and writing an invented one would be worse than
+/// the gap.
+const M3: &str = r"
+ALTER TABLE gameplay_session ADD COLUMN song_id TEXT;
+CREATE INDEX ix_sess_song_id ON gameplay_session(song_id, started_ms)
+    WHERE song_id IS NOT NULL;
 ";
 
 /// Run every migration the connection has not seen yet, and report

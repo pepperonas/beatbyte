@@ -14,6 +14,30 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.5] - 2026-09-21
+
+### Added
+
+- **A recorded run now names the song, not only the chart.** They were never
+  the same question: a chart hash changes with every redesign, which is what
+  makes "did this version play better" answerable and what makes "how often
+  have I played this song" unanswerable. Sessions carry both.
+- `beatbyte-cli library --backfill <index>` gives the sessions already on
+  disk their song. **Additive only**: a session that cannot be matched keeps
+  its gap instead of gaining a guess, and one already matched is left alone,
+  so running it twice does nothing the second time.
+
+### Notes
+
+- Run on this machine's store: **564 sessions, 0 → 352 named** (219 by chart
+  hash, 133 by title). Of the 212 left, 208 are the built-in demo songs,
+  which have no folder and therefore no document — and 4 are one song the
+  library happens to hold **twice**, which the matcher refuses to guess at.
+  Of the sessions belonging to real library songs, **352 of 356** now resolve.
+- The effect is visible in one query: *Maria* (37 runs) appears in a
+  most-played list keyed by song and is **entirely absent** from one keyed by
+  chart hash, because its chart has been redesigned four times.
+
 ## [0.18.4] - 2026-09-21
 
 ### Added

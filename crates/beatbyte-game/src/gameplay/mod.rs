@@ -914,6 +914,7 @@ fn mc_transition(
         lyrics: next.lyrics.clone(),
         lyric_offset_ms: next.lyric_offset_ms,
         vocals: next.vocals.clone(),
+        song_id: next.song_id.clone(),
     });
     // The count-in runs while the PREVIOUS song still plays; at zero
     // the pending music CROSSFADES instead of hard-starting.

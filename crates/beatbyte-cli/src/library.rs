@@ -76,6 +76,74 @@ pub fn index(root: &Path, db: &Path) -> ExitCode {
     }
 }
 
+/// Give every recorded session the song it belongs to.
+///
+/// ⚠️ **Additive only.** A session that cannot be matched keeps its
+/// `NULL` rather than being attached to a guess, and one that already
+/// names a song is left alone. Nothing is deleted and nothing is
+/// overwritten, so the worst case of running this is that it changes
+/// nothing.
+pub fn backfill(index_db: &Path, store_db: Option<PathBuf>) -> ExitCode {
+    let index = match beatbyte_library::index::Index::open(index_db) {
+        Ok(index) => index,
+        Err(error) => {
+            eprintln!("cannot open {}: {error}", index_db.display());
+            return ExitCode::from(2);
+        }
+    };
+    let path = match store_db.or_else(crate::telemetry::default_store_path) {
+        Some(path) => path,
+        None => {
+            eprintln!("no telemetry store — pass --store");
+            return ExitCode::from(2);
+        }
+    };
+    let mut store = match beatbyte_telemetry::store::Store::open(&path) {
+        Ok(store) => store,
+        Err(error) => {
+            eprintln!("cannot open {}: {error}", path.display());
+            return ExitCode::from(2);
+        }
+    };
+    let pending = match store.unattached() {
+        Ok(pending) => pending,
+        Err(error) => {
+            eprintln!("cannot read the store: {error}");
+            return ExitCode::from(2);
+        }
+    };
+    let (before, total) = store.attached_count().unwrap_or((0, 0));
+
+    let (mut by_chart, mut by_name, mut unmatched) = (0usize, 0usize, 0usize);
+    for session in &pending {
+        match index.resolve(&session.chart_hash, &session.title, &session.artist) {
+            Ok(Some((song_id, how))) => {
+                if let Err(error) = store.attach_song(session.session_id, &song_id) {
+                    eprintln!("session {}: {error}", session.session_id);
+                    continue;
+                }
+                match how {
+                    beatbyte_library::index::Match::ByChart => by_chart += 1,
+                    beatbyte_library::index::Match::ByName => by_name += 1,
+                }
+            }
+            Ok(None) => unmatched += 1,
+            Err(error) => {
+                eprintln!("session {}: {error}", session.session_id);
+                unmatched += 1;
+            }
+        }
+    }
+    let (after, _) = store.attached_count().unwrap_or((0, total));
+    println!(
+        "{} session(s) had no song: {by_chart} matched by chart, {by_name} by name, \
+         {unmatched} left unattached",
+        pending.len()
+    );
+    println!("sessions naming a song: {before} → {after} of {total}");
+    ExitCode::SUCCESS
+}
+
 /// Run over a songs directory.
 pub fn run(root: &Path, dry_run: bool) -> ExitCode {
     let Ok(entries) = std::fs::read_dir(root) else {

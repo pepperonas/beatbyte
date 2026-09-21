@@ -286,6 +286,14 @@ enum Command {
         /// projection: deleting it loses nothing.
         #[arg(long)]
         index: Option<PathBuf>,
+        /// Give every recorded session the song it belongs to, using
+        /// the index at this path. Additive: an unmatched session
+        /// keeps its gap rather than gaining a guess.
+        #[arg(long)]
+        backfill: Option<PathBuf>,
+        /// The telemetry database (defaults to the game's own).
+        #[arg(long)]
+        store: Option<PathBuf>,
     },
     /// Write the musical context sidecar beside a chart: what the
     /// analysis says at each note, so a miss recorded later can be
@@ -644,9 +652,12 @@ fn main() -> ExitCode {
             root,
             dry_run,
             index,
-        } => match index {
-            Some(db) => library::index(&root, &db),
-            None => library::run(&root, dry_run),
+            backfill,
+            store,
+        } => match (index, backfill) {
+            (_, Some(db)) => library::backfill(&db, store),
+            (Some(db), None) => library::index(&root, &db),
+            (None, None) => library::run(&root, dry_run),
         },
         Command::Context { path, all } => {
             if all {

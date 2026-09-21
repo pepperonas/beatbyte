@@ -160,6 +160,7 @@ fn bench_session(index: usize, chart: usize, notes: usize, charts: usize) -> Ses
         // reason. (It did, in the first run of this benchmark.)
         genre: Some(genres[chart % genres.len()].to_owned()),
         chart_hash: format!("chart{chart:08x}"),
+        song_id: None,
         chart_file: None,
         difficulty: ((chart / genres.len()) % 4) as u8,
         player_slot: 0,

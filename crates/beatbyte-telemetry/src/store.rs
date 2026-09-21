@@ -134,19 +134,19 @@ impl Store {
     pub fn begin(&mut self, row: &SessionRow) -> Result<SessionId> {
         self.conn.execute(
             "INSERT INTO gameplay_session (
-                uid, started_ms, title, artist, genre, chart_hash, chart_file,
+                uid, started_ms, title, artist, genre, chart_hash, song_id, chart_file,
                 difficulty, player_slot, player_id,
                 game_version, chart_format, generator_version, scoring_version,
                 analysis_version, vocal_version, telemetry_schema, detail,
                 input_device, input_offset_ms, video_offset_ms, mic_offset_ms,
                 tap_mode, no_fail, practice, autopilot, notes_total
              ) VALUES (
-                ?1, ?2, ?3, ?4, ?5, ?6, ?7,
-                ?8, ?9, ?10,
-                ?11, ?12, ?13, ?14,
-                ?15, ?16, ?17, ?18,
-                ?19, ?20, ?21, ?22,
-                ?23, ?24, ?25, ?26, ?27
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
+                ?9, ?10, ?11,
+                ?12, ?13, ?14, ?15,
+                ?16, ?17, ?18, ?19,
+                ?20, ?21, ?22, ?23,
+                ?24, ?25, ?26, ?27, ?28
              )",
             params![
                 row.uid,
@@ -155,6 +155,7 @@ impl Store {
                 row.artist,
                 row.genre,
                 row.chart_hash,
+                row.song_id,
                 row.chart_file,
                 row.difficulty,
                 row.player_slot,
@@ -511,13 +512,76 @@ impl Store {
     }
 }
 
+/// One session that has no song yet, and what is known about it.
+///
+/// The backfill's input. Deliberately not a resolver in here: which
+/// song a title belongs to is the LIBRARY's question, and this crate
+/// knows nothing of libraries.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unattached {
+    /// The session's row id.
+    pub session_id: i64,
+    /// The chart it played.
+    pub chart_hash: String,
+    /// The title it recorded.
+    pub title: String,
+    /// The artist it recorded.
+    pub artist: String,
+}
+
+impl Store {
+    /// Every session that does not yet name a song.
+    pub fn unattached(&self) -> Result<Vec<Unattached>> {
+        let mut statement = self.conn.prepare(
+            "SELECT session_id, chart_hash, title, artist FROM gameplay_session
+             WHERE song_id IS NULL ORDER BY session_id",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(Unattached {
+                session_id: row.get(0)?,
+                chart_hash: row.get(1)?,
+                title: row.get(2)?,
+                artist: row.get(3)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Name the song of one session.
+    pub fn attach_song(&mut self, session_id: i64, song_id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE gameplay_session SET song_id = ?2 WHERE session_id = ?1",
+            rusqlite::params![session_id, song_id],
+        )?;
+        Ok(())
+    }
+
+    /// How many sessions name a song, and how many exist.
+    pub fn attached_count(&self) -> Result<(usize, usize)> {
+        let named: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM gameplay_session WHERE song_id IS NOT NULL",
+            [],
+            |row| row.get(0),
+        )?;
+        let total: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM gameplay_session", [], |row| {
+                    row.get(0)
+                })?;
+        Ok((
+            usize::try_from(named).unwrap_or(0),
+            usize::try_from(total).unwrap_or(0),
+        ))
+    }
+}
+
 /// The column list every session read shares.
 const SESSION_COLUMNS: &str = "SELECT session_id, uid, started_ms, ended_ms, title, artist, genre, \
      chart_hash, chart_file, difficulty, player_slot, player_id, game_version, \
      chart_format, generator_version, scoring_version, analysis_version, \
      vocal_version, telemetry_schema, detail, input_device, input_offset_ms, \
      video_offset_ms, mic_offset_ms, tap_mode, no_fail, practice, autopilot, \
-     completion, notes_total, dropped_events, telemetry_complete \
+     completion, notes_total, dropped_events, telemetry_complete, song_id \
      FROM gameplay_session";
 
 #[allow(clippy::too_many_lines)] // one line per column; splitting it would hide the mapping
@@ -540,6 +604,8 @@ fn read_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredSession> {
             artist: row.get(5)?,
             genre: row.get(6)?,
             chart_hash: row.get(7)?,
+            // Appended last, so every index above keeps its meaning.
+            song_id: row.get(32)?,
             chart_file: row.get(8)?,
             difficulty: row.get(9)?,
             player_slot: row.get(10)?,
@@ -594,6 +660,7 @@ mod tests {
             artist: "Blondie".to_owned(),
             genre: Some("rock".to_owned()),
             chart_hash: "abc123".to_owned(),
+            song_id: None,
             chart_file: Some("chart.v3.json".to_owned()),
             difficulty: 1,
             player_slot: 0,
@@ -936,6 +1003,36 @@ mod tests {
             .collect();
         assert_eq!(uids, vec!["newer".to_owned(), "older".to_owned()]);
         assert_eq!(store.session_count().expect("counts"), 2);
+    }
+
+    /// Attaching a song is purely additive (ADR-0019): it fills a
+    /// gap and never changes an answer.
+    #[test]
+    fn a_session_can_be_given_its_song_once_and_is_then_left_alone() {
+        let mut store = Store::open_in_memory().expect("a store");
+        let id = store.begin(&a_session("unattached")).expect("begins");
+        assert_eq!(store.attached_count().expect("counts"), (0, 1));
+
+        let pending = store.unattached().expect("lists");
+        assert_eq!(pending.len(), 1, "the one session has no song yet");
+        assert_eq!(pending[0].session_id, id);
+
+        store.attach_song(id, "bb_song").expect("attaches");
+        assert_eq!(store.attached_count().expect("counts"), (1, 1));
+        assert!(
+            store.unattached().expect("lists").is_empty(),
+            "a second backfill must find nothing to do — the whole \
+             reason it is safe to run again"
+        );
+
+        let row = &store.sessions(1).expect("reads")[0].row;
+        assert_eq!(row.song_id.as_deref(), Some("bb_song"));
+        assert_eq!(
+            row.chart_hash,
+            a_session("unattached").chart_hash,
+            "and the chart it played is untouched: the two are \
+             different questions"
+        );
     }
 
     #[test]

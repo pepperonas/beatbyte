@@ -104,18 +104,31 @@ that predates this work and that M5 ends rather than extends.
 - [ ] **M4 The browser on the index.** Search, filter and sort read
   the index instead of parsing charts. *Verify: no chart parse in a
   browser frame; the existing browser tests unchanged.*
-- [ ] **M5 One identity for the user's own data.** `song_id` into
-  `gameplay_session`, `history.jsonl` folded into the store, and
-  `scores.json` re-keyed off title+artist. ⚠️ The only milestone that
-  touches data the player made; the old files stay as rollback.
-  ⚠️ **M3 measured the cost of not doing it**: joined on `chart_hash`
-  — the only key available today — **564 recorded sessions yield 219
-  reachable ones**, because a hash changes with every redesign and
-  *Maria* alone is spread over nine of them. Sixty-one per cent of
-  the history cannot answer "how often have I played this song".
-  *Verify: every existing record still resolves to its song after a
-  rename, and the reachable share goes to 100 % of what the library
-  still holds.*
+- [~] **M5 One identity for the user's own data** *(v0.18.5)*.
+  Shipped: the store carries `song_id` beside `chart_hash` (schema
+  v3, nullable and staying so — a run whose song was deleted has no
+  song, and an invented id would be worse than the gap), the game
+  records it from the document in the song's folder, and
+  `beatbyte-cli library --backfill` gives the sessions already on
+  disk their song.
+  ⚠️ **Additive only.** An unmatched session keeps its gap rather
+  than gaining a guess; an already-matched one is left alone; a
+  title that two songs share resolves to **neither**. So the worst
+  case of running it is that nothing happens — and the second run
+  proves it: 0 matched, 0 changed.
+  *Verified on this machine's store, after a backup:* **564
+  sessions, 0 → 352 named** — 219 by chart hash, 133 by title. Of
+  the 212 left, **208 are the built-in demo songs**, which have no
+  folder and therefore no document, and **4 are one song the library
+  holds twice**. Of the sessions belonging to real library songs,
+  **352 of 356** resolve. The effect in one query: *Maria* (37 runs)
+  appears in a most-played list keyed by song and is entirely absent
+  from one keyed by chart hash, because its chart was redesigned
+  four times.
+  **Remaining:** `scores.json` is still keyed on title + artist +
+  difficulty, so renaming a song still orphans its records; and
+  `history.jsonl` is still written beside the store.
+  *Verified: 1611 tests (+4), gate green.*
 - [ ] **M6 Cheap enrichment as a queue.** Embedded tags beyond genre
   (Symphonia already reads them and BeatByte ignores them), file
   hash, lyric counts — in the background, never at startup, with the

@@ -277,6 +277,7 @@ fn begin_store_session(
             artist: song.chart.song.artist.clone(),
             genre: song.chart.song.genre.clone(),
             chart_hash: hash.clone(),
+            song_id: song.song_id.clone(),
             // Which FILE the chart came from is not carried on the
             // loaded song; the hash is the identity that matters, and
             // a path invented here would be a guess. The importer and
@@ -1112,6 +1113,7 @@ mod store_tests {
                 lyrics: None,
                 vocals: None,
                 lyric_offset_ms: 0,
+                song_id: Some("bb_0000000000000000000042".to_owned()),
             }
         }
 
@@ -1224,6 +1226,39 @@ mod store_tests {
             let events = store.events(session.id).expect("reads");
             assert_eq!(events.len(), 1);
             assert_eq!(events[0].1.kind, EventType::Overstrum);
+            let _ = std::fs::remove_dir_all(path.parent().unwrap_or(&path));
+        }
+
+        /// The song a run belongs to, recorded beside the chart it
+        /// played (ADR-0019).
+        ///
+        /// ⚠️ They are different questions and the store now answers
+        /// both. Joined on the chart hash alone, this library's 564
+        /// recorded sessions yielded 219 that could still be found —
+        /// a hash changes with every redesign, and *Maria* is spread
+        /// over nine of them.
+        #[test]
+        fn a_run_records_the_song_and_not_only_the_chart() {
+            let path = scratch("song-id");
+            let mut app = app_with(TelemetryLevel::Results, &path);
+            app.world_mut()
+                .resource_mut::<NextState<AppState>>()
+                .set(AppState::MainMenu);
+            app.update();
+
+            let store = beatbyte_telemetry::Store::open(&path).expect("reopens");
+            let sessions = store.sessions(1).expect("reads");
+            let row = &sessions.first().expect("one session").row;
+            assert_eq!(
+                row.song_id.as_deref(),
+                Some("bb_0000000000000000000042"),
+                "the run names the song it played"
+            );
+            assert_ne!(
+                row.song_id.as_deref(),
+                Some(row.chart_hash.as_str()),
+                "and that is a different thing from the chart it played"
+            );
             let _ = std::fs::remove_dir_all(path.parent().unwrap_or(&path));
         }
 

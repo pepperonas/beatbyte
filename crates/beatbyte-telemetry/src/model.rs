@@ -568,6 +568,12 @@ pub struct SessionRow {
     /// Content hash of the exact chart that was played. Chart
     /// identity and chart version in one value.
     pub chart_hash: String,
+    /// The SONG this run belongs to (ADR-0019), when the library
+    /// knows it. Distinct from `chart_hash` on purpose: that one
+    /// changes with every redesign, which is exactly what makes it
+    /// useless for "how often have I played this song". `None` for a
+    /// run recorded before the library had documents.
+    pub song_id: Option<String>,
     /// The chart file that hash came from, for a human reading a row.
     pub chart_file: Option<String>,
     /// Difficulty index (0 easy … 3 expert).

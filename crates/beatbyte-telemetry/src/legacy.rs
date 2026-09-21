@@ -88,6 +88,9 @@ pub fn convert(
         artist: header.artist.clone(),
         genre: None,
         chart_hash: header.chart_hash.clone(),
+        // A file written before songs had documents: the id is
+        // filled in later by the backfill, or stays absent.
+        song_id: None,
         chart_file: None,
         difficulty,
         player_slot: u8::try_from(header.player).unwrap_or(0),

@@ -43,6 +43,12 @@ pub struct LoadedSong {
     /// later), read from beside the audio and adjustable from the
     /// pause menu. Sources vary per song; this is where that lives.
     pub lyric_offset_ms: i32,
+    /// The song's permanent id, from the document in its folder
+    /// (ADR-0019). `None` for a built-in, which has no folder, and
+    /// for a song whose folder has not been given a document yet —
+    /// in both cases the run is recorded without one rather than
+    /// with an invented one.
+    pub song_id: Option<String>,
 }
 
 /// The audio side of a loaded song.

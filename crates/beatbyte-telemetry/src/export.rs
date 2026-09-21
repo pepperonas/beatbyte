@@ -408,6 +408,7 @@ mod tests {
             artist: "Blondie".to_owned(),
             genre: Some("rock".to_owned()),
             chart_hash: "abc".to_owned(),
+            song_id: None,
             chart_file: Some("chart.v3.json".to_owned()),
             difficulty: 1,
             player_slot: 0,
