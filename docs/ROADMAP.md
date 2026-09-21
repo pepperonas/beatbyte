@@ -108,18 +108,19 @@ same handle every frame.
   assertion: the test now derives its threshold from the miss
   profile, which is the property it actually means.
 
-- [ ] **S3 A sound for a banked phrase** *(optional)*. Nothing in the
-  game plays one when a phrase lands whole: `sfx` reacts to a miss, a
-  stray strum and `HypeActivated` — which is the player SPENDING the
-  power, a different moment with a sound of its own. So the visual
-  impact has nothing to synchronise with, and no audio system was
-  built for it rather than smuggling one in with a visual change.
-  The place for it is `sfx::react_to_feedback` beside the existing
-  arm: one more `SessionEvent` match arm and one more synthesized
-  clip, no new machinery. It would want the rate-limiting the miss
-  sound already has — a dense chart can bank two phrases inside a
-  second. *Verify: by ear, and the limiter proven on two phrases
-  inside one second.*
+- [x] **S3 A sound for a banked phrase** *(v0.18.1)*. Three quick
+  pulses up a major triad, 116 ms, in `sfx::charge()` beside the
+  activation riser it is the sibling of — well under half its 280 ms
+  and quieter, because banking happens four times for every activation
+  and the loud sound should be the rarer one. One `SessionEvent`
+  match arm, one synthesized clip, no new machinery, exactly as the
+  module doc had said it would be. Rate-limited at 250 ms so two
+  players banking in the same frame make one sound rather than one
+  twice as loud. *Verified: the clip's rise and its place under the
+  riser pinned by measurement (zero-crossing rate per pulse window,
+  peak against the riser's), the limiter's decision pinned as a pure
+  function.*
+  *Verified: 1559 tests, gate green.*
 
 ## Gameplay telemetry (2026-09-20, v0.17.13–)
 
@@ -148,8 +149,10 @@ The feedback loop it feeds: [`adaptive-charting.md`](adaptive-charting.md).
   overstrum**, at note 601, 373.1 s into the song. The store says
   that without anybody reading a log. The twin still passes (375
   perfect, 0 misses, 0 overstrums) on the same build, so judgment is
-  untouched; the defect is the chart's, and it had simply never been
-  played by the harness. Filed as **C7** with `[GS] Maria`'s three.
+  untouched — and so, it turned out, is the chart: **C7** (v0.18.1)
+  found the Hype activation window taking the note out from under the
+  strum. What was true here is only that the harness had never played
+  this chart before.
   *Verified by running both drills against the store:* the rating
   drill landed `fun 4` and a `better` verdict in 1 session; the blind
   test played `chart.v7` against `chart.v8` of *Life Is a Flower* and
@@ -500,8 +503,8 @@ chart format v1 can be frozen as a promise.
 - [x] C1 **Linux smoke in CI.** `linux-smoke` job: the real game boots to the menu under Xvfb + mesa software Vulkan (lavapipe) on a GPU-less, audio-less runner — also validating the music thread's graceful no-device degradation. Two iterations to green: `libxkbcommon-x11-0` missing at runtime (winit dlopens it). *Verified: job green in 16m28s on main.*
 - [x] C2 **Windows artifact validated.** `windows-smoke` CI job boots the real game to the menu on a GPU-less Windows runner (DX12 WARP software rasterizer), no audio device — the same code path the zip artifact ships. *Verified: job green (40m54s cold; caching shrinks it). Real-hardware run of a release zip remains a nice-to-have under F2.*
 - [x] C3 **CI actions off deprecated Node runtimes.** Two rounds: v5 of upload-artifact turned out to STILL be Node 20 (release-run annotation) — the reals, verified against each action's own `action.yml`: checkout v5, upload-artifact v7, download-artifact v8 (keeps `merge-multiple`), action-gh-release v2→v3. *Verified: v0.9.0 release run clean except gh-release (bumped after; confirms next release).*
-- [ ] C6 **The 2-player autopilot flakes about once in five runs**, reporting a single overstrum that breaks the streak mid-song (seen 2026-09-04: one FAILED run at streak 92/98, then three clean runs of the same binary; CLAUDE.md records a related one-off "injector overstrum" from an earlier session). It is the release gate, so every flake costs a rerun. ⚠️ When this was filed it could not be located from the logs at all: the per-note telemetry recorded judgments, offsets and sustains but **not overstrums**. **That step is done** — the store has carried `EventType::Overstrum` with the nearest judged note since v0.17.13, and the analytics count them per note, so a flake now leaves a record of where it happened. What is left is the running and the reading. *Verify: a hundred 2P runs with no unexplained overstrum, or a named cause read off the store.*
-- [ ] C7 **Two charts fail the autopilot, and both were found rather than filed.** Each is recorded in prose where it turned up and neither was ever a task, which is how they have sat for weeks: `[GS] Maria` fails with exactly **3 overstrums at notes 95, 183 and 312**, every other note Perfect — byte-identical across four A/B runs, including one with the vocal path completely inactive, so it is deterministic and a property of that stem-charted twin and the injector. `Girls Just Want to Have Fun` on **Medium** (the 690-note original, not its 375-note twin) fails with **one overstrum at note 601**, 373.1 s in; it had simply never been played by the harness until an exact-title match reached originals in v0.17.19. ⚠️ **Judgment is not implicated in either**: the twin of the one and the original of the other pass flawlessly on the same build. The store says where all four are without anybody reading a log. *Verify: a named cause for each — chart or injector — and, if the chart, a new version whose by-ear check holds.*
+- [x] C6 **The 2-player autopilot flake: named, and it was C7's rule** *(v0.18.1)*. About one run in five reported a single overstrum that broke the streak mid-song, and it is the release gate, so every flake cost a rerun. The cause is the Hype-window rule fixed in C7 — and it explains the part that made C6 look like a separate, spooky problem: **whether it fires is a race with the frame boundary.** The injector checks that a note is still pending and then strums; the window takes the note during the session's own advance. Which happens first depends on where the frame falls, so a note comfortably inside the window fails every time (Maria) while one near the edge fails sometimes (whatever C6 was watching). With the absorb marker armed, both orders are safe: strum first and it hits, window first and the strum is absorbed. *Verified: 20 two-player runs on the chart that exercises the rule — `[GS] Maria`, nine activations per player, three of them a guaranteed overstrum before the fix. **18 produced a verdict and all 18 are clean**: both players 428/428, streak whole, zero overstrums. The other two ended 11 s in with `Skipped event Destroyed … Window` — the window was closed from outside, which is the documented vanished-window mode and not a judgment at all.* ⚠️ **The first attempt at this evidence was worthless and I ran 5 of 40 before measuring it**: the short song I picked to get more runs per hour activates Hype **zero** times, so it exercised none of the mechanism. A batch is only evidence once you have checked that it can fail.
+- [x] C7 **Two charts failed the autopilot — and both were innocent** *(v0.18.1)*. `[GS] Maria` with three stray strums at notes 95, 183 and 312, `Girls Just Want to Have Fun` on Medium with one at note 601. Recorded as chart defects for five weeks because that is what they looked like. **The cause is an engine rule, and it costs real players their streak.** A successful Hype activation opens a half-second window that hits the notes inside it *for* the player; the strum they were already making then lands on a note that is no longer there and is counted as a stray one — streak broken, multiplier reset, and the sustain of that very note cut off. The game already forgives this for a hammer-on (the pick lands after the fret change); `auto_hit_hype_notes` now arms the same absorb marker, so one strum inside that note's window is that note's strum. ⚠️ **It hid wherever the next note needed a FRET CHANGE**: the press hits that note itself and the strum is then never sent, which is why it surfaced only on two charts rather than as a rule. *Verified: both charts play clean with nothing changed in them — Maria 428/428 with the streak whole, its score 15 % higher for identical playing (106,466 → 122,750) and three cut sustains recovered (177/181 → 180/181); `Girls` 690/690. Read off the telemetry store rather than guessed: every one of the three overstrums sits one note after a `hype_activated`, and the one activation whose next note needed a fret change produced none.*
 - [~] C4 **Gamepad hot-plug** *(v0.13.39, `gameplay/hotplug.rs`)*. Disconnect → pause + the pause screen names the waiting player (`PadLost` on the seat); connect → the longest-waiting seat takes the pad, same `PlayerDevice` slot and session, resume stays manual. Pure policy `react` (event × seats → actions) + headless wired test (real `GamePhase` states, real messages, the pause line). *Verified: 6 tests, 4 mutation probes (no pause, newest waiter, taken pad re-handed, rebind no-op) each caught; autopilot 1P + 2P PASSED.* **Remaining: the manual unplug 1P and 2P on real hardware — human hands; the driver-level event is the only layer not exercised.*
 - [x] C5 **Settings/chart forward-compat reads.** Both were already tolerant (`#[serde(default)]` on Settings, selective defaults on chart schema; corrupt settings fall back to defaults with a warning) — now PINNED: settings load with unknown+missing fields, malformed JSON errors cleanly, charts with unknown fields at file/song/chart/note level parse and stay valid. *Verified: 3 tests; deny_unknown_fields mutation makes them fail.*
 
@@ -834,8 +837,10 @@ that will not start.
   one with it fully live — produced byte-identical overstrums at the
   same three notes, so it is a property of that stem-charted twin and
   the injector, deterministic and reproducible. Outside this plan — and
-  for five weeks "filed" meant only this paragraph; it is a task
-  now, **C7**, together with the second chart that does the same.
+  for five weeks "filed" meant only this paragraph. Resolved as
+  **C7** in v0.18.1, and the chart was never at fault: it is the
+  Hype activation window taking a note out from under the strum the
+  player was already making.
 - [~] V6 **Calibration and settings.** Shipped: `MIC OFFSET` and
   `VOCAL PITCH` (ANY OCTAVE / AS WRITTEN) in SETTINGS, the octave
   answer reaching the judgment while the **difficulty** keeps setting

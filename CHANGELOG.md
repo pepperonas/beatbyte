@@ -14,6 +14,39 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.1] - 2026-09-21
+
+### Fixed
+
+- **Activate Hype, play the next note normally, lose your streak.** A
+  successful activation opens a half-second window that hits the notes inside
+  it *for* you — so the strum you were already making landed on a note that
+  was no longer there and counted as a stray one: streak broken, multiplier
+  reset, and the sustain of that very note cut off. The game already forgives
+  exactly this for a hammer-on, where the pick lands after the fret change; it
+  now forgives it here the same way. One strum inside that note's window is
+  that note's strum.
+- **Two charts had been carrying the blame for five weeks, and both are
+  innocent.** `[GS] Maria` failed the release harness with three stray strums
+  at notes 95, 183 and 312, `Girls Just Want to Have Fun` on Medium with one
+  at note 601 — recorded as chart defects because that is what they looked
+  like. Both play clean now with no chart changed. On Maria the same playing
+  scores **15 % more** (106,466 → 122,750), because the streak multiplier
+  never drops, and three cut sustains come back (177/181 → 180/181).
+- It hid wherever the next note needed a **fret change**: the press hits that
+  note itself, so the strum is never sent at all. Only a note on the same
+  frets as the one before it could show the defect — which is why it looked
+  like two odd charts rather than one engine rule.
+
+### Added
+
+- **A short rising charge when a phrase is banked whole.** Until now the only
+  sign was the meter moving; the impact this release added is seen, not heard.
+  Deliberately the smaller sibling of the activation riser — well under half
+  its length and quieter — because banking happens four times for every activation, and
+  the loud sound should be the rarer one. In a duet, two players banking in
+  the same frame make one sound, not two.
+
 ## [0.18.0] - 2026-09-21
 
 Milestone release: **it listens, it remembers, and it knows who is

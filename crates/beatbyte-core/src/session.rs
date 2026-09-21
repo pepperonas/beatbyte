@@ -441,6 +441,18 @@ impl TrackSession {
 
     // ---- internals -----------------------------------------------------
 
+    /// Take every pending note the Hype activation window reaches.
+    ///
+    /// A note taken here is hit **without a strum**, exactly like a
+    /// hammer-on taken by fretting — so it arms the same absorb
+    /// marker. Without that, the strum the player was already going
+    /// to make lands on a note the window has just taken, matches
+    /// nothing, and is punished as an overstrum: activate Hype, play
+    /// the next note normally, lose the streak. Found by the
+    /// autopilot on a chart that had been blamed for it for weeks
+    /// (roadmap C7) — and it only showed where the note needed no
+    /// fret change, because a fret change hits the note itself and
+    /// the strum is then never sent at all.
     fn auto_hit_hype_notes(&mut self, through_s: f64, events: &mut Vec<SessionEvent>) {
         let through_s = through_s.min(self.hype_grace_until_s);
         if !through_s.is_finite() {
@@ -459,6 +471,10 @@ impl TrackSession {
         {
             let note_time = self.track.events()[index].time_s;
             self.hit(index, note_time, events);
+            // `hit` voids the marker; re-arm it for THIS note, the
+            // way a fretted HOPO does. The last one taken is the one
+            // whose strum is still to come.
+            self.fret_hit = Some(index);
         }
     }
 
@@ -1447,6 +1463,129 @@ mod tests {
         ));
         assert_eq!(s.note_state(4), Some(NoteState::Missed));
         assert_eq!(s.performance().best_streak(), 4);
+    }
+
+    /// The autopilot blamed a chart for this for five weeks (roadmap
+    /// C7): activate Hype, then play the next note the way anyone
+    /// would. The window takes the note without a strum, and the
+    /// strum that was already on its way lands on nothing.
+    #[test]
+    fn the_strum_of_a_note_the_hype_window_took_is_absorbed() {
+        let mut s = session(track_with_phrases(
+            vec![
+                tap(1.0, Lane::One),
+                tap(2.0, Lane::One),
+                tap(2.4, Lane::One),
+            ],
+            vec![
+                Phrase {
+                    start_s: 0.9,
+                    end_s: 1.1,
+                },
+                Phrase {
+                    start_s: 1.9,
+                    end_s: 2.1,
+                },
+            ],
+        ));
+        play(&mut s, 1.0, Lane::One);
+        play(&mut s, 2.0, Lane::One);
+        let mut events = Vec::new();
+        s.handle(
+            GameInput {
+                time_s: 2.2,
+                kind: InputKind::ActivateHype,
+            },
+            &mut events,
+        );
+        // The window reaches the third note and takes it — no fret
+        // change was needed, so nothing else could have hit it.
+        s.advance(2.4, &mut events);
+        assert!(
+            matches!(s.note_state(2), Some(NoteState::Hit(_))),
+            "the window takes the note: {:?}",
+            s.note_state(2)
+        );
+
+        // …and now the player's strum arrives, on time for that note.
+        events.clear();
+        s.handle(
+            GameInput {
+                time_s: 2.4,
+                kind: InputKind::Strum,
+            },
+            &mut events,
+        );
+        assert_eq!(
+            s.performance().overstrums(),
+            0,
+            "a strum for a note the window just took is that note's \
+             strum, not an extra one: {events:?}"
+        );
+        assert_eq!(
+            s.performance().best_streak(),
+            3,
+            "and the streak survives it"
+        );
+
+        // One, though — a second strum is a real extra one.
+        s.handle(
+            GameInput {
+                time_s: 2.42,
+                kind: InputKind::Strum,
+            },
+            &mut events,
+        );
+        assert_eq!(
+            s.performance().overstrums(),
+            1,
+            "the absorb is one per note, as it is for a fretted HOPO"
+        );
+    }
+
+    #[test]
+    fn a_strum_long_after_the_window_took_a_note_is_still_an_overstrum() {
+        let mut s = session(track_with_phrases(
+            vec![
+                tap(1.0, Lane::One),
+                tap(2.0, Lane::One),
+                tap(2.4, Lane::One),
+            ],
+            vec![
+                Phrase {
+                    start_s: 0.9,
+                    end_s: 1.1,
+                },
+                Phrase {
+                    start_s: 1.9,
+                    end_s: 2.1,
+                },
+            ],
+        ));
+        play(&mut s, 1.0, Lane::One);
+        play(&mut s, 2.0, Lane::One);
+        let mut events = Vec::new();
+        s.handle(
+            GameInput {
+                time_s: 2.2,
+                kind: InputKind::ActivateHype,
+            },
+            &mut events,
+        );
+        s.advance(2.4, &mut events);
+        s.handle(
+            GameInput {
+                time_s: 3.5,
+                kind: InputKind::Strum,
+            },
+            &mut events,
+        );
+        assert_eq!(
+            s.performance().overstrums(),
+            1,
+            "the absorb is bounded by the note's own window — a strum a \
+             second later is a strum at nothing"
+        );
     }
 
     #[test]

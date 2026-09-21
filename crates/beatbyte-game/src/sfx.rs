@@ -64,6 +64,12 @@ pub struct SfxLib {
     pub overstrum: Handle<AudioSource>,
     /// Hype activation: a rising sweep.
     pub hype: Handle<AudioSource>,
+    /// A star-power phrase banked whole: a short rising charge. The
+    /// deliberate sibling of [`SfxLib::hype`] — that one is SPENDING
+    /// the power and sweeps up over a quarter second; this one is
+    /// storing a quarter of it and is well under half as long, so the
+    /// two are never mistaken for each other under the music.
+    pub banked: Handle<AudioSource>,
     /// Metronome tick (editor audition overlay).
     pub click: Handle<AudioSource>,
 }
@@ -102,6 +108,7 @@ fn build_sfx(mut commands: Commands, mut assets: ResMut<Assets<AudioSource>>) {
         miss: register(MISS_VOICE.render(44_100)),
         overstrum: register(OVERSTRUM_VOICE.render(44_100)),
         hype: register(riser()),
+        banked: register(charge()),
         click: register(blip(1760.0, 0.03, 0.6)),
     });
 }
@@ -150,6 +157,37 @@ fn riser() -> AudioData {
     }
     AudioData::from_mono(samples, rate)
 }
+
+/// A phrase banked: three quick pulses up a major triad.
+///
+/// Short and high so it lands *between* the music rather than on top
+/// of it, and rising because something was gained. Well under half
+/// the activation riser's length and under its gain on purpose:
+/// banking happens four times per activation, and the loud, long one
+/// should be the rarer one.
+fn charge() -> AudioData {
+    let rate = 44_100u32;
+    let mut samples = vec![0.0f32; (0.116 * f64::from(rate)) as usize];
+    for (step, freq) in [880.0, 1174.7, 1568.0].into_iter().enumerate() {
+        let offset = (0.028 * step as f64 * f64::from(rate)) as usize;
+        mix(&mut samples, &blip(freq, 0.055, 0.26), offset);
+    }
+    AudioData::from_mono(samples, rate)
+}
+
+/// Whether the banked sound may play now.
+///
+/// One moment, one sound: in a duet two players can bank inside the
+/// same frame, and two identical clips at once are not twice as
+/// informative, only twice as loud. Wide enough to cover that and far
+/// narrower than any real gap between phrases. Pure — tested.
+#[must_use]
+pub fn banked_sound_due(now: f32, last: f32) -> bool {
+    now - last > BANKED_GAP_S
+}
+
+/// The shortest gap between two banked sounds.
+pub const BANKED_GAP_S: f32 = 0.25;
 
 /// Add `source` into `target` starting at `offset` samples.
 fn mix(target: &mut [f32], source: &AudioData, offset: usize) {
@@ -235,6 +273,7 @@ fn gameplay_sounds(
     settings: Res<Settings>,
     time: Res<Time>,
     mut last_miss: Local<f32>,
+    mut last_banked: Local<f32>,
 ) {
     for message in feedback.read() {
         match message.event {
@@ -258,6 +297,13 @@ fn gameplay_sounds(
             SessionEvent::HypeActivated => {
                 play(&mut commands, &sfx.hype, settings.sfx_volume);
             }
+            SessionEvent::PhraseCompleted { .. } => {
+                let now = time.elapsed_secs();
+                if banked_sound_due(now, *last_banked) {
+                    *last_banked = now;
+                    play(&mut commands, &sfx.banked, settings.sfx_volume);
+                }
+            }
             _ => {}
         }
     }
@@ -265,7 +311,7 @@ fn gameplay_sounds(
 
 #[cfg(test)]
 mod tests {
-    use super::{back, blip, confirm, error, is_stray_strum};
+    use super::{back, banked_sound_due, blip, charge, confirm, error, is_stray_strum, riser};
     use beatbyte_core::SessionEvent;
 
     #[test]
@@ -311,6 +357,66 @@ mod tests {
         // blips were flattened to one pitch (found by mutation).
         assert!(confirm_b > confirm_a * 1.2, "confirm must clearly rise");
         assert!(back_b < back_a * 0.8, "back must clearly fall");
+    }
+
+    #[test]
+    fn the_banked_charge_rises_and_stays_out_of_the_risers_way() {
+        // Banking is a gain, so it rises. And it must not be mistaken
+        // for the activation riser under the music: banking happens
+        // four times per activation, so it is the shorter and the
+        // quieter of the two. Measured on windows centred on the
+        // pulses (0, 0.035, 0.070 s), not naive thirds — the thirds
+        // overlap two pulses each and the margin drowns.
+        let audio = charge();
+        let samples = audio.samples();
+        let at = |from_s: f64| {
+            let a = (from_s * 44_100.0) as usize;
+            let b = ((from_s + 0.03) * 44_100.0) as usize;
+            zero_crossing_rate(&samples[a..b.min(samples.len())])
+        };
+        let (first, last) = (at(0.0), at(0.070));
+        assert!(
+            last > first * 1.2,
+            "the charge must clearly rise: {first} then {last}"
+        );
+
+        let peak = |audio: &super::AudioData| {
+            audio
+                .samples()
+                .iter()
+                .fold(0.0f32, |acc, sample| acc.max(sample.abs()))
+        };
+        let riser = riser();
+        assert!(
+            audio.samples().len() * 2 < riser.samples().len(),
+            "and well under half its length — the two must not be \
+             mistaken for each other under the music"
+        );
+        assert!(
+            peak(&audio) < peak(&riser),
+            "and quieter: banked {} vs activation {}",
+            peak(&audio),
+            peak(&riser)
+        );
+    }
+
+    #[test]
+    fn two_players_banking_in_one_frame_make_one_sound() {
+        assert!(banked_sound_due(10.0, 0.0), "the first one always plays");
+        assert!(
+            !banked_sound_due(10.0, 10.0),
+            "a second phrase banked in the same frame — a duet — is one \
+             moment, and two identical clips are only twice as loud"
+        );
+        assert!(
+            !banked_sound_due(10.2, 10.0),
+            "and still one a fifth of a second later"
+        );
+        assert!(
+            banked_sound_due(10.3, 10.0),
+            "but a later phrase is its own moment: the gap is far \
+             shorter than any real distance between phrases"
+        );
     }
 
     #[test]
