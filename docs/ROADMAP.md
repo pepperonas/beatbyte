@@ -108,6 +108,19 @@ same handle every frame.
   assertion: the test now derives its threshold from the miss
   profile, which is the property it actually means.
 
+- [ ] **S3 A sound for a banked phrase** *(optional)*. Nothing in the
+  game plays one when a phrase lands whole: `sfx` reacts to a miss, a
+  stray strum and `HypeActivated` — which is the player SPENDING the
+  power, a different moment with a sound of its own. So the visual
+  impact has nothing to synchronise with, and no audio system was
+  built for it rather than smuggling one in with a visual change.
+  The place for it is `sfx::react_to_feedback` beside the existing
+  arm: one more `SessionEvent` match arm and one more synthesized
+  clip, no new machinery. It would want the rate-limiting the miss
+  sound already has — a dense chart can bank two phrases inside a
+  second. *Verify: by ear, and the limiter proven on two phrases
+  inside one second.*
+
 ## Gameplay telemetry (2026-09-20, v0.17.13–)
 
 The blackbox: what the chart expected, what the player did, how the
@@ -136,7 +149,7 @@ The feedback loop it feeds: [`adaptive-charting.md`](adaptive-charting.md).
   that without anybody reading a log. The twin still passes (375
   perfect, 0 misses, 0 overstrums) on the same build, so judgment is
   untouched; the defect is the chart's, and it had simply never been
-  played by the harness.
+  played by the harness. Filed as **C7** with `[GS] Maria`'s three.
   *Verified by running both drills against the store:* the rating
   drill landed `fun 4` and a `better` verdict in 1 session; the blind
   test played `chart.v7` against `chart.v8` of *Life Is a Flower* and
@@ -487,7 +500,8 @@ chart format v1 can be frozen as a promise.
 - [x] C1 **Linux smoke in CI.** `linux-smoke` job: the real game boots to the menu under Xvfb + mesa software Vulkan (lavapipe) on a GPU-less, audio-less runner — also validating the music thread's graceful no-device degradation. Two iterations to green: `libxkbcommon-x11-0` missing at runtime (winit dlopens it). *Verified: job green in 16m28s on main.*
 - [x] C2 **Windows artifact validated.** `windows-smoke` CI job boots the real game to the menu on a GPU-less Windows runner (DX12 WARP software rasterizer), no audio device — the same code path the zip artifact ships. *Verified: job green (40m54s cold; caching shrinks it). Real-hardware run of a release zip remains a nice-to-have under F2.*
 - [x] C3 **CI actions off deprecated Node runtimes.** Two rounds: v5 of upload-artifact turned out to STILL be Node 20 (release-run annotation) — the reals, verified against each action's own `action.yml`: checkout v5, upload-artifact v7, download-artifact v8 (keeps `merge-multiple`), action-gh-release v2→v3. *Verified: v0.9.0 release run clean except gh-release (bumped after; confirms next release).*
-- [ ] C6 **The 2-player autopilot flakes about once in five runs**, reporting a single overstrum that breaks the streak mid-song (seen 2026-09-04: one FAILED run at streak 92/98, then three clean runs of the same binary; CLAUDE.md records a related one-off "injector overstrum" from an earlier session). It is the release gate, so every flake costs a rerun. ⚠️ It could not be located from the logs: the per-note telemetry records judgments, offsets and sustains but **not overstrums**, so nothing on disk says when it happened. The first step is therefore to log them. *Verify: a hundred 2P runs with no unexplained overstrum, or a named cause.*
+- [ ] C6 **The 2-player autopilot flakes about once in five runs**, reporting a single overstrum that breaks the streak mid-song (seen 2026-09-04: one FAILED run at streak 92/98, then three clean runs of the same binary; CLAUDE.md records a related one-off "injector overstrum" from an earlier session). It is the release gate, so every flake costs a rerun. ⚠️ When this was filed it could not be located from the logs at all: the per-note telemetry recorded judgments, offsets and sustains but **not overstrums**. **That step is done** — the store has carried `EventType::Overstrum` with the nearest judged note since v0.17.13, and the analytics count them per note, so a flake now leaves a record of where it happened. What is left is the running and the reading. *Verify: a hundred 2P runs with no unexplained overstrum, or a named cause read off the store.*
+- [ ] C7 **Two charts fail the autopilot, and both were found rather than filed.** Each is recorded in prose where it turned up and neither was ever a task, which is how they have sat for weeks: `[GS] Maria` fails with exactly **3 overstrums at notes 95, 183 and 312**, every other note Perfect — byte-identical across four A/B runs, including one with the vocal path completely inactive, so it is deterministic and a property of that stem-charted twin and the injector. `Girls Just Want to Have Fun` on **Medium** (the 690-note original, not its 375-note twin) fails with **one overstrum at note 601**, 373.1 s in; it had simply never been played by the harness until an exact-title match reached originals in v0.17.19. ⚠️ **Judgment is not implicated in either**: the twin of the one and the original of the other pass flawlessly on the same build. The store says where all four are without anybody reading a log. *Verify: a named cause for each — chart or injector — and, if the chart, a new version whose by-ear check holds.*
 - [~] C4 **Gamepad hot-plug** *(v0.13.39, `gameplay/hotplug.rs`)*. Disconnect → pause + the pause screen names the waiting player (`PadLost` on the seat); connect → the longest-waiting seat takes the pad, same `PlayerDevice` slot and session, resume stays manual. Pure policy `react` (event × seats → actions) + headless wired test (real `GamePhase` states, real messages, the pause line). *Verified: 6 tests, 4 mutation probes (no pause, newest waiter, taken pad re-handed, rebind no-op) each caught; autopilot 1P + 2P PASSED.* **Remaining: the manual unplug 1P and 2P on real hardware — human hands; the driver-level event is the only layer not exercised.*
 - [x] C5 **Settings/chart forward-compat reads.** Both were already tolerant (`#[serde(default)]` on Settings, selective defaults on chart schema; corrupt settings fall back to defaults with a warning) — now PINNED: settings load with unknown+missing fields, malformed JSON errors cleanly, charts with unknown fields at file/song/chart/note level parse and stay valid. *Verified: 3 tests; deny_unknown_fields mutation makes them fail.*
 
@@ -819,8 +833,9 @@ that will not start.
   Perfect. Two runs — one with the vocal path completely inactive,
   one with it fully live — produced byte-identical overstrums at the
   same three notes, so it is a property of that stem-charted twin and
-  the injector, deterministic and reproducible. Filed, not fixed: it
-  is outside this plan.
+  the injector, deterministic and reproducible. Outside this plan — and
+  for five weeks "filed" meant only this paragraph; it is a task
+  now, **C7**, together with the second chart that does the same.
 - [~] V6 **Calibration and settings.** Shipped: `MIC OFFSET` and
   `VOCAL PITCH` (ANY OCTAVE / AS WRITTEN) in SETTINGS, the octave
   answer reaching the judgment while the **difficulty** keeps setting
