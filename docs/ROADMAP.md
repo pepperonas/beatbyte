@@ -225,10 +225,50 @@ that predates this work and that M5 ends rather than extends.
   while the player waits, a folder with no document queued anyway,
   and one unmapped tag stopping the whole read — all seen to fail;
   two of them were blind at first and were sharpened.*
-- [ ] **M7 What is not measured yet.** Key/mode and song-level audio
-  features. ⚠️ Only what is genuinely measurable: danceability and
-  valence have no model here and stay absent rather than invented.
-  *Verify: each feature documented with algorithm, range and meaning.*
+- [x] **M7 What is not measured yet** *(v0.18.10)*. One pass over the
+  decoded audio gives energy, the three band shares, the spectral
+  centroid, the onset rate, how periodic the song is, and a chroma;
+  the key comes from the chroma by Krumhansl–Schmuckler. Every field
+  has an algorithm, a range and a meaning in
+  [`docs/audio/features.md`](audio/features.md), and every run is
+  logged with its version so a better estimator can tell which songs
+  the old one measured. Free at import (already decoded for the
+  chart), ~0.5 s a song on demand, one song at a time in the game.
+  Danceability and valence stay absent: no model here determines
+  either.
+  ⚠️⚠️ **Two defects, both found by measuring rather than by
+  reading.** The chroma summed every FFT bin into the class it
+  rounded to — bins are linear, pitch classes are not — so broadband
+  content fell into a FIXED pattern: white noise came back with a
+  1.9× spread and **135 of 171 songs landed in four black-key
+  tonalities**, which is not what a pop library looks like. One
+  window per pitch and the MEAN inside it fixed it; the same library
+  now reads G major (32), A minor (24), C major (18) across 18 keys.
+  And the margin was `(best − second) / best`, which calls two
+  equally useless fits 0.15 — noise was read as A minor. It is the
+  plain difference of two correlations now.
+  ⚠️ A third, found by raising the threshold after a first pass: the
+  code only ever WROTE a key, so 144 documents kept one the new bar
+  rejected. A measurement that cannot tell now takes the old guess
+  away.
+  **Honest accuracy:** the margin is 0.12, which keeps 27 songs. Of
+  the six whose key could be verified, **four are right** — Seven
+  Nation Army, Born to Run, Video Killed the Radio Star, In the
+  Shadows — and both failures are the dominant, a known weakness of
+  profile matching on a bass-heavy mix. A relative major and minor
+  share every note and cannot be separated by construction: *Nothing
+  Else Matters* comes back as G major with a margin of 0.008, the
+  estimator saying correctly that it cannot tell.
+  *Verified: 1659 tests (+14), gate green. The counter-check is a
+  test in its own right — noise must produce a flat chroma and no
+  key — because a measurement that reports something is believable
+  only once it has been shown to report nothing when there is
+  nothing.*
+- [ ] **M7b A labelled set for the key estimate.** Six songs is a
+  spot check, not a measurement. Without one there is no way to move
+  `KEY_MIN_MARGIN` on evidence, or to tell whether a change to the
+  chroma helped. *Verify: accuracy stated over a set somebody else
+  could check.*
 - [ ] **M8 The developer view.** One screen showing a song's whole
   document — why it is Deep House, when it was imported, which
   analyser said what, what is missing.

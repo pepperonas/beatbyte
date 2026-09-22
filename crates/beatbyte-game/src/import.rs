@@ -741,6 +741,9 @@ fn import_song(source: &Path, title: &str, artist: &str) -> Result<Option<String
     }
 
     let audio = beatbyte_audio::decode_file(&audio_dest).map_err(|e| e.to_string())?;
+    // Free here, and only here: the song is already decoded for the
+    // chart. Doing it later would mean decoding it a second time.
+    let features = beatbyte_audio::features::measure(audio.samples(), audio.sample_rate());
     #[allow(unused_mut)] // mutated only under `ml`
     let mut analysis = SpectralAnalyzer::default().analyze(&audio);
     // The local beat/downbeat model, when this build carries the
@@ -821,7 +824,7 @@ fn import_song(source: &Path, title: &str, artist: &str) -> Result<Option<String
     // missing it. No test reaches this fork — the import decodes
     // real audio — so it is closed by construction rather than
     // pinned.
-    write_document(&folder, &chart, &chart_path, &audio_dest, facts);
+    write_document(&folder, &chart, &chart_path, &audio_dest, facts, features);
     Ok(warning)
 }
 
@@ -842,6 +845,7 @@ fn write_document(
     chart_path: &Path,
     audio: &Path,
     loudness: Option<beatbyte_library::build::LoudnessFacts>,
+    features: Option<beatbyte_audio::features::SongFeatures>,
 ) {
     let Some(chart_name) = chart_path.file_name().and_then(|n| n.to_str()) else {
         return;
@@ -875,6 +879,7 @@ fn write_document(
         // Empty for anything that came from a video download, which
         // is every song in this library — and empty must stay empty.
         tags: Some(beatbyte_audio::read_tags(audio)),
+        features,
         source_kind: beatbyte_library::SourceKind::LocalFile,
     };
     let existing = beatbyte_library::store::read(folder);
@@ -1422,7 +1427,7 @@ mod document_tests {
         let chart_path = dir.join("chart.json");
         beatbyte_chart::save_chart_file(&chart_path, &chart()).expect("chart");
 
-        write_document(&dir, &chart(), &chart_path, &audio, None);
+        write_document(&dir, &chart(), &chart_path, &audio, None, None);
 
         let doc = beatbyte_library::store::read(&dir).expect("a document");
         assert!(doc.identity.song_id.as_str().starts_with("bb_"));
@@ -1448,12 +1453,12 @@ mod document_tests {
         std::fs::write(&audio, b"not really audio").expect("audio");
         let chart_path = dir.join("chart.json");
         beatbyte_chart::save_chart_file(&chart_path, &chart()).expect("chart");
-        write_document(&dir, &chart(), &chart_path, &audio, None);
+        write_document(&dir, &chart(), &chart_path, &audio, None, None);
         let first = beatbyte_library::store::read(&dir).expect("a document");
 
         let second_path = dir.join("chart.v2.json");
         beatbyte_chart::save_chart_file(&second_path, &chart()).expect("chart");
-        write_document(&dir, &chart(), &second_path, &audio, None);
+        write_document(&dir, &chart(), &second_path, &audio, None, None);
         let second = beatbyte_library::store::read(&dir).expect("a document");
 
         assert_eq!(second.identity.song_id, first.identity.song_id);

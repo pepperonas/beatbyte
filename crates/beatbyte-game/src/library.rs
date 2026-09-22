@@ -1483,6 +1483,7 @@ mod document_scan_tests {
             lyrics: LyricFacts::default(),
             content_hash: None,
             tags: None,
+            features: None,
             source_kind: SourceKind::LocalFile,
         };
         let mut built = document_for(&facts, None, SongId::from_parts(1, 1), document_written_ms);

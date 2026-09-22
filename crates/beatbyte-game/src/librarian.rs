@@ -1,17 +1,18 @@
 //! The quiet pass that fills in what a song's document still lacks.
 //!
 //! Some of what a document holds is expensive: the file fingerprint
-//! reads every byte, and on this library that is 2.4 GB. It cannot
-//! happen during a scan, and it must not happen at start-up — the
-//! player opened the game to play.
+//! reads every byte — 2.4 GB on this library — and the feature
+//! measurement decodes the song on top of that. Neither can happen
+//! during a scan, and neither may happen at start-up: the player
+//! opened the game to play.
 //!
 //! So it happens later, slowly, one song at a time, and never while
-//! anything the player asked for is running. A song is visited once:
-//! the question is "has this file been fingerprinted", not "is this
-//! document complete", because most of what a document lacks can
-//! never be filled — the files in this library carry no tags at all —
-//! and a worker chasing completeness would walk the whole library on
-//! every start for ever.
+//! anything the player asked for is running. A song is visited once
+//! per measurement version: the questions are "has this file been
+//! fingerprinted" and "has the current measurement run", not "is
+//! this document complete" — most of what a document lacks can never
+//! be filled (the files in this library carry no tags at all), so a
+//! worker chasing completeness would walk the library for ever.
 //!
 //! Nothing here is user-visible by design. It writes `song.json` and
 //! stops; the next scan reads what it wrote.
@@ -114,6 +115,7 @@ fn visit(dir: &Path) -> Option<String> {
         lyrics: beatbyte_library::folder::lyric_facts(&audio, &chart_path),
         content_hash: beatbyte_library::folder::fingerprint(&audio).map(|print| print.tagged()),
         tags: Some(beatbyte_audio::read_tags(&audio)),
+        features: beatbyte_library::folder::measure_features(&audio),
         source_kind: doc.source.kind,
     };
     let title = doc.identity.title.value.clone();
@@ -238,7 +240,7 @@ mod tests {
     }
 
     #[test]
-    fn only_songs_that_still_owe_a_fingerprint_are_queued() {
+    fn only_songs_that_still_owe_a_measurement_are_queued() {
         let dir = std::env::temp_dir().join(format!("bb-lbn-{}", std::process::id()));
         let (todo, done, bare) = (dir.join("todo"), dir.join("done"), dir.join("bare"));
         for folder in [&todo, &done, &bare] {
@@ -255,7 +257,16 @@ mod tests {
             1_000,
         );
         beatbyte_library::store::save(&todo, &doc).expect("writes");
+        // "Done" means BOTH expensive answers are in: the
+        // fingerprint and a feature run at the current version. A
+        // document with only the first still owes.
         doc.file.content_hash = Some("fnv1a64:0000000000000001:2".to_owned());
+        doc.analysis.push(beatbyte_library::doc::AnalysisRun {
+            stage: beatbyte_library::build::FEATURES_STAGE.to_owned(),
+            analyzer: "beatbyte-features".to_owned(),
+            version: beatbyte_audio::features::VERSION,
+            analyzed_at: 2_000,
+        });
         beatbyte_library::store::save(&done, &doc).expect("writes");
 
         let list = work_list(vec![todo.clone(), done, bare]);

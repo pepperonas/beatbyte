@@ -148,6 +148,17 @@ pub fn lyric_facts(audio: &Path, chart: &Path) -> crate::build::LyricFacts {
     facts
 }
 
+/// Measure a song's features by decoding it.
+///
+/// ⚠️ The expensive one. Decoding is most of the cost, so this
+/// belongs where the fingerprint belongs: a command the player ran,
+/// or one song at a time in the background. Never in a scan.
+#[must_use]
+pub fn measure_features(audio: &Path) -> Option<beatbyte_audio::features::SongFeatures> {
+    let data = beatbyte_audio::decode_file(audio).ok()?;
+    beatbyte_audio::features::measure(data.samples(), data.sample_rate())
+}
+
 /// One song, as the duplicate report sees it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SongPrint {

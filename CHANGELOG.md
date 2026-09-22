@@ -14,6 +14,45 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.10] - 2026-09-22
+
+### Added
+
+- **A song's document now carries what BeatByte can measure about the
+  music itself**: how much of the song is spent near its own ceiling,
+  the share of the spectrum in bass, middle and treble, its
+  brightness, its onset rate, how strongly one period stands out in
+  it, and — above a margin — an estimated key. Each one has an
+  algorithm, a range and a meaning written down in
+  `docs/audio/features.md`, and each is recorded with the version of
+  the measurement that produced it, so a better estimator can later
+  tell which songs the old one measured.
+- It costs nothing at import (the song is already decoded for
+  charting), about half a second a song on demand, and in the game it
+  happens one song at a time in the background.
+- Danceability and valence stay absent. There is no model here that
+  determines either, and a number that looks like an answer is worse
+  than a missing one.
+
+### Fixed
+
+- **The key estimate read the transform instead of the music.** The
+  chroma summed every FFT bin into the pitch class it rounded to; bins
+  are linearly spaced and pitch classes are not, so broadband content
+  fell into a fixed pattern — white noise came back with a 1.9× spread
+  across the twelve, and 135 of this library's 171 songs landed in
+  four black-key tonalities. It now takes the mean magnitude in one
+  window per pitch, and the same library reads G major, A minor, C
+  major, G minor across 18 keys.
+- **The confidence was scale-free in the wrong way.** `(best −
+  second) / best` calls two equally useless fits a margin of 0.15, and
+  white noise was read as A minor. It is the plain difference of two
+  correlations now, which is small when nothing fits.
+- **Raising the bar used to leave the old answers standing.** A
+  measurement that cannot tell now takes an earlier estimate away
+  instead of letting it sit beside the new silence. Your own key, if
+  you set one, is never touched.
+
 ## [0.18.9] - 2026-09-22
 
 ### Added

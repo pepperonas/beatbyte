@@ -27,6 +27,7 @@ pub mod clock;
 pub mod decode;
 pub mod demo;
 pub mod eval;
+pub mod features;
 pub mod listen;
 pub mod loudness;
 pub mod mark;

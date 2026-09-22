@@ -77,6 +77,7 @@ mod tests {
             lyrics: LyricFacts::default(),
             content_hash: None,
             tags: None,
+            features: None,
             source_kind: SourceKind::LocalFile,
         };
         (dir, facts)

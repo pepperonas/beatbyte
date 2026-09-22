@@ -315,6 +315,10 @@ fn migrate_folder(dir: &Path, now: u64, dry_run: bool) -> Option<Outcome> {
         // background.
         content_hash: beatbyte_library::folder::fingerprint(&audio).map(|print| print.tagged()),
         tags: Some(beatbyte_audio::read_tags(&audio)),
+        // ⚠️ Decodes the song. This is the slowest thing the command
+        // does by a wide margin, and it is why it is a command the
+        // user ran rather than anything the game does at start-up.
+        features: beatbyte_library::folder::measure_features(&audio),
         source_kind: SourceKind::LocalFile,
     };
 

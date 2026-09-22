@@ -116,13 +116,28 @@ pub fn status(doc: &SongDoc) -> Status {
 
 /// Whether the expensive pass still owes this song something.
 ///
-/// Exactly one question: has the file been fingerprinted? Everything
-/// else a background pass can fill is cheap enough to ride along, and
-/// nothing else terminates — a worker that chased a genre this
-/// library's files do not carry would never stop.
+/// Two questions, both of which an answer ENDS: has the file been
+/// fingerprinted, and has the current feature measurement run over
+/// it? Not "is this document complete" — most of what a document
+/// lacks can never be filled, so completeness never arrives and a
+/// worker chasing it would never stop.
+///
+/// The second question is versioned on purpose. When a better
+/// estimator ships, every song answers "no" again exactly once, and
+/// nothing has to be re-measured to work out which ones.
 #[must_use]
 pub fn needs_work(doc: &SongDoc) -> bool {
-    doc.file.content_hash.is_none()
+    doc.file.content_hash.is_none() || !features_are_current(doc)
+}
+
+/// Whether this document carries a feature run at the current
+/// version.
+#[must_use]
+pub fn features_are_current(doc: &SongDoc) -> bool {
+    doc.analysis.iter().any(|run| {
+        run.stage == crate::build::FEATURES_STAGE
+            && run.version == beatbyte_audio::features::VERSION
+    })
 }
 
 #[cfg(test)]
@@ -188,7 +203,18 @@ mod tests {
         let mut d = doc();
         assert!(needs_work(&d), "nothing has been fingerprinted yet");
         d.file.content_hash = Some("fnv1a64:0000000000000001:2".to_owned());
+        assert!(needs_work(&d), "the features have not been measured");
+        d.analysis.push(crate::doc::AnalysisRun {
+            stage: crate::build::FEATURES_STAGE.to_owned(),
+            analyzer: "beatbyte-features".to_owned(),
+            version: beatbyte_audio::features::VERSION,
+            analyzed_at: 2_000,
+        });
         assert!(!needs_work(&d));
+        // ⚠️ And a NEWER measurement makes it owe again, exactly
+        // once: that is what the version in the log is for.
+        d.analysis[0].version += 1;
+        assert!(needs_work(&d));
         assert!(
             !status(&d).missing().is_empty(),
             "and it is still far from complete, which is fine"

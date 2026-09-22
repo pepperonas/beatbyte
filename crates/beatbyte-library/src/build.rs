@@ -105,6 +105,10 @@ pub struct FolderFacts<'a> {
     /// it. `None` means "not measured", never "no fingerprint": a
     /// pass that does not compute one must not erase one.
     pub content_hash: Option<String>,
+    /// What one pass over the audio measured, when somebody has
+    /// paid for it. Like the fingerprint: absent means "not
+    /// measured", and a pass without it erases nothing.
+    pub features: Option<beatbyte_audio::features::SongFeatures>,
     /// What the audio file says about itself in its own tags.
     ///
     /// ⚠️ Empty is the normal case for a downloaded file — measured
@@ -233,6 +237,7 @@ pub fn document_for(
 
     apply_chart(&mut doc, facts);
     apply_tags(&mut doc, facts);
+    apply_features(&mut doc, facts, now);
     apply_file(&mut doc, facts);
     apply_lyrics(&mut doc, facts);
 
@@ -336,6 +341,93 @@ fn apply_chart(doc: &mut SongDoc, facts: &FolderFacts<'_>) {
         doc.lifecycle.chart_generated_at = Some(provenance.created_ms);
     }
 }
+
+/// The smallest margin at which a key is written down.
+///
+/// ⚠️ Set from the measured distribution over this library, not from
+/// taste — see `docs/audio/features.md`. Below it the two best
+/// candidates fitted about equally well, and the honest answer is no
+/// key rather than a coin toss wearing a name.
+pub const KEY_MIN_MARGIN: f32 = 0.12;
+
+/// What one pass over the audio measured.
+///
+/// Everything here is a measurement, so it is written as
+/// [`MetaSource::Analyzed`] and loses to the player's own hand. The
+/// run is logged with its version: when a better estimator ships,
+/// the document says which songs the old one measured without
+/// anything having to be re-measured to find out.
+fn apply_features(doc: &mut SongDoc, facts: &FolderFacts<'_>, now: Millis) {
+    let Some(measured) = facts.features else {
+        return;
+    };
+    let mut features = doc.features.clone().unwrap_or_default();
+    features.energy = Some(measured.energy);
+    features.bass_energy = Some(measured.bass);
+    features.mid_energy = Some(measured.mid);
+    features.high_energy = Some(measured.high);
+    features.spectral_centroid_hz = Some(measured.centroid_hz);
+    features.onset_density = Some(measured.onset_density);
+    features.beat_strength = Some(measured.beat_strength);
+    if doc.features.as_ref() != Some(&features) {
+        doc.features = Some(features);
+    }
+
+    // A key only when the estimate really distinguishes one — and
+    // ⚠️ when it does NOT, an older guess is TAKEN AWAY rather than
+    // left standing. A measurement that cannot tell is a statement
+    // about the song, and a document that keeps the previous
+    // estimator's answer beside the new one's silence is a document
+    // that quietly prefers the worse of the two. (Raising the margin
+    // after a first pass left 144 keys behind; that is how this was
+    // found.) The player's own key is never touched.
+    if !doc.is_overridden(field::KEY) {
+        let estimate = beatbyte_audio::features::estimate_key(&measured.chroma)
+            .filter(|estimate| estimate.margin >= KEY_MIN_MARGIN);
+        let wanted = estimate.map(|estimate| {
+            Sourced::analyzed(
+                crate::doc::Key {
+                    tonic: estimate.tonic,
+                    mode: if estimate.major {
+                        crate::doc::Mode::Major
+                    } else {
+                        crate::doc::Mode::Minor
+                    },
+                },
+                estimate.margin,
+            )
+        });
+        let ours = doc
+            .musical
+            .key
+            .as_ref()
+            .is_none_or(|held| held.source <= MetaSource::Analyzed);
+        if ours && doc.musical.key != wanted {
+            doc.musical.key = wanted;
+        }
+    }
+
+    let run = crate::doc::AnalysisRun {
+        stage: FEATURES_STAGE.to_owned(),
+        analyzer: "beatbyte-features".to_owned(),
+        version: beatbyte_audio::features::VERSION,
+        analyzed_at: now,
+    };
+    if let Some(held) = doc
+        .analysis
+        .iter_mut()
+        .find(|held| held.stage == FEATURES_STAGE)
+    {
+        if held.version != run.version || held.analyzer != run.analyzer {
+            *held = run;
+        }
+    } else {
+        doc.analysis.push(run);
+    }
+}
+
+/// The name this stage logs itself under.
+pub const FEATURES_STAGE: &str = "features";
 
 /// What the audio file says about itself.
 ///
@@ -575,6 +667,7 @@ mod tests {
             lyrics: LyricFacts::default(),
             content_hash: None,
             tags: None,
+            features: None,
             source_kind: SourceKind::LocalFile,
         }
     }
@@ -697,6 +790,117 @@ mod tests {
             language: Some("deu".to_owned()),
             ..beatbyte_audio::Tags::default()
         }
+    }
+
+    fn measured(chroma: [f32; 12]) -> beatbyte_audio::features::SongFeatures {
+        beatbyte_audio::features::SongFeatures {
+            energy: 0.5,
+            bass: 0.4,
+            mid: 0.4,
+            high: 0.2,
+            centroid_hz: 1_200.0,
+            onset_density: 3.0,
+            beat_strength: 0.6,
+            chroma,
+        }
+    }
+
+    /// A chroma shaped exactly like one key's profile — the clearest
+    /// signal the estimator can be handed.
+    fn clear_key() -> [f32; 12] {
+        let mut chroma = [0.0f32; 12];
+        for (i, slot) in chroma.iter_mut().enumerate() {
+            // C major's own profile, normalised.
+            slot_from(i, slot);
+        }
+        let sum: f32 = chroma.iter().sum();
+        for slot in &mut chroma {
+            *slot /= sum;
+        }
+        chroma
+    }
+
+    fn slot_from(i: usize, slot: &mut f32) {
+        const MAJOR: [f32; 12] = [
+            6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88,
+        ];
+        *slot = MAJOR[i];
+    }
+
+    #[test]
+    fn a_measurement_writes_the_features_and_logs_its_version() {
+        let chart = chart(vec![]);
+        let mut facts = facts(&chart);
+        facts.features = Some(measured(clear_key()));
+        let doc = document_for(&facts, None, SongId::from_parts(1, 1), 5_000).doc;
+        let features = doc.features.expect("measured");
+        assert_eq!(features.energy, Some(0.5));
+        assert_eq!(features.bass_energy, Some(0.4));
+        assert_eq!(features.onset_density, Some(3.0));
+        assert_eq!(features.beat_strength, Some(0.6));
+        // The version is the whole point of the log: it is what says
+        // which songs an older estimator measured.
+        let run = doc
+            .analysis
+            .iter()
+            .find(|run| run.stage == FEATURES_STAGE)
+            .expect("a logged run");
+        assert_eq!(run.version, beatbyte_audio::features::VERSION);
+    }
+
+    #[test]
+    fn a_measurement_that_cannot_tell_takes_the_old_guess_away() {
+        // ⚠️ Found by raising the margin after a first pass: 144
+        // documents kept a key the new threshold rejected, because
+        // the code only ever wrote one. A document that keeps the
+        // previous estimator's answer beside the new one's silence
+        // quietly prefers the worse of the two.
+        let chart = chart(vec![]);
+        let mut facts = facts(&chart);
+        facts.features = Some(measured(clear_key()));
+        let doc = document_for(&facts, None, SongId::from_parts(1, 1), 5_000).doc;
+        assert!(doc.musical.key.is_some(), "a clear profile gives a key");
+
+        facts.features = Some(measured([1.0 / 12.0; 12]));
+        let again = document_for(&facts, Some(doc), SongId::from_parts(2, 2), 6_000).doc;
+        assert_eq!(again.musical.key, None, "a flat chroma tells nothing");
+    }
+
+    #[test]
+    fn the_players_own_key_survives_a_measurement_that_disagrees() {
+        let chart = chart(vec![]);
+        let mut facts = facts(&chart);
+        facts.features = Some(measured(clear_key()));
+        let mut doc = document_for(&facts, None, SongId::from_parts(1, 1), 5_000).doc;
+        let mine = Sourced::by_user(crate::doc::Key {
+            tonic: 5,
+            mode: crate::doc::Mode::Minor,
+        });
+        doc.musical.key = Some(mine.clone());
+        doc.overrides.insert(field::KEY.to_owned());
+
+        facts.features = Some(measured([1.0 / 12.0; 12]));
+        let again = document_for(&facts, Some(doc), SongId::from_parts(2, 2), 6_000).doc;
+        assert_eq!(again.musical.key, Some(mine));
+    }
+
+    #[test]
+    fn a_key_the_player_deliberately_removed_stays_removed() {
+        // ⚠️ The case the source check alone does not cover, and a
+        // mutation probe found it: an emptied field has no source to
+        // outrank the analysis, so only the override list says the
+        // silence was the player's decision. Without it the next
+        // measurement writes back what they took out.
+        let chart = chart(vec![]);
+        let mut facts = facts(&chart);
+        facts.features = Some(measured([1.0 / 12.0; 12]));
+        let mut doc = document_for(&facts, None, SongId::from_parts(1, 1), 5_000).doc;
+        doc.musical.key = None;
+        doc.overrides.insert(field::KEY.to_owned());
+
+        facts.features = Some(measured(clear_key()));
+        let again = document_for(&facts, Some(doc), SongId::from_parts(2, 2), 6_000).doc;
+        assert_eq!(again.musical.key, None, "they took it out on purpose");
     }
 
     #[test]
