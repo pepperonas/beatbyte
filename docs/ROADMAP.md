@@ -151,7 +151,7 @@ that predates this work and that M5 ends rather than extends.
   *Verified: 1626 tests (+2), gate green. Two mutation probes — a
   re-import forgetting the song's id and arrival, and a document that
   does not name its chart — both seen to fail.*
-- [~] **M5 One identity for the user's own data** *(v0.18.5)*.
+- [x] **M5 One identity for the user's own data** *(v0.18.5)*.
   Shipped: the store carries `song_id` beside `chart_hash` (schema
   v3, nullable and staying so — a run whose song was deleted has no
   song, and an invented id would be worse than the gap), the game
@@ -179,8 +179,18 @@ that predates this work and that M5 ends rather than extends.
   song would diverge. A song with no document (a built-in) keeps the
   old key, because a record under a guessed id is worse than one
   under a name. File v3; every v2 file reads unchanged.
-  **Remaining:** `history.jsonl` is still written beside the store,
-  which is the last place one event is recorded twice.
+  **The one thing left open here is CLOSED rather than done**, and
+  the reason is worth writing down. The note used to read "`history.
+  jsonl` is still written beside the store, the last place one event
+  is recorded twice" — but ADR-0018 says plainly that the history is
+  "a derived cache, recomputable from the raw events", and CLAUDE.md
+  says "nothing reads the store back into the game". Achievements,
+  the statistics screen and the CSV export all read the history, so
+  making it derive FROM the store would break the rule the store
+  exists under. Two records for two purposes is the design, not a
+  defect: the store is raw and the game never reads it; the history
+  is the game's own summary. What would still be worth having is a
+  test that the two cannot DISAGREE — filed below.
   *Verified: 1614 tests (+7), gate green. Four mutation probes — the
   game recording no id, the matcher guessing at an ambiguous title,
   a lookup ignoring the id, and a stale name-keyed record left
@@ -264,6 +274,12 @@ that predates this work and that M5 ends rather than extends.
   key — because a measurement that reports something is believable
   only once it has been shown to report nothing when there is
   nothing.*
+- [ ] **M5b The summary and the raw record must agree.** They are
+  two records of one moment by design (see M5), written by two
+  writers. Nothing checks that the history's summary is what the
+  store's events would produce, so a bug in either is invisible.
+  *Verify: a played run's summary recomputed from its own events
+  matches the line the history wrote.*
 - [ ] **M7b A labelled set for the key estimate.** Six songs is a
   spot check, not a measurement. Without one there is no way to move
   `KEY_MIN_MARGIN` on evidence, or to tell whether a change to the
