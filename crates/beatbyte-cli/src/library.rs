@@ -393,6 +393,160 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
+/// Ask a music catalogue about the songs whose records are thin.
+///
+/// ⚠️ **The only thing in this tool that talks to a network**, and it
+/// happens because somebody typed it. A song is fully playable
+/// without ever running this; what it fills is the descriptive
+/// section, which on a library of downloads is otherwise empty —
+/// measured here, not one of 173 files carries a single tag.
+///
+/// What leaves the machine is an artist and a title. What comes back
+/// is a claim, recorded as [`beatbyte_library::MetaSource::External`]
+/// with the match's confidence and the catalogue's own identifier,
+/// so a later reader can tell it from something the file said.
+#[cfg(feature = "catalogue")]
+pub fn catalogue(root: &Path, dry_run: bool) -> ExitCode {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        eprintln!("cannot read {}", root.display());
+        return ExitCode::FAILURE;
+    };
+    let mut folders: Vec<PathBuf> = entries.flatten().map(|entry| entry.path()).collect();
+    folders.sort();
+    let mut client = beatbyte_catalogue::Client::new(env!("CARGO_PKG_VERSION"));
+    let (mut asked, mut found, mut written, mut skipped) = (0usize, 0usize, 0usize, 0usize);
+    let mut thin = 0usize;
+    for dir in folders {
+        let Some(doc) = store::read(&dir) else {
+            continue;
+        };
+        // A study twin is the same recording as its song; asking
+        // twice would spend a second of somebody's rate limit to
+        // learn the same thing.
+        if dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(beatbyte_chart::study::is_twin_folder)
+        {
+            continue;
+        }
+        // Only what is still thin. Something already known — from
+        // the file, or from the player — is never asked about.
+        if doc.identity.external.musicbrainz_recording.is_some() {
+            skipped += 1;
+            continue;
+        }
+        let (Some(artist), Some(duration)) = (doc.identity.artists.first(), doc.musical.duration_s)
+        else {
+            skipped += 1;
+            continue;
+        };
+        asked += 1;
+        let candidates = match client.search(artist, &doc.identity.title.value) {
+            Ok(candidates) => candidates,
+            Err(error) => {
+                eprintln!("{}: {error}", doc.identity.title.value);
+                continue;
+            }
+        };
+        let Some(matched) = beatbyte_catalogue::pick(Some(duration), &candidates) else {
+            continue;
+        };
+        found += 1;
+        // Say what WOULD be written, not merely that something
+        // matched: a dry run whose output cannot be judged is a dry
+        // run nobody can act on.
+        let release = beatbyte_catalogue::pick_release(&matched.recording.releases);
+        println!(
+            "{:>3} %  {:34.34}  {:30.30}  {}",
+            matched.confidence * 100.0,
+            doc.identity.title.value,
+            release.map_or("—", |release| release.title.as_str()),
+            release
+                .and_then(beatbyte_catalogue::release_year)
+                .map_or_else(|| "—".to_owned(), |year| year.to_string()),
+        );
+        if dry_run {
+            continue;
+        }
+        if matched.confidence < MIN_CONFIDENCE {
+            thin += 1;
+            continue;
+        }
+        let mut doc = doc;
+        let now = now_ms();
+        if apply_catalogue(&mut doc, &matched, now) {
+            doc.lifecycle.touch_metadata(now, true);
+            match store::save(&dir, &doc) {
+                Ok(()) => written += 1,
+                Err(error) => eprintln!("cannot write {}: {error}", dir.display()),
+            }
+        }
+    }
+    println!(
+        "asked about {asked} song(s): {found} matched, {thin} too thin to write, \
+         {written} written, {skipped} already known or unaskable"
+    );
+    ExitCode::SUCCESS
+}
+
+/// The confidence below which nothing is written down.
+///
+/// ⚠️ Measured, not chosen for roundness. Above this the match is an
+/// unlabelled recording whose length is within a second or two of
+/// ours — "Born to Run" lands at 99.7 % on the 1975 studio take. The
+/// fallback tier can never reach it (it is capped at
+/// [`beatbyte_catalogue::FALLBACK_CONFIDENCE`]), which is the point:
+/// a live take that happens to be the right length is not this song.
+#[cfg(feature = "catalogue")]
+pub const MIN_CONFIDENCE: f32 = 0.9;
+
+/// Write what the catalogue said into the document.
+///
+/// Returns whether anything changed.
+///
+/// ⚠️⚠️ **Only the identifier, and deliberately not the album or the
+/// year.** The search answer lists an arbitrary handful of the
+/// releases a recording appears on, and measured over this library
+/// that handful is usually a sampler: "All That She Wants" came back
+/// on *Dance DeLuxe*, "Life Is a Flower" on a 2023 singles
+/// collection, "Don't Stop Believin'" on *Kulthits*. Roughly three
+/// of eight were the real album. An identifier is a fact about which
+/// recording this is; an album taken from that list is a guess that
+/// would read as a fact. The full release list needs a second
+/// request per song (M9b).
+#[cfg(feature = "catalogue")]
+fn apply_catalogue(
+    doc: &mut beatbyte_library::doc::SongDoc,
+    matched: &beatbyte_catalogue::Match,
+    now: u64,
+) -> bool {
+    let before = doc.clone();
+    if doc.identity.external.musicbrainz_recording.as_deref() != Some(&matched.recording.id) {
+        doc.identity.external.musicbrainz_recording = Some(matched.recording.id.clone());
+    }
+    let run = beatbyte_library::doc::AnalysisRun {
+        stage: CATALOGUE_STAGE.to_owned(),
+        analyzer: "musicbrainz".to_owned(),
+        version: 1,
+        analyzed_at: now,
+    };
+    if let Some(held) = doc
+        .analysis
+        .iter_mut()
+        .find(|held| held.stage == CATALOGUE_STAGE)
+    {
+        *held = run;
+    } else {
+        doc.analysis.push(run);
+    }
+    *doc != before
+}
+
+/// The name the catalogue stage logs itself under.
+#[cfg(feature = "catalogue")]
+pub const CATALOGUE_STAGE: &str = "catalogue";
+
 #[cfg(test)]
 mod tests {
     use super::*;

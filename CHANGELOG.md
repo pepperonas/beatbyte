@@ -14,6 +14,34 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.12] - 2026-09-22
+
+### Added
+
+- **BeatByte can ask MusicBrainz which recording a song is** —
+  `beatbyte-cli library <root> --catalogue`, behind `--features
+  catalogue`. It is the only part of the tool that talks to a
+  network, it is off by default, and a song is fully playable without
+  it. What leaves the machine is an artist and a title; what comes
+  back is recorded as a claim, with the catalogue and the date in the
+  document's analysis log. One request every 1.1 seconds, a
+  descriptive User-Agent, a 503 waited out rather than treated as an
+  answer, and nothing asked twice.
+- Details, including everything below: `docs/audio/catalogue.md`.
+
+### Changed
+
+- **A catalogue now counts as a source that ESTIMATES**, so its
+  claims may carry a confidence. MusicBrainz states a fact about ITS
+  recording; what is uncertain is that its recording is ours. Asked
+  for David Bowie's "Heroes" it returns eight, all scored 100,
+  running from 0 to 393 seconds — the uncertainty belongs on the
+  field that choice produced.
+- The length rule and the query cleaning moved from the lyrics lookup
+  into the chart crate, because a third caller appeared and the
+  offline tool could not reach them where they were. Three copies of
+  a tolerance is three different tolerances a year from now.
+
 ## [0.18.11] - 2026-09-22
 
 ### Added

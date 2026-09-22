@@ -35,6 +35,7 @@
 //! assert_eq!(track.len(), 1);
 //! ```
 
+pub mod catalogue;
 pub mod context;
 pub mod convert;
 pub mod escalation;

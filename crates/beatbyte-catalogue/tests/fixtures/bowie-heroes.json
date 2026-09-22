@@ -1,0 +1,244 @@
+{
+ "count": 217,
+ "recordings": [
+  {
+   "id": "27243c32-983c-4d73-9db8-ea36a643136e",
+   "score": 100,
+   "title": "Heroes",
+   "length": 370480,
+   "artist-credit": [
+    {
+     "name": "David Bowie"
+    }
+   ],
+   "releases": [
+    {
+     "id": "27d85cb5-05ff-4351-821c-e78d294bc14a",
+     "title": "Stranger Things: Soundtrack from the Netflix Series, Season 5",
+     "status": "Official",
+     "release-group": {
+      "primary-type": "Album",
+      "secondary-types": [
+       "Soundtrack"
+      ]
+     }
+    },
+    {
+     "id": "ca6c875a-8fb5-4d79-92cd-917acad02f2f",
+     "title": "Stranger Things: Soundtrack from the Netflix Series, Season 5",
+     "date": "2026-01-30",
+     "country": "US",
+     "status": "Official",
+     "release-group": {
+      "primary-type": "Album",
+      "secondary-types": [
+       "Soundtrack"
+      ]
+     }
+    },
+    {
+     "id": "828bfb42-b006-428b-a17e-341d66fc4a93",
+     "title": "Stranger Things 5: (Soundtrack From the Netflix Series)",
+     "date": "2026-01-30",
+     "country": "XE",
+     "status": "Official",
+     "release-group": {
+      "primary-type": "Album",
+      "secondary-types": [
+       "Soundtrack"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "d30fce1b-152a-4bca-8121-e1615795d541",
+   "score": 100,
+   "title": "Heroes",
+   "length": 363204,
+   "disambiguation": "live, 1997‐01‐09: Madison Square Garden, New York, NY, USA",
+   "artist-credit": [
+    {
+     "name": "David Bowie"
+    }
+   ],
+   "releases": [
+    {
+     "id": "3cfc8ee3-2570-451a-bf77-9597f05536c0",
+     "title": "1997‐01‐09: Madison Square Garden, New York, NY, USA",
+     "status": "Bootleg",
+     "release-group": {
+      "primary-type": "Album",
+      "secondary-types": [
+       "Live"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "4dd76041-32a1-40f2-aca4-2ba8d072be89",
+   "score": 100,
+   "title": "“Heroes”",
+   "length": 272000,
+   "disambiguation": "live, 1997-11-07/09: Sydney Entertainment Centre, Sydney, Australia",
+   "artist-credit": [
+    {
+     "name": "David Bowie"
+    }
+   ],
+   "releases": [
+    {
+     "id": "48f59fd6-ea51-4654-b848-92f98a355d96",
+     "title": "Glass Spider",
+     "date": "2002",
+     "country": "BR",
+     "status": "Promotion",
+     "release-group": {
+      "primary-type": "Album",
+      "secondary-types": [
+       "Live"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "7f249edc-7544-45fe-8926-3e45cbde5e84",
+   "score": 100,
+   "title": "Heroes",
+   "length": 393267,
+   "artist-credit": [
+    {
+     "name": "David Bowie"
+    }
+   ],
+   "releases": [
+    {
+     "id": "71a42d3d-e070-4b78-95de-465f1c71b215",
+     "title": "Bridge School Festival Live, Part 1",
+     "status": "Bootleg",
+     "release-group": {
+      "primary-type": "Album",
+      "secondary-types": [
+       "Live"
+      ]
+     }
+    },
+    {
+     "id": "1ae058e6-8261-4a12-9b19-e367ce70669f",
+     "title": "1996‐10‐19/20: The Bridge School Festival, San Francisco, CA, USA",
+     "status": "Bootleg",
+     "release-group": {
+      "primary-type": "Album",
+      "secondary-types": [
+       "Live"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "471c0244-de78-4480-b6e9-b3fa3e0065cc",
+   "score": 100,
+   "title": "Heroes",
+   "disambiguation": "live, 2003-10-20: Palais Omnisports de Paris-Bercy, Paris, France",
+   "artist-credit": [
+    {
+     "name": "David Bowie"
+    }
+   ],
+   "releases": [
+    {
+     "id": "fa602f64-5f22-44e7-9791-6599c6e43ca9",
+     "title": "The Bercy’s First Reality",
+     "date": "",
+     "country": "FR",
+     "status": "Bootleg",
+     "release-group": {
+      "primary-type": "Album",
+      "secondary-types": [
+       "Live"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "f1c78698-8f92-40ed-bc2c-fb0a6f2464be",
+   "score": 100,
+   "title": "“Heroes”",
+   "length": 307000,
+   "disambiguation": "live, 1996-07-10: Chapiteau Espace, Fontveille, Monaco",
+   "artist-credit": [
+    {
+     "name": "David Bowie"
+    }
+   ],
+   "releases": [
+    {
+     "id": "a3bd8c74-65c0-42f4-8806-caa379b2ed5d",
+     "title": "Absolutely Outside: Starting Fires",
+     "status": "Bootleg",
+     "release-group": {
+      "primary-type": "Album",
+      "secondary-types": [
+       "Live"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "b93f1867-0a4e-41ee-8d11-d7a1fa0be3ce",
+   "score": 100,
+   "title": "Heroes",
+   "artist-credit": [
+    {
+     "name": "David Bowie"
+    }
+   ],
+   "releases": [
+    {
+     "id": "9821f2d7-3788-4192-989a-f1cdf5f68bf6",
+     "title": "Heroes in Concert (The Legendary Broadcast)",
+     "date": "2021-02-14",
+     "country": "XE",
+     "status": "Bootleg",
+     "release-group": {
+      "primary-type": "Album",
+      "secondary-types": [
+       "Live"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "d76ddcbe-9f78-4e7c-a4bb-32f1676f2e1f",
+   "score": 100,
+   "title": "Heroes",
+   "length": 210973,
+   "artist-credit": [
+    {
+     "name": "David Bowie"
+    }
+   ],
+   "releases": [
+    {
+     "id": "d08b65c6-5972-46d2-ad1b-4296ca5be4d1",
+     "title": "Mastermix Classic Cuts, Volume 129: Stag Night",
+     "date": "",
+     "country": "GB",
+     "status": "Official",
+     "release-group": {
+      "primary-type": "Album",
+      "secondary-types": [
+       "Compilation"
+      ]
+     }
+    }
+   ]
+  }
+ ]
+}

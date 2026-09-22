@@ -299,6 +299,13 @@ enum Command {
         /// its song's audio on purpose and is not a duplicate.
         #[arg(long)]
         duplicates: bool,
+        /// Ask MusicBrainz about the songs whose records are thin.
+        /// The only thing in this tool that talks to a network, at
+        /// one request a second, and it never overwrites what the
+        /// file said or what you edited. Needs `--features
+        /// catalogue`.
+        #[arg(long)]
+        catalogue: bool,
     },
     /// Write the musical context sidecar beside a chart: what the
     /// analysis says at each note, so a miss recorded later can be
@@ -660,11 +667,23 @@ fn main() -> ExitCode {
             backfill,
             store,
             duplicates,
-        } => match (index, backfill, duplicates) {
-            (_, _, true) => library::duplicates(&root),
-            (_, Some(db), _) => library::backfill(&db, store),
-            (Some(db), None, _) => library::index(&root, &db),
-            (None, None, _) => library::run(&root, dry_run),
+            catalogue,
+        } => match (index, backfill, duplicates, catalogue) {
+            #[cfg(feature = "catalogue")]
+            (_, _, _, true) => library::catalogue(&root, dry_run),
+            #[cfg(not(feature = "catalogue"))]
+            (_, _, _, true) => {
+                eprintln!(
+                    "this build has no catalogue: rebuild with `--features catalogue`.\n\
+                     It is off by default because it is the only part that talks to a \
+                     network, and a song is fully playable without it."
+                );
+                ExitCode::FAILURE
+            }
+            (_, _, true, _) => library::duplicates(&root),
+            (_, Some(db), _, _) => library::backfill(&db, store),
+            (Some(db), None, _, _) => library::index(&root, &db),
+            (None, None, _, _) => library::run(&root, dry_run),
         },
         Command::Context { path, all } => {
             if all {

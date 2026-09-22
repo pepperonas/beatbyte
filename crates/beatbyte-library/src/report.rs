@@ -157,6 +157,12 @@ pub fn describe(doc: &SongDoc) -> Vec<Section> {
         song.push(plain("disc", disc.to_string()));
     }
     song.push(plain("id", doc.identity.song_id.as_str().to_owned()));
+    // An external id is never the key to anything here — it is a
+    // claim by somebody else about which recording this is, and the
+    // catalogue run in History says who made it and when.
+    if let Some(mbid) = doc.identity.external.musicbrainz_recording.as_ref() {
+        song.push(plain("musicbrainz", mbid.clone()));
+    }
     push("Song", song);
 
     let mut about = Vec::new();
@@ -470,6 +476,22 @@ mod tests {
         assert!(
             gaps.rows.iter().all(|row| !row.value.is_empty()),
             "each gap says how much is known"
+        );
+    }
+
+    #[test]
+    fn a_catalogue_claim_is_shown_as_somebody_elses_id() {
+        let mut d = doc();
+        assert!(
+            !describe(&d)
+                .iter()
+                .any(|section| section.rows.iter().any(|row| row.label == "musicbrainz")),
+            "absent means no row, here as everywhere"
+        );
+        d.identity.external.musicbrainz_recording = Some("abc-123".to_owned());
+        assert_eq!(
+            row(&describe(&d), "Song", "musicbrainz").map(|r| r.value.as_str()),
+            Some("abc-123")
         );
     }
 

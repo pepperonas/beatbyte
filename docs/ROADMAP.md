@@ -296,10 +296,47 @@ that predates this work and that M5 ends rather than extends.
   *Verified: 1667 tests (+8), gate green, autopilot 504/504, and the
   screen photographed (`BEATBYTE_SHOT_STATE=songinfo`) rather than
   argued about — which is how both its layout defects were found.*
-- [ ] **M9 External enrichment, optional and encapsulated.**
-  MusicBrainz behind a feature and a setting, rate-limited, with the
-  source recorded. ⚠️ A song must stay fully playable with no network
-  at all.
+- [x] **M9 External enrichment, optional and encapsulated**
+  *(v0.18.12)*. `beatbyte-cli library <root> --catalogue`, behind
+  `--features catalogue`, in its own crate. The only part of the tool
+  that talks to a network; off by default; a song is fully playable
+  without it. One request every 1.1 s, a descriptive User-Agent, a
+  503 waited out rather than believed, nothing asked twice, and a
+  study twin never asked at all. Full write-up:
+  [`docs/audio/catalogue.md`](audio/catalogue.md).
+  ⚠️⚠️ **The catalogue's own score is worthless here, and that is
+  measured.** Asked for "Heroes" it returns eight recordings **all
+  scored 100**, from 0 to 393 seconds. Length decides instead, on the
+  house rule the lyrics lookup already had — which is why that rule
+  moved into the chart crate rather than being copied a third time.
+  ⚠️ **And length alone is not enough either.** The first twelve
+  answers for "Born to Run" are twelve live takes; the 4:31 is one of
+  ten unlabelled recordings among 2338. A soft penalty still picked a
+  live take that sat a second nearer, so the choice is made in TIERS:
+  unlabelled first, labelled only when nothing else fits, and a
+  fallback match's confidence is cut to 0.4 — below the bar for
+  writing anything.
+  ⚠️⚠️ **Only the identifier is written. Not the album, not the
+  year.** The release list in a search answer is an arbitrary handful
+  and is usually a sampler: *Dance DeLuxe* for "All That She Wants",
+  *Kulthits* for "Don't Stop Believin'", a 2023 singles collection
+  for "Life Is a Flower". Roughly three of eight were the real album.
+  An identifier is a fact about which recording this is; an album
+  from that list is a guess that would read as a fact.
+  **Result: 86 songs asked, 67 matched, 16 too thin, 52 given an
+  identifier**, each with a `catalogue` run in its analysis log.
+  *Verified: 1683 tests (+16), gate green, against a recorded real
+  response and a live run over the whole library.*
+- [ ] **M9b The album, properly.** The release list a search returns
+  is not the recording's; getting the real first release needs a
+  second request per match (`inc=releases+release-groups`) and a
+  rule that prefers the earliest official album. Until then the
+  descriptive section stays empty rather than wrong.
+  *Verify: the album written for ten known songs is the album.*
+- [ ] **M9c A setting for the catalogue in the game.** The lookup
+  exists only in the offline tool today, which is why there is
+  nothing to switch on yet. The moment the game can ask, it needs
+  the switch the plan asked for — off by default, and off is off.
 
 ## The star-power impact (2026-09-20, v0.17.20)
 

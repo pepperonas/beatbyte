@@ -9,7 +9,7 @@ file wins over habit; the roadmap wins over improvisation.
 
 **BeatByte** — an original five-lane rhythm game in **Rust + Bevy
 0.19** (repo `pepperonas/beatbyte`, MIT, © 2026 Martin Pfeffer, public).
-A Cargo workspace of eleven crates plus a thin launcher (map below);
+A Cargo workspace of twelve crates plus a thin launcher (map below);
 all logic lives in the crates. UI language is English; the game is
 fully keyboard/gamepad driven.
 
@@ -42,11 +42,26 @@ that may touch Bevy (the full layering and its invariants:
   game records through, the analytics that read it, and the import of
   the older per-session JSONL files. Engine-free; chart identity
   enters as a hash string.
-- **`beatbyte-library`** (core, chart) — song metadata: the portable
-  `song.json` a song FOLDER carries (ADR-0019), the stable `SongId`,
-  the source/override rules a refresh obeys, and the timestamp
-  semantics, plus `build` (a document from a folder's facts,
-  pure) and `store` (the one file it writes). No SQL, no network.
+- **`beatbyte-library`** (core, chart, audio) — song metadata: the
+  portable `song.json` a song FOLDER carries (ADR-0019), the stable
+  `SongId`, the source/override rules a refresh obeys, and the
+  timestamp semantics, plus `build` (a document from a folder's
+  facts, pure), `store` (the one file it writes), `index` (the
+  queryable projection), `report` (the document as lines a screen
+  can draw), `completeness` (what is missing, and the one question
+  the background worker asks) and `folder` (what a song folder's
+  files are, the content fingerprint, duplicate detection). No
+  network.
+- **`beatbyte-catalogue`** (chart) — asking MusicBrainz which
+  recording a song is. **Optional and encapsulated**: behind the
+  `catalogue` feature, the only part of the offline tool that talks
+  to a network, and a song is fully playable without it. Everything
+  that decides is pure and pinned against a recorded real response;
+  only its `Client` touches the network, and the rate limit lives
+  inside it. ⚠️ The catalogue's own score is worthless here — eight
+  recordings of "Heroes", all scored 100, 0 to 393 seconds — so
+  length decides and unlabelled recordings are a TIER above labelled
+  ones. See `docs/audio/catalogue.md`.
 - **`beatbyte-game`** (everything above) — the only Bevy crate:
   screens, HUD, 3D stage, input routing, library, settings, harnesses.
 - **`beatbyte-cli`** (all but game and editor) — the offline tool.

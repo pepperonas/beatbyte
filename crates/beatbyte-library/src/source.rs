@@ -59,7 +59,10 @@ impl MetaSource {
     /// for it would make the field meaningless where it matters.
     #[must_use]
     pub fn estimates(self) -> bool {
-        matches!(self, MetaSource::Analyzed | MetaSource::Inferred)
+        matches!(
+            self,
+            MetaSource::Analyzed | MetaSource::Inferred | MetaSource::External
+        )
     }
 }
 
@@ -93,10 +96,28 @@ impl<T> Sourced<T> {
     /// rather than stored: a nonsense number reads as a real one.
     #[must_use]
     pub fn analyzed(value: T, confidence: f32) -> Sourced<T> {
+        Sourced::estimated(value, MetaSource::Analyzed, confidence)
+    }
+
+    /// A value from a source that ESTIMATES, with how sure it is.
+    ///
+    /// The rule is structural rather than remembered: a source that
+    /// states a fact cannot carry a confidence through here at all.
+    ///
+    /// ⚠️ A catalogue counts as estimating, and that is a considered
+    /// change from the first version of this rule. MusicBrainz
+    /// states a fact about ITS recording; what is uncertain is that
+    /// its recording is ours — asked for David Bowie's "Heroes" it
+    /// returns eight, **all scored 100**, from 0 to 393 seconds. The
+    /// uncertainty belongs on the field that came out of that
+    /// choice, and hiding it would make a guess read as a fact.
+    #[must_use]
+    pub fn estimated(value: T, source: MetaSource, confidence: f32) -> Sourced<T> {
         Sourced {
             value,
-            source: MetaSource::Analyzed,
-            confidence: (0.0..=1.0).contains(&confidence).then_some(confidence),
+            source,
+            confidence: (source.estimates() && (0.0..=1.0).contains(&confidence))
+                .then_some(confidence),
         }
     }
 
@@ -204,15 +225,51 @@ mod tests {
 
     #[test]
     fn only_an_estimate_carries_a_confidence() {
-        let stated = Sourced::stated(2018u32, MetaSource::External);
+        // A value simply STATED never carries one, whoever states
+        // it: a tag that says 2018 is not 82 % sure of anything.
         assert_eq!(
-            stated.confidence, None,
-            "a catalogue year is not 82 % sure of anything"
+            Sourced::stated(2018u32, MetaSource::External).confidence,
+            None
         );
-        let analyzed = Sourced::analyzed("Deep House".to_owned(), 0.82);
-        assert_eq!(analyzed.confidence, Some(0.82));
+        assert_eq!(
+            Sourced::stated(2018u32, MetaSource::Embedded).confidence,
+            None
+        );
+        assert_eq!(
+            Sourced::analyzed("Deep House".to_owned(), 0.82).confidence,
+            Some(0.82)
+        );
+        // ⚠️ And the rule is structural: a source that does not
+        // estimate cannot smuggle a confidence through `estimated`
+        // either.
+        assert_eq!(
+            Sourced::estimated(2018u32, MetaSource::Embedded, 0.82).confidence,
+            None
+        );
         assert!(MetaSource::Analyzed.estimates() && MetaSource::Inferred.estimates());
         assert!(!MetaSource::Embedded.estimates() && !MetaSource::User.estimates());
+        assert!(!MetaSource::Source.estimates());
+    }
+
+    #[test]
+    fn a_catalogue_match_is_an_estimate_and_may_say_how_sure_it_is() {
+        // ⚠️ A considered change from the first version of this rule.
+        // MusicBrainz states a fact about ITS recording; what is
+        // uncertain is that its recording is ours — asked for David
+        // Bowie's "Heroes" it returns eight, all scored 100, running
+        // from 0 to 393 seconds. That uncertainty belongs on the
+        // field the choice produced, and hiding it would make a
+        // guess read as a fact.
+        assert!(MetaSource::External.estimates());
+        let year = Sourced::estimated(1977u32, MetaSource::External, 0.93);
+        assert_eq!(year.confidence, Some(0.93));
+        assert_eq!(year.source, MetaSource::External);
+        // …and the player still outranks it.
+        assert!(!may_replace(
+            Some(MetaSource::User),
+            MetaSource::External,
+            false
+        ));
     }
 
     #[test]
