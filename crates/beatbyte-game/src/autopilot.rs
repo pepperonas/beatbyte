@@ -310,6 +310,7 @@ pub fn shot_state(raw: &str) -> Option<AppState> {
         "players" | "roster" => Some(AppState::Players),
         "stats" | "statistics" => Some(AppState::Stats),
         "achievements" | "awards" => Some(AppState::Achievements),
+        "songinfo" | "info" | "document" => Some(AppState::SongInfo),
         _ => None,
     }
 }
@@ -333,6 +334,13 @@ fn enter_shot_state(
     mut view: ResMut<crate::song_select::BrowserView>,
     mut settings_cursor: ResMut<crate::settings_ui::SettingsCursor>,
     mut awards: ResMut<crate::achievements_ui::AchievementsView>,
+    // ⚠️ Optional: a system's parameters are validated BEFORE its
+    // body runs, so a plain `Res` here fails on every frame before
+    // boot inserts the library — the early return below never gets
+    // the chance to save it.
+    library: Option<Res<crate::library::SongLibrary>>,
+    info: Option<Res<crate::song_info::Showing>>,
+    mut commands: Commands,
     mut done: Local<bool>,
 ) {
     if *done || *state.get() != AppState::MainMenu {
@@ -372,6 +380,27 @@ fn enter_shot_state(
     if let Ok(raw) = std::env::var("BEATBYTE_SHOT_SEARCH") {
         view.searching = true;
         view.filter = raw.to_lowercase();
+    }
+    // The document screen is the one that cannot be entered cold:
+    // the browser hands it what to show. For a photograph, hand it
+    // the first song in the library that HAS a document — an empty
+    // panel would be a picture of nothing.
+    if target.0 == AppState::SongInfo && info.is_none() {
+        match library
+            .iter()
+            .flat_map(|library| library.entries.iter())
+            .filter_map(|entry| match &entry.source {
+                crate::library::SongSource::File { chart_path, .. } => chart_path.parent(),
+                crate::library::SongSource::Builtin(_) => None,
+            })
+            .find_map(crate::song_info::Showing::read)
+        {
+            Some(showing) => commands.insert_resource(showing),
+            None => {
+                error!("BEATBYTE_SHOT_STATE=songinfo: no song here has a document yet");
+                return;
+            }
+        }
     }
     next.set(target.0);
 }
@@ -560,6 +589,7 @@ fn autopilot_screenshots(
         AppState::Players => Some("players"),
         AppState::Stats => Some("stats"),
         AppState::Achievements => Some("achievements"),
+        AppState::SongInfo => Some("songinfo"),
         _ => None,
     };
     if let Some(name) = moment

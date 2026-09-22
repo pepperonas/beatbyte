@@ -824,7 +824,7 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
             crate::prompts::device_footer(
                 parent,
                 font,
-                "UP/DOWN song  LEFT/RIGHT difficulty  S sort  F search  ENTER rock  D add  L lyrics  K align  G redesign  T taste test  Q queue MC set  P play set  E edit  DEL delete (Y confirms)  ESC back",
+                "UP/DOWN song  LEFT/RIGHT difficulty  S sort  F search  ENTER rock  I info  D add  L lyrics  K align  G redesign  T taste test  Q queue MC set  P play set  E edit  DEL delete (Y confirms)  ESC back",
                 "D-PAD song and difficulty  SOUTH rock  EAST back",
             );
             ui_kit::back_button(parent, font, "MAIN MENU");
@@ -1386,6 +1386,24 @@ fn browser_input(
         match crate::editor_ui::open_editor(&mut commands, chart_path, audio_path, selected.0) {
             Ok(()) => next_state.set(AppState::Editor),
             Err(reason) => error!("cannot edit \"{}\": {reason}", entry.title),
+        }
+    }
+    // I shows everything the song's document says — why it is Deep
+    // House, when it arrived, which analyser said what. A built-in
+    // has no folder and so no document; a folder that has never been
+    // migrated has none yet either, and in both cases the key does
+    // nothing rather than opening an empty panel.
+    if !searching
+        && keys.just_pressed(KeyCode::KeyI)
+        && let crate::library::SongSource::File { chart_path, .. } = &entry.source
+        && let Some(folder) = chart_path.parent()
+    {
+        match crate::song_info::Showing::read(folder) {
+            Some(showing) => {
+                commands.insert_resource(showing);
+                next_state.set(AppState::SongInfo);
+            }
+            None => info!("\"{}\" has no document yet", entry.title),
         }
     }
     // L looks the highlighted song's karaoke lyrics up in lrclib's

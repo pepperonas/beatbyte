@@ -24,6 +24,8 @@ pub enum AppState {
     Achievements,
     /// The song browser.
     SongSelect,
+    /// Everything one song's document says.
+    SongInfo,
     /// The settings screen.
     Settings,
     /// The controls remapping screen.

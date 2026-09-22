@@ -1245,6 +1245,13 @@ mod store_tests {
                 .resource_mut::<NextState<AppState>>()
                 .set(AppState::MainMenu);
             app.update();
+            // ⚠️ Release the store before reading it back. The writer
+            // runs on its own thread behind a bounded queue, and
+            // `flush` only ASKS it to commit — dropping the handle is
+            // what joins the worker. Without this line the drill
+            // passes on a quiet machine and loses the race under a
+            // full workspace run, which is exactly how it was found.
+            app.world_mut().remove_resource::<TelemetryStore>();
 
             let store = beatbyte_telemetry::Store::open(&path).expect("reopens");
             let sessions = store.sessions(1).expect("reads");

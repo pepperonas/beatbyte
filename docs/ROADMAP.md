@@ -269,9 +269,33 @@ that predates this work and that M5 ends rather than extends.
   `KEY_MIN_MARGIN` on evidence, or to tell whether a change to the
   chroma helped. *Verify: accuracy stated over a set somebody else
   could check.*
-- [ ] **M8 The developer view.** One screen showing a song's whole
-  document — why it is Deep House, when it was imported, which
-  analyser said what, what is missing.
+- [x] **M8 The developer view** *(v0.18.11)*. `I` in the browser opens
+  a song's whole document: who it is and where each claim came from,
+  what has been measured and by which analyser at which version, its
+  chart per difficulty, and — once, at the end — which areas are
+  still unknown. The substance is a pure function over the document
+  (`beatbyte_library::report`), tested without a window; the screen
+  turns sections into nodes and does nothing else, because a screen
+  that decided what to show would be a second place for the rules.
+  ⚠️ **An absent field produces no row.** Not "Unknown", not a dash:
+  the document exists to keep missing and known apart, and a view
+  that draws them the same undoes it. A section with nothing in it is
+  not drawn either.
+  Two things the picture found that no test would have: the kit's row
+  spreads its children apart, so a row WITH a provenance note put its
+  value in the middle while one without put it at the right edge —
+  the same column reading as two columns down the page; and
+  `enter_shot_state` needed `Option<Res<SongLibrary>>`, because a
+  system's parameters are validated BEFORE its body runs and the
+  early return never got the chance to save it.
+  ⚠️ A flake caught in passing and fixed: one telemetry drill read
+  the store back without releasing it first, so it passed alone and
+  lost the race under a full workspace run — the writer commits on
+  its own thread, `flush` only asks it to, and dropping the handle
+  is what waits.
+  *Verified: 1667 tests (+8), gate green, autopilot 504/504, and the
+  screen photographed (`BEATBYTE_SHOT_STATE=songinfo`) rather than
+  argued about — which is how both its layout defects were found.*
 - [ ] **M9 External enrichment, optional and encapsulated.**
   MusicBrainz behind a feature and a setting, rate-limited, with the
   source recorded. ⚠️ A song must stay fully playable with no network

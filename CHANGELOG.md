@@ -14,6 +14,28 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.11] - 2026-09-22
+
+### Added
+
+- **`I` in the song browser shows everything a song's document says**:
+  why it is Deep House (and whether that came from the file, the
+  download or you), when it arrived, what has been measured about it
+  and by which analyser at which version, what its chart holds per
+  difficulty — and, said once at the end rather than as a wall of
+  empty labels, which areas are still unknown.
+- An absent field produces **no row at all**. Not "Unknown", not a
+  dash. The whole point of the document is that missing and known are
+  different things, and a view that draws them the same undoes it.
+- `BEATBYTE_SHOT_STATE=songinfo` photographs the screen.
+
+### Fixed
+
+- A telemetry drill read the store back without releasing it first,
+  so it passed on a quiet machine and lost the race under a full
+  workspace run. The writer commits on its own thread; `flush` only
+  asks it to, and dropping the handle is what waits for it.
+
 ## [0.18.10] - 2026-09-22
 
 ### Added

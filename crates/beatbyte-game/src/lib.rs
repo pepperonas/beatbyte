@@ -44,6 +44,7 @@ pub mod settings_ui;
 pub mod sfx;
 mod shapes;
 pub mod smart_lyrics;
+pub mod song_info;
 pub mod song_select;
 pub mod states;
 pub mod stats_ui;
@@ -240,6 +241,7 @@ pub fn run() -> AppExit {
         gameplay::fog::FogPlugin,
         chore::ChorePlugin,
         librarian::LibrarianPlugin,
+        song_info::SongInfoPlugin,
         study_twin::StudyTwinPlugin,
         players::PlayersPlugin,
         players_ui::PlayersUiPlugin,

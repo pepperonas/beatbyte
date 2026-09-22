@@ -51,6 +51,7 @@ pub mod fresh;
 pub mod id;
 pub mod index;
 pub mod lifecycle;
+pub mod report;
 pub mod source;
 pub mod store;
 
