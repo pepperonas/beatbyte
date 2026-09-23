@@ -100,19 +100,45 @@ pub struct ControlsUiPlugin;
 impl Plugin for ControlsUiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ControlsState>()
+            .init_resource::<ActionBarClicks>()
             .add_systems(OnEnter(AppState::Controls), spawn_controls)
             .add_systems(
                 Update,
                 (
-                    controls_input,
-                    refresh_controls,
-                    refresh_pad_tester,
-                    follow_bindings_cursor,
+                    paint_action_bar.before(controls_input),
+                    (
+                        controls_input,
+                        refresh_controls,
+                        refresh_pad_tester,
+                        follow_bindings_cursor,
+                    ),
                 )
                     .run_if(in_state(AppState::Controls)),
             )
             .add_systems(OnExit(AppState::Controls), (persist_map, despawn_controls));
     }
+}
+
+mod chip {
+    pub const RESET: u8 = 0;
+}
+
+#[derive(Resource, Default)]
+struct ActionBarClicks(Vec<u8>);
+
+fn paint_action_bar(
+    mut chips: Query<(
+        &ui_kit::ActionChip,
+        &ui_kit::ChipEnabled,
+        &Interaction,
+        &mut BackgroundColor,
+        &mut BorderColor,
+        &Children,
+    )>,
+    mut labels: Query<&mut TextColor>,
+    mut clicks: ResMut<ActionBarClicks>,
+) {
+    clicks.0 = ui_kit::read_chips(&mut chips, &mut labels);
 }
 
 #[derive(Component)]
@@ -142,6 +168,15 @@ fn spawn_controls(mut commands: Commands, font: Res<UiFont>, mut state: ResMut<C
         .spawn((ControlsScreen, ui_kit::screen_root()))
         .with_children(|parent| {
             ui_kit::header(parent, &font, "CONTROLS", "every action, on any device");
+            ui_kit::action_bar(
+                parent,
+                &font,
+                &[ui_kit::ChipSpec {
+                    id: chip::RESET,
+                    label: "Reset defaults",
+                    enabled: true,
+                }],
+            );
             // Fifteen rows outgrow the safe area (the screenshot that
             // proved it clipped the title AND the footer), so the list
             // scrolls like the song browser and the cursor drags the
@@ -301,6 +336,7 @@ fn controls_input(
     mouse: Res<ButtonInput<MouseButton>>,
     mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
     rows: Query<(&ActionRow, &Interaction), Changed<Interaction>>,
+    clicks: Res<ActionBarClicks>,
     mut state: ResMut<ControlsState>,
     mut map: ResMut<InputMap>,
     mut next_state: ResMut<NextState<AppState>>,
@@ -389,7 +425,7 @@ fn controls_input(
         state.pending = None;
         sounds.write(crate::sfx::UiSound::Confirm);
     }
-    if keys.just_pressed(KeyCode::Backspace) {
+    if keys.just_pressed(KeyCode::Backspace) || ui_kit::chip_hit(&clicks.0, chip::RESET) {
         actions[state.cursor].reset(&mut map);
         sounds.write(crate::sfx::UiSound::Toggle);
     }
@@ -446,7 +482,7 @@ fn refresh_controls(
     if let Ok(mut text) = hint.single_mut() {
         let idle = match *active {
             crate::prompts::ActiveDevice::Keyboard => {
-                "UP/DOWN choose  ENTER rebind  BACKSPACE reset  ESC back"
+                "UP/DOWN choose  ENTER rebind  Reset chip or BACKSPACE  ESC back"
             }
             crate::prompts::ActiveDevice::Gamepad => "D-PAD choose  SOUTH rebind  EAST back",
         };

@@ -357,6 +357,20 @@ empty-library CTA in the song browser.
 - [x] **Visible Back + full mouse on every menu** *(v0.18.13)*.
   *Verified: 1685 tests (+2), gate green.*
 
+- [x] **M10 Mouse secondary actions** *(ActionBar pass, v0.18.15)*.
+  Shared `ui_kit` chips for every footer accelerator (search, add,
+  stats, filters, pause quit, …) so a mouse-only player reaches the
+  same paths as the letter keys. Keys stay; typing stays keyboard;
+  destructive delete arms Confirm/Cancel chips. Plan:
+  `docs/ui/input-ux-plan.md` § Mouse secondary actions.
+  *Verified: 1694 tests (+7), gate green.*
+
+- [x] **Mouse wheel on every scroll panel** *(v0.18.16)*. Achievements
+  (and any other `scroll_panel` screen) move the list cursor with
+  the wheel the same way up/down do; a scan test refuses a scroll
+  panel without a wheel reader.
+  *Verified: 1695 tests (+1), gate green.*
+
 - [ ] **M9b The album, properly.** The release list a search returns
   is not the recording's; getting the real first release needs a
   second request per match (`inc=releases+release-groups`) and a

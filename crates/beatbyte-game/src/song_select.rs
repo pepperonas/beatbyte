@@ -490,6 +490,15 @@ pub fn starts_song(step: DeleteStep, may_start: bool) -> bool {
     !matches!(step, DeleteStep::Confirm) && may_start
 }
 
+/// Open the browser search field — F, `/`, or the Search chip.
+///
+/// Pure so a click-without-`F` path can be pinned the same way the
+/// letter key is.
+#[must_use]
+pub fn wants_open_search(key_f: bool, search_chip: bool, typed_slash: bool) -> bool {
+    key_f || search_chip || typed_slash
+}
+
 /// The status line's text for the current view state.
 fn status_text(view: &BrowserView) -> String {
     let direction = if view.flipped { " (reversed)" } else { "" };
@@ -592,8 +601,15 @@ impl Plugin for SongSelectPlugin {
             .init_resource::<crate::mc::McQueue>()
             .init_resource::<BrowserView>()
             .init_resource::<crate::preview::SongPreview>()
+            .init_resource::<ActionBarClicks>()
             .add_systems(Startup, load_browser_prefs)
             .add_systems(OnEnter(AppState::SongSelect), spawn_browser)
+            .add_systems(
+                Update,
+                paint_action_bar
+                    .before(browser_input)
+                    .run_if(in_state(AppState::SongSelect)),
+            )
             .add_systems(
                 Update,
                 (
@@ -619,6 +635,116 @@ impl Plugin for SongSelectPlugin {
                 (despawn_browser, crate::preview::stop_preview),
             );
     }
+}
+
+/// Screen-local ActionBar chip ids. Keys and chips share one path.
+mod chip {
+    pub const SEARCH: u8 = 0;
+    pub const ADD: u8 = 1;
+    pub const SORT: u8 = 2;
+    pub const LYRICS: u8 = 3;
+    pub const ALIGN: u8 = 4;
+    pub const REDESIGN: u8 = 5;
+    pub const TASTE: u8 = 6;
+    pub const QUEUE: u8 = 7;
+    pub const PLAY_SET: u8 = 8;
+    pub const EDIT: u8 = 9;
+    pub const DELETE: u8 = 10;
+    pub const CONFIRM: u8 = 11;
+    pub const CANCEL: u8 = 12;
+}
+
+/// Pressed ActionBar chip ids for this frame (filled by
+/// [`paint_action_bar`] before the input systems).
+#[derive(Resource, Default)]
+struct ActionBarClicks(Vec<u8>);
+
+/// The chips the browser always shows. Confirm/Cancel start disabled
+/// until a delete is armed; Play set until the queue has songs.
+fn browser_chips() -> [ui_kit::ChipSpec; 13] {
+    [
+        ui_kit::ChipSpec {
+            id: chip::SEARCH,
+            label: "Search",
+            enabled: true,
+        },
+        ui_kit::ChipSpec {
+            id: chip::ADD,
+            label: "Add",
+            enabled: true,
+        },
+        ui_kit::ChipSpec {
+            id: chip::SORT,
+            label: "Sort",
+            enabled: true,
+        },
+        ui_kit::ChipSpec {
+            id: chip::LYRICS,
+            label: "Lyrics",
+            enabled: true,
+        },
+        ui_kit::ChipSpec {
+            id: chip::ALIGN,
+            label: "Align",
+            enabled: true,
+        },
+        ui_kit::ChipSpec {
+            id: chip::REDESIGN,
+            label: "Redesign",
+            enabled: true,
+        },
+        ui_kit::ChipSpec {
+            id: chip::TASTE,
+            label: "Taste",
+            enabled: true,
+        },
+        ui_kit::ChipSpec {
+            id: chip::QUEUE,
+            label: "Queue",
+            enabled: true,
+        },
+        ui_kit::ChipSpec {
+            id: chip::PLAY_SET,
+            label: "Play set",
+            enabled: false,
+        },
+        ui_kit::ChipSpec {
+            id: chip::EDIT,
+            label: "Edit",
+            enabled: true,
+        },
+        ui_kit::ChipSpec {
+            id: chip::DELETE,
+            label: "Delete",
+            enabled: true,
+        },
+        ui_kit::ChipSpec {
+            id: chip::CONFIRM,
+            label: "Confirm",
+            enabled: false,
+        },
+        ui_kit::ChipSpec {
+            id: chip::CANCEL,
+            label: "Cancel",
+            enabled: false,
+        },
+    ]
+}
+
+/// Paint hover/disabled and publish which chips were pressed.
+fn paint_action_bar(
+    mut chips: Query<(
+        &ui_kit::ActionChip,
+        &ui_kit::ChipEnabled,
+        &Interaction,
+        &mut BackgroundColor,
+        &mut BorderColor,
+        &Children,
+    )>,
+    mut labels: Query<&mut TextColor>,
+    mut clicks: ResMut<ActionBarClicks>,
+) {
+    clicks.0 = ui_kit::read_chips(&mut chips, &mut labels);
 }
 
 #[derive(Component)]
@@ -756,6 +882,9 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
                         },
                     ));
                 });
+            // Secondary actions: letter keys stay; chips are the
+            // discoverable door for a mouse-only player.
+            ui_kit::action_bar(parent, font, &browser_chips());
             // Column captions, aligned with the row cells.
             parent
                 .spawn(Node {
@@ -861,7 +990,7 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
             crate::prompts::device_footer(
                 parent,
                 font,
-                "UP/DOWN song  LEFT/RIGHT difficulty  S sort  F search  ENTER rock  I info  D add  L lyrics  K align  G redesign  T taste test  Q queue MC set  P play set  E edit  DEL delete (Y confirms)  ESC back",
+                "UP/DOWN song  LEFT/RIGHT difficulty  ENTER rock  chips above  DEL asks, Y confirms  ESC back",
                 "D-PAD song and difficulty  SOUTH rock  EAST back",
             );
             ui_kit::back_button(parent, font, "MAIN MENU");
@@ -899,6 +1028,7 @@ fn search_sort_input(
     mut view: ResMut<BrowserView>,
     headers: Query<(&SortHeader, &Interaction), Changed<Interaction>>,
     button: Query<&Interaction, (With<SearchButton>, Changed<Interaction>)>,
+    clicks: Res<ActionBarClicks>,
     mut settings: ResMut<crate::config::Settings>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
@@ -933,7 +1063,11 @@ fn search_sort_input(
         // filter: the list stays narrowed, which is what was typed
         // for. The next Esc (in `browser_input`) or the button, now
         // reading CLEAR, empties it; the one after that goes back.
-        if keys.just_pressed(KeyCode::Escape) || button_pressed {
+        // Search chip while open closes the same way.
+        if keys.just_pressed(KeyCode::Escape)
+            || button_pressed
+            || ui_kit::chip_hit(&clicks.0, chip::SEARCH)
+        {
             info!("search: closed, filter kept");
             view.searching = false;
             sounds.write(crate::sfx::UiSound::Back);
@@ -951,23 +1085,29 @@ fn search_sort_input(
     // physical Slash KeyCode is a US-layout position: on QWERTZ that
     // key is "-", and "/" lives on Shift+7. The first wiring used the
     // KeyCode and search was simply unreachable from a German
-    // keyboard.
-    let mut open_search = keys.just_pressed(KeyCode::KeyF);
+    // keyboard. The Search chip is the mouse door (the SearchButton
+    // is only Close/Clear).
+    let mut typed_slash = false;
     for event in typed.read() {
         if event.state.is_pressed()
             && let bevy::input::keyboard::Key::Character(text) = &event.logical_key
             && text.as_str() == "/"
         {
-            open_search = true;
+            typed_slash = true;
         }
     }
+    let open_search = wants_open_search(
+        keys.just_pressed(KeyCode::KeyF),
+        ui_kit::chip_hit(&clicks.0, chip::SEARCH),
+        typed_slash,
+    );
     if open_search {
         info!("search: opened");
         view.searching = true;
         sounds.write(crate::sfx::UiSound::Confirm);
     }
     let mut sorted = false;
-    if keys.just_pressed(KeyCode::KeyS) {
+    if keys.just_pressed(KeyCode::KeyS) || ui_kit::chip_hit(&clicks.0, chip::SORT) {
         let next = view.sort.next();
         view.sort = next;
         view.flipped = false;
@@ -1026,6 +1166,15 @@ struct StartDeps<'w, 's> {
     info_button: Query<'w, 's, &'static Interaction, (With<InfoButton>, Changed<Interaction>)>,
     /// Empty-library hint → add-a-song prompt (same as `D`).
     empty_hint: Query<'w, 's, &'static Interaction, (With<EmptyHint>, Changed<Interaction>)>,
+    /// Enable / disable ActionBar chips (Play set, Edit, Confirm…).
+    chips: Query<
+        'w,
+        's,
+        (
+            &'static ui_kit::ActionChip,
+            &'static mut ui_kit::ChipEnabled,
+        ),
+    >,
     builtins: Res<'w, BuiltinSongs>,
     mc_queue: ResMut<'w, crate::mc::McQueue>,
     /// The in-flight lyrics lookup — bundled here because Bevy caps
@@ -1037,6 +1186,8 @@ struct StartDeps<'w, 's> {
     prompt: ResMut<'w, DownloadPrompt>,
     /// The one background job (`G` redesigns the highlighted chart).
     chore: ResMut<'w, crate::chore::Chore>,
+    /// ActionBar presses for this frame (from [`paint_action_bar`]).
+    clicks: Res<'w, ActionBarClicks>,
 }
 
 /// The folder a song's chart lives in, or `None` for a built-in.
@@ -1115,6 +1266,7 @@ impl DownloadPrompt {
 /// its own letter shortcuts while this field is open — otherwise
 /// typing a name would open the editor, queue a set and arm a delete
 /// on the way through.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI
 fn download_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut typed: MessageReader<bevy::input::keyboard::KeyboardInput>,
@@ -1122,6 +1274,7 @@ fn download_input(
     mut discovery: ResMut<crate::discover::Discovery>,
     mut status: ResMut<crate::import::ImportStatus>,
     settings: Res<crate::config::Settings>,
+    clicks: Res<ActionBarClicks>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
     if !prompt.open {
@@ -1141,7 +1294,11 @@ fn download_input(
         // principle, not as the demonstrated fix. A reader's cursor
         // is its own, so emptying it takes nothing from the other
         // systems that read the keyboard.
-        let opening = keys.just_pressed(KeyCode::KeyD) && !discovery.running();
+        //
+        // The Add chip is the mouse door; empty-library CTA opens
+        // the same prompt from `browser_input`.
+        let opening = (keys.just_pressed(KeyCode::KeyD) || ui_kit::chip_hit(&clicks.0, chip::ADD))
+            && !discovery.running();
         for _ in typed.read() {}
         if opening {
             prompt.open = true;
@@ -1267,6 +1424,7 @@ fn browser_input(
     // keys: typing a song name must not open the editor, queue a set
     // and arm a delete on the way through.
     let searching = view.searching || start.prompt.open;
+    let clicks = &start.clicks.0;
     let clicked_back = ui_kit::back_pressed(&mut start.back_button);
     let empty_clicked = start.empty_hint.iter().any(|i| *i == Interaction::Pressed);
     // Esc with a filter still narrowing the list CLEARS it first and
@@ -1287,6 +1445,7 @@ fn browser_input(
     let count = view.order.len();
     if count == 0 {
         // Empty library: the hint opens the add-a-song prompt.
+        sync_chip_enables(&mut start.chips, false, !start.mc_queue.0.is_empty(), false);
         if empty_clicked && library.entries.is_empty() && !searching {
             start.prompt.open = true;
             start.prompt.text.clear();
@@ -1374,11 +1533,14 @@ fn browser_input(
         delete_armed.0 = None;
     }
     let armed = delete_armed.0.is_some();
-    let yes = keys.just_pressed(KeyCode::KeyY);
-    let remove = keys.just_pressed(KeyCode::Backspace) || keys.just_pressed(KeyCode::Delete);
+    let yes = keys.just_pressed(KeyCode::KeyY) || ui_kit::chip_hit(clicks, chip::CONFIRM);
+    let remove = keys.just_pressed(KeyCode::Backspace)
+        || keys.just_pressed(KeyCode::Delete)
+        || ui_kit::chip_hit(clicks, chip::DELETE);
     let other = keys
         .get_just_pressed()
-        .any(|key| !matches!(key, KeyCode::Backspace | KeyCode::Delete | KeyCode::KeyY));
+        .any(|key| !matches!(key, KeyCode::Backspace | KeyCode::Delete | KeyCode::KeyY))
+        || ui_kit::chip_hit(clicks, chip::CANCEL);
     let step = if searching {
         // A field is taking keys: Backspace is text there, and a
         // question asked from a keystroke meant for a name is the
@@ -1406,7 +1568,7 @@ fn browser_input(
                 // question was about a song, not a row number.
                 *delete_armed = (here, 3.0);
                 status.0 = format!(
-                    "delete \"{title}\" and its files? press Y to confirm, anything else cancels"
+                    "delete \"{title}\" and its files? Confirm chip or Y, Cancel chip or anything else"
                 );
             }
         }
@@ -1454,7 +1616,7 @@ fn browser_input(
     // E opens the chart editor (file-based songs only — the demo is
     // generated, editing it would be lost on the next boot).
     if !searching
-        && keys.just_pressed(KeyCode::KeyE)
+        && (keys.just_pressed(KeyCode::KeyE) || ui_kit::chip_hit(clicks, chip::EDIT))
         && let crate::library::SongSource::File {
             chart_path,
             audio_path,
@@ -1490,7 +1652,10 @@ fn browser_input(
     // Shazam mode. Deliberately a key press, not something that
     // happens on its own: it is the one moment BeatByte talks to the
     // network, and only the artist and the title leave the machine.
-    if !searching && keys.just_pressed(KeyCode::KeyL) && start.lookup.task.is_none() {
+    if !searching
+        && (keys.just_pressed(KeyCode::KeyL) || ui_kit::chip_hit(clicks, chip::LYRICS))
+        && start.lookup.task.is_none()
+    {
         match &entry.source {
             SongSource::Builtin(_) => {
                 status.0 = "built-in songs ship with their own lyrics".to_owned();
@@ -1519,7 +1684,7 @@ fn browser_input(
     // with the model from the settings screen; K again cancels. Every
     // reason it cannot run is a line on the status row. (`A` would be
     // the natural key and is menu LEFT: it changes the difficulty.)
-    if !searching && keys.just_pressed(KeyCode::KeyK) {
+    if !searching && (keys.just_pressed(KeyCode::KeyK) || ui_kit::chip_hit(clicks, chip::ALIGN)) {
         if start.smart.is_aligning() {
             start.smart.cancel_align();
             status.0 = "cancelling the alignment...".to_owned();
@@ -1551,7 +1716,8 @@ fn browser_input(
     // overlay, and collected wherever the player has gone by the time
     // it finishes. A four-minute song takes the better part of a
     // minute, which is not a wait to hold a browser still for.
-    if !searching && keys.just_pressed(KeyCode::KeyG) {
+    if !searching && (keys.just_pressed(KeyCode::KeyG) || ui_kit::chip_hit(clicks, chip::REDESIGN))
+    {
         match chart_folder(&entry.source) {
             None => {
                 sounds.write(crate::sfx::UiSound::Error);
@@ -1579,7 +1745,7 @@ fn browser_input(
     // T hears the same half minute twice, on two chart versions, in
     // an order that is not told: the blind taste test. The verdict
     // and the rating land on the results screen like any other run's.
-    if !searching && keys.just_pressed(KeyCode::KeyT) {
+    if !searching && (keys.just_pressed(KeyCode::KeyT) || ui_kit::chip_hit(clicks, chip::TASTE)) {
         match &entry.source {
             SongSource::Builtin(_) => {
                 sounds.write(crate::sfx::UiSound::Error);
@@ -1633,7 +1799,7 @@ fn browser_input(
     }
     // Q queues the highlighted song for an MC set (again removes it);
     // P plays the queued set as one continuous DJ performance.
-    if !searching && keys.just_pressed(KeyCode::KeyQ) {
+    if !searching && (keys.just_pressed(KeyCode::KeyQ) || ui_kit::chip_hit(clicks, chip::QUEUE)) {
         let song_index = view.order.get(cursor.0).copied();
         if let Some(song_index) = song_index {
             if let Some(at) = start.mc_queue.0.iter().position(|i| *i == song_index) {
@@ -1654,7 +1820,10 @@ fn browser_input(
             );
         }
     }
-    if !searching && keys.just_pressed(KeyCode::KeyP) && !start.mc_queue.0.is_empty() {
+    if !searching
+        && (keys.just_pressed(KeyCode::KeyP) || ui_kit::chip_hit(clicks, chip::PLAY_SET))
+        && !start.mc_queue.0.is_empty()
+    {
         let mut songs = Vec::new();
         for index in &start.mc_queue.0 {
             let Some(entry) = library.entries.get(*index) else {
@@ -1692,10 +1861,39 @@ fn browser_input(
             Err(reason) => status.0 = format!("cannot delete: {reason}"),
         }
     }
+    let is_file = matches!(
+        view.order
+            .get(cursor.0)
+            .and_then(|i| library.entries.get(*i))
+            .map(|e| &e.source),
+        Some(SongSource::File { .. })
+    );
+    sync_chip_enables(
+        &mut start.chips,
+        is_file,
+        !start.mc_queue.0.is_empty(),
+        delete_armed.0.is_some(),
+    );
     if leave {
         sounds.write(crate::sfx::UiSound::Back);
         next_state.set(AppState::MainMenu);
     }
+}
+
+/// Enable / disable context-sensitive chips from the current selection.
+fn sync_chip_enables(
+    chips: &mut Query<(&ui_kit::ActionChip, &mut ui_kit::ChipEnabled)>,
+    is_file: bool,
+    queue_nonempty: bool,
+    delete_armed: bool,
+) {
+    ui_kit::set_chip_enabled(chips, chip::PLAY_SET, queue_nonempty);
+    ui_kit::set_chip_enabled(chips, chip::EDIT, is_file);
+    ui_kit::set_chip_enabled(chips, chip::REDESIGN, is_file);
+    ui_kit::set_chip_enabled(chips, chip::TASTE, is_file);
+    ui_kit::set_chip_enabled(chips, chip::DELETE, is_file && !delete_armed);
+    ui_kit::set_chip_enabled(chips, chip::CONFIRM, delete_armed);
+    ui_kit::set_chip_enabled(chips, chip::CANCEL, delete_armed);
 }
 
 /// Fill the (already spawned) list with the view's rows. Rows are
@@ -2359,7 +2557,28 @@ fn follow_selection(
 
 #[cfg(test)]
 mod delete_tests {
-    use super::{DeleteStep, delete_step};
+    use super::{DeleteStep, delete_step, wants_open_search};
+
+    #[test]
+    fn the_search_chip_opens_search_without_f() {
+        // Mouse-only: ActionBar Search equals F / typed "/".
+        assert!(wants_open_search(false, true, false));
+        assert!(wants_open_search(true, false, false));
+        assert!(wants_open_search(false, false, true));
+        assert!(!wants_open_search(false, false, false));
+    }
+
+    #[test]
+    fn delete_chips_drive_the_same_rule_as_the_keys() {
+        use super::chip;
+        use crate::ui_kit::chip_hit;
+        let remove = chip_hit(&[chip::DELETE], chip::DELETE);
+        assert_eq!(delete_step(false, remove, false, false), DeleteStep::Arm);
+        let yes = chip_hit(&[chip::CONFIRM], chip::CONFIRM);
+        assert_eq!(delete_step(true, false, yes, false), DeleteStep::Confirm);
+        let cancel = chip_hit(&[chip::CANCEL], chip::CANCEL);
+        assert_eq!(delete_step(true, false, false, cancel), DeleteStep::Cancel);
+    }
 
     #[test]
     fn the_key_that_asks_to_delete_never_answers() {
@@ -3184,6 +3403,7 @@ mod download_prompt_tests {
             .init_resource::<DownloadPrompt>()
             .init_resource::<crate::discover::Discovery>()
             .init_resource::<crate::import::ImportStatus>()
+            .init_resource::<ActionBarClicks>()
             .insert_resource(crate::config::Settings::default())
             .add_systems(Update, download_input);
         app.world_mut().resource_mut::<DownloadPrompt>().open = true;
@@ -3363,6 +3583,7 @@ mod search_input_tests {
             .init_resource::<ButtonInput<KeyCode>>()
             .init_resource::<Time>()
             .init_resource::<BrowserView>()
+            .init_resource::<ActionBarClicks>()
             .insert_resource(crate::config::Settings::default())
             .add_systems(Update, search_sort_input);
         app.world_mut().resource_mut::<BrowserView>().searching = true;

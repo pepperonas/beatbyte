@@ -53,14 +53,41 @@ pub struct CalibrationPlugin;
 impl Plugin for CalibrationPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Calibration>()
+            .init_resource::<ActionBarClicks>()
             .add_systems(OnEnter(AppState::Calibration), start_calibration)
             .add_systems(
                 Update,
-                (calibration_input, refresh_readout, pulse_beat_dot)
+                (
+                    paint_action_bar.before(calibration_input),
+                    (calibration_input, refresh_readout, pulse_beat_dot),
+                )
                     .run_if(in_state(AppState::Calibration)),
             )
             .add_systems(OnExit(AppState::Calibration), stop_calibration);
     }
+}
+
+mod chip {
+    pub const TAP: u8 = 0;
+    pub const SAVE: u8 = 1;
+}
+
+#[derive(Resource, Default)]
+struct ActionBarClicks(Vec<u8>);
+
+fn paint_action_bar(
+    mut chips: Query<(
+        &ui_kit::ActionChip,
+        &ui_kit::ChipEnabled,
+        &Interaction,
+        &mut BackgroundColor,
+        &mut BorderColor,
+        &Children,
+    )>,
+    mut labels: Query<&mut TextColor>,
+    mut clicks: ResMut<ActionBarClicks>,
+) {
+    clicks.0 = ui_kit::read_chips(&mut chips, &mut labels);
 }
 
 #[derive(Component)]
@@ -116,14 +143,19 @@ fn start_calibration(
             parent
                 .spawn(ui_kit::panel_centered())
                 .with_children(|panel| {
+                    // Clickable beat target — same path as SPACE.
                     panel.spawn((
                         BeatDot,
+                        Button,
                         Node {
-                            width: px(26),
-                            height: px(26),
+                            width: px(64),
+                            height: px(64),
+                            border_radius: BorderRadius::all(px(32)),
+                            border: UiRect::all(px(2)),
                             ..default()
                         },
                         BackgroundColor(palette::dimmed(palette::BRAND, 0.3)),
+                        BorderColor::all(palette::BRAND.with_alpha(0.7)),
                     ));
                     panel.spawn((
                         Readout,
@@ -132,10 +164,26 @@ fn start_calibration(
                         TextColor(palette::TEXT),
                     ));
                 });
+            ui_kit::action_bar(
+                parent,
+                &font,
+                &[
+                    ui_kit::ChipSpec {
+                        id: chip::TAP,
+                        label: "Tap",
+                        enabled: true,
+                    },
+                    ui_kit::ChipSpec {
+                        id: chip::SAVE,
+                        label: "Save",
+                        enabled: true,
+                    },
+                ],
+            );
             crate::prompts::device_footer(
                 parent,
                 &font,
-                "SPACE taps  ENTER save  ESC cancel",
+                "SPACE or Tap chip  ENTER or Save chip  ESC cancel",
                 "STRUM or FRETS tap  START save  BACK cancel",
             );
             ui_kit::back_button(parent, &font, "MAIN MENU");
@@ -166,6 +214,8 @@ fn calibration_input(
     pads: Query<&bevy::input::gamepad::Gamepad>,
     map: Res<crate::controls::InputMap>,
     mouse: Res<ButtonInput<MouseButton>>,
+    clicks: Res<ActionBarClicks>,
+    beat: Query<&Interaction, (With<BeatDot>, Changed<Interaction>)>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
     mut calibration: ResMut<Calibration>,
@@ -189,7 +239,9 @@ fn calibration_input(
     // "leave with Start — NOT the green fret").
     let pad = |button| pads.iter().any(|pad| pad.just_pressed(button));
     use bevy::input::gamepad::GamepadButton;
-    if (keys.just_pressed(KeyCode::Space) || tapped(&sources, &map))
+    let beat_clicked = beat.iter().any(|i| *i == Interaction::Pressed);
+    let tap_chip = ui_kit::chip_hit(&clicks.0, chip::TAP);
+    if (keys.just_pressed(KeyCode::Space) || tapped(&sources, &map) || beat_clicked || tap_chip)
         && let Some(now) = game_clock.song_time(&time)
     {
         // Signed distance to the nearest click.
@@ -197,7 +249,9 @@ fn calibration_input(
         let offset = (position - position.round()) * CLICK_PERIOD_S;
         calibration.offsets.push(offset);
     }
-    if (keys.just_pressed(KeyCode::Enter) || pad(GamepadButton::Start))
+    if (keys.just_pressed(KeyCode::Enter)
+        || pad(GamepadButton::Start)
+        || ui_kit::chip_hit(&clicks.0, chip::SAVE))
         && let Some(median) = calibration.median_ms()
     {
         settings.latency_offset_ms = (median as f32).clamp(-250.0, 250.0);

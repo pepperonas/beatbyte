@@ -752,6 +752,156 @@ pub fn back_pressed<F: bevy::ecs::query::QueryFilter>(
     pressed
 }
 
+// ── Action bar (secondary actions reachable by mouse) ──────────────
+
+/// One chip in an [`action_bar`]. The `id` is local to the screen —
+/// keys and chips share one path via [`read_chips`] / [`chip_hit`].
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActionChip {
+    /// Screen-local identifier (constants live next to the screen).
+    pub id: u8,
+}
+
+/// Whether a chip accepts clicks. Disabled chips stay visible so the
+/// player sees the action exists (Play set with an empty queue, Edit
+/// on a built-in).
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChipEnabled(pub bool);
+
+/// Spec for one chip when spawning an [`action_bar`].
+#[derive(Debug, Clone, Copy)]
+pub struct ChipSpec {
+    /// Screen-local id matched by [`chip_hit`].
+    pub id: u8,
+    /// Short label drawn on the chip (Press Start 2P, [`SMALL`]).
+    pub label: &'static str,
+    /// `false` greys the chip and ignores presses.
+    pub enabled: bool,
+}
+
+/// A horizontal strip of clickable secondary actions.
+///
+/// Letter shortcuts stay; this is the discoverable door for the same
+/// paths. Sits under the header / above the list — never invents a
+/// font size or border of its own.
+pub fn action_bar(parent: &mut ChildSpawnerCommands, font: &UiFont, chips: &[ChipSpec]) {
+    parent
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            flex_wrap: FlexWrap::Wrap,
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            column_gap: px(6),
+            row_gap: px(6),
+            margin: UiRect::bottom(px(10)),
+            max_width: px(PANEL_WIDE),
+            ..default()
+        })
+        .with_children(|bar| {
+            for chip in chips {
+                spawn_chip(bar, font, *chip);
+            }
+        });
+}
+
+fn spawn_chip(parent: &mut ChildSpawnerCommands, font: &UiFont, chip: ChipSpec) {
+    let (fg, border, fill) = chip_colours(chip.enabled, false);
+    parent
+        .spawn((
+            ActionChip { id: chip.id },
+            ChipEnabled(chip.enabled),
+            Button,
+            Node {
+                padding: UiRect::axes(px(8), px(2)),
+                border: UiRect::all(px(PANEL_BORDER)),
+                border_radius: BorderRadius::all(px(4)),
+                ..default()
+            },
+            BackgroundColor(fill),
+            BorderColor::all(border),
+        ))
+        .with_children(|button| {
+            button.spawn((
+                Text::new(chip.label.to_owned()),
+                font.text(SMALL),
+                TextColor(fg),
+                TextLayout::default().with_no_wrap(),
+            ));
+        });
+}
+
+fn chip_colours(enabled: bool, hot: bool) -> (Color, Color, Color) {
+    if !enabled {
+        return (
+            palette::dimmed(palette::TEXT_DIM, 0.45),
+            palette::dimmed(palette::TEXT_DIM, 0.25),
+            palette::SURFACE.with_alpha(0.35),
+        );
+    }
+    if hot {
+        (
+            palette::BRAND,
+            palette::BRAND,
+            palette::BRAND.with_alpha(FILL_ALPHA),
+        )
+    } else {
+        (
+            palette::BRAND,
+            palette::BRAND.with_alpha(0.7),
+            palette::SURFACE.with_alpha(0.55),
+        )
+    }
+}
+
+/// Paint every chip for hover / disabled, and return the ids pressed
+/// this frame. Call once per system; then [`chip_hit`] for each action.
+///
+/// Disabled chips never appear in the result.
+pub fn read_chips(
+    chips: &mut Query<(
+        &ActionChip,
+        &ChipEnabled,
+        &Interaction,
+        &mut BackgroundColor,
+        &mut BorderColor,
+        &Children,
+    )>,
+    labels: &mut Query<&mut TextColor>,
+) -> Vec<u8> {
+    let mut pressed = Vec::new();
+    for (chip, enabled, interaction, mut background, mut border, children) in chips.iter_mut() {
+        let hot = enabled.0 && matches!(interaction, Interaction::Hovered | Interaction::Pressed);
+        let (fg, border_c, fill) = chip_colours(enabled.0, hot);
+        background.0 = fill;
+        *border = BorderColor::all(border_c);
+        for child in children.iter() {
+            if let Ok(mut colour) = labels.get_mut(child) {
+                colour.0 = fg;
+            }
+        }
+        if enabled.0 && *interaction == Interaction::Pressed {
+            pressed.push(chip.id);
+        }
+    }
+    pressed
+}
+
+/// Whether `id` appears in a [`read_chips`] result.
+#[must_use]
+pub fn chip_hit(pressed: &[u8], id: u8) -> bool {
+    pressed.contains(&id)
+}
+
+/// Re-enable / disable chips without rebuilding the bar (queue empty,
+/// song not editable, …).
+pub fn set_chip_enabled(chips: &mut Query<(&ActionChip, &mut ChipEnabled)>, id: u8, on: bool) {
+    for (chip, mut enabled) in chips.iter_mut() {
+        if chip.id == id {
+            enabled.0 = on;
+        }
+    }
+}
+
 /// The hint line at the bottom of a screen.
 ///
 /// Uniform wording matters as much as uniform styling: `KEY action`
@@ -893,6 +1043,56 @@ mod cursor_tests {
         assert_eq!(step_cursor(99, 5, 1), 4);
         assert_eq!(step_cursor(99, 5, -1), 4);
     }
+
+    /// A [`scroll_panel`] without a `MouseWheel` reader is a list the
+    /// keyboard can walk and the mouse cannot — exactly the gap the
+    /// achievements screen shipped with until the wheel was wired.
+    /// Every screen that grows a scroll panel must consume the wheel
+    /// (cursor step or free scroll); this scan says so.
+    #[test]
+    fn every_scroll_panel_screen_reads_the_wheel() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut offenders = Vec::new();
+        let mut stack = vec![root];
+        while let Some(dir) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().is_none_or(|e| e != "rs") {
+                    continue;
+                }
+                // The kit defines `scroll_panel` itself; it does not
+                // own a wheel reader.
+                if path.file_name().is_some_and(|n| n == "ui_kit.rs") {
+                    continue;
+                }
+                let Ok(text) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+                if !text.contains("scroll_panel(") {
+                    continue;
+                }
+                if !text.contains("MouseWheel") {
+                    offenders.push(
+                        path.file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .into_owned(),
+                    );
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "these spawn a scroll panel but never read the mouse wheel: {offenders:#?}"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -955,6 +1155,35 @@ mod tests {
         assert!(wants_leave(true, false, false));
         assert!(wants_leave(false, true, false));
         assert!(wants_leave(false, false, true));
+    }
+
+    #[test]
+    fn chip_hit_matches_pressed_ids() {
+        assert!(!chip_hit(&[], 1));
+        assert!(chip_hit(&[0, 2, 5], 2));
+        assert!(!chip_hit(&[0, 2, 5], 1));
+    }
+
+    #[test]
+    fn a_disabled_chip_looks_dimmer_than_an_idle_one() {
+        // Play set / Edit stay visible when they cannot run so the
+        // player sees the action exists; grey must read as "not now".
+        let (_, _, idle_fill) = chip_colours(true, false);
+        let (_, _, off_fill) = chip_colours(false, false);
+        assert!(
+            off_fill.alpha() < idle_fill.alpha(),
+            "disabled fill must be quieter than idle"
+        );
+        let (idle_fg, _, _) = chip_colours(true, false);
+        let (off_fg, _, _) = chip_colours(false, false);
+        let bright = |c: Color| {
+            let l = c.to_linear();
+            l.red.max(l.green).max(l.blue)
+        };
+        assert!(
+            bright(off_fg) < bright(idle_fg),
+            "disabled label must be dimmer than idle"
+        );
     }
 
     #[test]

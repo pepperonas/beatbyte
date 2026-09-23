@@ -60,10 +60,37 @@ pub struct InputTestPlugin;
 impl Plugin for InputTestPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<FlashTimers>()
+            .init_resource::<ActionBarClicks>()
             .add_systems(OnEnter(AppState::InputTest), spawn_screen)
-            .add_systems(Update, run_tester.run_if(in_state(AppState::InputTest)))
+            .add_systems(
+                Update,
+                (paint_action_bar.before(run_tester), run_tester)
+                    .run_if(in_state(AppState::InputTest)),
+            )
             .add_systems(OnExit(AppState::InputTest), despawn_screen);
     }
+}
+
+mod chip {
+    pub const TAP_MODE: u8 = 0;
+}
+
+#[derive(Resource, Default)]
+struct ActionBarClicks(Vec<u8>);
+
+fn paint_action_bar(
+    mut chips: Query<(
+        &ui_kit::ActionChip,
+        &ui_kit::ChipEnabled,
+        &Interaction,
+        &mut BackgroundColor,
+        &mut BorderColor,
+        &Children,
+    )>,
+    mut labels: Query<&mut TextColor>,
+    mut clicks: ResMut<ActionBarClicks>,
+) {
+    clicks.0 = ui_kit::read_chips(&mut chips, &mut labels);
 }
 
 fn spawn_screen(mut commands: Commands, font: Res<UiFont>, mut timers: ResMut<FlashTimers>) {
@@ -159,7 +186,21 @@ fn spawn_screen(mut commands: Commands, font: Res<UiFont>, mut timers: ResMut<Fl
                 font.text(ui_kit::TITLE),
                 TextColor(Color::NONE),
             ));
-            crate::prompts::device_footer(parent, &font, "T toggle tap  ESC back", "START back");
+            ui_kit::action_bar(
+                parent,
+                &font,
+                &[ui_kit::ChipSpec {
+                    id: chip::TAP_MODE,
+                    label: "Tap mode",
+                    enabled: true,
+                }],
+            );
+            crate::prompts::device_footer(
+                parent,
+                &font,
+                "Tap mode chip or T  ESC back",
+                "START back",
+            );
             ui_kit::back_button(parent, &font, "MAIN MENU");
         });
 }
@@ -177,6 +218,7 @@ fn run_tester(
     mut timers: ResMut<FlashTimers>,
     mut next_state: ResMut<NextState<AppState>>,
     mouse: Res<ButtonInput<MouseButton>>,
+    clicks: Res<ActionBarClicks>,
     mut lamps: Query<(&Lamp, &mut BackgroundColor), Without<ui_kit::BackButton>>,
     mut back: Query<
         (&Interaction, &mut BackgroundColor, &mut BorderColor),
@@ -207,7 +249,7 @@ fn run_tester(
             text.0 = wanted;
         }
     }
-    if keys.just_pressed(KeyCode::KeyT) {
+    if keys.just_pressed(KeyCode::KeyT) || ui_kit::chip_hit(&clicks.0, chip::TAP_MODE) {
         settings.tap_mode = !settings.tap_mode;
         sounds.write(crate::sfx::UiSound::Toggle);
     }
