@@ -14,6 +14,18 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.14] - 2026-09-23
+
+### Added
+
+- **Three hundred achievements.** The catalogue grows from 100 to 300
+  under ADR-0017: same derive-from-history evaluator, unlock times
+  only on disk. Eight new predicates (`AtFullSpeed`, `Solo`,
+  `WithFriend`, `MeanEarly`/`MeanLate`, `MinPhrases`, `MaxTrackS`,
+  `MinScore`) and a `SustainsHeld` career metric — still no new
+  `PlayEntry` fields. 34 are hidden. The overview adds a **T** tier
+  filter and shows earned/total on every category tab.
+
 ## [0.18.13] - 2026-09-23
 
 ### Changed

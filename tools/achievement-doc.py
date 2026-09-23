@@ -22,7 +22,7 @@ body = body.split("\n];", 1)[0]
 
 # Split on the top-level `Achievement {` blocks.
 blocks = re.findall(r"    Achievement \{(.*?)\n    \},", body, re.S)
-assert len(blocks) == 100, len(blocks)
+assert len(blocks) == 300, len(blocks)
 
 # Every field a Test / Metric / Facet reads, named as the log stores it.
 SOURCE = {
@@ -54,6 +54,14 @@ SOURCE = {
     "OnWeekday": "PlayEntry.started_ms",
     "FromFile": "PlayEntry.source",
     "AccuracyIsExactly": "RunPart.accuracy",
+    "AtFullSpeed": "PlayEntry.speed_percent",
+    "Solo": "PlayEntry.players",
+    "WithFriend": "PlayEntry.players",
+    "MeanEarly": "RunDetail.mean_offset_ms",
+    "MeanLate": "RunDetail.mean_offset_ms",
+    "MinPhrases": "RunDetail.phrases_completed",
+    "MaxTrackS": "PlayEntry.track_s",
+    "MinScore": "RunPart.score",
     "Runs": "PlayEntry (one per run)",
     "Finished_M": "PlayEntry.completed",
     "Seconds": "PlayEntry.played_s",
@@ -62,6 +70,7 @@ SOURCE = {
     "Score": "RunPart.score",
     "HypeActivations": "RunDetail.hype_activations",
     "Phrases": "RunDetail.phrases_completed",
+    "SustainsHeld": "RunDetail.sustains_held",
     "Song": "PlayEntry.title + artist",
     "Artist": "PlayEntry.artist",
     "Genre": "PlayEntry.genre",
@@ -115,11 +124,10 @@ out.append("definition. `apps/beatbyte/tests/docs_stay_true.rs` fails if this")
 out.append("file and that array ever disagree about which achievements exist —")
 out.append("so read this, change that, and run the script.")
 out.append("")
-out.append("**Every row names the field its rule actually reads.** Eight of those")
-out.append("fields were added to the play log for this feature (a ninth,")
-out.append("`speed_percent`, is recorded but read by no rule yet) and all are")
-out.append("optional: a run recorded before them reads as *not recorded*, never")
-out.append("as a zero. A rule cannot credit a run that cannot answer it.")
+out.append("**Every row names the field its rule actually reads.** Signals")
+out.append("added to the play log for this feature are all optional: a run")
+out.append("recorded before them reads as *not recorded*, never as a zero.")
+out.append("A rule cannot credit a run that cannot answer it.")
 out.append("")
 out.append("**Hidden rows are secret in the game, not here.** This file is the")
 out.append("engineering reference; the screen shows `? ? ?`, no description and")

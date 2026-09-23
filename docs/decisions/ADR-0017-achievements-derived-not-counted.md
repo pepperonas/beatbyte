@@ -1,9 +1,11 @@
 # ADR-0017 — Achievements are re-derived from the whole history, and only their dates are stored
 
 **Status: Accepted** (2026-09-15, the user's commission: an
-achievement system with exactly one hundred meaningful achievements,
-some of them secret, an overview of completion, extensible for future
-additions, and gamification that keeps a player engaged)
+achievement system with meaningful achievements, some of them secret,
+an overview of completion, extensible for future additions, and
+gamification that keeps a player engaged. Amended 2026-09-23: the
+catalogue grew from one hundred to three hundred under the same
+rules — derive from history, persist unlock times only.)
 
 ## Context
 
@@ -15,7 +17,7 @@ systems are usually built, not a surveyed fact — no save format was
 examined for this decision, and none needed to be.)
 
 This repository had already decided the same question once, for
-statistics (`beatbyte-core::stats`, 0.16.0): those are **pure
+statistics (`beatbyte_core::stats`, 0.16.0): those are **pure
 aggregation over the whole play log**, not incremental counters,
 explicitly so that a rule added later evaluates retroactively and
 needs no migration. The play log has been append-only since before
@@ -28,7 +30,7 @@ existing progress must not be lost or become retroactively wrong.*
 ## Decision
 
 **The catalogue is data and the evaluator is total.**
-`beatbyte-core::achievements::CATALOGUE` is one array of one hundred
+`beatbyte-core::achievements::CATALOGUE` is one array of three hundred
 `Achievement` values, each a title, a blurb and a `Rule` built from a
 small closed vocabulary (`Rule`, `Test`, `Metric`, `Facet`).
 `evaluate(&log, player)` re-derives every rule from the player's
@@ -45,8 +47,8 @@ keeps the earliest date.
 The date stored is **the start of the run that completed the rule**,
 found by walking the history forward until the rule first holds — not
 the moment the sweep ran. A catalogue added to after a year of play
-would otherwise stamp a hundred unlocks with today's date and tell
-the player nothing.
+would otherwise stamp every unlock with today's date and tell the
+player nothing.
 
 ## Alternatives considered
 
@@ -55,7 +57,7 @@ the player nothing.
 | **Incremental counters per player per achievement** | The usual shape, and the one the statistics module already rejected for the same reason. A rule added next year starts at zero for a player who earned it two years ago; a counter that drifts from the log has no way to be told it is wrong; and every catalogue change is a migration. Three costs, all avoided by re-deriving. |
 | **Store the computed progress alongside the date** | Would save a pass over the log — measured at 259 lines here, which is nothing. It would also make the file the authority on something the log already answers, which is exactly the drift the counters have. |
 | **Evaluate only the runs since the last sweep** | Correct for a monotone rule and wrong for the rest: "the same song three times in a row" can be true of a prefix and false of the whole, and "played on thirty consecutive days" needs every day. A partial evaluator would have to know which rules are monotone, which is a second vocabulary to keep in step with the first. |
-| **A scripting language for rules** | Maximum flexibility, and it would put untrusted-looking code in a save directory for a feature whose entire job is to be honest about what happened. The closed `Rule`/`Test` vocabulary covers all one hundred entries with fourteen variants. |
+| **A scripting language for rules** | Maximum flexibility, and it would put untrusted-looking code in a save directory for a feature whose entire job is to be honest about what happened. The closed `Rule`/`Test` vocabulary covers all three hundred entries with fourteen rule variants. |
 
 ## Consequences
 
@@ -70,7 +72,7 @@ because there is only one.
 
 **Costs.** Every sweep walks the whole log, and `earned_at` walks it
 once per earned achievement to find the date — O(runs × catalogue) in
-the worst case. At 259 runs and 100 achievements that is free and it
+the worst case. At 259 runs and 300 achievements that is still free and it
 runs three times a session (startup, after a song, opening the
 overview), never per frame. A history of tens of thousands of runs
 would want the dates cached; it is not close.
@@ -85,7 +87,7 @@ not credit a run that cannot answer.
 
 ## Verification
 
-Pure logic: 22 tests in `beatbyte-core`. Store and screen: 21 more in
+Pure logic: 22 tests in `beatbyte-core`. Store and screen: 23 more in
 `beatbyte-game`, including that a hidden achievement gives up neither
 its name, its description, nor its progress bar — checked on the
 screen as actually built, its `Text` nodes read back, because this

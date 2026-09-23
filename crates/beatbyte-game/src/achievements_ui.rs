@@ -1,10 +1,11 @@
 //! The achievements screen: what you have earned, and what is close.
 //!
 //! One scrolling list in the house idiom ([`crate::ui_kit`]), with
-//! three controls over it — a category to group by, a filter, and a
-//! sort. The arithmetic is [`beatbyte_core::achievements`]; this
-//! module is the arrangement, and holds no rule of its own except
-//! the one that makes a secret a secret:
+//! four controls over it — a category to group by, a tier to narrow
+//! by, a filter, and a sort. The arithmetic is
+//! [`beatbyte_core::achievements`]; this module is the arrangement,
+//! and holds no rule of its own except the one that makes a secret a
+//! secret:
 //!
 //! **A hidden achievement that is not earned reveals nothing** — not
 //! its name, not its description, and not its progress. A bar at
@@ -112,6 +113,8 @@ pub struct AchievementsView {
     pub row: usize,
     /// The category being shown; `None` is every category.
     pub group: Option<Category>,
+    /// The tier being shown; `None` is every tier.
+    pub tier: Option<Tier>,
     /// Which achievements are listed.
     pub show: Show,
     /// The order they are in.
@@ -134,8 +137,8 @@ impl AchievementsView {
         if next == at {
             // At either end the cursor clamps and the category does
             // not move. Resetting the row anyway would throw the
-            // player back to the top of a hundred rows for a press
-            // that changed nothing they can see.
+            // player back to the top of three hundred rows for a
+            // press that changed nothing they can see.
             return;
         }
         self.group = if next == 0 {
@@ -146,10 +149,29 @@ impl AchievementsView {
         self.row = 0;
     }
 
+    /// Cycle the tier filter: every tier, then Easy → Rare, wrapping
+    /// back to every. Pure — tested.
+    pub fn next_tier(&mut self) {
+        self.tier = match self.tier {
+            None => Some(Tier::Easy),
+            Some(Tier::Easy) => Some(Tier::Medium),
+            Some(Tier::Medium) => Some(Tier::Hard),
+            Some(Tier::Hard) => Some(Tier::Rare),
+            Some(Tier::Rare) => None,
+        };
+        self.row = 0;
+    }
+
     /// The heading for the current category.
     #[must_use]
     pub fn group_label(&self) -> &'static str {
         self.group.map_or("EVERYTHING", Category::label)
+    }
+
+    /// The word the footer prints for the tier filter.
+    #[must_use]
+    pub fn tier_label(&self) -> &'static str {
+        self.tier.map_or("ALL", Tier::label)
     }
 }
 
@@ -204,6 +226,7 @@ pub fn visible_rows(progress: &[Progress], unlocks: &Unlocks, view: &Achievement
             when_ms: unlocks.when(entry.id),
         })
         .filter(|row| view.group.is_none_or(|group| row.entry().category == group))
+        .filter(|row| view.tier.is_none_or(|tier| row.entry().tier == tier))
         .filter(|row| match view.show {
             Show::All => true,
             Show::Earned => row.earned(),
@@ -285,15 +308,40 @@ pub fn standing(earned: usize, hidden_found: usize) -> String {
     format!("{earned} OF {total}   {share:.0}%   {hidden_found} SECRETS FOUND")
 }
 
-/// The footer, which names the three controls and their state.
+/// The footer, which names the four controls and their state.
 /// Pure — tested.
 #[must_use]
-pub fn footer_hint(show: Show, sort: Sort) -> String {
+pub fn footer_hint(show: Show, sort: Sort, tier: Option<Tier>) -> String {
     format!(
-        "LEFT/RIGHT CATEGORY   F FILTER: {}   O ORDER: {}   ESC BACK",
+        "LEFT/RIGHT CATEGORY   T TIER: {}   F FILTER: {}   O ORDER: {}   ESC BACK",
+        tier.map_or("ALL", Tier::label),
         show.label(),
         sort.label()
     )
+}
+
+/// How many of a category's achievements are earned. Pure — tested.
+#[must_use]
+pub fn category_progress(category: Category, unlocks: &Unlocks) -> (usize, usize) {
+    let mut earned = 0;
+    let mut total = 0;
+    for entry in CATALOGUE {
+        if entry.category != category {
+            continue;
+        }
+        total += 1;
+        if unlocks.has(entry.id) {
+            earned += 1;
+        }
+    }
+    (earned, total)
+}
+
+/// Tab label with the standing inside that category. Pure — tested.
+#[must_use]
+pub fn category_tab_label(category: Category, unlocks: &Unlocks) -> String {
+    let (earned, total) = category_progress(category, unlocks);
+    format!("{} {earned}/{total}", category.label())
 }
 
 /// The colour a tier's bar wears. Reuses the judgment palette so the
@@ -314,15 +362,17 @@ struct AchievementsScreen;
 
 /// What the list currently on screen was built from.
 ///
-/// The category, the filter and the sort each change which rows
-/// exist, and a resource that changes without a rebuild is a control
-/// that does nothing. The cursor is deliberately NOT in here: a
-/// hundred-row list must not be thrown away and re-scrolled on every
-/// arrow key.
+/// The category, the tier, the filter and the sort each change which
+/// rows exist, and a resource that changes without a rebuild is a
+/// control that does nothing. The cursor is deliberately NOT in here:
+/// a three-hundred-row list must not be thrown away and re-scrolled
+/// on every arrow key.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 struct DrawnFrom {
     /// The category the rows were filtered to.
     group: Option<Category>,
+    /// The tier the rows were filtered to.
+    tier: Option<Tier>,
     /// The filter they were drawn under.
     show: Show,
     /// The order they were drawn in.
@@ -334,6 +384,7 @@ impl DrawnFrom {
     const fn of(view: &AchievementsView) -> DrawnFrom {
         DrawnFrom {
             group: view.group,
+            tier: view.tier,
             show: view.show,
             sort: view.sort,
         }
@@ -463,7 +514,7 @@ fn spawn_screen(
                 &format!("{} - ACHIEVEMENTS", name.to_uppercase()),
                 &standing(unlocks.count(), hidden_found),
             );
-            spawn_tabs(root, &font, view.group);
+            spawn_tabs(root, &font, view.group, &unlocks);
             root.spawn((ui_kit::scroll_panel(ui_kit::PANEL_WIDE), AchievementList))
                 .with_children(|panel| {
                     if rows.is_empty() {
@@ -482,14 +533,20 @@ fn spawn_screen(
             crate::prompts::device_footer(
                 root,
                 &font,
-                &footer_hint(view.show, view.sort),
+                &footer_hint(view.show, view.sort, view.tier),
                 "D-PAD category and rows  EAST back",
             );
         });
 }
 
-/// The row of category tabs, with the "everything" one first.
-fn spawn_tabs(parent: &mut ChildSpawnerCommands, font: &UiFont, active: Option<Category>) {
+/// The row of category tabs, with the "everything" one first — each
+/// named category carries how many of its achievements are earned.
+fn spawn_tabs(
+    parent: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    active: Option<Category>,
+    unlocks: &Unlocks,
+) {
     parent
         .spawn(Node {
             column_gap: px(14.0),
@@ -522,9 +579,17 @@ fn spawn_tabs(parent: &mut ChildSpawnerCommands, font: &UiFont, active: Option<C
                     ));
                 });
             };
-            draw("ALL", None, active.is_none());
+            draw(
+                &format!("ALL {}/{}", unlocks.count(), CATALOGUE.len()),
+                None,
+                active.is_none(),
+            );
             for category in Category::ALL {
-                draw(category.label(), Some(category), active == Some(category));
+                draw(
+                    &category_tab_label(category, unlocks),
+                    Some(category),
+                    active == Some(category),
+                );
             }
         });
 }
@@ -606,7 +671,7 @@ fn spawn_row(parent: &mut ChildSpawnerCommands, font: &UiFont, index: usize, row
         });
 }
 
-/// F and S: the filter and the sort.
+/// F, O and T: the filter, the sort and the tier.
 #[allow(clippy::needless_pass_by_value)] // Bevy system params
 fn screen_keys(
     keys: Res<ButtonInput<KeyCode>>,
@@ -624,6 +689,10 @@ fn screen_keys(
     // mirror-image reason — its screen has nothing bound to left.
     if keys.just_pressed(KeyCode::KeyO) {
         view.sort = view.sort.next();
+        changed = true;
+    }
+    if keys.just_pressed(KeyCode::KeyT) {
+        view.next_tier();
         changed = true;
     }
     if changed {
@@ -1159,8 +1228,8 @@ mod tests {
                 .cloned()
                 .expect("the standing line is on the screen")
         };
-        assert!(standing_of(&nothing).starts_with("0 OF 100"));
-        assert!(standing_of(&played).starts_with("2 OF 100"));
+        assert!(standing_of(&nothing).starts_with("0 OF 300"));
+        assert!(standing_of(&played).starts_with("2 OF 300"));
         assert!(
             played.iter().any(|line| line.contains("1970-01-01")),
             "an unlock date is not on the screen"
@@ -1351,7 +1420,7 @@ mod tests {
         assert_eq!(view.row, 0);
         // But a press that changes nothing must change nothing. At
         // the far right the category clamps, and throwing the cursor
-        // back to the top of a hundred rows for that would be a jump
+        // back to the top of three hundred rows for that would be a jump
         // the player cannot account for.
         for _ in 0..40 {
             view.step_group(1);
@@ -1364,9 +1433,9 @@ mod tests {
 
     #[test]
     fn the_standing_counts_the_whole_catalogue() {
-        let line = standing(25, 3);
+        let line = standing(75, 3);
         assert!(
-            line.contains(&format!("25 OF {}", CATALOGUE.len())),
+            line.contains(&format!("75 OF {}", CATALOGUE.len())),
             "{line}"
         );
         assert!(line.contains("25%"), "{line}");
@@ -1376,12 +1445,13 @@ mod tests {
     }
 
     #[test]
-    fn the_footer_names_the_state_of_both_switches() {
+    fn the_footer_names_the_state_of_every_switch() {
         // A cycling key whose current value is not on screen is a
         // key nobody presses twice.
-        let hint = footer_hint(Show::Locked, Sort::Closest);
+        let hint = footer_hint(Show::Locked, Sort::Closest, Some(Tier::Rare));
         assert!(hint.contains("FILTER: LOCKED"), "{hint}");
         assert!(hint.contains("ORDER: CLOSEST"), "{hint}");
+        assert!(hint.contains("TIER: RARE"), "{hint}");
         // Neither switch may sit on a key the menu table already
         // steers with: W/A/S/D are the four directions, so a sort on
         // `S` would cycle the order and walk the cursor at once.
@@ -1392,7 +1462,7 @@ mod tests {
             crate::controls::UiAction::NavRight,
         ];
         let map = crate::controls::InputMap::default();
-        for key in [KeyCode::KeyF, KeyCode::KeyO] {
+        for key in [KeyCode::KeyF, KeyCode::KeyO, KeyCode::KeyT] {
             for action in directions {
                 assert!(
                     !map.ui_of(action)
@@ -1404,5 +1474,31 @@ mod tests {
         // Both cycles come back round.
         assert_eq!(Show::All.next().next().next(), Show::All);
         assert_eq!(Sort::Catalogue.next().next().next(), Sort::Catalogue);
+    }
+
+    #[test]
+    fn the_tier_filter_narrows_the_list() {
+        let mut view = plain();
+        view.tier = Some(Tier::Rare);
+        let rows = visible_rows(&nothing(), &Unlocks::default(), &view);
+        assert!(!rows.is_empty());
+        assert!(
+            rows.iter().all(|row| row.entry().tier == Tier::Rare),
+            "a foreign tier leaked into the list"
+        );
+        view.next_tier();
+        assert_eq!(view.tier, None);
+    }
+
+    #[test]
+    fn category_tabs_carry_how_many_are_earned() {
+        let mut unlocks = Unlocks::default();
+        unlocks.merge(&[("first_run".to_owned(), 1_000)]);
+        let (earned, total) = category_progress(Category::FirstSteps, &unlocks);
+        assert_eq!(earned, 1);
+        assert!(total > 1);
+        let label = category_tab_label(Category::FirstSteps, &unlocks);
+        assert!(label.contains("FIRST STEPS"), "{label}");
+        assert!(label.contains(&format!("1/{total}")), "{label}");
     }
 }

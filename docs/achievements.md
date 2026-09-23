@@ -6,117 +6,317 @@ definition. `apps/beatbyte/tests/docs_stay_true.rs` fails if this
 file and that array ever disagree about which achievements exist —
 so read this, change that, and run the script.
 
-**Every row names the field its rule actually reads.** Eight of those
-fields were added to the play log for this feature (a ninth,
-`speed_percent`, is recorded but read by no rule yet) and all are
-optional: a run recorded before them reads as *not recorded*, never
-as a zero. A rule cannot credit a run that cannot answer it.
+**Every row names the field its rule actually reads.** Signals
+added to the play log for this feature are all optional: a run
+recorded before them reads as *not recorded*, never as a zero.
+A rule cannot credit a run that cannot answer it.
 
 **Hidden rows are secret in the game, not here.** This file is the
 engineering reference; the screen shows `? ? ?`, no description and
 no progress bar until the achievement is earned.
 
-100 achievements, 12 of them hidden.
+300 achievements, 34 of them hidden.
 
 | ID | Title | Condition | Category | Tier | Hidden | Data source |
 |---|---|---|---|---|:-:|---|
+| `cal_april_fools` | April Fools | Play on the first of April. | Calendar | Medium |  | `PlayEntry.started_ms` |
 | `cal_christmas` | Silent Night | Play on Christmas Eve or Christmas Day. | Calendar | Medium |  | `PlayEntry.started_ms` |
 | `cal_early_bird` | Dawn Patrol | Finish a song between five and eight in the morning. | Calendar | Medium |  | `PlayEntry.completed` · `PlayEntry.started_ms` |
+| `cal_evening` | Golden Hour | Finish a song between five and seven. | Calendar | Easy |  | `PlayEntry.completed` · `PlayEntry.started_ms` |
 | `cal_friday_night` | Friday Night Lights | Finish a song on a Friday evening. | Calendar | Medium |  | `PlayEntry.completed` · `PlayEntry.started_ms` |
 | `cal_halloween` | Trick or Riff | Play on the thirty-first of October. | Calendar | Medium |  | `PlayEntry.started_ms` |
+| `cal_late_night` | After Hours | Finish a song between ten and midnight. | Calendar | Medium |  | `PlayEntry.completed` · `PlayEntry.started_ms` |
 | `cal_leap_day` | One Day in Four Years | Play on the twenty-ninth of February. | Calendar | Rare | yes | `PlayEntry.started_ms` |
+| `cal_lunch` | Lunch Break | Finish a song between noon and two. | Calendar | Medium |  | `PlayEntry.completed` · `PlayEntry.started_ms` |
+| `cal_may_day` | May Day | Play on the first of May. | Calendar | Medium |  | `PlayEntry.started_ms` |
+| `cal_monday` | Monday Night | Finish a song on a Monday. | Calendar | Easy |  | `PlayEntry.completed` · `PlayEntry.started_ms` |
 | `cal_new_year` | Auld Lang Syne | Play on New Year's Eve or New Year's Day. | Calendar | Medium |  | `PlayEntry.started_ms` |
 | `cal_night_owl` | Night Owl | Finish a song between midnight and four in the morning. | Calendar | Easy |  | `PlayEntry.completed` · `PlayEntry.started_ms` |
+| `cal_sunday` | Sunday Session | Finish a song on a Sunday. | Calendar | Easy |  | `PlayEntry.completed` · `PlayEntry.started_ms` |
 | `cal_valentine` | Love Song | Finish a song about love, on Valentine's Day. | Calendar | Rare | yes | `PlayEntry.completed` · `PlayEntry.started_ms` · `PlayEntry.title` |
+| `cal_wednesday` | Hump Day | Finish a song on a Wednesday. | Calendar | Easy |  | `PlayEntry.completed` · `PlayEntry.started_ms` |
 | `cal_weekend` | Weekend Warrior | Finish a song on a Saturday and on a Sunday. | Calendar | Medium |  | `PlayEntry.completed` · `PlayEntry.started_ms` |
 | `combo_100` | Century | Reach a streak of a hundred notes. | Combo | Easy |  | `RunDetail.best_streak` |
 | `combo_1000` | Thousand Yard Stare | Reach a streak of a thousand notes. | Combo | Rare |  | `RunDetail.best_streak` |
+| `combo_100_expert` | Expert Century | Reach a streak of a hundred on Expert. | Combo | Hard |  | `RunDetail.best_streak` · `PlayEntry.difficulty` |
+| `combo_100_hard` | Hard Century | Reach a streak of a hundred on Hard. | Combo | Medium |  | `RunDetail.best_streak` · `PlayEntry.difficulty` |
 | `combo_250` | Locked In | Reach a streak of two hundred and fifty notes. | Combo | Medium |  | `RunDetail.best_streak` |
+| `combo_250_expert` | Expert Locked In | Reach a streak of 250 on Expert. | Combo | Rare |  | `RunDetail.best_streak` · `PlayEntry.difficulty` |
+| `combo_250_hard` | Hard Locked In | Reach a streak of 250 on Hard. | Combo | Hard |  | `RunDetail.best_streak` · `PlayEntry.difficulty` |
 | `combo_50` | Fifty in a Row | Reach a streak of fifty notes. | Combo | Easy |  | `RunDetail.best_streak` |
 | `combo_500` | Unbroken | Reach a streak of five hundred notes. | Combo | Hard |  | `RunDetail.best_streak` |
+| `combo_fc_easy` | Flawless Easy | Full combo an Easy chart: no miss, no overstrum. | Combo | Easy |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunDetail.miss` · `RunDetail.overstrums` · `PlayEntry.practice` |
 | `combo_fc_expert` | Flawless Expert | Full combo an Expert chart, with no assists at all. | Combo | Rare |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunDetail.miss` · `RunDetail.overstrums` · `PlayEntry.practice` · `PlayEntry.tap_mode` |
+| `combo_fc_expert_3` | Triple Flawless Expert | Full combo three Expert charts. | Combo | Rare |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `PlayEntry.difficulty` · `RunDetail.miss` · `RunDetail.overstrums` · `PlayEntry.practice` · `PlayEntry.tap_mode` |
+| `combo_fc_expert_full` | Expert Untouched | Full combo Expert at full speed, no assists. | Combo | Rare |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunDetail.miss` · `RunDetail.overstrums` · `PlayEntry.practice` · `PlayEntry.tap_mode` · `PlayEntry.no_fail` · `PlayEntry.speed_percent` |
+| `combo_fc_full_speed` | Clean at Speed | Full combo any chart at full speed. | Combo | Medium |  | `PlayEntry.completed` · `RunDetail.miss` · `RunDetail.overstrums` · `PlayEntry.speed_percent` · `PlayEntry.practice` |
 | `combo_fc_hard` | Flawless Hard | Full combo a Hard chart: no miss, no overstrum. | Combo | Hard |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunDetail.miss` · `RunDetail.overstrums` · `PlayEntry.practice` |
+| `combo_fc_hard_5` | Five Flawless Hards | Full combo five Hard charts. | Combo | Hard |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `PlayEntry.difficulty` · `RunDetail.miss` · `RunDetail.overstrums` · `PlayEntry.practice` |
 | `combo_fc_long` | Endurance Run | Full combo a song over five minutes long. | Combo | Rare |  | `PlayEntry.completed` · `RunDetail.miss` · `RunDetail.overstrums` · `PlayEntry.track_s` · `PlayEntry.practice` |
+| `combo_fc_long_4` | Four Minute Clean | Full combo a song over four minutes long. | Combo | Hard |  | `PlayEntry.completed` · `RunDetail.miss` · `RunDetail.overstrums` · `PlayEntry.track_s` · `PlayEntry.practice` |
 | `combo_fc_medium` | Flawless Medium | Full combo a Medium chart: no miss, no overstrum. | Combo | Medium |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunDetail.miss` · `RunDetail.overstrums` · `PlayEntry.practice` |
+| `combo_fc_short` | Quick Clean | Full combo a song under ninety seconds. | Combo | Easy |  | `PlayEntry.completed` · `RunDetail.miss` · `RunDetail.overstrums` · `PlayEntry.track_s` · `PlayEntry.practice` |
+| `combo_fc_songs_15` | Fifteen Clean Charts | Full combo fifteen different songs. | Combo | Hard |  | `PlayEntry.title + artist` · `PlayEntry.completed` · `RunDetail.miss` · `RunDetail.overstrums` · `PlayEntry.practice` |
+| `combo_fc_songs_40` | Forty Clean Charts | Full combo forty different songs. | Combo | Rare |  | `PlayEntry.title + artist` · `PlayEntry.completed` · `RunDetail.miss` · `RunDetail.overstrums` · `PlayEntry.practice` |
+| `combo_fc_songs_5` | Five Clean Charts | Full combo five different songs. | Combo | Medium |  | `PlayEntry.title + artist` · `PlayEntry.completed` · `RunDetail.miss` · `RunDetail.overstrums` · `PlayEntry.practice` |
+| `combo_no_over_hard` | Hard Clean Hands | Finish Hard with no overstrum. | Combo | Medium |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunDetail.overstrums` · `PlayEntry.practice` |
+| `combo_nomiss_expert` | Expert No Miss | Finish Expert without a miss. | Combo | Hard |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunDetail.miss` · `PlayEntry.practice` |
+| `combo_nomiss_hard` | Hard No Miss | Finish Hard without a miss. | Combo | Medium |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunDetail.miss` · `PlayEntry.practice` |
 | `combo_notes_100k` | Six Figures | Hit a hundred thousand notes in your career. | Combo | Rare |  | `RunDetail.perfect/great/good` |
+| `combo_notes_200k` | Two Hundred K Hits | Hit two hundred thousand notes in your career. | Combo | Hard |  | `RunDetail.perfect/great/good` |
+| `combo_notes_50k` | Fifty Thousand Hits | Hit fifty thousand notes in your career. | Combo | Medium |  | `RunDetail.perfect/great/good` |
+| `combo_streak_150` | One Fifty Deep | Reach a streak of a hundred and fifty notes. | Combo | Medium |  | `RunDetail.best_streak` |
+| `combo_streak_350` | Three Fifty Deep | Reach a streak of three hundred and fifty notes. | Combo | Hard |  | `RunDetail.best_streak` |
+| `combo_streak_75` | Seventy-Five Deep | Reach a streak of seventy-five notes. | Combo | Easy |  | `RunDetail.best_streak` |
+| `combo_streak_750` | Seven Fifty Deep | Reach a streak of seven hundred and fifty notes. | Combo | Rare |  | `RunDetail.best_streak` |
 | `diff_all_four` | Four Ways Up | Finish one song on all four difficulties. | Difficulty | Hard |  | `PlayEntry.difficulty + completed` |
 | `diff_easy` | Easy Does It | Finish a song on Easy. | Difficulty | Easy |  | `PlayEntry.completed` · `PlayEntry.difficulty` |
+| `diff_easy_90` | Easy, Mastered | Reach 90 % on Easy without practice mode. | Difficulty | Easy |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunPart.accuracy` · `PlayEntry.practice` |
+| `diff_easy_clear_10` | Ten Easy Clears | Finish ten Easy charts. | Difficulty | Easy |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `PlayEntry.difficulty` |
 | `diff_expert` | Expert Cleared | Finish a song on Expert. | Difficulty | Hard |  | `PlayEntry.completed` · `PlayEntry.difficulty` |
 | `diff_expert_10` | Expert Regular | Finish ten Expert runs. | Difficulty | Rare |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `PlayEntry.difficulty` |
+| `diff_expert_25` | Expert Twenty-Five | Finish twenty-five Expert runs. | Difficulty | Rare |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `PlayEntry.difficulty` |
+| `diff_expert_5` | Expert Five | Finish five Expert runs. | Difficulty | Hard |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `PlayEntry.difficulty` |
+| `diff_expert_80` | Expert Eighty | Reach 80 % on Expert without practice. | Difficulty | Medium |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunPart.accuracy` · `PlayEntry.practice` |
 | `diff_expert_90` | Expert, Mastered | Reach 90 % on Expert without practice mode. | Difficulty | Rare |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunPart.accuracy` · `PlayEntry.practice` |
+| `diff_expert_full` | Expert at Speed | Finish Expert at full speed, no practice. | Difficulty | Hard |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `PlayEntry.speed_percent` · `PlayEntry.practice` |
+| `diff_expert_no_tap` | Expert No Tap | Finish Expert with tap assist off. | Difficulty | Hard |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `PlayEntry.tap_mode` |
 | `diff_expert_nonet` | No Safety Net | Finish an Expert chart with No Fail switched off. | Difficulty | Rare |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `PlayEntry.no_fail` |
+| `diff_friend_hard` | Hard With Company | Finish Hard with a friend. | Difficulty | Medium |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `PlayEntry.players` |
 | `diff_hard` | Hard Cleared | Finish a song on Hard. | Difficulty | Medium |  | `PlayEntry.completed` · `PlayEntry.difficulty` |
+| `diff_hard_10` | Hard Regular | Finish ten Hard runs. | Difficulty | Medium |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `PlayEntry.difficulty` |
+| `diff_hard_25` | Hard Twenty-Five | Finish twenty-five Hard runs. | Difficulty | Hard |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `PlayEntry.difficulty` |
 | `diff_hard_90` | Hard, Mastered | Reach 90 % on Hard without practice mode. | Difficulty | Hard |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunPart.accuracy` · `PlayEntry.practice` |
+| `diff_hard_95` | Hard Ninety-Five Clear | Reach 95 % on Hard without practice mode. | Difficulty | Hard |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunPart.accuracy` · `PlayEntry.practice` · `PlayEntry.speed_percent` |
+| `diff_hard_98` | Hard Near Perfect | Reach 98 % on Hard without practice. | Difficulty | Rare |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunPart.accuracy` · `PlayEntry.practice` |
+| `diff_hard_no_fail_off` | Hard No Net | Finish Hard with No Fail switched off. | Difficulty | Medium |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `PlayEntry.no_fail` |
 | `diff_medium` | Stepping Up | Finish a song on Medium. | Difficulty | Easy |  | `PlayEntry.completed` · `PlayEntry.difficulty` |
+| `diff_medium_90` | Medium, Mastered | Reach 90 % on Medium without practice mode. | Difficulty | Medium |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunPart.accuracy` · `PlayEntry.practice` |
+| `diff_medium_clear_10` | Ten Medium Clears | Finish ten Medium charts. | Difficulty | Easy |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `PlayEntry.difficulty` |
+| `diff_min_expert_80` | Expert Territory 80 | Hit 80 % on Expert or harder territory. | Difficulty | Medium |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunPart.accuracy` |
+| `diff_min_hard_90` | Hard or Higher 90 | Hit 90 % on Hard or harder, no practice. | Difficulty | Hard |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunPart.accuracy` · `PlayEntry.practice` |
 | `diff_no_assist` | Strum It Yourself | Finish a Hard chart with the tap assist off. | Difficulty | Medium |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `PlayEntry.tap_mode` |
+| `diff_solo_expert` | Solo Expert | Finish Expert alone. | Difficulty | Medium |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `PlayEntry.players` |
+| `diff_songs_expert_15` | Fifteen Expert Songs | Finish fifteen different songs on Expert. | Difficulty | Rare |  | `PlayEntry.title + artist` · `PlayEntry.completed` · `PlayEntry.difficulty` |
+| `diff_songs_expert_5` | Five Expert Songs | Finish five different songs on Expert. | Difficulty | Hard |  | `PlayEntry.title + artist` · `PlayEntry.completed` · `PlayEntry.difficulty` |
 | `disc_artists_10` | Ten Bands | Finish songs by ten different artists. | Discovery | Easy |  | `PlayEntry.artist` · `PlayEntry.completed` |
+| `disc_artists_100` | Hundred Bands | Finish songs by a hundred different artists. | Discovery | Rare |  | `PlayEntry.artist` · `PlayEntry.completed` |
+| `disc_artists_15` | Fifteen Bands | Finish songs by fifteen different artists. | Discovery | Medium |  | `PlayEntry.artist` · `PlayEntry.completed` |
 | `disc_artists_25` | Festival Line-Up | Finish songs by twenty-five different artists. | Discovery | Medium |  | `PlayEntry.artist` · `PlayEntry.completed` |
+| `disc_artists_5` | Five Bands | Finish songs by five different artists. | Discovery | Easy |  | `PlayEntry.artist` · `PlayEntry.completed` |
 | `disc_artists_50` | Record Collection | Finish songs by fifty different artists. | Discovery | Hard |  | `PlayEntry.artist` · `PlayEntry.completed` |
+| `disc_artists_75` | Seventy-Five Bands | Finish songs by seventy-five different artists. | Discovery | Rare |  | `PlayEntry.artist` · `PlayEntry.completed` |
+| `disc_artists_hard_10` | Ten Hard Bands | Finish Hard charts by ten artists. | Discovery | Hard |  | `PlayEntry.artist` · `PlayEntry.completed` · `PlayEntry.difficulty` |
+| `disc_duo_songs_5` | Five Shared Songs | Finish five different songs with a friend. | Discovery | Medium |  | `PlayEntry.title + artist` · `PlayEntry.completed` · `PlayEntry.players` |
+| `disc_file_100` | Hundred Imports | Finish a hundred imported songs. | Discovery | Hard |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `PlayEntry.source` |
+| `disc_file_25` | Twenty-Five Imports | Finish twenty-five imported songs. | Discovery | Medium |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `PlayEntry.source` |
+| `disc_file_songs_20` | Twenty File Songs | Finish twenty different imported songs. | Discovery | Medium |  | `PlayEntry.title + artist` · `PlayEntry.completed` · `PlayEntry.source` |
+| `disc_file_songs_50` | Fifty File Songs | Finish fifty different imported songs. | Discovery | Hard |  | `PlayEntry.title + artist` · `PlayEntry.completed` · `PlayEntry.source` |
+| `disc_genres_10` | Ten Genres | Finish songs in ten different genres. | Discovery | Hard |  | `PlayEntry.genre` · `PlayEntry.completed` |
+| `disc_genres_12` | Twelve Genres | Finish songs in twelve different genres. | Discovery | Rare |  | `PlayEntry.genre` · `PlayEntry.completed` |
+| `disc_genres_2` | Two Genres | Finish songs in two different genres. | Discovery | Easy |  | `PlayEntry.genre` · `PlayEntry.completed` |
 | `disc_genres_3` | Genre Hopper | Finish songs in three different genres. | Discovery | Easy |  | `PlayEntry.genre` · `PlayEntry.completed` |
 | `disc_genres_5` | Omnivore | Finish songs in five different genres. | Discovery | Medium |  | `PlayEntry.genre` · `PlayEntry.completed` |
 | `disc_genres_8` | No Bad Music | Finish songs in eight different genres. | Discovery | Hard |  | `PlayEntry.genre` · `PlayEntry.completed` |
+| `disc_long_10min` | Ten Minute Epic | Finish a song over ten minutes long. | Discovery | Hard |  | `PlayEntry.completed` · `PlayEntry.track_s` |
+| `disc_long_5min` | Five Minute Ride | Finish a song over five minutes long. | Discovery | Medium |  | `PlayEntry.completed` · `PlayEntry.track_s` |
 | `disc_long_song` | The Long Haul | Finish a song over seven minutes long. | Discovery | Medium |  | `PlayEntry.completed` · `PlayEntry.track_s` |
+| `disc_long_songs_5` | Five Long Plays | Finish five songs over five minutes. | Discovery | Hard |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `PlayEntry.track_s` |
+| `disc_short_song` | Blink and Done | Finish a song under ninety seconds. | Discovery | Easy |  | `PlayEntry.completed` · `PlayEntry.track_s` |
+| `disc_short_songs_10` | Ten Quick Ones | Finish ten songs under two minutes. | Discovery | Medium |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `PlayEntry.track_s` |
+| `disc_solo_songs_25` | Twenty-Five Solo | Finish twenty-five different songs alone. | Discovery | Medium |  | `PlayEntry.title + artist` · `PlayEntry.completed` · `PlayEntry.players` |
 | `disc_songs_10` | Getting Around | Finish ten different songs. | Discovery | Easy |  | `PlayEntry.title + artist` · `PlayEntry.completed` |
 | `disc_songs_100` | Hundred Songs | Finish a hundred different songs. | Discovery | Rare |  | `PlayEntry.title + artist` · `PlayEntry.completed` |
+| `disc_songs_150` | Hundred Fifty Songs | Finish a hundred and fifty different songs. | Discovery | Rare |  | `PlayEntry.title + artist` · `PlayEntry.completed` |
 | `disc_songs_25` | Well Travelled | Finish twenty-five different songs. | Discovery | Medium |  | `PlayEntry.title + artist` · `PlayEntry.completed` |
+| `disc_songs_5` | Five Songs | Finish five different songs. | Discovery | Easy |  | `PlayEntry.title + artist` · `PlayEntry.completed` |
 | `disc_songs_50` | Deep Catalogue | Finish fifty different songs. | Discovery | Hard |  | `PlayEntry.title + artist` · `PlayEntry.completed` |
+| `disc_songs_75` | Seventy-Five Songs | Finish seventy-five different songs. | Discovery | Hard |  | `PlayEntry.title + artist` · `PlayEntry.completed` |
+| `disc_songs_hard_10` | Ten Hard Songs | Finish ten different songs on Hard. | Discovery | Medium |  | `PlayEntry.title + artist` · `PlayEntry.completed` · `PlayEntry.difficulty` |
+| `disc_songs_med_20` | Twenty Medium Songs | Finish twenty different songs on Medium. | Discovery | Easy |  | `PlayEntry.title + artist` · `PlayEntry.completed` · `PlayEntry.difficulty` |
 | `end_finished_10` | Ten Down | Finish ten songs. | Endurance | Easy |  | `PlayEntry.completed` |
 | `end_finished_100` | Century Club | Finish a hundred songs. | Endurance | Hard |  | `PlayEntry.completed` |
+| `end_finished_25` | Twenty-Five Done | Finish twenty-five songs. | Endurance | Easy |  | `PlayEntry.completed` |
 | `end_finished_250` | Two Fifty | Finish two hundred and fifty songs. | Endurance | Rare |  | `PlayEntry.completed` |
 | `end_finished_50` | Fifty Down | Finish fifty songs. | Endurance | Medium |  | `PlayEntry.completed` |
+| `end_finished_500` | Five Hundred Done | Finish five hundred songs. | Endurance | Rare |  | `PlayEntry.completed` |
 | `end_hours_1` | An Hour In | Play for an hour in total. | Endurance | Easy |  | `PlayEntry.played_s` |
+| `end_hours_10` | Ten Hours | Play for ten hours in total. | Endurance | Medium |  | `PlayEntry.played_s` |
+| `end_hours_100` | Hundred Hours | Play for a hundred hours in total. | Endurance | Rare |  | `PlayEntry.played_s` |
 | `end_hours_20` | Twenty Hours | Play for twenty hours in total. | Endurance | Hard |  | `PlayEntry.played_s` |
 | `end_hours_5` | Five Hours | Play for five hours in total. | Endurance | Medium |  | `PlayEntry.played_s` |
 | `end_hours_50` | Fifty Hours | Play for fifty hours in total. | Endurance | Rare |  | `PlayEntry.played_s` |
+| `end_notes_250k` | Quarter Million | Hit two hundred and fifty thousand notes. | Endurance | Hard |  | `RunDetail.perfect/great/good` |
+| `end_notes_500k` | Half a Million | Hit five hundred thousand notes. | Endurance | Rare |  | `RunDetail.perfect/great/good` |
+| `end_perfects_100k` | Century of Perfects | Hit a hundred thousand PERFECT notes. | Endurance | Rare |  | `RunDetail.perfect` |
 | `end_runs_10` | Warmed Up | Start ten runs. | Endurance | Easy |  | `PlayEntry (one per run)` |
 | `end_runs_100` | Hundred Runs | Start a hundred runs. | Endurance | Medium |  | `PlayEntry (one per run)` |
+| `end_runs_1000` | Thousand Runs | Start a thousand runs. | Endurance | Rare |  | `PlayEntry (one per run)` |
 | `end_runs_250` | Regular | Start two hundred and fifty runs. | Endurance | Hard |  | `PlayEntry (one per run)` |
+| `end_runs_50` | Fifty Starts | Start fifty runs. | Endurance | Easy |  | `PlayEntry (one per run)` |
 | `end_runs_500` | Five Hundred | Start five hundred runs. | Endurance | Rare |  | `PlayEntry (one per run)` |
+| `end_score_10m` | Ten Million | Score ten million points in total. | Endurance | Rare |  | `RunPart.score` |
 | `end_score_1m` | Millionaire | Score a million points in total. | Endurance | Hard |  | `RunPart.score` |
+| `end_score_250k` | Quarter Million Pts | Score a quarter million points in total. | Endurance | Medium |  | `RunPart.score` |
+| `end_score_5m` | Five Million | Score five million points in total. | Endurance | Hard |  | `RunPart.score` |
+| `end_sustains_1k` | Sustain Collector | Hold a thousand sustains across your career. | Endurance | Medium |  | `RunDetail.sustains_held` |
+| `end_sustains_25k` | Sustain Museum | Hold twenty-five thousand sustains. | Endurance | Rare |  | `RunDetail.sustains_held` |
+| `end_sustains_5k` | Sustain Library | Hold five thousand sustains across your career. | Endurance | Hard |  | `RunDetail.sustains_held` |
 | `first_80` | Eight Out of Ten | Reach 80 % accuracy in a run. | FirstSteps | Easy |  | `RunPart.accuracy` |
+| `first_95` | Almost There | Reach 95 % accuracy in a run. | FirstSteps | Medium |  | `RunPart.accuracy` |
+| `first_duo` | Together Now | Finish a song with a friend on the highway. | FirstSteps | Easy |  | `PlayEntry.completed` · `PlayEntry.players` |
 | `first_expert` | Into the Deep End | Play an Expert chart. | FirstSteps | Easy |  | `PlayEntry.difficulty` |
 | `first_fc` | Not One Missed | Finish a run without a single miss. | FirstSteps | Medium |  | `PlayEntry.completed` · `RunDetail.miss` |
 | `first_file` | Your Own Music | Play a song you imported yourself. | FirstSteps | Easy |  | `PlayEntry.source` |
 | `first_finish` | All the Way Through | Finish your first song. | FirstSteps | Easy |  | `PlayEntry.completed` |
+| `first_full_speed` | At Speed | Finish a song at full practice speed. | FirstSteps | Easy |  | `PlayEntry.completed` · `PlayEntry.speed_percent` |
 | `first_hard` | Turning It Up | Play a Hard chart. | FirstSteps | Easy |  | `PlayEntry.difficulty` |
 | `first_hype` | Star Power | Activate Hype for the first time. | FirstSteps | Easy |  | `RunDetail.hype_activations` |
 | `first_medium` | Off the Training Wheels | Play a Medium chart. | FirstSteps | Easy |  | `PlayEntry.difficulty` |
+| `first_phrase` | Phrase One | Complete an energy phrase in a run. | FirstSteps | Easy |  | `RunDetail.phrases_completed` |
 | `first_run` | Plugged In | Play your first run. | FirstSteps | Easy |  | `PlayEntry (one per run)` |
+| `first_score_10k` | Five Figures | Score ten thousand points in a single run. | FirstSteps | Easy |  | `RunPart.score` |
 | `first_second_song` | Second Verse | Play two different songs. | FirstSteps | Easy |  | `PlayEntry.title + artist` |
+| `first_short` | Short and Sweet | Finish a song under two minutes long. | FirstSteps | Easy |  | `PlayEntry.completed` · `PlayEntry.track_s` |
+| `first_sustain` | Hold Still | Hold at least one sustain to its end. | FirstSteps | Easy |  | `RunDetail.sustains_held` |
 | `hype_10` | Crowd Pleaser | Activate Hype ten times. | Hype | Easy |  | `RunDetail.hype_activations` |
 | `hype_100` | Showman | Activate Hype a hundred times. | Hype | Medium |  | `RunDetail.hype_activations` |
+| `hype_1000` | Arena Act | Activate Hype a thousand times. | Hype | Rare |  | `RunDetail.hype_activations` |
+| `hype_25` | Encore Ready | Activate Hype twenty-five times. | Hype | Easy |  | `RunDetail.hype_activations` |
+| `hype_250` | Touring Act | Activate Hype two hundred and fifty times. | Hype | Hard |  | `RunDetail.hype_activations` |
+| `hype_2_in_run` | Double Drop | Activate Hype twice in one song. | Hype | Easy |  | `RunDetail.hype_activations` |
+| `hype_3_finish` | Triple and Through | Activate Hype three times and finish. | Hype | Medium |  | `PlayEntry.completed` · `RunDetail.hype_activations` |
 | `hype_3_in_run` | Triple Threat | Activate Hype three times in one song. | Hype | Medium |  | `RunDetail.hype_activations` |
+| `hype_4_in_run` | Quad Drop | Activate Hype four times in one song. | Hype | Hard |  | `RunDetail.hype_activations` |
+| `hype_50` | Stage Lights | Activate Hype fifty times. | Hype | Easy |  | `RunDetail.hype_activations` |
 | `hype_500` | Headliner | Activate Hype five hundred times. | Hype | Hard |  | `RunDetail.hype_activations` |
 | `hype_5_in_run` | Pyrotechnics | Activate Hype five times in one song. | Hype | Hard |  | `RunDetail.hype_activations` |
+| `hype_6_in_run` | Six-Pack | Activate Hype six times in one song. | Hype | Rare |  | `RunDetail.hype_activations` |
+| `hype_and_finish` | Power Finish | Activate Hype and finish the song. | Hype | Easy |  | `PlayEntry.completed` · `RunDetail.hype_activations` |
+| `hype_clean_sust_runs_5` | Five Clean Holds | Finish five songs with no dropped sustain. | Hype | Hard |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `RunDetail.sustains_dropped` · `RunDetail.sustains_held` |
+| `hype_expert_2` | Expert Double Hype | Double Hype on a finished Expert chart. | Hype | Hard |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunDetail.hype_activations` |
+| `hype_friend_3` | Shared Spotlight | Triple Hype with a friend and finish. | Hype | Medium |  | `PlayEntry.completed` · `RunDetail.hype_activations` · `PlayEntry.players` |
+| `hype_full_speed_3` | Speed Triple | Triple Hype at full speed and finish. | Hype | Hard |  | `PlayEntry.completed` · `RunDetail.hype_activations` · `PlayEntry.speed_percent` |
+| `hype_hard_3` | Hard Triple Hype | Triple Hype on a finished Hard chart. | Hype | Hard |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunDetail.hype_activations` |
+| `hype_phrase_finish` | Phrase and Out | Finish after completing two phrases. | Hype | Medium |  | `PlayEntry.completed` · `RunDetail.phrases_completed` |
+| `hype_phrases_10` | Ten Phrases | Complete ten energy phrases. | Hype | Easy |  | `RunDetail.phrases_completed` |
 | `hype_phrases_100` | Phrase Hunter | Complete a hundred energy phrases. | Hype | Medium |  | `RunDetail.phrases_completed` |
+| `hype_phrases_250` | Phrase Vault | Complete two hundred and fifty phrases. | Hype | Hard |  | `RunDetail.phrases_completed` |
+| `hype_phrases_3_run` | Triple Phrase | Complete three phrases in one run. | Hype | Medium |  | `RunDetail.phrases_completed` |
+| `hype_phrases_50` | Fifty Phrases | Complete fifty energy phrases. | Hype | Medium |  | `RunDetail.phrases_completed` |
+| `hype_phrases_500` | Phrase Empire | Complete five hundred energy phrases. | Hype | Rare |  | `RunDetail.phrases_completed` |
+| `hype_phrases_5_run` | Five Phrase Night | Complete five phrases in one run. | Hype | Hard |  | `RunDetail.phrases_completed` |
+| `hype_phrases_8_run` | Phrase Storm | Complete eight phrases in one run. | Hype | Rare |  | `RunDetail.phrases_completed` |
+| `hype_phrases_runs_10` | Phrase Habit | Finish ten runs with at least one phrase. | Hype | Medium |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `RunDetail.phrases_completed` |
+| `hype_runs_3hype_5` | Five Triple Shows | Finish five songs with three Hype each. | Hype | Hard |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `RunDetail.hype_activations` |
+| `hype_solo_5` | Solo Pyrotechnics | Activate Hype five times alone. | Hype | Hard |  | `RunDetail.hype_activations` · `PlayEntry.players` |
+| `hype_sustain_10` | Ten Holds | Hold ten sustains in a single run. | Hype | Easy |  | `RunDetail.sustains_held` |
+| `hype_sustain_25` | Twenty-Five Holds | Hold twenty-five sustains in a single run. | Hype | Medium |  | `RunDetail.sustains_held` |
+| `hype_sustain_50` | Fifty Holds | Hold fifty sustains in a single run. | Hype | Hard |  | `RunDetail.sustains_held` |
 | `hype_sustain_clean` | Hold That Note | Finish a song holding every one of its sustains to the end. | Hype | Hard | yes | `PlayEntry.completed` · `RunDetail.sustains_held` · `RunDetail.sustains_dropped` |
+| `hype_sustain_clean_exp` | Expert Hold Clean | Hold every sustain on an Expert finish. | Hype | Rare |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunDetail.sustains_dropped` · `RunDetail.sustains_held` · `PlayEntry.practice` |
+| `hype_sustain_clean_hard` | Hard Hold Clean | Hold every sustain on a Hard finish. | Hype | Hard |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunDetail.sustains_dropped` · `RunDetail.sustains_held` · `PlayEntry.practice` |
+| `hype_sustain_clean_med` | Medium Hold Clean | Hold every sustain on a Medium finish. | Hype | Medium |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunDetail.sustains_dropped` · `RunDetail.sustains_held` |
 | `odd_dead_on` | Dead On | Finish a run with a mean timing drift inside one millisecond. | Oddities | Rare | yes | `PlayEntry.completed` · `RunDetail.mean_offset_ms` |
+| `odd_drift_zeroish` | Nearly Dead On | Finish with mean drift inside 0.5 ms. | Oddities | Rare | yes | `PlayEntry.completed` · `RunDetail.mean_offset_ms` |
+| `odd_duo_fc` | Shared Flawless | Full combo a song with a friend. | Oddities | Hard | yes | `PlayEntry.completed` · `RunDetail.miss` · `RunDetail.overstrums` · `PlayEntry.players` · `PlayEntry.practice` |
+| `odd_early_owl` | Early Drift | Finish early on average after midnight. | Oddities | Medium | yes | `PlayEntry.completed` · `RunDetail.mean_offset_ms` · `PlayEntry.started_ms` |
+| `odd_exact_100` | Exactly Hundred | Finish at exactly one hundred per cent. | Oddities | Rare | yes | `PlayEntry.completed` · `RunPart.accuracy` |
+| `odd_exact_66` | Exactly Two Thirds | Finish a run at exactly 66.7 per cent. | Oddities | Rare | yes | `PlayEntry.completed` · `RunPart.accuracy` |
+| `odd_exact_80` | Exactly Eighty | Finish a run at exactly eighty per cent. | Oddities | Rare | yes | `PlayEntry.completed` · `RunPart.accuracy` |
+| `odd_exact_90` | Exactly Ninety | Finish a run at exactly ninety per cent. | Oddities | Rare | yes | `PlayEntry.completed` · `RunPart.accuracy` |
 | `odd_exactly_half` | Exactly Half | Finish a run at exactly fifty per cent accuracy. | Oddities | Rare | yes | `PlayEntry.completed` · `RunPart.accuracy` |
+| `odd_fail_expert` | Expert Wipeout | Fail an Expert chart completely. | Oddities | Easy | yes | `RunDetail.failed` · `PlayEntry.difficulty` |
 | `odd_failed` | That Went Badly | Let the crowd turn on you completely. | Oddities | Easy | yes | `RunDetail.failed` |
+| `odd_five_in_row` | Fivefold Echo | Play the same song five times back to back. | Oddities | Medium | yes | `PlayEntry.title + artist` |
+| `odd_full_speed_fail` | Speed Crash | Fail a chart while at full speed. | Oddities | Medium | yes | `RunDetail.failed` · `PlayEntry.speed_percent` |
 | `odd_guitar_study` | The Study | Finish one of the [GS] charts. | Oddities | Easy | yes | `PlayEntry.completed` · `PlayEntry.title` |
+| `odd_late_bird` | Late Drift Dawn | Finish late on average at dawn. | Oddities | Medium | yes | `PlayEntry.completed` · `RunDetail.mean_offset_ms` · `PlayEntry.started_ms` |
 | `odd_more_overstrums` | Air Guitar | Strum at more thin air than notes in a single run. | Oddities | Medium | yes | `RunDetail.overstrums + perfect/great/good` · `RunDetail.overstrums` |
+| `odd_overstrum_10` | Ten Whiffs | Overstrum at least ten times in one run. | Oddities | Easy | yes | `RunDetail.overstrums` |
+| `odd_overstrum_50` | Fifty Whiffs | Overstrum at least fifty times in one run. | Oddities | Medium | yes | `RunDetail.overstrums` |
+| `odd_perfect_share_all` | All Perfect | Finish where every judged note was PERFECT. | Oddities | Rare | yes | `PlayEntry.completed` · `RunDetail.perfect + judged()` · `RunDetail.perfect/great/good/miss` |
 | `odd_redemption` | Redemption | Finish a song that once beat you. | Oddities | Medium | yes | `RunDetail.failed + PlayEntry.completed` |
 | `odd_same_song_10` | On Repeat | Finish the same song ten times. | Oddities | Medium | yes | `PlayEntry.title + artist + completed` |
+| `odd_same_song_50` | Fifty on Repeat | Finish the same song fifty times. | Oddities | Rare | yes | `PlayEntry.title + artist + completed` |
+| `odd_score_100k` | Six Figures Once | Score a hundred thousand in one run. | Oddities | Hard | yes | `PlayEntry.completed` · `RunPart.score` |
+| `odd_score_big` | Huge Number | Score fifty thousand points in one run. | Oddities | Medium | yes | `PlayEntry.completed` · `RunPart.score` |
+| `odd_short_fc_expert` | Tiny Expert Clean | Full combo an Expert song under two minutes. | Oddities | Rare | yes | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunDetail.miss` · `RunDetail.overstrums` · `PlayEntry.track_s` · `PlayEntry.practice` · `PlayEntry.tap_mode` |
+| `odd_solo_fail` | Alone and Down | Fail a chart while playing alone. | Oddities | Easy | yes | `RunDetail.failed` · `PlayEntry.players` |
 | `odd_three_in_row` | Again. Again. Again. | Play the same song three times back to back. | Oddities | Easy | yes | `PlayEntry.title + artist` |
+| `odd_title_dance` | Songs of Dance | Finish a song with dance in the title. | Oddities | Easy | yes | `PlayEntry.completed` · `PlayEntry.title` |
+| `odd_title_fire` | Songs of Fire | Finish a song with fire in the title. | Oddities | Easy | yes | `PlayEntry.completed` · `PlayEntry.title` |
+| `odd_title_night` | Songs of Night | Finish a song with night in the title. | Oddities | Easy | yes | `PlayEntry.completed` · `PlayEntry.title` |
 | `prec_100` | Perfection | Finish a chart of a hundred notes or more at 100 %. | Precision | Rare |  | `PlayEntry.completed` · `RunPart.accuracy` · `RunDetail.perfect/great/good/miss` · `PlayEntry.practice` |
 | `prec_70` | Seven Out of Ten | Reach 70 % accuracy in a run. | Precision | Easy |  | `RunPart.accuracy` |
+| `prec_85` | Eighty-Five | Reach 85 % accuracy without practice mode. | Precision | Easy |  | `RunPart.accuracy` · `PlayEntry.practice` |
 | `prec_90` | Nine Out of Ten | Reach 90 % accuracy without practice mode. | Precision | Medium |  | `RunPart.accuracy` · `PlayEntry.practice` |
+| `prec_92` | Ninety-Two | Reach 92 % accuracy without practice mode. | Precision | Medium |  | `RunPart.accuracy` · `PlayEntry.practice` |
 | `prec_95` | Ninety-Five | Reach 95 % accuracy without practice mode. | Precision | Hard |  | `RunPart.accuracy` · `PlayEntry.practice` |
 | `prec_98` | Near Perfect | Reach 98 % accuracy without practice mode. | Precision | Rare |  | `RunPart.accuracy` · `PlayEntry.practice` |
+| `prec_99` | Ninety-Nine | Reach 99 % accuracy without practice mode. | Precision | Rare |  | `RunPart.accuracy` · `PlayEntry.practice` |
+| `prec_clean_200` | Two Hundred Clean | Finish two hundred notes with no miss or overstrum. | Precision | Hard |  | `PlayEntry.completed` · `RunDetail.miss` · `RunDetail.overstrums` · `RunDetail.perfect/great/good/miss` |
+| `prec_clean_50` | Fifty Clean | Finish fifty notes with no miss and no overstrum. | Precision | Easy |  | `PlayEntry.completed` · `RunDetail.miss` · `RunDetail.overstrums` · `RunDetail.perfect/great/good/miss` |
+| `prec_drift_10` | Close Enough | Finish with mean timing drift inside 10 ms. | Precision | Easy |  | `PlayEntry.completed` · `RunDetail.mean_offset_ms` |
 | `prec_drift_2` | Metronome | Finish a run with a mean timing drift inside 2 ms. | Precision | Hard |  | `PlayEntry.completed` · `RunDetail.mean_offset_ms` |
+| `prec_drift_3` | Tight Window | Finish with mean timing drift inside 3 ms. | Precision | Hard |  | `PlayEntry.completed` · `RunDetail.mean_offset_ms` |
 | `prec_drift_5` | In the Pocket | Finish a run with a mean timing drift inside 5 ms. | Precision | Medium |  | `PlayEntry.completed` · `RunDetail.mean_offset_ms` |
+| `prec_drift_runs_5` | Five in the Pocket | Finish five runs with drift inside 5 ms. | Precision | Hard |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `RunDetail.mean_offset_ms` |
+| `prec_early` | Ahead of the Beat | Finish a run while drifting early on average. | Precision | Medium |  | `PlayEntry.completed` · `RunDetail.mean_offset_ms` |
+| `prec_early_tight` | Early and Tight | Finish early on average within 5 ms. | Precision | Hard |  | `PlayEntry.completed` · `RunDetail.mean_offset_ms` |
+| `prec_easy_100` | Easy Perfection | Finish Easy at 100 % with fifty notes. | Precision | Medium |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunPart.accuracy` · `RunDetail.perfect/great/good/miss` · `PlayEntry.practice` |
+| `prec_expert_95` | Expert Ninety-Five | Reach 95 % on Expert without practice mode. | Precision | Rare |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunPart.accuracy` · `PlayEntry.practice` |
+| `prec_full_speed_95` | Full Speed Ninety-Five | Hit 95 % at full speed, no practice. | Precision | Hard |  | `RunPart.accuracy` · `PlayEntry.speed_percent` · `PlayEntry.practice` |
+| `prec_full_speed_98` | Full Speed Near Perf | Hit 98 % at full speed, no practice. | Precision | Rare |  | `RunPart.accuracy` · `PlayEntry.speed_percent` · `PlayEntry.practice` |
+| `prec_hard_95` | Hard Ninety-Five | Reach 95 % on Hard without practice mode. | Precision | Hard |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunPart.accuracy` · `PlayEntry.practice` |
+| `prec_improve_10` | Ten Points Better | Beat your own best on a song by ten points. | Precision | Easy |  | `RunPart.accuracy + title/artist/difficulty` |
 | `prec_improve_20` | Twenty Points Better | Beat your own best on a song by twenty accuracy points. | Precision | Medium |  | `RunPart.accuracy + title/artist/difficulty` |
+| `prec_improve_30` | Thirty Points Better | Beat your own best on a song by thirty points. | Precision | Hard |  | `RunPart.accuracy + title/artist/difficulty` |
+| `prec_late` | Behind the Beat | Finish a run while drifting late on average. | Precision | Medium |  | `PlayEntry.completed` · `RunDetail.mean_offset_ms` |
+| `prec_late_tight` | Late and Tight | Finish late on average within 5 ms. | Precision | Hard |  | `PlayEntry.completed` · `RunDetail.mean_offset_ms` |
+| `prec_medium_98` | Medium Near Perfect | Reach 98 % on Medium without practice mode. | Precision | Medium |  | `PlayEntry.completed` · `PlayEntry.difficulty` · `RunPart.accuracy` · `PlayEntry.practice` |
 | `prec_no_overstrum` | Clean Hands | Finish a run of a hundred notes with no overstrum. | Precision | Medium |  | `PlayEntry.completed` · `RunDetail.overstrums` · `RunDetail.perfect/great/good/miss` |
+| `prec_notes_200` | Two Hundred Judged | Finish a chart of two hundred notes or more. | Precision | Medium |  | `PlayEntry.completed` · `RunDetail.perfect/great/good/miss` |
+| `prec_notes_400` | Four Hundred Judged | Finish a chart of four hundred notes or more. | Precision | Hard |  | `PlayEntry.completed` · `RunDetail.perfect/great/good/miss` |
+| `prec_perfect_60` | Three in Five | Finish where three notes in five were PERFECT. | Precision | Medium |  | `PlayEntry.completed` · `RunDetail.perfect + judged()` |
+| `prec_perfect_70` | Seven in Ten | Finish where seven notes in ten were PERFECT. | Precision | Hard |  | `PlayEntry.completed` · `RunDetail.perfect + judged()` |
+| `prec_perfect_90` | Nine in Ten Perfect | Finish where nine notes in ten were PERFECT. | Precision | Rare |  | `PlayEntry.completed` · `RunDetail.perfect + judged()` |
 | `prec_perfect_share` | Mostly Perfect | Finish a run where four notes in five were PERFECT. | Precision | Hard |  | `PlayEntry.completed` · `RunDetail.perfect + judged()` · `RunDetail.perfect/great/good/miss` |
 | `prec_perfects_10k` | Ten Thousand Perfects | Hit ten thousand PERFECT notes in your career. | Precision | Medium |  | `RunDetail.perfect` |
 | `prec_perfects_1k` | A Thousand Perfects | Hit a thousand PERFECT notes in your career. | Precision | Easy |  | `RunDetail.perfect` |
+| `prec_perfects_25k` | Twenty-Five K Perfects | Hit twenty-five thousand PERFECT notes. | Precision | Medium |  | `RunDetail.perfect` |
 | `prec_perfects_50k` | Fifty Thousand Perfects | Hit fifty thousand PERFECT notes in your career. | Precision | Hard |  | `RunDetail.perfect` |
+| `prec_perfects_5k` | Five Thousand Perfects | Hit five thousand PERFECT notes in your career. | Precision | Easy |  | `RunDetail.perfect` |
+| `prec_runs_90_10` | Ten Nineties | Finish ten runs at 90 % or better. | Precision | Medium |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `RunPart.accuracy` · `PlayEntry.practice` |
+| `prec_runs_95_5` | Five Ninety-Fives | Finish five runs at 95 % or better. | Precision | Hard |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `RunPart.accuracy` · `PlayEntry.practice` |
+| `prec_solo_98` | Alone at Ninety-Eight | Hit 98 % alone, no practice. | Precision | Hard |  | `RunPart.accuracy` · `PlayEntry.players` · `PlayEntry.practice` |
 | `ritual_comeback` | Back Again | Come back to the guitar after a month away. | Ritual | Medium | yes | `PlayEntry.started_ms` |
+| `ritual_comeback_7` | Week Away | Come back after a week away. | Ritual | Easy |  | `PlayEntry.started_ms` |
+| `ritual_comeback_90` | Season Away | Come back after ninety days away. | Ritual | Hard |  | `PlayEntry.started_ms` |
+| `ritual_days_10` | Ten Days | Play on ten different days. | Ritual | Easy |  | `PlayEntry.started_ms` |
 | `ritual_days_100` | Hundred Days | Play on a hundred different days. | Ritual | Hard |  | `PlayEntry.started_ms` |
+| `ritual_days_200` | Two Hundred Days | Play on two hundred different days. | Ritual | Rare |  | `PlayEntry.started_ms` |
 | `ritual_days_25` | Twenty-Five Days | Play on twenty-five different days. | Ritual | Medium |  | `PlayEntry.started_ms` |
 | `ritual_days_5` | Five Days | Play on five different days. | Ritual | Easy |  | `PlayEntry.started_ms` |
+| `ritual_days_50` | Fifty Days | Play on fifty different days. | Ritual | Medium |  | `PlayEntry.started_ms` |
+| `ritual_days_75` | Seventy-Five Days | Play on seventy-five different days. | Ritual | Hard |  | `PlayEntry.started_ms` |
+| `ritual_friend_fin_5` | Five Shared Clears | Finish five songs with a friend. | Ritual | Medium |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `PlayEntry.players` |
+| `ritual_gap_tight` | Tight Sitting | Play five runs with gaps under ten minutes. | Ritual | Medium |  | `PlayEntry.started_ms` |
+| `ritual_months_12` | Full Year | Play in twelve different calendar months. | Ritual | Rare |  | `PlayEntry.started_ms` |
+| `ritual_months_2` | Two Months | Play in two different calendar months. | Ritual | Easy |  | `PlayEntry.started_ms` |
 | `ritual_months_3` | Three Months | Play in three different calendar months. | Ritual | Medium |  | `PlayEntry.started_ms` |
+| `ritual_months_6` | Half a Year | Play in six different calendar months. | Ritual | Hard |  | `PlayEntry.started_ms` |
+| `ritual_same_song_25` | Twenty-Five Times | Finish the same song twenty-five times. | Ritual | Hard |  | `PlayEntry.title + artist + completed` |
+| `ritual_same_song_5` | Five Times Over | Finish the same song five times. | Ritual | Easy |  | `PlayEntry.title + artist + completed` |
+| `ritual_session_12` | Encore Set | Play twelve runs in one sitting. | Ritual | Hard |  | `PlayEntry.started_ms` |
+| `ritual_session_3` | Quick Set | Play three runs in one sitting. | Ritual | Easy |  | `PlayEntry.started_ms` |
 | `ritual_session_5` | One More Song | Play five runs in one sitting. | Ritual | Easy |  | `PlayEntry.started_ms` |
+| `ritual_session_8` | Long Set | Play eight runs in one sitting. | Ritual | Medium |  | `PlayEntry.started_ms` |
+| `ritual_solo_fin_20` | Twenty Solo Clears | Finish twenty songs alone. | Ritual | Easy |  | `PlayEntry (one per run)` · `PlayEntry.completed` · `PlayEntry.players` |
+| `ritual_streak_14` | Two Weeks Running | Play fourteen days in a row. | Ritual | Hard |  | `PlayEntry.started_ms` |
 | `ritual_streak_3` | Three Days Running | Play three days in a row. | Ritual | Easy |  | `PlayEntry.started_ms` |
 | `ritual_streak_30` | A Month Straight | Play thirty days in a row. | Ritual | Rare |  | `PlayEntry.started_ms` |
+| `ritual_streak_5` | Five Days Running | Play five days in a row. | Ritual | Easy |  | `PlayEntry.started_ms` |
+| `ritual_streak_60` | Two Months Straight | Play sixty days in a row. | Ritual | Rare |  | `PlayEntry.started_ms` |
 | `ritual_streak_7` | A Full Week | Play seven days in a row. | Ritual | Medium |  | `PlayEntry.started_ms` |
+

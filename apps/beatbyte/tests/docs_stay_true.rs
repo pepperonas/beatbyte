@@ -341,7 +341,7 @@ fn the_harness_reference_documents_every_switch() {
 #[test]
 fn the_catalogue_document_lists_every_achievement() {
     // `docs/achievements.md` is the engineering reference for the
-    // hundred achievements and the field each rule reads. It is
+    // three hundred achievements and the field each rule reads. It is
     // written from the catalogue and read by people; without this it
     // would be a snapshot of whatever the catalogue was on the day
     // somebody last looked.
@@ -354,8 +354,8 @@ fn the_catalogue_document_lists_every_achievement() {
         .collect();
     assert_eq!(
         ids.len(),
-        100,
-        "the catalogue is meant to hold exactly a hundred achievements"
+        300,
+        "the catalogue is meant to hold exactly three hundred achievements"
     );
     let missing: Vec<&&str> = ids
         .iter()
