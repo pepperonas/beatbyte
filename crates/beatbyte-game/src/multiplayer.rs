@@ -108,6 +108,14 @@ struct SlotValue(usize);
 #[derive(Component)]
 struct ModeText;
 
+/// The clickable mode toggle (parent of [`ModeText`]).
+#[derive(Component)]
+struct ModeButton;
+
+/// Continues into song select when at least one device has joined.
+#[derive(Component)]
+struct ContinueButton;
+
 fn spawn_join_screen(mut commands: Commands, font: Res<UiFont>, mut roster: ResMut<PlayerRoster>) {
     // Joining starts fresh each time the screen opens.
     roster.devices.clear();
@@ -142,16 +150,46 @@ fn spawn_join_screen(mut commands: Commands, font: Res<UiFont>, mut roster: ResM
                         });
                 }
             });
-            parent.spawn((
-                ModeText,
-                Text::new(""),
-                font.text(ui_kit::ROW),
-                TextColor(palette::TEXT),
-                Node {
-                    margin: UiRect::top(px(ui_kit::FOOTER_GAP)),
-                    ..default()
-                },
-            ));
+            parent
+                .spawn((
+                    ModeButton,
+                    Button,
+                    Node {
+                        margin: UiRect::top(px(ui_kit::FOOTER_GAP)),
+                        padding: UiRect::axes(px(14.0), px(7.0)),
+                        ..default()
+                    },
+                ))
+                .with_children(|btn| {
+                    btn.spawn((
+                        ModeText,
+                        Text::new(""),
+                        font.text(ui_kit::ROW),
+                        TextColor(palette::TEXT),
+                    ));
+                });
+            parent
+                .spawn((
+                    ContinueButton,
+                    Button,
+                    Node {
+                        margin: UiRect::top(px(10.0)),
+                        padding: UiRect::axes(px(14.0), px(7.0)),
+                        border: UiRect::all(px(ui_kit::PANEL_BORDER)),
+                        border_radius: BorderRadius::all(px(6.0)),
+                        ..default()
+                    },
+                    BackgroundColor(palette::SURFACE.with_alpha(0.55)),
+                    BorderColor::all(palette::dimmed(palette::TEXT_DIM, 0.45)),
+                ))
+                .with_children(|btn| {
+                    btn.spawn((
+                        Text::new("CONTINUE"),
+                        font.text(ui_kit::ROW),
+                        TextColor(palette::TEXT),
+                    ));
+                });
+            ui_kit::back_button(parent, &font, "MAIN MENU");
             crate::prompts::device_footer(
                 parent,
                 &font,
@@ -161,11 +199,18 @@ fn spawn_join_screen(mut commands: Commands, font: Res<UiFont>, mut roster: ResM
         });
 }
 
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn join_input(
     keys: Res<ButtonInput<KeyCode>>,
     map: Res<crate::controls::InputMap>,
     pads: Query<(Entity, &Gamepad)>,
     mouse: Res<ButtonInput<MouseButton>>,
+    mode_btn: Query<&Interaction, (With<ModeButton>, Changed<Interaction>)>,
+    continue_btn: Query<&Interaction, (With<ContinueButton>, Changed<Interaction>)>,
+    mut back: Query<
+        (&Interaction, &mut BackgroundColor, &mut BorderColor),
+        With<ui_kit::BackButton>,
+    >,
     mut roster: ResMut<PlayerRoster>,
     mut next_state: ResMut<NextState<AppState>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
@@ -187,29 +232,40 @@ fn join_input(
     }
 
     let nav = MenuNav::read(&map, &keys, pads.iter().map(|(_, pad)| pad));
-    if nav.left || nav.right {
+    let mode_clicked = mode_btn.iter().any(|i| *i == Interaction::Pressed);
+    if nav.left || nav.right || mode_clicked {
         roster.mode = match roster.mode {
             MultiplayerMode::Versus => MultiplayerMode::Coop,
             MultiplayerMode::Coop => MultiplayerMode::Versus,
         };
         sounds.write(crate::sfx::UiSound::Toggle);
     }
-    if nav.confirm && !roster.devices.is_empty() {
+    let continue_clicked = continue_btn.iter().any(|i| *i == Interaction::Pressed);
+    if (nav.confirm || continue_clicked) && !roster.devices.is_empty() {
         sounds.write(crate::sfx::UiSound::Confirm);
         next_state.set(AppState::SongSelect);
     }
-    if nav.back || mouse.just_pressed(MouseButton::Right) {
+    if ui_kit::wants_leave(
+        nav.back,
+        ui_kit::back_pressed(&mut back),
+        mouse.just_pressed(MouseButton::Right),
+    ) {
         sounds.write(crate::sfx::UiSound::Back);
         next_state.set(AppState::MainMenu);
     }
 }
 
+#[allow(clippy::type_complexity)] // Bevy queries: Without filters keep text/button disjoint
 fn refresh_join_screen(
     roster: Res<PlayerRoster>,
     mut rows: Query<(&SlotRow, &mut BackgroundColor, &mut BorderColor)>,
     mut labels: Query<(&SlotLabel, &mut TextColor), Without<SlotValue>>,
     mut values: Query<(&SlotValue, &mut Text, &mut TextColor), Without<SlotLabel>>,
-    mut mode: Query<&mut Text, (With<ModeText>, Without<SlotValue>)>,
+    mut mode: Query<&mut Text, (With<ModeText>, Without<SlotValue>, Without<ContinueButton>)>,
+    mut continue_btn: Query<
+        (&mut BackgroundColor, &mut BorderColor, &mut Visibility),
+        (With<ContinueButton>, Without<SlotRow>),
+    >,
 ) {
     // A joined slot lights its accent bar in that player's colour —
     // the same cue the rest of the game uses for "this is you".
@@ -253,6 +309,16 @@ fn refresh_join_screen(
         if text.0 != line {
             text.0 = line;
         }
+    }
+    if let Ok((mut background, mut border, mut visibility)) = continue_btn.single_mut() {
+        let ready = !roster.devices.is_empty();
+        *visibility = if ready {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+        background.0 = palette::SURFACE.with_alpha(0.55);
+        *border = BorderColor::all(palette::dimmed(palette::TEXT_DIM, 0.45));
     }
 }
 

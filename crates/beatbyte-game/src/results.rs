@@ -301,6 +301,7 @@ fn spawn_results(
                 &results_footer(can_rate, can_versus, can_taste),
                 &results_footer_pad(),
             );
+            ui_kit::back_button(parent, &font, "SONG SELECT");
         });
 }
 
@@ -936,6 +937,10 @@ fn results_input(
     mut status: Query<&mut Text, With<FeedbackStatus>>,
     mut given: ResMut<FeedbackGiven>,
     field: Res<CommentField>,
+    mut back: Query<
+        (&Interaction, &mut BackgroundColor, &mut BorderColor),
+        With<ui_kit::BackButton>,
+    >,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     // While the field is taking keys it owns them: a digit is text,
@@ -1041,14 +1046,14 @@ fn results_input(
             sounds.write(crate::sfx::UiSound::Navigate);
         }
     }
-    // Confirm or back on ANY device leaves - a pad player was stuck
-    // on this screen until phase 3 of the input commission.
+    // Confirm, back, the visible button or right-click leave — a
+    // left-click on empty space must not (buttons own left-click).
     let nav = crate::controls::MenuNav::read(&map, &keys, pads.iter());
-    if nav.confirm
-        || nav.back
-        || mouse.just_pressed(MouseButton::Left)
-        || mouse.just_pressed(MouseButton::Right)
-    {
+    if ui_kit::wants_leave(
+        nav.confirm || nav.back,
+        ui_kit::back_pressed(&mut back),
+        mouse.just_pressed(MouseButton::Right),
+    ) {
         sounds.write(crate::sfx::UiSound::Back);
         // Back to where the song was picked: the browser, with its
         // cursor, sort and search intact (they live in resources) —

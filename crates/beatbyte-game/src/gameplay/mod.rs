@@ -1200,6 +1200,7 @@ fn pause_input(
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<&bevy::input::gamepad::Gamepad>,
     map: Res<crate::controls::InputMap>,
+    mouse: Res<ButtonInput<MouseButton>>,
     phase: Res<State<GamePhase>>,
     mut next_phase: ResMut<NextState<GamePhase>>,
     mut next_state: ResMut<NextState<AppState>>,
@@ -1218,7 +1219,9 @@ fn pause_input(
         GamePhase::Paused => {
             // Enter no longer resumes: it steps the selected settings
             // row, like on the settings screen. ESC stays the resume.
-            if pause {
+            // Right-click = leave the pause overlay (= resume), matching
+            // other screens' RC=leave semantics.
+            if pause || mouse.just_pressed(MouseButton::Right) {
                 next_phase.set(GamePhase::Playing);
             }
             if keys.just_pressed(KeyCode::KeyQ) {
@@ -1481,6 +1484,7 @@ fn pause_menu_input(
     map: Res<crate::controls::InputMap>,
     pads: Query<&bevy::input::gamepad::Gamepad>,
     mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
+    mut moved: MessageReader<bevy::window::CursorMoved>,
     rows: Query<(&PauseRow, &Interaction), Changed<Interaction>>,
     mut cursor: ResMut<PauseCursor>,
     mut settings: ResMut<crate::config::Settings>,
@@ -1493,17 +1497,18 @@ fn pause_menu_input(
 ) {
     let nav = crate::controls::MenuNav::read(&map, &keys, pads.iter());
     let count = PAUSE_ROWS.len();
-    let mut moved = false;
+    let mut moved_cursor = false;
     if nav.up {
         cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, -1);
-        moved = true;
+        moved_cursor = true;
     }
     if nav.down {
         cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, 1);
-        moved = true;
+        moved_cursor = true;
     }
     let pointer = crate::ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
-    if let Some(index) = pointer.hovered {
+    let mouse_moved = moved.read().next().is_some();
+    if let Some(index) = crate::ui_kit::hover_moves_cursor(&pointer, mouse_moved) {
         cursor.0 = index;
     }
     // The wheel scrolls the ROWS, like the song list - it used to
@@ -1512,10 +1517,10 @@ fn pause_menu_input(
     for event in wheel.read() {
         if event.y > 0.0 {
             cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, -1);
-            moved = true;
+            moved_cursor = true;
         } else if event.y < 0.0 {
             cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, 1);
-            moved = true;
+            moved_cursor = true;
         }
     }
     let item = PAUSE_ROWS[cursor.0];
@@ -1583,7 +1588,7 @@ fn pause_menu_input(
             &sfx.ui_move
         };
         crate::sfx::play(&mut commands, preview, settings.sfx_volume);
-    } else if moved {
+    } else if moved_cursor {
         crate::sfx::play(&mut commands, &sfx.ui_move, settings.sfx_volume);
     }
 }

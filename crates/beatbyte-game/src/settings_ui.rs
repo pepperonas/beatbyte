@@ -606,6 +606,7 @@ fn settings_input(
     pads: Query<&Gamepad>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
+    mut moved: MessageReader<bevy::window::CursorMoved>,
     rows: Query<(&RowText, &Interaction), Changed<Interaction>>,
     mut cursor: ResMut<SettingsCursor>,
     mut settings: ResMut<Settings>,
@@ -632,7 +633,8 @@ fn settings_input(
     // Mouse: hover selects; click on the selected row steps it (like
     // RIGHT); the wheel steps the hovered value either way.
     let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
-    if let Some(index) = pointer.hovered {
+    let mouse_moved = moved.read().next().is_some();
+    if let Some(index) = ui_kit::hover_moves_cursor(&pointer, mouse_moved) {
         cursor.0 = index;
     }
     let clicked = pointer.clicked;
@@ -689,7 +691,11 @@ fn settings_input(
     if adjusted {
         sounds.write(row.sound());
     }
-    if nav.back || ui_kit::back_pressed(&mut back) || mouse.just_pressed(MouseButton::Right) {
+    if ui_kit::wants_leave(
+        nav.back,
+        ui_kit::back_pressed(&mut back),
+        mouse.just_pressed(MouseButton::Right),
+    ) {
         sounds.write(crate::sfx::UiSound::Back);
         next_state.set(AppState::MainMenu);
     }

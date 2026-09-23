@@ -14,6 +14,19 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.13] - 2026-09-23
+
+### Changed
+
+- **Every menu is mouse-complete beside keyboard and gamepad.**
+  Players, achievements, stats, join, song info, calibration and
+  input test gain a visible Back control and hover-driven selection;
+  the song browser's difficulty steps, INFO and empty-library CTA
+  are clickable; pause resumes on right-click; results no longer
+  leave on a stray left-click. Shared helpers
+  (`hover_moves_cursor`, `wants_leave`, `back_pressed`) keep the
+  leave rule one place rather than per screen.
+
 ## [0.18.12] - 2026-09-22
 
 ### Added

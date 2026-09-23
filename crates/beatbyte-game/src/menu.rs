@@ -143,6 +143,7 @@ fn spawn_menu(mut commands: Commands, font: Res<UiFont>) {
 pub(crate) fn menu_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
+    mut moved: MessageReader<bevy::window::CursorMoved>,
     map: Res<crate::controls::InputMap>,
     pads: Query<&Gamepad>,
     rows: Query<(&MenuRow, &Interaction), Changed<Interaction>>,
@@ -166,7 +167,8 @@ pub(crate) fn menu_input(
     // Mouse: hovering selects, clicking activates - and the wheel
     // scrolls the rows, like the song list.
     let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
-    if let Some(index) = pointer.hovered {
+    let mouse_moved = moved.read().next().is_some();
+    if let Some(index) = ui_kit::hover_moves_cursor(&pointer, mouse_moved) {
         cursor.0 = index;
     }
     for event in wheel.read() {

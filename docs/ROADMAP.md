@@ -343,6 +343,20 @@ that predates this work and that M5 ends rather than extends.
   identifier**, each with a `catalogue` run in its analysis log.
   *Verified: 1683 tests (+16), gate green, against a recorded real
   response and a live run over the whole library.*
+
+## Menu mouse completion (2026-09-23, v0.18.13)
+
+Every menu already claimed mouse support; several screens still
+navigated only by keyboard and gamepad, and leave was right-click
+only with no visible Back. One pass made the leave rule shared
+(`hover_moves_cursor`, `wants_leave`, `back_pressed`) and rolled it
+onto Song Info, Players, Achievements, Stats, Join, Calibration,
+Input Test, Results and Pause, plus clickable difficulty / INFO /
+empty-library CTA in the song browser.
+
+- [x] **Visible Back + full mouse on every menu** *(v0.18.13)*.
+  *Verified: 1685 tests (+2), gate green.*
+
 - [ ] **M9b The album, properly.** The release list a search returns
   is not the recording's; getting the real first release needs a
   second request per match (`inc=releases+release-groups`) and a

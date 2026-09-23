@@ -138,6 +138,7 @@ fn start_calibration(
                 "SPACE taps  ENTER save  ESC cancel",
                 "STRUM or FRETS tap  START save  BACK cancel",
             );
+            ui_kit::back_button(parent, &font, "MAIN MENU");
         });
 }
 
@@ -164,12 +165,17 @@ fn calibration_input(
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<&bevy::input::gamepad::Gamepad>,
     map: Res<crate::controls::InputMap>,
+    mouse: Res<ButtonInput<MouseButton>>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
     mut calibration: ResMut<Calibration>,
     mut settings: ResMut<Settings>,
     mut next_state: ResMut<NextState<AppState>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
+    mut back: Query<
+        (&Interaction, &mut BackgroundColor, &mut BorderColor),
+        With<ui_kit::BackButton>,
+    >,
 ) {
     let sources = crate::controls::InputSources {
         keys: &keys,
@@ -199,8 +205,15 @@ fn calibration_input(
         info!("calibration saved: {:+.0} ms", settings.latency_offset_ms);
         sounds.write(crate::sfx::UiSound::Confirm);
         next_state.set(AppState::MainMenu);
+        return;
     }
-    if keys.just_pressed(KeyCode::Escape) || pad(GamepadButton::Select) {
+    // Esc / Select / visible back / right-click leave — never MenuNav
+    // (frets are the measuring instrument on this screen).
+    if keys.just_pressed(KeyCode::Escape)
+        || pad(GamepadButton::Select)
+        || ui_kit::back_pressed(&mut back)
+        || mouse.just_pressed(MouseButton::Right)
+    {
         sounds.write(crate::sfx::UiSound::Back);
         next_state.set(AppState::MainMenu);
     }

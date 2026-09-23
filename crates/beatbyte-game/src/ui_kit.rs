@@ -236,6 +236,26 @@ pub fn read_rows<'a>(rows: impl Iterator<Item = (usize, &'a Interaction)>) -> Ro
     pointer
 }
 
+/// The cursor index a hover should set, if any.
+///
+/// A freshly rebuilt row fires `Hovered` under a resting pointer; taking
+/// that as selection would yank the keyboard/pad cursor to wherever the
+/// mouse happened to lie. Only a real move or a click counts — the song
+/// browser learned this first; every list uses the same gate now.
+#[must_use]
+pub fn hover_moves_cursor(pointer: &RowPointer, mouse_moved: bool) -> Option<usize> {
+    pointer.hovered.filter(|_| mouse_moved || pointer.clicked)
+}
+
+/// One leave decision for every menu that has a way out.
+///
+/// Keyboard/pad `Back`, the visible back button and right-click all mean
+/// the same thing — never three different destinations for three inputs.
+#[must_use]
+pub fn wants_leave(nav_back: bool, back_clicked: bool, right_click: bool) -> bool {
+    nav_back || back_clicked || right_click
+}
+
 // ── Scaffold ────────────────────────────────────────────────────────
 
 /// The full-screen root every menu spawns: one centred column.
@@ -705,8 +725,12 @@ pub fn back_button(parent: &mut ChildSpawnerCommands, font: &UiFont, label: &str
 /// Whether the back button was pressed this frame, and paint it
 /// while the pointer is on it — the same "hovering shows, clicking
 /// acts" rule the rows follow.
-pub fn back_pressed(
-    buttons: &mut Query<(&Interaction, &mut BackgroundColor, &mut BorderColor), With<BackButton>>,
+///
+/// `F` lets a screen add `Without<…>` when the button shares a
+/// colour component with another query on the same system (the
+/// input tester's lamps).
+pub fn back_pressed<F: bevy::ecs::query::QueryFilter>(
+    buttons: &mut Query<(&Interaction, &mut BackgroundColor, &mut BorderColor), F>,
 ) -> bool {
     let mut pressed = false;
     for (interaction, mut background, mut border) in buttons.iter_mut() {
@@ -902,6 +926,35 @@ mod tests {
         let rows = [(0, &Interaction::None), (1, &Interaction::None)];
         assert_eq!(read_rows(rows.into_iter()), RowPointer::default());
         assert_eq!(read_rows(std::iter::empty()), RowPointer::default());
+    }
+
+    #[test]
+    fn a_resting_pointer_does_not_steal_the_cursor() {
+        // The browser rebuilt a row under a still mouse and the
+        // selection jumped; gating on motion (or a click) is the fix.
+        let pointer = RowPointer {
+            hovered: Some(3),
+            clicked: false,
+        };
+        assert_eq!(hover_moves_cursor(&pointer, false), None);
+        assert_eq!(hover_moves_cursor(&pointer, true), Some(3));
+        let clicked = RowPointer {
+            hovered: Some(1),
+            clicked: true,
+        };
+        assert_eq!(
+            hover_moves_cursor(&clicked, false),
+            Some(1),
+            "a click is always deliberate"
+        );
+    }
+
+    #[test]
+    fn every_leave_input_means_the_same_thing() {
+        assert!(!wants_leave(false, false, false));
+        assert!(wants_leave(true, false, false));
+        assert!(wants_leave(false, true, false));
+        assert!(wants_leave(false, false, true));
     }
 
     #[test]

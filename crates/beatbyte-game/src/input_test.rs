@@ -160,6 +160,7 @@ fn spawn_screen(mut commands: Commands, font: Res<UiFont>, mut timers: ResMut<Fl
                 TextColor(Color::NONE),
             ));
             crate::prompts::device_footer(parent, &font, "T toggle tap  ESC back", "START back");
+            ui_kit::back_button(parent, &font, "MAIN MENU");
         });
 }
 
@@ -176,7 +177,11 @@ fn run_tester(
     mut timers: ResMut<FlashTimers>,
     mut next_state: ResMut<NextState<AppState>>,
     mouse: Res<ButtonInput<MouseButton>>,
-    mut lamps: Query<(&Lamp, &mut BackgroundColor)>,
+    mut lamps: Query<(&Lamp, &mut BackgroundColor), Without<ui_kit::BackButton>>,
+    mut back: Query<
+        (&Interaction, &mut BackgroundColor, &mut BorderColor),
+        (With<ui_kit::BackButton>, Without<Lamp>),
+    >,
     mut texts: ParamSet<(
         Query<&mut Text, With<DeviceLine>>,
         Query<&mut Text, With<ModeLine>>,
@@ -274,11 +279,16 @@ fn run_tester(
         };
     }
 
-    // Leave with Escape or pad Start — NOT the green fret.
-    let pad_start = pads
-        .iter()
-        .any(|(_, pad)| pad.just_pressed(GamepadButton::Start));
-    if keys.just_pressed(KeyCode::Escape) || pad_start || mouse.just_pressed(MouseButton::Right) {
+    // Leave with Escape, pad Start/Select, the back button or
+    // right-click — NOT the green fret (busy being tested).
+    let pad_leave = pads.iter().any(|(_, pad)| {
+        pad.just_pressed(GamepadButton::Start) || pad.just_pressed(GamepadButton::Select)
+    });
+    if keys.just_pressed(KeyCode::Escape)
+        || pad_leave
+        || ui_kit::back_pressed(&mut back)
+        || mouse.just_pressed(MouseButton::Right)
+    {
         sounds.write(crate::sfx::UiSound::Back);
         crate::config::save_settings(&settings);
         next_state.set(AppState::MainMenu);

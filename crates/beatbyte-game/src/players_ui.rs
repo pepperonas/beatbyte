@@ -225,7 +225,13 @@ fn spawn_roster(
                     RosterStatus,
                 ));
             });
-            ui_kit::footer(root, &font, &footer_hint(false, !players.0.is_empty()));
+            ui_kit::back_button(root, &font, "MAIN MENU");
+            crate::prompts::device_footer(
+                root,
+                &font,
+                &footer_hint(false, !players.0.is_empty()),
+                "D-PAD select  SOUTH play as  EAST back",
+            );
         });
 }
 
@@ -239,7 +245,7 @@ fn spawn_row(
     line: &str,
 ) {
     parent
-        .spawn((ui_kit::row(), PlayerRow(index), Interaction::default()))
+        .spawn((ui_kit::row(), PlayerRow(index), Button))
         .with_children(|row| {
             // The accent the player wears on the highway, so the two
             // places agree about who is who.
@@ -396,14 +402,23 @@ fn commit_field(
 }
 
 /// Cursor movement, choosing a player, leaving the screen.
-#[allow(clippy::needless_pass_by_value)] // Bevy system params
+#[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)] // Bevy system params
 fn roster_nav(
     map: Res<InputMap>,
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<&bevy::input::gamepad::Gamepad>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
+    mut moved: MessageReader<bevy::window::CursorMoved>,
+    rows: Query<(&PlayerRow, &Interaction), Changed<Interaction>>,
+    mut back: Query<
+        (&Interaction, &mut BackgroundColor, &mut BorderColor),
+        With<ui_kit::BackButton>,
+    >,
     mut cursor: ResMut<RosterCursor>,
     mut players: ResMut<Players>,
     mut next: ResMut<NextState<AppState>>,
+    mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
     let nav = MenuNav::read(&map, &keys, pads.iter());
     // A field open means the arrows and Enter belong to it.
@@ -418,7 +433,19 @@ fn roster_nav(
         if nav.down {
             cursor.row = ui_kit::step_cursor(cursor.row, count, 1);
         }
-        if nav.confirm
+        for event in wheel.read() {
+            if event.y > 0.0 {
+                cursor.row = ui_kit::step_cursor(cursor.row, count, -1);
+            } else if event.y < 0.0 {
+                cursor.row = ui_kit::step_cursor(cursor.row, count, 1);
+            }
+        }
+        let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
+        let mouse_moved = moved.read().next().is_some();
+        if let Some(index) = ui_kit::hover_moves_cursor(&pointer, mouse_moved) {
+            cursor.row = index;
+        }
+        if (nav.confirm || pointer.clicked)
             && let Some(player) = players.0.players.get(cursor.row)
         {
             let id = player.id;
@@ -426,9 +453,15 @@ fn roster_nav(
             players.0.select(id);
             save_roster(&players);
             cursor.status = format!("{name} IS PLAYING");
+            sounds.write(crate::sfx::UiSound::Confirm);
         }
     }
-    if nav.back {
+    if ui_kit::wants_leave(
+        nav.back,
+        ui_kit::back_pressed(&mut back),
+        mouse.just_pressed(MouseButton::Right),
+    ) {
+        sounds.write(crate::sfx::UiSound::Back);
         next.set(AppState::MainMenu);
     }
 }

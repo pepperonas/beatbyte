@@ -565,7 +565,8 @@ fn rebuild_key(
 #[must_use]
 pub fn empty_hint(library_len: usize, filter: &str) -> String {
     if library_len == 0 {
-        "no songs yet  -  drag an audio file onto the window".to_owned()
+        "no songs yet  -  click or press D to add  ·  or drag an audio file onto the window"
+            .to_owned()
     } else {
         format!("no match for \"{filter}\"  -  ESC clears")
     }
@@ -640,8 +641,20 @@ struct SortHeader(SortMode);
 struct StatusLine;
 
 /// The dimmed "no match" hint row inside an empty list.
+///
+/// When the library itself is empty this is a [`Button`] that opens
+/// the add-a-song prompt (same as `D`); a filtered-out list stays
+/// plain text — Esc clears the filter.
 #[derive(Component)]
 struct EmptyHint;
+
+/// Step the selected difficulty by `±1` among what the chart offers.
+#[derive(Component)]
+struct DiffStep(i8);
+
+/// Open the song's document (same as `I`).
+#[derive(Component)]
+struct InfoButton;
 
 /// A row's artist text, in the right-hand column.
 #[derive(Component)]
@@ -801,16 +814,40 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
                     caption(head, "BEST", SortMode::Best, Some(COL_BEST));
                 });
             parent.spawn((SongList, ui_kit::scroll_panel(ui_kit::PANEL_WIDE)));
-            parent.spawn((
-                DetailText,
-                Text::new(""),
-                font.text(ui_kit::ROW),
-                TextColor(palette::TEXT),
-                Node {
+            // Facts + mouse difficulty steppers + INFO: LEFT/RIGHT
+            // still work; the buttons are the discoverable door.
+            parent
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    column_gap: px(10),
                     margin: UiRect::top(px(ui_kit::FOOTER_GAP)),
                     ..default()
-                },
-            ));
+                })
+                .with_children(|row| {
+                    spawn_diff_step(row, font, -1);
+                    row.spawn((
+                        DetailText,
+                        Text::new(""),
+                        font.text(ui_kit::ROW),
+                        TextColor(palette::TEXT),
+                    ));
+                    spawn_diff_step(row, font, 1);
+                    row.spawn((
+                        InfoButton,
+                        Button,
+                        Text::new("INFO"),
+                        font.text(ui_kit::SMALL),
+                        TextColor(palette::BRAND),
+                        Node {
+                            padding: UiRect::axes(px(8), px(2)),
+                            border: UiRect::all(px(1)),
+                            border_radius: BorderRadius::all(px(4)),
+                            ..default()
+                        },
+                        BorderColor::all(palette::BRAND.with_alpha(0.7)),
+                    ));
+                });
             parent.spawn((
                 ImportNote,
                 Text::new("drag an audio file onto the window to import it"),
@@ -829,6 +866,25 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
             );
             ui_kit::back_button(parent, font, "MAIN MENU");
         });
+}
+
+/// A `<` / `>` button that steps difficulty the same way as pad LEFT/RIGHT.
+fn spawn_diff_step(parent: &mut ChildSpawnerCommands, font: &UiFont, step: i8) {
+    let label = if step < 0 { "<" } else { ">" };
+    parent.spawn((
+        DiffStep(step),
+        Button,
+        Text::new(label),
+        font.text(ui_kit::ROW),
+        TextColor(palette::BRAND),
+        Node {
+            padding: UiRect::axes(px(8), px(2)),
+            border: UiRect::all(px(1)),
+            border_radius: BorderRadius::all(px(4)),
+            ..default()
+        },
+        BorderColor::all(palette::BRAND.with_alpha(0.7)),
+    ));
 }
 
 /// Sort and search input. Its own system: `browser_input` sits at
@@ -964,6 +1020,12 @@ struct StartDeps<'w, 's> {
         ),
         With<ui_kit::BackButton>,
     >,
+    /// Difficulty steppers (`<` / `>` beside the facts line).
+    diff_step: Query<'w, 's, (&'static DiffStep, &'static Interaction), Changed<Interaction>>,
+    /// Opens the song document (same as `I`).
+    info_button: Query<'w, 's, &'static Interaction, (With<InfoButton>, Changed<Interaction>)>,
+    /// Empty-library hint → add-a-song prompt (same as `D`).
+    empty_hint: Query<'w, 's, &'static Interaction, (With<EmptyHint>, Changed<Interaction>)>,
     builtins: Res<'w, BuiltinSongs>,
     mc_queue: ResMut<'w, crate::mc::McQueue>,
     /// The in-flight lyrics lookup — bundled here because Bevy caps
@@ -1206,6 +1268,7 @@ fn browser_input(
     // and arm a delete on the way through.
     let searching = view.searching || start.prompt.open;
     let clicked_back = ui_kit::back_pressed(&mut start.back_button);
+    let empty_clicked = start.empty_hint.iter().any(|i| *i == Interaction::Pressed);
     // Esc with a filter still narrowing the list CLEARS it first and
     // leaves on the next press — the whole list is the state to
     // return to, and a filtered list with no field open had no key
@@ -1216,11 +1279,22 @@ fn browser_input(
         sounds.write(crate::sfx::UiSound::Back);
         return;
     }
-    let back = (!searching && (nav.back || clicked_back))
-        || pointer_in.mouse.just_pressed(MouseButton::Right);
+    let leave = ui_kit::wants_leave(
+        !searching && nav.back,
+        !searching && clicked_back,
+        pointer_in.mouse.just_pressed(MouseButton::Right),
+    );
     let count = view.order.len();
     if count == 0 {
-        if back {
+        // Empty library: the hint opens the add-a-song prompt.
+        if empty_clicked && library.entries.is_empty() && !searching {
+            start.prompt.open = true;
+            start.prompt.text.clear();
+            sounds.write(crate::sfx::UiSound::Confirm);
+            status.0 = start.prompt.line();
+            return;
+        }
+        if leave {
             sounds.write(crate::sfx::UiSound::Back);
             next_state.set(AppState::MainMenu);
         }
@@ -1251,15 +1325,8 @@ fn browser_input(
     // menu. This list used to need two clicks (one to select, one to
     // start) and ignored hover entirely.
     let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
-    // Hover selects only on REAL mouse motion. A freshly rebuilt row
-    // fires Hovered under a resting pointer, and before this gate a
-    // typed letter could yank the selection to wherever the mouse
-    // happened to lie. A click is always deliberate and always
-    // counts.
     let mouse_moved = pointer_in.moved.read().next().is_some();
-    if let Some(index) = pointer.hovered
-        && (mouse_moved || pointer.clicked)
-    {
+    if let Some(index) = ui_kit::hover_moves_cursor(&pointer, mouse_moved) {
         cursor.0 = index;
     }
     let clicked_selected = pointer.clicked;
@@ -1279,14 +1346,24 @@ fn browser_input(
         selected.0 = first;
     }
     let position = offered.iter().position(|d| *d == selected.0).unwrap_or(0);
-    if (nav.left && position > 0) || (nav.right && position + 1 < offered.len()) {
-        sounds.write(crate::sfx::UiSound::Slider);
+    let mut step_diff = 0i8;
+    if nav.left {
+        step_diff = -1;
     }
-    if nav.left && position > 0 {
+    if nav.right {
+        step_diff = 1;
+    }
+    for (step, interaction) in start.diff_step.iter() {
+        if *interaction == Interaction::Pressed {
+            step_diff = step.0;
+        }
+    }
+    if step_diff < 0 && position > 0 {
         selected.0 = offered[position - 1];
-    }
-    if nav.right && position + 1 < offered.len() {
+        sounds.write(crate::sfx::UiSound::Slider);
+    } else if step_diff > 0 && position + 1 < offered.len() {
         selected.0 = offered[position + 1];
+        sounds.write(crate::sfx::UiSound::Slider);
     }
 
     // BACKSPACE/DEL asks to remove the highlighted song from disk;
@@ -1388,13 +1465,15 @@ fn browser_input(
             Err(reason) => error!("cannot edit \"{}\": {reason}", entry.title),
         }
     }
-    // I shows everything the song's document says — why it is Deep
-    // House, when it arrived, which analyser said what. A built-in
-    // has no folder and so no document; a folder that has never been
-    // migrated has none yet either, and in both cases the key does
-    // nothing rather than opening an empty panel.
+    // I (or the INFO button) shows everything the song's document
+    // says — why it is Deep House, when it arrived, which analyser
+    // said what. A built-in has no folder and so no document; a
+    // folder that has never been migrated has none yet either, and
+    // in both cases the key does nothing rather than opening an
+    // empty panel.
+    let info_clicked = start.info_button.iter().any(|i| *i == Interaction::Pressed);
     if !searching
-        && keys.just_pressed(KeyCode::KeyI)
+        && (keys.just_pressed(KeyCode::KeyI) || info_clicked)
         && let crate::library::SongSource::File { chart_path, .. } = &entry.source
         && let Some(folder) = chart_path.parent()
     {
@@ -1613,7 +1692,7 @@ fn browser_input(
             Err(reason) => status.0 = format!("cannot delete: {reason}"),
         }
     }
-    if back {
+    if leave {
         sounds.write(crate::sfx::UiSound::Back);
         next_state.set(AppState::MainMenu);
     }
@@ -1727,18 +1806,38 @@ fn spawn_rows_into(
         }
 
         // An empty result must SAY so; a bare empty panel reads as a
-        // broken screen, not as a search with no matches.
+        // broken screen, not as a search with no matches. An empty
+        // LIBRARY is also a Button (opens the add-a-song prompt).
         if view.order.is_empty() {
-            panel.spawn((
-                EmptyHint,
-                Text::new(font.safe(&empty_hint(library.entries.len(), &view.filter))),
-                font.text(ui_kit::ROW),
-                TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
-                Node {
-                    margin: UiRect::all(px(12.0)),
-                    ..default()
-                },
-            ));
+            let hint = empty_hint(library.entries.len(), &view.filter);
+            if library.entries.is_empty() {
+                panel.spawn((
+                    EmptyHint,
+                    Button,
+                    Text::new(font.safe(&hint)),
+                    font.text(ui_kit::ROW),
+                    TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
+                    Node {
+                        margin: UiRect::all(px(12.0)),
+                        padding: UiRect::axes(px(8), px(4)),
+                        border: UiRect::all(px(1)),
+                        border_radius: BorderRadius::all(px(4)),
+                        ..default()
+                    },
+                    BorderColor::all(palette::dimmed(palette::TEXT_DIM, 0.45)),
+                ));
+            } else {
+                panel.spawn((
+                    EmptyHint,
+                    Text::new(font.safe(&hint)),
+                    font.text(ui_kit::ROW),
+                    TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
+                    Node {
+                        margin: UiRect::all(px(12.0)),
+                        ..default()
+                    },
+                ));
+            }
         }
     });
 }

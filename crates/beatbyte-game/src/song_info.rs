@@ -135,7 +135,13 @@ fn spawn(mut commands: Commands, font: Res<UiFont>, showing: Option<Res<Showing>
                         }
                     }
                 });
-            ui_kit::footer(parent, &font, "UP/DOWN scroll  ESC back");
+            ui_kit::back_button(parent, &font, "SONG SELECT");
+            crate::prompts::device_footer(
+                parent,
+                &font,
+                "UP/DOWN scroll  ESC back",
+                "D-PAD scroll  EAST back",
+            );
         });
 }
 
@@ -175,9 +181,21 @@ fn leave(
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<&Gamepad>,
     map: Res<crate::controls::InputMap>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut back: Query<
+        (&Interaction, &mut BackgroundColor, &mut BorderColor),
+        With<ui_kit::BackButton>,
+    >,
     mut next_state: ResMut<NextState<AppState>>,
+    mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
-    if MenuNav::read(&map, &keys, pads.iter()).back {
+    let nav = MenuNav::read(&map, &keys, pads.iter());
+    if ui_kit::wants_leave(
+        nav.back,
+        ui_kit::back_pressed(&mut back),
+        mouse.just_pressed(MouseButton::Right),
+    ) {
+        sounds.write(crate::sfx::UiSound::Back);
         next_state.set(AppState::SongSelect);
     }
 }

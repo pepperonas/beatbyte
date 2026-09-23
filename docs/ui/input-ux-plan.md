@@ -23,7 +23,11 @@ point so the work below is the *gap*, not a rebuild:
   settings, controls, multiplayer and the pause menu.
 - **Mouse**: `ui_kit::read_rows` — one rule everywhere, *hovering
   selects, clicking activates*; wheel scrolls the browser;
-  right-click is back.
+  right-click is back. As of v0.18.13 every menu also carries a
+  visible Back control, and hover only moves the cursor when the
+  mouse actually moved or the row was clicked
+  (`hover_moves_cursor` / `wants_leave`) — so a keyboard cursor is
+  not stolen by a parked pointer.
 - **Focus**: one cursor row per screen; `RowState`
   Idle/Selected/Armed with a style that differs in fill AND accent
   bar AND text (pinned). Hover deliberately *is* selection — two

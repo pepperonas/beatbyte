@@ -393,8 +393,11 @@ fn controls_input(
         actions[state.cursor].reset(&mut map);
         sounds.write(crate::sfx::UiSound::Toggle);
     }
-    if nav.back || ui_kit::back_pressed(&mut back_button) || mouse.just_pressed(MouseButton::Right)
-    {
+    if ui_kit::wants_leave(
+        nav.back,
+        ui_kit::back_pressed(&mut back_button),
+        mouse.just_pressed(MouseButton::Right),
+    ) {
         sounds.write(crate::sfx::UiSound::Back);
         next_state.set(AppState::Settings);
     }

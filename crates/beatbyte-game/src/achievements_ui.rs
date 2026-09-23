@@ -344,6 +344,10 @@ impl DrawnFrom {
 #[derive(Component)]
 struct AchievementRow(usize);
 
+/// A category tab the mouse can pick — `None` is EVERYTHING.
+#[derive(Component)]
+struct CategoryTab(Option<Category>);
+
 /// The scrolling list itself.
 #[derive(Component)]
 struct AchievementList;
@@ -430,7 +434,8 @@ fn spawn_screen(
                         "CREATE A PLAYER ON THE PLAYERS SCREEN FIRST",
                     );
                 });
-                ui_kit::footer(root, &font, "ESC BACK");
+                ui_kit::back_button(root, &font, "MAIN MENU");
+                crate::prompts::device_footer(root, &font, "ESC BACK", "EAST back");
             });
         return;
     };
@@ -468,7 +473,18 @@ fn spawn_screen(
                         spawn_row(panel, &font, index, row);
                     }
                 });
-            ui_kit::footer(root, &font, &footer_hint(view.show, view.sort));
+            let back_label = if chosen.0.is_some() {
+                "PLAYERS"
+            } else {
+                "MAIN MENU"
+            };
+            ui_kit::back_button(root, &font, back_label);
+            crate::prompts::device_footer(
+                root,
+                &font,
+                &footer_hint(view.show, view.sort),
+                "D-PAD category and rows  EAST back",
+            );
         });
 }
 
@@ -485,20 +501,30 @@ fn spawn_tabs(parent: &mut ChildSpawnerCommands, font: &UiFont, active: Option<C
             ..default()
         })
         .with_children(|tabs| {
-            let mut draw = |label: &str, on: bool| {
+            let mut draw = |label: &str, group: Option<Category>, on: bool| {
                 tabs.spawn((
-                    Text::new(label.to_owned()),
-                    font.text(ui_kit::SMALL),
-                    TextColor(if on {
-                        palette::BRAND
-                    } else {
-                        ui_kit::dimmed_subtitle()
-                    }),
-                ));
+                    CategoryTab(group),
+                    Button,
+                    Node {
+                        padding: UiRect::axes(px(6.0), px(2.0)),
+                        ..default()
+                    },
+                ))
+                .with_children(|tab| {
+                    tab.spawn((
+                        Text::new(label.to_owned()),
+                        font.text(ui_kit::SMALL),
+                        TextColor(if on {
+                            palette::BRAND
+                        } else {
+                            ui_kit::dimmed_subtitle()
+                        }),
+                    ));
+                });
             };
-            draw("ALL", active.is_none());
+            draw("ALL", None, active.is_none());
             for category in Category::ALL {
-                draw(category.label(), active == Some(category));
+                draw(category.label(), Some(category), active == Some(category));
             }
         });
 }
@@ -508,7 +534,7 @@ fn spawn_row(parent: &mut ChildSpawnerCommands, font: &UiFont, index: usize, row
     let earned = row.earned();
     let colour = tier_colour(row.entry().tier);
     parent
-        .spawn((ui_kit::row(), AchievementRow(index), Interaction::default()))
+        .spawn((ui_kit::row(), AchievementRow(index), Button))
         .with_children(|node| {
             // No-wrap and clipped, both of them. `ui_kit::list_view`
             // measures ONE row and scrolls as though every row were
@@ -612,14 +638,22 @@ fn screen_nav(
     map: Res<InputMap>,
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<&bevy::input::gamepad::Gamepad>,
-    rows: Query<&AchievementRow>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut moved: MessageReader<bevy::window::CursorMoved>,
+    all_rows: Query<&AchievementRow>,
+    rows: Query<(&AchievementRow, &Interaction), Changed<Interaction>>,
+    tabs: Query<(&CategoryTab, &Interaction), Changed<Interaction>>,
+    mut back: Query<
+        (&Interaction, &mut BackgroundColor, &mut BorderColor),
+        With<ui_kit::BackButton>,
+    >,
     mut view: ResMut<AchievementsView>,
     mut next: ResMut<NextState<AppState>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
     chosen: Res<AchievementsFor>,
 ) {
     let nav = MenuNav::read(&map, &keys, pads.iter());
-    let count = rows.iter().count();
+    let count = all_rows.iter().count();
     if count > 0 {
         if nav.up {
             view.row = ui_kit::step_cursor(view.row, count, -1);
@@ -628,6 +662,11 @@ fn screen_nav(
         if nav.down {
             view.row = ui_kit::step_cursor(view.row, count, 1);
             sounds.write(crate::sfx::UiSound::Navigate);
+        }
+        let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
+        let mouse_moved = moved.read().next().is_some();
+        if let Some(index) = ui_kit::hover_moves_cursor(&pointer, mouse_moved) {
+            view.row = index;
         }
     }
     if nav.left {
@@ -638,7 +677,20 @@ fn screen_nav(
         view.step_group(1);
         sounds.write(crate::sfx::UiSound::Navigate);
     }
-    if nav.back {
+    // A click on a category tab picks that group, same as L/R.
+    for (tab, interaction) in &tabs {
+        if *interaction == Interaction::Pressed && view.group != tab.0 {
+            view.group = tab.0;
+            view.row = 0;
+            sounds.write(crate::sfx::UiSound::Navigate);
+        }
+    }
+    if ui_kit::wants_leave(
+        nav.back,
+        ui_kit::back_pressed(&mut back),
+        mouse.just_pressed(MouseButton::Right),
+    ) {
+        sounds.write(crate::sfx::UiSound::Back);
         next.set(back_to(chosen.0.is_some()));
     }
 }

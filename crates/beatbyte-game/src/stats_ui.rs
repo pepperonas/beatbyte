@@ -118,6 +118,10 @@ impl View {
 #[derive(Component)]
 struct StatsScreen;
 
+/// A view tab the mouse can pick — same as LEFT/RIGHT.
+#[derive(Component)]
+struct ViewTab(View);
+
 /// Systems of the statistics screen.
 pub struct StatsUiPlugin;
 
@@ -214,7 +218,8 @@ fn spawn_stats(
                 root.spawn(ui_kit::panel()).with_children(|panel| {
                     plot::empty_note(panel, &font, "CREATE A PLAYER ON THE PLAYERS SCREEN FIRST");
                 });
-                ui_kit::footer(root, &font, "ESC BACK");
+                ui_kit::back_button(root, &font, "PLAYERS");
+                crate::prompts::device_footer(root, &font, "ESC BACK", "EAST back");
             });
         return;
     };
@@ -237,7 +242,13 @@ fn spawn_stats(
                     View::Difficulty => difficulty(panel, &font, &runs),
                     View::Versus => versus(panel, &font, &history.0, &players, id, &name),
                 });
-            ui_kit::footer(root, &font, "LEFT/RIGHT SWITCH VIEW   ESC BACK");
+            ui_kit::back_button(root, &font, "PLAYERS");
+            crate::prompts::device_footer(
+                root,
+                &font,
+                "LEFT/RIGHT SWITCH VIEW   ESC BACK",
+                "D-PAD switch view  EAST back",
+            );
         });
 }
 
@@ -252,14 +263,24 @@ fn spawn_tabs(parent: &mut ChildSpawnerCommands, font: &UiFont, active: View) {
         .with_children(|tabs| {
             for view in View::ALL {
                 tabs.spawn((
-                    Text::new(view.label().to_owned()),
-                    font.text(ui_kit::SMALL),
-                    TextColor(if view == active {
-                        palette::BRAND
-                    } else {
-                        ui_kit::dimmed_subtitle()
-                    }),
-                ));
+                    ViewTab(view),
+                    Button,
+                    Node {
+                        padding: UiRect::axes(px(6.0), px(2.0)),
+                        ..default()
+                    },
+                ))
+                .with_children(|tab| {
+                    tab.spawn((
+                        Text::new(view.label().to_owned()),
+                        font.text(ui_kit::SMALL),
+                        TextColor(if view == active {
+                            palette::BRAND
+                        } else {
+                            ui_kit::dimmed_subtitle()
+                        }),
+                    ));
+                });
             }
         });
 }
@@ -660,20 +681,38 @@ fn versus(
 }
 
 /// Tabs, and leaving.
-#[allow(clippy::needless_pass_by_value)] // Bevy system params
+#[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)] // Bevy system params
 fn stats_nav(
     map: Res<InputMap>,
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<&bevy::input::gamepad::Gamepad>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    tabs: Query<(&ViewTab, &Interaction), Changed<Interaction>>,
+    mut back: Query<
+        (&Interaction, &mut BackgroundColor, &mut BorderColor),
+        With<ui_kit::BackButton>,
+    >,
     mut view: ResMut<StatsView>,
     mut next: ResMut<NextState<AppState>>,
     mut commands: Commands,
     screen: Query<Entity, With<StatsScreen>>,
+    mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
     let nav = MenuNav::read(&map, &keys, pads.iter());
+    let mut wanted = None;
     let delta = i32::from(nav.right) - i32::from(nav.left);
     if delta != 0 {
-        view.0 = view.0.step(delta);
+        wanted = Some(view.0.step(delta));
+    }
+    for (tab, interaction) in &tabs {
+        if *interaction == Interaction::Pressed {
+            wanted = Some(tab.0);
+        }
+    }
+    if let Some(next_view) = wanted
+        && next_view != view.0
+    {
+        view.0 = next_view;
         // A view change is a respawn: the panel's contents differ in
         // shape, not just in text, and rebuilding is cheaper to get
         // right than a dozen refresh systems.
@@ -681,8 +720,14 @@ fn stats_nav(
             commands.entity(entity).despawn();
         }
         commands.run_system_cached(spawn_stats);
+        sounds.write(crate::sfx::UiSound::Navigate);
     }
-    if nav.back {
+    if ui_kit::wants_leave(
+        nav.back,
+        ui_kit::back_pressed(&mut back),
+        mouse.just_pressed(MouseButton::Right),
+    ) {
+        sounds.write(crate::sfx::UiSound::Back);
         next.set(AppState::Players);
     }
 }

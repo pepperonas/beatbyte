@@ -546,7 +546,11 @@ fn about_input(
             Activate::Nothing => {}
         }
     }
-    if nav.back || ui_kit::back_pressed(&mut back) || mouse.just_pressed(MouseButton::Right) {
+    if ui_kit::wants_leave(
+        nav.back,
+        ui_kit::back_pressed(&mut back),
+        mouse.just_pressed(MouseButton::Right),
+    ) {
         sounds.write(crate::sfx::UiSound::Back);
         next_state.set(AppState::MainMenu);
     }
