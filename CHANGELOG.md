@@ -14,6 +14,29 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.16] - 2026-09-23
+
+### Fixed
+
+- **Mouse wheel scrolls long menu lists.** Achievements (and any other
+  `scroll_panel` screen) move the list cursor with the wheel the same
+  way up/down do, so a catalogue taller than the panel scrolls under
+  the mouse; a scan test refuses a scroll panel without a wheel reader.
+
+## [0.18.15] - 2026-09-23
+
+### Added
+
+- **ActionBar chips on every secondary menu action.** Search, Add,
+  sort, lyrics/align/redesign/taste/queue/play-set/edit/delete
+  (Confirm/Cancel), Players New/Rename/Stats/Awards, Achievements
+  Filter/Order/Tier, results rating/versus/comment, pause
+  Resume/Quit, calibration Tap/Save, input-test Tap mode, and
+  Controls Reset are clickable. Keys still work; typing fields open
+  by chip then take the keyboard. Settings rows step down on a left
+  half-click and up on the right. About no longer steals the cursor
+  from a parked pointer.
+
 ## [0.18.14] - 2026-09-23
 
 ### Added

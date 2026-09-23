@@ -22,12 +22,26 @@ point so the work below is the *gap*, not a rebuild:
   merges keyboard + every connected pad; used by main menu, browser,
   settings, controls, multiplayer and the pause menu.
 - **Mouse**: `ui_kit::read_rows` — one rule everywhere, *hovering
-  selects, clicking activates*; wheel scrolls the browser;
+  selects, clicking activates*; wheel scrolls every `scroll_panel`
+  list (cursor step → `follow_list`, or free scroll on Song Info);
   right-click is back. As of v0.18.13 every menu also carries a
   visible Back control, and hover only moves the cursor when the
   mouse actually moved or the row was clicked
   (`hover_moves_cursor` / `wants_leave`) — so a keyboard cursor is
-  not stolen by a parked pointer.
+  not stolen by a parked pointer. As of the ActionBar pass
+  (roadmap M10), secondary actions that lived only as letter
+  shortcuts also have clickable chips (`action_bar` /
+  `read_chips` / `chip_hit`); keys and chips share one path.
+  Achievements gained the wheel in v0.18.16 (it had only keyboard
+  scroll before); a kit scan refuses any new scroll panel without
+  a `MouseWheel` reader.
+- **Mouse secondary actions** *(ActionBar)*: Song Select (search,
+  add, lyrics, align, redesign, taste, queue, play set, edit,
+  delete → Confirm/Cancel), Players (new/rename/stats/awards),
+  Achievements (filter/order/tier), Results (rating/versus/
+  comment), Pause (resume/quit), Calibration (tap/save), Input
+  Test (tap mode), Controls (reset). Typing fields open by click;
+  characters still come from the keyboard. No OS file picker.
 - **Focus**: one cursor row per screen; `RowState`
   Idle/Selected/Armed with a style that differs in fill AND accent
   bar AND text (pinned). Hover deliberately *is* selection — two
@@ -110,9 +124,13 @@ Phased; each phase lands as its own gated, versioned commit.
   with the same device that cancels).
 - **Editor keys stay raw**: the editor is a tool with tool shortcuts
   (17 of them), not a menu; remapping them is out of scope.
-- **Browser shortcuts (F search, S sort, E edit, DEL delete) stay
-  raw**: they are accelerator keys, not navigation; the footer names
-  them.
+- **Browser shortcuts stay as keys** (F search, S sort, E edit,
+  DEL delete, …): they are accelerators, not remappable navigation.
+  The ActionBar chips trigger the same paths; footers name the
+  chips (or “chips above”), not a wall of letters. Pad footers stay
+  short (D-pad / South / East).
+- **Join has no mouse-join**: seats are device-bound; leave works
+  by Back. Deliberate — a click cannot invent a pad.
 - A binding may serve a *game* action and a *UI* action at once
   (A = Fret 1 in play, NavLeft in menus) — different contexts,
   detected conflicts are per-table.

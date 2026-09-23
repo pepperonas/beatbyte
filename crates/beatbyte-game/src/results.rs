@@ -17,24 +17,134 @@ impl Plugin for ResultsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<FeedbackGiven>()
             .init_resource::<CommentField>()
+            .init_resource::<ActionBarClicks>()
+            .init_resource::<FeedbackOffer>()
             .add_systems(OnEnter(AppState::Results), spawn_results)
             .add_systems(
                 Update,
                 // The field runs FIRST and owns every key while it is
                 // open: the browser's lesson, that one system must
                 // own a text field, or the keystroke that opened it
-                // lands inside it.
+                // lands inside it. Chips paint before both.
                 (
-                    results_comment,
-                    results_input,
-                    animate_grade,
-                    count_up_score,
+                    paint_action_bar.before(results_comment),
+                    (
+                        results_comment,
+                        results_input,
+                        animate_grade,
+                        count_up_score,
+                    )
+                        .chain(),
                 )
-                    .chain()
                     .run_if(in_state(AppState::Results)),
             )
             .add_systems(OnExit(AppState::Results), despawn_results);
     }
+}
+
+/// What feedback this visit can accept (set once at spawn).
+#[derive(Resource, Default, Clone, Copy)]
+struct FeedbackOffer {
+    rate: bool,
+    versus: bool,
+    taste: bool,
+}
+
+/// ActionBar chip ids on the results screen.
+mod chip {
+    pub const RATE_1: u8 = 1;
+    pub const RATE_2: u8 = 2;
+    pub const RATE_3: u8 = 3;
+    pub const RATE_4: u8 = 4;
+    pub const RATE_5: u8 = 5;
+    pub const COMMENT: u8 = 10;
+    pub const LEFT: u8 = 11;
+    pub const RIGHT: u8 = 12;
+    pub const SAME: u8 = 13;
+}
+
+#[derive(Resource, Default)]
+struct ActionBarClicks(Vec<u8>);
+
+fn results_chips(offer: FeedbackOffer) -> Vec<ui_kit::ChipSpec> {
+    let mut chips = Vec::new();
+    if offer.rate {
+        for (id, label) in [
+            (chip::RATE_1, "1"),
+            (chip::RATE_2, "2"),
+            (chip::RATE_3, "3"),
+            (chip::RATE_4, "4"),
+            (chip::RATE_5, "5"),
+        ] {
+            chips.push(ui_kit::ChipSpec {
+                id,
+                label,
+                enabled: true,
+            });
+        }
+        chips.push(ui_kit::ChipSpec {
+            id: chip::COMMENT,
+            label: "Comment",
+            enabled: true,
+        });
+    }
+    if offer.taste {
+        chips.push(ui_kit::ChipSpec {
+            id: chip::LEFT,
+            label: "1st better",
+            enabled: true,
+        });
+        chips.push(ui_kit::ChipSpec {
+            id: chip::RIGHT,
+            label: "2nd better",
+            enabled: true,
+        });
+        chips.push(ui_kit::ChipSpec {
+            id: chip::SAME,
+            label: "Same",
+            enabled: true,
+        });
+    } else if offer.versus {
+        chips.push(ui_kit::ChipSpec {
+            id: chip::LEFT,
+            label: "Worse",
+            enabled: true,
+        });
+        chips.push(ui_kit::ChipSpec {
+            id: chip::RIGHT,
+            label: "Better",
+            enabled: true,
+        });
+    }
+    chips
+}
+
+fn paint_action_bar(
+    mut chips: Query<(
+        &ui_kit::ActionChip,
+        &ui_kit::ChipEnabled,
+        &Interaction,
+        &mut BackgroundColor,
+        &mut BorderColor,
+        &Children,
+    )>,
+    mut labels: Query<&mut TextColor>,
+    mut clicks: ResMut<ActionBarClicks>,
+) {
+    clicks.0 = ui_kit::read_chips(&mut chips, &mut labels);
+}
+
+/// Which fun rating a chip press means (1–5), if any.
+fn chip_rating(clicks: &[u8]) -> Option<u8> {
+    [
+        chip::RATE_1,
+        chip::RATE_2,
+        chip::RATE_3,
+        chip::RATE_4,
+        chip::RATE_5,
+    ]
+    .into_iter()
+    .find(|&id| ui_kit::chip_hit(clicks, id))
 }
 
 #[derive(Component)]
@@ -108,21 +218,12 @@ fn fun_rating_for(key: KeyCode) -> Option<u8> {
 fn results_footer(can_rate: bool, can_versus: bool, taste: bool) -> String {
     let mut parts: Vec<&str> = Vec::new();
     if can_rate {
-        parts.push("1-5 rate fun");
+        parts.push("chips rate and comment");
     }
     if taste {
-        // The blind test asks about the two runs just heard, in the
-        // order they were heard — never about "the new one", which
-        // would answer itself.
-        parts.push("LEFT the first was better");
-        parts.push("RIGHT the second");
-        parts.push("DOWN no difference");
+        parts.push("or 1st / 2nd / Same chips");
     } else if can_versus {
-        parts.push("LEFT worse than before");
-        parts.push("RIGHT better");
-    }
-    if can_rate {
-        parts.push("C comment");
+        parts.push("or Worse / Better chips");
     }
     parts.push("ENTER back to browser");
     parts.join("  ")
@@ -217,6 +318,7 @@ fn spawn_results(
     song: Option<Res<crate::boot::LoadedSong>>,
     mut given: ResMut<FeedbackGiven>,
     mut field: ResMut<CommentField>,
+    mut offer: ResMut<FeedbackOffer>,
     taste: Option<Res<crate::taste::TasteTest>>,
     font: Res<UiFont>,
 ) {
@@ -240,6 +342,11 @@ fn spawn_results(
     let can_taste = can_rate && taste.is_some_and(|test| !test.has_next());
     *given = FeedbackGiven::default();
     *field = CommentField::default();
+    *offer = FeedbackOffer {
+        rate: can_rate,
+        versus: can_versus,
+        taste: can_taste,
+    };
 
     // Record solo runs only — multiplayer scoreboards would mix
     // devices and players into one book. Tap mode records normally
@@ -295,6 +402,14 @@ fn spawn_results(
                 font.text(ui_kit::SMALL),
                 TextColor(palette::TEXT_DIM),
             ));
+            let chips = results_chips(FeedbackOffer {
+                rate: can_rate,
+                versus: can_versus,
+                taste: can_taste,
+            });
+            if !chips.is_empty() {
+                ui_kit::action_bar(parent, &font, &chips);
+            }
             crate::prompts::device_footer(
                 parent,
                 &font,
@@ -834,6 +949,7 @@ fn results_comment(
     mut typed: MessageReader<bevy::input::keyboard::KeyboardInput>,
     store: Res<crate::telemetry::TelemetryStore>,
     last_run: Res<crate::telemetry::LastRun>,
+    clicks: Res<ActionBarClicks>,
     mut field: ResMut<CommentField>,
     mut given: ResMut<FeedbackGiven>,
     mut status: Query<&mut Text, With<FeedbackStatus>>,
@@ -843,7 +959,8 @@ fn results_comment(
 
     let can_rate = last_run.open();
     if !field.open {
-        let opening = can_rate && keys.just_pressed(KeyCode::KeyC);
+        let opening = can_rate
+            && (keys.just_pressed(KeyCode::KeyC) || ui_kit::chip_hit(&clicks.0, chip::COMMENT));
         for _ in typed.read() {}
         if opening {
             field.open = true;
@@ -933,6 +1050,7 @@ fn results_input(
     last_run: Res<crate::telemetry::LastRun>,
     song: Option<Res<crate::boot::LoadedSong>>,
     taste: Option<Res<crate::taste::TasteTest>>,
+    clicks: Res<ActionBarClicks>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
     mut status: Query<&mut Text, With<FeedbackStatus>>,
     mut given: ResMut<FeedbackGiven>,
@@ -952,7 +1070,11 @@ fn results_input(
     // Feedback first, so a digit or arrow never doubles as an exit.
     if last_run.open() {
         let mut changed = false;
-        if let Some(rating) = keys.get_just_pressed().find_map(|k| fun_rating_for(*k)) {
+        let rating = keys
+            .get_just_pressed()
+            .find_map(|k| fun_rating_for(*k))
+            .or_else(|| chip_rating(&clicks.0));
+        if let Some(rating) = rating {
             crate::telemetry::append_feedback(
                 &store,
                 &last_run,
@@ -965,11 +1087,17 @@ fn results_input(
         // screen — one verdict, not two competing ones.
         let blind = taste.as_ref().filter(|test| !test.has_next());
         if let Some(test) = blind {
-            let choice = if keys.just_pressed(KeyCode::ArrowLeft) {
+            let choice = if keys.just_pressed(KeyCode::ArrowLeft)
+                || ui_kit::chip_hit(&clicks.0, chip::LEFT)
+            {
                 Some(crate::taste::Choice::First)
-            } else if keys.just_pressed(KeyCode::ArrowRight) {
+            } else if keys.just_pressed(KeyCode::ArrowRight)
+                || ui_kit::chip_hit(&clicks.0, chip::RIGHT)
+            {
                 Some(crate::taste::Choice::Second)
-            } else if keys.just_pressed(KeyCode::ArrowDown) {
+            } else if keys.just_pressed(KeyCode::ArrowDown)
+                || ui_kit::chip_hit(&clicks.0, chip::SAME)
+            {
                 Some(crate::taste::Choice::Same)
             } else {
                 None
@@ -1014,9 +1142,13 @@ fn results_input(
             .and_then(|s| s.chart.provenance.as_ref())
             .map(|p| p.parent_hash.clone());
         if let Some(parent) = parent_hash.filter(|_| blind.is_none()) {
-            let verdict = if keys.just_pressed(KeyCode::ArrowLeft) {
+            let verdict = if keys.just_pressed(KeyCode::ArrowLeft)
+                || ui_kit::chip_hit(&clicks.0, chip::LEFT)
+            {
                 Some("worse")
-            } else if keys.just_pressed(KeyCode::ArrowRight) {
+            } else if keys.just_pressed(KeyCode::ArrowRight)
+                || ui_kit::chip_hit(&clicks.0, chip::RIGHT)
+            {
                 Some("better")
             } else {
                 None
@@ -1220,33 +1352,30 @@ mod tests {
         // is no log to rate into, and the exit hint is always there.
         assert_eq!(results_footer(false, false, false), "ENTER back to browser");
         let rate_only = results_footer(true, false, false);
-        assert!(rate_only.contains("1-5 rate fun"));
         assert!(
-            rate_only.contains("C comment"),
-            "a run that can be rated can be described: {rate_only}"
+            rate_only.contains("chips rate"),
+            "rate offer names the chips: {rate_only}"
         );
         assert!(
-            !results_footer(false, false, false).contains("C comment"),
+            !results_footer(false, false, false).contains("comment"),
             "no log, no offer — a hint that does nothing is a lie"
         );
         assert!(
-            !rate_only.contains("worse"),
+            !rate_only.contains("Worse"),
             "no versus hint without a parent"
         );
         let full = results_footer(true, true, false);
-        assert!(full.contains("LEFT worse"));
-        assert!(full.contains("RIGHT better"));
+        assert!(full.contains("Worse") && full.contains("Better"), "{full}");
         assert!(full.ends_with("ENTER back to browser"));
         // A blind test asks about the two runs just heard — and asks
         // it INSTEAD of the versus question, never beside it: two
         // verdicts on the same arrows would record whichever the code
         // happened to reach first.
         let blind = results_footer(true, true, true);
-        assert!(blind.contains("LEFT the first was better"), "{blind}");
-        assert!(blind.contains("RIGHT the second"), "{blind}");
-        assert!(blind.contains("DOWN no difference"), "{blind}");
+        assert!(blind.contains("1st") && blind.contains("2nd"), "{blind}");
+        assert!(blind.contains("Same"), "{blind}");
         assert!(
-            !blind.contains("worse than before"),
+            !blind.contains("Worse"),
             "the blind question replaces the versus one: {blind}"
         );
     }
@@ -1348,5 +1477,15 @@ mod tests {
         assert_eq!(grade_for(70.0, 0), "C");
         assert_eq!(grade_for(55.0, 0), "D");
         assert_eq!(grade_for(54.9, 0), "E");
+    }
+
+    #[test]
+    fn rating_chips_map_one_to_one_onto_the_star_keys() {
+        // Click equals 1–5: the ActionBar ids are the ratings.
+        assert_eq!(super::chip_rating(&[super::chip::RATE_3]), Some(3));
+        assert_eq!(super::chip_rating(&[super::chip::RATE_1]), Some(1));
+        assert_eq!(super::chip_rating(&[super::chip::RATE_5]), Some(5));
+        assert_eq!(super::chip_rating(&[super::chip::COMMENT]), None);
+        assert_eq!(super::chip_rating(&[]), None);
     }
 }

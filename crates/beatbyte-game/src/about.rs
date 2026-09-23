@@ -496,6 +496,7 @@ fn about_input(
     pads: Query<&Gamepad>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
+    mut moved: MessageReader<bevy::window::CursorMoved>,
     rows: Query<(&AboutRow, &Interaction), Changed<Interaction>>,
     mut state: ResMut<AboutState>,
     mut next_state: ResMut<NextState<AppState>>,
@@ -517,7 +518,8 @@ fn about_input(
         sounds.write(crate::sfx::UiSound::Navigate);
     }
     let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
-    if let Some(index) = pointer.hovered
+    let mouse_moved = moved.read().next().is_some();
+    if let Some(index) = ui_kit::hover_moves_cursor(&pointer, mouse_moved)
         && index < count
     {
         state.cursor = index;

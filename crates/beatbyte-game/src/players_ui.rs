@@ -121,10 +121,76 @@ pub fn footer_hint(field_open: bool, has_players: bool) -> String {
         return "TYPE A NAME   ENTER CONFIRM   ESC CANCEL".to_owned();
     }
     if has_players {
-        "UP/DOWN SELECT   ENTER PLAY AS   S STATS   A AWARDS   N NEW   R RENAME   ESC BACK"
-            .to_owned()
+        "UP/DOWN SELECT   ENTER PLAY AS   chips above   ESC BACK".to_owned()
     } else {
-        "N NEW PLAYER   ESC BACK".to_owned()
+        "NEW chip or N   ESC BACK".to_owned()
+    }
+}
+
+/// ActionBar chip ids for this screen.
+mod chip {
+    pub const NEW: u8 = 0;
+    pub const RENAME: u8 = 1;
+    pub const STATS: u8 = 2;
+    pub const AWARDS: u8 = 3;
+}
+
+/// Pressed ActionBar chip ids for this frame.
+#[derive(Resource, Default)]
+struct ActionBarClicks(Vec<u8>);
+
+fn roster_chips(has_players: bool) -> [ui_kit::ChipSpec; 4] {
+    [
+        ui_kit::ChipSpec {
+            id: chip::NEW,
+            label: "New",
+            enabled: true,
+        },
+        ui_kit::ChipSpec {
+            id: chip::RENAME,
+            label: "Rename",
+            enabled: has_players,
+        },
+        ui_kit::ChipSpec {
+            id: chip::STATS,
+            label: "Stats",
+            enabled: has_players,
+        },
+        ui_kit::ChipSpec {
+            id: chip::AWARDS,
+            label: "Awards",
+            enabled: has_players,
+        },
+    ]
+}
+
+fn paint_action_bar(
+    mut chips: Query<(
+        &ui_kit::ActionChip,
+        &ui_kit::ChipEnabled,
+        &Interaction,
+        &mut BackgroundColor,
+        &mut BorderColor,
+        &Children,
+    )>,
+    mut labels: Query<&mut TextColor>,
+    mut clicks: ResMut<ActionBarClicks>,
+) {
+    clicks.0 = ui_kit::read_chips(&mut chips, &mut labels);
+}
+
+/// Map a chip press to the same [`Gesture`] the letter keys use.
+fn chip_gesture(clicks: &[u8]) -> Option<Gesture> {
+    if ui_kit::chip_hit(clicks, chip::NEW) {
+        Some(Gesture::New)
+    } else if ui_kit::chip_hit(clicks, chip::RENAME) {
+        Some(Gesture::Rename)
+    } else if ui_kit::chip_hit(clicks, chip::STATS) {
+        Some(Gesture::Stats)
+    } else if ui_kit::chip_hit(clicks, chip::AWARDS) {
+        Some(Gesture::Achievements)
+    } else {
+        None
     }
 }
 
@@ -154,14 +220,17 @@ pub struct PlayersUiPlugin;
 impl Plugin for PlayersUiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<RosterCursor>()
+            .init_resource::<ActionBarClicks>()
             .add_systems(
                 OnEnter(AppState::Players),
                 spawn_roster.after(crate::history::HistoryReloaded),
             )
             .add_systems(
                 Update,
-                (roster_keys, roster_nav, refresh_rows)
-                    .chain()
+                (
+                    paint_action_bar.before(roster_keys),
+                    (roster_keys, roster_nav, refresh_rows).chain(),
+                )
                     .run_if(in_state(AppState::Players)),
             )
             .add_systems(OnExit(AppState::Players), despawn_roster);
@@ -186,6 +255,7 @@ fn spawn_roster(
                 "PLAYERS",
                 "WHO IS AT THE GUITAR - EVERY RUN IS FILED UNDER THEM",
             );
+            ui_kit::action_bar(root, &font, &roster_chips(!players.0.is_empty()));
             root.spawn(ui_kit::panel()).with_children(|panel| {
                 if players.0.is_empty() {
                     crate::plot::empty_note(
@@ -286,10 +356,53 @@ fn spawn_row(
         });
 }
 
-/// Typed keys: the field owns them whenever it is open.
-#[allow(clippy::needless_pass_by_value)] // Bevy system params
+/// Apply a roster [`Gesture`] (shared by letter keys and ActionBar chips).
+fn apply_gesture(
+    gesture: Gesture,
+    cursor: &mut RosterCursor,
+    players: &Players,
+    next: &mut NextState<AppState>,
+    chosen: &mut crate::stats_ui::StatsFor,
+    awards: &mut crate::achievements_ui::AchievementsFor,
+) {
+    match gesture {
+        Gesture::New => {
+            cursor.field = Some(Field {
+                text: String::new(),
+                renaming: None,
+            });
+            cursor.status.clear();
+        }
+        Gesture::Rename => {
+            if let Some(player) = players.0.players.get(cursor.row) {
+                cursor.field = Some(Field {
+                    text: player.name.clone(),
+                    renaming: Some(player.id),
+                });
+                cursor.status.clear();
+            }
+        }
+        Gesture::Stats => {
+            if let Some(player) = players.0.players.get(cursor.row) {
+                chosen.0 = Some(player.id);
+                next.set(AppState::Stats);
+            }
+        }
+        Gesture::Achievements => {
+            if let Some(player) = players.0.players.get(cursor.row) {
+                awards.0 = Some(player.id);
+                next.set(AppState::Achievements);
+            }
+        }
+    }
+}
+
+/// Typed keys: the field owns them whenever it is open. Chips share
+/// the same [`Gesture`] paths when no field is open.
+#[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)] // Bevy system params
 fn roster_keys(
     mut typed: MessageReader<bevy::input::keyboard::KeyboardInput>,
+    clicks: Res<ActionBarClicks>,
     mut cursor: ResMut<RosterCursor>,
     mut players: ResMut<Players>,
     mut history: ResMut<crate::history::PlayHistory>,
@@ -297,6 +410,20 @@ fn roster_keys(
     mut chosen: ResMut<crate::stats_ui::StatsFor>,
     mut awards: ResMut<crate::achievements_ui::AchievementsFor>,
 ) {
+    // Chips first: they must not type into an open field, and a
+    // chip click is the mouse door onto the same gestures as N/R/S/A.
+    if cursor.field.is_none()
+        && let Some(gesture) = chip_gesture(&clicks.0)
+    {
+        apply_gesture(
+            gesture,
+            &mut cursor,
+            &players,
+            &mut next,
+            &mut chosen,
+            &mut awards,
+        );
+    }
     for event in typed.read() {
         if !event.state.is_pressed() {
             continue;
@@ -318,33 +445,15 @@ fn roster_keys(
                 cursor.field = None;
                 cursor.status.clear();
             }
-            Press::Gesture(Gesture::New) => {
-                cursor.field = Some(Field {
-                    text: String::new(),
-                    renaming: None,
-                });
-                cursor.status.clear();
-            }
-            Press::Gesture(Gesture::Rename) => {
-                if let Some(player) = players.0.players.get(cursor.row) {
-                    cursor.field = Some(Field {
-                        text: player.name.clone(),
-                        renaming: Some(player.id),
-                    });
-                    cursor.status.clear();
-                }
-            }
-            Press::Gesture(Gesture::Stats) => {
-                if let Some(player) = players.0.players.get(cursor.row) {
-                    chosen.0 = Some(player.id);
-                    next.set(AppState::Stats);
-                }
-            }
-            Press::Gesture(Gesture::Achievements) => {
-                if let Some(player) = players.0.players.get(cursor.row) {
-                    awards.0 = Some(player.id);
-                    next.set(AppState::Achievements);
-                }
+            Press::Gesture(gesture) => {
+                apply_gesture(
+                    gesture,
+                    &mut cursor,
+                    &players,
+                    &mut next,
+                    &mut chosen,
+                    &mut awards,
+                );
             }
             Press::Ignore => {}
         }
@@ -466,15 +575,21 @@ fn roster_nav(
     }
 }
 
-/// Keep the rows, the field and the status line in step.
-#[allow(clippy::type_complexity)] // Bevy queries
+/// Keep the rows, the field, the status line and chip enables in step.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)] // Bevy queries
 fn refresh_rows(
     cursor: Res<RosterCursor>,
+    players: Res<Players>,
     settings: Res<crate::config::Settings>,
     mut rows: Query<(&PlayerRow, &mut BackgroundColor, &mut BorderColor)>,
     mut field: Query<&mut Text, (With<FieldLine>, Without<RosterStatus>)>,
     mut status: Query<&mut Text, (With<RosterStatus>, Without<FieldLine>)>,
+    mut chips: Query<(&ui_kit::ActionChip, &mut ui_kit::ChipEnabled)>,
 ) {
+    let has_players = !players.0.is_empty();
+    ui_kit::set_chip_enabled(&mut chips, chip::RENAME, has_players);
+    ui_kit::set_chip_enabled(&mut chips, chip::STATS, has_players);
+    ui_kit::set_chip_enabled(&mut chips, chip::AWARDS, has_players);
     for (row, mut background, mut border) in &mut rows {
         let state = ui_kit::state_for(row.0 == cursor.row, false);
         let style = ui_kit::styled_row(state, settings.high_contrast);
@@ -541,17 +656,27 @@ mod tests {
     #[test]
     fn the_footer_says_what_is_possible_right_now() {
         // An empty roster must not advertise renaming and statistics
-        // for a player who does not exist.
+        // for a player who does not exist — chips carry those actions.
         let empty = footer_hint(false, false);
-        assert!(empty.contains("N NEW"));
+        assert!(empty.contains("NEW"));
         assert!(
             !empty.contains("RENAME"),
             "offered on an empty roster: {empty}"
         );
-        assert!(footer_hint(false, true).contains("RENAME"));
+        let full = footer_hint(false, true);
+        assert!(full.contains("chips above"), "{full}");
         // With a field open, the arrows belong to the field.
         let typing = footer_hint(true, true);
         assert!(typing.contains("ESC CANCEL") && !typing.contains("UP/DOWN"));
+    }
+
+    #[test]
+    fn chip_gestures_match_the_letter_keys() {
+        assert_eq!(chip_gesture(&[chip::NEW]), Some(Gesture::New));
+        assert_eq!(chip_gesture(&[chip::RENAME]), Some(Gesture::Rename));
+        assert_eq!(chip_gesture(&[chip::STATS]), Some(Gesture::Stats));
+        assert_eq!(chip_gesture(&[chip::AWARDS]), Some(Gesture::Achievements));
+        assert_eq!(chip_gesture(&[]), None);
     }
 
     #[test]

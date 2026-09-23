@@ -492,6 +492,7 @@ impl Plugin for GameplayPlugin {
                 practice_loop_wrap.run_if(in_state(GamePhase::Playing)),
             )
             .init_resource::<PauseCursor>()
+            .init_resource::<PauseBarClicks>()
             .init_resource::<hud::HypeTubeState>()
             .init_resource::<hud::HypeSteps>()
             .init_resource::<lyrics::LyricDisplay>()
@@ -499,11 +500,14 @@ impl Plugin for GameplayPlugin {
             .add_systems(
                 Update,
                 (
-                    pause_menu_input,
-                    refresh_pause_menu,
-                    hotplug::refresh_pad_note,
+                    paint_pause_bar.before(pause_input),
+                    (
+                        pause_menu_input,
+                        refresh_pause_menu,
+                        hotplug::refresh_pad_note,
+                    )
+                        .chain(),
                 )
-                    .chain()
                     .run_if(in_state(GamePhase::Paused)),
             )
             .add_message::<crate::mc::McSwapped>()
@@ -1196,11 +1200,13 @@ fn cleanup_outro(mut commands: Commands) {
     commands.remove_resource::<OutroClock>();
 }
 
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI
 fn pause_input(
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<&bevy::input::gamepad::Gamepad>,
     map: Res<crate::controls::InputMap>,
     mouse: Res<ButtonInput<MouseButton>>,
+    pause_clicks: Res<PauseBarClicks>,
     phase: Res<State<GamePhase>>,
     mut next_phase: ResMut<NextState<GamePhase>>,
     mut next_state: ResMut<NextState<AppState>>,
@@ -1220,11 +1226,15 @@ fn pause_input(
             // Enter no longer resumes: it steps the selected settings
             // row, like on the settings screen. ESC stays the resume.
             // Right-click = leave the pause overlay (= resume), matching
-            // other screens' RC=leave semantics.
-            if pause || mouse.just_pressed(MouseButton::Right) {
+            // other screens' RC=leave semantics. Resume chip is the
+            // mouse door onto the same path.
+            let resume_chip = crate::ui_kit::chip_hit(&pause_clicks.0, pause_chip::RESUME);
+            if pause || mouse.just_pressed(MouseButton::Right) || resume_chip {
                 next_phase.set(GamePhase::Playing);
             }
-            if keys.just_pressed(KeyCode::KeyQ) {
+            if keys.just_pressed(KeyCode::KeyQ)
+                || crate::ui_kit::chip_hit(&pause_clicks.0, pause_chip::QUIT)
+            {
                 info!("gameplay ended: quit from the pause screen");
                 // Like the results exit: back to the browser the
                 // song was picked in, not the main menu.
@@ -1462,9 +1472,26 @@ fn spawn_pause_overlay(
                         });
                 }
             });
+            crate::ui_kit::action_bar(
+                parent,
+                &font,
+                &[
+                    crate::ui_kit::ChipSpec {
+                        id: pause_chip::RESUME,
+                        label: "Resume",
+                        enabled: true,
+                    },
+                    crate::ui_kit::ChipSpec {
+                        id: pause_chip::QUIT,
+                        label: "Quit",
+                        enabled: true,
+                    },
+                ],
+            );
             parent.spawn((
                 crate::prompts::DeviceHint {
-                    keyboard: "UP/DOWN choose  LEFT/RIGHT adjust  ESC resume  Q quit".to_owned(),
+                    keyboard: "UP/DOWN choose  LEFT/RIGHT adjust  chips Resume/Quit  ESC resume"
+                        .to_owned(),
                     pad: "D-PAD choose and adjust  START resume".to_owned(),
                 },
                 Text::new(String::new()),
@@ -1472,6 +1499,30 @@ fn spawn_pause_overlay(
                 TextColor(palette::TEXT_DIM),
             ));
         });
+}
+
+/// ActionBar chip ids on the pause overlay.
+mod pause_chip {
+    pub const RESUME: u8 = 0;
+    pub const QUIT: u8 = 1;
+}
+
+#[derive(Resource, Default)]
+struct PauseBarClicks(Vec<u8>);
+
+fn paint_pause_bar(
+    mut chips: Query<(
+        &crate::ui_kit::ActionChip,
+        &crate::ui_kit::ChipEnabled,
+        &Interaction,
+        &mut BackgroundColor,
+        &mut BorderColor,
+        &Children,
+    )>,
+    mut labels: Query<&mut TextColor>,
+    mut clicks: ResMut<PauseBarClicks>,
+) {
+    clicks.0 = crate::ui_kit::read_chips(&mut chips, &mut labels);
 }
 
 /// Navigate and adjust the pause rows. Gameplay input is gated to

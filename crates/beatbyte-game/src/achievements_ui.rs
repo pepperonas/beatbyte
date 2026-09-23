@@ -313,11 +313,56 @@ pub fn standing(earned: usize, hidden_found: usize) -> String {
 #[must_use]
 pub fn footer_hint(show: Show, sort: Sort, tier: Option<Tier>) -> String {
     format!(
-        "LEFT/RIGHT CATEGORY   T TIER: {}   F FILTER: {}   O ORDER: {}   ESC BACK",
-        tier.map_or("ALL", Tier::label),
+        "LEFT/RIGHT CATEGORY   chips: FILTER {} · ORDER {} · TIER {}   ESC BACK",
         show.label(),
-        sort.label()
+        sort.label(),
+        tier.map_or("ALL", Tier::label),
     )
+}
+
+/// ActionBar chip ids for Filter / Order / Tier.
+mod chip {
+    pub const FILTER: u8 = 0;
+    pub const ORDER: u8 = 1;
+    pub const TIER: u8 = 2;
+}
+
+#[derive(Resource, Default)]
+struct ActionBarClicks(Vec<u8>);
+
+fn achievements_chips() -> [ui_kit::ChipSpec; 3] {
+    [
+        ui_kit::ChipSpec {
+            id: chip::FILTER,
+            label: "Filter",
+            enabled: true,
+        },
+        ui_kit::ChipSpec {
+            id: chip::ORDER,
+            label: "Order",
+            enabled: true,
+        },
+        ui_kit::ChipSpec {
+            id: chip::TIER,
+            label: "Tier",
+            enabled: true,
+        },
+    ]
+}
+
+fn paint_action_bar(
+    mut chips: Query<(
+        &ui_kit::ActionChip,
+        &ui_kit::ChipEnabled,
+        &Interaction,
+        &mut BackgroundColor,
+        &mut BorderColor,
+        &Children,
+    )>,
+    mut labels: Query<&mut TextColor>,
+    mut clicks: ResMut<ActionBarClicks>,
+) {
+    clicks.0 = ui_kit::read_chips(&mut chips, &mut labels);
 }
 
 /// How many of a category's achievements are earned. Pure — tested.
@@ -410,6 +455,7 @@ impl Plugin for AchievementsUiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AchievementsFor>()
             .init_resource::<AchievementsView>()
+            .init_resource::<ActionBarClicks>()
             .add_systems(
                 OnEnter(AppState::Achievements),
                 // Behind the reload: this reads `PlayHistory`, and
@@ -419,12 +465,15 @@ impl Plugin for AchievementsUiPlugin {
             .add_systems(
                 Update,
                 (
-                    screen_keys,
-                    screen_nav,
-                    redraw_when_the_list_changes,
-                    follow_selection,
+                    paint_action_bar.before(screen_keys),
+                    (
+                        screen_keys,
+                        screen_nav,
+                        redraw_when_the_list_changes,
+                        follow_selection,
+                    )
+                        .chain(),
                 )
-                    .chain()
                     .run_if(in_state(AppState::Achievements)),
             )
             .add_systems(OnExit(AppState::Achievements), despawn_screen);
@@ -514,6 +563,7 @@ fn spawn_screen(
                 &format!("{} - ACHIEVEMENTS", name.to_uppercase()),
                 &standing(unlocks.count(), hidden_found),
             );
+            ui_kit::action_bar(root, &font, &achievements_chips());
             spawn_tabs(root, &font, view.group, &unlocks);
             root.spawn((ui_kit::scroll_panel(ui_kit::PANEL_WIDE), AchievementList))
                 .with_children(|panel| {
@@ -671,15 +721,16 @@ fn spawn_row(parent: &mut ChildSpawnerCommands, font: &UiFont, index: usize, row
         });
 }
 
-/// F, O and T: the filter, the sort and the tier.
+/// F, O and T — and the matching ActionBar chips.
 #[allow(clippy::needless_pass_by_value)] // Bevy system params
 fn screen_keys(
     keys: Res<ButtonInput<KeyCode>>,
+    clicks: Res<ActionBarClicks>,
     mut view: ResMut<AchievementsView>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
     let mut changed = false;
-    if keys.just_pressed(KeyCode::KeyF) {
+    if keys.just_pressed(KeyCode::KeyF) || ui_kit::chip_hit(&clicks.0, chip::FILTER) {
         view.show = view.show.next();
         changed = true;
     }
@@ -687,11 +738,11 @@ fn screen_keys(
     // directions, so a sort on `S` would cycle the order AND walk the
     // cursor down on the same press. The roster's `A` is safe for the
     // mirror-image reason — its screen has nothing bound to left.
-    if keys.just_pressed(KeyCode::KeyO) {
+    if keys.just_pressed(KeyCode::KeyO) || ui_kit::chip_hit(&clicks.0, chip::ORDER) {
         view.sort = view.sort.next();
         changed = true;
     }
-    if keys.just_pressed(KeyCode::KeyT) {
+    if keys.just_pressed(KeyCode::KeyT) || ui_kit::chip_hit(&clicks.0, chip::TIER) {
         view.next_tier();
         changed = true;
     }
@@ -708,6 +759,7 @@ fn screen_nav(
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<&bevy::input::gamepad::Gamepad>,
     mouse: Res<ButtonInput<MouseButton>>,
+    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
     mut moved: MessageReader<bevy::window::CursorMoved>,
     all_rows: Query<&AchievementRow>,
     rows: Query<(&AchievementRow, &Interaction), Changed<Interaction>>,
@@ -731,6 +783,19 @@ fn screen_nav(
         if nav.down {
             view.row = ui_kit::step_cursor(view.row, count, 1);
             sounds.write(crate::sfx::UiSound::Navigate);
+        }
+        // Wheel moves the cursor; `follow_selection` then keeps the
+        // row in view — the same path as up/down, so a long list
+        // scrolls under the mouse without a separate free-scroll path.
+        for event in wheel.read() {
+            if event.y > 0.0 {
+                view.row = ui_kit::step_cursor(view.row, count, -1);
+            } else if event.y < 0.0 {
+                view.row = ui_kit::step_cursor(view.row, count, 1);
+            }
+            if event.y != 0.0 {
+                sounds.write(crate::sfx::UiSound::Navigate);
+            }
         }
         let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
         let mouse_moved = moved.read().next().is_some();
@@ -1447,11 +1512,11 @@ mod tests {
     #[test]
     fn the_footer_names_the_state_of_every_switch() {
         // A cycling key whose current value is not on screen is a
-        // key nobody presses twice.
+        // key nobody presses twice — the chips carry the state.
         let hint = footer_hint(Show::Locked, Sort::Closest, Some(Tier::Rare));
-        assert!(hint.contains("FILTER: LOCKED"), "{hint}");
-        assert!(hint.contains("ORDER: CLOSEST"), "{hint}");
-        assert!(hint.contains("TIER: RARE"), "{hint}");
+        assert!(hint.contains("FILTER LOCKED"), "{hint}");
+        assert!(hint.contains("ORDER CLOSEST"), "{hint}");
+        assert!(hint.contains("TIER RARE"), "{hint}");
         // Neither switch may sit on a key the menu table already
         // steers with: W/A/S/D are the four directions, so a sort on
         // `S` would cycle the order and walk the cursor at once.

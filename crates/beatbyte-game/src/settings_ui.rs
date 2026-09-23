@@ -4,6 +4,7 @@
 
 use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
+use bevy::ui::RelativeCursorPosition;
 
 use crate::config::{Settings, save_settings};
 use crate::controls::MenuNav;
@@ -545,7 +546,12 @@ fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
                 .with_children(|panel| {
                     for (index, definition) in Row::ALL.iter().enumerate() {
                         panel
-                            .spawn((RowText(index), Button, ui_kit::row()))
+                            .spawn((
+                                RowText(index),
+                                Button,
+                                RelativeCursorPosition::default(),
+                                ui_kit::row(),
+                            ))
                             .with_children(|row| {
                                 // Label and value are separate texts in a
                                 // space-between line. The old single-string
@@ -592,7 +598,7 @@ fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
             crate::prompts::device_footer(
                 parent,
                 &font,
-                "UP/DOWN choose  LEFT/RIGHT adjust  ESC back",
+                "UP/DOWN choose  LEFT/RIGHT adjust  click left/right half  ESC back",
                 "D-PAD choose and adjust  EAST back",
             );
             ui_kit::back_button(parent, &font, "MAIN MENU");
@@ -608,6 +614,7 @@ fn settings_input(
     mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
     mut moved: MessageReader<bevy::window::CursorMoved>,
     rows: Query<(&RowText, &Interaction), Changed<Interaction>>,
+    positions: Query<(&RowText, &RelativeCursorPosition)>,
     mut cursor: ResMut<SettingsCursor>,
     mut settings: ResMut<Settings>,
     mut next_state: ResMut<NextState<AppState>>,
@@ -684,8 +691,19 @@ fn settings_input(
         row.adjust(&mut settings, -1.0);
         adjusted = true;
     }
-    if nav.right || nav.confirm || clicked {
+    if nav.right || nav.confirm {
         row.adjust(&mut settings, 1.0);
+        adjusted = true;
+    }
+    // Mouse click: left half of the row steps down, right half up —
+    // so a mouse-only player can decrease values without the keyboard.
+    if clicked {
+        let x = positions
+            .iter()
+            .find(|(text, _)| text.0 == cursor.0)
+            .and_then(|(_, pos)| pos.normalized)
+            .map(|p| p.x);
+        row.adjust(&mut settings, click_adjust_direction(x));
         adjusted = true;
     }
     if adjusted {
@@ -698,6 +716,18 @@ fn settings_input(
     ) {
         sounds.write(crate::sfx::UiSound::Back);
         next_state.set(AppState::MainMenu);
+    }
+}
+
+/// Mouse click on a settings row: left half decreases, right half increases.
+///
+/// Missing cursor position (no [`RelativeCursorPosition`] yet) steps up,
+/// matching the old click-only behaviour.
+#[must_use]
+fn click_adjust_direction(normalized_x: Option<f32>) -> f32 {
+    match normalized_x {
+        Some(x) if x < 0.5 => -1.0,
+        _ => 1.0,
     }
 }
 
@@ -773,7 +803,16 @@ fn despawn_settings(mut commands: Commands, entities: Query<Entity, With<Setting
 
 #[cfg(test)]
 mod tests {
-    use super::{SUBTITLE_CHARS, short_path};
+    use super::{SUBTITLE_CHARS, click_adjust_direction, short_path};
+
+    #[test]
+    fn a_click_on_the_left_half_steps_down() {
+        assert_eq!(click_adjust_direction(Some(0.0)), -1.0);
+        assert_eq!(click_adjust_direction(Some(0.49)), -1.0);
+        assert_eq!(click_adjust_direction(Some(0.5)), 1.0);
+        assert_eq!(click_adjust_direction(Some(1.0)), 1.0);
+        assert_eq!(click_adjust_direction(None), 1.0);
+    }
 
     #[test]
     fn a_long_path_keeps_its_end() {
