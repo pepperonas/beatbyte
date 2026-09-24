@@ -774,7 +774,12 @@ pub fn spawn_histogram(
                 .and_then(|i| bins.get(i).map(|(e, _)| *e))
                 .unwrap_or(0);
             block.spawn((
-                Text::new(format!("{left}ms · 0 at {mid}ms · {right}ms")),
+                Text::new(format!(
+                    "{} · 0 AT {} · {}",
+                    millis(f64::from(left)),
+                    millis_abs(f64::from(mid)),
+                    millis(f64::from(right))
+                )),
                 font.text(ui_kit::SMALL),
                 TextColor(ui_kit::dimmed_subtitle()),
             ));
@@ -833,10 +838,39 @@ pub fn percent(value: f64) -> String {
     format!("{:.0}%", value * 100.0)
 }
 
-/// A signed millisecond figure, as the drift axis writes it.
+/// A signed millisecond figure.
+///
+/// ⚠️ One form, because the statistics screen had four on a single
+/// tab: `24 MS LATE`, `+7ms`, `0 AT 0ms` and `−8 MS`, with three
+/// different characters doing duty as the minus sign. The minus here
+/// is U+2212, which is what a minus sign is — ASCII `-` is a hyphen,
+/// and beside a `+` of full width it reads as a dash.
 #[must_use]
 pub fn millis(value: f64) -> String {
-    format!("{value:+.0}ms")
+    let rounded = value.round();
+    // Zero is neither early nor late, and the drift axis draws its
+    // rule at exactly zero: `+0 MS` there claims a direction.
+    if rounded == 0.0 {
+        return "0 MS".to_owned();
+    }
+    // `{:+.0}` would give the hyphen; the sign is written by hand.
+    let sign = if rounded < 0.0 { '\u{2212}' } else { '+' };
+    format!("{sign}{} MS", rounded.abs())
+}
+
+/// A millisecond figure with no sign, for a span or an extreme.
+#[must_use]
+pub fn millis_abs(value: f64) -> String {
+    format!("{} MS", value.abs().round())
+}
+
+/// A reading beside the sample it rests on: `71% · 860`.
+///
+/// One separator, one spacing. The technique bars wrote `71% · 860`
+/// on one row and `100%· 45` on the next.
+#[must_use]
+pub fn with_sample(value: &str, samples: u32) -> String {
+    format!("{value} · {samples}")
 }
 
 /// A plain rounded number, as the score axis writes it.
@@ -934,8 +968,16 @@ mod tests {
     #[test]
     fn axis_labels_read_as_the_quantity_they_measure() {
         assert_eq!(percent(0.848), "85%");
-        assert_eq!(millis(-12.4), "-12ms");
-        assert_eq!(millis(7.0), "+7ms", "a late drift must show its sign");
+        assert_eq!(millis(-12.4), "\u{2212}12 MS");
+        assert_eq!(millis(7.0), "+7 MS", "a late drift must show its sign");
+        assert_eq!(millis(0.0), "0 MS", "zero claims no direction");
+        assert_eq!(millis(-0.4), "0 MS", "and neither does a rounded zero");
+        assert_eq!(millis_abs(-12.4), "12 MS", "a span has no sign");
+        // ⚠️ The minus is U+2212, not the ASCII hyphen: beside a `+`
+        // of full width a hyphen reads as a dash, and the statistics
+        // screen had three different characters doing the job.
+        assert!(!millis(-1.0).contains('-'), "an ASCII hyphen came back");
+        assert_eq!(with_sample(&percent(0.71), 860), "71% · 860");
         assert_eq!(plain(4844.0), "4844");
         assert_eq!(plain(81_929.0), "82k");
     }

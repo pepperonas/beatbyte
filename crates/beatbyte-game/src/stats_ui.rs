@@ -311,9 +311,14 @@ pub fn probe_session_count(path: &Path) -> Result<u64, String> {
 /// Load the Stats-shell snapshot from disk. Shared by the async job
 /// and its tests.
 pub fn load_player_snapshot(path: &Path, scope: Scope) -> Result<PlayerSnapshot, String> {
+    // Nothing recorded yet is the first-run case, not a failure, and
+    // it must not reach the player as a SQLite sentence.
+    if !path.exists() {
+        return Err("NO TELEMETRY RECORDED YET — PLAY A SONG FIRST".to_owned());
+    }
     beatbyte_telemetry::Store::open_readonly(path)
         .and_then(|store| analytics::player_snapshot(&store, scope))
-        .map_err(|error| error.to_string())
+        .map_err(|error| format!("TELEMETRY UNREADABLE — {error}").to_uppercase())
 }
 
 /// Background snapshot of `telemetry.db` for the note-grain tabs.
@@ -336,7 +341,7 @@ impl TelemetryProbe {
         let Some(path) = path else {
             self.task = None;
             self.result_generation = generation;
-            self.result = Some(Err("NO DATA DIRECTORY".to_owned()));
+            self.result = Some(Err("NO PLACE TO KEEP TELEMETRY ON THIS MACHINE".to_owned()));
             return;
         };
         self.task = Some(
@@ -366,11 +371,19 @@ impl TelemetryProbe {
         self.ready().and_then(|r| r.as_ref().ok())
     }
 
+    /// What to show in place of a reading that is not there.
+    ///
+    /// ⚠️ The error arm used to discard its reason and print "NO
+    /// TELEMETRY STORE" — so a locked or damaged database, or a
+    /// permission problem, all claimed the store did not exist,
+    /// which is a different and wrong statement. The reason is now
+    /// carried through; the common case (nothing recorded yet) is
+    /// told apart from a real failure by `load_player_snapshot`.
     fn line(&self) -> String {
         match self.ready() {
             None => "…".to_owned(),
-            Some(Ok(snap)) => format!("TELEMETRY · {} HONEST SESSIONS", snap.sessions),
-            Some(Err(_)) => "NO TELEMETRY STORE".to_owned(),
+            Some(Ok(snap)) => format!("{} HONEST SESSIONS RECORDED", snap.sessions),
+            Some(Err(reason)) => reason.clone(),
         }
     }
 }
@@ -572,9 +585,9 @@ pub fn drift_line(mean_ms: Option<f64>) -> String {
     if mean.abs() < 3.0 {
         "ON TIME".to_owned()
     } else if mean < 0.0 {
-        format!("{:.0} MS EARLY ON AVERAGE", mean.abs())
+        format!("{} EARLY ON AVERAGE", plot::millis_abs(mean))
     } else {
-        format!("{mean:.0} MS LATE ON AVERAGE")
+        format!("{} LATE ON AVERAGE", plot::millis_abs(mean))
     }
 }
 
@@ -793,15 +806,13 @@ fn spawn_filters(parent: &mut ChildSpawnerCommands, font: &UiFont, filters: Stat
                 Some(Difficulty::Hard),
                 Some(Difficulty::Expert),
             ] {
-                let label = match chip {
-                    None => "ALL",
-                    Some(Difficulty::Easy) => "EASY",
-                    Some(Difficulty::Medium) => "MED",
-                    Some(Difficulty::Hard) => "HARD",
-                    Some(Difficulty::Expert) => "EXP",
-                };
+                // ⚠️ One name set. The chip said `MED` and `EXP`
+                // while the bar two rows down said `MEDIUM` and
+                // `EXPERT`, so filtering to a difficulty renamed it.
+                let label =
+                    chip.map_or_else(|| "ALL".to_owned(), |d| d.display_name().to_uppercase());
                 let on = filters.difficulty == chip;
-                self::chip(row, font, DifficultyChip(chip), label, on);
+                self::chip(row, font, DifficultyChip(chip), &label, on);
             }
             row.spawn((
                 Text::new("·".to_owned()),
@@ -984,7 +995,9 @@ fn timing(
         &[
             (
                 "AVERAGE DRIFT",
-                drift_line(telemetry_bias.or(summary.mean_offset_ms)),
+                telemetry_bias
+                    .or(summary.mean_offset_ms)
+                    .map_or_else(|| "-".to_owned(), plot::millis),
             ),
             (
                 "PERFECT SHARE",
@@ -1000,6 +1013,21 @@ fn timing(
             ),
         ],
     );
+
+    // ⚠️ A tile carries a NUMBER. The drift tile carried the whole
+    // sentence "24 MS LATE ON AVERAGE" in a 120-px column, where its
+    // neighbours held "38%" and "3.2" — so one tile wrapped to three
+    // lines and set the height of the row. The sentence says what
+    // the number means and belongs under the row, once.
+    parent.spawn((
+        Node {
+            margin: UiRect::top(px(2.0)),
+            ..default()
+        },
+        Text::new(drift_line(telemetry_bias.or(summary.mean_offset_ms))),
+        font.text(ui_kit::SMALL),
+        TextColor(ui_kit::dimmed_subtitle()),
+    ));
 
     if let Some(snap) = snap
         && !snap.histogram.is_empty()
@@ -1135,7 +1163,7 @@ fn technique_view(
                 label: row.label.to_uppercase(),
                 value: Some(row.hit_rate),
                 colour: palette::GREAT,
-                note: format!("{} · {}", plot::percent(row.hit_rate), row.judged),
+                note: plot::with_sample(&plot::percent(row.hit_rate), row.judged),
             })
             .collect();
         plot::spawn_bar_plot(
@@ -1164,7 +1192,7 @@ fn technique_view(
                 label: row.label.to_uppercase(),
                 value: Some(row.miss_rate),
                 colour: palette::MISS,
-                note: format!("{} · {}", plot::percent(row.miss_rate), row.judged),
+                note: plot::with_sample(&plot::percent(row.miss_rate), row.judged),
             })
             .collect();
         plot::spawn_bar_plot(
@@ -1392,11 +1420,11 @@ pub fn insight_lines(
         && bias.abs() >= 8.0
         && runs.len() >= 3
     {
-        out.push(if bias < 0.0 {
-            format!("YOU PLAY EARLY ON AVERAGE (−{:.0} MS)", bias.abs())
-        } else {
-            format!("YOU PLAY LATE ON AVERAGE (+{bias:.0} MS)")
-        });
+        // ⚠️ One wording. This said "YOU PLAY EARLY ON AVERAGE
+        // (−13 MS)" while the tile three lines below said "13 MS
+        // EARLY ON AVERAGE" — the same reading in two grammars and
+        // two millisecond forms.
+        out.push(format!("YOU PLAY {}", drift_line(Some(bias))));
     }
     if let Some(snap) = snap {
         let single = snap.technique.iter().find(|r| r.label == "singles");
@@ -1488,9 +1516,12 @@ fn difficulty(parent: &mut ChildSpawnerCommands, font: &UiFont, runs: &[PlayerRu
             value: stat.best_accuracy,
             colour: difficulty_colour(stat.difficulty),
             note: match stat.best_accuracy {
-                Some(best) => format!("{}   {} RUNS", plot::percent(best), stat.runs),
+                Some(best) => format!(
+                    "{} RUNS",
+                    plot::with_sample(&plot::percent(best), stat.runs as u32)
+                ),
                 None if stat.runs > 0 => format!("{} RUNS, NONE FINISHED", stat.runs),
-                None => "NEVER PLAYED".to_owned(),
+                None => "NO RUNS YET".to_owned(),
             },
         })
         .collect();
@@ -1518,12 +1549,11 @@ fn difficulty(parent: &mut ChildSpawnerCommands, font: &UiFont, runs: &[PlayerRu
             value: stat.completion(),
             colour: difficulty_colour(stat.difficulty),
             note: stat.completion().map_or_else(
-                || "NEVER PLAYED".to_owned(),
+                || "NO RUNS YET".to_owned(),
                 |share| {
                     format!(
-                        "{}   {} OF {}",
-                        plot::percent(share),
-                        stat.completed,
+                        "{} OF {}",
+                        plot::with_sample(&plot::percent(share), stat.completed as u32),
                         stat.runs
                     )
                 },
@@ -1554,7 +1584,7 @@ fn versus(
         plot::empty_note(
             parent,
             font,
-            "ONLY ONE PLAYER ON THIS MACHINE - ADD ANOTHER TO COMPARE",
+            "NO OTHER PLAYER ON THIS MACHINE — ADD ONE TO COMPARE",
         );
         return;
     }
@@ -1872,6 +1902,16 @@ mod tests {
         ));
         let _ = std::fs::remove_file(&path);
         assert!(probe_session_count(&path).is_err());
+        // ⚠️ And it says so in words a player can act on. This arm
+        // used to throw its reason away and print "NO TELEMETRY
+        // STORE" for everything — a locked or damaged database made
+        // the same claim as an empty machine.
+        let reason = load_player_snapshot(&path, Scope::default()).expect_err("no store");
+        assert!(
+            reason.contains("PLAY A SONG"),
+            "a first run reads as a failure: {reason}"
+        );
+        assert_eq!(reason, reason.to_uppercase(), "the screen speaks in caps");
     }
 
     #[test]

@@ -14,6 +14,34 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.24] - 2026-09-24
+
+### Changed
+
+- **The statistics screen says every number one way.** A single tab
+  carried four forms of a millisecond — `24 MS LATE`, `+7ms`,
+  `0 at 0ms` and `−8 MS` — with three different characters standing
+  in for the minus sign. There is now one form (`+7 MS`, `−12 MS`,
+  and a plain `0 MS`, because zero is neither early nor late), one
+  separator between a reading and its sample (`71% · 860`, where one
+  row had written `100%· 45`), and one name per difficulty: the chip
+  said `MED` and `EXP` while the bar two rows below said `MEDIUM` and
+  `EXPERT`, so filtering to a difficulty renamed it.
+- **A tile carries a number.** The drift tile held the whole sentence
+  "24 MS LATE ON AVERAGE" in a 120-px column between neighbours
+  reading "38%" and "3.2". The tile now reads `−13 MS` and the
+  sentence sits under the row, once — and the finding above it says
+  the same thing in the same words instead of "YOU PLAY EARLY ON
+  AVERAGE (−13 MS)".
+
+### Fixed
+
+- **A telemetry failure says what failed.** Every error was replaced
+  by "NO TELEMETRY STORE" — so a locked, damaged or unreadable
+  database claimed the store did not exist. The reason now reaches
+  the screen, and the ordinary first-run case (nothing recorded yet)
+  is told apart from a real failure and says to play a song.
+
 ## [0.18.23] - 2026-09-24
 
 ### Fixed
