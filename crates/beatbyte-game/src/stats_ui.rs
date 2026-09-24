@@ -391,6 +391,17 @@ struct DifficultyChip(Option<Difficulty>);
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 struct WindowChip(TimeWindow);
 
+/// The panel the views draw into — and the thing that scrolls.
+///
+/// ⚠️ This was `ui_kit::panel_wide()`, which has no ceiling and does
+/// not clip: SONGS with a real library ran clean off the bottom of
+/// the window, taking the back button and the footer with it, and
+/// VERSUS loops over every other player with no limit at all. Every
+/// other list in this game is a `scroll_panel`; this one is not an
+/// exception, it was an oversight.
+#[derive(Component)]
+struct StatsBody;
+
 /// Systems of the statistics screen.
 pub struct StatsUiPlugin;
 
@@ -411,6 +422,8 @@ impl Plugin for StatsUiPlugin {
                 (
                     poll_telemetry_probe,
                     stats_nav,
+                    stats_scroll,
+                    paint_chips,
                     refresh_shell_when_probe_lands,
                 )
                     .chain()
@@ -456,6 +469,39 @@ fn kick_telemetry_probe(
 
 fn poll_telemetry_probe(mut probe: ResMut<TelemetryProbe>) {
     probe.poll();
+}
+
+/// How far one press or one notch moves the panel.
+const SCROLL_STEP: f32 = 48.0;
+
+/// Free scrolling, because the panel holds charts and paragraphs
+/// rather than rows a cursor could step between (the song-info
+/// pattern). UP/DOWN are free here: the tabs are on LEFT/RIGHT.
+#[allow(clippy::needless_pass_by_value)] // Bevy system params
+fn stats_scroll(
+    map: Res<InputMap>,
+    keys: Res<ButtonInput<KeyCode>>,
+    pads: Query<&bevy::input::gamepad::Gamepad>,
+    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
+    mut bodies: Query<&mut ScrollPosition, With<StatsBody>>,
+) {
+    let nav = MenuNav::read(&map, &keys, pads.iter());
+    let mut delta = 0.0;
+    if nav.down {
+        delta += SCROLL_STEP;
+    }
+    if nav.up {
+        delta -= SCROLL_STEP;
+    }
+    for event in wheel.read() {
+        delta -= event.y * SCROLL_STEP * 0.5;
+    }
+    if delta == 0.0 {
+        return;
+    }
+    for mut position in bodies.iter_mut() {
+        position.y = (position.y + delta).max(0.0);
+    }
 }
 
 fn clear_telemetry_probe(mut probe: ResMut<TelemetryProbe>) {
@@ -604,7 +650,7 @@ fn spawn_stats(
                     },
                 ));
             }
-            root.spawn(ui_kit::panel_wide())
+            root.spawn((StatsBody, ui_kit::scroll_panel(ui_kit::PANEL_WIDE)))
                 .with_children(|panel| match view.0 {
                     View::Overview => overview(panel, &font, &runs, &summary, probe.snapshot()),
                     View::Timing => timing(panel, &font, &runs, &summary, probe.snapshot()),
@@ -637,43 +683,88 @@ fn spawn_stats(
             crate::prompts::device_footer(
                 root,
                 &font,
-                "LEFT/RIGHT VIEW   [ ] WINDOW   , . DIFFICULTY   ESC BACK",
-                "D-PAD view  EAST back",
+                "LEFT/RIGHT view  UP/DOWN scroll  , . difficulty  - + window  ESC back",
+                "D-PAD view + scroll  WEST difficulty  NORTH window  EAST back",
             );
         });
+}
+
+/// One chip of a set, from the kit. `marker` is what the press
+/// handler reads back, so a chip's value stays typed rather than
+/// becoming an opaque id.
+fn chip<M: Component>(
+    parent: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    marker: M,
+    label: &str,
+    chosen: bool,
+) {
+    let (fg, border, fill) = ui_kit::selection_chip_colours(chosen, false);
+    parent
+        .spawn((
+            marker,
+            ui_kit::SelectionChip { chosen },
+            Button,
+            ui_kit::selection_chip_node(),
+            BackgroundColor(fill),
+            BorderColor::all(border),
+        ))
+        .with_children(|chip| {
+            chip.spawn((
+                Text::new(label.to_owned()),
+                font.text(ui_kit::SMALL),
+                TextColor(fg),
+                TextLayout::default().with_no_wrap(),
+            ));
+        });
+}
+
+/// Hover feedback for every chip on the screen.
+///
+/// ⚠️ There was none. The tabs and both filter rows were bare words
+/// whose only state cue was colour, so a pointer over them said
+/// nothing at all and an unselected one did not read as pressable.
+#[allow(clippy::needless_pass_by_value, clippy::type_complexity)] // Bevy system
+fn paint_chips(
+    mut chips: Query<
+        (
+            &ui_kit::SelectionChip,
+            &Interaction,
+            &mut BackgroundColor,
+            &mut BorderColor,
+            &Children,
+        ),
+        Changed<Interaction>,
+    >,
+    mut labels: Query<&mut TextColor>,
+) {
+    for (chip, interaction, mut background, mut border, children) in chips.iter_mut() {
+        let label = children.iter().find(|child| labels.contains(*child));
+        let mut text = label.and_then(|child| labels.get_mut(child).ok());
+        ui_kit::paint_selection_chip(
+            *interaction,
+            chip.chosen,
+            &mut background,
+            &mut border,
+            text.as_deref_mut(),
+        );
+    }
 }
 
 /// The row of view tabs.
 fn spawn_tabs(parent: &mut ChildSpawnerCommands, font: &UiFont, active: View) {
     parent
         .spawn(Node {
-            column_gap: px(10.0),
+            column_gap: px(6.0),
             margin: UiRect::bottom(px(8.0)),
             flex_wrap: FlexWrap::Wrap,
-            row_gap: px(4.0),
+            row_gap: px(6.0),
+            justify_content: JustifyContent::Center,
             ..default()
         })
         .with_children(|tabs| {
             for view in View::ALL {
-                tabs.spawn((
-                    ViewTab(view),
-                    Button,
-                    Node {
-                        padding: UiRect::axes(px(4.0), px(2.0)),
-                        ..default()
-                    },
-                ))
-                .with_children(|tab| {
-                    tab.spawn((
-                        Text::new(view.label().to_owned()),
-                        font.text(ui_kit::SMALL),
-                        TextColor(if view == active {
-                            palette::BRAND
-                        } else {
-                            ui_kit::dimmed_subtitle()
-                        }),
-                    ));
-                });
+                chip(tabs, font, ViewTab(view), view.label(), view == active);
             }
         });
 }
@@ -710,25 +801,7 @@ fn spawn_filters(parent: &mut ChildSpawnerCommands, font: &UiFont, filters: Stat
                     Some(Difficulty::Expert) => "EXP",
                 };
                 let on = filters.difficulty == chip;
-                row.spawn((
-                    DifficultyChip(chip),
-                    Button,
-                    Node {
-                        padding: UiRect::axes(px(4.0), px(2.0)),
-                        ..default()
-                    },
-                ))
-                .with_children(|b| {
-                    b.spawn((
-                        Text::new(label.to_owned()),
-                        font.text(ui_kit::SMALL),
-                        TextColor(if on {
-                            palette::BRAND
-                        } else {
-                            ui_kit::dimmed_subtitle()
-                        }),
-                    ));
-                });
+                self::chip(row, font, DifficultyChip(chip), label, on);
             }
             row.spawn((
                 Text::new("·".to_owned()),
@@ -737,25 +810,7 @@ fn spawn_filters(parent: &mut ChildSpawnerCommands, font: &UiFont, filters: Stat
             ));
             for window in TimeWindow::ALL {
                 let on = filters.window == window;
-                row.spawn((
-                    WindowChip(window),
-                    Button,
-                    Node {
-                        padding: UiRect::axes(px(4.0), px(2.0)),
-                        ..default()
-                    },
-                ))
-                .with_children(|b| {
-                    b.spawn((
-                        Text::new(window.label().to_owned()),
-                        font.text(ui_kit::SMALL),
-                        TextColor(if on {
-                            palette::BRAND
-                        } else {
-                            ui_kit::dimmed_subtitle()
-                        }),
-                    ));
-                });
+                chip(row, font, WindowChip(window), window.label(), on);
             }
         });
 }
@@ -1569,6 +1624,70 @@ fn versus(
     }
 }
 
+/// The three chip rows, bundled: `stats_nav` sits at Bevy's
+/// sixteen-parameter cap, and these always travel together.
+#[derive(bevy::ecs::system::SystemParam)]
+struct ChipPresses<'w, 's> {
+    tabs: Query<'w, 's, (&'static ViewTab, &'static Interaction), Changed<Interaction>>,
+    difficulty:
+        Query<'w, 's, (&'static DifficultyChip, &'static Interaction), Changed<Interaction>>,
+    window: Query<'w, 's, (&'static WindowChip, &'static Interaction), Changed<Interaction>>,
+}
+
+/// One frame's worth of filter stepping, from either device.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct FilterSteps {
+    /// −1, 0 or +1 along the difficulty ring.
+    difficulty: i32,
+    /// −1, 0 or +1 along the time windows.
+    window: i32,
+}
+
+impl FilterSteps {
+    /// ⚠️ The keyboard half reads the **typed character**, never the
+    /// `KeyCode`. A `KeyCode` is a physical US position: this screen
+    /// used `BracketLeft`/`BracketRight` for the window, which on a
+    /// German keyboard is `ü` and `+` — the control was simply
+    /// unreachable, the same way search once was (`song_select`
+    /// learned this first).
+    ///
+    /// The pad half exists because there was none: a controller
+    /// player saw two rows of chips and could reach neither. West
+    /// and North are free in the menu table (South confirms, East
+    /// goes back), and a single-direction cycle is enough for a ring
+    /// of four or five that is drawn on screen.
+    fn read<'a>(
+        typed: &mut MessageReader<bevy::input::keyboard::KeyboardInput>,
+        pads: impl Iterator<Item = &'a bevy::input::gamepad::Gamepad>,
+    ) -> FilterSteps {
+        let mut steps = FilterSteps::default();
+        for event in typed.read() {
+            if !event.state.is_pressed() {
+                continue;
+            }
+            let bevy::input::keyboard::Key::Character(text) = &event.logical_key else {
+                continue;
+            };
+            match text.as_str() {
+                "," => steps.difficulty -= 1,
+                "." => steps.difficulty += 1,
+                "-" => steps.window -= 1,
+                "+" => steps.window += 1,
+                _ => {}
+            }
+        }
+        for pad in pads {
+            if pad.just_pressed(bevy::input::gamepad::GamepadButton::West) {
+                steps.difficulty += 1;
+            }
+            if pad.just_pressed(bevy::input::gamepad::GamepadButton::North) {
+                steps.window += 1;
+            }
+        }
+        steps
+    }
+}
+
 /// Tabs, filters, and leaving.
 #[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)] // Bevy system params
 fn stats_nav(
@@ -1576,9 +1695,8 @@ fn stats_nav(
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<&bevy::input::gamepad::Gamepad>,
     mouse: Res<ButtonInput<MouseButton>>,
-    tabs: Query<(&ViewTab, &Interaction), Changed<Interaction>>,
-    diff_chips: Query<(&DifficultyChip, &Interaction), Changed<Interaction>>,
-    window_chips: Query<(&WindowChip, &Interaction), Changed<Interaction>>,
+    typed: MessageReader<bevy::input::keyboard::KeyboardInput>,
+    chips: ChipPresses,
     mut back: Query<
         (&Interaction, &mut BackgroundColor, &mut BorderColor),
         With<ui_kit::BackButton>,
@@ -1592,8 +1710,10 @@ fn stats_nav(
     screen: Query<Entity, With<StatsScreen>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
+    let mut typed = typed;
     let nav = MenuNav::read(&map, &keys, pads.iter());
     let mut rebuild = false;
+    let steps = FilterSteps::read(&mut typed, pads.iter());
 
     let delta = i32::from(nav.right) - i32::from(nav.left);
     if delta != 0 {
@@ -1603,35 +1723,29 @@ fn stats_nav(
             rebuild = true;
         }
     }
-    for (tab, interaction) in &tabs {
+    for (tab, interaction) in &chips.tabs {
         if *interaction == Interaction::Pressed && tab.0 != view.0 {
             view.0 = tab.0;
             rebuild = true;
         }
     }
 
-    // Window: [ ] on the keyboard (not rebound — Stats-only).
-    let window_delta = i32::from(keys.just_pressed(KeyCode::BracketRight))
-        - i32::from(keys.just_pressed(KeyCode::BracketLeft));
-    if window_delta != 0 {
-        filters.window = filters.window.step(window_delta);
+    if steps.window != 0 {
+        filters.window = filters.window.step(steps.window);
         rebuild = true;
     }
-    for (chip, interaction) in &window_chips {
+    for (chip, interaction) in &chips.window {
         if *interaction == Interaction::Pressed && chip.0 != filters.window {
             filters.window = chip.0;
             rebuild = true;
         }
     }
 
-    // Difficulty: , . on the keyboard.
-    let diff_delta = i32::from(keys.just_pressed(KeyCode::Period))
-        - i32::from(keys.just_pressed(KeyCode::Comma));
-    if diff_delta != 0 {
-        filters.difficulty = step_difficulty(filters.difficulty, diff_delta);
+    if steps.difficulty != 0 {
+        filters.difficulty = step_difficulty(filters.difficulty, steps.difficulty);
         rebuild = true;
     }
-    for (chip, interaction) in &diff_chips {
+    for (chip, interaction) in &chips.difficulty {
         if *interaction == Interaction::Pressed && chip.0 != filters.difficulty {
             filters.difficulty = chip.0;
             rebuild = true;

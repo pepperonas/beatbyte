@@ -902,6 +902,75 @@ pub fn set_chip_enabled(chips: &mut Query<(&ActionChip, &mut ChipEnabled)>, id: 
     }
 }
 
+/// Marks a chip that is one of a set, exactly one of which is chosen.
+///
+/// Distinct from [`ActionChip`]: that one is a button that does a
+/// thing and may be disabled; this one is a *choice*, and every chip
+/// in the set is always pressable.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SelectionChip {
+    /// Whether this chip is the chosen one.
+    pub chosen: bool,
+}
+
+/// The node a selection chip wears: a real border, so an unselected
+/// chip still reads as a control rather than as a word.
+#[must_use]
+pub fn selection_chip_node() -> Node {
+    Node {
+        padding: UiRect::axes(px(8), px(2)),
+        border: UiRect::all(px(PANEL_BORDER)),
+        border_radius: BorderRadius::all(px(4)),
+        ..default()
+    }
+}
+
+/// Text, border and fill for a selection chip.
+///
+/// ⚠️ All three move together, because this kit's own rule is that a
+/// selected thing must differ in more than one channel — the
+/// statistics tabs shipped as bare words whose only cue was colour,
+/// with no border and no hover response at all.
+#[must_use]
+pub fn selection_chip_colours(chosen: bool, hot: bool) -> (Color, Color, Color) {
+    if chosen {
+        return (
+            palette::BRAND,
+            palette::BRAND,
+            palette::BRAND.with_alpha(FILL_ALPHA),
+        );
+    }
+    if hot {
+        return (
+            palette::TEXT,
+            palette::dimmed(palette::TEXT_DIM, 0.55),
+            palette::SURFACE.with_alpha(0.7),
+        );
+    }
+    (
+        dimmed_subtitle(),
+        palette::dimmed(palette::TEXT_DIM, 0.3),
+        palette::SURFACE.with_alpha(0.4),
+    )
+}
+
+/// Repaint one selection chip for its state and the pointer.
+pub fn paint_selection_chip(
+    interaction: Interaction,
+    chosen: bool,
+    background: &mut BackgroundColor,
+    border: &mut BorderColor,
+    text: Option<&mut TextColor>,
+) {
+    let hot = interaction != Interaction::None;
+    let (fg, line, fill) = selection_chip_colours(chosen, hot);
+    background.0 = fill;
+    *border = BorderColor::all(line);
+    if let Some(text) = text {
+        text.0 = fg;
+    }
+}
+
 /// The hint line at the bottom of a screen.
 ///
 /// Uniform wording matters as much as uniform styling: `KEY action`
@@ -970,7 +1039,8 @@ mod layout_tests {
 
 #[cfg(test)]
 mod cursor_tests {
-    use super::step_cursor;
+    use super::{selection_chip_colours, selection_chip_node, step_cursor};
+    use bevy::prelude::{UiRect, Val};
 
     /// Every list cursor in the game goes through `step_cursor`, and
     /// this is what says so. A pure test of the helper cannot see a
@@ -1042,6 +1112,33 @@ mod cursor_tests {
         // inside it.
         assert_eq!(step_cursor(99, 5, 1), 4);
         assert_eq!(step_cursor(99, 5, -1), 4);
+    }
+
+    /// ⚠️ The statistics tabs and both filter rows shipped as bare
+    /// words whose only state cue was colour — no border, no fill,
+    /// no hover response — against this kit's own rule that a
+    /// selected thing differs in more than one channel.
+    #[test]
+    fn a_chosen_chip_differs_from_an_unchosen_one_in_more_than_colour() {
+        let on = selection_chip_colours(true, false);
+        let off = selection_chip_colours(false, false);
+        assert_ne!(on.0, off.0, "the text is the same");
+        assert_ne!(on.1, off.1, "the border is the same");
+        assert_ne!(on.2, off.2, "the fill is the same");
+        // And the pointer must get an answer on a chip that is not
+        // the chosen one, which is where hover actually matters.
+        assert_ne!(
+            selection_chip_colours(false, true),
+            off,
+            "hovering an unchosen chip changes nothing"
+        );
+        // An unchosen chip still reads as a control.
+        let node = selection_chip_node();
+        assert_ne!(
+            node.border,
+            UiRect::all(Val::Px(0.0)),
+            "a chip without a border is a word"
+        );
     }
 
     /// A [`scroll_panel`] without a `MouseWheel` reader is a list the

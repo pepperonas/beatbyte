@@ -14,6 +14,38 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.23] - 2026-09-24
+
+### Fixed
+
+- **The statistics screen scrolls.** It was the only screen in the
+  game whose panel had no ceiling and did not clip: with a real
+  library, SONGS ran clean off the bottom of the window and took the
+  back button and the footer with it, and VERSUS loops over every
+  other player with no limit at all. It is now a scroll panel like
+  every other list — UP/DOWN or the wheel.
+- **The footer no longer goes missing for a frame.** Every
+  device-aware footer in the game was spawned with empty text and
+  filled on the next frame. On a screen that rebuilds whenever a
+  background job lands — which the statistics screen does — that
+  frame is the one you see: the footer was simply absent from the
+  tabs that wait on the telemetry store, and the layout jumped when
+  it filled.
+- **The window filter was unreachable on a German keyboard.** It was
+  bound to the physical `[` and `]` positions, which on QWERTZ are
+  `ü` and `+`. Both filters now read the character you typed, not the
+  key's US position: `,` `.` for difficulty, `-` `+` for the window.
+
+### Changed
+
+- **The tabs and filter chips look like controls.** They were bare
+  words whose only state cue was colour, with no border, no fill and
+  no response to the pointer at all. They now wear the kit's chip,
+  and the chosen one differs in three channels rather than one.
+- **A gamepad can reach the filters.** It could see both rows of
+  chips and press neither: WEST cycles the difficulty, NORTH the
+  window.
+
 ## [0.18.22] - 2026-09-24
 
 ### Changed

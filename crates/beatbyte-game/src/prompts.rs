@@ -90,13 +90,23 @@ fn swap_device_hints(active: Res<ActiveDevice>, mut hints: Query<(&DeviceHint, &
 
 /// A footer with a wording per device — the device-aware sibling of
 /// [`ui_kit::footer`], same dress, swapped live.
+/// ⚠️ The footer is born with the keyboard wording, not empty.
+/// `swap_device_hints` corrects it on the very next frame if a pad
+/// is in hand, and [`ActiveDevice`] defaults to the keyboard anyway —
+/// but a footer spawned empty is a footer that is MISSING for a
+/// frame, and a screen that rebuilds often shows that frame. The
+/// statistics screen rebuilds whenever its telemetry probe lands, and
+/// its footer was simply absent from every screenshot of a tab that
+/// waits on the store while the tabs that do not kept theirs. An
+/// empty text node is also zero pixels tall, so the layout jumped
+/// when it filled.
 pub fn device_footer(parent: &mut ChildSpawnerCommands, font: &UiFont, keyboard: &str, pad: &str) {
     parent.spawn((
         DeviceHint {
             keyboard: keyboard.to_owned(),
             pad: pad.to_owned(),
         },
-        Text::new(String::new()),
+        Text::new(keyboard.to_owned()),
         font.text(ui_kit::SMALL),
         TextColor(crate::palette::dimmed(crate::palette::TEXT_DIM, 0.75)),
         Node {
@@ -119,6 +129,45 @@ impl Plugin for PromptsPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ⚠️ A footer that spawns empty is a footer that is missing for
+    /// a frame — and on a screen that rebuilds whenever a background
+    /// job lands, that frame is the one the player (and the
+    /// screenshot harness) sees.
+    #[test]
+    fn a_footer_says_something_on_the_frame_it_is_born() {
+        let mut app = App::new();
+        app.world_mut()
+            .spawn(bevy::ui::Node::default())
+            .with_children(|parent| {
+                parent.spawn((
+                    DeviceHint {
+                        keyboard: "ESC back".to_owned(),
+                        pad: "EAST back".to_owned(),
+                    },
+                    Text::new("ESC back".to_owned()),
+                ));
+            });
+        let spoken: Vec<String> = app
+            .world_mut()
+            .query::<(&DeviceHint, &Text)>()
+            .iter(app.world())
+            .map(|(_, text)| text.0.clone())
+            .collect();
+        assert_eq!(spoken, vec!["ESC back".to_owned()]);
+        // And the source says so: the builder must not hand out an
+        // empty string.
+        let source = include_str!("prompts.rs");
+        let body = source
+            .split("pub fn device_footer")
+            .nth(1)
+            .and_then(|rest| rest.split("\n}\n").next())
+            .expect("device_footer has a body");
+        assert!(
+            !body.contains("Text::new(String::new())"),
+            "device_footer spawns an empty footer again"
+        );
+    }
 
     #[test]
     fn the_first_frame_speaks_keyboard() {
