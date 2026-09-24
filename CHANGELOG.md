@@ -14,6 +14,19 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.21] - 2026-09-24
+
+### Added
+
+- **The statistics screen says how many recorded runs name no
+  player.** Filtering by player (0.18.20) is right, but most of what
+  this store holds was recorded before runs were attributed — on the
+  machine this was written on, 138 of 144 honest sessions name
+  nobody. Those runs are not yours to claim, so they are not counted;
+  a line under the filters now says how many there are, counted under
+  the same difficulty and window, rather than leaving the numbers to
+  shrink without explanation.
+
 ## [0.18.20] - 2026-09-24
 
 ### Fixed

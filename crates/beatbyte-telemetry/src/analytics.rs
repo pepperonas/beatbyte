@@ -712,6 +712,19 @@ pub fn note_timeline(
 pub struct PlayerSnapshot {
     /// Honest sessions counted.
     pub sessions: u64,
+    /// Honest sessions this scope's difficulty and window allow but
+    /// that name **no player**, and are therefore not counted.
+    ///
+    /// Zero unless a player was asked for: without that filter they
+    /// are already in `sessions`, so nothing is being left out.
+    ///
+    /// ⚠️ This is not a rounding error. On the machine this was
+    /// written on, 138 of 144 honest sessions name nobody — they
+    /// were recorded before runs were attributed, and the one-time
+    /// adoption that claimed the PLAY HISTORY for its player never
+    /// ran over this store. A reading that quietly drops 96 % of the
+    /// evidence has to say so.
+    pub unattributed: u64,
     /// Timing histogram bins `(edge_ms, count)`.
     pub histogram: Vec<(i32, u32)>,
     /// Mean signed offset in ms, if any hits.
@@ -744,6 +757,32 @@ pub fn player_snapshot(store: &Store, scope: Scope) -> Result<PlayerSnapshot> {
         .into_iter()
         .next()
         .unwrap_or(0);
+    // What the player filter leaves out, on the same difficulty and
+    // in the same window: a count the screen can state rather than a
+    // silence it cannot explain.
+    let unattributed: i64 = if scope.player_id.is_some() {
+        let anyone = Scope {
+            player_id: None,
+            ..scope
+        };
+        let [player, difficulty, since] = anyone.params();
+        store
+            .query(
+                &format!(
+                    "SELECT COUNT(*) FROM gameplay_session s
+                      WHERE {HONEST_RUNS} AND s.player_id IS NULL
+                        {}",
+                    scope_clause(1)
+                ),
+                &[player, difficulty, since],
+                |row| row.get(0),
+            )?
+            .into_iter()
+            .next()
+            .unwrap_or(0)
+    } else {
+        0
+    };
     let histogram = timing_histogram(store, None, 10, scope)?;
     let bias_ms = timing_bias_ms(store, None, scope)?;
     let technique = technique_by_kind(store, 8, scope)?;
@@ -758,6 +797,7 @@ pub fn player_snapshot(store: &Store, scope: Scope) -> Result<PlayerSnapshot> {
     };
     Ok(PlayerSnapshot {
         sessions: honest.max(0) as u64,
+        unattributed: unattributed.max(0) as u64,
         histogram,
         bias_ms,
         technique,

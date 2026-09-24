@@ -267,6 +267,27 @@ pub fn telemetry_scope(player: Option<PlayerId>, filters: StatsFilters, now_ms: 
     }
 }
 
+/// What a player filter leaves out of the telemetry, said plainly —
+/// or `None` when it leaves nothing out.
+///
+/// ⚠️ Worth a line on the screen because the number is large and the
+/// cause is invisible: sessions recorded before runs were attributed
+/// name no player, and the one-time adoption that claimed the play
+/// history for its player never ran over the telemetry store. On the
+/// machine this was written on that is 138 of 144 honest sessions,
+/// so a screen that simply showed the remaining six would read as a
+/// regression rather than as a filter doing its job.
+#[must_use]
+pub fn unattributed_note(count: u64) -> Option<String> {
+    match count {
+        0 => None,
+        1 => Some("1 RECORDED RUN NAMES NO PLAYER — NOT COUNTED HERE".to_owned()),
+        many => Some(format!(
+            "{many} RECORDED RUNS NAME NO PLAYER — NOT COUNTED HERE"
+        )),
+    }
+}
+
 /// Wall-clock ms for window filters.
 #[must_use]
 pub fn wall_now_ms() -> u64 {
@@ -565,6 +586,21 @@ fn spawn_stats(
             ui_kit::header(root, &font, &name.to_uppercase(), view.0.question());
             spawn_tabs(root, &font, view.0);
             spawn_filters(root, &font, *filters);
+            if view.0.needs_telemetry()
+                && let Some(note) = probe
+                    .snapshot()
+                    .and_then(|snap| unattributed_note(snap.unattributed))
+            {
+                root.spawn((
+                    Text::new(note),
+                    font.text(ui_kit::SMALL),
+                    TextColor(ui_kit::dimmed_subtitle()),
+                    Node {
+                        margin: UiRect::bottom(px(8.0)),
+                        ..default()
+                    },
+                ));
+            }
             root.spawn(ui_kit::panel_wide())
                 .with_children(|panel| match view.0 {
                     View::Overview => overview(panel, &font, &runs, &summary),
@@ -2106,6 +2142,93 @@ mod tests {
                 .sessions,
             8,
             "every honest run, whoever played it"
+        );
+    }
+
+    /// ⚠️ Measured on the real store while building S1: 138 of 144
+    /// honest sessions name no player, because they were recorded
+    /// before runs were attributed and the one-time adoption that
+    /// claimed the PLAY HISTORY for its player never ran over the
+    /// telemetry store. Filtering by player is right; dropping 96 %
+    /// of the evidence without a word is not.
+    #[test]
+    fn a_reading_says_how_many_runs_name_nobody() {
+        const DAY: u64 = 86_400_000;
+        let now = 1_700_000_000_000u64;
+        let me = 1u64;
+
+        let mut store = beatbyte_telemetry::Store::open_in_memory().expect("a store");
+        for (uid, player, difficulty, days, honest) in [
+            ("mine", Some(me), Difficulty::Easy, 1, true),
+            ("nobody-recent", None, Difficulty::Easy, 1, true),
+            ("nobody-old", None, Difficulty::Easy, 200, true),
+            ("nobody-hard", None, Difficulty::Hard, 1, true),
+            ("nobody-practice", None, Difficulty::Easy, 1, false),
+        ] {
+            store
+                .begin(&scoped_session(
+                    uid,
+                    player,
+                    difficulty,
+                    now - days * DAY,
+                    honest,
+                ))
+                .expect("a session");
+        }
+
+        let ask = |filters: StatsFilters, who: Option<u64>| {
+            analytics::player_snapshot(&store, telemetry_scope(who, filters, now))
+                .expect("a snapshot")
+        };
+
+        let all = StatsFilters::default();
+        assert_eq!(
+            ask(all, Some(me)).unattributed,
+            3,
+            "the three honest orphans"
+        );
+        assert_eq!(
+            ask(all, None).unattributed,
+            0,
+            "without a player filter they are already counted, so nothing is left out"
+        );
+        // The count obeys the rest of the scope, or the line would
+        // claim runs the window had already excluded anyway.
+        assert_eq!(
+            ask(
+                StatsFilters {
+                    window: TimeWindow::Days7,
+                    ..all
+                },
+                Some(me)
+            )
+            .unattributed,
+            2,
+            "the 200-day-old orphan is outside the window"
+        );
+        assert_eq!(
+            ask(
+                StatsFilters {
+                    difficulty: Some(Difficulty::Hard),
+                    ..all
+                },
+                Some(me)
+            )
+            .unattributed,
+            1,
+            "only the HARD orphan"
+        );
+    }
+
+    #[test]
+    fn the_unattributed_line_counts_in_the_right_plural_or_stays_quiet() {
+        assert_eq!(unattributed_note(0), None, "nothing left out, nothing said");
+        assert_eq!(
+            unattributed_note(1).as_deref(),
+            Some("1 RECORDED RUN NAMES NO PLAYER — NOT COUNTED HERE")
+        );
+        assert!(
+            unattributed_note(138).is_some_and(|line| line.starts_with("138 RECORDED RUNS NAME")),
         );
     }
 
