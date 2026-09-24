@@ -77,7 +77,10 @@ pub fn run_redesign_all(dir: &Path) -> ExitCode {
                 println!("{}: {message}", folder.display());
                 written += 1;
             }
-            Err(message) if message.contains("legacy layout") => {
+            Err(message)
+                if message.contains("legacy layout")
+                    || message == beatbyte_chart::redesign::TWIN_REFUSAL =>
+            {
                 println!("{}: {message}", folder.display());
                 skipped += 1;
             }

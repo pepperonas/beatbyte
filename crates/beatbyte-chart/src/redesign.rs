@@ -137,6 +137,11 @@ pub struct Reading {
 /// game can drop on the floor.
 ///
 /// # Errors
+/// What a twin folder is told. Named so the callers that walk a
+/// whole library can count it as skipped rather than failed.
+pub const TWIN_REFUSAL: &str = "a study twin — its chart comes from the separated instrument, and a redesign would \
+     bury it under one generated from the mix; skipped";
+
 /// When the folder is a legacy layout, when its audio or chart cannot
 /// be read, or when the merged result fails validation.
 pub fn redesign_folder(
@@ -144,6 +149,19 @@ pub fn redesign_folder(
     read: &dyn Fn(&Path) -> Result<Reading, String>,
     note: &dyn Fn(String),
 ) -> Result<String, String> {
+    // ⚠️ Never a study twin. A twin's chart was written from the
+    // separated INSTRUMENT, and its `song.audio` still names the
+    // mix — so a redesign here reads the mix, generates against it,
+    // and buries the stem chart under a new active version. Both
+    // doors lead through this function (`redesign --all` walks every
+    // directory it finds, and the browser's `G` hands one folder in),
+    // so the refusal belongs here rather than at either of them.
+    if folder
+        .file_name()
+        .is_some_and(|name| crate::study::is_twin_folder(&name.to_string_lossy()))
+    {
+        return Err(TWIN_REFUSAL.to_owned());
+    }
     let names: Vec<String> = std::fs::read_dir(folder)
         .map_err(|error| format!("cannot list `{}`: {error}", folder.display()))?
         .filter_map(Result::ok)
@@ -261,6 +279,44 @@ pub fn redesign_folder(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ⚠️ A twin's chart was written from the separated instrument,
+    /// but its `song.audio` still names the mix — so a redesign
+    /// reads the mix, generates against it, and buries the stem
+    /// chart under a new active version. `redesign --all` walks
+    /// every directory it finds and the browser's `G` hands one in;
+    /// both arrive here, which is why the refusal lives here.
+    #[test]
+    fn a_study_twin_is_never_redesigned() {
+        let dir = std::env::temp_dir().join(format!(
+            "bb-redesign-twin-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        let twin = dir.join("guitar-study-song");
+        std::fs::create_dir_all(&twin).expect("a twin folder");
+        // A complete-looking folder: the refusal must come BEFORE
+        // anything is read, so the reader is a trap.
+        std::fs::write(twin.join(versions::BASE_CHART), b"{}").expect("a chart");
+        let outcome = redesign_folder(
+            &twin,
+            &|_| Err("the reader was called on a twin".to_owned()),
+            &|_| {},
+        );
+        assert_eq!(outcome, Err(TWIN_REFUSAL.to_owned()));
+
+        // And an ordinary folder still gets as far as its contents.
+        let plain = dir.join("song");
+        std::fs::create_dir_all(&plain).expect("a song folder");
+        let outcome = redesign_folder(&plain, &|_| Err("unused".to_owned()), &|_| {});
+        assert!(
+            matches!(&outcome, Err(reason) if reason.contains("legacy layout")),
+            "an ordinary folder was refused as a twin: {outcome:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
     use crate::{ChartDef, ChartNote, SongMeta};
 
     fn note(time: f64, lane: u8) -> ChartNote {

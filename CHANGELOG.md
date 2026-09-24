@@ -14,6 +14,19 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.30] - 2026-09-24
+
+### Fixed
+
+- **A redesign no longer buries a guitar twin's chart.** A twin's
+  chart is written from the separated instrument, but the file still
+  names the mix as its audio — so `redesign --all`, which walks every
+  directory it finds, and the browser's `G` both read the MIX,
+  generated against it, and made that the twin's active version. Both
+  doors lead through one function, and that is where the refusal now
+  sits; a library rollover counts the twins as skipped rather than
+  failed.
+
 ## [0.18.29] - 2026-09-24
 
 ### Fixed
