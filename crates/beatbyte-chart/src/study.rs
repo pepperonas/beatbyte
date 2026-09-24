@@ -68,6 +68,48 @@ pub fn twin_folder_for(song_folder: &Path) -> Option<PathBuf> {
     Some(song_folder.parent()?.join(twin_folder_name(&name)))
 }
 
+/// Copy a song folder's assets — everything but the charts — into
+/// the twin's folder.
+///
+/// ⚠️ **Files only.** `fs::copy` fails on a directory, and a song
+/// folder grows them: separated stems live in `<song>.stems`. The
+/// failure landed AFTER the twin folder had been created, so the
+/// half-written folder answered "already there" for ever and the
+/// song never got a twin. Stems are derived from the audio beside
+/// them and the twin can make its own.
+///
+/// Its own function so a test can call the real thing: the first
+/// version of that test copied this loop into itself, which meant a
+/// mutation of the loop changed nothing and the pin was blind.
+///
+/// # Errors
+/// When a file cannot be copied.
+fn copy_assets(from: &Path, to: &Path, names: &[String]) -> Result<(), String> {
+    for name in names.iter().filter(|n| !is_chart_file(n)) {
+        let source = from.join(name);
+        if !source.is_file() {
+            continue;
+        }
+        std::fs::copy(&source, to.join(name))
+            .map_err(|error| format!("cannot copy {name}: {error}"))?;
+    }
+    Ok(())
+}
+
+/// Whether a twin folder holds a FINISHED twin.
+///
+/// ⚠️ Existing is not enough. The chart is written last, on purpose,
+/// so a library scan never sees a chart without its audio — which
+/// means a run that failed partway leaves a folder that exists and
+/// plays nothing. Answering "already there" to that one is how a
+/// half-written twin became permanent: every later run saw the
+/// folder, returned early, and never got as far as the failure.
+/// Pure enough to test with a directory.
+#[must_use]
+pub fn is_finished_twin(folder: &Path) -> bool {
+    folder.join(versions::BASE_CHART).is_file()
+}
+
 /// Whether a folder name is a twin's.
 #[must_use]
 pub fn is_twin_folder(name: &str) -> bool {
@@ -131,7 +173,7 @@ pub fn write_twin(
     read: &dyn Fn(&Path) -> Result<Reading, String>,
 ) -> Result<Outcome, String> {
     let out = twin_folder_for(song_folder).ok_or("the song folder needs a name and a parent")?;
-    if out.exists() {
+    if is_finished_twin(&out) {
         return Ok(Outcome::AlreadyThere(out));
     }
     let names: Vec<String> = std::fs::read_dir(song_folder)
@@ -220,12 +262,9 @@ pub fn write_twin(
     // The only write boundary: a NEW folder. Audio and sidecars first,
     // the chart LAST, so a library scan that happens mid-write never
     // sees a chart without its audio.
-    std::fs::create_dir(&out)
+    std::fs::create_dir_all(&out)
         .map_err(|error| format!("cannot create {}: {error}", out.display()))?;
-    for name in names.iter().filter(|n| !is_chart_file(n)) {
-        std::fs::copy(song_folder.join(name), out.join(name))
-            .map_err(|error| format!("cannot copy {name}: {error}"))?;
-    }
+    copy_assets(song_folder, &out, &names)?;
     save_chart_file(&out.join(versions::BASE_CHART), &chart)
         .map_err(|error| format!("cannot write the study chart: {error}"))?;
     Ok(Outcome::Written {
@@ -242,6 +281,99 @@ pub fn write_twin(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A scratch directory that removes itself.
+    struct Scratch(PathBuf);
+    impl Scratch {
+        fn new(tag: &str) -> Scratch {
+            let unique = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos());
+            let dir = std::env::temp_dir().join(format!("bb-twin-{tag}-{unique}"));
+            std::fs::create_dir_all(&dir).expect("scratch");
+            Scratch(dir)
+        }
+    }
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// ⚠️ Two halves of one defect, and the second is what made the
+    /// first permanent. A song folder grows subdirectories —
+    /// separated stems live in `<song>.stems` — and `fs::copy` fails
+    /// on a directory. That failure lands AFTER the twin folder has
+    /// been created, so the folder exists, holds no chart, and every
+    /// later run saw it, said "already there" and returned before
+    /// reaching the failure again. The song never got a twin and
+    /// nothing ever said why.
+    #[test]
+    fn a_folder_without_a_chart_is_not_a_finished_twin() {
+        let scratch = Scratch::new("finished");
+        let twin = scratch.0.join("guitar-study-song");
+        assert!(!is_finished_twin(&twin), "a missing folder counted");
+        std::fs::create_dir_all(&twin).expect("dir");
+        std::fs::write(twin.join("song.m4a"), b"audio").expect("audio");
+        assert!(
+            !is_finished_twin(&twin),
+            "a half-written twin counted as finished"
+        );
+        std::fs::write(twin.join(versions::BASE_CHART), b"{}").expect("chart");
+        assert!(is_finished_twin(&twin), "a finished twin did not count");
+    }
+
+    /// The copy walks FILES. A directory in the song folder is
+    /// skipped rather than failing the run.
+    #[test]
+    fn a_subfolder_in_the_song_folder_is_skipped_rather_than_fatal() {
+        let scratch = Scratch::new("copy");
+        let from = scratch.0.join("song");
+        let to = scratch.0.join("guitar-study-song");
+        std::fs::create_dir_all(from.join("Song.stems")).expect("stems dir");
+        std::fs::write(from.join("Song.stems").join("guitar.wav"), b"x").expect("stem");
+        std::fs::write(from.join("Song.m4a"), b"audio").expect("audio");
+        std::fs::write(from.join("Song.lrc"), b"lyrics").expect("lrc");
+        std::fs::write(from.join(versions::BASE_CHART), b"{}").expect("chart");
+        std::fs::create_dir_all(&to).expect("out");
+
+        let names: Vec<String> = std::fs::read_dir(&from)
+            .expect("list")
+            .filter_map(Result::ok)
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        // ⚠️ The REAL function. The first version of this test copied
+        // the loop into itself, so mutating the loop changed nothing
+        // and the pin was blind — the mutation probe said so.
+        copy_assets(&from, &to, &names).expect("the copy must not fail");
+        assert!(to.join("Song.m4a").is_file(), "the audio did not travel");
+        assert!(to.join("Song.lrc").is_file(), "the lyrics did not travel");
+        assert!(
+            !to.join("Song.stems").exists(),
+            "the stems folder was copied after all"
+        );
+        assert!(
+            !to.join(versions::BASE_CHART).exists(),
+            "the chart is written separately, last"
+        );
+    }
+
+    /// A copy that cannot happen is an error, not a shrug: the twin
+    /// would otherwise be written without its audio.
+    #[test]
+    fn a_copy_that_fails_fails_the_run() {
+        let scratch = Scratch::new("copyfail");
+        let from = scratch.0.join("song");
+        std::fs::create_dir_all(&from).expect("dir");
+        std::fs::write(from.join("Song.m4a"), b"audio").expect("audio");
+        let names = vec!["Song.m4a".to_owned()];
+        // The destination does not exist.
+        let outcome = copy_assets(&from, &scratch.0.join("nowhere"), &names);
+        assert!(
+            matches!(&outcome, Err(reason) if reason.contains("cannot copy")),
+            "a failed copy was swallowed: {outcome:?}"
+        );
+    }
 
     #[test]
     fn the_twin_folder_is_derived_from_the_original() {
@@ -300,19 +432,38 @@ mod tests {
 
     #[test]
     fn a_folder_that_already_has_its_twin_is_left_alone() {
-        // The reader must never be asked: an existing twin ends the run
-        // before any decoding.
-        let dir = std::env::temp_dir().join(format!("bb-twin-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("song")).expect("a temp song folder");
-        std::fs::create_dir_all(dir.join("guitar-study-song")).expect("a temp twin folder");
-        let outcome = write_twin(&dir.join("song"), Path::new("/nowhere.wav"), &|_| {
+        // The reader must never be asked: a FINISHED twin ends the
+        // run before any decoding.
+        let scratch = Scratch::new("already");
+        let twin = scratch.0.join("guitar-study-song");
+        std::fs::create_dir_all(scratch.0.join("song")).expect("a song folder");
+        std::fs::create_dir_all(&twin).expect("a twin folder");
+        std::fs::write(twin.join(versions::BASE_CHART), b"{}").expect("its chart");
+        let outcome = write_twin(&scratch.0.join("song"), Path::new("/nowhere.wav"), &|_| {
             Err("the reader was called".to_owned())
         });
-        assert_eq!(
-            outcome,
-            Ok(Outcome::AlreadyThere(dir.join("guitar-study-song")))
+        assert_eq!(outcome, Ok(Outcome::AlreadyThere(twin)));
+    }
+
+    /// ⚠️ And the other way: a twin folder WITHOUT a chart must not
+    /// end the run. That early return is what made a failed copy
+    /// permanent — the folder was there, so every later attempt
+    /// stopped at it and the song never got its twin.
+    #[test]
+    fn a_half_written_twin_does_not_end_the_run() {
+        let scratch = Scratch::new("halfway");
+        let song = scratch.0.join("song");
+        std::fs::create_dir_all(&song).expect("a song folder");
+        std::fs::create_dir_all(scratch.0.join("guitar-study-song")).expect("a twin folder");
+        let outcome = write_twin(&song, Path::new("/nowhere.wav"), &|_| {
+            Err("the reader was called".to_owned())
+        });
+        // It gets past the folder and fails on the real problem —
+        // this song folder has no chart — rather than reporting a
+        // twin that is not there.
+        assert!(
+            matches!(&outcome, Err(reason) if reason.contains("cannot load")),
+            "expected the run to continue and fail honestly, got {outcome:?}"
         );
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

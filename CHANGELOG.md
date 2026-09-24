@@ -14,6 +14,19 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.29] - 2026-09-24
+
+### Fixed
+
+- **A song folder with a subfolder could never get a guitar twin.**
+  Separated stems live in `<song>.stems`, and the copy that fills a
+  new twin used `fs::copy`, which fails on a directory. The failure
+  landed *after* the twin folder had been created — so the folder
+  existed, held no chart, and every later attempt saw it, said
+  "already there" and stopped before reaching the failure again. The
+  copy now walks files, and a folder without a chart is no longer
+  mistaken for a finished twin.
+
 ## [0.18.28] - 2026-09-24
 
 ### Added
