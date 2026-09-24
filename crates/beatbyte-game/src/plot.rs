@@ -695,6 +695,138 @@ pub fn empty_note(parent: &mut ChildSpawnerCommands, font: &UiFont, text: &str) 
     ));
 }
 
+/// Colour of one heat-strip cell from a hit rate `0.0`–`1.0`.
+///
+/// Miss → Perfect palette (ADR-0016 house colors). Pure — tested.
+#[must_use]
+pub fn heat_colour(hit_rate: f64) -> Color {
+    let t = hit_rate.clamp(0.0, 1.0);
+    if t < 0.25 {
+        palette::MISS
+    } else if t < 0.55 {
+        palette::GOOD
+    } else if t < 0.85 {
+        palette::GREAT
+    } else {
+        palette::PERFECT
+    }
+}
+
+/// Vertical bars for a timing histogram: `(bucket_edge_ms, count)`.
+///
+/// Drawn as a single row of columns so early/late reads left/right
+/// like the signed offset itself.
+pub fn spawn_histogram(
+    parent: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    bins: &[(i32, u32)],
+    height: f32,
+    width: f32,
+) {
+    if bins.is_empty() {
+        empty_note(parent, font, "NO TIMING SAMPLES YET");
+        return;
+    }
+    let peak = bins.iter().map(|(_, n)| *n).max().unwrap_or(1).max(1);
+    let gap = 1.0_f32;
+    let col_w = ((width - gap * (bins.len().saturating_sub(1) as f32)) / bins.len() as f32)
+        .clamp(2.0, 14.0);
+    let zero_at = bins.iter().position(|(edge, _)| *edge >= 0);
+    parent
+        .spawn(Node {
+            flex_direction: FlexDirection::Column,
+            row_gap: px(4.0),
+            width: px(width),
+            ..default()
+        })
+        .with_children(|block| {
+            block
+                .spawn(Node {
+                    column_gap: px(gap),
+                    align_items: AlignItems::FlexEnd,
+                    height: px(height),
+                    ..default()
+                })
+                .with_children(|row| {
+                    for (edge, count) in bins {
+                        let h = (*count as f32 / peak as f32) * height;
+                        let colour = if *edge < 0 {
+                            palette::GOOD
+                        } else if *edge == 0 {
+                            palette::PERFECT
+                        } else {
+                            palette::GREAT
+                        };
+                        row.spawn((
+                            Node {
+                                width: px(col_w),
+                                height: px(h.max(1.0)),
+                                flex_shrink: 0.0,
+                                ..default()
+                            },
+                            BackgroundColor(colour),
+                        ));
+                    }
+                });
+            let left = bins.first().map(|(e, _)| *e).unwrap_or(0);
+            let right = bins.last().map(|(e, _)| *e).unwrap_or(0);
+            let mid = zero_at
+                .and_then(|i| bins.get(i).map(|(e, _)| *e))
+                .unwrap_or(0);
+            block.spawn((
+                Text::new(format!("{left}ms · 0 at {mid}ms · {right}ms")),
+                font.text(ui_kit::SMALL),
+                TextColor(ui_kit::dimmed_subtitle()),
+            ));
+        });
+}
+
+/// One-row heat strip: each cell is a note's hit rate.
+pub fn spawn_heat_strip(
+    parent: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    rates: &[f64],
+    width: f32,
+    height: f32,
+) {
+    if rates.is_empty() {
+        empty_note(parent, font, "NO NOTE TIMELINE YET");
+        return;
+    }
+    let cell = (width / rates.len() as f32).clamp(2.0, 12.0);
+    parent
+        .spawn(Node {
+            flex_direction: FlexDirection::Column,
+            row_gap: px(4.0),
+            ..default()
+        })
+        .with_children(|block| {
+            block
+                .spawn(Node {
+                    height: px(height),
+                    ..default()
+                })
+                .with_children(|row| {
+                    for rate in rates {
+                        row.spawn((
+                            Node {
+                                width: px(cell),
+                                height: px(height),
+                                flex_shrink: 0.0,
+                                ..default()
+                            },
+                            BackgroundColor(heat_colour(*rate)),
+                        ));
+                    }
+                });
+            block.spawn((
+                Text::new(format!("{} NOTES · DARKER = WORSE", rates.len())),
+                font.text(ui_kit::SMALL),
+                TextColor(ui_kit::dimmed_subtitle()),
+            ));
+        });
+}
+
 /// A percentage, as an axis writes it.
 #[must_use]
 pub fn percent(value: f64) -> String {
@@ -806,5 +938,14 @@ mod tests {
         assert_eq!(millis(7.0), "+7ms", "a late drift must show its sign");
         assert_eq!(plain(4844.0), "4844");
         assert_eq!(plain(81_929.0), "82k");
+    }
+
+    #[test]
+    fn heat_colour_ramps_from_miss_to_perfect() {
+        assert_eq!(heat_colour(0.0), palette::MISS);
+        assert_eq!(heat_colour(0.4), palette::GOOD);
+        assert_eq!(heat_colour(0.7), palette::GREAT);
+        assert_eq!(heat_colour(1.0), palette::PERFECT);
+        assert_eq!(heat_colour(-1.0), palette::MISS, "out of range clamps");
     }
 }

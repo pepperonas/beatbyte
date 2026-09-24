@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OpenFlags, params};
 
 use crate::Result;
 use crate::model::{
@@ -94,6 +94,18 @@ impl Store {
     /// An ephemeral store — what the tests and the benchmark use.
     pub fn open_in_memory() -> Result<Store> {
         Store::prepare(Connection::open_in_memory()?)
+    }
+
+    /// Open an existing store for **reads only**.
+    ///
+    /// Does not create the file and does not run migrations: both need
+    /// a write lock, and the Stats UI (ADR-0018 / Player Analytics)
+    /// must never take one. Schema upgrades stay with the gameplay
+    /// writer. Missing path → error for the caller to show honestly.
+    pub fn open_readonly(path: &Path) -> Result<Store> {
+        let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        conn.pragma_update(None, "foreign_keys", true)?;
+        Ok(Store { conn })
     }
 
     fn prepare(mut conn: Connection) -> Result<Store> {
@@ -1054,5 +1066,41 @@ mod tests {
         assert_eq!(store.version().expect("version"), schema::schema_version());
         assert!(store.size_bytes().expect("size") > 0);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_readonly_open_reads_but_cannot_write() {
+        let dir =
+            std::env::temp_dir().join(format!("beatbyte-telemetry-ro-{}", std::process::id()));
+        let path = dir.join("telemetry.db");
+        let _ = std::fs::remove_dir_all(&dir);
+        {
+            let mut store = Store::open(&path).expect("creates");
+            store.begin(&a_session("played")).expect("begins");
+        }
+        let mut reader = Store::open_readonly(&path).expect("opens read-only");
+        assert_eq!(reader.session_count().expect("counts"), 1);
+        assert!(
+            reader.begin(&a_session("sneak")).is_err(),
+            "Stats must not be able to write through a read-only open"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_readonly_open_refuses_a_missing_file() {
+        let path = std::env::temp_dir().join(format!(
+            "beatbyte-telemetry-missing-{}-{}.db",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_file(&path);
+        assert!(
+            Store::open_readonly(&path).is_err(),
+            "a missing store is an empty Stats screen, not a create"
+        );
     }
 }
