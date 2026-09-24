@@ -996,6 +996,8 @@ chart format v1 can be frozen as a promise.
 
 - [x] G45 **Player Analytics P1–P6 — fill the shells** *(v0.18.18, plan `docs/superpowers/plans/2026-09-23-player-analytics-p1-p6.md`)*. Async `PlayerSnapshot` (histogram, bias, technique, context, busiest-chart problems + timeline); Timing/Technique/Progress/Songs/Insights wired; plot histogram + heat strip. Mute badge deferred (spec). *Verified: 1705 tests (+6); gate + release build with `--features ml`.*
 
+- [x] G46 **Per-player difficulty preference** *(v0.18.19)*. Each roster profile stores `preferred_difficulty` in `players.json`; song select opens on it when offered, falls back nearest for the session without rewriting the pref, and LEFT/RIGHT (or `<`/`>`) persist the choice. Medium default; profiles independent. *Verified: 1711 tests (+6); gate green.*
+
 ### F — Release engineering to 1.0
 
 - [x] F0 **v0.9.0 — content, accessibility, editor v2.** Amendment (2026-08-24): every unblocked B/C/D/E task landed while the A tasks wait on human playtesting — that body of work (second song, song-selector harness, import guide + scan fix, format truth, forward-compat pins, Linux/Windows CI smokes, Stage Motion, colorblind lane shapes, HOPO visibility, editor move/bulk/audition, harness integrity) ships now instead of idling behind A2. *SHIPPED 2026-08-24: all 7 assets auto-attached via the recursive glob; aarch64 tarball smoke + flawless artifact autopilot from neutral CWD + DMG .app smoke; two release-run attempts (spurious hdiutil ENOSPC → retry mitigation).*

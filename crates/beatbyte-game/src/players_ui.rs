@@ -526,6 +526,7 @@ fn roster_nav(
     >,
     mut cursor: ResMut<RosterCursor>,
     mut players: ResMut<Players>,
+    mut selected: ResMut<crate::song_select::SelectedDifficulty>,
     mut next: ResMut<NextState<AppState>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
@@ -561,6 +562,11 @@ fn roster_nav(
             let name = player.name.clone();
             players.0.select(id);
             save_roster(&players);
+            if let Some(pref) = players.0.current_preferred_difficulty() {
+                selected.0 = pref;
+            } else {
+                selected.0 = beatbyte_core::Difficulty::Medium;
+            }
             cursor.status = format!("{name} IS PLAYING");
             sounds.write(crate::sfx::UiSound::Confirm);
         }

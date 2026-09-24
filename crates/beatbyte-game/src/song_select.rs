@@ -603,7 +603,10 @@ impl Plugin for SongSelectPlugin {
             .init_resource::<crate::preview::SongPreview>()
             .init_resource::<ActionBarClicks>()
             .add_systems(Startup, load_browser_prefs)
-            .add_systems(OnEnter(AppState::SongSelect), spawn_browser)
+            .add_systems(
+                OnEnter(AppState::SongSelect),
+                (apply_preferred_difficulty, spawn_browser).chain(),
+            )
             .add_systems(
                 Update,
                 paint_action_bar
@@ -778,6 +781,43 @@ struct EmptyHint;
 #[derive(Component)]
 struct DiffStep(i8);
 
+/// Pick the difficulty for the highlighted chart.
+///
+/// Returns `(difficulty, persist)` when the session selection should
+/// move. `persist` is true only for an intentional LEFT/RIGHT step —
+/// a per-song fallback never rewrites the player's preference. Pure
+/// — tested.
+#[must_use]
+fn step_offered_difficulty(
+    selected: Difficulty,
+    preferred: Option<Difficulty>,
+    offered: &[Difficulty],
+    step: i8,
+) -> Option<(Difficulty, bool)> {
+    if offered.is_empty() {
+        return None;
+    }
+    if step != 0 {
+        let current = if offered.contains(&selected) {
+            selected
+        } else {
+            Difficulty::among(preferred.unwrap_or(selected), offered).unwrap_or(offered[0])
+        };
+        let position = offered.iter().position(|d| *d == current).unwrap_or(0);
+        let next = if step < 0 && position > 0 {
+            Some(offered[position - 1])
+        } else if step > 0 && position + 1 < offered.len() {
+            Some(offered[position + 1])
+        } else {
+            None
+        };
+        return next.map(|d| (d, true));
+    }
+    let want = preferred.unwrap_or(selected);
+    let effective = Difficulty::among(want, offered)?;
+    (effective != selected).then_some((effective, false))
+}
+
 /// Open the song's document (same as `I`).
 #[derive(Component)]
 struct InfoButton;
@@ -819,6 +859,20 @@ fn spawn_browser(mut commands: Commands, font: Res<UiFont>, mut view: ResMut<Bro
     // or the CLEAR button empties it.
     view.searching = false;
     spawn_shell(&mut commands, &font, &view);
+}
+
+/// Open song select on the current player's last difficulty.
+///
+/// No preference → leave the resource alone (its default is Medium,
+/// and a mid-session visit keeps whatever they already stepped to
+/// when nobody is on the roster).
+fn apply_preferred_difficulty(
+    mut selected: ResMut<SelectedDifficulty>,
+    players: Res<crate::players::Players>,
+) {
+    if let Some(pref) = players.0.current_preferred_difficulty() {
+        selected.0 = pref;
+    }
 }
 
 /// One SMALL-font cell of fixed width.
@@ -1177,6 +1231,8 @@ struct StartDeps<'w, 's> {
     >,
     builtins: Res<'w, BuiltinSongs>,
     mc_queue: ResMut<'w, crate::mc::McQueue>,
+    /// Who is playing — their preferred difficulty drives the browser.
+    players: ResMut<'w, crate::players::Players>,
     /// The in-flight lyrics lookup — bundled here because Bevy caps
     /// a system at sixteen parameters and this one is at the line.
     lookup: ResMut<'w, LyricsLookup>,
@@ -1497,14 +1553,12 @@ fn browser_input(
         return;
     };
 
-    // Difficulty stepping is constrained to what the chart offers.
+    // Difficulty: the current player's preference drives the pick.
+    // A chart that does not offer it falls back for this song only —
+    // the stored preference is untouched. Stepping LEFT/RIGHT (or the
+    // `<`/`>` buttons) updates both the session and the profile.
+    let preferred = start.players.0.current_preferred_difficulty();
     let offered = &entry.difficulties;
-    if !offered.contains(&selected.0)
-        && let Some(&first) = offered.first()
-    {
-        selected.0 = first;
-    }
-    let position = offered.iter().position(|d| *d == selected.0).unwrap_or(0);
     let mut step_diff = 0i8;
     if nav.left {
         step_diff = -1;
@@ -1517,12 +1571,16 @@ fn browser_input(
             step_diff = step.0;
         }
     }
-    if step_diff < 0 && position > 0 {
-        selected.0 = offered[position - 1];
-        sounds.write(crate::sfx::UiSound::Slider);
-    } else if step_diff > 0 && position + 1 < offered.len() {
-        selected.0 = offered[position + 1];
-        sounds.write(crate::sfx::UiSound::Slider);
+    if let Some(chosen) = step_offered_difficulty(selected.0, preferred, offered, step_diff) {
+        let (next, persist) = chosen;
+        selected.0 = next;
+        if persist {
+            sounds.write(crate::sfx::UiSound::Slider);
+            if let Some(id) = start.players.0.selected {
+                start.players.0.set_preferred_difficulty(id, next);
+                crate::players::save_roster(&start.players);
+            }
+        }
     }
 
     // BACKSPACE/DEL asks to remove the highlighted song from disk;
@@ -2553,6 +2611,86 @@ fn follow_selection(
         return;
     };
     ui_kit::follow_list(cursor.0, view.order.len(), row, &mut scroll, &mut node);
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod difficulty_pref_tests {
+    use super::{SelectedDifficulty, step_offered_difficulty};
+    use beatbyte_core::Difficulty;
+    use beatbyte_core::player::Roster;
+
+    #[test]
+    fn the_browser_defaults_to_medium() {
+        assert_eq!(SelectedDifficulty::default().0, Difficulty::Medium);
+    }
+
+    #[test]
+    fn a_step_persists_and_a_fallback_does_not() {
+        let offered = [Difficulty::Easy, Difficulty::Medium, Difficulty::Hard];
+        // Prefer Hard on a chart that has it — no change, no persist.
+        assert_eq!(
+            step_offered_difficulty(Difficulty::Hard, Some(Difficulty::Hard), &offered, 0),
+            None
+        );
+        // Prefer Hard on a Medium-only chart — session falls back, no persist.
+        assert_eq!(
+            step_offered_difficulty(
+                Difficulty::Hard,
+                Some(Difficulty::Hard),
+                &[Difficulty::Easy, Difficulty::Medium],
+                0
+            ),
+            Some((Difficulty::Medium, false))
+        );
+        // Intentional step: persist.
+        assert_eq!(
+            step_offered_difficulty(Difficulty::Medium, Some(Difficulty::Medium), &offered, 1),
+            Some((Difficulty::Hard, true))
+        );
+    }
+
+    #[test]
+    fn two_players_keep_independent_preferences_across_a_restart() {
+        let mut roster = Roster::default();
+        let martin = roster.add("Martin", 1).unwrap();
+        let kim = roster.add("Kim", 2).unwrap();
+        roster.set_preferred_difficulty(martin, Difficulty::Hard);
+        roster.set_preferred_difficulty(kim, Difficulty::Easy);
+
+        let json = serde_json::to_string(&roster).unwrap();
+        let mut back: Roster = serde_json::from_str(&json).unwrap();
+        back.select(martin);
+        assert_eq!(back.current_preferred_difficulty(), Some(Difficulty::Hard));
+        back.select(kim);
+        assert_eq!(back.current_preferred_difficulty(), Some(Difficulty::Easy));
+        // New player: no preference → browser default path.
+        let mut fresh = Roster::default();
+        fresh.add("New", 3).unwrap();
+        assert_eq!(fresh.current_preferred_difficulty(), None);
+        assert_eq!(
+            SelectedDifficulty::default().0,
+            Difficulty::Medium,
+            "no preference keeps the Medium default"
+        );
+    }
+
+    #[test]
+    fn fallback_does_not_overwrite_the_stored_preference() {
+        let mut roster = Roster::default();
+        let id = roster.add("Martin", 1).unwrap();
+        roster.set_preferred_difficulty(id, Difficulty::Hard);
+        let offered = [Difficulty::Easy];
+        let (session, persist) =
+            step_offered_difficulty(Difficulty::Hard, Some(Difficulty::Hard), &offered, 0)
+                .expect("fallback");
+        assert_eq!(session, Difficulty::Easy);
+        assert!(!persist);
+        assert_eq!(
+            roster.get(id).unwrap().preferred_difficulty,
+            Some(Difficulty::Hard)
+        );
+    }
 }
 
 #[cfg(test)]

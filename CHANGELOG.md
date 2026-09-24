@@ -14,6 +14,16 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.19] - 2026-09-24
+
+### Added
+
+- **Per-player difficulty preference.** Song select remembers the last
+  difficulty each profile chose (in `players.json`), opens on that step
+  when the chart offers it, and falls back nearest for one song without
+  overwriting the preference. Profiles stay independent; Medium is the
+  default when nobody has chosen yet.
+
 ## [0.18.18] - 2026-09-24
 
 ### Added

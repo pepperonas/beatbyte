@@ -59,6 +59,40 @@ impl Difficulty {
             Difficulty::Expert => "Expert",
         }
     }
+
+    /// Position in [`Difficulty::ALL`] (easiest = 0).
+    #[must_use]
+    pub const fn rank(self) -> usize {
+        match self {
+            Difficulty::Easy => 0,
+            Difficulty::Medium => 1,
+            Difficulty::Hard => 2,
+            Difficulty::Expert => 3,
+        }
+    }
+
+    /// The difficulty to play when a chart offers `offered` and the
+    /// player prefers `preferred`.
+    ///
+    /// Returns `preferred` when the chart has it; otherwise the
+    /// nearest offered step (ties break toward the easier one). An
+    /// empty offer returns `None` — the caller keeps whatever it had.
+    /// Pure — tested.
+    #[must_use]
+    pub fn among(preferred: Difficulty, offered: &[Difficulty]) -> Option<Difficulty> {
+        if offered.is_empty() {
+            return None;
+        }
+        if offered.contains(&preferred) {
+            return Some(preferred);
+        }
+        let want = preferred.rank();
+        offered.iter().copied().min_by_key(|d| {
+            // Prefer easier on a tie so two equal distances do not
+            // depend on chart order.
+            (d.rank().abs_diff(want), d.rank())
+        })
+    }
 }
 
 impl core::fmt::Display for Difficulty {
@@ -87,5 +121,26 @@ mod tests {
             let back: Difficulty = serde_json::from_str(&json).unwrap();
             assert_eq!(back, d);
         }
+    }
+
+    #[test]
+    fn among_keeps_the_preferred_when_offered_and_falls_back_nearest() {
+        assert_eq!(
+            Difficulty::among(Difficulty::Hard, &[Difficulty::Easy, Difficulty::Hard]),
+            Some(Difficulty::Hard)
+        );
+        // Hard gone: Medium is one step, Expert is one step — easier wins.
+        assert_eq!(
+            Difficulty::among(
+                Difficulty::Hard,
+                &[Difficulty::Easy, Difficulty::Medium, Difficulty::Expert]
+            ),
+            Some(Difficulty::Medium)
+        );
+        assert_eq!(
+            Difficulty::among(Difficulty::Expert, &[Difficulty::Easy]),
+            Some(Difficulty::Easy)
+        );
+        assert_eq!(Difficulty::among(Difficulty::Hard, &[]), None);
     }
 }

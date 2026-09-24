@@ -12,6 +12,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::difficulty::Difficulty;
+
 /// A player's stable handle.
 ///
 /// Ids are what the history stores, never names: renaming yourself
@@ -45,6 +47,14 @@ pub struct Player {
     pub created_ms: u64,
     /// Index into the game's player palette, `0..COLOURS`.
     pub colour: usize,
+    /// Last difficulty this player chose in song select.
+    ///
+    /// Song-agnostic: the next song list opens on this step when the
+    /// chart offers it. `None` means "never chosen" — the browser
+    /// keeps its own default (Medium). A chart that lacks the step
+    /// falls back for the session without clearing this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_difficulty: Option<Difficulty>,
 }
 
 /// Why a name was refused.
@@ -134,6 +144,7 @@ impl Roster {
             name,
             created_ms: now_ms,
             colour: self.players.len() % COLOURS,
+            preferred_difficulty: None,
         });
         // The first player to exist is the one playing: nobody
         // creates a roster in order to then pick from it.
@@ -223,6 +234,22 @@ impl Roster {
     pub const fn mark_adopted(&mut self) {
         self.adopted = true;
     }
+
+    /// Remember the difficulty this player last chose.
+    ///
+    /// Unknown ids are ignored. Does not touch other players — each
+    /// profile keeps its own preference.
+    pub fn set_preferred_difficulty(&mut self, id: PlayerId, difficulty: Difficulty) {
+        if let Some(player) = self.players.iter_mut().find(|p| p.id == id) {
+            player.preferred_difficulty = Some(difficulty);
+        }
+    }
+
+    /// The difficulty the current player last chose, if any.
+    #[must_use]
+    pub fn current_preferred_difficulty(&self) -> Option<Difficulty> {
+        self.current().and_then(|p| p.preferred_difficulty)
+    }
 }
 
 #[cfg(test)]
@@ -292,6 +319,7 @@ mod tests {
                 name: "Old".to_owned(),
                 created_ms: 0,
                 colour: 0,
+                preferred_difficulty: None,
             }],
             selected: None,
             next_id: 1,
@@ -341,5 +369,59 @@ mod tests {
                 .unwrap();
         assert_eq!(older.len(), 1);
         assert_eq!(older.selected, None);
+        assert_eq!(older.players[0].preferred_difficulty, None);
+    }
+
+    #[test]
+    fn each_player_keeps_their_own_difficulty_preference() {
+        let mut roster = Roster::default();
+        let martin = roster.add("Martin", 1).unwrap();
+        let kim = roster.add("Kim", 2).unwrap();
+        assert_eq!(roster.current_preferred_difficulty(), None);
+
+        roster.set_preferred_difficulty(martin, Difficulty::Hard);
+        roster.set_preferred_difficulty(kim, Difficulty::Medium);
+        assert_eq!(
+            roster.get(martin).unwrap().preferred_difficulty,
+            Some(Difficulty::Hard)
+        );
+        assert_eq!(
+            roster.get(kim).unwrap().preferred_difficulty,
+            Some(Difficulty::Medium)
+        );
+
+        // Selection decides whose preference is "current".
+        assert_eq!(roster.selected, Some(martin));
+        assert_eq!(
+            roster.current_preferred_difficulty(),
+            Some(Difficulty::Hard)
+        );
+        roster.select(kim);
+        assert_eq!(
+            roster.current_preferred_difficulty(),
+            Some(Difficulty::Medium)
+        );
+
+        // A fallback for a chart does not clear the stored preference.
+        let offered = [Difficulty::Easy, Difficulty::Medium];
+        let session = Difficulty::among(Difficulty::Hard, &offered).unwrap();
+        assert_eq!(session, Difficulty::Medium);
+        assert_eq!(
+            roster.get(martin).unwrap().preferred_difficulty,
+            Some(Difficulty::Hard),
+            "session fallback must not rewrite the profile"
+        );
+
+        // Round-trip keeps both preferences (a restart).
+        let json = serde_json::to_string(&roster).unwrap();
+        let back: Roster = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            back.get(martin).unwrap().preferred_difficulty,
+            Some(Difficulty::Hard)
+        );
+        assert_eq!(
+            back.get(kim).unwrap().preferred_difficulty,
+            Some(Difficulty::Medium)
+        );
     }
 }
