@@ -14,6 +14,21 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.32] - 2026-09-24
+
+### Fixed
+
+- **The rows of a bar plot are one height again.** On TECHNIQUE, SONGS
+  and VERSUS a label broke at every blank — "OFF THE BEAT" stood three
+  lines tall, a song title eight — so rows were 16, 32 or 47 px apart
+  and the bar no longer sat beside its own label. The cause is that a
+  text node with an explicit `width` is measured against no available
+  space at all, which is why widening the column never helped: it
+  wrapped identically at 96 px, at 160 and at 300. Every label in a
+  fixed column now says it does not wrap, song titles get a column of
+  their own, and an over-long one is clipped rather than allowed to
+  shove the bar out of line.
+
 ## [0.18.31] - 2026-09-24
 
 ### Fixed

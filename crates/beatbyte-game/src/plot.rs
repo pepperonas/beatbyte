@@ -465,6 +465,14 @@ pub struct Bar {
     pub note: String,
 }
 
+/// Label column for plots whose labels are one or two short words
+/// ("EXPERT", "SUSTAIN NOTES"). Widest measured: 60 px.
+pub const LABEL_W: f32 = 96.0;
+/// Label column for plots labelled with song titles. Widest measured
+/// in this library: 218 px, for a `[GUITAR STUDY]` twin of a song
+/// with a long name.
+pub const LABEL_W_WIDE: f32 = 300.0;
+
 /// Spawn horizontal bars: one row per bar, label left, bar right.
 ///
 /// Horizontal rather than vertical because the labels are words
@@ -476,6 +484,7 @@ pub fn spawn_bar_plot(
     bars: &[Bar],
     bounds: Bounds,
     width: f32,
+    label_w: f32,
 ) {
     if bars.is_empty() {
         empty_note(parent, font, "NOTHING TO SHOW");
@@ -497,15 +506,27 @@ pub fn spawn_bar_plot(
                         ..default()
                     })
                     .with_children(|row| {
+                        // ⚠️ A text node with an explicit `width`
+                        // wraps at EVERY space — measured: the same
+                        // label broke into one line per word at 96 px
+                        // and again, identically, at 160 px, while
+                        // the note beside it (no width set) stayed on
+                        // one line. So rows were 16, 32 or 47 px tall
+                        // depending on how many words their label
+                        // had. `no_wrap` is the house remedy; the
+                        // clip keeps an over-long title from shoving
+                        // the bar out of line with the rows above it.
                         row.spawn((
                             Node {
-                                width: px(96.0),
+                                width: px(label_w),
                                 flex_shrink: 0.0,
+                                overflow: Overflow::clip(),
                                 ..default()
                             },
                             Text::new(bar.label.clone()),
                             font.text(ui_kit::SMALL),
                             TextColor(palette::TEXT_DIM),
+                            TextLayout::default().with_no_wrap(),
                         ));
                         // The track: a bar of zero length and a bar
                         // that was never played must not look alike,
@@ -633,6 +654,7 @@ pub fn spawn_duel_plot(
                             Text::new(duel.label.clone()),
                             font.text(ui_kit::SMALL),
                             TextColor(palette::TEXT_DIM),
+                            TextLayout::default().with_no_wrap(),
                         ));
                         row.spawn(Node {
                             width: px(width),
@@ -887,6 +909,68 @@ pub fn plain(value: f64) -> String {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    /// ⚠️ A text node with an explicit `width` is measured against
+    /// no available space at all, so it breaks at every blank —
+    /// however wide the column actually is. Measured on the
+    /// statistics screen: "OFF THE BEAT" came back three lines tall
+    /// in a 96 px column and, unchanged, in a 160 px one, and a song
+    /// title eight lines tall in a 300 px one; the note beside it,
+    /// which sets no width, stayed on one line throughout. Rows were
+    /// therefore 16, 32 or 47 px tall depending on how many words a
+    /// label happened to have.
+    ///
+    /// The pin is the property, not the two places: any label this
+    /// module gives a fixed column to must say it does not wrap.
+    #[test]
+    fn a_label_in_a_fixed_column_never_wraps() {
+        use bevy::text::LineBreak;
+
+        let mut app = App::new();
+        app.add_plugins((bevy::MinimalPlugins, bevy::asset::AssetPlugin::default()))
+            .init_asset::<Font>();
+        let handle = app
+            .world_mut()
+            .resource_mut::<Assets<Font>>()
+            .reserve_handle();
+        let font = UiFont::from_handle(handle);
+        let bars = [Bar {
+            label: "OFF THE BEAT".to_owned(),
+            value: Some(0.5),
+            colour: Color::WHITE,
+            note: "50%".to_owned(),
+        }];
+        let duels = [Duel {
+            label: "WHOLE LOTTA LOVE (HARD)".to_owned(),
+            margin: 0.25,
+            note: "ahead".to_owned(),
+        }];
+        app.world_mut()
+            .commands()
+            .spawn(Node::default())
+            .with_children(|parent| {
+                spawn_bar_plot(parent, &font, &bars, Bounds::new(0.0, 1.0), 100.0, LABEL_W);
+                spawn_duel_plot(parent, &font, &duels, 100.0, Color::WHITE, Color::BLACK);
+            });
+        app.update();
+
+        let mut fixed = 0;
+        let world = app.world_mut();
+        let mut query = world.query::<(&Node, &Text, Option<&TextLayout>)>();
+        for (node, text, layout) in query.iter(world) {
+            if !matches!(node.width, Val::Px(_)) {
+                continue;
+            }
+            fixed += 1;
+            assert_eq!(
+                layout.map(|l| l.linebreak),
+                Some(LineBreak::NoWrap),
+                "{:?} sits in a fixed column and would break at every blank",
+                text.0
+            );
+        }
+        assert_eq!(fixed, 2, "both plots put their label in a fixed column");
+    }
 
     #[test]
     fn a_flat_series_still_has_a_range_to_draw_in() {

@@ -1172,6 +1172,7 @@ fn technique_view(
             &bars,
             plot::Bounds { min: 0.0, max: 1.0 },
             BAR_W,
+            plot::LABEL_W,
         );
     }
     if !snap.context.is_empty() {
@@ -1201,6 +1202,7 @@ fn technique_view(
             &bars,
             plot::Bounds { min: 0.0, max: 1.0 },
             BAR_W,
+            plot::LABEL_W,
         );
     }
 }
@@ -1281,6 +1283,7 @@ fn songs_view(
                 &bars,
                 plot::Bounds { min: 0.0, max: 1.0 },
                 BAR_W,
+                plot::LABEL_W_WIDE,
             );
         }
     } else {
@@ -1348,6 +1351,7 @@ fn songs_view(
                 &bars,
                 plot::Bounds { min: 0.0, max: 1.0 },
                 BAR_W,
+                plot::LABEL_W,
             );
         }
     }
@@ -1531,6 +1535,7 @@ fn difficulty(parent: &mut ChildSpawnerCommands, font: &UiFont, runs: &[PlayerRu
         &bars,
         plot::Bounds { min: 0.0, max: 1.0 },
         BAR_W,
+        plot::LABEL_W,
     );
 
     parent.spawn((
@@ -1566,6 +1571,7 @@ fn difficulty(parent: &mut ChildSpawnerCommands, font: &UiFont, runs: &[PlayerRu
         &finished,
         plot::Bounds { min: 0.0, max: 1.0 },
         BAR_W,
+        plot::LABEL_W,
     );
 }
 
