@@ -23,7 +23,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use beatbyte_core::Difficulty;
 use beatbyte_core::player::PlayerId;
 use beatbyte_core::stats::{self, Filter, PlayerRun};
-use beatbyte_telemetry::analytics::{self, PlayerSnapshot};
+use beatbyte_telemetry::analytics::{self, PlayerSnapshot, Scope};
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
 use bevy::ui::Val::Px as px;
@@ -241,6 +241,32 @@ pub fn run_passes_filters(
     true
 }
 
+/// The telemetry scope the screen's filters mean.
+///
+/// ⚠️ This must say exactly what [`run_passes_filters`] says on the
+/// history side, or the two halves of one screen answer the same
+/// question differently — which is the state it replaces: the chips
+/// were drawn over all eight tabs while the snapshot took no filters
+/// at all, so on four of them pressing a chip rebuilt the screen and
+/// produced a byte-identical answer. A test pins the two together.
+///
+/// A value that cannot be expressed as SQLite's signed integer
+/// excludes rather than includes: `i64::MAX` matches no session and
+/// no start time, where a `None` would silently widen the question to
+/// everything. Neither can happen with a roster id or a wall clock,
+/// and a filter that quietly stops filtering is the bug being fixed.
+#[must_use]
+pub fn telemetry_scope(player: Option<PlayerId>, filters: StatsFilters, now_ms: u64) -> Scope {
+    Scope {
+        player_id: player.map(|id| i64::try_from(id).unwrap_or(i64::MAX)),
+        difficulty: filters.difficulty.map(crate::telemetry::difficulty_index),
+        since_ms: filters
+            .window
+            .span_ms()
+            .map(|span| i64::try_from(now_ms.saturating_sub(span)).unwrap_or(i64::MAX)),
+    }
+}
+
 /// Wall-clock ms for window filters.
 #[must_use]
 pub fn wall_now_ms() -> u64 {
@@ -260,9 +286,9 @@ pub fn probe_session_count(path: &Path) -> Result<u64, String> {
 
 /// Load the Stats-shell snapshot from disk. Shared by the async job
 /// and its tests.
-pub fn load_player_snapshot(path: &Path) -> Result<PlayerSnapshot, String> {
+pub fn load_player_snapshot(path: &Path, scope: Scope) -> Result<PlayerSnapshot, String> {
     beatbyte_telemetry::Store::open_readonly(path)
-        .and_then(|store| analytics::player_snapshot(&store))
+        .and_then(|store| analytics::player_snapshot(&store, scope))
         .map_err(|error| error.to_string())
 }
 
@@ -280,7 +306,7 @@ struct TelemetryProbe {
 }
 
 impl TelemetryProbe {
-    fn request(&mut self, path: Option<std::path::PathBuf>) {
+    fn request(&mut self, path: Option<std::path::PathBuf>, scope: Scope) {
         self.generation = self.generation.wrapping_add(1);
         let generation = self.generation;
         let Some(path) = path else {
@@ -289,8 +315,9 @@ impl TelemetryProbe {
             self.result = Some(Err("NO DATA DIRECTORY".to_owned()));
             return;
         };
-        self.task =
-            Some(AsyncComputeTaskPool::get().spawn(async move { load_player_snapshot(&path) }));
+        self.task = Some(
+            AsyncComputeTaskPool::get().spawn(async move { load_player_snapshot(&path, scope) }),
+        );
     }
 
     fn poll(&mut self) {
@@ -372,8 +399,35 @@ impl Plugin for StatsUiPlugin {
     }
 }
 
-fn kick_telemetry_probe(mut probe: ResMut<TelemetryProbe>) {
-    probe.request(store_path());
+/// Who the statistics screen is about.
+///
+/// Bundled because two systems ask it — the probe that starts on
+/// entry and the one that restarts it when a filter changes — and
+/// because `stats_nav` sits at Bevy's sixteen-parameter cap.
+#[derive(bevy::ecs::system::SystemParam)]
+struct Viewer<'w> {
+    chosen: Res<'w, StatsFor>,
+    players: Res<'w, Players>,
+}
+
+impl Viewer<'_> {
+    /// The roster player the screen is drawn for, if any. Matches
+    /// what `spawn_stats` picks, so the telemetry half and the
+    /// history half are about the same person.
+    fn id(&self) -> Option<PlayerId> {
+        self.chosen.0.or(self.players.0.selected)
+    }
+}
+
+fn kick_telemetry_probe(
+    mut probe: ResMut<TelemetryProbe>,
+    viewer: Viewer,
+    filters: Res<StatsFilters>,
+) {
+    probe.request(
+        store_path(),
+        telemetry_scope(viewer.id(), *filters, wall_now_ms()),
+    );
 }
 
 fn poll_telemetry_probe(mut probe: ResMut<TelemetryProbe>) {
@@ -1522,6 +1576,7 @@ fn stats_nav(
     mut view: ResMut<StatsView>,
     mut filters: ResMut<StatsFilters>,
     mut probe: ResMut<TelemetryProbe>,
+    viewer: Viewer,
     mut next: ResMut<NextState<AppState>>,
     mut commands: Commands,
     screen: Query<Entity, With<StatsScreen>>,
@@ -1577,7 +1632,10 @@ fn stats_nav(
         // Filter changes may need a fresher telemetry probe when a
         // shell tab is showing; always safe to re-kick (supersedes).
         if view.0.needs_telemetry() {
-            probe.request(store_path());
+            probe.request(
+                store_path(),
+                telemetry_scope(viewer.id(), *filters, wall_now_ms()),
+            );
         }
         for entity in &screen {
             commands.entity(entity).despawn();
@@ -1914,6 +1972,141 @@ mod tests {
             .iter(app.world())
             .count();
         assert_eq!(spawned, 1, "an empty roster drew no screen at all");
+    }
+
+    /// One session row, varied only in what the filters look at.
+    fn scoped_session(
+        uid: &str,
+        player: Option<u64>,
+        difficulty: Difficulty,
+        started_ms: u64,
+        honest: bool,
+    ) -> beatbyte_telemetry::model::SessionRow {
+        use beatbyte_telemetry::model::{Detail, InputDevice, Provenance, SessionRow};
+        SessionRow {
+            uid: uid.to_owned(),
+            started_ms,
+            title: "Maria".to_owned(),
+            artist: "Blondie".to_owned(),
+            genre: None,
+            chart_hash: "chart-a".to_owned(),
+            song_id: None,
+            chart_file: None,
+            difficulty: crate::telemetry::difficulty_index(difficulty),
+            player_slot: 0,
+            player_id: player,
+            provenance: Provenance {
+                game: "0.0.0".to_owned(),
+                chart_format: 1,
+                generator: None,
+                scoring: 1,
+                analysis: None,
+                vocal: None,
+            },
+            telemetry_schema: beatbyte_telemetry::schema_version(),
+            detail: Detail::Actions,
+            input_device: InputDevice::Keyboard,
+            input_offset_ms: Some(0.0),
+            video_offset_ms: Some(0.0),
+            mic_offset_ms: None,
+            tap_mode: false,
+            no_fail: false,
+            practice: !honest,
+            autopilot: false,
+            notes_total: 1,
+        }
+    }
+
+    /// ⚠️ The pin S1 exists for: the statistics screen asks one
+    /// question of two stores, and the two must agree. The history
+    /// side filters runs with [`run_passes_filters`]; the telemetry
+    /// side filters rows with the SQL that [`telemetry_scope`]
+    /// builds. Before this, the SQL side had no filters at all —
+    /// the chips were drawn over every tab and obeyed on half of
+    /// them.
+    ///
+    /// The two encodings differ on purpose (text id in the play log,
+    /// integer code in the store), which is exactly why agreeing is
+    /// worth pinning rather than assuming.
+    #[test]
+    fn the_filters_mean_the_same_thing_to_the_history_and_to_the_store() {
+        const DAY: u64 = 86_400_000;
+        let now = 1_700_000_000_000u64;
+        let me = 1u64;
+        let them = 2u64;
+
+        // (uid, player, difficulty, age in days, honest)
+        let runs: Vec<(&str, Option<u64>, Difficulty, u64, bool)> = vec![
+            ("a", Some(me), Difficulty::Easy, 1, true),
+            ("b", Some(me), Difficulty::Expert, 3, true),
+            ("c", Some(me), Difficulty::Expert, 20, true),
+            ("d", Some(me), Difficulty::Hard, 45, true),
+            ("e", Some(me), Difficulty::Easy, 200, true),
+            ("f", Some(them), Difficulty::Easy, 1, true),
+            ("g", Some(them), Difficulty::Expert, 3, true),
+            // Nobody's run, and one the screen must never count.
+            ("h", None, Difficulty::Easy, 1, true),
+            ("i", Some(me), Difficulty::Easy, 1, false),
+        ];
+
+        let mut store = beatbyte_telemetry::Store::open_in_memory().expect("a store");
+        for (uid, player, difficulty, days, honest) in &runs {
+            let started = now - days * DAY;
+            store
+                .begin(&scoped_session(uid, *player, *difficulty, started, *honest))
+                .expect("a session");
+        }
+
+        let mut checked = 0usize;
+        for difficulty in [
+            None,
+            Some(Difficulty::Easy),
+            Some(Difficulty::Hard),
+            Some(Difficulty::Expert),
+        ] {
+            for window in TimeWindow::ALL {
+                let filters = StatsFilters { difficulty, window };
+                // The history side: this player's runs, then the
+                // same pure rule the Overview tab uses.
+                let by_history = runs
+                    .iter()
+                    .filter(|(_, player, _, _, honest)| *player == Some(me) && *honest)
+                    .filter(|(_, _, difficulty, days, _)| {
+                        run_passes_filters(difficulty.id(), now - days * DAY, filters, now)
+                    })
+                    .count() as u64;
+                // The store side: the same question in SQL.
+                let by_store =
+                    analytics::player_snapshot(&store, telemetry_scope(Some(me), filters, now))
+                        .expect("a snapshot")
+                        .sessions;
+                assert_eq!(
+                    by_history, by_store,
+                    "difficulty {difficulty:?} window {window:?}: \
+                     the history counted {by_history} and the store {by_store}"
+                );
+                checked += 1;
+            }
+        }
+        assert_eq!(checked, 16, "the filter matrix shrank");
+
+        // And the scope is what excludes them: unfiltered, this
+        // player has four honest runs, not the store's eight.
+        let all = StatsFilters::default();
+        assert_eq!(
+            analytics::player_snapshot(&store, telemetry_scope(Some(me), all, now))
+                .expect("a snapshot")
+                .sessions,
+            5,
+            "one player's honest runs"
+        );
+        assert_eq!(
+            analytics::player_snapshot(&store, Scope::default())
+                .expect("a snapshot")
+                .sessions,
+            8,
+            "every honest run, whoever played it"
+        );
     }
 
     #[test]

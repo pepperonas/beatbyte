@@ -267,7 +267,8 @@ pub fn measure(store: &Store) -> Result<Vec<(String, f64, usize)>> {
         ));
 
         let at = Instant::now();
-        let rows = analytics::note_quality(store, &hash, difficulty, 1)?;
+        let rows =
+            analytics::note_quality(store, &hash, difficulty, 1, analytics::Scope::default())?;
         out.push((
             "note quality of one chart version".to_owned(),
             at.elapsed().as_secs_f64() * 1000.0,
@@ -292,7 +293,7 @@ pub fn measure(store: &Store) -> Result<Vec<(String, f64, usize)>> {
     ));
 
     let at = Instant::now();
-    let rows = analytics::timing_histogram(store, None, 10)?;
+    let rows = analytics::timing_histogram(store, None, 10, analytics::Scope::default())?;
     out.push((
         "timing histogram, everything".to_owned(),
         at.elapsed().as_secs_f64() * 1000.0,

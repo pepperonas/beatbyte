@@ -328,8 +328,14 @@ fn begin_store_session(
 }
 
 /// The chart format's difficulty index (0 easy … 3 expert).
+///
+/// The one place the mapping lives, and therefore the one a READER
+/// must use too: a session row stores this code, while the play
+/// history stores the difficulty's text id. Statistics ask the same
+/// question of both, so `stats_ui` builds its telemetry scope from
+/// here rather than counting `Difficulty::ALL` a second time.
 #[must_use]
-fn difficulty_index(difficulty: beatbyte_core::Difficulty) -> u8 {
+pub(crate) fn difficulty_index(difficulty: beatbyte_core::Difficulty) -> u8 {
     u8::try_from(
         beatbyte_core::Difficulty::ALL
             .iter()

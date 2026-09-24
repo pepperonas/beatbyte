@@ -14,6 +14,19 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.20] - 2026-09-24
+
+### Fixed
+
+- **The statistics filters now reach the telemetry.** The difficulty
+  and time-window chips were drawn over all eight tabs, but the
+  snapshot behind TIMING, TECHNIQUE, SONGS and INSIGHTS took no
+  filters at all: pressing a chip rebuilt the screen and produced a
+  byte-identical answer, and the numbers under your name were the
+  machine's — every player, every difficulty, all time. They now say
+  what they show. Honest runs only, as before: the autopilot and
+  practice are still excluded from every reading.
+
 ## [0.18.19] - 2026-09-24
 
 ### Added

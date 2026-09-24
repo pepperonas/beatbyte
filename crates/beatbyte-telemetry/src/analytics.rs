@@ -1,9 +1,15 @@
 //! The questions the store was shaped to answer.
 //!
 //! Every function here is a **read**. Nothing in this module changes
-//! a chart, a score or a setting, and nothing in the game calls it:
-//! analytics produce evidence for a person to act on, which is the
-//! line ADR-0011 drew and ADR-0018 keeps.
+//! a chart, a score or a setting: analytics produce evidence for a
+//! person to act on, which is the line ADR-0011 drew and ADR-0018
+//! keeps.
+//!
+//! ⚠️ The game **does** call [`player_snapshot`], from the statistics
+//! screen, read-only and on a background thread. That is the whole
+//! of it — the store may be read to SHOW a player what happened,
+//! never to DECIDE anything, and
+//! `apps/beatbyte/tests/telemetry_stays_evidence.rs` holds the line.
 //!
 //! # What a single miss means
 //!
@@ -25,6 +31,59 @@ use crate::{Error, Result};
 /// The clause every analytical query shares. Written once so that a
 /// new query cannot forget to exclude a perfect robot.
 const HONEST_RUNS: &str = "s.autopilot = 0 AND s.practice = 0";
+
+/// Which runs a question is about: one player, one difficulty, one
+/// window — or all of them.
+///
+/// ⚠️ This exists because the statistics screen showed filter chips
+/// over all eight of its tabs while four of them could not obey: the
+/// snapshot took no filters at all, so pressing a chip rebuilt the
+/// screen and produced a byte-identical answer. A control that does
+/// nothing is worse than no control.
+///
+/// [`Scope::default`] is "everything", which is exactly what every
+/// caller meant before this existed — so the offline tool's readings
+/// are unchanged.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Scope {
+    /// Only this player's runs, by roster id.
+    pub player_id: Option<i64>,
+    /// Only this difficulty, by its stored code.
+    pub difficulty: Option<u8>,
+    /// Only runs that started at or after this moment.
+    pub since_ms: Option<i64>,
+}
+
+impl Scope {
+    /// The three values, in the order [`scope_clause`] numbers them.
+    #[must_use]
+    fn params(&self) -> [&dyn rusqlite::ToSql; 3] {
+        [&self.player_id, &self.difficulty, &self.since_ms]
+    }
+}
+
+/// The scope as SQL, numbered from `first`.
+///
+/// One definition, because three copies of "which runs count" is how
+/// two tabs come to answer the same question differently. The text is
+/// built only from our own integers — no caller's data reaches it —
+/// and each term is `?n IS NULL OR …`, the same shape the chart-hash
+/// filters in this module already use, so an absent filter costs
+/// nothing and the query text stays constant per call site.
+///
+/// ⚠️ It must mean exactly what `stats_ui::run_passes_filters` means
+/// on the history side. A test pins the two against one another;
+/// without it the screen's two halves drift apart, which is the
+/// state this replaces.
+#[must_use]
+fn scope_clause(first: usize) -> String {
+    let (player, difficulty, since) = (first, first + 1, first + 2);
+    format!(
+        "AND (?{player} IS NULL OR s.player_id = ?{player})
+         AND (?{difficulty} IS NULL OR s.difficulty = ?{difficulty})
+         AND (?{since} IS NULL OR s.started_ms >= ?{since})"
+    )
+}
 
 /// How a chart note has actually played, over many sessions.
 ///
@@ -69,20 +128,32 @@ pub fn note_quality(
     chart_hash: &str,
     difficulty: u8,
     min_samples: u32,
+    scope: Scope,
 ) -> Result<Vec<NoteQuality>> {
+    let hit = EventType::NoteHit.code();
+    let miss = EventType::NoteMiss.code();
+    let over = EventType::Overstrum.code();
+    let [player, want_difficulty, since] = scope.params();
     let rows = store.query(
-        "SELECT e.note_index, e.event_type, e.delta_us
-           FROM gameplay_event e JOIN gameplay_session s USING (session_id)
-          WHERE s.chart_hash = ?1 AND s.difficulty = ?2 AND e.note_index IS NOT NULL
-            AND e.event_type IN (?3, ?4, ?5)
-            AND s.autopilot = 0 AND s.practice = 0
-          ORDER BY e.note_index",
+        &format!(
+            "SELECT e.note_index, e.event_type, e.delta_us
+               FROM gameplay_event e JOIN gameplay_session s USING (session_id)
+              WHERE s.chart_hash = ?1 AND s.difficulty = ?2 AND e.note_index IS NOT NULL
+                AND e.event_type IN (?3, ?4, ?5)
+                AND {HONEST_RUNS}
+                {}
+              ORDER BY e.note_index",
+            scope_clause(6)
+        ),
         &[
             &chart_hash,
             &difficulty,
-            &EventType::NoteHit.code(),
-            &EventType::NoteMiss.code(),
-            &EventType::Overstrum.code(),
+            &hit,
+            &miss,
+            &over,
+            player,
+            want_difficulty,
+            since,
         ],
         |row| {
             let note: u32 = row.get(0)?;
@@ -150,11 +221,13 @@ pub fn problem_notes(
     min_samples: u32,
     max_hit_rate: f64,
     limit: usize,
+    scope: Scope,
 ) -> Result<Vec<NoteQuality>> {
-    let mut notes: Vec<NoteQuality> = note_quality(store, chart_hash, difficulty, min_samples)?
-        .into_iter()
-        .filter(|note| note.hit_rate <= max_hit_rate)
-        .collect();
+    let mut notes: Vec<NoteQuality> =
+        note_quality(store, chart_hash, difficulty, min_samples, scope)?
+            .into_iter()
+            .filter(|note| note.hit_rate <= max_hit_rate)
+            .collect();
     notes.sort_by(|left, right| {
         left.hit_rate
             .partial_cmp(&right.hit_rate)
@@ -393,16 +466,23 @@ pub fn timing_histogram(
     store: &Store,
     chart_hash: Option<&str>,
     bucket_ms: u32,
+    scope: Scope,
 ) -> Result<Vec<(i32, u32)>> {
     let bucket_us = i64::from(bucket_ms.max(1)) * 1000;
+    let hit = EventType::NoteHit.code();
+    let [player, difficulty, since] = scope.params();
     store.query(
-        "SELECT CAST(e.delta_us / ?1 AS INTEGER) AS bucket, COUNT(*)
-           FROM gameplay_event e JOIN gameplay_session s USING (session_id)
-          WHERE e.event_type = ?2 AND e.delta_us IS NOT NULL
-            AND s.autopilot = 0 AND s.practice = 0
-            AND (?3 IS NULL OR s.chart_hash = ?3)
-          GROUP BY bucket ORDER BY bucket",
-        &[&bucket_us, &EventType::NoteHit.code(), &chart_hash],
+        &format!(
+            "SELECT CAST(e.delta_us / ?1 AS INTEGER) AS bucket, COUNT(*)
+               FROM gameplay_event e JOIN gameplay_session s USING (session_id)
+              WHERE e.event_type = ?2 AND e.delta_us IS NOT NULL
+                AND {HONEST_RUNS}
+                AND (?3 IS NULL OR s.chart_hash = ?3)
+                {}
+              GROUP BY bucket ORDER BY bucket",
+            scope_clause(4)
+        ),
+        &[&bucket_us, &hit, &chart_hash, player, difficulty, since],
         |row| {
             let bucket: i32 = row.get(0)?;
             let count: u32 = row.get(1)?;
@@ -415,14 +495,24 @@ pub fn timing_histogram(
 ///
 /// Positive = late. `None` when nothing was timed. The question Timing
 /// asks first: are you early or late on average?
-pub fn timing_bias_ms(store: &Store, chart_hash: Option<&str>) -> Result<Option<f64>> {
+pub fn timing_bias_ms(
+    store: &Store,
+    chart_hash: Option<&str>,
+    scope: Scope,
+) -> Result<Option<f64>> {
+    let hit = EventType::NoteHit.code();
+    let [player, difficulty, since] = scope.params();
     let rows = store.query(
-        "SELECT AVG(e.delta_us)
-           FROM gameplay_event e JOIN gameplay_session s USING (session_id)
-          WHERE e.event_type = ?1 AND e.delta_us IS NOT NULL
-            AND s.autopilot = 0 AND s.practice = 0
-            AND (?2 IS NULL OR s.chart_hash = ?2)",
-        &[&EventType::NoteHit.code(), &chart_hash],
+        &format!(
+            "SELECT AVG(e.delta_us)
+               FROM gameplay_event e JOIN gameplay_session s USING (session_id)
+              WHERE e.event_type = ?1 AND e.delta_us IS NOT NULL
+                AND {HONEST_RUNS}
+                AND (?2 IS NULL OR s.chart_hash = ?2)
+                {}",
+            scope_clause(3)
+        ),
+        &[&hit, &chart_hash, player, difficulty, since],
         |row| {
             let mean: Option<f64> = row.get(0)?;
             Ok(mean)
@@ -448,17 +538,26 @@ pub struct TechniqueRow {
 /// CHORD and SUSTAIN). That is intentional: the question is per kind,
 /// not a partition. Sustains-held is a separate row from sustain
 /// *notes* — held vs dropped is a SustainEnded reading.
-pub fn technique_by_kind(store: &Store, min_judged: u32) -> Result<Vec<TechniqueRow>> {
+pub fn technique_by_kind(
+    store: &Store,
+    min_judged: u32,
+    scope: Scope,
+) -> Result<Vec<TechniqueRow>> {
     use crate::model::Flags;
 
     let hit = EventType::NoteHit.code();
     let miss = EventType::NoteMiss.code();
+    let [player, difficulty, since] = scope.params();
     let rows = store.query(
-        "SELECT e.event_type, e.flags
-           FROM gameplay_event e JOIN gameplay_session s USING (session_id)
-          WHERE e.event_type IN (?1, ?2)
-            AND s.autopilot = 0 AND s.practice = 0",
-        &[&hit, &miss],
+        &format!(
+            "SELECT e.event_type, e.flags
+               FROM gameplay_event e JOIN gameplay_session s USING (session_id)
+              WHERE e.event_type IN (?1, ?2)
+                AND {HONEST_RUNS}
+                {}",
+            scope_clause(3)
+        ),
+        &[&hit, &miss, player, difficulty, since],
         |row| {
             let kind: u8 = row.get(0)?;
             let flags: u16 = row.get(1)?;
@@ -530,12 +629,17 @@ pub fn technique_by_kind(store: &Store, min_judged: u32) -> Result<Vec<Technique
     }
 
     // Held vs dropped: SustainEnded + DONE flag.
+    let ended = EventType::SustainEnded.code();
     let sustain_ends = store.query(
-        "SELECT e.flags
-           FROM gameplay_event e JOIN gameplay_session s USING (session_id)
-          WHERE e.event_type = ?1
-            AND s.autopilot = 0 AND s.practice = 0",
-        &[&EventType::SustainEnded.code()],
+        &format!(
+            "SELECT e.flags
+               FROM gameplay_event e JOIN gameplay_session s USING (session_id)
+              WHERE e.event_type = ?1
+                AND {HONEST_RUNS}
+                {}",
+            scope_clause(2)
+        ),
+        &[&ended, player, difficulty, since],
         |row| {
             let flags: u16 = row.get(0)?;
             Ok(flags)
@@ -559,15 +663,20 @@ pub fn technique_by_kind(store: &Store, min_judged: u32) -> Result<Vec<Technique
 }
 
 /// The chart version with the most honest sessions — title for display.
-pub fn busiest_chart(store: &Store) -> Result<Option<(String, u8, String)>> {
+pub fn busiest_chart(store: &Store, scope: Scope) -> Result<Option<(String, u8, String)>> {
+    let [player, difficulty, since] = scope.params();
     let rows = store.query(
-        "SELECT chart_hash, difficulty, title, COUNT(*) AS n
-           FROM gameplay_session
-          WHERE autopilot = 0 AND practice = 0
-          GROUP BY chart_hash, difficulty
-          ORDER BY n DESC
-          LIMIT 1",
-        &[],
+        &format!(
+            "SELECT s.chart_hash, s.difficulty, s.title, COUNT(*) AS n
+               FROM gameplay_session s
+              WHERE {HONEST_RUNS}
+                {}
+              GROUP BY s.chart_hash, s.difficulty
+              ORDER BY n DESC
+              LIMIT 1",
+            scope_clause(1)
+        ),
+        &[player, difficulty, since],
         |row| {
             let hash: String = row.get(0)?;
             let difficulty: u8 = row.get(1)?;
@@ -585,11 +694,14 @@ pub fn note_timeline(
     chart_hash: &str,
     difficulty: u8,
     min_samples: u32,
+    scope: Scope,
 ) -> Result<Vec<f64>> {
-    Ok(note_quality(store, chart_hash, difficulty, min_samples)?
-        .into_iter()
-        .map(|note| note.hit_rate)
-        .collect())
+    Ok(
+        note_quality(store, chart_hash, difficulty, min_samples, scope)?
+            .into_iter()
+            .map(|note| note.hit_rate)
+            .collect(),
+    )
 }
 
 /// One pack of readings the Stats screen draws from.
@@ -617,26 +729,30 @@ pub struct PlayerSnapshot {
 }
 
 /// Load every reading the Stats shells need in one pass.
-pub fn player_snapshot(store: &Store) -> Result<PlayerSnapshot> {
+pub fn player_snapshot(store: &Store, scope: Scope) -> Result<PlayerSnapshot> {
     let honest: i64 = store
         .query(
-            "SELECT COUNT(*) FROM gameplay_session
-              WHERE autopilot = 0 AND practice = 0",
-            &[],
+            &format!(
+                "SELECT COUNT(*) FROM gameplay_session s
+                  WHERE {HONEST_RUNS}
+                    {}",
+                scope_clause(1)
+            ),
+            &scope.params(),
             |row| row.get(0),
         )?
         .into_iter()
         .next()
         .unwrap_or(0);
-    let histogram = timing_histogram(store, None, 10)?;
-    let bias_ms = timing_bias_ms(store, None)?;
-    let technique = technique_by_kind(store, 8)?;
-    let context = misses_by_context(store, 20)?;
-    let busiest = busiest_chart(store)?;
+    let histogram = timing_histogram(store, None, 10, scope)?;
+    let bias_ms = timing_bias_ms(store, None, scope)?;
+    let technique = technique_by_kind(store, 8, scope)?;
+    let context = misses_by_context(store, 20, scope)?;
+    let busiest = busiest_chart(store, scope)?;
     let (problems, timeline) = match &busiest {
         Some((hash, difficulty, _)) => (
-            problem_notes(store, hash, *difficulty, 3, 0.85, 8)?,
-            note_timeline(store, hash, *difficulty, 3)?,
+            problem_notes(store, hash, *difficulty, 3, 0.85, 8, scope)?,
+            note_timeline(store, hash, *difficulty, 3, scope)?,
         ),
         None => (Vec::new(), Vec::new()),
     };
@@ -778,7 +894,11 @@ pub struct ContextBucket {
 /// Returns nothing at all when no chart's context has been imported —
 /// which is honest: the question cannot be answered without it, and
 /// an empty answer is not the same as "nothing correlates".
-pub fn misses_by_context(store: &Store, min_judged: u32) -> Result<Vec<ContextBucket>> {
+pub fn misses_by_context(
+    store: &Store,
+    min_judged: u32,
+    scope: Scope,
+) -> Result<Vec<ContextBucket>> {
     let mut out = Vec::new();
     // Onset salience in five bands. The bands are wide on purpose:
     // the byte is a dimension to group by, not a measurement, and
@@ -797,6 +917,7 @@ pub fn misses_by_context(store: &Store, min_judged: u32) -> Result<Vec<ContextBu
             "c.onset BETWEEN ?3 AND ?4",
             &[&low, &high],
             min_judged,
+            scope,
         )?);
     }
     for (label, clause) in [
@@ -806,7 +927,7 @@ pub fn misses_by_context(store: &Store, min_judged: u32) -> Result<Vec<ContextBu
         ("in a repeated span", "c.repeat_id > 0"),
         ("heard once", "c.repeat_id = 0"),
     ] {
-        out.extend(bucket(store, label, clause, &[], min_judged)?);
+        out.extend(bucket(store, label, clause, &[], min_judged, scope)?);
     }
     Ok(out)
 }
@@ -818,7 +939,13 @@ fn bucket(
     clause: &str,
     extra: &[&dyn rusqlite::ToSql],
     min_judged: u32,
+    scope: Scope,
 ) -> Result<Option<ContextBucket>> {
+    // The scope is numbered after the caller's own placeholders, so
+    // the band buckets keep their `?3`/`?4` and the flag buckets add
+    // nothing: the bucket that binds two extras numbers the scope
+    // from five, the bucket that binds none from three.
+    let scoped = scope_clause(3 + extra.len());
     let sql = format!(
         "SELECT COUNT(*),
                 SUM(CASE WHEN e.event_type = ?1 THEN 1 ELSE 0 END),
@@ -829,7 +956,7 @@ fn bucket(
              ON c.chart_hash = s.chart_hash
             AND c.difficulty = s.difficulty
             AND c.note_index = e.note_index
-          WHERE e.event_type IN (?1, ?2) AND {HONEST_RUNS} AND {clause}"
+          WHERE e.event_type IN (?1, ?2) AND {HONEST_RUNS} AND {clause} {scoped}"
     );
     // Bound to locals first: a `&expr.code()` inside the vector is a
     // temporary that dies at the end of the statement.
@@ -837,6 +964,7 @@ fn bucket(
     let hit = EventType::NoteHit.code();
     let mut params: Vec<&dyn rusqlite::ToSql> = vec![&miss, &hit];
     params.extend_from_slice(extra);
+    params.extend_from_slice(&scope.params());
     let rows = store.query(&sql, &params, |row| {
         let judged: u32 = row.get(0)?;
         let misses: Option<u32> = row.get(1)?;
@@ -999,7 +1127,8 @@ mod tests {
     #[test]
     fn a_note_everybody_misses_rises_to_the_top() {
         let (store, _) = a_played_chart();
-        let ranked = problem_notes(&store, "chart-a", 1, 3, 0.6, 10).expect("ranks");
+        let ranked =
+            problem_notes(&store, "chart-a", 1, 3, 0.6, 10, Scope::default()).expect("ranks");
         assert_eq!(ranked.len(), 2, "two notes are under the threshold");
         assert_eq!(ranked[0].note_index, 2, "the one nobody hits comes first");
         assert!((ranked[0].hit_rate - 0.0).abs() < 1e-9);
@@ -1011,7 +1140,8 @@ mod tests {
     #[test]
     fn a_note_with_too_little_evidence_is_not_reported_at_all() {
         let (store, _) = a_played_chart();
-        let ranked = problem_notes(&store, "chart-a", 1, 99, 1.0, 10).expect("ranks");
+        let ranked =
+            problem_notes(&store, "chart-a", 1, 99, 1.0, 10, Scope::default()).expect("ranks");
         assert!(
             ranked.is_empty(),
             "four plays are not ninety-nine, and a thin reading must \
@@ -1042,7 +1172,8 @@ mod tests {
                     .collect::<Vec<_>>(),
             )
             .expect("appends");
-        let ranked = problem_notes(&store, "chart-a", 1, 3, 0.6, 10).expect("ranks");
+        let ranked =
+            problem_notes(&store, "chart-a", 1, 3, 0.6, 10, Scope::default()).expect("ranks");
         assert_eq!(
             ranked.first().map(|note| note.note_index),
             Some(2),
@@ -1179,7 +1310,8 @@ mod tests {
     #[test]
     fn the_timing_histogram_buckets_where_the_hits_landed() {
         let (store, _) = a_played_chart();
-        let histogram = timing_histogram(&store, Some("chart-a"), 10).expect("reads");
+        let histogram =
+            timing_histogram(&store, Some("chart-a"), 10, Scope::default()).expect("reads");
         assert!(!histogram.is_empty());
         let total: u32 = histogram.iter().map(|(_, count)| count).sum();
         assert_eq!(total, 10, "every hit is in exactly one bucket");
@@ -1223,7 +1355,7 @@ mod tests {
         ];
         store.set_context("chart-a", 1, &rows).expect("writes");
 
-        let buckets = misses_by_context(&store, 1).expect("reads");
+        let buckets = misses_by_context(&store, 1, Scope::default()).expect("reads");
         let find = |label: &str| {
             buckets
                 .iter()
@@ -1243,7 +1375,9 @@ mod tests {
     fn without_a_context_the_question_returns_nothing_rather_than_a_guess() {
         let (store, _) = a_played_chart();
         assert!(
-            misses_by_context(&store, 1).expect("reads").is_empty(),
+            misses_by_context(&store, 1, Scope::default())
+                .expect("reads")
+                .is_empty(),
             "a library whose music was never imported cannot answer              this, and must not appear to"
         );
     }
@@ -1386,7 +1520,7 @@ mod tests {
     #[test]
     fn timing_bias_reports_the_mean_signed_offset() {
         let (store, _) = a_played_chart();
-        let bias = timing_bias_ms(&store, Some("chart-a"))
+        let bias = timing_bias_ms(&store, Some("chart-a"), Scope::default())
             .expect("reads")
             .expect("hits exist");
         // Hits land at 12–15 ms late in the fixture.
@@ -1431,7 +1565,7 @@ mod tests {
                 },
             )
             .expect("finishes");
-        let rows = technique_by_kind(&store, 4).expect("reads");
+        let rows = technique_by_kind(&store, 4, Scope::default()).expect("reads");
         let find = |label: &str| {
             rows.iter()
                 .find(|row| row.label == label)
@@ -1444,7 +1578,7 @@ mod tests {
     #[test]
     fn a_player_snapshot_packs_the_shell_readings() {
         let (store, _) = a_played_chart();
-        let snap = player_snapshot(&store).expect("loads");
+        let snap = player_snapshot(&store, Scope::default()).expect("loads");
         assert_eq!(snap.sessions, 4);
         assert!(!snap.histogram.is_empty());
         assert!(snap.bias_ms.is_some());

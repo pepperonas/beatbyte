@@ -317,6 +317,7 @@ pub fn run_problems(
         min_samples,
         max_hit_rate,
         limit,
+        analytics::Scope::default(),
     ) {
         Ok(notes) if notes.is_empty() => {
             println!(
@@ -517,7 +518,7 @@ pub fn run_music(store: Option<PathBuf>, min_judged: u32) -> ExitCode {
         Ok(value) => value,
         Err(error) => return fail(&error),
     };
-    match analytics::misses_by_context(&database, min_judged) {
+    match analytics::misses_by_context(&database, min_judged, analytics::Scope::default()) {
         Ok(rows) if rows.is_empty() => {
             println!(
                 "nothing to join — import the library's context sidecars first \
