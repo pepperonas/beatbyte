@@ -4,6 +4,17 @@
 **Status:** Approved in chat (sections 1–5); awaiting final spec review before implementation plan  
 **Related:** ADR-0018 (telemetry store), ADR-0016 (diagrams / `plot.rs`), G40 Stats UI (`stats_ui.rs`, `core::stats`)
 
+> **Amendment, 2026-09-24 (roadmap G51).** The eight tabs below are
+> now **six**. PROGRESS drew the same accuracies OVERVIEW already
+> draws, only pooled across difficulties — the reading §1 itself
+> warns against — and its trend read 5.7 where OVERVIEW's read 10.6,
+> two numbers for one quantity on one screen. INSIGHTS was a
+> 1150-px-wide panel holding at most five short lines, and those
+> lines are the answer to OVERVIEW's own question. Both moved onto
+> OVERVIEW; nothing either of them said was lost. The tab table,
+> §4's question list and §5's phase names are read as history from
+> here on.
+
 ## Goal
 
 Extend BeatByte’s existing statistics suite so it answers concrete player questions (am I improving? where do I fail? what should I practise?) without replacing the current Overview / Timing / Difficulty / Versus architecture, and without inventing a second note-performance log.

@@ -14,6 +14,21 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.22] - 2026-09-24
+
+### Changed
+
+- **The statistics screen has six tabs instead of eight.** PROGRESS
+  drew the same accuracies OVERVIEW already draws, only pooled across
+  difficulties — so its trend read 5.7 where OVERVIEW's read 10.6,
+  two numbers for one quantity, and pooling shows you getting worse
+  the day you move up a difficulty. INSIGHTS was a full-width panel
+  holding at most five short lines, and those lines are the answer to
+  OVERVIEW's own question. Both now live on OVERVIEW: the findings
+  above a rule, the numbers below it, and the trend stated beside the
+  spread on the chart they describe. Nothing either tab said was
+  lost.
+
 ## [0.18.21] - 2026-09-24
 
 ### Added

@@ -71,7 +71,16 @@ pub fn view_named(raw: &str) -> Option<View> {
 #[derive(Resource, Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct StatsView(pub View);
 
-/// The eight views, in tab order (Player Analytics).
+/// The six views, in tab order (Player Analytics).
+///
+/// There were eight. PROGRESS drew the same accuracies OVERVIEW
+/// already draws, only pooled across difficulties — which is the
+/// reading the overview's own comment argues against, because
+/// pooling shows a player "getting worse" the day they moved up —
+/// and its three tiles were a duplicate count plus two sentences.
+/// INSIGHTS was a panel 1150 px wide holding at most five short
+/// lines, and those lines are the answer to the overview's own
+/// question. Both now live on OVERVIEW; nothing they said was lost.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum View {
     /// Progress over time.
@@ -83,27 +92,21 @@ pub enum View {
     Technique,
     /// Where the player plays.
     Difficulty,
-    /// Steady or streaky.
-    Progress,
     /// What to practise next.
     Songs,
     /// Against the other players.
     Versus,
-    /// Sample-gated sentences.
-    Insights,
 }
 
 impl View {
-    /// All eight, in tab order.
-    pub const ALL: [View; 8] = [
+    /// All six, in tab order.
+    pub const ALL: [View; 6] = [
         View::Overview,
         View::Timing,
         View::Technique,
         View::Difficulty,
-        View::Progress,
         View::Songs,
         View::Versus,
-        View::Insights,
     ];
 
     /// The tab's label.
@@ -114,10 +117,8 @@ impl View {
             View::Timing => "TIMING",
             View::Technique => "TECHNIQUE",
             View::Difficulty => "DIFFICULTY",
-            View::Progress => "PROGRESS",
             View::Songs => "SONGS",
             View::Versus => "VERSUS",
-            View::Insights => "INSIGHTS",
         }
     }
 
@@ -129,19 +130,21 @@ impl View {
             View::Timing => "EARLY, LATE, OR JUST NOISY?",
             View::Technique => "WHICH FRETS AND PATTERNS BREAK ME?",
             View::Difficulty => "WHERE DO I PLAY, AND HOW FAR DO I GET?",
-            View::Progress => "STEADY, OR STREAKY?",
             View::Songs => "WHAT SHOULD I PRACTISE NEXT?",
             View::Versus => "HOW DO I STAND AGAINST THE OTHERS?",
-            View::Insights => "WHAT MATTERS RIGHT NOW?",
         }
     }
 
     /// Whether this tab redraws when the telemetry snapshot lands.
+    ///
+    /// OVERVIEW is on the list since it took the findings in: most of
+    /// them are read from the snapshot, and without the redraw they
+    /// would appear only once the player pressed something.
     #[must_use]
     pub const fn needs_telemetry(self) -> bool {
         matches!(
             self,
-            View::Timing | View::Technique | View::Songs | View::Insights
+            View::Overview | View::Timing | View::Technique | View::Songs
         )
     }
 
@@ -603,7 +606,7 @@ fn spawn_stats(
             }
             root.spawn(ui_kit::panel_wide())
                 .with_children(|panel| match view.0 {
-                    View::Overview => overview(panel, &font, &runs, &summary),
+                    View::Overview => overview(panel, &font, &runs, &summary, probe.snapshot()),
                     View::Timing => timing(panel, &font, &runs, &summary, probe.snapshot()),
                     View::Difficulty => difficulty(panel, &font, &runs),
                     View::Versus => {
@@ -628,16 +631,7 @@ fn spawn_stats(
                     View::Technique => {
                         technique_view(panel, &font, probe.snapshot(), &probe.line())
                     }
-                    View::Progress => progress_view(panel, &font, &runs, &summary),
                     View::Songs => songs_view(panel, &font, &runs, probe.snapshot(), &probe.line()),
-                    View::Insights => insights_view(
-                        panel,
-                        &font,
-                        &runs,
-                        &summary,
-                        probe.snapshot(),
-                        &probe.line(),
-                    ),
                 });
             ui_kit::back_button(root, &font, "PLAYERS");
             crate::prompts::device_footer(
@@ -824,7 +818,11 @@ fn overview(
     font: &UiFont,
     runs: &[PlayerRun<'_>],
     summary: &stats::Summary,
+    snap: Option<&PlayerSnapshot>,
 ) {
+    // The findings first: they are the short answer to the question
+    // in the header, and the numbers below are the working.
+    findings(parent, font, runs, summary, snap);
     tiles(
         parent,
         font,
@@ -888,10 +886,12 @@ fn overview(
             caption: "FINISHED RUNS, OLDEST FIRST".to_owned(),
         },
     );
-    // The trend is taken per difficulty for the same reason, and the
-    // one with the most runs is the one worth stating.
+    // Trend AND spread are taken per difficulty for the same reason,
+    // and the one with the most runs is the one worth stating. The
+    // retired PROGRESS tab pooled both across difficulties, so its
+    // trend read 5.7 where this one read 10.6 — two numbers for one
+    // quantity on one screen. This is the honest one.
     let busiest = series.iter().max_by_key(|s| s.values.len());
-    let trend = busiest.and_then(|s| stats::trend(&s.values));
     parent.spawn((
         Node {
             margin: UiRect::top(px(10.0)),
@@ -899,7 +899,14 @@ fn overview(
         },
         Text::new(busiest.map_or_else(
             || "NO FINISHED RUNS YET".to_owned(),
-            |s| format!("{}: {}", s.label, trend_line(trend)),
+            |s| {
+                format!(
+                    "{}: {} · {}",
+                    s.label,
+                    trend_line(stats::trend(&s.values)),
+                    consistency_line(&s.values)
+                )
+            },
         )),
         font.text(ui_kit::SMALL),
         TextColor(palette::BRAND),
@@ -1144,47 +1151,6 @@ pub fn consistency_line(accuracies: &[f64]) -> String {
     }
 }
 
-/// PROGRESS: windowed accuracy trend + consistency sentence.
-fn progress_view(
-    parent: &mut ChildSpawnerCommands,
-    font: &UiFont,
-    runs: &[PlayerRun<'_>],
-    summary: &stats::Summary,
-) {
-    let points = stats::progression(runs);
-    let accuracies: Vec<f64> = points.iter().map(|p| p.accuracy).collect();
-    tiles(
-        parent,
-        font,
-        &[
-            ("FINISHED RUNS", summary.completed.to_string()),
-            ("CONSISTENCY", consistency_line(&accuracies)),
-            ("TREND", trend_line(stats::trend(&accuracies))),
-        ],
-    );
-    let series = [plot::Series {
-        label: "ACCURACY".to_owned(),
-        colour: palette::PERFECT,
-        values: accuracies.clone(),
-    }];
-    let bounds = plot::Bounds::around(accuracies.iter().copied())
-        .unwrap_or(plot::Bounds { min: 0.0, max: 1.0 })
-        .clamped(0.0, 1.0);
-    plot::spawn_line_plot(
-        parent,
-        font,
-        &plot::LinePlot {
-            width: PLOT_W,
-            height: PLOT_H,
-            series: &series,
-            bounds,
-            rule: None,
-            label: plot::percent,
-            caption: "FINISHED RUNS IN THIS WINDOW".to_owned(),
-        },
-    );
-}
-
 /// SONGS: personal bests + problem notes / heat on the busiest chart.
 fn songs_view(
     parent: &mut ChildSpawnerCommands,
@@ -1315,32 +1281,31 @@ fn difficulty_label(code: u8) -> &'static str {
     }
 }
 
-/// INSIGHTS: at most five sample-gated sentences.
-fn insights_view(
+/// The findings block at the top of OVERVIEW: at most five
+/// sample-gated sentences, and nothing at all when there is nothing
+/// to say.
+///
+/// This was a tab of its own. It said very little very widely, and
+/// what it said answers the overview's question — so it sits above
+/// the working rather than two tabs away from it. Silence is the
+/// right empty state here: an overview that opened with "NOT ENOUGH
+/// EVIDENCE FOR A FINDING YET" over a full career of numbers would
+/// be telling the player the opposite of what the screen shows.
+fn findings(
     parent: &mut ChildSpawnerCommands,
     font: &UiFont,
     runs: &[PlayerRun<'_>],
     summary: &stats::Summary,
     snap: Option<&PlayerSnapshot>,
-    waiting: &str,
 ) {
     let lines = insight_lines(runs, summary, snap);
     if lines.is_empty() {
-        plot::empty_note(
-            parent,
-            font,
-            if snap.is_none() {
-                waiting
-            } else {
-                "NOT ENOUGH EVIDENCE FOR A FINDING YET"
-            },
-        );
         return;
     }
     for line in lines {
         parent.spawn((
             Node {
-                margin: UiRect::bottom(px(8.0)),
+                margin: UiRect::bottom(px(6.0)),
                 ..default()
             },
             Text::new(line),
@@ -1348,6 +1313,16 @@ fn insights_view(
             TextColor(palette::TEXT),
         ));
     }
+    // A rule between the words and the numbers they came from.
+    parent.spawn((
+        Node {
+            width: Val::Percent(100.0),
+            height: px(1.0),
+            margin: UiRect::vertical(px(10.0)),
+            ..default()
+        },
+        BackgroundColor(palette::dimmed(palette::TEXT_DIM, 0.25)),
+    ));
 }
 
 /// Pure insight sentences — tested. Cap five.
@@ -1423,16 +1398,15 @@ pub fn insight_lines(
             ));
         }
     }
-    let accuracies: Vec<f64> = stats::progression(runs)
-        .iter()
-        .map(|p| p.accuracy)
-        .collect();
-    if let Some(slope) = stats::trend(&accuracies)
-        && slope.abs() * 10.0 * 100.0 >= 1.0
-        && accuracies.len() >= 5
-    {
-        out.push(trend_line(Some(slope)));
-    }
+    // ⚠️ No trend line here. There was one, taken over the POOLED
+    // accuracies, and the moment the findings moved onto OVERVIEW it
+    // sat four lines above the overview's own trend — which is taken
+    // per difficulty — saying 5.7 where that one said 10.6. Two
+    // numbers for one quantity on one screen is the inconsistency
+    // this whole pass exists to remove, and of the two the pooled one
+    // is the misleading one: it shows a player getting worse the day
+    // they move up a difficulty. The trend stays where the chart it
+    // describes is.
     out.truncate(5);
     out
 }
@@ -1720,11 +1694,11 @@ mod tests {
         assert_eq!(View::Timing.step(-1), View::Overview);
         // Clamping, not wrapping: `ui_kit::step_cursor` is the one
         // cursor rule in this game, and tabs are not an exception.
-        assert_eq!(View::Insights.step(1), View::Insights, "the last wrapped");
-        assert_eq!(View::Versus.step(1), View::Insights);
+        assert_eq!(View::Versus.step(1), View::Versus, "the last wrapped");
+        assert_eq!(View::Songs.step(1), View::Versus);
         assert_eq!(View::Overview.step(-1), View::Overview);
         assert_eq!(View::Overview.step(0), View::Overview);
-        assert_eq!(View::ALL.len(), 8);
+        assert_eq!(View::ALL.len(), 6);
     }
 
     #[test]
@@ -1732,8 +1706,12 @@ mod tests {
         assert_eq!(view_named("timing"), Some(View::Timing));
         assert_eq!(view_named("VERSUS"), Some(View::Versus));
         assert_eq!(view_named("technique"), Some(View::Technique));
-        assert_eq!(view_named("insights"), Some(View::Insights));
         assert_eq!(view_named("nonsense"), None);
+        // The two that were merged into OVERVIEW are gone from the
+        // harness as well as from the screen, or a shot would name a
+        // tab that does not exist and quietly get the default.
+        assert_eq!(view_named("progress"), None);
+        assert_eq!(view_named("insights"), None);
     }
 
     #[test]
@@ -1792,8 +1770,11 @@ mod tests {
         }
         assert!(View::Technique.needs_telemetry());
         assert!(View::Timing.needs_telemetry());
-        assert!(!View::Progress.needs_telemetry());
-        assert!(!View::Overview.needs_telemetry());
+        // OVERVIEW took the findings in, and most of them are read
+        // from the snapshot.
+        assert!(View::Overview.needs_telemetry());
+        assert!(!View::Difficulty.needs_telemetry());
+        assert!(!View::Versus.needs_telemetry());
     }
 
     #[test]
@@ -1814,6 +1795,28 @@ mod tests {
     fn insights_stay_quiet_without_evidence() {
         let summary = stats::Summary::default();
         assert!(insight_lines(&[], &summary, None).is_empty());
+    }
+
+    /// ⚠️ The findings sit above OVERVIEW's own trend now, and that
+    /// one is taken per difficulty. A pooled trend among the findings
+    /// put 5.7 four lines above 10.6 — one quantity, two numbers, one
+    /// screen. It is not a formatting slip: pooling shows a player
+    /// getting worse the day they move up a difficulty.
+    #[test]
+    fn a_finding_never_states_a_trend_the_chart_below_states_better() {
+        let body = include_str!("stats_ui.rs")
+            .split("pub fn insight_lines")
+            .nth(1)
+            .and_then(|rest| rest.split("\n}\n").next())
+            .expect("insight_lines has a body");
+        let code: String = body
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect();
+        assert!(
+            !code.contains("trend_line("),
+            "a finding is stating a trend again: the overview draws its own, per difficulty"
+        );
     }
 
     #[test]
