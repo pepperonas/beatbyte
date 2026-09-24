@@ -17,9 +17,18 @@
 //! order they were measured to matter. This module carries the
 //! first.
 
+use std::path::{Path, PathBuf};
+
 use crate::grid::BeatGrid;
-use crate::schema::{ChartDef, ChartFile, ChartNote};
+use crate::schema::{ChartDef, ChartFile, ChartNote, Provenance};
+use crate::{Severity, chart_hash, context, load_chart_file, save_chart_file, twin, versions};
 use beatbyte_core::Difficulty;
+
+/// Who a classic chart's provenance names.
+pub const DESIGNER: &str = "classic";
+
+/// The kind of twin this module writes.
+pub const KIND: twin::Kind = twin::Kind::Classic;
 
 /// The HOPO threshold the early games shipped: 170 ticks of the 480
 /// that make a beat.
@@ -176,9 +185,407 @@ pub fn apply_hopo_rule(chart: &mut ChartFile) -> Vec<(Difficulty, usize)> {
         .collect()
 }
 
+/// Which ingredients a twin carries.
+///
+/// One flag per ingredient, and the directive it writes names them,
+/// so a chart on disk says what was done to it and a later run can
+/// tell a twin made under one recipe from a twin made under another.
+/// The programme adds ingredients here rather than changing what
+/// `hopo` means.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Recipe {
+    /// The early games' HOPO threshold: beats, not seconds.
+    pub hopo: bool,
+}
+
+impl Default for Recipe {
+    /// Everything that has been through a blind test.
+    fn default() -> Recipe {
+        Recipe { hopo: true }
+    }
+}
+
+impl Recipe {
+    /// Nothing at all — the recipe that must never be written.
+    #[must_use]
+    pub const fn none() -> Recipe {
+        Recipe { hopo: false }
+    }
+
+    /// The ingredients, in the order they were measured to matter.
+    #[must_use]
+    pub fn names(self) -> Vec<&'static str> {
+        let mut names = Vec::new();
+        if self.hopo {
+            names.push("hopo");
+        }
+        names
+    }
+
+    /// What the chart's provenance says it carries.
+    #[must_use]
+    pub fn directive(self) -> String {
+        format!("classic:{}", self.names().join("+"))
+    }
+}
+
+/// Apply a recipe to every difficulty. Returns what each one
+/// changed, in the file's own order.
+pub fn apply(chart: &mut ChartFile, recipe: Recipe) -> Vec<(Difficulty, usize)> {
+    if !recipe.hopo {
+        return chart.charts.iter().map(|c| (c.difficulty, 0)).collect();
+    }
+    apply_hopo_rule(chart)
+}
+
+/// What a twin-writing run came to.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Outcome {
+    /// Written: the folder, the title and what changed per difficulty.
+    Written {
+        /// Where the twin lives.
+        folder: PathBuf,
+        /// Its title, prefix included.
+        title: String,
+        /// `(difficulty id, notes re-flagged)` in chart order.
+        changed: Vec<(String, usize)>,
+        /// Whether the analysis sidecar came along.
+        sidecar: bool,
+    },
+    /// A twin was already there; nothing written.
+    AlreadyThere(PathBuf),
+    /// The recipe changes nothing here; a twin identical to its
+    /// source would be a second entry in the browser that plays the
+    /// same chart.
+    Refused(String),
+}
+
+/// Write the `[CL]` twin of `song_folder`.
+///
+/// ⚠️ **No audio is read and no chart is generated.** The twin is the
+/// folder's ACTIVE chart with the recipe applied — same notes, same
+/// times, same frets, same sustains — because the whole point of the
+/// programme is that a blind test answers a question about ONE
+/// variable. That also makes a twin of a `[GS]` twin meaningful and
+/// cheap: it is the study chart, played by the classic rules.
+///
+/// # Errors
+/// When the folder cannot be read, its active chart cannot be loaded
+/// or is invalid, or the twin cannot be written.
+pub fn write_twin(song_folder: &Path, recipe: Recipe) -> Result<Outcome, String> {
+    let out =
+        twin::folder_for(song_folder, KIND).ok_or("the song folder needs a name and a parent")?;
+    if twin::is_finished(&out) {
+        return Ok(Outcome::AlreadyThere(out));
+    }
+    if recipe.names().is_empty() {
+        return Ok(Outcome::Refused(
+            "no ingredients: a twin would be a copy".to_owned(),
+        ));
+    }
+    let names = twin::names_in(song_folder)?;
+    // A folder from the old layout (its chart named after the song)
+    // has nothing to make a twin from. The redesign calls that
+    // skipped rather than failed, and so does this.
+    if !names.iter().any(|n| n == versions::BASE_CHART) {
+        return Ok(Outcome::Refused(format!(
+            "no `{}` — legacy layout",
+            versions::BASE_CHART
+        )));
+    }
+    let pointer = std::fs::read_to_string(song_folder.join(versions::POINTER_FILE)).ok();
+    let active_name = versions::resolve_active(pointer.as_deref(), &names);
+    let active_path = song_folder.join(&active_name);
+    let active = load_chart_file(&active_path)
+        .map_err(|error| format!("cannot load {active_name}: {error}"))?;
+    let problems = errors_of(&active);
+    if !problems.is_empty() {
+        return Err(format!("{active_name} is invalid: {}", problems.join("; ")));
+    }
+
+    let mut chart = active.clone();
+    chart.song.title = twin::titled(&active.song.title, KIND);
+    let changed = apply(&mut chart, recipe);
+    if changed.iter().all(|(_, n)| *n == 0) {
+        return Ok(Outcome::Refused(format!(
+            "{}: the chart already plays by these rules",
+            active.song.title
+        )));
+    }
+    chart.provenance = Some(Provenance {
+        parent_hash: chart_hash(&active),
+        designer: DESIGNER.to_owned(),
+        created_ms: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis() as u64),
+        directive: Some(recipe.directive()),
+    });
+    let problems = errors_of(&chart);
+    if !problems.is_empty() {
+        return Err(format!(
+            "the classic chart is invalid: {}",
+            problems.join("; ")
+        ));
+    }
+
+    // The only write boundary: a NEW folder. Audio and sidecars
+    // first, the chart LAST, so a library scan that happens mid-write
+    // never sees a chart without its audio.
+    std::fs::create_dir_all(&out)
+        .map_err(|error| format!("cannot create {}: {error}", out.display()))?;
+    twin::copy_assets(song_folder, &out, &names)?;
+    let chart_path = out.join(versions::BASE_CHART);
+    save_chart_file(&chart_path, &chart)
+        .map_err(|error| format!("cannot write the classic chart: {error}"))?;
+    // After the chart, because it names the chart it describes.
+    let sidecar = context::carry(&active_path, &active, &chart_path, &chart)?;
+    Ok(Outcome::Written {
+        folder: out,
+        title: chart.song.title.clone(),
+        changed: changed
+            .into_iter()
+            .map(|(difficulty, n)| (difficulty.id().to_owned(), n))
+            .collect(),
+        sidecar,
+    })
+}
+
+fn errors_of(chart: &ChartFile) -> Vec<String> {
+    chart
+        .validate()
+        .into_iter()
+        .filter(|i| i.severity == Severity::Error)
+        .map(|i| i.to_string())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::schema::SongMeta;
+
+    /// A scratch directory that removes itself.
+    struct Scratch(PathBuf);
+    impl Scratch {
+        fn new(tag: &str) -> Scratch {
+            let unique = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos());
+            let dir = std::env::temp_dir().join(format!("bb-cl-{tag}-{unique}"));
+            std::fs::create_dir_all(&dir).expect("scratch");
+            Scratch(dir)
+        }
+    }
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// A song folder at 120 BPM whose notes sit an EIGHTH apart —
+    /// 0.25 s, which the old rule in seconds calls a hammer-on and
+    /// the classic rule in beats (0.5 of a beat, over 0.354) does
+    /// not. So the twin has something to change.
+    fn a_song_folder(dir: &Path, hopo: bool) -> ChartFile {
+        std::fs::create_dir_all(dir).expect("dir");
+        std::fs::write(dir.join("t.wav"), b"audio").expect("audio");
+        std::fs::write(dir.join("t.lrc"), b"lyrics").expect("lyrics");
+        let chart = ChartFile {
+            format_version: 1,
+            song: SongMeta {
+                title: "Maria".into(),
+                artist: "Blondie".into(),
+                audio: "t.wav".into(),
+                bpm: 120.0,
+                offset_s: 0.0,
+                preview_start_s: None,
+                duration_s: Some(30.0),
+                genre: None,
+            },
+            charts: Difficulty::ALL
+                .iter()
+                .map(|d| ChartDef {
+                    difficulty: *d,
+                    lanes: 5,
+                    notes: (0..8)
+                        .map(|i| ChartNote {
+                            time: 1.0 + f64::from(i) * 0.25,
+                            lane: (i % 5) as u8,
+                            len: 0.0,
+                            hopo: hopo && i > 0,
+                        })
+                        .collect(),
+                    phrases: vec![],
+                })
+                .collect(),
+            provenance: None,
+            audio_trim: None,
+            grid: None,
+        };
+        save_chart_file(&dir.join(versions::BASE_CHART), &chart).expect("chart");
+        chart
+    }
+
+    /// The whole contract of a twin in one run: it appears beside the
+    /// original with the prefix and the changed flags, it carries the
+    /// song's assets and none of the charts, its provenance names
+    /// what was done, and — the part that matters most — **the
+    /// original is not written to at all**.
+    #[test]
+    fn a_twin_is_the_active_chart_by_the_classic_rules_and_the_original_is_untouched() {
+        let scratch = Scratch::new("write");
+        let song = scratch.0.join("blondie---maria-m4a");
+        a_song_folder(&song, true);
+        let before = std::fs::read(song.join(versions::BASE_CHART)).expect("read");
+
+        let outcome = write_twin(&song, Recipe::default()).expect("the twin must be written");
+        let Outcome::Written {
+            folder,
+            title,
+            changed,
+            ..
+        } = &outcome
+        else {
+            panic!("not written: {outcome:?}");
+        };
+        assert_eq!(folder, &scratch.0.join("classic-blondie---maria-m4a"));
+        assert_eq!(title, "[CL] Maria");
+        assert!(
+            changed.iter().all(|(_, n)| *n == 7),
+            "every eighth after the first should have lost its flag: {changed:?}"
+        );
+
+        // The assets travel; the charts do not.
+        assert!(folder.join("t.wav").is_file(), "the audio did not travel");
+        assert!(folder.join("t.lrc").is_file(), "the lyrics did not travel");
+        assert!(!folder.join(versions::POINTER_FILE).exists());
+
+        let twin_chart = load_chart_file(&folder.join(versions::BASE_CHART)).expect("twin chart");
+        assert!(
+            twin_chart
+                .charts
+                .iter()
+                .all(|c| !c.notes.iter().any(|n| n.hopo)),
+            "a straight eighth is never a hammer-on under the classic rule"
+        );
+        let provenance = twin_chart.provenance.as_ref().expect("provenance");
+        assert_eq!(provenance.designer, DESIGNER);
+        assert_eq!(provenance.directive.as_deref(), Some("classic:hopo"));
+
+        // ⚠️ The original: byte for byte what it was.
+        assert_eq!(
+            std::fs::read(song.join(versions::BASE_CHART)).expect("read"),
+            before,
+            "the original was written to"
+        );
+    }
+
+    /// ⚠️ A chart that already plays by these rules would give a
+    /// second browser entry playing the same notes. Refused before
+    /// anything is written — the folder must not even appear, or the
+    /// next run would call the empty folder a finished twin.
+    #[test]
+    fn a_chart_that_would_not_change_gets_no_twin() {
+        let scratch = Scratch::new("nochange");
+        let song = scratch.0.join("blondie---maria-m4a");
+        a_song_folder(&song, false);
+        let outcome = write_twin(&song, Recipe::default()).expect("no error");
+        assert!(
+            matches!(&outcome, Outcome::Refused(reason) if reason.contains("already plays")),
+            "{outcome:?}"
+        );
+        assert!(
+            !scratch.0.join("classic-blondie---maria-m4a").exists(),
+            "a refused run left a folder behind"
+        );
+    }
+
+    /// A finished twin ends the run before anything is read, so a
+    /// second pass over a library is cheap and changes nothing.
+    #[test]
+    fn a_folder_that_already_has_its_twin_is_left_alone() {
+        let scratch = Scratch::new("already");
+        let song = scratch.0.join("blondie---maria-m4a");
+        a_song_folder(&song, true);
+        write_twin(&song, Recipe::default()).expect("first");
+        let twin_path = scratch.0.join("classic-blondie---maria-m4a");
+        let written = std::fs::read(twin_path.join(versions::BASE_CHART)).expect("read");
+        let outcome = write_twin(&song, Recipe::default()).expect("second");
+        assert_eq!(outcome, Outcome::AlreadyThere(twin_path.clone()));
+        assert_eq!(
+            std::fs::read(twin_path.join(versions::BASE_CHART)).expect("read"),
+            written,
+            "the second run rewrote the twin"
+        );
+    }
+
+    /// A twin of a twin is a twin OF THE STUDY: the prefix stacks,
+    /// which is how the browser files it under the chart it was made
+    /// from rather than under the mix.
+    #[test]
+    fn a_twin_of_a_study_keeps_the_study_in_its_name() {
+        let scratch = Scratch::new("chain");
+        let study = scratch.0.join("guitar-study-blondie---maria-m4a");
+        let mut chart = a_song_folder(&study, true);
+        chart.song.title = "[GS] Maria".into();
+        save_chart_file(&study.join(versions::BASE_CHART), &chart).expect("chart");
+        let outcome = write_twin(&study, Recipe::default()).expect("written");
+        let Outcome::Written { folder, title, .. } = &outcome else {
+            panic!("{outcome:?}");
+        };
+        assert_eq!(title, "[CL] [GS] Maria");
+        assert_eq!(
+            folder,
+            &scratch.0.join("classic-guitar-study-blondie---maria-m4a")
+        );
+        assert_eq!(crate::twin::base_title(title), Some("[GS] Maria"));
+    }
+
+    /// ⚠️ An ingredient that is switched OFF must do nothing, and
+    /// nothing else in the suite says so: the twin path refuses an
+    /// empty recipe before it ever calls this, so removing the guard
+    /// left every test green while `apply` cooked regardless of what
+    /// it was handed. That is the whole promise of the programme —
+    /// one ingredient at a time — and it is checked here.
+    #[test]
+    fn an_ingredient_that_is_off_changes_nothing() {
+        let scratch = Scratch::new("off");
+        let song = scratch.0.join("blondie---maria-m4a");
+        let with_flags = a_song_folder(&song, true);
+        let mut chart = with_flags.clone();
+        let changed = apply(&mut chart, Recipe::none());
+        assert!(
+            changed.iter().all(|(_, n)| *n == 0),
+            "an empty recipe reported changes: {changed:?}"
+        );
+        assert_eq!(
+            crate::chart_hash(&chart),
+            crate::chart_hash(&with_flags),
+            "an empty recipe changed the chart"
+        );
+        // And the ingredient switched ON does change it, or the test
+        // above would pass on a chart that had nothing to change.
+        let mut cooked = with_flags.clone();
+        let changed = apply(&mut cooked, Recipe::default());
+        assert!(changed.iter().any(|(_, n)| *n > 0), "{changed:?}");
+    }
+
+    /// The directive names the ingredients, so a chart on disk says
+    /// what was done to it — and an empty recipe never writes at all.
+    #[test]
+    fn the_recipe_names_what_it_carries() {
+        assert_eq!(Recipe::default().directive(), "classic:hopo");
+        assert_eq!(Recipe::default().names(), vec!["hopo"]);
+        assert!(Recipe::none().names().is_empty());
+        let scratch = Scratch::new("empty");
+        let song = scratch.0.join("blondie---maria-m4a");
+        a_song_folder(&song, true);
+        let outcome = write_twin(&song, Recipe::none()).expect("no error");
+        assert!(
+            matches!(&outcome, Outcome::Refused(reason) if reason.contains("no ingredients")),
+            "{outcome:?}"
+        );
+    }
 
     /// A chart of single notes at `times`, all on alternating lanes
     /// so the fret rule never gets in the way of the timing rule.

@@ -15,7 +15,9 @@ use std::process::ExitCode;
 
 use beatbyte_chart::context;
 use beatbyte_chart::schema::Provenance;
-use beatbyte_chart::{ChartFile, chart_hash, classic, load_chart_file, save_chart_file, versions};
+use beatbyte_chart::{
+    ChartFile, chart_hash, classic, load_chart_file, save_chart_file, twin, versions,
+};
 use beatbyte_core::Difficulty;
 
 /// The window the blind test plays, so the counts reported here are
@@ -34,6 +36,10 @@ const DESIGNER: &str = "classic";
 
 /// Which ingredient this version carries.
 const HOPO_DIRECTIVE: &str = "classic-hopo";
+
+/// What a run that would write is told while the game is up.
+const GAME_RUNNING: &str = "BeatByte is running — a chart swapped under a live browser breaks every \
+     Enter on that song until a rescan. Quit the game first.";
 
 /// Apply the HOPO ingredient to one song folder.
 pub fn run(folder: &Path, dry_run: bool) -> ExitCode {
@@ -84,6 +90,184 @@ pub fn run_all(dir: &Path, dry_run: bool) -> ExitCode {
     }
 }
 
+/// Write the `[CL]` twin of one song folder.
+pub fn run_twin(folder: &Path, dry_run: bool) -> ExitCode {
+    match one_twin(folder, dry_run) {
+        Ok(report) => {
+            println!("{report}");
+            ExitCode::SUCCESS
+        }
+        Err(reason) => {
+            eprintln!("{}: {reason}", folder.display());
+            ExitCode::from(1)
+        }
+    }
+}
+
+/// Write the `[CL]` twin of every song folder under `dir`.
+///
+/// ⚠️ A twin folder is itself a song folder, and a `[CL]` twin of a
+/// `[CL]` twin would be a copy — the recipe changes nothing the
+/// second time, so `write_twin` refuses it anyway, but walking them
+/// is wasted work and a confusing report. Study twins are NOT
+/// skipped: the classic rules applied to a study chart is the
+/// combination this library is mostly played on.
+pub fn run_twin_all(dir: &Path, dry_run: bool) -> ExitCode {
+    let mut folders: Vec<PathBuf> = match std::fs::read_dir(dir) {
+        Ok(entries) => entries
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| p.is_dir())
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_none_or(|n| twin::kind_of_folder(n) != Some(classic::KIND))
+            })
+            .collect(),
+        Err(error) => {
+            eprintln!("cannot list `{}`: {error}", dir.display());
+            return ExitCode::from(2);
+        }
+    };
+    folders.sort();
+    let (mut yes, mut skipped, mut failed) = (0usize, 0usize, 0usize);
+    for folder in folders {
+        match one_twin(&folder, dry_run) {
+            Ok(report) => {
+                println!("{report}");
+                // ⚠️ Counted on the OUTCOME, not on a word in the
+                // report: the first version looked for "wrote", which
+                // a dry run never says, so a complete dry run
+                // summed itself up as "0 twin(s) written".
+                if report.contains("no twin") || report.contains("already there") {
+                    skipped += 1;
+                } else {
+                    yes += 1;
+                }
+            }
+            Err(reason) => {
+                eprintln!("{}: {reason}", folder.display());
+                failed += 1;
+            }
+        }
+    }
+    let verb = if dry_run {
+        "would be written"
+    } else {
+        "written"
+    };
+    println!("{yes} twin(s) {verb}, {skipped} skipped, {failed} failed");
+    if failed > 0 {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+/// One folder's twin, reported the way the version path reports.
+fn one_twin(folder: &Path, dry_run: bool) -> Result<String, String> {
+    if !dry_run && game_is_running() {
+        return Err(GAME_RUNNING.to_owned());
+    }
+    let name = folder.file_name().map_or_else(
+        || folder.display().to_string(),
+        |n| n.to_string_lossy().into_owned(),
+    );
+    if dry_run {
+        let Some((before, after, window)) = preview(folder)? else {
+            return Ok(format!("{name}: no twin — legacy layout"));
+        };
+        let changed = changed_in_window(&before, &after, WINDOW_DIFFICULTY, window);
+        let per_count: Vec<(String, usize)> = after
+            .charts
+            .iter()
+            .map(|def| {
+                (
+                    def.difficulty.id().to_owned(),
+                    changed_in_window(&before, &after, def.difficulty, (0.0, f64::MAX)),
+                )
+            })
+            .collect();
+        // ⚠️ The dry run has to answer what the real run would, and
+        // the real run REFUSES a chart the recipe does not change —
+        // a twin identical to its source is a second browser entry
+        // playing the same notes. Without this the four folders that
+        // already carry the ingredient were reported as "would
+        // write … 0 in the window".
+        if per_count.iter().all(|(_, n)| *n == 0) {
+            return Ok(format!(
+                "{name}: no twin — the chart already plays by these rules"
+            ));
+        }
+        let per: Vec<String> = per_count
+            .iter()
+            .map(|(id, n)| format!("{id} {n}"))
+            .collect();
+        return Ok(format!(
+            "{name}: would write `{}` — {} in the window, {}",
+            twin::folder_for(folder, classic::KIND)
+                .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+                .unwrap_or_else(|| "?".to_owned()),
+            changed,
+            per.join(", ")
+        ));
+    }
+    match classic::write_twin(folder, classic::Recipe::default())? {
+        classic::Outcome::Written {
+            folder: out,
+            title,
+            changed,
+            sidecar,
+        } => {
+            let per: Vec<String> = changed.iter().map(|(id, n)| format!("{id} {n}")).collect();
+            let note = if sidecar {
+                " with its analysis sidecar"
+            } else {
+                " (no current sidecar to carry)"
+            };
+            Ok(format!(
+                "{name}: wrote `{}` as \"{title}\"{note} — re-flagged {}",
+                out.file_name().map_or_else(
+                    || out.display().to_string(),
+                    |n| n.to_string_lossy().into_owned()
+                ),
+                per.join(", ")
+            ))
+        }
+        classic::Outcome::AlreadyThere(out) => Ok(format!(
+            "{name}: `{}` is already there",
+            out.file_name().map_or_else(
+                || out.display().to_string(),
+                |n| n.to_string_lossy().into_owned()
+            )
+        )),
+        classic::Outcome::Refused(reason) => Ok(format!("{name}: no twin — {reason}")),
+    }
+}
+
+/// The active chart, the same chart with the recipe applied, and the
+/// window the blind test plays. `None` for a folder with no chart to
+/// start from.
+type Preview = Option<(ChartFile, ChartFile, (f64, f64))>;
+
+/// The active chart, the same chart with the recipe applied, and the
+/// window the blind test plays — everything a dry run reports from,
+/// and nothing written.
+fn preview(folder: &Path) -> Result<Preview, String> {
+    let names = twin::names_in(folder)?;
+    if !names.iter().any(|n| n == versions::BASE_CHART) {
+        return Ok(None);
+    }
+    let pointer = std::fs::read_to_string(folder.join(versions::POINTER_FILE)).ok();
+    let active_name = versions::resolve_active(pointer.as_deref(), &names);
+    let before = load_chart_file(&folder.join(&active_name))
+        .map_err(|error| format!("cannot load {active_name}: {error}"))?;
+    let mut after = before.clone();
+    classic::apply(&mut after, classic::Recipe::default());
+    let window = before.preview_window(WINDOW_DIFFICULTY, WINDOW_S);
+    Ok(Some((before, after, window)))
+}
+
 /// How many notes inside `window` carry a different flag.
 ///
 /// Pure — tested. The two charts must be the same notes in the same
@@ -113,11 +297,7 @@ pub fn changed_in_window(
 
 fn one(folder: &Path, dry_run: bool) -> Result<String, String> {
     if !dry_run && game_is_running() {
-        return Err(
-            "BeatByte is running — a chart swapped under a live browser breaks every \
-             Enter on that song until a rescan. Quit the game first."
-                .to_owned(),
-        );
+        return Err(GAME_RUNNING.to_owned());
     }
     let names: Vec<String> = std::fs::read_dir(folder)
         .map_err(|error| format!("cannot list: {error}"))?
@@ -188,7 +368,7 @@ fn one(folder: &Path, dry_run: bool) -> Result<String, String> {
     // The analysis sidecar travels with the version. A failure here
     // costs a dimension in a later reading and must not cost the
     // write that already happened.
-    let carried = match carry_context(&active_path, &before, &folder.join(&next_name), &after) {
+    let carried = match context::carry(&active_path, &before, &folder.join(&next_name), &after) {
         Ok(true) => " with its analysis sidecar",
         Ok(false) => " (the parent had no current sidecar)",
         Err(reason) => {
@@ -199,56 +379,6 @@ fn one(folder: &Path, dry_run: bool) -> Result<String, String> {
     Ok(format!(
         "{head} — wrote `{next_name}` (parent `{active_name}`){carried} and made it active"
     ))
-}
-
-/// Carry the parent version's analysis sidecar over to the new one.
-///
-/// ⚠️ A file copy would be ignored, not wrong-but-useful: a sidecar
-/// names the chart it describes by content hash, and one whose hash
-/// does not match is discarded as describing a chart that no longer
-/// exists. So the hash is rewritten — which is only honest because
-/// this ingredient changes FLAGS and nothing else, so the track
-/// events are the same events in the same order and one packed entry
-/// still describes one of them.
-///
-/// ⚠️ Verified rather than assumed: the entry count per difficulty is
-/// checked against the new chart's own tracks first. A sidecar that
-/// does not line up is worse than none — every later reading would
-/// attribute one note's analysis to another.
-///
-/// `Ok(false)` means the parent had no current sidecar; there was
-/// nothing to carry and that is not a failure.
-///
-/// # Errors
-/// When the entries do not line up, or the write fails.
-fn carry_context(
-    parent_path: &Path,
-    parent: &ChartFile,
-    next_path: &Path,
-    next: &ChartFile,
-) -> Result<bool, String> {
-    let Some(mut sidecar) = context::load_context(parent_path, parent) else {
-        return Ok(false);
-    };
-    for definition in &next.charts {
-        let id = definition.difficulty.id();
-        let events = next
-            .to_track(definition.difficulty)
-            .map(|track| track.events().len())
-            .map_err(|error| format!("{id}: cannot read the new track: {error}"))?;
-        let entries = sidecar.tracks.get(id).map_or(0, Vec::len);
-        if entries != events {
-            return Err(format!(
-                "{id}: the parent's sidecar describes {entries} events, the new version has \
-                 {events} — refusing to write one that does not line up"
-            ));
-        }
-    }
-    sidecar.chart_hash = beatbyte_chart::chart_hash(next);
-    debug_assert!(sidecar.is_current_for(next));
-    context::save_context(next_path, &sidecar)
-        .map(|_| true)
-        .map_err(|error| format!("cannot write the sidecar: {error}"))
 }
 
 /// Copy the file about to be superseded into `local/`.
@@ -292,7 +422,6 @@ fn game_is_running() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use beatbyte_chart::context::ChartContext;
     use beatbyte_chart::schema::ChartNote;
 
     fn chart(flags: &[(f64, bool)]) -> ChartFile {
@@ -340,80 +469,6 @@ mod tests {
             changed_in_window(&before, &before, Difficulty::Hard, (0.0, 100.0)),
             0
         );
-    }
-
-    /// ⚠️ A sidecar names the chart it describes by content hash, so
-    /// a straight copy would be DISCARDED — "this describes a chart
-    /// that no longer exists" — and the new version would silently
-    /// have no analysis behind it. Rewriting the hash is honest here
-    /// only because the ingredient changes flags and nothing else.
-    #[test]
-    fn the_parents_sidecar_is_carried_over_and_still_describes_the_new_version() {
-        let dir = std::env::temp_dir().join(format!(
-            "bb-classic-ctx-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |d| d.as_nanos())
-        ));
-        std::fs::create_dir_all(&dir).expect("a scratch folder");
-        // 120 BPM: a beat is 0.5 s, so the threshold is 0.177 s.
-        // ⚠️ 0.2 s was the first try and changed nothing — 0.4 of a
-        // beat is over it. The guard below caught the fixture.
-        let parent = chart(&[(0.0, false), (0.15, false), (1.0, false)]);
-        let mut next = parent.clone();
-        beatbyte_chart::classic::apply_hopo_rule(&mut next);
-        assert_ne!(
-            beatbyte_chart::chart_hash(&parent),
-            beatbyte_chart::chart_hash(&next),
-            "the fixture changed no flag, so it proves nothing"
-        );
-
-        let parent_path = dir.join("chart.json");
-        let next_path = dir.join("chart.v2.json");
-        beatbyte_chart::save_chart_file(&parent_path, &parent).expect("the parent");
-        beatbyte_chart::save_chart_file(&next_path, &next).expect("the new version");
-
-        // A sidecar for the parent: one entry per track event.
-        let events = parent
-            .to_track(Difficulty::Hard)
-            .expect("a track")
-            .events()
-            .len();
-        let mut tracks = std::collections::BTreeMap::new();
-        tracks.insert(Difficulty::Hard.id().to_owned(), vec![[7u8; 6]; events]);
-        let sidecar = ChartContext {
-            format: beatbyte_chart::context::CONTEXT_FORMAT.to_owned(),
-            chart_hash: beatbyte_chart::chart_hash(&parent),
-            tracks,
-        };
-        context::save_context(&parent_path, &sidecar).expect("the parent's sidecar");
-
-        assert_eq!(
-            carry_context(&parent_path, &parent, &next_path, &next),
-            Ok(true)
-        );
-        // The point: the reader accepts it for the NEW chart.
-        let read = context::load_context(&next_path, &next)
-            .expect("the carried sidecar must describe the new version");
-        assert_eq!(read.len(), events, "the entries did not travel");
-
-        // And a sidecar that does not line up is refused rather than
-        // written: every later reading would blame the wrong note.
-        let mut wrong = sidecar.clone();
-        wrong
-            .tracks
-            .get_mut(Difficulty::Hard.id())
-            .expect("the track")
-            .pop();
-        context::save_context(&parent_path, &wrong).expect("a short sidecar");
-        let outcome = carry_context(&parent_path, &parent, &next_path, &next);
-        assert!(
-            matches!(&outcome, Err(reason) if reason.contains("does not line up")),
-            "a mismatched sidecar was accepted: {outcome:?}"
-        );
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// A difficulty the chart does not carry counts nothing rather

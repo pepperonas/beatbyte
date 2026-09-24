@@ -18,15 +18,13 @@ use std::path::{Path, PathBuf};
 use crate::generate::generate_lead_study;
 use crate::redesign::Reading;
 use crate::schema::Provenance;
+use crate::twin;
 use crate::{
     ChartFile, GenerateMeta, Severity, chart_hash, load_chart_file, save_chart_file, versions,
 };
 
 /// The title prefix the browser shows the twin under.
-pub const TITLE_PREFIX: &str = "[GS] ";
-
-/// The title prefix written by older BeatByte versions.
-const LEGACY_TITLE_PREFIX: &str = "[Guitar Study] ";
+pub const TITLE_PREFIX: &str = twin::Kind::Study.title_prefix();
 
 /// Who the provenance names.
 pub const DESIGNER: &str = "lead-study";
@@ -58,98 +56,19 @@ pub enum Outcome {
 /// name so a second run finds it. Pure — tested.
 #[must_use]
 pub fn twin_folder_name(song_folder_name: &str) -> String {
-    format!("guitar-study-{song_folder_name}")
+    format!("{}{song_folder_name}", twin::Kind::Study.folder_prefix())
 }
 
 /// Where the twin of `song_folder` lives (or would).
 #[must_use]
 pub fn twin_folder_for(song_folder: &Path) -> Option<PathBuf> {
-    let name = song_folder.file_name()?.to_string_lossy().into_owned();
-    Some(song_folder.parent()?.join(twin_folder_name(&name)))
-}
-
-/// Copy a song folder's assets — everything but the charts — into
-/// the twin's folder.
-///
-/// ⚠️ **Files only.** `fs::copy` fails on a directory, and a song
-/// folder grows them: separated stems live in `<song>.stems`. The
-/// failure landed AFTER the twin folder had been created, so the
-/// half-written folder answered "already there" for ever and the
-/// song never got a twin. Stems are derived from the audio beside
-/// them and the twin can make its own.
-///
-/// Its own function so a test can call the real thing: the first
-/// version of that test copied this loop into itself, which meant a
-/// mutation of the loop changed nothing and the pin was blind.
-///
-/// # Errors
-/// When a file cannot be copied.
-fn copy_assets(from: &Path, to: &Path, names: &[String]) -> Result<(), String> {
-    for name in names.iter().filter(|n| !is_chart_file(n)) {
-        let source = from.join(name);
-        if !source.is_file() {
-            continue;
-        }
-        std::fs::copy(&source, to.join(name))
-            .map_err(|error| format!("cannot copy {name}: {error}"))?;
-    }
-    Ok(())
-}
-
-/// Whether a twin folder holds a FINISHED twin.
-///
-/// ⚠️ Existing is not enough. The chart is written last, on purpose,
-/// so a library scan never sees a chart without its audio — which
-/// means a run that failed partway leaves a folder that exists and
-/// plays nothing. Answering "already there" to that one is how a
-/// half-written twin became permanent: every later run saw the
-/// folder, returned early, and never got as far as the failure.
-/// Pure enough to test with a directory.
-#[must_use]
-pub fn is_finished_twin(folder: &Path) -> bool {
-    folder.join(versions::BASE_CHART).is_file()
-}
-
-/// Whether a folder name is a twin's.
-#[must_use]
-pub fn is_twin_folder(name: &str) -> bool {
-    name.starts_with("guitar-study-")
+    twin::folder_for(song_folder, twin::Kind::Study)
 }
 
 /// The twin's title: prefixed once, never twice. Pure — tested.
 #[must_use]
 pub fn twin_title(title: &str) -> String {
-    format!("{TITLE_PREFIX}{}", base_title(title).unwrap_or(title))
-}
-
-/// The original's title behind a twin's, or `None` for a title that
-/// is not a twin's. What the browser keys the pairing on. Pure — tested.
-#[must_use]
-pub fn base_title(title: &str) -> Option<&str> {
-    title
-        .strip_prefix(TITLE_PREFIX)
-        .or_else(|| title.strip_prefix(LEGACY_TITLE_PREFIX))
-}
-
-/// Canonical browser title for a study, including titles saved by versions
-/// that used the long prefix. The chart file itself is left untouched.
-#[must_use]
-pub fn display_title(title: &str) -> String {
-    match base_title(title) {
-        Some(base) => format!("{TITLE_PREFIX}{base}"),
-        None => title.to_owned(),
-    }
-}
-
-/// Whether a file in the song folder is a chart or the pointer — the
-/// things the twin must NOT copy (it gets exactly one chart of its
-/// own); everything else (audio, lyrics, loudness) comes along.
-/// Pure — tested.
-#[must_use]
-pub fn is_chart_file(name: &str) -> bool {
-    name == versions::BASE_CHART
-        || name == versions::POINTER_FILE
-        || versions::is_version_file(name)
+    twin::titled(title, twin::Kind::Study)
 }
 
 fn errors_of(chart: &ChartFile) -> Vec<String> {
@@ -173,7 +92,7 @@ pub fn write_twin(
     read: &dyn Fn(&Path) -> Result<Reading, String>,
 ) -> Result<Outcome, String> {
     let out = twin_folder_for(song_folder).ok_or("the song folder needs a name and a parent")?;
-    if is_finished_twin(&out) {
+    if twin::is_finished(&out) {
         return Ok(Outcome::AlreadyThere(out));
     }
     let names: Vec<String> = std::fs::read_dir(song_folder)
@@ -264,7 +183,7 @@ pub fn write_twin(
     // sees a chart without its audio.
     std::fs::create_dir_all(&out)
         .map_err(|error| format!("cannot create {}: {error}", out.display()))?;
-    copy_assets(song_folder, &out, &names)?;
+    twin::copy_assets(song_folder, &out, &names)?;
     save_chart_file(&out.join(versions::BASE_CHART), &chart)
         .map_err(|error| format!("cannot write the study chart: {error}"))?;
     Ok(Outcome::Written {
@@ -300,81 +219,6 @@ mod tests {
         }
     }
 
-    /// ⚠️ Two halves of one defect, and the second is what made the
-    /// first permanent. A song folder grows subdirectories —
-    /// separated stems live in `<song>.stems` — and `fs::copy` fails
-    /// on a directory. That failure lands AFTER the twin folder has
-    /// been created, so the folder exists, holds no chart, and every
-    /// later run saw it, said "already there" and returned before
-    /// reaching the failure again. The song never got a twin and
-    /// nothing ever said why.
-    #[test]
-    fn a_folder_without_a_chart_is_not_a_finished_twin() {
-        let scratch = Scratch::new("finished");
-        let twin = scratch.0.join("guitar-study-song");
-        assert!(!is_finished_twin(&twin), "a missing folder counted");
-        std::fs::create_dir_all(&twin).expect("dir");
-        std::fs::write(twin.join("song.m4a"), b"audio").expect("audio");
-        assert!(
-            !is_finished_twin(&twin),
-            "a half-written twin counted as finished"
-        );
-        std::fs::write(twin.join(versions::BASE_CHART), b"{}").expect("chart");
-        assert!(is_finished_twin(&twin), "a finished twin did not count");
-    }
-
-    /// The copy walks FILES. A directory in the song folder is
-    /// skipped rather than failing the run.
-    #[test]
-    fn a_subfolder_in_the_song_folder_is_skipped_rather_than_fatal() {
-        let scratch = Scratch::new("copy");
-        let from = scratch.0.join("song");
-        let to = scratch.0.join("guitar-study-song");
-        std::fs::create_dir_all(from.join("Song.stems")).expect("stems dir");
-        std::fs::write(from.join("Song.stems").join("guitar.wav"), b"x").expect("stem");
-        std::fs::write(from.join("Song.m4a"), b"audio").expect("audio");
-        std::fs::write(from.join("Song.lrc"), b"lyrics").expect("lrc");
-        std::fs::write(from.join(versions::BASE_CHART), b"{}").expect("chart");
-        std::fs::create_dir_all(&to).expect("out");
-
-        let names: Vec<String> = std::fs::read_dir(&from)
-            .expect("list")
-            .filter_map(Result::ok)
-            .map(|e| e.file_name().to_string_lossy().into_owned())
-            .collect();
-        // ⚠️ The REAL function. The first version of this test copied
-        // the loop into itself, so mutating the loop changed nothing
-        // and the pin was blind — the mutation probe said so.
-        copy_assets(&from, &to, &names).expect("the copy must not fail");
-        assert!(to.join("Song.m4a").is_file(), "the audio did not travel");
-        assert!(to.join("Song.lrc").is_file(), "the lyrics did not travel");
-        assert!(
-            !to.join("Song.stems").exists(),
-            "the stems folder was copied after all"
-        );
-        assert!(
-            !to.join(versions::BASE_CHART).exists(),
-            "the chart is written separately, last"
-        );
-    }
-
-    /// A copy that cannot happen is an error, not a shrug: the twin
-    /// would otherwise be written without its audio.
-    #[test]
-    fn a_copy_that_fails_fails_the_run() {
-        let scratch = Scratch::new("copyfail");
-        let from = scratch.0.join("song");
-        std::fs::create_dir_all(&from).expect("dir");
-        std::fs::write(from.join("Song.m4a"), b"audio").expect("audio");
-        let names = vec!["Song.m4a".to_owned()];
-        // The destination does not exist.
-        let outcome = copy_assets(&from, &scratch.0.join("nowhere"), &names);
-        assert!(
-            matches!(&outcome, Err(reason) if reason.contains("cannot copy")),
-            "a failed copy was swallowed: {outcome:?}"
-        );
-    }
-
     #[test]
     fn the_twin_folder_is_derived_from_the_original() {
         assert_eq!(
@@ -387,16 +231,6 @@ mod tests {
                 "songs/imported/guitar-study-toto---africa-m4a"
             ))
         );
-        assert!(is_twin_folder("guitar-study-toto---africa-m4a"));
-        assert!(!is_twin_folder("toto---africa-m4a"));
-    }
-
-    #[test]
-    fn a_twin_names_its_original_and_an_original_names_nothing() {
-        assert_eq!(base_title("[GS] Africa"), Some("Africa"));
-        assert_eq!(base_title("Africa"), None);
-        // The prefix must be the title's start, not just somewhere in it.
-        assert_eq!(base_title("Africa [GS] "), None);
     }
 
     #[test]
@@ -404,30 +238,6 @@ mod tests {
         assert_eq!(twin_title("Africa"), "[GS] Africa");
         // A twin of a twin would read "[GS] [GS] …".
         assert_eq!(twin_title("[GS] Africa"), "[GS] Africa");
-        assert_eq!(twin_title("[Guitar Study] Africa"), "[GS] Africa");
-    }
-
-    #[test]
-    fn legacy_titles_are_displayed_with_the_short_prefix() {
-        assert_eq!(display_title("[Guitar Study] Africa"), "[GS] Africa");
-        assert_eq!(display_title("[GS] Africa"), "[GS] Africa");
-        assert_eq!(display_title("Africa"), "Africa");
-    }
-
-    #[test]
-    fn charts_and_the_pointer_stay_behind_everything_else_comes_along() {
-        for chart in ["chart.json", "chart.v7.json", "chart-active.json"] {
-            assert!(is_chart_file(chart), "{chart} must not be copied");
-        }
-        for asset in [
-            "Toto - Africa.m4a",
-            "Toto - Africa.lrc",
-            "Toto - Africa.words.json",
-            "Toto - Africa.loudness.json",
-            "chart.v7.json.bak",
-        ] {
-            assert!(!is_chart_file(asset), "{asset} belongs to the twin too");
-        }
     }
 
     #[test]

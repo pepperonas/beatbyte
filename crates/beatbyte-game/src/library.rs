@@ -331,7 +331,7 @@ pub fn scan_library(builtins: &[ChartFile]) -> SongLibrary {
         .enumerate()
         .map(|(index, chart)| SongEntry {
             loudness: None,
-            title: beatbyte_chart::study::display_title(&chart.song.title),
+            title: beatbyte_chart::twin::display_title(&chart.song.title),
             artist: chart.song.artist.clone(),
             preview_start_s: chart.song.preview_start_s,
             bpm: chart.song.bpm,
@@ -720,7 +720,7 @@ fn load_entry(chart_path: &std::path::Path) -> Result<Option<SongEntry>, String>
             .parent()
             .and_then(beatbyte_library::store::read)
             .map(|doc| doc.identity.song_id.as_str().to_owned()),
-        title: beatbyte_chart::study::display_title(&chart.song.title),
+        title: beatbyte_chart::twin::display_title(&chart.song.title),
         artist: chart.song.artist.clone(),
         bpm: chart.song.bpm,
         duration_s: chart.song.duration_s,
@@ -799,7 +799,7 @@ fn entry_from_document(
         },
         loudness: crate::loudness::LoudnessMark::beside(&audio_path),
         song_id: Some(doc.identity.song_id.as_str().to_owned()),
-        title: beatbyte_chart::study::display_title(&doc.identity.title.value),
+        title: beatbyte_chart::twin::display_title(&doc.identity.title.value),
         artist: doc.identity.artists.join(", "),
         bpm: doc.musical.bpm.as_ref().map_or(0.0, |bpm| bpm.value),
         duration_s: doc.musical.duration_s,

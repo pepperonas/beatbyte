@@ -110,6 +110,39 @@ when it is missing, and the import is then what it always was.
 `beatbyte-cli study <folder> --lead <other.wav>` writes one by hand,
 `tools/guitar-study.sh` every folder without a twin.
 
+## The `[CL]` twin
+
+A second kind, and one nothing makes for you: **`[CL] <title>`** is a
+folder's ACTIVE chart with the classic ingredients applied — the
+rules the early guitar games played by, measured and written down in
+`beatbyte-chart::classic`. Same notes, same times, same frets, same
+sustains; only what the rules change is different, which is what
+makes a blind test between the two answer a question about one
+variable. There is no audio analysis and nothing is generated.
+
+```bash
+beatbyte-cli classic <folder> --twin              # one song
+beatbyte-cli classic songs/imported --all --twin  # every folder
+beatbyte-cli classic songs/imported --all --twin --dry-run
+```
+
+A twin of a `[GS]` study is `[CL] [GS] <title>` and sits under the
+study in the browser — the study chart played by the classic rules,
+which is the combination this library is mostly played on. The dry
+run says what each folder would get, per difficulty and inside the
+thirty seconds the blind test plays, and a chart the rules would not
+change gets **no twin at all**: a second entry playing the same notes
+is worse than none.
+
+⚠️ A twin copies the audio, so a whole library of them costs what
+the library costs. Nothing in the song's own folder is touched, and
+removing them again is `rm -rf songs/imported/classic-*`.
+
+Without `--twin` the same command writes the ingredient as a new
+chart VERSION inside the folder and moves the pointer, which is the
+form the blind test (`T` in the browser) plays: it puts the active
+version against its parent.
+
 ## The fast path: drag and drop
 
 Drop the audio file onto the BeatByte window (main menu or song

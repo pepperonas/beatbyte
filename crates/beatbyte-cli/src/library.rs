@@ -237,7 +237,7 @@ pub fn duplicates(root: &Path) -> ExitCode {
         let is_twin = dir
             .file_name()
             .and_then(|name| name.to_str())
-            .is_some_and(beatbyte_chart::study::is_twin_folder);
+            .is_some_and(beatbyte_chart::twin::is_twin_folder);
         if is_twin {
             twins += 1;
         }
@@ -421,13 +421,13 @@ pub fn catalogue(root: &Path, dry_run: bool) -> ExitCode {
         let Some(doc) = store::read(&dir) else {
             continue;
         };
-        // A study twin is the same recording as its song; asking
-        // twice would spend a second of somebody's rate limit to
-        // learn the same thing.
+        // A twin is the same recording as its song; asking twice
+        // would spend a second of somebody's rate limit to learn the
+        // same thing.
         if dir
             .file_name()
             .and_then(|name| name.to_str())
-            .is_some_and(beatbyte_chart::study::is_twin_folder)
+            .is_some_and(beatbyte_chart::twin::is_twin_folder)
         {
             continue;
         }

@@ -382,6 +382,12 @@ enum Command {
         /// the window the blind test plays. Writes nothing.
         #[arg(long)]
         dry_run: bool,
+        /// Write a `[CL]` TWIN folder beside the song instead of a
+        /// new version inside it: both charts then stand in the
+        /// library at once and can be chosen in the browser. Nothing
+        /// in the song's own folder is touched.
+        #[arg(long)]
+        twin: bool,
     },
     /// Regenerate hard + expert as a new sibling version, keeping
     /// easy + medium from the active version (the difficulty
@@ -799,13 +805,13 @@ fn main() -> ExitCode {
             folder,
             all,
             dry_run,
-        } => {
-            if all {
-                classic::run_all(&folder, dry_run)
-            } else {
-                classic::run(&folder, dry_run)
-            }
-        }
+            twin,
+        } => match (twin, all) {
+            (true, true) => classic::run_twin_all(&folder, dry_run),
+            (true, false) => classic::run_twin(&folder, dry_run),
+            (false, true) => classic::run_all(&folder, dry_run),
+            (false, false) => classic::run(&folder, dry_run),
+        },
         Command::Redesign { chart, all } => {
             if all {
                 redesign::run_redesign_all(&chart)

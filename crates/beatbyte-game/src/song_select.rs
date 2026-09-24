@@ -311,13 +311,19 @@ fn build_order(
 /// everything else. Pure — tested.
 #[must_use]
 pub fn pair_twins(entries: &[SongEntry], order: Vec<usize>) -> Vec<usize> {
+    // ⚠️ The original may itself be a twin: a `[CL]` of a `[GS]` is
+    // a twin OF THE STUDY, and `base_title` takes one prefix off for
+    // exactly that reason. The old rule demanded a non-twin original,
+    // so a chain's last link matched nothing, fell through to the
+    // re-insertion loop — which walks originals only — and was
+    // DROPPED from the list. A song vanishing from the browser is a
+    // worse outcome than any ordering.
     let original_of = |twin: &SongEntry| -> Option<usize> {
-        let base = beatbyte_chart::study::base_title(&twin.title)?;
-        order.iter().copied().find(|&j| {
-            beatbyte_chart::study::base_title(&entries[j].title).is_none()
-                && entries[j].title == base
-                && entries[j].artist == twin.artist
-        })
+        let base = beatbyte_chart::twin::base_title(&twin.title)?;
+        order
+            .iter()
+            .copied()
+            .find(|&j| entries[j].title == base && entries[j].artist == twin.artist)
     };
     // Twins with an original in the list step out; everyone else
     // keeps their order, and each twin is re-inserted right after
@@ -330,13 +336,32 @@ pub fn pair_twins(entries: &[SongEntry], order: Vec<usize>) -> Vec<usize> {
             None => rest.push(i),
         }
     }
+    // Each original brings its twins, and their twins after them.
+    // A chain cannot loop — every link's title is strictly shorter
+    // than the one that names it — but `seen` makes that structural
+    // rather than argued: whatever the titles say, no entry is
+    // emitted twice and the tail sweep catches anything missed.
     let mut out: Vec<usize> = Vec::with_capacity(order.len());
+    let mut seen = vec![false; entries.len()];
     for i in rest {
-        out.push(i);
-        for &(twin, original) in &paired {
-            if original == i {
-                out.push(twin);
+        let mut stack = vec![i];
+        while let Some(current) = stack.pop() {
+            if std::mem::replace(&mut seen[current], true) {
+                continue;
             }
+            out.push(current);
+            let mut children: Vec<usize> = paired
+                .iter()
+                .filter(|(_, original)| *original == current)
+                .map(|(twin, _)| *twin)
+                .collect();
+            children.reverse();
+            stack.extend(children);
+        }
+    }
+    for &(twin, _) in &paired {
+        if !std::mem::replace(&mut seen[twin], true) {
+            out.push(twin);
         }
     }
     out
@@ -3038,6 +3063,62 @@ mod view_tests {
             |_| None,
         );
         assert_eq!(titles(&order), vec!["Life", "[GS] Life"]);
+    }
+
+    /// ⚠️ A `[CL]` twin of a `[GS]` twin is a twin OF THE STUDY, and
+    /// its original is itself a twin. The rule that an original must
+    /// NOT be a twin left that last link matching nothing — and the
+    /// re-insertion loop walks originals only, so the entry was
+    /// DROPPED from the list entirely. A song vanishing from the
+    /// browser is worse than any ordering, so the pin is both: the
+    /// chain reads mix, study, classic-of-study, and the count comes
+    /// out whole under every sort.
+    #[test]
+    fn a_chain_of_twins_reads_in_order_and_nobody_is_dropped() {
+        let mut lib = lib();
+        // Deliberately far from their original and out of order.
+        lib.insert(0, entry("[CL] [GS] Life", "Des'ree", Some("Pop"), 200.0));
+        lib.insert(0, entry("[CL] Life", "Des'ree", Some("Pop"), 200.0));
+        lib.push(entry("[GS] Life", "Des'ree", Some("Pop"), 200.0));
+        for sort in [
+            SortMode::Standard,
+            SortMode::Title,
+            SortMode::Artist,
+            SortMode::Length,
+            SortMode::Notes,
+        ] {
+            for flipped in [false, true] {
+                let order = build_order(&lib, sort, flipped, Difficulty::Medium, "", |_| None);
+                let t: Vec<&str> = order.iter().map(|i| lib[*i].title.as_str()).collect();
+                assert_eq!(t.len(), lib.len(), "{sort:?} flipped={flipped}: {t:?}");
+                let mut sorted = order.clone();
+                sorted.sort_unstable();
+                sorted.dedup();
+                assert_eq!(sorted.len(), lib.len(), "an entry was listed twice: {t:?}");
+                let at = |title: &str| {
+                    t.iter()
+                        .position(|x| *x == title)
+                        .unwrap_or_else(|| panic!("{title} is missing: {t:?}"))
+                };
+                // The family stands together, the original first —
+                // which of the two direct twins comes first is the
+                // sort's business, not this rule's.
+                let family = ["Life", "[GS] Life", "[CL] Life", "[CL] [GS] Life"];
+                let mut places: Vec<usize> = family.iter().map(|x| at(x)).collect();
+                places.sort_unstable();
+                assert_eq!(places[0], at("Life"), "{sort:?}: the original leads: {t:?}");
+                assert_eq!(
+                    places,
+                    (places[0]..places[0] + family.len()).collect::<Vec<_>>(),
+                    "{sort:?}: the family is not contiguous: {t:?}"
+                );
+                assert_eq!(
+                    at("[CL] [GS] Life"),
+                    at("[GS] Life") + 1,
+                    "the classic twin must follow the study it was made from: {t:?}"
+                );
+            }
+        }
     }
 
     #[test]

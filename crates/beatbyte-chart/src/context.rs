@@ -383,9 +383,153 @@ pub fn load_context(chart_path: &Path, chart: &ChartFile) -> Option<ChartContext
     context.is_current_for(chart).then_some(context)
 }
 
+/// Carry a chart's analysis sidecar over to a chart derived from it.
+///
+/// ⚠️ A file copy would be ignored, not wrong-but-useful: a sidecar
+/// names the chart it describes by content hash, and one whose hash
+/// does not match is discarded as describing a chart that no longer
+/// exists. So the hash is rewritten — which is only honest because
+/// this ingredient changes FLAGS and nothing else, so the track
+/// events are the same events in the same order and one packed entry
+/// still describes one of them.
+///
+/// ⚠️ Verified rather than assumed: the entry count per difficulty is
+/// checked against the new chart's own tracks first. A sidecar that
+/// does not line up is worse than none — every later reading would
+/// attribute one note's analysis to another.
+///
+/// `Ok(false)` means the parent had no current sidecar; there was
+/// nothing to carry and that is not a failure.
+///
+/// # Errors
+/// When the entries do not line up, or the write fails.
+pub fn carry(
+    parent_path: &Path,
+    parent: &ChartFile,
+    next_path: &Path,
+    next: &ChartFile,
+) -> Result<bool, String> {
+    let Some(mut sidecar) = load_context(parent_path, parent) else {
+        return Ok(false);
+    };
+    for definition in &next.charts {
+        let id = definition.difficulty.id();
+        let events = next
+            .to_track(definition.difficulty)
+            .map(|track| track.events().len())
+            .map_err(|error| format!("{id}: cannot read the new track: {error}"))?;
+        let entries = sidecar.tracks.get(id).map_or(0, Vec::len);
+        if entries != events {
+            return Err(format!(
+                "{id}: the parent's sidecar describes {entries} events, the new version has \
+                 {events} — refusing to write one that does not line up"
+            ));
+        }
+    }
+    sidecar.chart_hash = crate::chart_hash(next);
+    debug_assert!(sidecar.is_current_for(next));
+    save_context(next_path, &sidecar)
+        .map(|_| true)
+        .map_err(|error| format!("cannot write the sidecar: {error}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A chart whose notes carry the flags given, at the times given.
+    fn carry_chart(flags: &[(f64, bool)]) -> ChartFile {
+        let notes: Vec<ChartNote> = flags
+            .iter()
+            .enumerate()
+            .map(|(i, (time, hopo))| ChartNote {
+                time: *time,
+                lane: (i % 5) as u8,
+                len: 0.0,
+                hopo: *hopo,
+            })
+            .collect();
+        ChartFile::from_json(&format!(
+            r#"{{"format_version":1,
+                "song":{{"title":"T","artist":"A","audio":"a.m4a","bpm":120.0,
+                         "duration_s":100.0,"offset_s":0.0}},
+                "charts":[{{"difficulty":"hard","lanes":5,"notes":{},"phrases":[]}}]}}"#,
+            serde_json::to_string(&notes).expect("notes serialize")
+        ))
+        .expect("the fixture parses")
+    }
+
+    /// ⚠️ A sidecar names the chart it describes by content hash, so
+    /// a straight copy would be DISCARDED — "this describes a chart
+    /// that no longer exists" — and the new version would silently
+    /// have no analysis behind it. Rewriting the hash is honest here
+    /// only because the ingredient changes flags and nothing else.
+    #[test]
+    fn the_parents_sidecar_is_carried_over_and_still_describes_the_new_version() {
+        let dir = std::env::temp_dir().join(format!(
+            "bb-classic-ctx-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        std::fs::create_dir_all(&dir).expect("a scratch folder");
+        // 120 BPM: a beat is 0.5 s, so the threshold is 0.177 s.
+        // ⚠️ 0.2 s was the first try and changed nothing — 0.4 of a
+        // beat is over it. The guard below caught the fixture.
+        let parent = carry_chart(&[(0.0, false), (0.15, false), (1.0, false)]);
+        let mut next = parent.clone();
+        crate::classic::apply_hopo_rule(&mut next);
+        assert_ne!(
+            crate::chart_hash(&parent),
+            crate::chart_hash(&next),
+            "the fixture changed no flag, so it proves nothing"
+        );
+
+        let parent_path = dir.join("chart.json");
+        let next_path = dir.join("chart.v2.json");
+        crate::save_chart_file(&parent_path, &parent).expect("the parent");
+        crate::save_chart_file(&next_path, &next).expect("the new version");
+
+        // A sidecar for the parent: one entry per track event.
+        let events = parent
+            .to_track(Difficulty::Hard)
+            .expect("a track")
+            .events()
+            .len();
+        let mut tracks = std::collections::BTreeMap::new();
+        tracks.insert(Difficulty::Hard.id().to_owned(), vec![[7u8; 6]; events]);
+        let sidecar = ChartContext {
+            format: CONTEXT_FORMAT.to_owned(),
+            chart_hash: crate::chart_hash(&parent),
+            tracks,
+        };
+        save_context(&parent_path, &sidecar).expect("the parent's sidecar");
+
+        assert_eq!(carry(&parent_path, &parent, &next_path, &next), Ok(true));
+        // The point: the reader accepts it for the NEW chart.
+        let read = load_context(&next_path, &next)
+            .expect("the carried sidecar must describe the new version");
+        assert_eq!(read.len(), events, "the entries did not travel");
+
+        // And a sidecar that does not line up is refused rather than
+        // written: every later reading would blame the wrong note.
+        let mut wrong = sidecar.clone();
+        wrong
+            .tracks
+            .get_mut(Difficulty::Hard.id())
+            .expect("the track")
+            .pop();
+        save_context(&parent_path, &wrong).expect("a short sidecar");
+        let outcome = carry(&parent_path, &parent, &next_path, &next);
+        assert!(
+            matches!(&outcome, Err(reason) if reason.contains("does not line up")),
+            "a mismatched sidecar was accepted: {outcome:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     use crate::schema::{ChartDef, ChartNote, SongMeta};
     use beatbyte_core::{Onset, Repeat};
 

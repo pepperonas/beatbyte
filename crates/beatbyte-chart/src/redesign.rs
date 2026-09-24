@@ -139,7 +139,7 @@ pub struct Reading {
 /// # Errors
 /// What a twin folder is told. Named so the callers that walk a
 /// whole library can count it as skipped rather than failed.
-pub const TWIN_REFUSAL: &str = "a study twin — its chart comes from the separated instrument, and a redesign would \
+pub const TWIN_REFUSAL: &str = "a twin — its chart was made from something other than the mix, and a redesign would \
      bury it under one generated from the mix; skipped";
 
 /// When the folder is a legacy layout, when its audio or chart cannot
@@ -149,16 +149,18 @@ pub fn redesign_folder(
     read: &dyn Fn(&Path) -> Result<Reading, String>,
     note: &dyn Fn(String),
 ) -> Result<String, String> {
-    // ⚠️ Never a study twin. A twin's chart was written from the
-    // separated INSTRUMENT, and its `song.audio` still names the
-    // mix — so a redesign here reads the mix, generates against it,
-    // and buries the stem chart under a new active version. Both
+    // ⚠️ Never a twin, of any kind. A `[GS]` twin's chart was
+    // written from the separated INSTRUMENT and its `song.audio`
+    // still names the mix; a `[CL]` twin's carries rules applied to
+    // a chart that already existed. Either way a redesign here reads
+    // the mix, generates against it, and buries the twin's chart
+    // under a new active version. Both
     // doors lead through this function (`redesign --all` walks every
     // directory it finds, and the browser's `G` hands one folder in),
     // so the refusal belongs here rather than at either of them.
     if folder
         .file_name()
-        .is_some_and(|name| crate::study::is_twin_folder(&name.to_string_lossy()))
+        .is_some_and(|name| crate::twin::is_twin_folder(&name.to_string_lossy()))
     {
         return Err(TWIN_REFUSAL.to_owned());
     }

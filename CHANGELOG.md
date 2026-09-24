@@ -14,6 +14,51 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.33] - 2026-09-24
+
+### Added
+
+- **`[CL]` twins — the classic rules as a song of their own.**
+  `beatbyte-cli classic <folder> --twin` (or `--all --twin`) writes a
+  twin folder beside a song: its ACTIVE chart with the classic
+  ingredients applied, the same audio and sidecars, and nothing in
+  the song's own folder touched. Both charts then stand in the
+  library at once, so the two can be chosen and compared without
+  moving a pointer — and a twin of a `[GS]` study is the combination
+  this library is mostly played on. `--dry-run` says what each folder
+  would get, per difficulty and inside the window the blind test
+  plays, and a chart the recipe would not change gets no twin at all
+  rather than a second entry playing the same notes.
+- The ingredients are a **recipe** (`classic::Recipe`), one flag
+  each, and the chart's provenance names what it carries
+  (`classic:hopo`). Ingredients yet to pass a blind test slot in
+  beside it rather than changing what the first one means.
+
+### Fixed
+
+- **A twin no longer inherits its source's song identity.** The
+  document (`song.json`) carries the `song_id` that every score,
+  record and recorded session is keyed by, and it was being copied —
+  which files two different charts as one song. The 85 study twins in
+  this library escaped it only because documents did not exist when
+  they were written; the first classic twin produced the first
+  duplicate id on disk. A twin now has no document until it is
+  played, and the one written then is its own.
+- **A twin no longer inherits chart sidecars either.** An analysis
+  sidecar names the chart it describes by content hash, so a copied
+  one describes the original's chart and is discarded on every read —
+  and the sidecar of a version the twin does not have describes a
+  file that is not there. A classic twin writes its own.
+- **The browser no longer drops a twin of a twin.** Filing a twin
+  under its original demanded that the original not itself be a
+  twin, so a `[CL]` of a `[GS]` matched nothing, fell through the
+  re-insertion loop — which walks originals only — and vanished from
+  the list. Chains now read mix, study, classic-of-study, contiguous
+  under whatever sort, and no entry can be dropped or listed twice.
+- A twin of a study saved under the old long prefix is now spelled
+  `[CL] [GS] …` rather than `[CL] [Guitar Study] …`, which is the
+  only spelling the browser can pair.
+
 ## [0.18.32] - 2026-09-24
 
 ### Fixed

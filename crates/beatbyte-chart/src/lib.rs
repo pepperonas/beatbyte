@@ -48,6 +48,7 @@ pub mod lyrics;
 pub mod redesign;
 pub mod schema;
 pub mod study;
+pub mod twin;
 pub mod validate;
 pub mod versions;
 pub mod vocals;

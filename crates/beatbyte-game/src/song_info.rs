@@ -42,7 +42,7 @@ impl Showing {
     pub fn read(folder: &std::path::Path) -> Option<Showing> {
         let doc = beatbyte_library::store::read(folder)?;
         Some(Showing {
-            title: beatbyte_chart::study::display_title(&doc.identity.title.value),
+            title: beatbyte_chart::twin::display_title(&doc.identity.title.value),
             sections: beatbyte_library::report::describe(&doc),
         })
     }

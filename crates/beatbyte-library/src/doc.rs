@@ -591,3 +591,24 @@ impl SongDoc {
         crate::may_replace(current, incoming, self.is_overridden(path))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ⚠️ A twin must not inherit this file — it carries the
+    /// `song_id` that scores, records and recorded sessions are
+    /// keyed by, so a copy files two different charts as one song.
+    /// The rule lives in `beatbyte-chart`, which cannot import this
+    /// constant (that crate is BELOW this one and the import would
+    /// be a cycle), so it spells the name out. This is the one place
+    /// that can see both and say they still agree.
+    #[test]
+    fn the_twin_writer_and_this_crate_name_the_same_document() {
+        assert_eq!(beatbyte_chart::twin::DOC_FILE, DOC_FILE);
+        assert!(
+            beatbyte_chart::twin::stays_behind(DOC_FILE),
+            "a twin would inherit its source's song identity"
+        );
+    }
+}
