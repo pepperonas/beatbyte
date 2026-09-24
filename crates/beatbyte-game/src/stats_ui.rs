@@ -5,12 +5,12 @@
 //!
 //! - **OVERVIEW** — am I getting better?
 //! - **TIMING** — early, late, or just noisy?
-//! - **TECHNIQUE** — which frets and patterns break me? *(P0 shell)*
+//! - **TECHNIQUE** — which frets and patterns break me?
 //! - **DIFFICULTY** — where do I play, and how far?
-//! - **PROGRESS** — steady, or streaky? *(P0 shell)*
-//! - **SONGS** — what should I practise next? *(P0 shell)*
+//! - **PROGRESS** — steady, or streaky?
+//! - **SONGS** — what should I practise next?
 //! - **VERSUS** — how do I stand against the others?
-//! - **INSIGHTS** — what matters right now? *(P0 shell)*
+//! - **INSIGHTS** — what matters right now?
 //!
 //! Run/career arithmetic stays in [`beatbyte_core::stats`] and draws
 //! from `history.jsonl`. Note-grain evidence comes from a **read-only**
@@ -23,6 +23,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use beatbyte_core::Difficulty;
 use beatbyte_core::player::PlayerId;
 use beatbyte_core::stats::{self, Filter, PlayerRun};
+use beatbyte_telemetry::analytics::{self, PlayerSnapshot};
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
 use bevy::ui::Val::Px as px;
@@ -43,6 +44,10 @@ const PLOT_W: f32 = 700.0;
 const PLOT_H: f32 = 170.0;
 /// Width of a horizontal bar's track.
 const BAR_W: f32 = 320.0;
+/// Height of the timing histogram.
+const HIST_H: f32 = 72.0;
+/// Height of a song heat strip.
+const HEAT_H: f32 = 18.0;
 
 /// Whose statistics the screen shows. Set by the roster before the
 /// state change; falls back to whoever is playing.
@@ -66,7 +71,7 @@ pub fn view_named(raw: &str) -> Option<View> {
 #[derive(Resource, Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct StatsView(pub View);
 
-/// The eight views, in tab order (Player Analytics P0).
+/// The eight views, in tab order (Player Analytics).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum View {
     /// Progress over time.
@@ -74,17 +79,17 @@ pub enum View {
     Overview,
     /// Drift and judgment mix.
     Timing,
-    /// Frets, patterns, chords — note grain *(shell until P2)*.
+    /// Frets, patterns, chords — note grain from telemetry.
     Technique,
     /// Where the player plays.
     Difficulty,
-    /// Windows and consistency *(shell until P3)*.
+    /// Steady or streaky.
     Progress,
-    /// Per-song deep dive *(shell until P4)*.
+    /// What to practise next.
     Songs,
     /// Against the other players.
     Versus,
-    /// Sample-gated sentences *(shell until P5)*.
+    /// Sample-gated sentences.
     Insights,
 }
 
@@ -131,12 +136,12 @@ impl View {
         }
     }
 
-    /// Whether this tab's body comes from telemetry (async), not history.
+    /// Whether this tab redraws when the telemetry snapshot lands.
     #[must_use]
     pub const fn needs_telemetry(self) -> bool {
         matches!(
             self,
-            View::Technique | View::Progress | View::Songs | View::Insights
+            View::Timing | View::Technique | View::Songs | View::Insights
         )
     }
 
@@ -253,17 +258,25 @@ pub fn probe_session_count(path: &Path) -> Result<u64, String> {
         .map_err(|error| error.to_string())
 }
 
-/// Background probe of `telemetry.db` for the shell tabs.
+/// Load the Stats-shell snapshot from disk. Shared by the async job
+/// and its tests.
+pub fn load_player_snapshot(path: &Path) -> Result<PlayerSnapshot, String> {
+    beatbyte_telemetry::Store::open_readonly(path)
+        .and_then(|store| analytics::player_snapshot(&store))
+        .map_err(|error| error.to_string())
+}
+
+/// Background snapshot of `telemetry.db` for the note-grain tabs.
 #[derive(Resource, Default)]
 struct TelemetryProbe {
     /// In-flight job, if any.
-    task: Option<Task<Result<u64, String>>>,
+    task: Option<Task<Result<PlayerSnapshot, String>>>,
     /// Bumped every time a new probe is requested.
     generation: u64,
     /// Generation the `result` belongs to.
     result_generation: u64,
     /// Last finished probe.
-    result: Option<Result<u64, String>>,
+    result: Option<Result<PlayerSnapshot, String>>,
 }
 
 impl TelemetryProbe {
@@ -277,7 +290,7 @@ impl TelemetryProbe {
             return;
         };
         self.task =
-            Some(AsyncComputeTaskPool::get().spawn(async move { probe_session_count(&path) }));
+            Some(AsyncComputeTaskPool::get().spawn(async move { load_player_snapshot(&path) }));
     }
 
     fn poll(&mut self) {
@@ -291,13 +304,21 @@ impl TelemetryProbe {
         }
     }
 
-    fn line(&self) -> String {
+    fn ready(&self) -> Option<&Result<PlayerSnapshot, String>> {
         if self.task.is_some() || self.result_generation != self.generation {
-            return "…".to_owned();
+            return None;
         }
-        match &self.result {
+        self.result.as_ref()
+    }
+
+    fn snapshot(&self) -> Option<&PlayerSnapshot> {
+        self.ready().and_then(|r| r.as_ref().ok())
+    }
+
+    fn line(&self) -> String {
+        match self.ready() {
             None => "…".to_owned(),
-            Some(Ok(n)) => format!("TELEMETRY · {n} SESSIONS — DETAIL IN LATER PHASES"),
+            Some(Ok(snap)) => format!("TELEMETRY · {} HONEST SESSIONS", snap.sessions),
             Some(Err(_)) => "NO TELEMETRY STORE".to_owned(),
         }
     }
@@ -493,7 +514,7 @@ fn spawn_stats(
             root.spawn(ui_kit::panel_wide())
                 .with_children(|panel| match view.0 {
                     View::Overview => overview(panel, &font, &runs, &summary),
-                    View::Timing => timing(panel, &font, &runs, &summary),
+                    View::Timing => timing(panel, &font, &runs, &summary, probe.snapshot()),
                     View::Difficulty => difficulty(panel, &font, &runs),
                     View::Versus => {
                         // Same difficulty + window chips as the other
@@ -514,9 +535,19 @@ fn spawn_stats(
                             .collect();
                         versus(panel, &font, &versus_entries, &players, id, &name);
                     }
-                    View::Technique | View::Progress | View::Songs | View::Insights => {
-                        plot::empty_note(panel, &font, &probe.line());
+                    View::Technique => {
+                        technique_view(panel, &font, probe.snapshot(), &probe.line())
                     }
+                    View::Progress => progress_view(panel, &font, &runs, &summary),
+                    View::Songs => songs_view(panel, &font, &runs, probe.snapshot(), &probe.line()),
+                    View::Insights => insights_view(
+                        panel,
+                        &font,
+                        &runs,
+                        &summary,
+                        probe.snapshot(),
+                        &probe.line(),
+                    ),
                 });
             ui_kit::back_button(root, &font, "PLAYERS");
             crate::prompts::device_footer(
@@ -785,18 +816,24 @@ fn overview(
     ));
 }
 
-/// TIMING: drift against the zero line, and the judgment mix.
+/// TIMING: drift against the zero line, judgment mix, and the
+/// telemetry hit histogram when the store has enough samples.
 fn timing(
     parent: &mut ChildSpawnerCommands,
     font: &UiFont,
     runs: &[PlayerRun<'_>],
     summary: &stats::Summary,
+    snap: Option<&PlayerSnapshot>,
 ) {
+    let telemetry_bias = snap.and_then(|s| s.bias_ms);
     tiles(
         parent,
         font,
         &[
-            ("AVERAGE DRIFT", drift_line(summary.mean_offset_ms)),
+            (
+                "AVERAGE DRIFT",
+                drift_line(telemetry_bias.or(summary.mean_offset_ms)),
+            ),
             (
                 "PERFECT SHARE",
                 summary
@@ -811,6 +848,21 @@ fn timing(
             ),
         ],
     );
+
+    if let Some(snap) = snap
+        && !snap.histogram.is_empty()
+    {
+        parent.spawn((
+            Node {
+                margin: UiRect::top(px(8.0)).with_bottom(px(4.0)),
+                ..default()
+            },
+            Text::new("HIT OFFSET HISTOGRAM".to_owned()),
+            font.text(ui_kit::SMALL),
+            TextColor(ui_kit::dimmed_subtitle()),
+        ));
+        plot::spawn_histogram(parent, font, &snap.histogram, HIST_H, PLOT_W);
+    }
 
     let drift: Vec<f64> = stats::progression(runs)
         .iter()
@@ -893,6 +945,406 @@ fn timing(
         // honest answer; a bar of zeroes would not be.
         plot::empty_note(parent, font, "NO RUN HERE RECORDED ITS JUDGMENTS YET");
     }
+}
+
+/// TECHNIQUE: note-kind hit rates + musical context miss rates.
+fn technique_view(
+    parent: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    snap: Option<&PlayerSnapshot>,
+    waiting: &str,
+) {
+    let Some(snap) = snap else {
+        plot::empty_note(parent, font, waiting);
+        return;
+    };
+    if snap.technique.is_empty() && snap.context.is_empty() {
+        plot::empty_note(
+            parent,
+            font,
+            "NOT ENOUGH HONEST NOTE JUDGMENTS YET — PLAY WITHOUT AUTOPILOT",
+        );
+        return;
+    }
+    if !snap.technique.is_empty() {
+        parent.spawn((
+            Node {
+                margin: UiRect::bottom(px(6.0)),
+                ..default()
+            },
+            Text::new("HIT RATE BY NOTE KIND".to_owned()),
+            font.text(ui_kit::SMALL),
+            TextColor(ui_kit::dimmed_subtitle()),
+        ));
+        let bars: Vec<plot::Bar> = snap
+            .technique
+            .iter()
+            .map(|row| plot::Bar {
+                label: row.label.to_uppercase(),
+                value: Some(row.hit_rate),
+                colour: palette::GREAT,
+                note: format!("{} · {}", plot::percent(row.hit_rate), row.judged),
+            })
+            .collect();
+        plot::spawn_bar_plot(
+            parent,
+            font,
+            &bars,
+            plot::Bounds { min: 0.0, max: 1.0 },
+            BAR_W,
+        );
+    }
+    if !snap.context.is_empty() {
+        parent.spawn((
+            Node {
+                margin: UiRect::top(px(14.0)).with_bottom(px(6.0)),
+                ..default()
+            },
+            Text::new("MISS RATE BY MUSICAL CONTEXT".to_owned()),
+            font.text(ui_kit::SMALL),
+            TextColor(ui_kit::dimmed_subtitle()),
+        ));
+        let bars: Vec<plot::Bar> = snap
+            .context
+            .iter()
+            .take(8)
+            .map(|row| plot::Bar {
+                label: row.label.to_uppercase(),
+                value: Some(row.miss_rate),
+                colour: palette::MISS,
+                note: format!("{} · {}", plot::percent(row.miss_rate), row.judged),
+            })
+            .collect();
+        plot::spawn_bar_plot(
+            parent,
+            font,
+            &bars,
+            plot::Bounds { min: 0.0, max: 1.0 },
+            BAR_W,
+        );
+    }
+}
+
+/// How erratic accuracy is across finished runs — lower is steadier.
+/// Pure — tested. `None` below three accuracies.
+#[must_use]
+pub fn consistency_line(accuracies: &[f64]) -> String {
+    if accuracies.len() < 3 {
+        return "NOT ENOUGH RUNS FOR A CONSISTENCY READ".to_owned();
+    }
+    let mean = accuracies.iter().sum::<f64>() / accuracies.len() as f64;
+    let var = accuracies
+        .iter()
+        .map(|a| {
+            let d = a - mean;
+            d * d
+        })
+        .sum::<f64>()
+        / accuracies.len() as f64;
+    let std = var.sqrt();
+    let points = std * 100.0;
+    if points < 2.0 {
+        "VERY STEADY".to_owned()
+    } else if points < 5.0 {
+        format!("STEADY · ±{points:.1} POINTS")
+    } else if points < 10.0 {
+        format!("STREAKY · ±{points:.1} POINTS")
+    } else {
+        format!("WILD · ±{points:.1} POINTS")
+    }
+}
+
+/// PROGRESS: windowed accuracy trend + consistency sentence.
+fn progress_view(
+    parent: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    runs: &[PlayerRun<'_>],
+    summary: &stats::Summary,
+) {
+    let points = stats::progression(runs);
+    let accuracies: Vec<f64> = points.iter().map(|p| p.accuracy).collect();
+    tiles(
+        parent,
+        font,
+        &[
+            ("FINISHED RUNS", summary.completed.to_string()),
+            ("CONSISTENCY", consistency_line(&accuracies)),
+            ("TREND", trend_line(stats::trend(&accuracies))),
+        ],
+    );
+    let series = [plot::Series {
+        label: "ACCURACY".to_owned(),
+        colour: palette::PERFECT,
+        values: accuracies.clone(),
+    }];
+    let bounds = plot::Bounds::around(accuracies.iter().copied())
+        .unwrap_or(plot::Bounds { min: 0.0, max: 1.0 })
+        .clamped(0.0, 1.0);
+    plot::spawn_line_plot(
+        parent,
+        font,
+        &plot::LinePlot {
+            width: PLOT_W,
+            height: PLOT_H,
+            series: &series,
+            bounds,
+            rule: None,
+            label: plot::percent,
+            caption: "FINISHED RUNS IN THIS WINDOW".to_owned(),
+        },
+    );
+}
+
+/// SONGS: personal bests + problem notes / heat on the busiest chart.
+fn songs_view(
+    parent: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    runs: &[PlayerRun<'_>],
+    snap: Option<&PlayerSnapshot>,
+    waiting: &str,
+) {
+    // Bests from the filtered run set's entries.
+    let entries: Vec<_> = runs.iter().map(|r| r.entry.clone()).collect();
+    let player = runs.first().and_then(|r| r.entry.player);
+    if let Some(id) = player {
+        let bests = stats::bests(&entries, id);
+        let mut ranked: Vec<_> = bests.into_iter().collect();
+        ranked.sort_by(|a, b| {
+            b.1.accuracy
+                .partial_cmp(&a.1.accuracy)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        parent.spawn((
+            Node {
+                margin: UiRect::bottom(px(6.0)),
+                ..default()
+            },
+            Text::new("PERSONAL BESTS".to_owned()),
+            font.text(ui_kit::SMALL),
+            TextColor(ui_kit::dimmed_subtitle()),
+        ));
+        if ranked.is_empty() {
+            plot::empty_note(parent, font, "NO FINISHED SONGS IN THIS WINDOW");
+        } else {
+            let bars: Vec<plot::Bar> = ranked
+                .iter()
+                .take(8)
+                .map(|((title, _artist, difficulty), best)| plot::Bar {
+                    label: format!("{} ({})", title.to_uppercase(), difficulty.to_uppercase()),
+                    value: Some(best.accuracy),
+                    colour: palette::GREAT,
+                    note: plot::percent(best.accuracy),
+                })
+                .collect();
+            plot::spawn_bar_plot(
+                parent,
+                font,
+                &bars,
+                plot::Bounds { min: 0.0, max: 1.0 },
+                BAR_W,
+            );
+        }
+    } else {
+        plot::empty_note(parent, font, "NO RUNS IN THIS WINDOW");
+    }
+
+    let Some(snap) = snap else {
+        parent.spawn((
+            Node {
+                margin: UiRect::top(px(12.0)),
+                ..default()
+            },
+            Text::new(waiting.to_owned()),
+            font.text(ui_kit::SMALL),
+            TextColor(ui_kit::dimmed_subtitle()),
+        ));
+        return;
+    };
+    if let Some((hash, difficulty, title)) = &snap.busiest {
+        parent.spawn((
+            Node {
+                margin: UiRect::top(px(14.0)).with_bottom(px(6.0)),
+                ..default()
+            },
+            Text::new(format!(
+                "MOST PLAYED · {} · {}",
+                title.to_uppercase(),
+                difficulty_label(*difficulty)
+            )),
+            font.text(ui_kit::SMALL),
+            TextColor(palette::BRAND),
+        ));
+        let _ = hash;
+        if !snap.timeline.is_empty() {
+            plot::spawn_heat_strip(parent, font, &snap.timeline, PLOT_W, HEAT_H);
+        }
+        if !snap.problems.is_empty() {
+            parent.spawn((
+                Node {
+                    margin: UiRect::top(px(10.0)).with_bottom(px(4.0)),
+                    ..default()
+                },
+                Text::new("WEAK NOTES".to_owned()),
+                font.text(ui_kit::SMALL),
+                TextColor(ui_kit::dimmed_subtitle()),
+            ));
+            let bars: Vec<plot::Bar> = snap
+                .problems
+                .iter()
+                .take(6)
+                .map(|note| plot::Bar {
+                    label: format!("NOTE {}", note.note_index),
+                    value: Some(note.hit_rate),
+                    colour: palette::MISS,
+                    note: format!(
+                        "{} HIT · {} PLAYS",
+                        plot::percent(note.hit_rate),
+                        note.samples
+                    ),
+                })
+                .collect();
+            plot::spawn_bar_plot(
+                parent,
+                font,
+                &bars,
+                plot::Bounds { min: 0.0, max: 1.0 },
+                BAR_W,
+            );
+        }
+    }
+}
+
+/// Difficulty index as a short label.
+fn difficulty_label(code: u8) -> &'static str {
+    match code {
+        0 => "EASY",
+        1 => "MEDIUM",
+        2 => "HARD",
+        3 => "EXPERT",
+        _ => "?",
+    }
+}
+
+/// INSIGHTS: at most five sample-gated sentences.
+fn insights_view(
+    parent: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    runs: &[PlayerRun<'_>],
+    summary: &stats::Summary,
+    snap: Option<&PlayerSnapshot>,
+    waiting: &str,
+) {
+    let lines = insight_lines(runs, summary, snap);
+    if lines.is_empty() {
+        plot::empty_note(
+            parent,
+            font,
+            if snap.is_none() {
+                waiting
+            } else {
+                "NOT ENOUGH EVIDENCE FOR A FINDING YET"
+            },
+        );
+        return;
+    }
+    for line in lines {
+        parent.spawn((
+            Node {
+                margin: UiRect::bottom(px(8.0)),
+                ..default()
+            },
+            Text::new(line),
+            font.text(ui_kit::ROW),
+            TextColor(palette::TEXT),
+        ));
+    }
+}
+
+/// Pure insight sentences — tested. Cap five.
+#[must_use]
+pub fn insight_lines(
+    runs: &[PlayerRun<'_>],
+    summary: &stats::Summary,
+    snap: Option<&PlayerSnapshot>,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Some(bias) = snap.and_then(|s| s.bias_ms).or(summary.mean_offset_ms)
+        && bias.abs() >= 8.0
+        && runs.len() >= 3
+    {
+        out.push(if bias < 0.0 {
+            format!("YOU PLAY EARLY ON AVERAGE (−{:.0} MS)", bias.abs())
+        } else {
+            format!("YOU PLAY LATE ON AVERAGE (+{bias:.0} MS)")
+        });
+    }
+    if let Some(snap) = snap {
+        let single = snap.technique.iter().find(|r| r.label == "singles");
+        let chord = snap.technique.iter().find(|r| r.label == "chords");
+        if let (Some(s), Some(c)) = (single, chord)
+            && s.judged >= 20
+            && c.judged >= 20
+            && c.hit_rate + 0.08 < s.hit_rate
+        {
+            out.push(format!(
+                "CHORDS BREAK YOU MORE THAN SINGLES ({} VS {})",
+                plot::percent(c.hit_rate),
+                plot::percent(s.hit_rate)
+            ));
+        }
+        if let Some(held) = snap.technique.iter().find(|r| r.label == "sustains held")
+            && held.judged >= 12
+            && held.hit_rate < 0.7
+        {
+            out.push(format!(
+                "SUSTAINS SLIP — ONLY {} HELD TO THE END",
+                plot::percent(held.hit_rate)
+            ));
+        }
+        if let Some(problem) = snap.problems.first()
+            && problem.confidence() >= 0.45
+        {
+            let title = snap
+                .busiest
+                .as_ref()
+                .map(|b| b.2.to_uppercase())
+                .unwrap_or_else(|| "THIS CHART".to_owned());
+            out.push(format!(
+                "NOTE {} ON {title} IS A WEAK SPOT ({} HIT)",
+                problem.note_index,
+                plot::percent(problem.hit_rate)
+            ));
+        }
+        if let Some(ctx) = snap
+            .context
+            .iter()
+            .filter(|c| c.judged >= 30)
+            .max_by(|a, b| {
+                a.miss_rate
+                    .partial_cmp(&b.miss_rate)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            && ctx.miss_rate >= 0.35
+        {
+            out.push(format!(
+                "MISSES CLUSTER WHERE THE SONG IS “{}” ({} MISS)",
+                ctx.label.to_uppercase(),
+                plot::percent(ctx.miss_rate)
+            ));
+        }
+    }
+    let accuracies: Vec<f64> = stats::progression(runs)
+        .iter()
+        .map(|p| p.accuracy)
+        .collect();
+    if let Some(slope) = stats::trend(&accuracies)
+        && slope.abs() * 10.0 * 100.0 >= 1.0
+        && accuracies.len() >= 5
+    {
+        out.push(trend_line(Some(slope)));
+    }
+    out.truncate(5);
+    out
 }
 
 /// DIFFICULTY: where the player plays, and how far they get.
@@ -1022,18 +1474,31 @@ fn versus(
         let rows: Vec<plot::Duel> = duels
             .iter()
             .take(8)
-            .map(|duel| plot::Duel {
-                label: format!(
-                    "{} ({})",
-                    duel.title.to_uppercase(),
-                    duel.difficulty.to_uppercase()
-                ),
-                margin: duel.margin(),
-                note: format!(
-                    "{} / {}",
-                    plot::percent(duel.theirs),
-                    plot::percent(duel.others)
-                ),
+            .map(|duel| {
+                // Accuracy is the duel; score margin is the extra
+                // evidence when the two are close on accuracy.
+                let score_note = if duel.their_score != duel.other_score {
+                    format!(
+                        " · SCORE {} / {}",
+                        plot::plain(duel.their_score as f64),
+                        plot::plain(duel.other_score as f64)
+                    )
+                } else {
+                    String::new()
+                };
+                plot::Duel {
+                    label: format!(
+                        "{} ({})",
+                        duel.title.to_uppercase(),
+                        duel.difficulty.to_uppercase()
+                    ),
+                    margin: duel.margin(),
+                    note: format!(
+                        "{} / {}{score_note}",
+                        plot::percent(duel.theirs),
+                        plot::percent(duel.others)
+                    ),
+                }
             })
             .collect();
         plot::spawn_duel_plot(parent, font, &rows, BAR_W, palette::PERFECT, palette::MISS);
@@ -1232,7 +1697,29 @@ mod tests {
             assert!(!view.label().is_empty());
         }
         assert!(View::Technique.needs_telemetry());
+        assert!(View::Timing.needs_telemetry());
+        assert!(!View::Progress.needs_telemetry());
         assert!(!View::Overview.needs_telemetry());
+    }
+
+    #[test]
+    fn consistency_needs_three_runs_and_names_the_spread() {
+        assert_eq!(
+            consistency_line(&[0.9]),
+            "NOT ENOUGH RUNS FOR A CONSISTENCY READ"
+        );
+        assert_eq!(consistency_line(&[0.9, 0.91, 0.89]), "VERY STEADY");
+        let streaky = consistency_line(&[0.95, 0.70, 0.92, 0.68, 0.90]);
+        assert!(
+            streaky.contains("STREAKY") || streaky.contains("WILD"),
+            "{streaky}"
+        );
+    }
+
+    #[test]
+    fn insights_stay_quiet_without_evidence() {
+        let summary = stats::Summary::default();
+        assert!(insight_lines(&[], &summary, None).is_empty());
     }
 
     #[test]

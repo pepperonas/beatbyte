@@ -411,6 +411,247 @@ pub fn timing_histogram(
     )
 }
 
+/// Mean signed hit offset across honest runs, in milliseconds.
+///
+/// Positive = late. `None` when nothing was timed. The question Timing
+/// asks first: are you early or late on average?
+pub fn timing_bias_ms(store: &Store, chart_hash: Option<&str>) -> Result<Option<f64>> {
+    let rows = store.query(
+        "SELECT AVG(e.delta_us)
+           FROM gameplay_event e JOIN gameplay_session s USING (session_id)
+          WHERE e.event_type = ?1 AND e.delta_us IS NOT NULL
+            AND s.autopilot = 0 AND s.practice = 0
+            AND (?2 IS NULL OR s.chart_hash = ?2)",
+        &[&EventType::NoteHit.code(), &chart_hash],
+        |row| {
+            let mean: Option<f64> = row.get(0)?;
+            Ok(mean)
+        },
+    )?;
+    Ok(rows.first().copied().flatten().map(|us| us / 1000.0))
+}
+
+/// Hit rate for one note-kind bucket (chords, HOPOs, …).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TechniqueRow {
+    /// What was grouped.
+    pub label: String,
+    /// Hits + misses in the bucket.
+    pub judged: u32,
+    /// Hits over judged, `0.0`–`1.0`.
+    pub hit_rate: f64,
+}
+
+/// How chords / HOPOs / sustains / singles actually played.
+///
+/// A note can land in more than one bucket (a sustained chord is both
+/// CHORD and SUSTAIN). That is intentional: the question is per kind,
+/// not a partition. Sustains-held is a separate row from sustain
+/// *notes* — held vs dropped is a SustainEnded reading.
+pub fn technique_by_kind(store: &Store, min_judged: u32) -> Result<Vec<TechniqueRow>> {
+    use crate::model::Flags;
+
+    let hit = EventType::NoteHit.code();
+    let miss = EventType::NoteMiss.code();
+    let rows = store.query(
+        "SELECT e.event_type, e.flags
+           FROM gameplay_event e JOIN gameplay_session s USING (session_id)
+          WHERE e.event_type IN (?1, ?2)
+            AND s.autopilot = 0 AND s.practice = 0",
+        &[&hit, &miss],
+        |row| {
+            let kind: u8 = row.get(0)?;
+            let flags: u16 = row.get(1)?;
+            Ok((kind, flags))
+        },
+    )?;
+
+    #[derive(Default)]
+    struct Acc {
+        hits: u32,
+        misses: u32,
+    }
+    impl Acc {
+        fn bump(&mut self, hit: bool) {
+            if hit {
+                self.hits += 1;
+            } else {
+                self.misses += 1;
+            }
+        }
+        fn row(&self, label: &str, min: u32) -> Option<TechniqueRow> {
+            let judged = self.hits + self.misses;
+            if judged < min {
+                return None;
+            }
+            Some(TechniqueRow {
+                label: label.to_owned(),
+                judged,
+                hit_rate: f64::from(self.hits) / f64::from(judged.max(1)),
+            })
+        }
+    }
+
+    let mut singles = Acc::default();
+    let mut chords = Acc::default();
+    let mut hopos = Acc::default();
+    let mut strums = Acc::default();
+    let mut sustain_notes = Acc::default();
+    for (kind, flags) in rows {
+        let f = Flags(flags);
+        let is_hit = kind == hit;
+        if f.has(Flags::CHORD) {
+            chords.bump(is_hit);
+        } else {
+            singles.bump(is_hit);
+        }
+        if f.has(Flags::HOPO) {
+            hopos.bump(is_hit);
+        } else {
+            strums.bump(is_hit);
+        }
+        if f.has(Flags::SUSTAIN) {
+            sustain_notes.bump(is_hit);
+        }
+    }
+
+    let mut out = Vec::new();
+    for row in [
+        singles.row("singles", min_judged),
+        chords.row("chords", min_judged),
+        hopos.row("hopos", min_judged),
+        strums.row("strummed", min_judged),
+        sustain_notes.row("sustain notes", min_judged),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        out.push(row);
+    }
+
+    // Held vs dropped: SustainEnded + DONE flag.
+    let sustain_ends = store.query(
+        "SELECT e.flags
+           FROM gameplay_event e JOIN gameplay_session s USING (session_id)
+          WHERE e.event_type = ?1
+            AND s.autopilot = 0 AND s.practice = 0",
+        &[&EventType::SustainEnded.code()],
+        |row| {
+            let flags: u16 = row.get(0)?;
+            Ok(flags)
+        },
+    )?;
+    if !sustain_ends.is_empty() {
+        let held = sustain_ends
+            .iter()
+            .filter(|f| Flags(**f).has(Flags::DONE))
+            .count() as u32;
+        let total = sustain_ends.len() as u32;
+        if total >= min_judged {
+            out.push(TechniqueRow {
+                label: "sustains held".to_owned(),
+                judged: total,
+                hit_rate: f64::from(held) / f64::from(total.max(1)),
+            });
+        }
+    }
+    Ok(out)
+}
+
+/// The chart version with the most honest sessions — title for display.
+pub fn busiest_chart(store: &Store) -> Result<Option<(String, u8, String)>> {
+    let rows = store.query(
+        "SELECT chart_hash, difficulty, title, COUNT(*) AS n
+           FROM gameplay_session
+          WHERE autopilot = 0 AND practice = 0
+          GROUP BY chart_hash, difficulty
+          ORDER BY n DESC
+          LIMIT 1",
+        &[],
+        |row| {
+            let hash: String = row.get(0)?;
+            let difficulty: u8 = row.get(1)?;
+            let title: String = row.get(2)?;
+            let _n: u32 = row.get(3)?;
+            Ok((hash, difficulty, title))
+        },
+    )?;
+    Ok(rows.into_iter().next())
+}
+
+/// Hit rates in note order for a heat strip — empty when too thin.
+pub fn note_timeline(
+    store: &Store,
+    chart_hash: &str,
+    difficulty: u8,
+    min_samples: u32,
+) -> Result<Vec<f64>> {
+    Ok(note_quality(store, chart_hash, difficulty, min_samples)?
+        .into_iter()
+        .map(|note| note.hit_rate)
+        .collect())
+}
+
+/// One pack of readings the Stats screen draws from.
+///
+/// Built once per open / filter change on a background thread. Pure
+/// enough to unit-test against an in-memory store.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlayerSnapshot {
+    /// Honest sessions counted.
+    pub sessions: u64,
+    /// Timing histogram bins `(edge_ms, count)`.
+    pub histogram: Vec<(i32, u32)>,
+    /// Mean signed offset in ms, if any hits.
+    pub bias_ms: Option<f64>,
+    /// Technique buckets with enough evidence.
+    pub technique: Vec<TechniqueRow>,
+    /// Context miss buckets (may be empty without sidecars).
+    pub context: Vec<ContextBucket>,
+    /// Busiest chart: hash, difficulty, title.
+    pub busiest: Option<(String, u8, String)>,
+    /// Problem notes on the busiest chart.
+    pub problems: Vec<NoteQuality>,
+    /// Heat-strip rates for the busiest chart.
+    pub timeline: Vec<f64>,
+}
+
+/// Load every reading the Stats shells need in one pass.
+pub fn player_snapshot(store: &Store) -> Result<PlayerSnapshot> {
+    let honest: i64 = store
+        .query(
+            "SELECT COUNT(*) FROM gameplay_session
+              WHERE autopilot = 0 AND practice = 0",
+            &[],
+            |row| row.get(0),
+        )?
+        .into_iter()
+        .next()
+        .unwrap_or(0);
+    let histogram = timing_histogram(store, None, 10)?;
+    let bias_ms = timing_bias_ms(store, None)?;
+    let technique = technique_by_kind(store, 8)?;
+    let context = misses_by_context(store, 20)?;
+    let busiest = busiest_chart(store)?;
+    let (problems, timeline) = match &busiest {
+        Some((hash, difficulty, _)) => (
+            problem_notes(store, hash, *difficulty, 3, 0.85, 8)?,
+            note_timeline(store, hash, *difficulty, 3)?,
+        ),
+        None => (Vec::new(), Vec::new()),
+    };
+    Ok(PlayerSnapshot {
+        sessions: honest.max(0) as u64,
+        histogram,
+        bias_ms,
+        technique,
+        context,
+        busiest,
+        problems,
+        timeline,
+    })
+}
+
 /// A run's numbers, recomputed from its raw events.
 ///
 /// The play history (`history.jsonl`) stores these too, and that copy
@@ -1140,5 +1381,73 @@ mod tests {
     fn an_error_describes_itself() {
         let error = Error::Import("no header".to_owned());
         assert!(describe(&error).contains("no header"));
+    }
+
+    #[test]
+    fn timing_bias_reports_the_mean_signed_offset() {
+        let (store, _) = a_played_chart();
+        let bias = timing_bias_ms(&store, Some("chart-a"))
+            .expect("reads")
+            .expect("hits exist");
+        // Hits land at 12–15 ms late in the fixture.
+        assert!(bias > 10.0 && bias < 20.0, "bias was {bias}");
+    }
+
+    #[test]
+    fn technique_separates_chords_from_singles() {
+        use crate::model::Flags;
+        let mut store = Store::open_in_memory().expect("store");
+        let id = store
+            .begin(&session("tech", Some("v17"), InputDevice::Keyboard, 0.0))
+            .expect("begins");
+        let mut events = Vec::new();
+        // Eight single hits, eight chord misses.
+        for note in 0..8u32 {
+            events.push((
+                note,
+                Event::new(EventType::NoteHit, micros(f64::from(note)))
+                    .about(note as usize)
+                    .off_by(0.0)
+                    .judged(Rating::Perfect),
+            ));
+        }
+        for note in 8..16u32 {
+            events.push((
+                note,
+                Event::new(EventType::NoteMiss, micros(f64::from(note)))
+                    .about(note as usize)
+                    .flagged(Flags::CHORD),
+            ));
+        }
+        store.append(id, &events).expect("appends");
+        store
+            .finish(
+                id,
+                Outcome {
+                    ended_ms: 1_700_000_100_000,
+                    completion: Completion::Completed,
+                    dropped: 0,
+                    practice: false,
+                },
+            )
+            .expect("finishes");
+        let rows = technique_by_kind(&store, 4).expect("reads");
+        let find = |label: &str| {
+            rows.iter()
+                .find(|row| row.label == label)
+                .unwrap_or_else(|| panic!("missing {label}: {rows:?}"))
+        };
+        assert!((find("singles").hit_rate - 1.0).abs() < 1e-9);
+        assert!((find("chords").hit_rate - 0.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_player_snapshot_packs_the_shell_readings() {
+        let (store, _) = a_played_chart();
+        let snap = player_snapshot(&store).expect("loads");
+        assert_eq!(snap.sessions, 4);
+        assert!(!snap.histogram.is_empty());
+        assert!(snap.bias_ms.is_some());
+        assert_eq!(snap.busiest.as_ref().map(|b| b.0.as_str()), Some("chart-a"));
     }
 }

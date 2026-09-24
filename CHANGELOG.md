@@ -14,6 +14,18 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.18] - 2026-09-24
+
+### Added
+
+- **Player Analytics P1–P6.** Stats Timing shows the honest-run hit
+  histogram and mean bias from `telemetry.db`; Technique bars note-kind
+  and musical-context miss rates; Progress names consistency and the
+  windowed accuracy trend; Songs lists personal bests plus weak notes
+  and a heat strip on the most-played chart; Insights emits up to five
+  sample-gated findings. Plot gains histogram and heat-strip primitives.
+  One async `PlayerSnapshot` replaces the session-count shell probe.
+
 ## [0.18.17] - 2026-09-23
 
 ### Added

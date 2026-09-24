@@ -994,6 +994,8 @@ chart format v1 can be frozen as a promise.
 
 - [x] G44 **Player Analytics P0 — Stats foundation** *(v0.18.17, design `docs/superpowers/specs/2026-09-23-player-analytics-design.md`)*. Eight tabs (four shells for Technique/Progress/Songs/Insights); difficulty + time-window filter chips; `Store::open_readonly` so Stats never migrates or writes `telemetry.db`; async session-count probe on `AsyncComputeTaskPool`. History views stay dual-source Approach 1. Follow-ups: P1–P6 fill the shells. *Verified: 1699 tests (+4), telemetry RO pins + stats filter/probe pins; gate green.*
 
+- [x] G45 **Player Analytics P1–P6 — fill the shells** *(v0.18.18, plan `docs/superpowers/plans/2026-09-23-player-analytics-p1-p6.md`)*. Async `PlayerSnapshot` (histogram, bias, technique, context, busiest-chart problems + timeline); Timing/Technique/Progress/Songs/Insights wired; plot histogram + heat strip. Mute badge deferred (spec). *Verified: 1705 tests (+6); gate + release build with `--features ml`.*
+
 ### F — Release engineering to 1.0
 
 - [x] F0 **v0.9.0 — content, accessibility, editor v2.** Amendment (2026-08-24): every unblocked B/C/D/E task landed while the A tasks wait on human playtesting — that body of work (second song, song-selector harness, import guide + scan fix, format truth, forward-compat pins, Linux/Windows CI smokes, Stage Motion, colorblind lane shapes, HOPO visibility, editor move/bulk/audition, harness integrity) ships now instead of idling behind A2. *SHIPPED 2026-08-24: all 7 assets auto-attached via the recursive glob; aarch64 tarball smoke + flawless artifact autopilot from neutral CWD + DMG .app smoke; two release-run attempts (spurious hdiutil ENOSPC → retry mitigation).*
