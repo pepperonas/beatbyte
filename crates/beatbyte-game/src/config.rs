@@ -69,6 +69,30 @@ pub struct Settings {
     /// makes an older file adopt it.
     #[serde(default = "default_true")]
     pub ai_search: bool,
+    /// Whether sound is off while browsing and in the menus.
+    ///
+    /// ⚠️ Mute is remembered PER SITUATION, not once. Browsing plays
+    /// a preview of whatever the cursor rests on, a run plays the
+    /// song you chose, and an autopilot run plays a song nobody is
+    /// listening to on purpose — the same answer for all three was
+    /// wrong for at least one of them every time. `M` toggles the
+    /// situation you are in, and only that one.
+    ///
+    /// `#[serde(default)]` is right here: a file written before this
+    /// existed keeps sound on, which is what it had.
+    #[serde(default)]
+    pub mute_browsing: bool,
+    /// Whether sound is off while a song is actually being played.
+    #[serde(default)]
+    pub mute_playing: bool,
+    /// Whether sound is off while the autopilot drives.
+    ///
+    /// ⚠️ `BEATBYTE_AUTOPILOT_MUTE` still sets the starting value for
+    /// one process and is NOT written back: an env var is how a
+    /// single harness run is silenced, not a preference, and a run
+    /// that nobody touched must not leave mute in the settings file.
+    #[serde(default)]
+    pub mute_autopilot: bool,
     /// An Anthropic API key for that step, for machines without the
     /// CLI.
     ///
@@ -286,6 +310,9 @@ impl Default for Settings {
             no_fail: true,
             reduced_flashing: false,
             ai_search: true,
+            mute_browsing: false,
+            mute_playing: false,
+            mute_autopilot: false,
             anthropic_api_key: String::new(),
             flash_sync: FlashSync::default(),
             fx_intensity: 1.0,

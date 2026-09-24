@@ -14,6 +14,30 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.27] - 2026-09-24
+
+### Changed
+
+- **The corner badge is a speaker now, not the word SOUND.** A pixel
+  speaker with two arcs when sound is on; the speaker alone, in the
+  warm accent, when it is off. `[M]` stays beside it — the badge is
+  the only place the shortcut is named — and wears the same colour,
+  so the two read as one thing.
+- **Mute is remembered per situation.** Browsing plays a preview of
+  whatever the cursor rests on, a run plays the song you chose, and
+  an autopilot run plays a song nobody is listening to on purpose:
+  one answer for all three was wrong for at least one of them every
+  time. `M` toggles the situation you are in and leaves the other
+  two alone, the three answers live in the settings, and for a
+  moment after a toggle the badge names which one it just changed.
+
+### Fixed
+
+- **`BEATBYTE_AUTOPILOT_MUTE` no longer risks your settings.** It
+  silences the test run for one process and is never written back:
+  leaving the pause menu saves the settings, so a value poked in
+  there would have outlived the harness run that asked for it.
+
 ## [0.18.26] - 2026-09-24
 
 ### Added
