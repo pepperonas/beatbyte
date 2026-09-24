@@ -1,26 +1,30 @@
-//! One player's statistics, in four views.
+//! One player's statistics, across eight views.
 //!
-//! Each view answers one question and says so in its subtitle:
+//! Each view answers one question and says so in its subtitle (see
+//! `docs/superpowers/specs/2026-09-23-player-analytics-design.md`):
 //!
-//! - **OVERVIEW** — am I getting better? (accuracy per finished run,
-//!   one line per difficulty, with the trend stated in words)
-//! - **TIMING** — do I drift early or late, and did calibrating help?
-//!   (mean offset per run against the zero line, plus the judgment
-//!   mix the drift produced)
-//! - **DIFFICULTY** — where do I actually play, and how far do I get?
-//! - **VERSUS** — how do I stand against the others? Only on songs
-//!   both have finished at the same difficulty, because that is the
-//!   only comparison this game can make without inventing weights
-//!   (`beatbyte_core::stats::head_to_head`).
+//! - **OVERVIEW** — am I getting better?
+//! - **TIMING** — early, late, or just noisy?
+//! - **TECHNIQUE** — which frets and patterns break me? *(P0 shell)*
+//! - **DIFFICULTY** — where do I play, and how far?
+//! - **PROGRESS** — steady, or streaky? *(P0 shell)*
+//! - **SONGS** — what should I practise next? *(P0 shell)*
+//! - **VERSUS** — how do I stand against the others?
+//! - **INSIGHTS** — what matters right now? *(P0 shell)*
 //!
-//! The drawing is [`crate::plot`]; the arithmetic is
-//! [`beatbyte_core::stats`]. This module is the arrangement in
-//! between, and holds no formula of its own — the CLI prints the same
-//! numbers from the same functions.
+//! Run/career arithmetic stays in [`beatbyte_core::stats`] and draws
+//! from `history.jsonl`. Note-grain evidence comes from a **read-only**
+//! open of `telemetry.db` on a background task (never the gameplay
+//! writer). The drawing is [`crate::plot`].
 
+use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use beatbyte_core::Difficulty;
 use beatbyte_core::player::PlayerId;
 use beatbyte_core::stats::{self, Filter, PlayerRun};
 use bevy::prelude::*;
+use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, futures_lite::future};
 use bevy::ui::Val::Px as px;
 
 use crate::controls::{InputMap, MenuNav};
@@ -29,6 +33,7 @@ use crate::palette;
 use crate::players::Players;
 use crate::plot;
 use crate::states::AppState;
+use crate::telemetry::store_path;
 use crate::ui::UiFont;
 use crate::ui_kit;
 
@@ -46,7 +51,7 @@ pub struct StatsFor(pub Option<PlayerId>);
 
 /// The view `BEATBYTE_SHOT_VIEW` asks for, for the harness.
 ///
-/// Without it only the first of four views could ever be
+/// Without it only the first of eight views could ever be
 /// photographed, which is the same blind spot `BEATBYTE_SHOT_ROW`
 /// exists to close for a scrolling list. Pure — tested.
 #[must_use]
@@ -57,11 +62,11 @@ pub fn view_named(raw: &str) -> Option<View> {
         .find(|view| view.label().eq_ignore_ascii_case(&wanted))
 }
 
-/// Which of the four views is on screen.
+/// Which of the eight views is on screen.
 #[derive(Resource, Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct StatsView(pub View);
 
-/// The four views, in tab order.
+/// The eight views, in tab order (Player Analytics P0).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum View {
     /// Progress over time.
@@ -69,15 +74,32 @@ pub enum View {
     Overview,
     /// Drift and judgment mix.
     Timing,
+    /// Frets, patterns, chords — note grain *(shell until P2)*.
+    Technique,
     /// Where the player plays.
     Difficulty,
+    /// Windows and consistency *(shell until P3)*.
+    Progress,
+    /// Per-song deep dive *(shell until P4)*.
+    Songs,
     /// Against the other players.
     Versus,
+    /// Sample-gated sentences *(shell until P5)*.
+    Insights,
 }
 
 impl View {
-    /// All four, in tab order.
-    pub const ALL: [View; 4] = [View::Overview, View::Timing, View::Difficulty, View::Versus];
+    /// All eight, in tab order.
+    pub const ALL: [View; 8] = [
+        View::Overview,
+        View::Timing,
+        View::Technique,
+        View::Difficulty,
+        View::Progress,
+        View::Songs,
+        View::Versus,
+        View::Insights,
+    ];
 
     /// The tab's label.
     #[must_use]
@@ -85,8 +107,12 @@ impl View {
         match self {
             View::Overview => "OVERVIEW",
             View::Timing => "TIMING",
+            View::Technique => "TECHNIQUE",
             View::Difficulty => "DIFFICULTY",
+            View::Progress => "PROGRESS",
+            View::Songs => "SONGS",
             View::Versus => "VERSUS",
+            View::Insights => "INSIGHTS",
         }
     }
 
@@ -95,10 +121,23 @@ impl View {
     pub const fn question(self) -> &'static str {
         match self {
             View::Overview => "AM I GETTING BETTER?",
-            View::Timing => "DO I PLAY EARLY OR LATE?",
+            View::Timing => "EARLY, LATE, OR JUST NOISY?",
+            View::Technique => "WHICH FRETS AND PATTERNS BREAK ME?",
             View::Difficulty => "WHERE DO I PLAY, AND HOW FAR DO I GET?",
+            View::Progress => "STEADY, OR STREAKY?",
+            View::Songs => "WHAT SHOULD I PRACTISE NEXT?",
             View::Versus => "HOW DO I STAND AGAINST THE OTHERS?",
+            View::Insights => "WHAT MATTERS RIGHT NOW?",
         }
+    }
+
+    /// Whether this tab's body comes from telemetry (async), not history.
+    #[must_use]
+    pub const fn needs_telemetry(self) -> bool {
+        matches!(
+            self,
+            View::Technique | View::Progress | View::Songs | View::Insights
+        )
     }
 
     /// The next view along.
@@ -114,6 +153,156 @@ impl View {
     }
 }
 
+/// How far back the history views look.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TimeWindow {
+    /// Last seven days.
+    Days7,
+    /// Last thirty days.
+    Days30,
+    /// Last ninety days.
+    Days90,
+    /// Everything on disk.
+    #[default]
+    All,
+}
+
+impl TimeWindow {
+    const ALL: [TimeWindow; 4] = [
+        TimeWindow::Days7,
+        TimeWindow::Days30,
+        TimeWindow::Days90,
+        TimeWindow::All,
+    ];
+
+    /// Chip label.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            TimeWindow::Days7 => "7D",
+            TimeWindow::Days30 => "30D",
+            TimeWindow::Days90 => "90D",
+            TimeWindow::All => "ALL",
+        }
+    }
+
+    /// Step along the window chips. Pure — tested.
+    #[must_use]
+    pub fn step(self, delta: i32) -> TimeWindow {
+        let at = Self::ALL.iter().position(|w| *w == self).unwrap_or(0);
+        Self::ALL[ui_kit::step_cursor(at, Self::ALL.len(), delta)]
+    }
+
+    /// Milliseconds retained from `now`, or `None` for All.
+    #[must_use]
+    pub const fn span_ms(self) -> Option<u64> {
+        const DAY: u64 = 86_400_000;
+        match self {
+            TimeWindow::Days7 => Some(7 * DAY),
+            TimeWindow::Days30 => Some(30 * DAY),
+            TimeWindow::Days90 => Some(90 * DAY),
+            TimeWindow::All => None,
+        }
+    }
+}
+
+/// Difficulty + time window for Stats (Player Analytics P0).
+#[derive(Resource, Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct StatsFilters {
+    /// `None` = every difficulty.
+    pub difficulty: Option<Difficulty>,
+    /// How far back history views look.
+    pub window: TimeWindow,
+}
+
+/// Whether a run belongs under the current filters. Pure — tested.
+#[must_use]
+pub fn run_passes_filters(
+    difficulty_id: &str,
+    started_ms: u64,
+    filters: StatsFilters,
+    now_ms: u64,
+) -> bool {
+    if let Some(want) = filters.difficulty
+        && Difficulty::from_id(difficulty_id) != Some(want)
+    {
+        return false;
+    }
+    if let Some(span) = filters.window.span_ms()
+        && now_ms.saturating_sub(started_ms) > span
+    {
+        return false;
+    }
+    true
+}
+
+/// Wall-clock ms for window filters.
+#[must_use]
+pub fn wall_now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// Read-only session count from the on-disk store. Pure I/O helper —
+/// the async job and its tests share it.
+pub fn probe_session_count(path: &Path) -> Result<u64, String> {
+    beatbyte_telemetry::Store::open_readonly(path)
+        .and_then(|store| store.session_count())
+        .map_err(|error| error.to_string())
+}
+
+/// Background probe of `telemetry.db` for the shell tabs.
+#[derive(Resource, Default)]
+struct TelemetryProbe {
+    /// In-flight job, if any.
+    task: Option<Task<Result<u64, String>>>,
+    /// Bumped every time a new probe is requested.
+    generation: u64,
+    /// Generation the `result` belongs to.
+    result_generation: u64,
+    /// Last finished probe.
+    result: Option<Result<u64, String>>,
+}
+
+impl TelemetryProbe {
+    fn request(&mut self, path: Option<std::path::PathBuf>) {
+        self.generation = self.generation.wrapping_add(1);
+        let generation = self.generation;
+        let Some(path) = path else {
+            self.task = None;
+            self.result_generation = generation;
+            self.result = Some(Err("NO DATA DIRECTORY".to_owned()));
+            return;
+        };
+        self.task =
+            Some(AsyncComputeTaskPool::get().spawn(async move { probe_session_count(&path) }));
+    }
+
+    fn poll(&mut self) {
+        let Some(task) = self.task.as_mut() else {
+            return;
+        };
+        if let Some(outcome) = block_on(future::poll_once(task)) {
+            self.task = None;
+            self.result_generation = self.generation;
+            self.result = Some(outcome);
+        }
+    }
+
+    fn line(&self) -> String {
+        if self.task.is_some() || self.result_generation != self.generation {
+            return "…".to_owned();
+        }
+        match &self.result {
+            None => "…".to_owned(),
+            Some(Ok(n)) => format!("TELEMETRY · {n} SESSIONS — DETAIL IN LATER PHASES"),
+            Some(Err(_)) => "NO TELEMETRY STORE".to_owned(),
+        }
+    }
+}
+
 /// Everything this screen spawns.
 #[derive(Component)]
 struct StatsScreen;
@@ -122,6 +311,14 @@ struct StatsScreen;
 #[derive(Component)]
 struct ViewTab(View);
 
+/// A difficulty filter chip.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+struct DifficultyChip(Option<Difficulty>);
+
+/// A time-window filter chip.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+struct WindowChip(TimeWindow);
+
 /// Systems of the statistics screen.
 pub struct StatsUiPlugin;
 
@@ -129,18 +326,67 @@ impl Plugin for StatsUiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<StatsFor>()
             .init_resource::<StatsView>()
+            .init_resource::<StatsFilters>()
+            .init_resource::<TelemetryProbe>()
             .add_systems(
                 OnEnter(AppState::Stats),
-                (pick_shot_view, spawn_stats)
+                (pick_shot_view, kick_telemetry_probe, spawn_stats)
                     .chain()
                     .after(crate::history::HistoryReloaded),
             )
-            .add_systems(Update, stats_nav.run_if(in_state(AppState::Stats)))
-            .add_systems(OnExit(AppState::Stats), despawn_stats);
+            .add_systems(
+                Update,
+                (
+                    poll_telemetry_probe,
+                    stats_nav,
+                    refresh_shell_when_probe_lands,
+                )
+                    .chain()
+                    .run_if(in_state(AppState::Stats)),
+            )
+            .add_systems(
+                OnExit(AppState::Stats),
+                (clear_telemetry_probe, despawn_stats).chain(),
+            );
     }
 }
 
-/// Open the view the harness asked for, so all four can be
+fn kick_telemetry_probe(mut probe: ResMut<TelemetryProbe>) {
+    probe.request(store_path());
+}
+
+fn poll_telemetry_probe(mut probe: ResMut<TelemetryProbe>) {
+    probe.poll();
+}
+
+fn clear_telemetry_probe(mut probe: ResMut<TelemetryProbe>) {
+    *probe = TelemetryProbe::default();
+}
+
+/// When the async probe finishes on a telemetry shell tab, rebuild so
+/// the placeholder text updates without waiting for a key.
+fn refresh_shell_when_probe_lands(
+    probe: Res<TelemetryProbe>,
+    view: Res<StatsView>,
+    mut commands: Commands,
+    screen: Query<Entity, With<StatsScreen>>,
+) {
+    if !view.0.needs_telemetry() {
+        return;
+    }
+    if !probe.is_changed() {
+        return;
+    }
+    if probe.task.is_some() || probe.result_generation != probe.generation {
+        return;
+    }
+    for entity in &screen {
+        commands.entity(entity).despawn();
+    }
+    commands.run_system_cached(spawn_stats);
+}
+
+/// Open the view the harness asked for, so all eight can be
 /// photographed rather than only the first.
 fn pick_shot_view(mut view: ResMut<StatsView>) {
     if let Ok(raw) = std::env::var("BEATBYTE_SHOT_VIEW") {
@@ -207,6 +453,8 @@ fn spawn_stats(
     history: Res<PlayHistory>,
     view: Res<StatsView>,
     chosen: Res<StatsFor>,
+    filters: Res<StatsFilters>,
+    probe: Res<TelemetryProbe>,
 ) {
     let Some(id) = chosen.0.or(players.0.selected) else {
         // Reached with nobody chosen: say so rather than drawing an
@@ -227,7 +475,13 @@ fn spawn_stats(
         .0
         .name_of(id)
         .map_or_else(|| "PLAYER".to_owned(), str::to_owned);
-    let runs = stats::runs_of(&history.0, id, Filter::default());
+    let now = wall_now_ms();
+    let runs: Vec<PlayerRun<'_>> = stats::runs_of(&history.0, id, Filter::default())
+        .into_iter()
+        .filter(|run| {
+            run_passes_filters(&run.entry.difficulty, run.entry.started_ms, *filters, now)
+        })
+        .collect();
     let summary = stats::summarize(&runs);
 
     commands
@@ -235,19 +489,41 @@ fn spawn_stats(
         .with_children(|root| {
             ui_kit::header(root, &font, &name.to_uppercase(), view.0.question());
             spawn_tabs(root, &font, view.0);
+            spawn_filters(root, &font, *filters);
             root.spawn(ui_kit::panel_wide())
                 .with_children(|panel| match view.0 {
                     View::Overview => overview(panel, &font, &runs, &summary),
                     View::Timing => timing(panel, &font, &runs, &summary),
                     View::Difficulty => difficulty(panel, &font, &runs),
-                    View::Versus => versus(panel, &font, &history.0, &players, id, &name),
+                    View::Versus => {
+                        // Same difficulty + window chips as the other
+                        // history views — otherwise "7D · HARD" would
+                        // leave VERSUS showing career-wide duels.
+                        let versus_entries: Vec<beatbyte_core::history::PlayEntry> = history
+                            .0
+                            .iter()
+                            .filter(|entry| {
+                                run_passes_filters(
+                                    &entry.difficulty,
+                                    entry.started_ms,
+                                    *filters,
+                                    now,
+                                )
+                            })
+                            .cloned()
+                            .collect();
+                        versus(panel, &font, &versus_entries, &players, id, &name);
+                    }
+                    View::Technique | View::Progress | View::Songs | View::Insights => {
+                        plot::empty_note(panel, &font, &probe.line());
+                    }
                 });
             ui_kit::back_button(root, &font, "PLAYERS");
             crate::prompts::device_footer(
                 root,
                 &font,
-                "LEFT/RIGHT SWITCH VIEW   ESC BACK",
-                "D-PAD switch view  EAST back",
+                "LEFT/RIGHT VIEW   [ ] WINDOW   , . DIFFICULTY   ESC BACK",
+                "D-PAD view  EAST back",
             );
         });
 }
@@ -256,8 +532,10 @@ fn spawn_stats(
 fn spawn_tabs(parent: &mut ChildSpawnerCommands, font: &UiFont, active: View) {
     parent
         .spawn(Node {
-            column_gap: px(18.0),
-            margin: UiRect::bottom(px(12.0)),
+            column_gap: px(10.0),
+            margin: UiRect::bottom(px(8.0)),
+            flex_wrap: FlexWrap::Wrap,
+            row_gap: px(4.0),
             ..default()
         })
         .with_children(|tabs| {
@@ -266,7 +544,7 @@ fn spawn_tabs(parent: &mut ChildSpawnerCommands, font: &UiFont, active: View) {
                     ViewTab(view),
                     Button,
                     Node {
-                        padding: UiRect::axes(px(6.0), px(2.0)),
+                        padding: UiRect::axes(px(4.0), px(2.0)),
                         ..default()
                     },
                 ))
@@ -275,6 +553,88 @@ fn spawn_tabs(parent: &mut ChildSpawnerCommands, font: &UiFont, active: View) {
                         Text::new(view.label().to_owned()),
                         font.text(ui_kit::SMALL),
                         TextColor(if view == active {
+                            palette::BRAND
+                        } else {
+                            ui_kit::dimmed_subtitle()
+                        }),
+                    ));
+                });
+            }
+        });
+}
+
+/// Difficulty + window chips under the tabs.
+fn spawn_filters(parent: &mut ChildSpawnerCommands, font: &UiFont, filters: StatsFilters) {
+    parent
+        .spawn(Node {
+            column_gap: px(8.0),
+            margin: UiRect::bottom(px(12.0)),
+            flex_wrap: FlexWrap::Wrap,
+            row_gap: px(4.0),
+            align_items: AlignItems::Center,
+            ..default()
+        })
+        .with_children(|row| {
+            row.spawn((
+                Text::new("DIFF".to_owned()),
+                font.text(ui_kit::SMALL),
+                TextColor(ui_kit::dimmed_subtitle()),
+            ));
+            for chip in [
+                None,
+                Some(Difficulty::Easy),
+                Some(Difficulty::Medium),
+                Some(Difficulty::Hard),
+                Some(Difficulty::Expert),
+            ] {
+                let label = match chip {
+                    None => "ALL",
+                    Some(Difficulty::Easy) => "EASY",
+                    Some(Difficulty::Medium) => "MED",
+                    Some(Difficulty::Hard) => "HARD",
+                    Some(Difficulty::Expert) => "EXP",
+                };
+                let on = filters.difficulty == chip;
+                row.spawn((
+                    DifficultyChip(chip),
+                    Button,
+                    Node {
+                        padding: UiRect::axes(px(4.0), px(2.0)),
+                        ..default()
+                    },
+                ))
+                .with_children(|b| {
+                    b.spawn((
+                        Text::new(label.to_owned()),
+                        font.text(ui_kit::SMALL),
+                        TextColor(if on {
+                            palette::BRAND
+                        } else {
+                            ui_kit::dimmed_subtitle()
+                        }),
+                    ));
+                });
+            }
+            row.spawn((
+                Text::new("·".to_owned()),
+                font.text(ui_kit::SMALL),
+                TextColor(ui_kit::dimmed_subtitle()),
+            ));
+            for window in TimeWindow::ALL {
+                let on = filters.window == window;
+                row.spawn((
+                    WindowChip(window),
+                    Button,
+                    Node {
+                        padding: UiRect::axes(px(4.0), px(2.0)),
+                        ..default()
+                    },
+                ))
+                .with_children(|b| {
+                    b.spawn((
+                        Text::new(window.label().to_owned()),
+                        font.text(ui_kit::SMALL),
+                        TextColor(if on {
                             palette::BRAND
                         } else {
                             ui_kit::dimmed_subtitle()
@@ -680,7 +1040,7 @@ fn versus(
     }
 }
 
-/// Tabs, and leaving.
+/// Tabs, filters, and leaving.
 #[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)] // Bevy system params
 fn stats_nav(
     map: Res<InputMap>,
@@ -688,34 +1048,72 @@ fn stats_nav(
     pads: Query<&bevy::input::gamepad::Gamepad>,
     mouse: Res<ButtonInput<MouseButton>>,
     tabs: Query<(&ViewTab, &Interaction), Changed<Interaction>>,
+    diff_chips: Query<(&DifficultyChip, &Interaction), Changed<Interaction>>,
+    window_chips: Query<(&WindowChip, &Interaction), Changed<Interaction>>,
     mut back: Query<
         (&Interaction, &mut BackgroundColor, &mut BorderColor),
         With<ui_kit::BackButton>,
     >,
     mut view: ResMut<StatsView>,
+    mut filters: ResMut<StatsFilters>,
+    mut probe: ResMut<TelemetryProbe>,
     mut next: ResMut<NextState<AppState>>,
     mut commands: Commands,
     screen: Query<Entity, With<StatsScreen>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
     let nav = MenuNav::read(&map, &keys, pads.iter());
-    let mut wanted = None;
+    let mut rebuild = false;
+
     let delta = i32::from(nav.right) - i32::from(nav.left);
     if delta != 0 {
-        wanted = Some(view.0.step(delta));
-    }
-    for (tab, interaction) in &tabs {
-        if *interaction == Interaction::Pressed {
-            wanted = Some(tab.0);
+        let next_view = view.0.step(delta);
+        if next_view != view.0 {
+            view.0 = next_view;
+            rebuild = true;
         }
     }
-    if let Some(next_view) = wanted
-        && next_view != view.0
-    {
-        view.0 = next_view;
-        // A view change is a respawn: the panel's contents differ in
-        // shape, not just in text, and rebuilding is cheaper to get
-        // right than a dozen refresh systems.
+    for (tab, interaction) in &tabs {
+        if *interaction == Interaction::Pressed && tab.0 != view.0 {
+            view.0 = tab.0;
+            rebuild = true;
+        }
+    }
+
+    // Window: [ ] on the keyboard (not rebound — Stats-only).
+    let window_delta = i32::from(keys.just_pressed(KeyCode::BracketRight))
+        - i32::from(keys.just_pressed(KeyCode::BracketLeft));
+    if window_delta != 0 {
+        filters.window = filters.window.step(window_delta);
+        rebuild = true;
+    }
+    for (chip, interaction) in &window_chips {
+        if *interaction == Interaction::Pressed && chip.0 != filters.window {
+            filters.window = chip.0;
+            rebuild = true;
+        }
+    }
+
+    // Difficulty: , . on the keyboard.
+    let diff_delta = i32::from(keys.just_pressed(KeyCode::Period))
+        - i32::from(keys.just_pressed(KeyCode::Comma));
+    if diff_delta != 0 {
+        filters.difficulty = step_difficulty(filters.difficulty, diff_delta);
+        rebuild = true;
+    }
+    for (chip, interaction) in &diff_chips {
+        if *interaction == Interaction::Pressed && chip.0 != filters.difficulty {
+            filters.difficulty = chip.0;
+            rebuild = true;
+        }
+    }
+
+    if rebuild {
+        // Filter changes may need a fresher telemetry probe when a
+        // shell tab is showing; always safe to re-kick (supersedes).
+        if view.0.needs_telemetry() {
+            probe.request(store_path());
+        }
         for entity in &screen {
             commands.entity(entity).despawn();
         }
@@ -730,6 +1128,20 @@ fn stats_nav(
         sounds.write(crate::sfx::UiSound::Back);
         next.set(AppState::Players);
     }
+}
+
+/// Cycle ALL → Easy → … → Expert. Pure — tested.
+#[must_use]
+pub fn step_difficulty(current: Option<Difficulty>, delta: i32) -> Option<Difficulty> {
+    const ORDER: [Option<Difficulty>; 5] = [
+        None,
+        Some(Difficulty::Easy),
+        Some(Difficulty::Medium),
+        Some(Difficulty::Hard),
+        Some(Difficulty::Expert),
+    ];
+    let at = ORDER.iter().position(|d| *d == current).unwrap_or(0);
+    ORDER[ui_kit::step_cursor(at, ORDER.len(), delta)]
 }
 
 fn despawn_stats(mut commands: Commands, entities: Query<Entity, With<StatsScreen>>) {
@@ -749,16 +1161,66 @@ mod tests {
         assert_eq!(View::Timing.step(-1), View::Overview);
         // Clamping, not wrapping: `ui_kit::step_cursor` is the one
         // cursor rule in this game, and tabs are not an exception.
-        assert_eq!(View::Versus.step(1), View::Versus, "the last wrapped");
+        assert_eq!(View::Insights.step(1), View::Insights, "the last wrapped");
+        assert_eq!(View::Versus.step(1), View::Insights);
         assert_eq!(View::Overview.step(-1), View::Overview);
         assert_eq!(View::Overview.step(0), View::Overview);
+        assert_eq!(View::ALL.len(), 8);
     }
 
     #[test]
     fn a_view_can_be_named_for_the_harness() {
         assert_eq!(view_named("timing"), Some(View::Timing));
         assert_eq!(view_named("VERSUS"), Some(View::Versus));
+        assert_eq!(view_named("technique"), Some(View::Technique));
+        assert_eq!(view_named("insights"), Some(View::Insights));
         assert_eq!(view_named("nonsense"), None);
+    }
+
+    #[test]
+    fn difficulty_and_window_filters_step_and_match_runs() {
+        assert_eq!(step_difficulty(None, 1), Some(Difficulty::Easy));
+        assert_eq!(
+            step_difficulty(Some(Difficulty::Expert), 1),
+            Some(Difficulty::Expert)
+        );
+        assert_eq!(step_difficulty(Some(Difficulty::Easy), -1), None);
+        assert_eq!(TimeWindow::All.step(-1), TimeWindow::Days90);
+        assert_eq!(TimeWindow::Days7.step(-1), TimeWindow::Days7);
+
+        let filters = StatsFilters {
+            difficulty: Some(Difficulty::Hard),
+            window: TimeWindow::Days7,
+        };
+        let now = 1_000_000_000u64;
+        assert!(run_passes_filters("hard", now - 1, filters, now));
+        assert!(!run_passes_filters("easy", now - 1, filters, now));
+        assert!(!run_passes_filters(
+            "hard",
+            now - 8 * 86_400_000,
+            filters,
+            now
+        ));
+        assert!(run_passes_filters(
+            "hard",
+            now - 1,
+            StatsFilters {
+                difficulty: None,
+                window: TimeWindow::All
+            },
+            now
+        ));
+    }
+
+    #[test]
+    fn the_readonly_probe_reports_a_missing_store() {
+        let path = std::env::temp_dir().join(format!(
+            "beatbyte-stats-probe-missing-{}-{}.db",
+            std::process::id(),
+            wall_now_ms()
+        ));
+        let _ = std::fs::remove_file(&path);
+        assert!(probe_session_count(&path).is_err());
     }
 
     #[test]
@@ -769,6 +1231,8 @@ mod tests {
             assert!(view.question().ends_with('?'), "{}", view.label());
             assert!(!view.label().is_empty());
         }
+        assert!(View::Technique.needs_telemetry());
+        assert!(!View::Overview.needs_telemetry());
     }
 
     #[test]
@@ -801,7 +1265,9 @@ mod tests {
             .insert_resource(crate::players::Players(roster))
             .insert_resource(PlayHistory(history))
             .init_resource::<StatsFor>()
-            .init_resource::<StatsView>();
+            .init_resource::<StatsView>()
+            .init_resource::<StatsFilters>()
+            .init_resource::<TelemetryProbe>();
         let font = app
             .world_mut()
             .resource_mut::<Assets<Font>>()
@@ -879,7 +1345,8 @@ mod tests {
     /// materially MORE than the same view with none. A bare "some
     /// nodes exist" pin passed even with every plot short-circuited
     /// to its empty note, because the tiles and header alone clear
-    /// it; the comparison is what bites.
+    /// it; the comparison is what bites. Shell tabs (Technique /
+    /// Progress / Songs / Insights) only need to build.
     #[test]
     fn every_view_builds_and_a_history_draws_more_than_an_empty_one() {
         let mut roster = Roster::default();

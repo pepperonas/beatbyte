@@ -14,6 +14,17 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.17] - 2026-09-23
+
+### Added
+
+- **Player Analytics foundation (Stats P0).** Eight tabs (Overview,
+  Timing, Technique, Difficulty, Progress, Songs, Versus, Insights)
+  with difficulty and time-window chips; Technique/Progress/Songs/
+  Insights are shells until later phases. Stats opens `telemetry.db`
+  read-only on a background task and never touches the gameplay
+  writer. Design: `docs/superpowers/specs/2026-09-23-player-analytics-design.md`.
+
 ## [0.18.16] - 2026-09-23
 
 ### Fixed
