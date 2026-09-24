@@ -185,6 +185,7 @@ pub fn generate_chart(analysis: &SongAnalysis, meta: &GenerateMeta) -> ChartFile
         // redesign all count on the grid the notes were placed on.
         grid: Some(BeatGrid::from_beats(&analysis.beats).with_downbeats(&analysis.downbeats))
             .filter(BeatGrid::is_usable),
+        rules: None,
     }
 }
 

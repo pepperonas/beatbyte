@@ -50,7 +50,11 @@ impl ChartFile {
                 end_s: p.end,
             })
             .collect();
-        Track::new(difficulty, tempo, events, phrases).map_err(ConvertError::Track)
+        let track = Track::new(difficulty, tempo, events, phrases).map_err(ConvertError::Track)?;
+        Ok(match self.rules {
+            Some(rules) => track.with_strum_grace(rules.strum_grace_s()),
+            None => track,
+        })
     }
 
     /// Convert every difficulty present in the file.
@@ -127,6 +131,7 @@ mod tests {
             provenance: None,
             audio_trim: None,
             grid: None,
+            rules: None,
         }
     }
 
@@ -137,6 +142,37 @@ mod tests {
             len: 0.0,
             hopo: false,
         }
+    }
+
+    /// The rule a chart asks for reaches the track the engine plays —
+    /// the only way it can reach the judgment at all — and a chart
+    /// that asks for nothing plays by the default.
+    #[test]
+    fn a_charts_strum_grace_reaches_its_track() {
+        let mut file = file_with_notes(vec![note(1.0, 0)]);
+        assert_eq!(
+            file.to_track(Difficulty::Expert).unwrap().strum_grace_s(),
+            0.0
+        );
+        file.rules = Some(crate::schema::Rules { strum_grace_ms: 60 });
+        let track = file.to_track(Difficulty::Expert).unwrap();
+        assert!((track.strum_grace_s() - 0.06).abs() < 1e-12);
+        // ⚠️ And it is content: the same notes under another rule are
+        // a different chart to have played, so its hash moves.
+        let plain = file_with_notes(vec![note(1.0, 0)]);
+        assert_ne!(crate::chart_hash(&file), crate::chart_hash(&plain));
+        // An empty rule set serializes to nothing, so a chart that
+        // gains one without asking anything keeps its identity.
+        let mut empty = plain.clone();
+        empty.rules = Some(crate::schema::Rules::default());
+        let text = serde_json::to_string(&empty).unwrap();
+        assert!(!text.contains("rules"), "{text}");
+        assert_eq!(crate::chart_hash(&empty), crate::chart_hash(&plain));
+        let round = ChartFile::from_json(&text).unwrap();
+        assert_eq!(
+            round.to_track(Difficulty::Expert).unwrap().strum_grace_s(),
+            0.0
+        );
     }
 
     #[test]

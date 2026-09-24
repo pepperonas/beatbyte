@@ -365,10 +365,12 @@ enum Command {
         #[arg(long)]
         out: Option<PathBuf>,
     },
-    /// Re-flag a song's hammer-ons the way the early guitar games
-    /// did — tempo-relative and exclusive, so straight eighths are
-    /// strummed and triplets are hammered — as a NEW version whose
-    /// parent is the one active now.
+    /// Apply the classic ingredients — the rules the early guitar
+    /// games played by — as a NEW version whose parent is the one
+    /// active now (or, with `--twin`, as a `[CL]` twin folder).
+    /// `hopo`: hammer-ons tempo-relative and exclusive, so straight
+    /// eighths are strummed and triplets hammered. `strum`: a strum
+    /// under the wrong fret waits 60 ms for the fret.
     ///
     /// The blind test (`T` in the browser) then plays the two
     /// against each other, differing by this and nothing else.
@@ -388,6 +390,12 @@ enum Command {
         /// in the song's own folder is touched.
         #[arg(long)]
         twin: bool,
+        /// Which ingredients, comma-separated (`hopo`, `strum`, or
+        /// `all`). Without it: the ones that have passed a blind test.
+        /// To blind-test one more, apply it alone as a new version on
+        /// a `[CL]` twin and press `T` on it in the browser.
+        #[arg(long, value_name = "INGREDIENTS")]
+        with: Option<String>,
     },
     /// Regenerate hard + expert as a new sibling version, keeping
     /// easy + medium from the active version (the difficulty
@@ -806,12 +814,23 @@ fn main() -> ExitCode {
             all,
             dry_run,
             twin,
-        } => match (twin, all) {
-            (true, true) => classic::run_twin_all(&folder, dry_run),
-            (true, false) => classic::run_twin(&folder, dry_run),
-            (false, true) => classic::run_all(&folder, dry_run),
-            (false, false) => classic::run(&folder, dry_run),
-        },
+            with,
+        } => {
+            let recipe = match with.as_deref().map(beatbyte_chart::classic::Recipe::parse) {
+                None => beatbyte_chart::classic::Recipe::default(),
+                Some(Ok(recipe)) => recipe,
+                Some(Err(reason)) => {
+                    eprintln!("--with: {reason}");
+                    return ExitCode::from(2);
+                }
+            };
+            match (twin, all) {
+                (true, true) => classic::run_twin_all(&folder, dry_run, recipe),
+                (true, false) => classic::run_twin(&folder, dry_run, recipe),
+                (false, true) => classic::run_all(&folder, dry_run, recipe),
+                (false, false) => classic::run(&folder, dry_run, recipe),
+            }
+        }
         Command::Redesign { chart, all } => {
             if all {
                 redesign::run_redesign_all(&chart)

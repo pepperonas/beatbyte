@@ -14,6 +14,31 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.34] - 2026-09-25
+
+### Added
+
+- **Strum grace — the second classic ingredient.** A chart may now
+  carry judgment rules (`rules.strum_grace_ms`, 0–100). On one that
+  does, a strum that lands while a note is in its window but under the
+  wrong fret is held instead of punished: if the fret comes right
+  within the grace it is that note's strum, judged where the pick
+  landed; if not, it is the overstrum it always was. The early guitar
+  games gave a strum about 60 ms; that is what the classic recipe
+  writes. Every chart without the rule plays exactly as before.
+- **`beatbyte-cli classic --with <ingredients>`** chooses what a
+  version or a `[CL]` twin carries: `hopo`, `strum`, or `all`. Without
+  it, only the ingredients that have passed a blind test (still
+  `hopo`). To blind-test one, apply it alone as a new version on a
+  `[CL]` twin and press `T` on it.
+
+### Changed
+
+- `classic --dry-run` counts changed notes by moment and fret rather
+  than by list position, and names the recipe and any rule it adds.
+- A classic version's provenance names its recipe as `classic:<names>`
+  (was `classic-hopo` for the version path).
+
 ## [0.18.33] - 2026-09-24
 
 ### Added

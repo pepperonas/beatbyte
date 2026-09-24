@@ -23,6 +23,13 @@
 //!   pick after, a strum inside the window of a note that was just
 //!   hit by fretting is that note's strum: absorbed once, never an
 //!   overstrum.
+//! - **Strum grace** (only on a track that carries it,
+//!   [`Track::with_strum_grace`]): a strum that lands while a note is
+//!   in its window but under the wrong frets is **held** instead of
+//!   punished. If the frets come right within the grace, it is that
+//!   note's strum, judged at the moment the pick landed; if they do
+//!   not, it is the overstrum it always was, charged when the grace
+//!   runs out. A strum with no note in its window is never held.
 //! - **Sustains**: hold the frets to earn points per musical beat.
 //!   Releasing early simply ends the tail; releasing within the final
 //!   grace period counts as completed.
@@ -167,6 +174,10 @@ pub struct TrackSession {
     /// strum inside that note's window is absorbed instead of counted
     /// as an overstrum. Cleared by the next strum, hit or rewind.
     fret_hit: Option<usize>,
+    /// A strum held by the strum-grace rule: the song time it landed
+    /// at. It becomes a hit if the frets come right within the
+    /// track's grace, and an overstrum when the grace runs out.
+    held_strum: Option<f64>,
     /// Tap mode: every note is hittable on fret press alone (no strum
     /// required) — keyboard-friendly play. Strums still work.
     tap_mode: bool,
@@ -217,6 +228,7 @@ impl TrackSession {
             scan_from: 0,
             hopo_chain: false,
             fret_hit: None,
+            held_strum: None,
             tap_mode: false,
             sustain: None,
             event_phrase,
@@ -340,6 +352,7 @@ impl TrackSession {
         self.sustain = None;
         self.hopo_chain = false;
         self.fret_hit = None;
+        self.held_strum = None;
         self.hype_grace_until_s = f64::NEG_INFINITY;
         for progress in &mut self.phrases {
             progress.hits = 0;
@@ -370,6 +383,10 @@ impl TrackSession {
         }
         self.clock_s = to_s;
 
+        // 0. A held strum whose grace ran out is the overstrum it
+        // would have been, charged at the moment the grace ended.
+        self.expire_held_strum(to_s, events);
+
         // 1. Sustain ticking (before misses: independent concerns).
         self.tick_sustain(to_s, events);
 
@@ -388,7 +405,12 @@ impl TrackSession {
         self.auto_hit_hype_notes(to_s, events);
 
         // 4. Miss detection: pending events whose window has passed.
-        let deadline = to_s - self.windows.good_s;
+        // ⚠️ Not while a strum is held for them: a late strum under
+        // the wrong fret is waiting for exactly the note whose window
+        // is closing, and missing it first would make the grace a
+        // promise the late half of every window could never keep.
+        let judged_to = self.held_strum.map_or(to_s, |held| held.min(to_s));
+        let deadline = judged_to - self.windows.good_s;
         for index in self.scan_from..self.states.len() {
             let event = self.track.events()[index];
             if event.time_s >= deadline {
@@ -417,15 +439,20 @@ impl TrackSession {
         match input.kind {
             InputKind::FretDown(lane) => {
                 self.held.insert(lane);
-                self.try_hopo_hit(lane, time_s, events);
+                if !self.resolve_held_strum(events) {
+                    self.try_hopo_hit(lane, time_s, events);
+                }
             }
             InputKind::FretUp(lane) => {
                 self.held.remove(lane);
                 self.check_sustain_release(time_s, events);
-                // Pull-off: releasing a fret can expose a lower held
-                // fret as the new highest — that's a HOPO hit chance.
-                if let Some(exposed) = self.held.highest() {
-                    self.try_hopo_hit(exposed, time_s, events);
+                if !self.resolve_held_strum(events) {
+                    // Pull-off: releasing a fret can expose a lower
+                    // held fret as the new highest — that's a HOPO
+                    // hit chance.
+                    if let Some(exposed) = self.held.highest() {
+                        self.try_hopo_hit(exposed, time_s, events);
+                    }
                 }
             }
             InputKind::Strum => self.strum(time_s, events),
@@ -471,14 +498,27 @@ impl TrackSession {
         {
             let note_time = self.track.events()[index].time_s;
             self.hit(index, note_time, events);
-            // `hit` voids the marker; re-arm it for THIS note, the
-            // way a fretted HOPO does. The last one taken is the one
-            // whose strum is still to come.
-            self.fret_hit = Some(index);
+            // A strum already held for this note is its strum — the
+            // same rule as a hammer-on taken under a held strum.
+            match self.held_strum {
+                Some(held) if (held - note_time).abs() <= self.windows.good_s => {
+                    self.held_strum = None;
+                }
+                // `hit` voids the marker; re-arm it for THIS note, the
+                // way a fretted HOPO does. The last one taken is the
+                // one whose strum is still to come.
+                _ => self.fret_hit = Some(index),
+            }
         }
     }
 
     fn strum(&mut self, time_s: f64, events: &mut Vec<SessionEvent>) {
+        // A strum still held when the next one lands was never
+        // answered by a fret: two strums, one fretting — the first is
+        // the extra one.
+        if self.held_strum.take().is_some() {
+            self.overstrum(time_s, events);
+        }
         // Earliest pending event in the window whose frets match.
         let candidate = self
             .pending_in_window(time_s)
@@ -496,15 +536,65 @@ impl TrackSession {
                         return;
                     }
                 }
-                let failed = self.performance.register_overstrum();
-                self.hopo_chain = false;
-                if failed {
-                    events.push(SessionEvent::Failed);
+                // The strum-grace rule: a note IS here, only the fret
+                // is not yet. Wait for it rather than punish the
+                // order the hand happened to move in.
+                if self.track.strum_grace_s() > 0.0
+                    && self.pending_in_window(time_s).next().is_some()
+                {
+                    self.held_strum = Some(time_s);
+                    return;
                 }
-                self.end_sustain(time_s, events);
-                events.push(SessionEvent::Overstrum);
+                self.overstrum(time_s, events);
             }
         }
+    }
+
+    /// Charge an overstrum at `time_s`.
+    fn overstrum(&mut self, time_s: f64, events: &mut Vec<SessionEvent>) {
+        let failed = self.performance.register_overstrum();
+        self.hopo_chain = false;
+        if failed {
+            events.push(SessionEvent::Failed);
+        }
+        self.end_sustain(time_s, events);
+        events.push(SessionEvent::Overstrum);
+    }
+
+    /// The frets just changed: if a strum is held and a note in ITS
+    /// window now matches, that strum hits it — judged at the moment
+    /// the pick landed, because the strum is the act the timing is
+    /// about. Returns whether it did.
+    fn resolve_held_strum(&mut self, events: &mut Vec<SessionEvent>) -> bool {
+        let Some(strummed_at) = self.held_strum else {
+            return false;
+        };
+        let candidate = self
+            .pending_in_window(strummed_at)
+            .find(|&index| self.frets_match(self.track.events()[index].lanes));
+        let Some(index) = candidate else {
+            return false;
+        };
+        self.held_strum = None;
+        self.hit(index, strummed_at, events);
+        true
+    }
+
+    /// A held strum whose grace has run out by `now` becomes the
+    /// overstrum it was held from. The grace is inclusive: a fret
+    /// exactly at its end still counts, so this fires only after.
+    fn expire_held_strum(&mut self, now: f64, events: &mut Vec<SessionEvent>) {
+        let Some(strummed_at) = self.held_strum else {
+            return;
+        };
+        let expires = strummed_at + self.track.strum_grace_s();
+        if now <= expires {
+            return;
+        }
+        self.held_strum = None;
+        // What was earned up to the moment it ended still counts.
+        self.tick_sustain(expires, events);
+        self.overstrum(expires, events);
     }
 
     fn try_hopo_hit(&mut self, pressed: Lane, time_s: f64, events: &mut Vec<SessionEvent>) {
@@ -520,6 +610,9 @@ impl TrackSession {
                 && self.frets_match(event.lanes)
         });
         if let Some(index) = candidate {
+            // A strum held for a note in ITS window never gets here:
+            // `resolve_held_strum` runs first on every fret change and
+            // takes any note the frets now match.
             self.hit(index, time_s, events);
             self.fret_hit = Some(index);
         }
@@ -1857,5 +1950,310 @@ mod tap_mode_tests {
             &mut out,
         );
         assert_eq!(s.performance().overstrums(), 1);
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod strum_grace_tests {
+    //! The strum-grace rule (the classic programme, K2).
+    use super::*;
+    use crate::timing::TempoMap;
+    use crate::{
+        Difficulty, Lane, LaneSet, NoteEvent, NoteKind, ScoreConfig, TimingWindows, Track,
+    };
+
+    fn track(events: Vec<NoteEvent>) -> Track {
+        Track::new(
+            Difficulty::Expert,
+            TempoMap::constant(120.0, 0.0),
+            events,
+            vec![],
+        )
+        .unwrap()
+    }
+
+    fn session(track: Track) -> TrackSession {
+        TrackSession::new(track, TimingWindows::default(), ScoreConfig::default())
+    }
+
+    fn tap(time_s: f64, lane: Lane) -> NoteEvent {
+        NoteEvent::tap(time_s, LaneSet::single(lane))
+    }
+
+    fn hopo(time_s: f64, lane: Lane) -> NoteEvent {
+        NoteEvent {
+            time_s,
+            lanes: LaneSet::single(lane),
+            sustain_s: 0.0,
+            kind: NoteKind::Hopo,
+        }
+    }
+
+    /// Press a fret and strum at the given time.
+    fn play(session: &mut TrackSession, time_s: f64, lane: Lane) -> Vec<SessionEvent> {
+        let mut events = input(session, time_s, InputKind::FretDown(lane));
+        events.extend(input(session, time_s, InputKind::Strum));
+        events
+    }
+
+    /// A track played by the strum-grace rule.
+    fn graced(events: Vec<NoteEvent>, grace_s: f64) -> TrackSession {
+        session(track(events).with_strum_grace(grace_s))
+    }
+
+    fn input(session: &mut TrackSession, time_s: f64, kind: InputKind) -> Vec<SessionEvent> {
+        let mut events = Vec::new();
+        session.handle(GameInput { time_s, kind }, &mut events);
+        events
+    }
+
+    fn overstrums(events: &[SessionEvent]) -> usize {
+        events
+            .iter()
+            .filter(|e| matches!(e, SessionEvent::Overstrum))
+            .count()
+    }
+
+    /// ⚠️ The ingredient itself: strum first, fret a moment later —
+    /// the order a hand really moves in on a fast change — and it is
+    /// the note's strum, judged where the PICK landed.
+    #[test]
+    fn a_fret_that_follows_the_strum_within_the_grace_hits_the_note() {
+        let mut s = graced(vec![tap(1.0, Lane::Two)], 0.06);
+        input(&mut s, 0.9, InputKind::FretDown(Lane::One));
+        let strummed = input(&mut s, 1.0, InputKind::Strum);
+        assert!(
+            strummed.is_empty(),
+            "the strum was judged on the spot: {strummed:?}"
+        );
+        let fretted = input(&mut s, 1.04, InputKind::FretDown(Lane::Two));
+        assert!(
+            matches!(
+                fretted.as_slice(),
+                [SessionEvent::NoteHit {
+                    event_index: 0,
+                    judgment: Judgment::Perfect,
+                    offset_s,
+                }] if offset_s.abs() < 1e-12
+            ),
+            "{fretted:?}"
+        );
+        assert_eq!(s.performance().overstrums(), 0);
+        assert_eq!(s.performance().streak(), 1);
+    }
+
+    /// The same inputs on a track without the rule: the overstrum it
+    /// has always been, on the spot. Every chart that does not ask
+    /// for the grace plays exactly as before.
+    #[test]
+    fn without_the_grace_the_same_strum_is_an_overstrum_on_the_spot() {
+        let mut s = session(track(vec![tap(1.0, Lane::Two)]));
+        input(&mut s, 0.9, InputKind::FretDown(Lane::One));
+        let strummed = input(&mut s, 1.0, InputKind::Strum);
+        assert_eq!(overstrums(&strummed), 1);
+        input(&mut s, 1.04, InputKind::FretDown(Lane::Two));
+        assert_eq!(s.note_state(0), Some(NoteState::Pending));
+    }
+
+    /// A fret that comes too late leaves the overstrum it was — charged
+    /// when the grace ends, and the note is still there to be played.
+    #[test]
+    fn a_fret_after_the_grace_leaves_the_overstrum() {
+        let mut s = graced(vec![tap(1.0, Lane::Two)], 0.06);
+        input(&mut s, 0.9, InputKind::FretDown(Lane::One));
+        input(&mut s, 1.0, InputKind::Strum);
+        let late = input(&mut s, 1.07, InputKind::FretDown(Lane::Two));
+        assert_eq!(overstrums(&late), 1, "{late:?}");
+        assert!(
+            !late
+                .iter()
+                .any(|e| matches!(e, SessionEvent::NoteHit { .. })),
+            "the expired strum still hit: {late:?}"
+        );
+        assert_eq!(s.note_state(0), Some(NoteState::Pending));
+        // And a real strum now takes it.
+        let again = input(&mut s, 1.08, InputKind::Strum);
+        assert!(matches!(again.as_slice(), [SessionEvent::NoteHit { .. }]));
+    }
+
+    /// The grace ends with time, not only with the next input: a held
+    /// strum nobody answers becomes an overstrum as the clock passes.
+    #[test]
+    fn an_unanswered_strum_expires_with_the_clock() {
+        let mut s = graced(vec![tap(1.0, Lane::Two)], 0.06);
+        input(&mut s, 0.9, InputKind::FretDown(Lane::One));
+        input(&mut s, 1.0, InputKind::Strum);
+        let mut events = Vec::new();
+        s.advance(1.05, &mut events);
+        assert_eq!(overstrums(&events), 0, "expired early: {events:?}");
+        s.advance(1.061, &mut events);
+        assert_eq!(overstrums(&events), 1, "never expired: {events:?}");
+        assert_eq!(s.performance().overstrums(), 1);
+    }
+
+    /// Inclusive: a fret exactly at the end of the grace still counts.
+    #[test]
+    fn a_fret_exactly_at_the_end_of_the_grace_counts() {
+        let mut s = graced(vec![tap(1.0, Lane::Two)], 0.0625);
+        input(&mut s, 0.9, InputKind::FretDown(Lane::One));
+        input(&mut s, 1.0, InputKind::Strum);
+        let edge = input(&mut s, 1.0625, InputKind::FretDown(Lane::Two));
+        assert!(
+            matches!(edge.as_slice(), [SessionEvent::NoteHit { .. }]),
+            "{edge:?}"
+        );
+    }
+
+    /// Only a strum with a note in its window is held. A strum into
+    /// nothing is not a fret that is late — there is nothing it could
+    /// be for.
+    #[test]
+    fn a_strum_with_no_note_in_its_window_is_never_held() {
+        let mut s = graced(vec![tap(1.0, Lane::Two)], 0.06);
+        input(&mut s, 0.4, InputKind::FretDown(Lane::Two));
+        let early = input(&mut s, 0.5, InputKind::Strum);
+        assert_eq!(overstrums(&early), 1, "{early:?}");
+    }
+
+    /// ⚠️ A late strum waits for a note whose window is closing. The
+    /// miss must wait with it, or the grace could never help the late
+    /// half of a window — the note would be missed before the fret
+    /// that rescues it is even read.
+    #[test]
+    fn a_late_strum_holds_the_note_it_waits_for() {
+        let mut s = graced(vec![tap(1.0, Lane::Two)], 0.06);
+        input(&mut s, 0.9, InputKind::FretDown(Lane::One));
+        input(&mut s, 1.09, InputKind::Strum);
+        let fretted = input(&mut s, 1.13, InputKind::FretDown(Lane::Two));
+        assert!(
+            matches!(
+                fretted.as_slice(),
+                [SessionEvent::NoteHit { judgment: Judgment::Good, offset_s, .. }]
+                    if (offset_s - 0.09).abs() < 1e-9
+            ),
+            "the note was missed while its strum waited: {fretted:?}"
+        );
+        // And once the strum is spent, misses resume as ever.
+        let mut s = graced(vec![tap(1.0, Lane::Two)], 0.06);
+        input(&mut s, 0.9, InputKind::FretDown(Lane::One));
+        input(&mut s, 1.09, InputKind::Strum);
+        let mut events = Vec::new();
+        s.advance(1.3, &mut events);
+        assert_eq!(overstrums(&events), 1);
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, SessionEvent::NoteMissed { event_index: 0 })),
+            "{events:?}"
+        );
+    }
+
+    /// Two strums before any fret: one fretting, two picks — the first
+    /// is the extra one. The second is held in its place.
+    #[test]
+    fn a_second_strum_before_the_fret_makes_the_first_an_overstrum() {
+        let mut s = graced(vec![tap(1.0, Lane::Two)], 0.06);
+        input(&mut s, 0.9, InputKind::FretDown(Lane::One));
+        input(&mut s, 0.99, InputKind::Strum);
+        let second = input(&mut s, 1.01, InputKind::Strum);
+        assert_eq!(overstrums(&second), 1, "{second:?}");
+        let fretted = input(&mut s, 1.03, InputKind::FretDown(Lane::Two));
+        assert!(
+            matches!(fretted.as_slice(), [SessionEvent::NoteHit { offset_s, .. }]
+                if (offset_s - 0.01).abs() < 1e-9),
+            "the second strum was not the one held: {fretted:?}"
+        );
+    }
+
+    /// A chord waits for its whole shape: the first fret alone matches
+    /// nothing, the second completes it.
+    #[test]
+    fn a_chord_waits_for_its_last_fret() {
+        let chord = NoteEvent::tap(1.0, LaneSet::from_lanes([Lane::One, Lane::Three]));
+        let mut s = graced(vec![chord], 0.06);
+        input(&mut s, 0.9, InputKind::FretDown(Lane::One));
+        assert!(input(&mut s, 1.0, InputKind::Strum).is_empty());
+        assert!(
+            input(&mut s, 1.02, InputKind::FretDown(Lane::Three))
+                .iter()
+                .any(|e| matches!(e, SessionEvent::NoteHit { .. }))
+        );
+        assert_eq!(s.performance().overstrums(), 0);
+    }
+
+    /// A release can be the correction too: the wrong higher fret
+    /// lifted, the right one under it exposed.
+    #[test]
+    fn lifting_the_wrong_fret_resolves_the_held_strum() {
+        let mut s = graced(vec![tap(1.0, Lane::Two)], 0.06);
+        input(&mut s, 0.9, InputKind::FretDown(Lane::Two));
+        input(&mut s, 0.9, InputKind::FretDown(Lane::Four));
+        assert!(input(&mut s, 1.0, InputKind::Strum).is_empty());
+        let lifted = input(&mut s, 1.03, InputKind::FretUp(Lane::Four));
+        assert!(
+            matches!(lifted.as_slice(), [SessionEvent::NoteHit { .. }]),
+            "{lifted:?}"
+        );
+    }
+
+    /// ⚠️ A held strum answered on a hammer-on is ONE hit: the pick
+    /// and the fret were one motion, in the other order. The absorb
+    /// marker a fretted hammer-on arms must not be armed as well, or a
+    /// second, genuinely extra strum would be forgiven.
+    #[test]
+    fn a_held_strum_answered_by_a_hammer_on_does_not_forgive_another() {
+        let mut s = graced(vec![tap(0.5, Lane::One), hopo(1.0, Lane::Two)], 0.06);
+        play(&mut s, 0.5, Lane::One);
+        input(&mut s, 0.6, InputKind::FretUp(Lane::One));
+        input(&mut s, 0.95, InputKind::FretDown(Lane::Three));
+        assert!(input(&mut s, 1.0, InputKind::Strum).is_empty());
+        input(&mut s, 1.0, InputKind::FretUp(Lane::Three));
+        let hammered = input(&mut s, 1.02, InputKind::FretDown(Lane::Two));
+        assert!(
+            hammered
+                .iter()
+                .any(|e| matches!(e, SessionEvent::NoteHit { event_index: 1, .. })),
+            "{hammered:?}"
+        );
+        assert_eq!(s.performance().overstrums(), 0);
+        let extra = input(&mut s, 1.05, InputKind::Strum);
+        assert_eq!(
+            overstrums(&extra),
+            1,
+            "a second strum was forgiven: {extra:?}"
+        );
+    }
+
+    /// Rewinding (the practice loop) drops a held strum: it belongs to
+    /// a moment that is being replayed.
+    #[test]
+    fn a_rewind_drops_the_held_strum() {
+        let mut s = graced(vec![tap(1.0, Lane::Two)], 0.06);
+        input(&mut s, 0.9, InputKind::FretDown(Lane::One));
+        input(&mut s, 1.0, InputKind::Strum);
+        s.rewind_to(0.5);
+        let mut events = Vec::new();
+        s.advance(1.2, &mut events);
+        assert_eq!(
+            overstrums(&events),
+            0,
+            "the rewound strum came back: {events:?}"
+        );
+    }
+
+    /// The grace a track may carry is bounded and never negative, and
+    /// nonsense switches it off rather than guessing.
+    #[test]
+    fn the_grace_is_clamped_into_its_range() {
+        let t = || track(vec![tap(1.0, Lane::One)]);
+        assert_eq!(t().strum_grace_s(), 0.0);
+        assert_eq!(t().with_strum_grace(0.06).strum_grace_s(), 0.06);
+        assert_eq!(
+            t().with_strum_grace(5.0).strum_grace_s(),
+            Track::MAX_STRUM_GRACE_S
+        );
+        assert_eq!(t().with_strum_grace(-1.0).strum_grace_s(), 0.0);
+        assert_eq!(t().with_strum_grace(f64::NAN).strum_grace_s(), 0.0);
     }
 }

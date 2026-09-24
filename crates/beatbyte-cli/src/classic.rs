@@ -1,6 +1,9 @@
-//! `classic`: apply one classic ingredient to a song folder.
+//! `classic`: apply classic ingredients to a song folder.
 //!
-//! The ingredient is written as a NEW version beside the active one,
+//! Which ingredients is the `--with` list ([`classic::Recipe::parse`]);
+//! without it, the recipe that has been through a blind test.
+//!
+//! The ingredients are written as a NEW version beside the active one,
 //! with the active one as its parent, and the pointer is moved. That
 //! is what makes the blind test (`T` in the browser) usable: it plays
 //! the active version against its parent, so after this the two sides
@@ -34,16 +37,13 @@ const BACKUP_DIR: &str = "local/classic-backup";
 /// Who a classic version says wrote it.
 const DESIGNER: &str = "classic";
 
-/// Which ingredient this version carries.
-const HOPO_DIRECTIVE: &str = "classic-hopo";
-
 /// What a run that would write is told while the game is up.
 const GAME_RUNNING: &str = "BeatByte is running — a chart swapped under a live browser breaks every \
      Enter on that song until a rescan. Quit the game first.";
 
-/// Apply the HOPO ingredient to one song folder.
-pub fn run(folder: &Path, dry_run: bool) -> ExitCode {
-    match one(folder, dry_run) {
+/// Apply the recipe to one song folder.
+pub fn run(folder: &Path, dry_run: bool, recipe: classic::Recipe) -> ExitCode {
+    match one(folder, dry_run, recipe) {
         Ok(report) => {
             println!("{report}");
             ExitCode::SUCCESS
@@ -56,7 +56,7 @@ pub fn run(folder: &Path, dry_run: bool) -> ExitCode {
 }
 
 /// Apply it to every song folder under `dir`.
-pub fn run_all(dir: &Path, dry_run: bool) -> ExitCode {
+pub fn run_all(dir: &Path, dry_run: bool, recipe: classic::Recipe) -> ExitCode {
     let mut folders: Vec<PathBuf> = match std::fs::read_dir(dir) {
         Ok(entries) => entries
             .filter_map(Result::ok)
@@ -71,7 +71,7 @@ pub fn run_all(dir: &Path, dry_run: bool) -> ExitCode {
     folders.sort();
     let (mut done, mut failed) = (0usize, 0usize);
     for folder in folders {
-        match one(&folder, dry_run) {
+        match one(&folder, dry_run, recipe) {
             Ok(report) => {
                 println!("{report}");
                 done += 1;
@@ -91,8 +91,8 @@ pub fn run_all(dir: &Path, dry_run: bool) -> ExitCode {
 }
 
 /// Write the `[CL]` twin of one song folder.
-pub fn run_twin(folder: &Path, dry_run: bool) -> ExitCode {
-    match one_twin(folder, dry_run) {
+pub fn run_twin(folder: &Path, dry_run: bool, recipe: classic::Recipe) -> ExitCode {
+    match one_twin(folder, dry_run, recipe) {
         Ok(report) => {
             println!("{report}");
             ExitCode::SUCCESS
@@ -112,7 +112,7 @@ pub fn run_twin(folder: &Path, dry_run: bool) -> ExitCode {
 /// is wasted work and a confusing report. Study twins are NOT
 /// skipped: the classic rules applied to a study chart is the
 /// combination this library is mostly played on.
-pub fn run_twin_all(dir: &Path, dry_run: bool) -> ExitCode {
+pub fn run_twin_all(dir: &Path, dry_run: bool, recipe: classic::Recipe) -> ExitCode {
     let mut folders: Vec<PathBuf> = match std::fs::read_dir(dir) {
         Ok(entries) => entries
             .filter_map(Result::ok)
@@ -132,7 +132,7 @@ pub fn run_twin_all(dir: &Path, dry_run: bool) -> ExitCode {
     folders.sort();
     let (mut yes, mut skipped, mut failed) = (0usize, 0usize, 0usize);
     for folder in folders {
-        match one_twin(&folder, dry_run) {
+        match one_twin(&folder, dry_run, recipe) {
             Ok(report) => {
                 println!("{report}");
                 // ⚠️ Counted on the OUTCOME, not on a word in the
@@ -165,7 +165,7 @@ pub fn run_twin_all(dir: &Path, dry_run: bool) -> ExitCode {
 }
 
 /// One folder's twin, reported the way the version path reports.
-fn one_twin(folder: &Path, dry_run: bool) -> Result<String, String> {
+fn one_twin(folder: &Path, dry_run: bool, recipe: classic::Recipe) -> Result<String, String> {
     if !dry_run && game_is_running() {
         return Err(GAME_RUNNING.to_owned());
     }
@@ -174,7 +174,7 @@ fn one_twin(folder: &Path, dry_run: bool) -> Result<String, String> {
         |n| n.to_string_lossy().into_owned(),
     );
     if dry_run {
-        let Some((before, after, window)) = preview(folder)? else {
+        let Some((before, after, window, rules)) = preview(folder, recipe)? else {
             return Ok(format!("{name}: no twin — legacy layout"));
         };
         let changed = changed_in_window(&before, &after, WINDOW_DIFFICULTY, window);
@@ -194,7 +194,7 @@ fn one_twin(folder: &Path, dry_run: bool) -> Result<String, String> {
         // playing the same notes. Without this the four folders that
         // already carry the ingredient were reported as "would
         // write … 0 in the window".
-        if per_count.iter().all(|(_, n)| *n == 0) {
+        if !rules && per_count.iter().all(|(_, n)| *n == 0) {
             return Ok(format!(
                 "{name}: no twin — the chart already plays by these rules"
             ));
@@ -204,19 +204,22 @@ fn one_twin(folder: &Path, dry_run: bool) -> Result<String, String> {
             .map(|(id, n)| format!("{id} {n}"))
             .collect();
         return Ok(format!(
-            "{name}: would write `{}` — {} in the window, {}",
+            "{name}: would write `{}` [{}] — {} in the window, {}{}",
             twin::folder_for(folder, classic::KIND)
                 .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
                 .unwrap_or_else(|| "?".to_owned()),
+            recipe.directive(),
             changed,
-            per.join(", ")
+            per.join(", "),
+            rule_note(rules),
         ));
     }
-    match classic::write_twin(folder, classic::Recipe::default())? {
+    match classic::write_twin(folder, recipe)? {
         classic::Outcome::Written {
             folder: out,
             title,
             changed,
+            rules,
             sidecar,
         } => {
             let per: Vec<String> = changed.iter().map(|(id, n)| format!("{id} {n}")).collect();
@@ -226,12 +229,14 @@ fn one_twin(folder: &Path, dry_run: bool) -> Result<String, String> {
                 " (no current sidecar to carry)"
             };
             Ok(format!(
-                "{name}: wrote `{}` as \"{title}\"{note} — re-flagged {}",
+                "{name}: wrote `{}` as \"{title}\" [{}]{note} — notes changed {}{}",
                 out.file_name().map_or_else(
                     || out.display().to_string(),
                     |n| n.to_string_lossy().into_owned()
                 ),
-                per.join(", ")
+                recipe.directive(),
+                per.join(", "),
+                rule_note(rules),
             ))
         }
         classic::Outcome::AlreadyThere(out) => Ok(format!(
@@ -245,15 +250,25 @@ fn one_twin(folder: &Path, dry_run: bool) -> Result<String, String> {
     }
 }
 
-/// The active chart, the same chart with the recipe applied, and the
-/// window the blind test plays. `None` for a folder with no chart to
-/// start from.
-type Preview = Option<(ChartFile, ChartFile, (f64, f64))>;
+/// The active chart, the same chart with the recipe applied, the
+/// window the blind test plays, and whether the judgment rules
+/// changed. `None` for a folder with no chart to start from.
+type Preview = Option<(ChartFile, ChartFile, (f64, f64), bool)>;
+
+/// What a report says about a rule the recipe added — a rule changes
+/// no note, so the counts alone would call such a run a no-op.
+fn rule_note(rules: bool) -> String {
+    if rules {
+        format!("; rule: strum grace {} ms", classic::STRUM_GRACE_MS)
+    } else {
+        String::new()
+    }
+}
 
 /// The active chart, the same chart with the recipe applied, and the
 /// window the blind test plays — everything a dry run reports from,
 /// and nothing written.
-fn preview(folder: &Path) -> Result<Preview, String> {
+fn preview(folder: &Path, recipe: classic::Recipe) -> Result<Preview, String> {
     let names = twin::names_in(folder)?;
     if !names.iter().any(|n| n == versions::BASE_CHART) {
         return Ok(None);
@@ -263,15 +278,18 @@ fn preview(folder: &Path) -> Result<Preview, String> {
     let before = load_chart_file(&folder.join(&active_name))
         .map_err(|error| format!("cannot load {active_name}: {error}"))?;
     let mut after = before.clone();
-    classic::apply(&mut after, classic::Recipe::default());
+    let changes = classic::apply(&mut after, recipe);
     let window = before.preview_window(WINDOW_DIFFICULTY, WINDOW_S);
-    Ok(Some((before, after, window)))
+    Ok(Some((before, after, window, changes.rules)))
 }
 
-/// How many notes inside `window` carry a different flag.
+/// How many notes inside `window` differ: removed, added, or on the
+/// same moment and fret with another flag or length.
 ///
-/// Pure — tested. The two charts must be the same notes in the same
-/// order, which is what the ingredient guarantees.
+/// Pure — tested. ⚠️ It compares NOTES by moment and fret, not by
+/// position in the list: an ingredient that removes notes shifts
+/// every index after the first removal, and a positional comparison
+/// would call the whole rest of the song changed.
 #[must_use]
 pub fn changed_in_window(
     before: &ChartFile,
@@ -279,23 +297,36 @@ pub fn changed_in_window(
     difficulty: Difficulty,
     window: (f64, f64),
 ) -> usize {
-    let notes = |chart: &ChartFile| {
+    use std::collections::BTreeMap;
+    // Keyed to the microsecond: a float round-trip moves a time by
+    // far less, and two notes a microsecond apart are one chord to
+    // the engine anyway.
+    let notes = |chart: &ChartFile| -> BTreeMap<(i64, u8), (bool, i64)> {
         chart
             .charts
             .iter()
             .find(|c| c.difficulty == difficulty)
-            .map(|c| c.notes.clone())
+            .map(|c| {
+                c.notes
+                    .iter()
+                    .filter(|n| n.time >= window.0 && n.time < window.1)
+                    .map(|n| {
+                        (
+                            ((n.time * 1e6).round() as i64, n.lane),
+                            (n.hopo, (n.len * 1e6).round() as i64),
+                        )
+                    })
+                    .collect()
+            })
             .unwrap_or_default()
     };
     let (old, new) = (notes(before), notes(after));
-    old.iter()
-        .zip(&new)
-        .filter(|(a, b)| a.hopo != b.hopo)
-        .filter(|(a, _)| a.time >= window.0 && a.time < window.1)
-        .count()
+    let changed_or_removed = old.iter().filter(|(k, v)| new.get(k) != Some(v)).count();
+    let added = new.keys().filter(|k| !old.contains_key(k)).count();
+    changed_or_removed + added
 }
 
-fn one(folder: &Path, dry_run: bool) -> Result<String, String> {
+fn one(folder: &Path, dry_run: bool, recipe: classic::Recipe) -> Result<String, String> {
     if !dry_run && game_is_running() {
         return Err(GAME_RUNNING.to_owned());
     }
@@ -313,8 +344,12 @@ fn one(folder: &Path, dry_run: bool) -> Result<String, String> {
     let before = load_chart_file(&active_path)
         .map_err(|error| format!("cannot load `{active_name}`: {error}"))?;
 
+    if recipe.names().is_empty() {
+        return Err("no ingredients: a new version would be a copy".to_owned());
+    }
     let mut after = before.clone();
-    let changed = classic::apply_hopo_rule(&mut after);
+    let changes = classic::apply(&mut after, recipe);
+    let changed = &changes.notes;
     // ⚠️ The new version says where it came from. Copied unchanged,
     // the twin's own provenance would have this file claiming to be
     // a guitar study of the ORIGINAL song's chart — it is a classic
@@ -326,7 +361,7 @@ fn one(folder: &Path, dry_run: bool) -> Result<String, String> {
         created_ms: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(0)),
-        directive: Some(HOPO_DIRECTIVE.to_owned()),
+        directive: Some(recipe.directive()),
     });
     let window = before.preview_window(WINDOW_DIFFICULTY, WINDOW_S);
     let in_window = changed_in_window(&before, &after, WINDOW_DIFFICULTY, window);
@@ -336,21 +371,23 @@ fn one(folder: &Path, dry_run: bool) -> Result<String, String> {
         .iter()
         .map(|(difficulty, n)| format!("{} {n}", difficulty.id()))
         .collect();
-    let total: usize = changed.iter().map(|(_, n)| *n).sum();
+    let total = changes.total_notes();
     let head = format!(
-        "{title} [{active_name}] {} BPM — {} flag(s): {}; {in_window} in the test window \
-         {:.1}–{:.1}s ({})",
+        "{title} [{active_name}] {} BPM, {} — {} note(s) changed: {}; {in_window} in the test \
+         window {:.1}–{:.1}s ({}){}",
         before.song.bpm,
+        recipe.directive(),
         total,
         per_difficulty.join(", "),
         window.0,
         window.1,
-        WINDOW_DIFFICULTY.id()
+        WINDOW_DIFFICULTY.id(),
+        rule_note(changes.rules),
     );
     if dry_run {
         return Ok(format!("{head} — dry run, nothing written"));
     }
-    if total == 0 {
+    if changes.is_empty() {
         return Ok(format!("{head} — nothing to change, nothing written"));
     }
 
@@ -468,6 +505,33 @@ mod tests {
         assert_eq!(
             changed_in_window(&before, &before, Difficulty::Hard, (0.0, 100.0)),
             0
+        );
+    }
+
+    /// ⚠️ An ingredient that REMOVES notes shifts every index after
+    /// the first removal. A positional comparison would call the whole
+    /// rest of the song changed; this one counts the removed note and
+    /// nothing else.
+    #[test]
+    fn a_removed_note_is_one_change_not_the_rest_of_the_song() {
+        let before = chart(&[(1.0, false), (2.0, false), (3.0, false), (4.0, false)]);
+        let mut after = before.clone();
+        after.charts[0].notes.remove(1);
+        assert_eq!(
+            changed_in_window(&before, &after, Difficulty::Hard, (0.0, 30.0)),
+            1
+        );
+        // And an added one is one as well.
+        assert_eq!(
+            changed_in_window(&after, &before, Difficulty::Hard, (0.0, 30.0)),
+            1
+        );
+        // A note moved to another fret is its removal and its arrival.
+        let mut moved = before.clone();
+        moved.charts[0].notes[2].lane = 4;
+        assert_eq!(
+            changed_in_window(&before, &moved, Difficulty::Hard, (0.0, 30.0)),
+            2
         );
     }
 

@@ -36,6 +36,15 @@ Chords score per lane (a 3-lane Perfect chord = 150 base points).
   in tap mode) is that note's strum, absorbed once, never an overstrum.
   A miss or an overstrum kills the chain; a HOPO hit by fretting keeps
   it alive for the next one.
+- **Strum grace** (only on charts that ask for it — the classic
+  `[CL]` twins carry 60 ms): a strum that lands while a note is in its
+  window but under the wrong fret is *held* rather than punished. If
+  the fret comes right within the grace, it is that note's strum,
+  judged at the moment the pick landed; if not, it is the overstrum it
+  always was, charged when the grace ends. A strum with no note in its
+  window is never held, and a note a held strum is waiting for is not
+  missed while it waits. Two strums before the fret: the first is the
+  overstrum.
 - **Note skipping**: aiming past a note hits the matching later note;
   the skipped one misses when its window expires.
 

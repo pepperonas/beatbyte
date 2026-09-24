@@ -99,9 +99,26 @@ pub struct Track {
     pub tempo: TempoMap,
     events: Vec<NoteEvent>,
     phrases: Vec<Phrase>,
+    /// How long a strum that finds its note under the wrong fret
+    /// waits for the fret to follow ([`Track::with_strum_grace`]).
+    /// Zero — the default, and every chart that does not ask — is the
+    /// rule BeatByte has always played by: judged on the spot.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    strum_grace_s: f64,
+}
+
+// serde's `skip_serializing_if` takes a reference.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(value: &f64) -> bool {
+    *value == 0.0
 }
 
 impl Track {
+    /// The longest strum grace a track may carry. The early guitar
+    /// games gave a strum about 60 ms to find its fret; this bound
+    /// keeps a chart from turning the rule into a second hit window.
+    pub const MAX_STRUM_GRACE_S: f64 = 0.1;
+
     /// Minimum spacing between two events, in seconds. Events closer
     /// than this are considered simultaneous and rejected.
     pub const MIN_EVENT_SPACING_S: f64 = 1e-6;
@@ -162,7 +179,30 @@ impl Track {
             tempo,
             events,
             phrases,
+            strum_grace_s: 0.0,
         })
+    }
+
+    /// The same track, played by the strum-grace rule: a strum that
+    /// lands while a note is in its window but the frets are wrong is
+    /// held for up to `grace_s`, and counts as that note's strum if
+    /// the fret follows in time. Anything outside
+    /// `0..=`[`Track::MAX_STRUM_GRACE_S`] (or not finite) is clamped
+    /// into it — zero switches the rule off.
+    #[must_use]
+    pub fn with_strum_grace(mut self, grace_s: f64) -> Track {
+        self.strum_grace_s = if grace_s.is_finite() {
+            grace_s.clamp(0.0, Self::MAX_STRUM_GRACE_S)
+        } else {
+            0.0
+        };
+        self
+    }
+
+    /// How long a strum waits for its fret (zero: not at all).
+    #[must_use]
+    pub fn strum_grace_s(&self) -> f64 {
+        self.strum_grace_s
     }
 
     /// The note events, sorted by time.

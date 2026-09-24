@@ -38,6 +38,55 @@ pub struct ChartFile {
     /// tracked grid is a different chart to play against.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub grid: Option<crate::grid::BeatGrid>,
+    /// How the engine judges this chart where it differs from the
+    /// default ([`Rules`]). `None` on every chart that plays by the
+    /// rules BeatByte has always used. Content, not metadata:
+    /// [`chart_hash`] sees it — the same notes under a different rule
+    /// are a different thing to play, and a session recorded under
+    /// one must not be read as evidence about the other.
+    #[serde(default, skip_serializing_if = "plays_by_default")]
+    pub rules: Option<Rules>,
+}
+
+/// Judgment rules a chart asks for.
+///
+/// Each field's zero value is the default rule, so an empty `Rules`
+/// plays exactly like no `Rules` at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Rules {
+    /// How long a strum that lands under the wrong fret waits for the
+    /// fret to follow, in milliseconds (`0`: judged on the spot). The
+    /// early guitar games gave it about 60; the bound is
+    /// [`Rules::MAX_STRUM_GRACE_MS`].
+    #[serde(default, skip_serializing_if = "is_zero_ms")]
+    pub strum_grace_ms: u16,
+}
+
+/// No rules, or rules that ask for nothing: either way the default
+/// game, and serialized as nothing — so a chart that gains an empty
+/// rule set keeps its hash and every session recorded against it.
+#[allow(clippy::ref_option)] // serde's `skip_serializing_if` takes a reference.
+fn plays_by_default(rules: &Option<Rules>) -> bool {
+    rules.is_none_or(|rules| rules == Rules::default())
+}
+
+// serde's `skip_serializing_if` takes a reference.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_ms(value: &u16) -> bool {
+    *value == 0
+}
+
+impl Rules {
+    /// The longest strum grace a chart may ask for — the engine's own
+    /// bound ([`beatbyte_core::Track::MAX_STRUM_GRACE_S`]) in
+    /// milliseconds, so a file cannot promise what the engine clamps.
+    pub const MAX_STRUM_GRACE_MS: u16 = 100;
+
+    /// The strum grace in seconds.
+    #[must_use]
+    pub fn strum_grace_s(self) -> f64 {
+        f64::from(self.strum_grace_ms) / 1000.0
+    }
 }
 
 impl ChartFile {
@@ -481,6 +530,7 @@ mod hash_tests {
             provenance: None,
             audio_trim: None,
             grid: None,
+            rules: None,
         }
     }
 

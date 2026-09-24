@@ -1114,6 +1114,7 @@ mod store_tests {
                     provenance: None,
                     audio_trim: None,
                     grid: None,
+                    rules: None,
                 },
                 audio: crate::boot::SongAudio::File(std::path::PathBuf::from("maria.mp3")),
                 lyrics: None,

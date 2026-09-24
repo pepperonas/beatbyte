@@ -191,6 +191,22 @@ impl ChartFile {
             }
         }
 
+        // Judgment rules — a file must not promise what the engine
+        // would silently clamp.
+        if let Some(rules) = self.rules
+            && rules.strum_grace_ms > crate::schema::Rules::MAX_STRUM_GRACE_MS
+        {
+            err(
+                &mut issues,
+                "rules.strum_grace_ms",
+                format!(
+                    "{} ms out of range (0..={})",
+                    rules.strum_grace_ms,
+                    crate::schema::Rules::MAX_STRUM_GRACE_MS
+                ),
+            );
+        }
+
         // Charts.
         if self.charts.is_empty() {
             err(
@@ -455,6 +471,7 @@ mod tests {
             provenance: None,
             audio_trim: None,
             grid: None,
+            rules: None,
         }
     }
 
@@ -495,6 +512,35 @@ mod tests {
             .into_iter()
             .filter(|i| i.severity == Severity::Error)
             .collect()
+    }
+
+    /// A chart may ask for a strum grace, but only one the engine
+    /// honours as written — a larger one would be clamped silently,
+    /// and the file would claim a rule the game does not play.
+    #[test]
+    fn a_strum_grace_is_validated_against_the_engine_bound() {
+        use crate::schema::Rules;
+        let mut chart = valid_chart();
+        chart.rules = Some(Rules {
+            strum_grace_ms: Rules::MAX_STRUM_GRACE_MS,
+        });
+        assert!(errors(&chart).is_empty(), "the bound itself was rejected");
+        chart.rules = Some(Rules {
+            strum_grace_ms: Rules::MAX_STRUM_GRACE_MS + 1,
+        });
+        assert!(
+            errors(&chart)
+                .iter()
+                .any(|i| i.location == "rules.strum_grace_ms"),
+            "a grace past the bound passed"
+        );
+        // The two bounds are one number in two units.
+        assert!(
+            (f64::from(Rules::MAX_STRUM_GRACE_MS) / 1000.0
+                - beatbyte_core::Track::MAX_STRUM_GRACE_S)
+                .abs()
+                < 1e-12
+        );
     }
 
     #[test]

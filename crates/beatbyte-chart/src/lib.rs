@@ -61,7 +61,7 @@ pub use lyrics::{
     LyricCue, LyricLine, LyricWord, Lyrics, cue_at, lyrics_beside, parse_lrc, word_progress,
 };
 pub use schema::{
-    AudioTrim, ChartDef, ChartFile, ChartNote, ChartPhrase, Provenance, SongMeta, chart_hash,
+    AudioTrim, ChartDef, ChartFile, ChartNote, ChartPhrase, Provenance, Rules, SongMeta, chart_hash,
 };
 pub use validate::{Issue, Severity};
 pub use vocals::{

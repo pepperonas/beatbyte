@@ -14,8 +14,14 @@
 //! chart is a work.
 //!
 //! The ingredients are meant to be switched on one at a time, in the
-//! order they were measured to matter. This module carries the
-//! first.
+//! order they were measured to matter, and each has its own flag in
+//! the [`Recipe`]:
+//!
+//! - **`hopo`** (K1) — the hammer-on threshold in beats, not seconds;
+//! - **`strum`** (K2) — a strum under the wrong fret waits
+//!   [`STRUM_GRACE_MS`] for the fret to follow. The only ingredient
+//!   that touches no note: it is a judgment rule the chart carries
+//!   ([`crate::schema::Rules`]).
 
 use std::path::{Path, PathBuf};
 
@@ -44,6 +50,18 @@ pub const KIND: twin::Kind = twin::Kind::Classic;
 /// faster are hammered, straight eighths are strummed, at every
 /// tempo.
 pub const HOPO_BEATS: f64 = 170.0 / 480.0;
+
+/// How long a strum under the wrong fret waits for the fret, in the
+/// early games' engine: about 60 ms, then the note is judged.
+///
+/// ⚠️ A rule, not a window. The hit window stays ±100 ms either way;
+/// what this changes is the ORDER the hand may move in — pick first,
+/// fret a moment later, the natural motion on a fast change. Measured
+/// before it was built, read-only, from the recorded sessions: on
+/// Hard, 18 of 139 overstrums showed exactly that pattern. Four
+/// sessions out of 144 recorded the individual presses, so the number
+/// is thin; the blind test decides, not it.
+pub const STRUM_GRACE_MS: u16 = 60;
 
 /// The beat ruler a chart carries, lifted out so the flags can be
 /// rewritten while it is read.
@@ -185,6 +203,19 @@ pub fn apply_hopo_rule(chart: &mut ChartFile) -> Vec<(Difficulty, usize)> {
         .collect()
 }
 
+/// Give the chart the strum-grace rule ([`STRUM_GRACE_MS`]). Returns
+/// whether its rules changed. Every other rule the chart carries is
+/// kept as it was.
+pub fn apply_strum_rule(chart: &mut ChartFile) -> bool {
+    let mut rules = chart.rules.unwrap_or_default();
+    if rules.strum_grace_ms == STRUM_GRACE_MS {
+        return false;
+    }
+    rules.strum_grace_ms = STRUM_GRACE_MS;
+    chart.rules = Some(rules);
+    true
+}
+
 /// Which ingredients a twin carries.
 ///
 /// One flag per ingredient, and the directive it writes names them,
@@ -193,23 +224,46 @@ pub fn apply_hopo_rule(chart: &mut ChartFile) -> Vec<(Difficulty, usize)> {
 /// The programme adds ingredients here rather than changing what
 /// `hopo` means.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)] // one switch per ingredient is the point
 pub struct Recipe {
-    /// The early games' HOPO threshold: beats, not seconds.
+    /// The early games' HOPO threshold: beats, not seconds (K1).
     pub hopo: bool,
+    /// A strum under the wrong fret waits for it (K2).
+    pub strum: bool,
 }
 
 impl Default for Recipe {
     /// Everything that has been through a blind test.
     fn default() -> Recipe {
-        Recipe { hopo: true }
+        Recipe {
+            hopo: true,
+            strum: false,
+        }
     }
 }
 
 impl Recipe {
+    /// Every ingredient name the programme knows, in the order they
+    /// were measured to matter — the order [`Recipe::names`] writes
+    /// them in and [`Recipe::parse`] accepts.
+    pub const ALL: [&'static str; 2] = ["hopo", "strum"];
+
     /// Nothing at all — the recipe that must never be written.
     #[must_use]
     pub const fn none() -> Recipe {
-        Recipe { hopo: false }
+        Recipe {
+            hopo: false,
+            strum: false,
+        }
+    }
+
+    /// Every ingredient switched on.
+    #[must_use]
+    pub const fn all() -> Recipe {
+        Recipe {
+            hopo: true,
+            strum: true,
+        }
     }
 
     /// The ingredients, in the order they were measured to matter.
@@ -219,6 +273,9 @@ impl Recipe {
         if self.hopo {
             names.push("hopo");
         }
+        if self.strum {
+            names.push("strum");
+        }
         names
     }
 
@@ -227,15 +284,67 @@ impl Recipe {
     pub fn directive(self) -> String {
         format!("classic:{}", self.names().join("+"))
     }
+
+    /// A recipe from a comma-separated list of ingredient names
+    /// (`"hopo,strum"`), or `"all"`. Pure — tested.
+    ///
+    /// # Errors
+    /// On a name the programme does not know, naming the ones it does.
+    pub fn parse(text: &str) -> Result<Recipe, String> {
+        let mut recipe = Recipe::none();
+        for name in text.split(',').map(str::trim).filter(|n| !n.is_empty()) {
+            match name {
+                "all" => recipe = Recipe::all(),
+                "hopo" => recipe.hopo = true,
+                "strum" => recipe.strum = true,
+                other => {
+                    return Err(format!(
+                        "no ingredient `{other}` — known: {}, or `all`",
+                        Recipe::ALL.join(", ")
+                    ));
+                }
+            }
+        }
+        Ok(recipe)
+    }
 }
 
-/// Apply a recipe to every difficulty. Returns what each one
-/// changed, in the file's own order.
-pub fn apply(chart: &mut ChartFile, recipe: Recipe) -> Vec<(Difficulty, usize)> {
-    if !recipe.hopo {
-        return chart.charts.iter().map(|c| (c.difficulty, 0)).collect();
+/// What a recipe changed.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Changes {
+    /// `(difficulty, notes changed)` in the file's own order.
+    pub notes: Vec<(Difficulty, usize)>,
+    /// Whether the chart's judgment rules changed.
+    pub rules: bool,
+}
+
+impl Changes {
+    /// Whether nothing changed at all — the chart already plays by
+    /// the recipe.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        !self.rules && self.notes.iter().all(|(_, n)| *n == 0)
     }
-    apply_hopo_rule(chart)
+
+    /// Notes changed across every difficulty.
+    #[must_use]
+    pub fn total_notes(&self) -> usize {
+        self.notes.iter().map(|(_, n)| *n).sum()
+    }
+}
+
+/// Apply a recipe. Each ingredient that is off does nothing.
+pub fn apply(chart: &mut ChartFile, recipe: Recipe) -> Changes {
+    let mut notes: Vec<(Difficulty, usize)> =
+        chart.charts.iter().map(|c| (c.difficulty, 0)).collect();
+    if recipe.hopo {
+        for (slot, (difficulty, changed)) in notes.iter_mut().zip(apply_hopo_rule(chart)) {
+            debug_assert_eq!(slot.0, difficulty);
+            slot.1 += changed;
+        }
+    }
+    let rules = recipe.strum && apply_strum_rule(chart);
+    Changes { notes, rules }
 }
 
 /// What a twin-writing run came to.
@@ -247,8 +356,10 @@ pub enum Outcome {
         folder: PathBuf,
         /// Its title, prefix included.
         title: String,
-        /// `(difficulty id, notes re-flagged)` in chart order.
+        /// `(difficulty id, notes changed)` in chart order.
         changed: Vec<(String, usize)>,
+        /// Whether the chart's judgment rules changed.
+        rules: bool,
         /// Whether the analysis sidecar came along.
         sidecar: bool,
     },
@@ -306,7 +417,7 @@ pub fn write_twin(song_folder: &Path, recipe: Recipe) -> Result<Outcome, String>
     let mut chart = active.clone();
     chart.song.title = twin::titled(&active.song.title, KIND);
     let changed = apply(&mut chart, recipe);
-    if changed.iter().all(|(_, n)| *n == 0) {
+    if changed.is_empty() {
         return Ok(Outcome::Refused(format!(
             "{}: the chart already plays by these rules",
             active.song.title
@@ -343,9 +454,11 @@ pub fn write_twin(song_folder: &Path, recipe: Recipe) -> Result<Outcome, String>
         folder: out,
         title: chart.song.title.clone(),
         changed: changed
+            .notes
             .into_iter()
             .map(|(difficulty, n)| (difficulty.id().to_owned(), n))
             .collect(),
+        rules: changed.rules,
         sidecar,
     })
 }
@@ -421,6 +534,7 @@ mod tests {
             provenance: None,
             audio_trim: None,
             grid: None,
+            rules: None,
         };
         save_chart_file(&dir.join(versions::BASE_CHART), &chart).expect("chart");
         chart
@@ -555,7 +669,7 @@ mod tests {
         let mut chart = with_flags.clone();
         let changed = apply(&mut chart, Recipe::none());
         assert!(
-            changed.iter().all(|(_, n)| *n == 0),
+            changed.is_empty(),
             "an empty recipe reported changes: {changed:?}"
         );
         assert_eq!(
@@ -567,7 +681,7 @@ mod tests {
         // above would pass on a chart that had nothing to change.
         let mut cooked = with_flags.clone();
         let changed = apply(&mut cooked, Recipe::default());
-        assert!(changed.iter().any(|(_, n)| *n > 0), "{changed:?}");
+        assert!(!changed.is_empty(), "{changed:?}");
     }
 
     /// The directive names the ingredients, so a chart on disk says
@@ -585,6 +699,96 @@ mod tests {
             matches!(&outcome, Outcome::Refused(reason) if reason.contains("no ingredients")),
             "{outcome:?}"
         );
+    }
+
+    /// ⚠️ K2 is the one ingredient that touches no note: it is a rule
+    /// the chart carries. So its twin is the same notes, bit for bit,
+    /// with the rule added — and the engine then plays it by that rule.
+    #[test]
+    fn the_strum_ingredient_adds_the_rule_and_touches_no_note() {
+        let scratch = Scratch::new("strum");
+        let song = scratch.0.join("blondie---maria-m4a");
+        let source = a_song_folder(&song, false);
+        let recipe = Recipe {
+            strum: true,
+            ..Recipe::none()
+        };
+        let outcome = write_twin(&song, recipe).expect("written");
+        let Outcome::Written {
+            folder,
+            changed,
+            rules,
+            ..
+        } = &outcome
+        else {
+            panic!("{outcome:?}");
+        };
+        assert!(*rules, "the rule was not reported");
+        assert!(changed.iter().all(|(_, n)| *n == 0), "{changed:?}");
+        let twin = load_chart_file(&folder.join(versions::BASE_CHART)).expect("twin");
+        assert_eq!(twin.rules.map(|r| r.strum_grace_ms), Some(STRUM_GRACE_MS));
+        for (new, old) in twin.charts.iter().zip(&source.charts) {
+            assert_eq!(
+                new.notes, old.notes,
+                "a note changed under a rule-only recipe"
+            );
+        }
+        assert_eq!(
+            twin.provenance
+                .as_ref()
+                .and_then(|p| p.directive.as_deref()),
+            Some("classic:strum")
+        );
+        let track = twin.to_track(Difficulty::Hard).expect("track");
+        assert!((track.strum_grace_s() - 0.06).abs() < 1e-12);
+    }
+
+    /// A chart that already carries the rule gets no twin for it — and
+    /// a rule the chart carried for another reason survives the
+    /// ingredient rather than being replaced by a default.
+    #[test]
+    fn the_strum_rule_is_idempotent() {
+        let mut chart = ChartFile::from_json(
+            r#"{"format_version":1,"song":{"title":"T","artist":"A","audio":"a.m4a",
+                "bpm":120.0,"offset_s":0.0},
+                "charts":[{"difficulty":"hard","lanes":5,"notes":[{"time":1.0,"lane":0}]}]}"#,
+        )
+        .expect("parses");
+        assert!(apply_strum_rule(&mut chart));
+        assert!(
+            !apply_strum_rule(&mut chart),
+            "the second pass changed it again"
+        );
+        let strum_only = Recipe {
+            strum: true,
+            ..Recipe::none()
+        };
+        assert!(apply(&mut chart, strum_only).is_empty());
+    }
+
+    /// The CLI's `--with` list, and the names the directive writes.
+    #[test]
+    fn a_recipe_is_read_from_its_names() {
+        assert_eq!(Recipe::parse("hopo").expect("parses"), Recipe::default());
+        assert_eq!(
+            Recipe::parse(" strum , hopo ").expect("parses"),
+            Recipe::all(),
+            "order or spaces mattered"
+        );
+        assert_eq!(Recipe::parse("all").expect("parses"), Recipe::all());
+        assert_eq!(Recipe::parse("").expect("parses"), Recipe::none());
+        let error = Recipe::parse("hopo,nonsense").expect_err("an unknown name");
+        assert!(
+            error.contains("nonsense") && error.contains("strum"),
+            "{error}"
+        );
+        // Every name the programme lists round-trips through the
+        // recipe, and the directive names them in that order.
+        for name in Recipe::ALL {
+            assert_eq!(Recipe::parse(name).expect("parses").names(), vec![name]);
+        }
+        assert_eq!(Recipe::all().names(), Recipe::ALL.to_vec());
+        assert_eq!(Recipe::all().directive(), "classic:hopo+strum");
     }
 
     /// A chart of single notes at `times`, all on alternating lanes
