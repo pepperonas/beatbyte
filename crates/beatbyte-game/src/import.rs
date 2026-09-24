@@ -349,7 +349,7 @@ fn start_next_import(
     info!("import: \"{title}\" by {artist} from {}", source.display());
     queue.current = Some(title.clone());
     let task = AsyncComputeTaskPool::get().spawn(async move {
-        import_song(&source, &title, &artist).map(|warning| match warning {
+        import_song(&source, &title, &artist, None).map(|warning| match warning {
             Some(warning) => format!("{title}\u{1f}{warning}"),
             None => title,
         })
@@ -705,8 +705,24 @@ pub(crate) fn import_fetched(
     source: &Path,
     title: &str,
     artist: &str,
+    origin: Option<Origin>,
 ) -> Result<Option<String>, String> {
-    import_song(source, title, artist)
+    import_song(source, title, artist, origin)
+}
+
+/// Where a fetched song came from, when the fetch knows.
+///
+/// ⚠️ Carried all the way to the document because that is the only
+/// place it can be READ back: a song fetched from a link stood in
+/// the library as an anonymous "local file", so nothing could tell
+/// two downloads of the same video apart, and `ExternalIds` had a
+/// `source_id` field that nothing ever filled.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Origin {
+    /// What kind of place.
+    pub kind: beatbyte_library::SourceKind,
+    /// What that place calls this song.
+    pub id: String,
 }
 
 /// The folder a source file lands in, by the import's naming rule.
@@ -724,7 +740,12 @@ pub(crate) fn landing_folder(source: &Path) -> Option<PathBuf> {
         .map(|dir| dir.join(sanitize_folder_name(&name.to_string_lossy())))
 }
 
-fn import_song(source: &Path, title: &str, artist: &str) -> Result<Option<String>, String> {
+fn import_song(
+    source: &Path,
+    title: &str,
+    artist: &str,
+    origin: Option<Origin>,
+) -> Result<Option<String>, String> {
     let file_name = source
         .file_name()
         .ok_or_else(|| "file has no name".to_owned())?;
@@ -824,7 +845,15 @@ fn import_song(source: &Path, title: &str, artist: &str) -> Result<Option<String
     // missing it. No test reaches this fork — the import decodes
     // real audio — so it is closed by construction rather than
     // pinned.
-    write_document(&folder, &chart, &chart_path, &audio_dest, facts, features);
+    write_document(
+        &folder,
+        &chart,
+        &chart_path,
+        &audio_dest,
+        facts,
+        features,
+        origin.as_ref(),
+    );
     Ok(warning)
 }
 
@@ -846,6 +875,7 @@ fn write_document(
     audio: &Path,
     loudness: Option<beatbyte_library::build::LoudnessFacts>,
     features: Option<beatbyte_audio::features::SongFeatures>,
+    origin: Option<&Origin>,
 ) {
     let Some(chart_name) = chart_path.file_name().and_then(|n| n.to_str()) else {
         return;
@@ -880,7 +910,12 @@ fn write_document(
         // is every song in this library — and empty must stay empty.
         tags: Some(beatbyte_audio::read_tags(audio)),
         features,
-        source_kind: beatbyte_library::SourceKind::LocalFile,
+        // A dropped file really is a local file and really has no
+        // id; a fetch says where it came from.
+        source_kind: origin.map_or(beatbyte_library::SourceKind::LocalFile, |origin| {
+            origin.kind
+        }),
+        source_id: origin.map(|origin| origin.id.clone()),
     };
     let existing = beatbyte_library::store::read(folder);
     let built = beatbyte_library::build::document_for(
@@ -1427,7 +1462,7 @@ mod document_tests {
         let chart_path = dir.join("chart.json");
         beatbyte_chart::save_chart_file(&chart_path, &chart()).expect("chart");
 
-        write_document(&dir, &chart(), &chart_path, &audio, None, None);
+        write_document(&dir, &chart(), &chart_path, &audio, None, None, None);
 
         let doc = beatbyte_library::store::read(&dir).expect("a document");
         assert!(doc.identity.song_id.as_str().starts_with("bb_"));
@@ -1442,6 +1477,62 @@ mod document_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// ⚠️ The whole reason duplicates by video id can be answered at
+    /// all. `ExternalIds::source_id` has existed since the document
+    /// did and NOTHING ever wrote it, so a song fetched from YouTube
+    /// stood in the library as an anonymous "local file" — the byte
+    /// fingerprint could catch a re-download of the same file, but a
+    /// re-encode of the same video would land twice with nothing to
+    /// say so.
+    #[test]
+    fn a_fetched_song_records_where_it_came_from() {
+        let dir = scratch("origin");
+        let audio = dir.join("maria.m4a");
+        std::fs::write(&audio, b"not really audio").expect("audio");
+        let chart_path = dir.join("chart.json");
+        beatbyte_chart::save_chart_file(&chart_path, &chart()).expect("chart");
+
+        write_document(
+            &dir,
+            &chart(),
+            &chart_path,
+            &audio,
+            None,
+            None,
+            Some(&Origin {
+                kind: beatbyte_library::SourceKind::Youtube,
+                id: "dQw4w9WgXcQ".to_owned(),
+            }),
+        );
+
+        // Read back through the store, which is what any later
+        // duplicate check will do — not through the value in hand.
+        let doc = beatbyte_library::store::read(&dir).expect("a document");
+        assert_eq!(
+            doc.identity.external.source_id.as_deref(),
+            Some("dQw4w9WgXcQ")
+        );
+        assert_eq!(doc.source.kind, beatbyte_library::SourceKind::Youtube);
+        // And it really is in the FILE: a field that only lives in
+        // memory answers nothing on the next launch.
+        let raw = std::fs::read_to_string(dir.join(beatbyte_library::DOC_FILE)).expect("the file");
+        assert!(raw.contains("dQw4w9WgXcQ"), "the id is not on disk");
+
+        // A dropped file is still a local file with nothing to name.
+        let plain = scratch("origin-none");
+        let audio = plain.join("maria.m4a");
+        std::fs::write(&audio, b"not really audio").expect("audio");
+        let chart_path = plain.join("chart.json");
+        beatbyte_chart::save_chart_file(&chart_path, &chart()).expect("chart");
+        write_document(&plain, &chart(), &chart_path, &audio, None, None, None);
+        let doc = beatbyte_library::store::read(&plain).expect("a document");
+        assert_eq!(doc.identity.external.source_id, None);
+        assert_eq!(doc.source.kind, beatbyte_library::SourceKind::LocalFile);
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&plain);
+    }
+
     #[test]
     fn re_importing_a_song_keeps_its_id_and_the_moment_it_arrived() {
         // A re-import writes a new chart version into the same
@@ -1453,12 +1544,12 @@ mod document_tests {
         std::fs::write(&audio, b"not really audio").expect("audio");
         let chart_path = dir.join("chart.json");
         beatbyte_chart::save_chart_file(&chart_path, &chart()).expect("chart");
-        write_document(&dir, &chart(), &chart_path, &audio, None, None);
+        write_document(&dir, &chart(), &chart_path, &audio, None, None, None);
         let first = beatbyte_library::store::read(&dir).expect("a document");
 
         let second_path = dir.join("chart.v2.json");
         beatbyte_chart::save_chart_file(&second_path, &chart()).expect("chart");
-        write_document(&dir, &chart(), &second_path, &audio, None, None);
+        write_document(&dir, &chart(), &second_path, &audio, None, None, None);
         let second = beatbyte_library::store::read(&dir).expect("a document");
 
         assert_eq!(second.identity.song_id, first.identity.song_id);

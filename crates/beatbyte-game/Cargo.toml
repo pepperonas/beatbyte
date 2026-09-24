@@ -21,6 +21,7 @@ serde_json = { workspace = true }
 dirs = { workspace = true }
 ureq = { workspace = true }
 rusb = { workspace = true }
+arboard = { workspace = true }
 beatbyte-ml = { workspace = true, optional = true }
 beatbyte-lyrics = { workspace = true, optional = true }
 beatbyte-meter = { workspace = true, optional = true }

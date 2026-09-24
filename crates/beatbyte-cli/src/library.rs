@@ -320,6 +320,7 @@ fn migrate_folder(dir: &Path, now: u64, dry_run: bool) -> Option<Outcome> {
         // user ran rather than anything the game does at start-up.
         features: beatbyte_library::folder::measure_features(&audio),
         source_kind: SourceKind::LocalFile,
+        source_id: None,
     };
 
     let had_document = existing.is_some();

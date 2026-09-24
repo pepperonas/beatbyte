@@ -117,6 +117,7 @@ fn visit(dir: &Path) -> Option<String> {
         tags: Some(beatbyte_audio::read_tags(&audio)),
         features: beatbyte_library::folder::measure_features(&audio),
         source_kind: doc.source.kind,
+        source_id: None,
     };
     let title = doc.identity.title.value.clone();
     let built = beatbyte_library::build::document_for(

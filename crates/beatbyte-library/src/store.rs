@@ -79,6 +79,7 @@ mod tests {
             tags: None,
             features: None,
             source_kind: SourceKind::LocalFile,
+            source_id: None,
         };
         (dir, facts)
     }

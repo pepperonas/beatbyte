@@ -27,28 +27,48 @@ rests on the titles alone.
 
 ## Direct YouTube links
 
-The browser currently accepts song names through the **D** field. A
-direct YouTube-link input is not enabled yet. It must share the same
-download and import path as the name search so duplicate handling is
-applied exactly once.
+Paste one into the same **D** field (`CMD+V` on macOS, `CTRL+V`
+elsewhere) and press ENTER. The panel says which of the two things
+ENTER will do before you press it: *"ENTER fetches that video"* for
+a link, *"ENTER searches"* for a name.
 
-The safe identity for a YouTube import is the canonical video ID:
+Accepted, with or without a scheme, `www.`, or whatever the share
+button appended:
+
+    https://www.youtube.com/watch?v=<id>
+    https://youtu.be/<id>?si=…&t=42
+    https://www.youtube.com/shorts/<id>
+    https://www.youtube.com/embed/<id>
+    https://music.youtube.com/watch?v=<id>
+    <id>                     the bare eleven characters
+
+Anything else stays a **search**, including a link to another site
+and a YouTube URL that names no video (a channel, a bare playlist).
+A wrong guess here would download some other video, so the parser
+answers "no" whenever it is not certain.
+
+**A link skips the choosing.** No catalogue lookup, no search, no
+ranking, no model, and no verdict that could refuse the fetch: the
+ladder that picks a recording is built to *avoid* live takes,
+remixes and covers, and it would fight a deliberate one. The
+loudness and tempo measurement still runs and is still reported — it
+just no longer decides. If you name it, you get it.
+
+**The video ID is written into the song's document**
+(`song.json`, `identity.external.source_id`, with `source.kind` set
+to `youtube`), for links and for the name search alike. That is what
+makes duplicates answerable:
 
 | Input | Result |
 |---|---|
-| The same video ID again | Rejected as an already imported recording. |
-| A different video ID for the same title and artist | Allowed as a separate version, such as a live take, remix, cover, or radio edit. |
-| An invalid or unreachable URL | Rejected with a readable error before the app can crash. |
+| The same video ID again | Rejected, naming the folder it is already in. |
+| A different video ID for the same title and artist | Allowed as a separate version — a live take, a remix, a radio edit. |
+| An invalid or unreachable URL | A readable line in the panel, before anything is downloaded. |
 
-The current chart metadata stores title, artist, and audio path, but no
-YouTube video ID. The existing search keeps its candidate ID only while
-it is running, and the local-file import index stores audio fingerprints
-instead. As a result, an older song imported through the search cannot
-be matched to a newly entered link with certainty. The link feature
-needs to persist the video ID for new search and link imports before it
-can promise exact duplicate detection across both input paths. A
-title-plus-artist check is deliberately insufficient because it would
-reject legitimate alternate versions.
+⚠️ Songs imported **before** this shipped carry no ID, so they cannot
+take part in the check. The audio fingerprint still catches a
+re-download of the same file; a re-encode of the same video is what
+the ID is for.
 
 It needs **`yt-dlp`** on your machine (`brew install yt-dlp`); the
 game ships no downloader of its own and says so if the tool is

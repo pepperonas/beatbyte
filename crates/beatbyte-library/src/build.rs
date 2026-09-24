@@ -117,6 +117,16 @@ pub struct FolderFacts<'a> {
     pub tags: Option<beatbyte_audio::Tags>,
     /// Where the song came from, when anything says so.
     pub source_kind: SourceKind,
+    /// What the source calls this song — a video id, a track id.
+    ///
+    /// ⚠️ [`crate::ExternalIds::source_id`] has existed since the
+    /// document did and was never written by anything, so a song
+    /// fetched from a link stood in the library as an anonymous
+    /// "local file" and nothing could tell two downloads of the same
+    /// video apart. A `None` leaves whatever is already recorded
+    /// alone: this is a fact about where the audio came from, and a
+    /// later import that does not know it must not erase it.
+    pub source_id: Option<String>,
 }
 
 /// The note EVENTS of a chart: the things a player hits.
@@ -235,6 +245,12 @@ pub fn document_for(
     };
     let before = doc.clone();
 
+    if let Some(id) = facts.source_id.as_ref()
+        && !id.is_empty()
+    {
+        doc.identity.external.source_id = Some(id.clone());
+        doc.source.kind = facts.source_kind;
+    }
     apply_chart(&mut doc, facts);
     apply_tags(&mut doc, facts);
     apply_features(&mut doc, facts, now);
@@ -669,6 +685,7 @@ mod tests {
             tags: None,
             features: None,
             source_kind: SourceKind::LocalFile,
+            source_id: None,
         }
     }
 

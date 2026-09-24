@@ -1485,6 +1485,7 @@ mod document_scan_tests {
             tags: None,
             features: None,
             source_kind: SourceKind::LocalFile,
+            source_id: None,
         };
         let mut built = document_for(&facts, None, SongId::from_parts(1, 1), document_written_ms);
         built.doc.identity.title.value = "From The Document".to_owned();

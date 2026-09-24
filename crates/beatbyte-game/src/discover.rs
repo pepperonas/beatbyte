@@ -281,6 +281,70 @@ pub fn is_plain_id(id: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
+/// The video id a typed or pasted line names, if it names one.
+///
+/// Accepts what a person actually has in hand: a watch URL, a
+/// `youtu.be` short link, a `/shorts/` or `/embed/` path, or the
+/// bare eleven-character id — with or without a scheme, with or
+/// without `www.`, and with whatever `list=`, `t=` or `si=` the
+/// share button stuck on the end.
+///
+/// ⚠️ It returns `None` for anything it is not sure about, because a
+/// wrong answer here is worse than no answer: the caller would
+/// download some other video. Words are not ids, so "rick astley
+/// never gonna" stays a search; and the id goes through
+/// [`is_plain_id`] before it is handed back, which is the rule that
+/// keeps anything that is not a plain token out of a URL.
+///
+/// Pure — tested, and deliberately offline.
+#[must_use]
+pub fn parse_target(typed: &str) -> Option<String> {
+    let typed = typed.trim();
+    if typed.is_empty() {
+        return None;
+    }
+    // A bare id: exactly what YouTube issues, and nothing that could
+    // be a search. Eleven characters of the id alphabet.
+    if typed.len() == ID_LEN && is_plain_id(typed) {
+        return Some(typed.to_owned());
+    }
+    // Everything else has to look like a link, or a two-word search
+    // could be read as one.
+    let rest = typed
+        .strip_prefix("https://")
+        .or_else(|| typed.strip_prefix("http://"))
+        .unwrap_or(typed);
+    let rest = rest.strip_prefix("www.").unwrap_or(rest);
+    let (host, path) = rest.split_once('/')?;
+    let candidate = match host {
+        "youtu.be" => path.split(['?', '&', '#']).next()?.to_owned(),
+        "youtube.com" | "m.youtube.com" | "music.youtube.com" => {
+            if let Some(tail) = path
+                .strip_prefix("shorts/")
+                .or_else(|| path.strip_prefix("embed/"))
+                .or_else(|| path.strip_prefix("v/"))
+            {
+                tail.split(['?', '&', '#']).next()?.to_owned()
+            } else {
+                // `watch?v=…`, with the parameter anywhere in the query.
+                let (_, query) = path.split_once('?')?;
+                query
+                    .split('&')
+                    .find_map(|pair| pair.strip_prefix("v="))?
+                    .split('#')
+                    .next()?
+                    .to_owned()
+            }
+        }
+        _ => return None,
+    };
+    (candidate.len() == ID_LEN && is_plain_id(&candidate)).then_some(candidate)
+}
+
+/// How many characters a YouTube video id has. Every form above
+/// carries the same eleven.
+const ID_LEN: usize = 11;
+
 /// Read the tool's `--dump-json` output: one JSON object per line.
 ///
 /// A line that will not parse is skipped rather than failing the
@@ -851,6 +915,16 @@ pub struct Found {
 /// # Errors
 /// When nothing usable was found, or the import itself failed.
 pub fn discover(query: &str, backend: &Backend, say: &dyn Fn(Step)) -> Result<Found, String> {
+    // A link is a CHOICE already made, so the whole apparatus that
+    // exists to choose is skipped: no catalogue lookup, no search,
+    // no ranking, no model, and no verdict that could refuse it.
+    // The ladder below is built to find the best recording — and it
+    // FIGHTS a deliberate one: "live", "remix" and "cover" each cost
+    // three points, and `judge` can throw a candidate out on
+    // loudness or tempo confidence alone.
+    if let Some(id) = parse_target(query) {
+        return discover_target(&id, say);
+    }
     let (typed_artist, typed_title) = split_query(query);
     if typed_title.is_empty() {
         return Err("type a song name first".to_owned());
@@ -941,7 +1015,15 @@ pub fn discover(query: &str, backend: &Backend, say: &dyn Fn(Step)) -> Result<Fo
                     &audio,
                 );
                 say(Step::new(Phase::Chart, format!("charting \"{title}\"...")));
-                let imported = crate::import::import_fetched(&audio, &title, &artist)?;
+                let imported = crate::import::import_fetched(
+                    &audio,
+                    &title,
+                    &artist,
+                    Some(crate::import::Origin {
+                        kind: beatbyte_library::SourceKind::Youtube,
+                        id: candidate.id.clone(),
+                    }),
+                )?;
                 // Where it landed, taken from the file the import was
                 // handed rather than re-derived from the title: one
                 // naming rule, one place.
@@ -964,6 +1046,119 @@ pub fn discover(query: &str, backend: &Backend, say: &dyn Fn(Step)) -> Result<Fo
         }
     }
     Err(format!("no usable recording: {last}"))
+}
+
+/// Fetch exactly the video a link names.
+///
+/// ⚠️ The measurement still runs and is still reported, but it does
+/// not REFUSE: nobody pastes a link by accident, and a player told
+/// "no usable recording" about the video they chose has been
+/// second-guessed by a tool that was asked to do as it was told.
+/// The search path keeps its verdict, because there the tool did
+/// the choosing.
+fn discover_target(id: &str, say: &dyn Fn(Step)) -> Result<Found, String> {
+    if !tool_available() {
+        return Err(missing_tool_message());
+    }
+    say(Step::new(Phase::Look, "reading the link...".to_owned()));
+    let candidate = describe_target(id)?;
+    if let Some(folder) = folder_with_source_id(id) {
+        return Err(format!(
+            "already in the library as \"{}\"",
+            folder.file_name().map_or_else(
+                || folder.display().to_string(),
+                |name| name.to_string_lossy().into_owned()
+            )
+        ));
+    }
+    let dir = std::env::temp_dir().join("beatbyte-discover");
+    say(Step::new(
+        Phase::Fetch,
+        format!("fetching \"{}\"...", candidate.title),
+    ));
+    let audio = fetch_audio(&candidate, &dir)?;
+    say(Step::new(Phase::Measure, "measuring..."));
+    let verdict = measure(&audio);
+    let (artist, title) = names_from("", "", &candidate);
+    let audio = match rename_to_song(&audio, &artist, &title) {
+        Ok(renamed) => renamed,
+        Err(error) => {
+            bevy::log::warn!("discover: cannot rename the fetch: {error}");
+            audio
+        }
+    };
+    say(Step::new(
+        Phase::Lyrics,
+        format!("looking up lyrics for \"{title}\"..."),
+    ));
+    let words = crate::lyrics_fetch::fetch_and_cache(&artist, &title, duration_of(&audio), &audio);
+    say(Step::new(Phase::Chart, format!("charting \"{title}\"...")));
+    let imported = crate::import::import_fetched(
+        &audio,
+        &title,
+        &artist,
+        Some(crate::import::Origin {
+            kind: beatbyte_library::SourceKind::Youtube,
+            id: id.to_owned(),
+        }),
+    )?;
+    let folder = crate::import::landing_folder(&audio);
+    let _ = std::fs::remove_file(&audio);
+    let _ = std::fs::remove_file(audio.with_extension("lrc"));
+    // The measurement is a NOTE on a link import, never a refusal.
+    if let Ok(verdict) = &verdict
+        && !verdict.good
+    {
+        bevy::log::info!("discover: kept anyway — {}", verdict.reason);
+    }
+    Ok(Found {
+        line: finished_line(&title, &words, imported.as_deref()),
+        folder,
+    })
+}
+
+/// Ask the tool what one video is, without searching for it.
+///
+/// # Errors
+/// When the tool fails or the id names nothing.
+fn describe_target(id: &str) -> Result<Candidate, String> {
+    // The URL is built from the id alone, and `is_plain_id` has
+    // already vouched for it — the rule this module lives by.
+    let url = format!("https://www.youtube.com/watch?v={id}");
+    let output = Command::new(FETCH_TOOL)
+        .args(["--dump-json", "--no-warnings", "--no-playlist"])
+        .arg(&url)
+        .output()
+        .map_err(|error| format!("cannot run {FETCH_TOOL}: {error}"))?;
+    if !output.status.success() {
+        let reason = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "cannot read that link: {}",
+            reason.lines().last().unwrap_or("no reason given")
+        ));
+    }
+    parse_candidates(&String::from_utf8_lossy(&output.stdout))
+        .into_iter()
+        .find(|candidate| candidate.id == id)
+        .ok_or_else(|| "that link names no video".to_owned())
+}
+
+/// The folder of a song already imported from this source id, if any.
+///
+/// ⚠️ The byte fingerprint catches a re-download of the same file,
+/// but a video re-encoded since is a different file and would land
+/// twice. The id is what YouTube calls the video, so it is what says
+/// "this one already".
+fn folder_with_source_id(id: &str) -> Option<PathBuf> {
+    crate::library::live_scan_roots()
+        .into_iter()
+        .flat_map(|root| std::fs::read_dir(root).into_iter().flatten().flatten())
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir())
+        .find(|folder| {
+            beatbyte_library::store::read(folder)
+                .is_some_and(|doc| doc.identity.external.source_id.as_deref() == Some(id))
+        })
 }
 
 /// Rename a fetched file after the song it turned out to be.
@@ -1291,6 +1486,91 @@ mod twin_tests {
 mod tests {
     use super::*;
 
+    /// ⚠️ The whole point of the feature: a pasted link must be
+    /// taken as the choice it is. Before this, `D` sent whatever was
+    /// typed to `ytsearch6:` — so a URL became SEARCH WORDS and the
+    /// ranking then downloaded whatever it thought best, which is
+    /// the opposite of naming a video.
+    #[test]
+    fn a_link_in_any_shape_names_its_video() {
+        const ID: &str = "dQw4w9WgXcQ";
+        for typed in [
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "http://youtube.com/watch?v=dQw4w9WgXcQ",
+            "www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://youtu.be/dQw4w9WgXcQ",
+            "youtu.be/dQw4w9WgXcQ",
+            "https://www.youtube.com/shorts/dQw4w9WgXcQ",
+            "https://www.youtube.com/embed/dQw4w9WgXcQ",
+            "https://m.youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://music.youtube.com/watch?v=dQw4w9WgXcQ",
+            // What the share button and a playlist actually add.
+            "https://youtu.be/dQw4w9WgXcQ?si=abcDEF123",
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL1&index=2",
+            "https://www.youtube.com/watch?list=PL1&v=dQw4w9WgXcQ",
+            "https://youtu.be/dQw4w9WgXcQ?t=42",
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ#t=1m",
+            // The bare id, which is what a person copies out of one.
+            "dQw4w9WgXcQ",
+            "  dQw4w9WgXcQ  ",
+        ] {
+            assert_eq!(
+                parse_target(typed).as_deref(),
+                Some(ID),
+                "did not read {typed}"
+            );
+        }
+    }
+
+    /// ⚠️ A wrong answer is worse than none: it would download some
+    /// other video. Anything not certainly a link stays a search.
+    #[test]
+    fn anything_that_is_not_certainly_a_link_stays_a_search() {
+        for typed in [
+            "",
+            "   ",
+            "rick astley never gonna give you up",
+            "beatles",
+            // Right length, wrong alphabet — and the alphabet is the
+            // rule that keeps a URL from being built out of it.
+            "dQw4w9WgX Q",
+            "dQw4w9WgX/Q",
+            "dQw4w9WgX?Q",
+            // A link to somewhere else entirely.
+            "https://example.com/watch?v=dQw4w9WgXcQ",
+            "https://vimeo.com/123456789",
+            // YouTube, but not a video.
+            "https://www.youtube.com/@someartist",
+            "https://www.youtube.com/watch?list=PL1",
+            // An id of the wrong length is not an id.
+            "https://youtu.be/dQw4w9WgX",
+            "https://youtu.be/dQw4w9WgXcQQQ",
+            "dQw4w9WgX",
+        ] {
+            assert_eq!(
+                parse_target(typed),
+                None,
+                "wrongly read {typed:?} as a link"
+            );
+        }
+    }
+
+    /// Whatever `parse_target` returns is safe to put in a URL —
+    /// the rule the rest of this module already lives by.
+    #[test]
+    fn a_parsed_id_is_always_a_plain_token() {
+        for typed in [
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "youtu.be/_-aB3cD4eF5",
+            "AAAAAAAAAAA",
+        ] {
+            if let Some(id) = parse_target(typed) {
+                assert!(is_plain_id(&id), "{id} is not a plain token");
+            }
+        }
+    }
+
     fn candidate(title: &str, uploader: &str, seconds: Option<f64>) -> Candidate {
         Candidate {
             id: format!("id-{title}"),
@@ -1601,6 +1881,34 @@ mod tests {
         let found = parse_candidates(stdout);
         assert_eq!(found.len(), 1, "only the plain id survives: {found:?}");
         assert_eq!(found[0].id, "dQw4w9WgXcQ");
+    }
+
+    /// The link path against the real tool, metadata only — no
+    /// download, so it costs a second and writes nothing.
+    ///
+    /// ⚠️ `parse_target` is pinned offline; this is the other half:
+    /// that what it hands back really does name a video to the tool
+    /// the game shells out to.
+    #[test]
+    #[ignore = "needs the network and yt-dlp"]
+    fn a_live_link_describes_the_video_it_names() {
+        if !tool_available() {
+            eprintln!("skipped: {}", missing_tool_message());
+            return;
+        }
+        let id = parse_target("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL1&t=9")
+            .expect("a link names its video");
+        let candidate = describe_target(&id).expect("the tool describes it");
+        assert_eq!(candidate.id, id);
+        assert!(!candidate.title.is_empty(), "no title came back");
+        assert!(
+            candidate.duration_s.is_some_and(|d| d > 30.0),
+            "no plausible length came back: {:?}",
+            candidate.duration_s
+        );
+        // And an id that names nothing is a readable line, not a panic.
+        let nothing = describe_target("AAAAAAAAAAA");
+        assert!(nothing.is_err(), "a dead id was accepted");
     }
 
     /// The live half of the search, against the real tool: it asks,

@@ -14,6 +14,29 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.26] - 2026-09-24
+
+### Added
+
+- **Paste a YouTube link into ADD A SONG and you get that video.**
+  `CMD+V` (or `CTRL+V`) pastes; watch URLs, `youtu.be` links,
+  `/shorts/`, `/embed/`, the music site and the bare eleven-character
+  id all work, with or without a scheme and with whatever the share
+  button appended. The field says which of the two things ENTER will
+  do before you press it. Until now a pasted link became SEARCH
+  WORDS, and the ranking downloaded whatever it thought best — and
+  `CMD+V` typed a literal "v", because nothing checked the modifier.
+- **A link skips the choosing.** No catalogue lookup, no search, no
+  ranking, no model, and no verdict that can refuse the fetch: that
+  whole ladder exists to *avoid* live takes, remixes and covers, and
+  it fights a deliberate one. The measurement still runs and is still
+  reported; it just no longer decides.
+- **Downloaded songs remember where they came from.** The video id
+  goes into the song's document — for links and for the name search
+  alike — so a link you have already imported is refused by name
+  instead of landing twice. `ExternalIds::source_id` has existed
+  since the document did and nothing ever wrote it.
+
 ## [0.18.25] - 2026-09-24
 
 ### Added

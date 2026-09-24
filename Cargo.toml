@@ -17,7 +17,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.18.25"
+version = "0.18.26"
 edition = "2024"
 license = "MIT"
 authors = ["Martin Pfeffer"]
@@ -29,18 +29,18 @@ categories = ["games"]
 
 [workspace.dependencies]
 # Internal crates
-beatbyte-core = { path = "crates/beatbyte-core", version = "0.18.25" }
-beatbyte-catalogue = { path = "crates/beatbyte-catalogue", version = "0.18.25" }
-beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.18.25" }
-beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.18.25" }
-beatbyte-game = { path = "crates/beatbyte-game", version = "0.18.25" }
-beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.18.25" }
-beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.18.25" }
-beatbyte-ml = { path = "crates/beatbyte-ml", version = "0.18.25" }
-beatbyte-lyrics = { path = "crates/beatbyte-lyrics", version = "0.18.25" }
-beatbyte-meter = { path = "crates/beatbyte-meter", version = "0.18.25" }
-beatbyte-telemetry = { path = "crates/beatbyte-telemetry", version = "0.18.25" }
-beatbyte-library = { path = "crates/beatbyte-library", version = "0.18.25" }
+beatbyte-core = { path = "crates/beatbyte-core", version = "0.18.26" }
+beatbyte-catalogue = { path = "crates/beatbyte-catalogue", version = "0.18.26" }
+beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.18.26" }
+beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.18.26" }
+beatbyte-game = { path = "crates/beatbyte-game", version = "0.18.26" }
+beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.18.26" }
+beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.18.26" }
+beatbyte-ml = { path = "crates/beatbyte-ml", version = "0.18.26" }
+beatbyte-lyrics = { path = "crates/beatbyte-lyrics", version = "0.18.26" }
+beatbyte-meter = { path = "crates/beatbyte-meter", version = "0.18.26" }
+beatbyte-telemetry = { path = "crates/beatbyte-telemetry", version = "0.18.26" }
+beatbyte-library = { path = "crates/beatbyte-library", version = "0.18.26" }
 
 # Engine ("wav" lets bevy_audio play our procedurally generated SFX;
 # "serialize" gives input types serde for the persisted bindings table)
@@ -53,6 +53,11 @@ symphonia = { version = "0.5", default-features = true, features = ["isomp4", "a
 realfft = "3.5"
 # Audio input for the two stage monitors (the version rodio already pulls)
 cpal = "0.17"
+
+# The system clipboard, for pasting a link into the ADD A SONG field.
+# Bevy has no clipboard of its own, and a link typed by hand is
+# eleven characters of case-sensitive nonsense nobody should retype.
+arboard = { version = "3", default-features = false }
 # Test-only WAV writing for decode round-trips
 hound = "3.5"
 

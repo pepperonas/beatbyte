@@ -1314,8 +1314,33 @@ impl DownloadPrompt {
     /// The line the panel shows while the field is open. Pure —
     /// tested.
     #[must_use]
+    /// What the panel says while the field is open.
+    ///
+    /// It names the paste, because a link is the one thing nobody
+    /// types — and ENTER means two things now, so it says which one
+    /// it is about to do rather than promising a search and
+    /// downloading a named video.
     pub fn line(&self) -> String {
-        format!("ADD A SONG: {}_   ENTER searches, ESC cancels", self.text)
+        let action = if crate::discover::parse_target(&self.text).is_some() {
+            "ENTER fetches that video"
+        } else {
+            "ENTER searches"
+        };
+        format!(
+            "ADD A SONG: {}_   name or link ({} pastes)   {action}, ESC cancels",
+            self.text,
+            paste_chord()
+        )
+    }
+}
+
+/// The paste chord, named for the machine it is running on.
+#[must_use]
+const fn paste_chord() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "CMD+V"
+    } else {
+        "CTRL+V"
     }
 }
 
@@ -1365,8 +1390,42 @@ fn download_input(
         }
         return;
     }
+    // ⚠️ The modifier is read BEFORE the characters, or Cmd+V types
+    // a literal "v" — which is what it did, so the one thing a
+    // player would actually do with a link was impossible.
+    let pasting = keys.any_pressed([
+        KeyCode::SuperLeft,
+        KeyCode::SuperRight,
+        KeyCode::ControlLeft,
+        KeyCode::ControlRight,
+    ]) && keys.just_pressed(KeyCode::KeyV);
+    if pasting {
+        match crate::clipboard::read() {
+            Some(text) if !text.is_empty() => {
+                prompt.text.push_str(&text);
+                sounds.write(crate::sfx::UiSound::Toggle);
+            }
+            Some(_) | None => {
+                sounds.write(crate::sfx::UiSound::Error);
+                status.0 = "nothing to paste".to_owned();
+                return;
+            }
+        }
+        status.0 = prompt.line();
+        return;
+    }
     for event in typed.read() {
         if !event.state.is_pressed() {
+            continue;
+        }
+        // A modifier held means a shortcut, not typing: without this
+        // the paste above would also leave its "v" behind.
+        if keys.any_pressed([
+            KeyCode::SuperLeft,
+            KeyCode::SuperRight,
+            KeyCode::ControlLeft,
+            KeyCode::ControlRight,
+        ]) {
             continue;
         }
         match &event.logical_key {
@@ -1412,11 +1471,16 @@ fn download_input(
             crate::discover::cli_available(),
             crate::discover::api_key(&settings.anthropic_api_key).as_deref(),
         );
+        let fetching = crate::discover::parse_target(&query).is_some();
         discovery.start(query, backend);
         prompt.open = false;
         prompt.text.clear();
         sounds.write(crate::sfx::UiSound::Confirm);
-        status.0 = "searching...".to_owned();
+        status.0 = if fetching {
+            "fetching that video...".to_owned()
+        } else {
+            "searching...".to_owned()
+        };
         return;
     }
     // While it is open the panel shows what is being typed.
