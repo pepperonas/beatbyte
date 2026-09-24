@@ -115,16 +115,60 @@ when it is missing, and the import is then what it always was.
 A second kind, and one nothing makes for you: **`[CL] <title>`** is a
 folder's ACTIVE chart with the classic ingredients applied — the
 rules the early guitar games played by, measured and written down in
-`beatbyte-chart::classic`. Same notes, same times, same frets, same
-sustains; only what the rules change is different, which is what
-makes a blind test between the two answer a question about one
-variable. There is no audio analysis and nothing is generated.
+`beatbyte-chart::classic`. Only what an ingredient changes is
+different, which is what makes a blind test between the two answer a
+question about one variable. There is no audio analysis and nothing
+is generated — except for `chords`, which reads evidence made from the
+audio beforehand (below).
+
+| Ingredient | What it changes |
+|---|---|
+| `hopo` | Hammer-ons in beats, not seconds: under 170/480 of a beat, exclusive. Straight eighths are strummed, triplets hammered, at any tempo. |
+| `strum` | A judgment rule the chart carries: a strum under the wrong fret waits 60 ms for the fret. No note changes. |
+| `hard` | Hard is rebuilt as the chart's own Expert with a ninth of its notes taken away — crowded, off-beat, fret-changing notes first; pairs only, never green with orange. |
+| `medium` | Medium is rebuilt from Hard: thinned to ~2.2 notes a second (inside 61–76 % of Expert), beats kept longest, folded to four frets passage by passage. |
+| `chords` | Chords where the recording strikes several notes at once — read from the song's polyphony sidecar, never guessed. The interval decides the shape (a fifth one fret apart), at most 36 % of a level's events, triples at most 16 % of the chords and only on Expert. |
 
 ```bash
-beatbyte-cli classic <folder> --twin              # one song
+beatbyte-cli classic <folder> --twin              # one song, blind-tested recipe
+beatbyte-cli classic <folder> --twin --with all   # every ingredient
 beatbyte-cli classic songs/imported --all --twin  # every folder
 beatbyte-cli classic songs/imported --all --twin --dry-run
 ```
+
+Without `--with` a run uses only the ingredients that have passed a
+blind test. **To blind-test one more**, apply it ALONE to a `[CL]` twin
+as a new version, then press `T` on the twin in the browser: the test
+plays the new version against its parent, which differ by that
+ingredient and nothing else.
+
+```bash
+beatbyte-cli classic songs/imported/classic-<song> --with strum
+```
+
+### Chords need a polyphony sidecar
+
+`chords` is the one ingredient that needs to know what the recording
+does: which notes are **struck together**. Nothing in the analysis can
+say that — it hears one line at a time — so an `ml` build of the tool
+transcribes the song once with Spotify's *Basic Pitch* (Apache-2.0,
+0.2 MB) and writes `<audio stem>.poly.json` beside the audio:
+
+```bash
+beatbyte-cli models install basic-pitch              # once
+beatbyte-cli poly songs/imported/<song>              # one song, ~1 min
+beatbyte-cli poly songs/imported --all               # every folder
+beatbyte-cli classic songs/imported/classic-<song> --with chords
+```
+
+The song is separated first (a local `demucs`, as for the `[GS]`
+twin) and the `other` stem is transcribed: Basic Pitch hears one
+instrument best, and on the mix the bass, keys and voice would read as
+chord tones. `--mix` transcribes the mix anyway. The run says how much
+of the song's Expert the evidence reaches. A twin made after the
+sidecar carries a copy of it; for an existing twin, run `poly` on the
+twin's own folder. Without a sidecar `chords` writes nothing and says
+which command makes one.
 
 A twin of a `[GS]` study is `[CL] [GS] <title>` and sits under the
 study in the browser — the study chart played by the classic rules,

@@ -26,6 +26,7 @@ contradicted** — if a decision is reversed, the ADR says so.
 | [0017](ADR-0017-achievements-derived-not-counted.md) | Achievements re-derived from the whole play log on every pass; only the date each was earned is stored, so a new one unlocks retroactively and none can be taken back | Accepted |
 | [0018](ADR-0018-gameplay-telemetry-store.md) | Gameplay telemetry as a versioned local event store: events never frames, nothing derivable stored, the song referenced rather than copied, and the physical input layer opt-in | Accepted |
 | [0019](ADR-0019-song-metadata-and-the-library-index.md) | A song's metadata lives in its own folder and the queryable index is a rebuildable projection; a given `SongId` rather than a derived one; playing stays an event, never a counter | Accepted |
+| [0020](ADR-0020-classic-rules-in-the-chart.md) | The classic programme: a judgment rule travels in the chart (and its hash), classic levels are derived from the chart's own Expert by deletion only, and chords come only from a polyphonic transcription of the separated stem (`beatbyte-poly`, Basic Pitch) | Accepted |
 
 ## The gap at 0009
 

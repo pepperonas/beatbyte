@@ -25,6 +25,8 @@ mod lyrics_eval;
 #[cfg(feature = "ml")]
 mod models;
 mod players;
+#[cfg(feature = "ml")]
+mod poly;
 mod redesign;
 mod review;
 mod study;
@@ -370,7 +372,10 @@ enum Command {
     /// active now (or, with `--twin`, as a `[CL]` twin folder).
     /// `hopo`: hammer-ons tempo-relative and exclusive, so straight
     /// eighths are strummed and triplets hammered. `strum`: a strum
-    /// under the wrong fret waits 60 ms for the fret.
+    /// under the wrong fret waits 60 ms for the fret. `hard`: Hard is
+    /// Expert with a ninth taken away. `medium`: Medium is Hard
+    /// thinned to their density, on four frets. `chords`: chords where
+    /// the song's polyphony sidecar heard notes struck together.
     ///
     /// The blind test (`T` in the browser) then plays the two
     /// against each other, differing by this and nothing else.
@@ -390,8 +395,10 @@ enum Command {
         /// in the song's own folder is touched.
         #[arg(long)]
         twin: bool,
-        /// Which ingredients, comma-separated (`hopo`, `strum`, or
-        /// `all`). Without it: the ones that have passed a blind test.
+        /// Which ingredients, comma-separated (`hopo`, `strum`, `hard`,
+        /// `medium`, `chords`, or `all`). Without it: the ones that
+        /// have passed a blind test. `chords` needs the song's
+        /// polyphony sidecar (`poly`).
         /// To blind-test one more, apply it alone as a new version on
         /// a `[CL]` twin and press `T` on it in the browser.
         #[arg(long, value_name = "INGREDIENTS")]
@@ -542,6 +549,28 @@ enum Command {
     Models {
         #[command(subcommand)]
         action: ModelsAction,
+    },
+    /// Hear which notes a song strikes together and write them beside
+    /// the audio as `<audio stem>.poly.json` — the evidence the
+    /// classic `chords` ingredient reads (built with `--features ml`;
+    /// needs `models install basic-pitch`). The song is separated
+    /// first (a local `demucs`) and its `other` stem transcribed, so
+    /// bass, keys and voice do not read as chord tones; minutes per
+    /// song, so a song that has its sidecar is skipped unless
+    /// `--force`.
+    #[cfg(feature = "ml")]
+    Poly {
+        /// A song folder — or, with `--all`, a directory of them.
+        folder: PathBuf,
+        /// Treat the path as a directory of song folders.
+        #[arg(long)]
+        all: bool,
+        /// Transcribe again where a sidecar exists.
+        #[arg(long)]
+        force: bool,
+        /// Transcribe the mix instead of the separated stem.
+        #[arg(long)]
+        mix: bool,
     },
     /// Word- and letter-level timing for known lyrics, force-aligned
     /// against the song's own audio (built with `--features ml`;
@@ -919,6 +948,13 @@ fn main() -> ExitCode {
         ),
         #[cfg(feature = "ml")]
         Command::LyricsCheck { audio, words, out } => lyrics_eval::check(&audio, words, out),
+        #[cfg(feature = "ml")]
+        Command::Poly {
+            folder,
+            all,
+            force,
+            mix,
+        } => poly::run(&folder, &poly::Args { all, force, mix }),
         #[cfg(feature = "ml")]
         Command::Models { action } => match action {
             ModelsAction::List => models::list(),

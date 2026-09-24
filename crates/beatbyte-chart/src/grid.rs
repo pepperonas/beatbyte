@@ -166,6 +166,20 @@ impl BeatGrid {
         self.interval(time_s).map(|(a, b)| b - a)
     }
 
+    /// Where in its beat `time_s` falls, `0.0` (on the beat) up to
+    /// but excluding `1.0`, against the local interval — continued
+    /// past the grid's ends the way [`BeatGrid::beat_length_at`] is.
+    /// `None` when the grid is unusable.
+    #[must_use]
+    pub fn phase_at(&self, time_s: f64) -> Option<f64> {
+        let (a, b) = self.interval(time_s)?;
+        let length = b - a;
+        if !(length.is_finite() && length > 0.0) {
+            return None;
+        }
+        Some(((time_s - a) / length).rem_euclid(1.0))
+    }
+
     /// Snap `time_s` to the simplest subdivision of the local beat
     /// within `tolerance_s` — never wider than half a step, or a
     /// level would claim positions belonging to its neighbours. Times

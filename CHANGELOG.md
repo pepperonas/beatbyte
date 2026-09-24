@@ -14,6 +14,36 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.35] - 2026-09-25
+
+### Added
+
+- **The rest of the classic programme — `hard`, `medium` and `chords`.**
+  `beatbyte-cli classic --with hard,medium,chords` (or `all`):
+  - **`hard`** rebuilds Hard as the chart's own Expert with a ninth of
+    its notes taken away — never moved, never added. Crowded notes go
+    first, then off-beat sixteenths before eighths before beats, a fret
+    change inside a fast run before a repeated fret; chords and
+    sustains are protected. Pairs only, never green with orange.
+  - **`medium`** rebuilds Medium from that Hard: about 2.2 notes a
+    second (inside 61–76 % of Expert), beats kept longest, five frets
+    folded to four passage by passage so a melody keeps its steps
+    wherever the neck allows.
+  - **`chords`** writes chords only where the recording strikes several
+    notes at once, shaped by the interval it heard, at most 36 % of a
+    level's events. It reads the song's new **polyphony sidecar**
+    (`<audio>.poly.json`), made by **`beatbyte-cli poly <folder>`**: the
+    song is separated and its `other` stem transcribed by Spotify's
+    Basic Pitch (Apache-2.0, `models install basic-pitch`, 0.2 MB).
+    Without a sidecar, no chord is guessed.
+- **`beatbyte-poly`**, a new crate: polyphonic note transcription with
+  a local model, used only while authoring — the game never runs it.
+
+### Changed
+
+- A version's analysis sidecar is carried by moment rather than by
+  position, so it survives an ingredient that removes notes.
+
 ## [0.18.34] - 2026-09-25
 
 ### Added

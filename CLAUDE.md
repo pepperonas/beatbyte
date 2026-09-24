@@ -9,7 +9,7 @@ file wins over habit; the roadmap wins over improvisation.
 
 **BeatByte** — an original five-lane rhythm game in **Rust + Bevy
 0.19** (repo `pepperonas/beatbyte`, MIT, © 2026 Martin Pfeffer, public).
-A Cargo workspace of twelve crates plus a thin launcher (map below);
+A Cargo workspace of thirteen crates plus a thin launcher (map below);
 all logic lives in the crates. UI language is English; the game is
 fully keyboard/gamepad driven.
 
@@ -36,6 +36,12 @@ that may touch Bevy (the full layering and its invariants:
   player already has → `words.json`.
 - **`beatbyte-meter`** (ml, audio, core) — beats and downbeats from
   the Beat This! model pair.
+- **`beatbyte-poly`** (ml, audio) — which notes were struck together:
+  Basic Pitch (Apache-2.0) through the pinned runtime, windows cut and
+  stitched the reference's way, its polyphonic tracker without the
+  step that invents unstruck notes. Read only at authoring time, by the
+  classic `chords` ingredient, through the `<audio>.poly.json` sidecar
+  `beatbyte-cli poly` writes (ADR-0020).
 - **`beatbyte-telemetry`** (core) — the gameplay blackbox (ADR-0018):
   the versioned event history a played song leaves behind, the local
   SQLite store that keeps it, the bounded queue and worker thread the
@@ -206,6 +212,12 @@ tech writer, release manager. Operate accordingly:
   chunking, peak picking and merge are pure and pinned, and the
   driver is proven on a hand-encoded ONNX pair through the real
   runtime. It never fetches: `installed()` decides from the store.
+  `beatbyte-poly` sits on `ml` and `audio` only, the same way: audio
+  → Basic Pitch → notes; its framing and tracker are pure and pinned,
+  and the driver is proven on a hand-encoded graph that carries the
+  REAL model's input and output names, written out — not borrowed from
+  the driver's own constants, or a swap would pass unnoticed. The chart
+  crate reads what it writes (`poly.rs`) and never runs a model.
 - **No copyrighted assets, music, or trademarks — ever.** All assets
   original, generated, CC0, or OFL (fonts: Press Start 2P and Bebas
   Neue, each bundled with its license). No song ships with the game;
@@ -997,6 +1009,29 @@ artifact, smoke-test it (neutral CWD!), then
   song's scratch once its output exists (the script now reports the
   failures by name — the first version lost that list to bash 3.2's
   `set -u` on an empty array).
+- **A number whose meaning is unknown must not decide anything.** The
+  classic chord ingredient first took its minimum spacing (200 ms) from
+  a field of the early games' configs, `min_combo_spacing`, that the
+  research itself marks "meaning unbelegt". On a real song at 156 BPM
+  it blocked every chord run on eighths — evidence at 36 % of the
+  events, chords written at 9 % — and nothing in the suite said so,
+  because every fixture was slower. A value marked [U] in a research
+  note is a question, not a parameter.
+- **Test a small discrete domain exhaustively, not at its edges.** A
+  chord shape is five lanes × twelve intervals × two class counts ×
+  four levels — 480 cases, microseconds. The first tests picked lanes
+  0, 1 and 4 and passed; the first real song put a wide pair on yellow
+  (lane 2, three frets up, two frets of room either way) and the
+  `lane - span` underflowed. Where the whole input space fits in a
+  loop, loop over it and assert the properties.
+- **Which output of a converted model is which is a measurement.**
+  Basic Pitch's ONNX names its outputs `StatefulPartitionedCall:0/1/2`,
+  meaningless in themselves. A synthetic tone settled it: read with
+  `:1` as the note head and `:2` as the onset head, a sustained A4 and
+  a struck A-major triad came back as one note of the right length and
+  three notes starting within 3 ms of the strike — the peaky onset head
+  read as notes could not have produced either. The driver test now
+  writes those names out itself.
 - **An autopilot verdict could be failed by the room, and the
   telemetry says so.** Real device input went into the same session
   the injector plays into: a key, a pad button or a click at the desk

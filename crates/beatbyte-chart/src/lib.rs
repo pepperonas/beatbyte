@@ -45,6 +45,7 @@ pub mod generate;
 pub mod grid;
 pub mod io;
 pub mod lyrics;
+pub mod poly;
 pub mod redesign;
 pub mod schema;
 pub mod study;

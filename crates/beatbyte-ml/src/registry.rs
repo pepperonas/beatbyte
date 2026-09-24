@@ -93,12 +93,36 @@ pub const BEAT_THIS: ModelSpec = ModelSpec {
     purpose: "Beat This! beat + downbeat tracker, main model (final0)",
 };
 
+/// Basic Pitch (Bittner, Bosch, Rubinstein, Meseguer-Brocal & Ewert,
+/// ICASSP 2022 — code and weights Apache-2.0, Spotify), the ONNX file
+/// its own repository publishes: `basic_pitch/saved_models/icassp_2022/nmp.onnx`
+/// at commit `dfb20ef`. Two seconds of 22 050 Hz mono in; per frame
+/// and per piano key, how likely a note sounds, how likely one starts,
+/// and a finer pitch contour out. Read by `beatbyte-poly` for which
+/// notes were struck together.
+///
+/// ⚠️ The only entry NOT re-hosted as a release asset of this
+/// project: the URL is the upstream file at a pinned commit. The pin
+/// and the hash make the bytes exactly as fixed as the others; moving
+/// it under the project's own release is a publish, and the user's
+/// call.
+pub const BASIC_PITCH: ModelSpec = ModelSpec {
+    id: "basic-pitch",
+    file: "model.onnx",
+    url: "https://raw.githubusercontent.com/spotify/basic-pitch/dfb20ef559dff1792e11e022f3f0c7008c1dee6d/basic_pitch/saved_models/icassp_2022/nmp.onnx",
+    bytes: 230_444,
+    sha256: "2c3c1d144bfa61ad236e92e169c13535c880469a12a047d4e73451f2c059a0ec",
+    licence: "Apache-2.0",
+    purpose: "Basic Pitch polyphonic note transcription (which notes were struck together)",
+};
+
 /// Every model this build can install.
 pub const REGISTRY: &[ModelSpec] = &[
     WAV2VEC2_BASE_960H,
     BEAT_THIS_MEL,
     BEAT_THIS_SMALL,
     BEAT_THIS,
+    BASIC_PITCH,
 ];
 
 /// Look a model up by id.

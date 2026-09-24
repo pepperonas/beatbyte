@@ -22,8 +22,25 @@
 //!   [`STRUM_GRACE_MS`] for the fret to follow. The only ingredient
 //!   that touches no note: it is a judgment rule the chart carries
 //!   ([`crate::schema::Rules`]).
+//! - **`hard`** (K3) — Hard is the chart's own Expert with a ninth of
+//!   its notes taken away ([`ladder`]);
+//! - **`medium`** (K4) — Medium is the Hard with notes taken away to
+//!   their density and beat-faithfulness, folded to four frets;
+//! - **`chords`** (K5) — chords where a polyphonic transcription of the
+//!   song heard several notes struck together ([`chords`]). The one
+//!   ingredient that needs evidence from the audio: the song's
+//!   polyphony sidecar ([`crate::poly`]), made beforehand. Without one
+//!   it does nothing, and says so.
+//!
+//! The note-changing ingredients break the "flags and nothing else"
+//! promise of the first two on purpose — which notes a level holds IS
+//! their variable — but each still changes exactly one level, and
+//! keeps what it does not change byte for byte.
 
 use std::path::{Path, PathBuf};
+
+pub mod chords;
+pub mod ladder;
 
 use crate::grid::BeatGrid;
 use crate::schema::{ChartDef, ChartFile, ChartNote, Provenance};
@@ -77,6 +94,8 @@ pub struct Beats {
     grid: Option<BeatGrid>,
     /// The constant fallback, for a chart from before the grid.
     constant_s: f64,
+    /// Where the constant grid's first beat falls.
+    offset_s: f64,
 }
 
 impl Beats {
@@ -90,6 +109,7 @@ impl Beats {
             } else {
                 0.0
             },
+            offset_s: chart.song.offset_s,
         }
     }
 
@@ -100,6 +120,7 @@ impl Beats {
         Beats {
             grid: None,
             constant_s: beat_s,
+            offset_s: 0.0,
         }
     }
 
@@ -111,6 +132,17 @@ impl Beats {
             .and_then(|grid| grid.beat_length_at(time_s))
             .filter(|beat| beat.is_finite() && *beat > 0.0)
             .unwrap_or(self.constant_s)
+    }
+
+    /// Where in its beat `time_s` falls, `[0, 1)`. `None` when nothing
+    /// says how long a beat is.
+    #[must_use]
+    pub fn phase(&self, time_s: f64) -> Option<f64> {
+        if let Some(phase) = self.grid.as_ref().and_then(|grid| grid.phase_at(time_s)) {
+            return Some(phase);
+        }
+        (self.constant_s > 0.0)
+            .then(|| ((time_s - self.offset_s) / self.constant_s).rem_euclid(1.0))
     }
 }
 
@@ -216,6 +248,65 @@ pub fn apply_strum_rule(chart: &mut ChartFile) -> bool {
     true
 }
 
+/// Rebuild Hard from the chart's own Expert ([`ladder::derive_hard`]).
+/// Returns how many Hard notes differ afterwards — taken away, added
+/// back from Expert, or reshaped. Nothing happens without both levels.
+pub fn apply_hard_rule(chart: &mut ChartFile) -> usize {
+    let beats = Beats::of(chart);
+    let Some(expert) = chart
+        .charts
+        .iter()
+        .find(|c| c.difficulty == Difficulty::Expert)
+    else {
+        return 0;
+    };
+    let derived = ladder::derive_hard(expert, &beats);
+    let Some(hard) = chart
+        .charts
+        .iter_mut()
+        .find(|c| c.difficulty == Difficulty::Hard)
+    else {
+        return 0;
+    };
+    let changed = notes_differing(&hard.notes, &derived.notes);
+    *hard = derived;
+    changed
+}
+
+/// Rebuild Medium from the chart's Hard ([`ladder::derive_medium`]) —
+/// whatever that Hard is at this point, so with `hard` on it is the
+/// classic one. Returns how many Medium notes differ afterwards.
+pub fn apply_medium_rule(chart: &mut ChartFile) -> usize {
+    let beats = Beats::of(chart);
+    let find = |d: Difficulty| chart.charts.iter().find(|c| c.difficulty == d);
+    let (Some(expert), Some(hard)) = (find(Difficulty::Expert), find(Difficulty::Hard)) else {
+        return 0;
+    };
+    let (derived, _) = ladder::derive_medium(hard, expert, &beats);
+    let Some(medium) = chart
+        .charts
+        .iter_mut()
+        .find(|c| c.difficulty == Difficulty::Medium)
+    else {
+        return 0;
+    };
+    let changed = notes_differing(&medium.notes, &derived.notes);
+    *medium = derived;
+    changed
+}
+
+/// How many notes are not the same in both lists: by moment (to the
+/// microsecond) and fret, then by flag and length. Order-free.
+fn notes_differing(old: &[ChartNote], new: &[ChartNote]) -> usize {
+    use std::collections::BTreeMap;
+    let key = |n: &ChartNote| ((n.time * 1e6).round() as i64, n.lane);
+    let value = |n: &ChartNote| (n.hopo, (n.len * 1e6).round() as i64);
+    let old: BTreeMap<_, _> = old.iter().map(|n| (key(n), value(n))).collect();
+    let new: BTreeMap<_, _> = new.iter().map(|n| (key(n), value(n))).collect();
+    old.iter().filter(|(k, v)| new.get(*k) != Some(*v)).count()
+        + new.keys().filter(|k| !old.contains_key(*k)).count()
+}
+
 /// Which ingredients a twin carries.
 ///
 /// One flag per ingredient, and the directive it writes names them,
@@ -230,6 +321,12 @@ pub struct Recipe {
     pub hopo: bool,
     /// A strum under the wrong fret waits for it (K2).
     pub strum: bool,
+    /// Hard is Expert with a ninth taken away (K3).
+    pub hard: bool,
+    /// Medium is Hard thinned to their density, on four frets (K4).
+    pub medium: bool,
+    /// Chords where the recording strikes them (K5).
+    pub chords: bool,
 }
 
 impl Default for Recipe {
@@ -238,6 +335,9 @@ impl Default for Recipe {
         Recipe {
             hopo: true,
             strum: false,
+            hard: false,
+            medium: false,
+            chords: false,
         }
     }
 }
@@ -246,7 +346,7 @@ impl Recipe {
     /// Every ingredient name the programme knows, in the order they
     /// were measured to matter — the order [`Recipe::names`] writes
     /// them in and [`Recipe::parse`] accepts.
-    pub const ALL: [&'static str; 2] = ["hopo", "strum"];
+    pub const ALL: [&'static str; 5] = ["hopo", "strum", "hard", "medium", "chords"];
 
     /// Nothing at all — the recipe that must never be written.
     #[must_use]
@@ -254,6 +354,9 @@ impl Recipe {
         Recipe {
             hopo: false,
             strum: false,
+            hard: false,
+            medium: false,
+            chords: false,
         }
     }
 
@@ -263,6 +366,9 @@ impl Recipe {
         Recipe {
             hopo: true,
             strum: true,
+            hard: true,
+            medium: true,
+            chords: true,
         }
     }
 
@@ -275,6 +381,15 @@ impl Recipe {
         }
         if self.strum {
             names.push("strum");
+        }
+        if self.hard {
+            names.push("hard");
+        }
+        if self.medium {
+            names.push("medium");
+        }
+        if self.chords {
+            names.push("chords");
         }
         names
     }
@@ -297,6 +412,9 @@ impl Recipe {
                 "all" => recipe = Recipe::all(),
                 "hopo" => recipe.hopo = true,
                 "strum" => recipe.strum = true,
+                "hard" => recipe.hard = true,
+                "medium" => recipe.medium = true,
+                "chords" => recipe.chords = true,
                 other => {
                     return Err(format!(
                         "no ingredient `{other}` — known: {}, or `all`",
@@ -316,6 +434,9 @@ pub struct Changes {
     pub notes: Vec<(Difficulty, usize)>,
     /// Whether the chart's judgment rules changed.
     pub rules: bool,
+    /// The recipe asked for chords but there was no polyphony evidence
+    /// to write them from — nothing was guessed instead.
+    pub chords_without_evidence: bool,
 }
 
 impl Changes {
@@ -334,17 +455,64 @@ impl Changes {
 }
 
 /// Apply a recipe. Each ingredient that is off does nothing.
+///
+/// ⚠️ **The order is part of the recipe.** The levels are rebuilt
+/// first, top down — Medium is taken from whatever Hard is by then —
+/// and the hammer-on flags are read LAST, over the notes that are
+/// actually left: a flag decided before a note's neighbour was taken
+/// away would describe a run that no longer exists.
 pub fn apply(chart: &mut ChartFile, recipe: Recipe) -> Changes {
-    let mut notes: Vec<(Difficulty, usize)> =
-        chart.charts.iter().map(|c| (c.difficulty, 0)).collect();
-    if recipe.hopo {
-        for (slot, (difficulty, changed)) in notes.iter_mut().zip(apply_hopo_rule(chart)) {
-            debug_assert_eq!(slot.0, difficulty);
-            slot.1 += changed;
+    apply_with(chart, recipe, None)
+}
+
+/// [`apply`] with the song's polyphony evidence, which the `chords`
+/// ingredient needs. Chords come FIRST: they are written into every
+/// level the evidence reaches, and a Hard or Medium rebuilt after them
+/// takes Expert's chords down the ladder, shaped for that level.
+pub fn apply_with(
+    chart: &mut ChartFile,
+    recipe: Recipe,
+    poly: Option<&crate::poly::PolyFile>,
+) -> Changes {
+    let before = chart.charts.clone();
+    let chords_without_evidence = recipe.chords && poly.is_none();
+    if recipe.chords
+        && let Some(poly) = poly
+    {
+        let beats = Beats::of(chart);
+        for def in &mut chart.charts {
+            chords::chord_level(def, poly, &beats);
         }
     }
+    if recipe.hard {
+        apply_hard_rule(chart);
+    }
+    if recipe.medium {
+        apply_medium_rule(chart);
+    }
+    if recipe.hopo {
+        apply_hopo_rule(chart);
+    }
     let rules = recipe.strum && apply_strum_rule(chart);
-    Changes { notes, rules }
+    // Counted once, against the chart as it came in: a note the
+    // ladder added back AND the flags re-read is one changed note,
+    // not two.
+    let notes = chart
+        .charts
+        .iter()
+        .map(|def| {
+            let old = before
+                .iter()
+                .find(|c| c.difficulty == def.difficulty)
+                .map_or(&[][..], |c| &c.notes[..]);
+            (def.difficulty, notes_differing(old, &def.notes))
+        })
+        .collect();
+    Changes {
+        notes,
+        rules,
+        chords_without_evidence,
+    }
 }
 
 /// What a twin-writing run came to.
@@ -360,6 +528,9 @@ pub enum Outcome {
         changed: Vec<(String, usize)>,
         /// Whether the chart's judgment rules changed.
         rules: bool,
+        /// Chords were asked for with no polyphony evidence beside the
+        /// audio, so none were written.
+        chords_without_evidence: bool,
         /// Whether the analysis sidecar came along.
         sidecar: bool,
     },
@@ -416,7 +587,15 @@ pub fn write_twin(song_folder: &Path, recipe: Recipe) -> Result<Outcome, String>
 
     let mut chart = active.clone();
     chart.song.title = twin::titled(&active.song.title, KIND);
-    let changed = apply(&mut chart, recipe);
+    let poly = if recipe.chords {
+        poly_beside(song_folder, &active)?
+    } else {
+        None
+    };
+    let changed = apply_with(&mut chart, recipe, poly.as_ref());
+    if changed.chords_without_evidence && changed.is_empty() {
+        return Ok(Outcome::Refused(NO_EVIDENCE.to_owned()));
+    }
     if changed.is_empty() {
         return Ok(Outcome::Refused(format!(
             "{}: the chart already plays by these rules",
@@ -459,8 +638,32 @@ pub fn write_twin(song_folder: &Path, recipe: Recipe) -> Result<Outcome, String>
             .map(|(difficulty, n)| (difficulty.id().to_owned(), n))
             .collect(),
         rules: changed.rules,
+        chords_without_evidence: changed.chords_without_evidence,
         sidecar,
     })
+}
+
+/// What a run that asked for chords says when the song has no
+/// polyphony evidence.
+pub const NO_EVIDENCE: &str = "chords need the song's polyphony sidecar — \
+     run `beatbyte-cli poly <folder>` (an `ml` build) first";
+
+/// The polyphony sidecar beside a folder's audio, if there is one.
+/// `Ok(None)` when there is no file; an error when there is one that
+/// cannot be used — a broken sidecar must not be mistaken for a song
+/// without chords.
+///
+/// # Errors
+/// When the file exists but fails to load or check.
+pub fn poly_beside(
+    song_folder: &Path,
+    chart: &ChartFile,
+) -> Result<Option<crate::poly::PolyFile>, String> {
+    let path = crate::poly::poly_path(&song_folder.join(&chart.song.audio));
+    if !path.is_file() {
+        return Ok(None);
+    }
+    crate::poly::load_poly(&path).map(Some)
 }
 
 fn errors_of(chart: &ChartFile) -> Vec<String> {
@@ -772,7 +975,11 @@ mod tests {
         assert_eq!(Recipe::parse("hopo").expect("parses"), Recipe::default());
         assert_eq!(
             Recipe::parse(" strum , hopo ").expect("parses"),
-            Recipe::all(),
+            Recipe {
+                hopo: true,
+                strum: true,
+                ..Recipe::none()
+            },
             "order or spaces mattered"
         );
         assert_eq!(Recipe::parse("all").expect("parses"), Recipe::all());
@@ -788,7 +995,205 @@ mod tests {
             assert_eq!(Recipe::parse(name).expect("parses").names(), vec![name]);
         }
         assert_eq!(Recipe::all().names(), Recipe::ALL.to_vec());
-        assert_eq!(Recipe::all().directive(), "classic:hopo+strum");
+        assert_eq!(
+            Recipe::all().directive(),
+            "classic:hopo+strum+hard+medium+chords"
+        );
+    }
+
+    /// A dense Expert over a Hard that is not its subset: what the
+    /// ladder ingredients have to rebuild.
+    fn a_ladder_chart() -> ChartFile {
+        let expert: Vec<ChartNote> = (0..200)
+            .map(|i| ChartNote {
+                // Sextuplets at 120 BPM: taking one away leaves a
+                // third of a beat, still under the threshold — so the
+                // ladder makes NEW hammer-on pairs the flags must find.
+                time: 1.0 + f64::from(i) * (0.5 / 6.0),
+                // Repeats and steps mixed, so the flags have work.
+                lane: [0u8, 1, 1, 2, 3, 3, 2, 4][(i % 8) as usize],
+                len: 0.0,
+                hopo: false,
+            })
+            .collect();
+        let hard: Vec<ChartNote> = expert.iter().step_by(3).copied().collect();
+        let medium: Vec<ChartNote> = expert.iter().step_by(6).copied().collect();
+        let json = serde_json::json!({
+            "format_version": 1,
+            "song": {"title": "T", "artist": "A", "audio": "a.m4a", "bpm": 120.0, "offset_s": 0.0},
+            "charts": [
+                {"difficulty": "medium", "lanes": 5, "notes": medium},
+                {"difficulty": "hard", "lanes": 5, "notes": hard},
+                {"difficulty": "expert", "lanes": 5, "notes": expert},
+            ]
+        });
+        ChartFile::from_json(&json.to_string()).expect("parses")
+    }
+
+    fn level(chart: &ChartFile, difficulty: Difficulty) -> &ChartDef {
+        chart
+            .charts
+            .iter()
+            .find(|c| c.difficulty == difficulty)
+            .expect("the level")
+    }
+
+    /// Each ladder ingredient rebuilds its own level and leaves every
+    /// other level byte for byte.
+    #[test]
+    fn a_ladder_ingredient_rebuilds_its_level_and_nothing_else() {
+        let before = a_ladder_chart();
+        let hard_only = Recipe {
+            hard: true,
+            ..Recipe::none()
+        };
+        let mut after = before.clone();
+        let changes = apply(&mut after, hard_only);
+        assert_eq!(
+            level(&after, Difficulty::Hard).notes.len(),
+            178,
+            "89 % of 200"
+        );
+        assert_eq!(
+            level(&after, Difficulty::Medium),
+            level(&before, Difficulty::Medium)
+        );
+        assert_eq!(
+            level(&after, Difficulty::Expert),
+            level(&before, Difficulty::Expert)
+        );
+        assert!(
+            changes
+                .notes
+                .iter()
+                .any(|(d, n)| *d == Difficulty::Hard && *n > 0)
+        );
+        assert!(
+            changes
+                .notes
+                .iter()
+                .all(|(d, n)| *d == Difficulty::Hard || *n == 0),
+            "{changes:?}"
+        );
+
+        let medium_only = Recipe {
+            medium: true,
+            ..Recipe::none()
+        };
+        let mut after = before.clone();
+        apply(&mut after, medium_only);
+        let medium = level(&after, Difficulty::Medium);
+        // Taken from the chart's OWN Hard (a third of Expert here),
+        // which is under the band's floor — so all of it is kept.
+        assert_eq!(
+            medium.notes.len(),
+            level(&before, Difficulty::Hard).notes.len()
+        );
+        assert!(medium.notes.iter().all(|n| n.lane <= 3));
+        assert_eq!(
+            level(&after, Difficulty::Hard),
+            level(&before, Difficulty::Hard)
+        );
+    }
+
+    /// ⚠️ The order is part of the recipe: the flags are read over the
+    /// notes the ladder left. Read before, they describe runs that no
+    /// longer exist — so after a full recipe, reading them once more
+    /// must change nothing.
+    #[test]
+    fn the_flags_are_read_after_the_ladder() {
+        let mut chart = a_ladder_chart();
+        apply(&mut chart, Recipe::all());
+        let settled = chart.clone();
+        let again = apply_hopo_rule(&mut chart);
+        assert!(
+            again.iter().all(|(_, n)| *n == 0),
+            "the flags did not describe the notes the ladder left: {again:?}"
+        );
+        assert_eq!(chart, settled);
+    }
+
+    /// K5 through the recipe: with evidence, Expert gets its chord and
+    /// a Hard rebuilt after it takes the chord down the ladder; with
+    /// none, nothing is guessed — and the run says so.
+    #[test]
+    fn chords_come_from_the_evidence_and_are_never_guessed() {
+        use crate::poly::{POLY_FORMAT, PolyFile, PolyNote};
+        let chart = ChartFile::from_json(
+            r#"{"format_version":1,
+                "song":{"title":"T","artist":"A","audio":"a.m4a","bpm":120.0,"offset_s":0.0},
+                "charts":[
+                  {"difficulty":"hard","lanes":5,"notes":[{"time":1.0,"lane":1},{"time":3.0,"lane":2}]},
+                  {"difficulty":"expert","lanes":5,"notes":[{"time":1.0,"lane":1},{"time":2.0,"lane":2},{"time":3.0,"lane":2}]}
+                ]}"#,
+        )
+        .expect("parses");
+        let struck = |midi: u8| PolyNote {
+            start_s: 1.0,
+            end_s: 1.5,
+            midi,
+            amplitude: 0.8,
+        };
+        let poly = PolyFile {
+            format: POLY_FORMAT.to_owned(),
+            model: "basic-pitch".to_owned(),
+            model_sha256: "x".to_owned(),
+            source: "other stem".to_owned(),
+            notes: vec![struck(40), struck(47)],
+        };
+        let recipe = Recipe {
+            chords: true,
+            hard: true,
+            ..Recipe::none()
+        };
+        let lanes_at = |chart: &ChartFile, d: Difficulty, t: f64| -> Vec<u8> {
+            level(chart, d)
+                .notes
+                .iter()
+                .filter(|n| n.time == t)
+                .map(|n| n.lane)
+                .collect()
+        };
+
+        let mut with = chart.clone();
+        let changes = apply_with(&mut with, recipe, Some(&poly));
+        assert!(!changes.chords_without_evidence);
+        assert_eq!(lanes_at(&with, Difficulty::Expert, 1.0), vec![1, 3]);
+        assert_eq!(
+            lanes_at(&with, Difficulty::Hard, 1.0),
+            vec![1, 3],
+            "the rebuilt Hard did not take Expert's chord"
+        );
+        assert_eq!(lanes_at(&with, Difficulty::Expert, 2.0), vec![2]);
+
+        let mut without = chart.clone();
+        let chords_only = Recipe {
+            chords: true,
+            ..Recipe::none()
+        };
+        let changes = apply_with(&mut without, chords_only, None);
+        assert!(
+            changes.chords_without_evidence,
+            "the missing evidence went unsaid"
+        );
+        assert!(changes.is_empty());
+        assert_eq!(without, chart, "chords were guessed without evidence");
+    }
+
+    /// A twin asked for chords with no sidecar beside the audio is
+    /// refused with the command that makes one — and leaves no folder.
+    #[test]
+    fn a_chord_twin_without_evidence_is_refused_with_directions() {
+        let scratch = Scratch::new("chords");
+        let song = scratch.0.join("blondie---maria-m4a");
+        a_song_folder(&song, false);
+        let recipe = Recipe {
+            chords: true,
+            ..Recipe::none()
+        };
+        let outcome = write_twin(&song, recipe).expect("no error");
+        assert_eq!(outcome, Outcome::Refused(NO_EVIDENCE.to_owned()));
+        assert!(!scratch.0.join("classic-blondie---maria-m4a").exists());
     }
 
     /// A chart of single notes at `times`, all on alternating lanes
@@ -892,6 +1297,7 @@ mod tests {
         let beats = Beats {
             grid: Some(grid),
             constant_s: 1.0,
+            offset_s: 0.0,
         };
         // A 0.2 s gap early (a fifth of a beat) hammers; the same gap
         // late (two fifths of a half-second beat) does not.

@@ -1,0 +1,17 @@
+[package]
+name = "beatbyte-poly"
+description = "BeatByte's polyphonic transcription with a local model: Spotify's Basic Pitch ONNX through beatbyte-ml's pinned runtime — audio in, the notes struck together out."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+beatbyte-ml = { workspace = true }
+beatbyte-audio = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

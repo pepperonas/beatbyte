@@ -389,46 +389,85 @@ pub fn load_context(chart_path: &Path, chart: &ChartFile) -> Option<ChartContext
 /// names the chart it describes by content hash, and one whose hash
 /// does not match is discarded as describing a chart that no longer
 /// exists. So the hash is rewritten — which is only honest because
-/// this ingredient changes FLAGS and nothing else, so the track
-/// events are the same events in the same order and one packed entry
-/// still describes one of them.
+/// every entry is a fact about a MOMENT of the song ([`context_at`]
+/// reads nothing but the time), and the derived chart only strikes at
+/// moments the parent already struck at: the classic ingredients
+/// re-flag, take notes away, or build one level from another's notes,
+/// and never move a note in time.
 ///
-/// ⚠️ Verified rather than assumed: the entry count per difficulty is
-/// checked against the new chart's own tracks first. A sidecar that
-/// does not line up is worse than none — every later reading would
-/// attribute one note's analysis to another.
+/// So each event of the new chart takes the entry the parent's sidecar
+/// has for the same moment — in the same difficulty or any other,
+/// since a classic Hard is built from Expert's moments.
+///
+/// ⚠️ Verified rather than assumed: a parent difficulty whose entries
+/// do not line up with its own track is not read at all, and a new
+/// event whose moment no entry describes refuses the whole carry. A
+/// sidecar that does not line up is worse than none — every later
+/// reading would attribute one note's analysis to another.
 ///
 /// `Ok(false)` means the parent had no current sidecar; there was
 /// nothing to carry and that is not a failure.
 ///
 /// # Errors
-/// When the entries do not line up, or the write fails.
+/// When an event cannot be matched, or the write fails.
 pub fn carry(
     parent_path: &Path,
     parent: &ChartFile,
     next_path: &Path,
     next: &ChartFile,
 ) -> Result<bool, String> {
-    let Some(mut sidecar) = load_context(parent_path, parent) else {
+    let Some(sidecar) = load_context(parent_path, parent) else {
         return Ok(false);
     };
-    for definition in &next.charts {
-        let id = definition.difficulty.id();
-        let events = next
-            .to_track(definition.difficulty)
-            .map(|track| track.events().len())
-            .map_err(|error| format!("{id}: cannot read the new track: {error}"))?;
-        let entries = sidecar.tracks.get(id).map_or(0, Vec::len);
-        if entries != events {
-            return Err(format!(
-                "{id}: the parent's sidecar describes {entries} events, the new version has \
-                 {events} — refusing to write one that does not line up"
-            ));
+    let moment = |time_s: f64| (time_s * 1e6).round() as i64;
+    // Every moment the parent's sidecar describes, from every
+    // difficulty whose entries line up with its own track.
+    let mut by_moment: BTreeMap<i64, Packed> = BTreeMap::new();
+    for definition in &parent.charts {
+        let Ok(track) = parent.to_track(definition.difficulty) else {
+            continue;
+        };
+        let Some(entries) = sidecar.tracks.get(definition.difficulty.id()) else {
+            continue;
+        };
+        if entries.len() != track.events().len() {
+            continue;
+        }
+        for (event, entry) in track.events().iter().zip(entries) {
+            by_moment.entry(moment(event.time_s)).or_insert(*entry);
         }
     }
-    sidecar.chart_hash = crate::chart_hash(next);
-    debug_assert!(sidecar.is_current_for(next));
-    save_context(next_path, &sidecar)
+    let mut tracks = BTreeMap::new();
+    for definition in &next.charts {
+        let id = definition.difficulty.id();
+        let track = next
+            .to_track(definition.difficulty)
+            .map_err(|error| format!("{id}: cannot read the new track: {error}"))?;
+        let mut packed = Vec::with_capacity(track.events().len());
+        for event in track.events() {
+            let key = moment(event.time_s);
+            let entry = by_moment
+                .get(&key)
+                .or_else(|| by_moment.get(&(key - 1)))
+                .or_else(|| by_moment.get(&(key + 1)))
+                .ok_or_else(|| {
+                    format!(
+                        "{id}: nothing in the parent's sidecar describes {:.6}s — refusing to \
+                         write one that does not line up",
+                        event.time_s
+                    )
+                })?;
+            packed.push(*entry);
+        }
+        tracks.insert(id.to_owned(), packed);
+    }
+    let carried = ChartContext {
+        format: CONTEXT_FORMAT.to_owned(),
+        chart_hash: crate::chart_hash(next),
+        tracks,
+    };
+    debug_assert!(carried.is_current_for(next));
+    save_context(next_path, &carried)
         .map(|_| true)
         .map_err(|error| format!("cannot write the sidecar: {error}"))
 }
@@ -464,6 +503,78 @@ mod tests {
     /// that no longer exists" — and the new version would silently
     /// have no analysis behind it. Rewriting the hash is honest here
     /// only because the ingredient changes flags and nothing else.
+    #[test]
+    fn a_derived_level_takes_each_entry_from_the_same_moment() {
+        // ⚠️ The classic ladder builds Hard from EXPERT's moments and
+        // takes notes away. Each new event must get the entry of its
+        // own moment — found in whichever difficulty had it — never
+        // the entry at its old position in the list.
+        let dir = std::env::temp_dir().join(format!(
+            "bb-classic-ctx-moment-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        std::fs::create_dir_all(&dir).expect("a scratch folder");
+        let parent = ChartFile::from_json(
+            r#"{"format_version":1,
+                "song":{"title":"T","artist":"A","audio":"a.m4a","bpm":120.0,"offset_s":0.0},
+                "charts":[
+                  {"difficulty":"hard","lanes":5,"notes":[{"time":1.0,"lane":0},{"time":3.0,"lane":2}]},
+                  {"difficulty":"expert","lanes":5,"notes":[{"time":1.0,"lane":0},{"time":2.0,"lane":1},{"time":3.0,"lane":2}]}
+                ]}"#,
+        )
+        .expect("parses");
+        let mut next = parent.clone();
+        // Hard now holds Expert's first two moments: one it had, one
+        // it never had.
+        next.charts[0].notes = vec![parent.charts[1].notes[0], parent.charts[1].notes[1]];
+        let parent_path = dir.join("chart.json");
+        let next_path = dir.join("chart.v2.json");
+        let mut tracks = std::collections::BTreeMap::new();
+        tracks.insert("hard".to_owned(), vec![[1u8; 6], [3u8; 6]]);
+        tracks.insert("expert".to_owned(), vec![[1u8; 6], [2u8; 6], [3u8; 6]]);
+        save_context(
+            &parent_path,
+            &ChartContext {
+                format: CONTEXT_FORMAT.to_owned(),
+                chart_hash: crate::chart_hash(&parent),
+                tracks,
+            },
+        )
+        .expect("the parent's sidecar");
+        assert_eq!(carry(&parent_path, &parent, &next_path, &next), Ok(true));
+        let read = load_context(&next_path, &next).expect("current for the new chart");
+        assert_eq!(read.tracks["hard"], vec![[1u8; 6], [2u8; 6]]);
+        assert_eq!(read.tracks["expert"], vec![[1u8; 6], [2u8; 6], [3u8; 6]]);
+
+        // ⚠️ A parent difficulty whose entries do not line up with its
+        // own track is not read at all: its entries would sit on the
+        // wrong moments. Hard's list is one short here; Expert still
+        // describes every moment, correctly.
+        let mut tracks = std::collections::BTreeMap::new();
+        tracks.insert("hard".to_owned(), vec![[9u8; 6]]);
+        tracks.insert("expert".to_owned(), vec![[1u8; 6], [2u8; 6], [3u8; 6]]);
+        save_context(
+            &parent_path,
+            &ChartContext {
+                format: CONTEXT_FORMAT.to_owned(),
+                chart_hash: crate::chart_hash(&parent),
+                tracks,
+            },
+        )
+        .expect("a misaligned sidecar");
+        assert_eq!(carry(&parent_path, &parent, &next_path, &next), Ok(true));
+        let read = load_context(&next_path, &next).expect("current");
+        assert_eq!(
+            read.tracks["hard"],
+            vec![[1u8; 6], [2u8; 6]],
+            "a misaligned difficulty's entries were used"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn the_parents_sidecar_is_carried_over_and_still_describes_the_new_version() {
         let dir = std::env::temp_dir().join(format!(

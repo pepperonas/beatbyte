@@ -220,8 +220,12 @@ fn one_twin(folder: &Path, dry_run: bool, recipe: classic::Recipe) -> Result<Str
             title,
             changed,
             rules,
+            chords_without_evidence,
             sidecar,
         } => {
+            if chords_without_evidence {
+                eprintln!("{name}: {}", classic::NO_EVIDENCE);
+            }
             let per: Vec<String> = changed.iter().map(|(id, n)| format!("{id} {n}")).collect();
             let note = if sidecar {
                 " with its analysis sidecar"
@@ -277,8 +281,16 @@ fn preview(folder: &Path, recipe: classic::Recipe) -> Result<Preview, String> {
     let active_name = versions::resolve_active(pointer.as_deref(), &names);
     let before = load_chart_file(&folder.join(&active_name))
         .map_err(|error| format!("cannot load {active_name}: {error}"))?;
+    let poly = if recipe.chords {
+        classic::poly_beside(folder, &before)?
+    } else {
+        None
+    };
     let mut after = before.clone();
-    let changes = classic::apply(&mut after, recipe);
+    let changes = classic::apply_with(&mut after, recipe, poly.as_ref());
+    if changes.chords_without_evidence {
+        eprintln!("{}: {}", folder.display(), classic::NO_EVIDENCE);
+    }
     let window = before.preview_window(WINDOW_DIFFICULTY, WINDOW_S);
     Ok(Some((before, after, window, changes.rules)))
 }
@@ -347,8 +359,16 @@ fn one(folder: &Path, dry_run: bool, recipe: classic::Recipe) -> Result<String, 
     if recipe.names().is_empty() {
         return Err("no ingredients: a new version would be a copy".to_owned());
     }
+    let poly = if recipe.chords {
+        classic::poly_beside(folder, &before)?
+    } else {
+        None
+    };
     let mut after = before.clone();
-    let changes = classic::apply(&mut after, recipe);
+    let changes = classic::apply_with(&mut after, recipe, poly.as_ref());
+    if changes.chords_without_evidence {
+        eprintln!("{}: {}", folder.display(), classic::NO_EVIDENCE);
+    }
     let changed = &changes.notes;
     // ⚠️ The new version says where it came from. Copied unchanged,
     // the twin's own provenance would have this file claiming to be

@@ -18,6 +18,7 @@ beatbyte-catalogue = { workspace = true, optional = true }
 beatbyte-ml = { workspace = true, optional = true }
 beatbyte-lyrics = { workspace = true, optional = true }
 beatbyte-meter = { workspace = true, optional = true }
+beatbyte-poly = { workspace = true, optional = true }
 clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -26,7 +27,12 @@ dirs = { workspace = true }
 [features]
 # Local ML models (ADR-0013): the `models` subcommand. Off by default;
 # the default build stays offline and free of the inference crates.
-ml = ["dep:beatbyte-ml", "dep:beatbyte-lyrics", "dep:beatbyte-meter"]
+ml = [
+    "dep:beatbyte-ml",
+    "dep:beatbyte-lyrics",
+    "dep:beatbyte-meter",
+    "dep:beatbyte-poly",
+]
 # The metadata catalogue (ADR-0019, M9): `library --catalogue`. Off by
 # default, and it is the ONLY thing in this tool that talks to a
 # network — a song is fully playable without it.

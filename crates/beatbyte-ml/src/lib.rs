@@ -32,7 +32,8 @@ pub mod store;
 
 pub use error::MlError;
 pub use registry::{
-    BEAT_THIS, BEAT_THIS_MEL, BEAT_THIS_SMALL, ModelSpec, REGISTRY, WAV2VEC2_BASE_960H, spec,
+    BASIC_PITCH, BEAT_THIS, BEAT_THIS_MEL, BEAT_THIS_SMALL, ModelSpec, REGISTRY,
+    WAV2VEC2_BASE_960H, spec,
 };
 pub use runtime::{Input, Loaded, Output, Runtime, THREADS};
 pub use store::{ModelStore, Progress, Status};
