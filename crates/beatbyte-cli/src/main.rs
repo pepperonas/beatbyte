@@ -14,6 +14,7 @@ use clap::{Parser, Subcommand};
 #[cfg(feature = "ml")]
 mod align;
 mod chart_check;
+mod classic;
 mod context;
 mod dossier;
 mod history;
@@ -363,6 +364,24 @@ enum Command {
         /// to the chart).
         #[arg(long)]
         out: Option<PathBuf>,
+    },
+    /// Re-flag a song's hammer-ons the way the early guitar games
+    /// did — tempo-relative and exclusive, so straight eighths are
+    /// strummed and triplets are hammered — as a NEW version whose
+    /// parent is the one active now.
+    ///
+    /// The blind test (`T` in the browser) then plays the two
+    /// against each other, differing by this and nothing else.
+    Classic {
+        /// A song folder — or, with `--all`, a directory of them.
+        folder: PathBuf,
+        /// Treat the path as a directory of song folders.
+        #[arg(long)]
+        all: bool,
+        /// Only count what would change, per difficulty and inside
+        /// the window the blind test plays. Writes nothing.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Regenerate hard + expert as a new sibling version, keeping
     /// easy + medium from the active version (the difficulty
@@ -776,6 +795,17 @@ fn main() -> ExitCode {
             include_autopilot,
             out,
         ),
+        Command::Classic {
+            folder,
+            all,
+            dry_run,
+        } => {
+            if all {
+                classic::run_all(&folder, dry_run)
+            } else {
+                classic::run(&folder, dry_run)
+            }
+        }
         Command::Redesign { chart, all } => {
             if all {
                 redesign::run_redesign_all(&chart)

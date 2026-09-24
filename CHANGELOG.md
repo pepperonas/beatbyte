@@ -14,6 +14,23 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.28] - 2026-09-24
+
+### Added
+
+- **`beatbyte-cli classic`** — the first ingredient of the classic
+  programme: re-flag a song's hammer-ons the way the early guitar
+  games did. Their threshold is **tempo-relative and exclusive**
+  (170 of 480 ticks per beat), where ours asks in seconds — so past
+  about 115 BPM on Hard our plain eighth notes became hammer-ons,
+  and the library's Hard charts are 39 % HOPO because of it. Asked
+  in beats, a straight eighth is half a beat and is strummed at
+  every tempo; an eighth-note triplet is a third and is hammered.
+  It writes the result as a new version whose parent is the one
+  active now, so the blind test (`T`) plays the two against each
+  other differing by this and nothing else. `--dry-run` counts what
+  would change, per difficulty and inside the window the test plays.
+
 ## [0.18.27] - 2026-09-24
 
 ### Changed

@@ -36,6 +36,7 @@
 //! ```
 
 pub mod catalogue;
+pub mod classic;
 pub mod context;
 pub mod convert;
 pub mod escalation;

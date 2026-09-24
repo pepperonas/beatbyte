@@ -40,6 +40,57 @@ pub struct ChartFile {
     pub grid: Option<crate::grid::BeatGrid>,
 }
 
+impl ChartFile {
+    /// The stretch of `length_s` this chart shows itself by: its own
+    /// preview anchor when it has one, else the busiest window of
+    /// `difficulty`.
+    ///
+    /// The anchor is where the generator already decided the song
+    /// introduces itself (the browser previews from there). Falling
+    /// back to the busiest window rather than to zero matters: a song
+    /// that opens with eight bars of silence would otherwise be
+    /// judged on its silence.
+    ///
+    /// ⚠️ It lives here, in the crate that owns charts, because two
+    /// things have to agree on it exactly: the blind test that plays
+    /// a window to a person, and anything that reports what CHANGED
+    /// in that window. A second copy of this rule would quietly
+    /// measure a different thirty seconds than the one played.
+    /// Pure — tested.
+    #[must_use]
+    pub fn preview_window(&self, difficulty: Difficulty, length_s: f64) -> (f64, f64) {
+        if let Some(anchor) = self
+            .song
+            .preview_start_s
+            .filter(|a| a.is_finite() && *a >= 0.0)
+        {
+            return (anchor, anchor + length_s);
+        }
+        let times: Vec<f64> = self
+            .charts
+            .iter()
+            .find(|c| c.difficulty == difficulty)
+            .map(|c| c.notes.iter().map(|n| n.time).collect())
+            .unwrap_or_default();
+        let Some(&first) = times.first() else {
+            return (0.0, length_s);
+        };
+        // One pass over the notes: for every note, how many fall
+        // inside the window that STARTS there. The densest wins.
+        let mut best = (first, 0usize);
+        for (index, &start) in times.iter().enumerate() {
+            let count = times[index..]
+                .iter()
+                .take_while(|t| **t < start + length_s)
+                .count();
+            if count > best.1 {
+                best = (start, count);
+            }
+        }
+        (best.0, best.0 + length_s)
+    }
+}
+
 /// The encoder priming a chart's audio was decoded without.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AudioTrim {

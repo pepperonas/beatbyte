@@ -52,46 +52,14 @@ pub enum Choice {
     Same,
 }
 
-/// The window this song is tested on: the chart's own preview anchor
-/// when it has one, else the busiest [`WINDOW_S`] of the difficulty
-/// being played.
+/// The window this song is tested on.
 ///
-/// The anchor is where the generator already decided the song shows
-/// itself (the browser previews from there). Falling back to the
-/// busiest window rather than to zero matters: a song that opens with
-/// eight bars of silence would otherwise be tested on its silence.
-/// Pure — tested.
+/// ⚠️ A delegate, not a copy: the rule lives in the chart crate so
+/// the offline tool can report what changed in exactly the thirty
+/// seconds this plays. Two copies would measure two windows.
 #[must_use]
 pub fn window_for(chart: &ChartFile, difficulty: Difficulty, length_s: f64) -> (f64, f64) {
-    if let Some(anchor) = chart
-        .song
-        .preview_start_s
-        .filter(|a| a.is_finite() && *a >= 0.0)
-    {
-        return (anchor, anchor + length_s);
-    }
-    let times: Vec<f64> = chart
-        .charts
-        .iter()
-        .find(|c| c.difficulty == difficulty)
-        .map(|c| c.notes.iter().map(|n| n.time).collect())
-        .unwrap_or_default();
-    let Some(&first) = times.first() else {
-        return (0.0, length_s);
-    };
-    // One pass over the notes: for every note, how many fall inside
-    // the window that STARTS there. The densest such window wins.
-    let mut best = (first, 0usize);
-    for (index, &start) in times.iter().enumerate() {
-        let count = times[index..]
-            .iter()
-            .take_while(|t| **t < start + length_s)
-            .count();
-        if count > best.1 {
-            best = (start, count);
-        }
-    }
-    (best.0, best.0 + length_s)
+    chart.preview_window(difficulty, length_s)
 }
 
 /// Which version plays first, decided by a seed rather than by which
