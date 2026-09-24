@@ -66,9 +66,33 @@ pub(crate) enum Row {
     LyricsLeadIn,
     LyricsModel,
     Controls,
+    /// Measure how late your input reaches the game.
+    ///
+    /// This and [`Row::InputTest`] used to be entries in the MAIN
+    /// menu, which put two set-up tools among the things a player
+    /// came to do. They are settings: you visit them once.
+    Calibration,
+    /// Free-play tester for keyboard, pad and guitar.
+    InputTest,
 }
 
 impl Row {
+    /// The screen this row opens, for the rows that are doors rather
+    /// than settings.
+    ///
+    /// One list, so a door cannot be added to the enum and forgotten
+    /// in the handler — which is how it was: `Controls` was matched
+    /// by name in one `if`.
+    #[must_use]
+    pub(crate) const fn opens(self) -> Option<AppState> {
+        match self {
+            Row::Controls => Some(AppState::Controls),
+            Row::Calibration => Some(AppState::Calibration),
+            Row::InputTest => Some(AppState::InputTest),
+            _ => None,
+        }
+    }
+
     /// Where a row sits in the list (for a drill that has to arrow
     /// down to it with real keys).
     #[must_use]
@@ -79,9 +103,10 @@ impl Row {
     /// Every row, in the order the screen shows them: **alphabetical
     /// by label**, and kept that way by a test — a new row goes where
     /// its name falls, not at the end of the list.
-    const ALL: [Row; 37] = [
+    const ALL: [Row; 39] = [
         Row::AiSearch,
         Row::BeatPulse,
+        Row::Calibration,
         Row::Controls,
         Row::FxIntensity,
         Row::ExportHistory,
@@ -90,6 +115,7 @@ impl Row {
         Row::GuitarStudyTwins,
         Row::HighContrast,
         Row::HitLabels,
+        Row::InputTest,
         Row::LatencyOffset,
         Row::LoudnessMatch,
         Row::Lyrics,
@@ -158,6 +184,8 @@ impl Row {
             Row::WatchFolder => "SONG FOLDER",
             Row::SongPreview => "SONG PREVIEW",
             Row::Controls => "CONTROLS",
+            Row::Calibration => "CALIBRATION",
+            Row::InputTest => "INPUT TEST",
         }
     }
 
@@ -238,7 +266,7 @@ impl Row {
             Row::TapMode => on_off(settings.tap_mode),
             Row::Fullscreen => on_off(settings.fullscreen),
             Row::Theme => settings.theme.to_uppercase(),
-            Row::Controls => "OPEN >".to_owned(),
+            Row::Controls | Row::Calibration | Row::InputTest => "OPEN >".to_owned(),
         }
     }
 
@@ -380,7 +408,7 @@ impl Row {
                 let next = (position + direction as i32 + count) % count;
                 settings.theme = ids[next as usize].to_owned();
             }
-            Row::Controls => {}
+            Row::Controls | Row::Calibration | Row::InputTest => {}
         }
     }
 
@@ -681,9 +709,11 @@ fn settings_input(
         sounds.write(crate::sfx::UiSound::Confirm);
         return;
     }
-    if row == Row::Controls && (nav.confirm || nav.right || clicked) {
+    if let Some(screen) = row.opens()
+        && (nav.confirm || nav.right || clicked)
+    {
         sounds.write(crate::sfx::UiSound::Confirm);
-        next_state.set(AppState::Controls);
+        next_state.set(screen);
         return;
     }
     let mut adjusted = false;

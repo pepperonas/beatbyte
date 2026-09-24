@@ -14,6 +14,32 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.25] - 2026-09-24
+
+### Added
+
+- **STATISTICS is in the main menu.** Six views of your career were
+  reachable only by going to PLAYERS, choosing a person and pressing
+  `S` — an unlabelled key on a screen about names. The way through
+  PLAYERS still works; this is a second door.
+
+### Changed
+
+- **CALIBRATION and INPUT TEST moved under SETTINGS.** Both are
+  set-up tools you visit once, and having them in the entry put nine
+  rows in front of somebody who wanted one. The main menu is eight:
+  play, with whom, who you are, how you are getting on, what you have
+  earned, how it is set up, what this is, and out.
+- **The browser's footer names the navigation** and says the rest is
+  a chip above, instead of listing half of both in 92 characters.
+
+### Fixed
+
+- **INFO says "nothing here" before you press it.** A built-in song
+  has no folder and therefore no document, so the `I` key and the
+  INFO button both did nothing at all. The button is dimmed for
+  those songs, as the EDIT chip has been all along.
+
 ## [0.18.24] - 2026-09-24
 
 ### Changed

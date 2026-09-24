@@ -16,16 +16,19 @@ pub enum MenuAction {
     Play,
     /// Open the multiplayer join screen.
     Multiplayer,
-    /// Open the roster and its statistics.
+    /// Open the roster.
     Players,
+    /// Open one player's statistics.
+    ///
+    /// ⚠️ Eight views of a career were reachable only by going to
+    /// PLAYERS, choosing a person and pressing `S` — an unlabelled
+    /// key on a screen about names. The way through PLAYERS stays;
+    /// this is a second door, not a diversion.
+    Statistics,
     /// Open the achievements overview.
     Achievements,
     /// Open settings.
     Settings,
-    /// Open latency calibration.
-    Calibration,
-    /// Free-play tester for keyboard and guitar input.
-    InputTest,
     /// Credits, license, links and the changelog.
     About,
     /// Quit the game.
@@ -33,14 +36,21 @@ pub enum MenuAction {
 }
 
 impl MenuAction {
-    const ALL: [MenuAction; 9] = [
+    /// The entry is what a player came to do: play, with whom, who
+    /// they are, how they are getting on, what they have earned, how
+    /// it is set up, what this is, and out.
+    ///
+    /// ⚠️ CALIBRATION and INPUT TEST used to sit here. Both are
+    /// set-up tools you visit once, and having them in the entry put
+    /// nine rows in front of a player who wanted one. They live
+    /// under SETTINGS now.
+    const ALL: [MenuAction; 8] = [
         MenuAction::Play,
         MenuAction::Multiplayer,
         MenuAction::Players,
+        MenuAction::Statistics,
         MenuAction::Achievements,
         MenuAction::Settings,
-        MenuAction::Calibration,
-        MenuAction::InputTest,
         MenuAction::About,
         MenuAction::Quit,
     ];
@@ -50,10 +60,9 @@ impl MenuAction {
             MenuAction::Play => "PLAY",
             MenuAction::Multiplayer => "MULTIPLAYER",
             MenuAction::Players => "PLAYERS",
+            MenuAction::Statistics => "STATISTICS",
             MenuAction::Achievements => "ACHIEVEMENTS",
             MenuAction::Settings => "SETTINGS",
-            MenuAction::Calibration => "CALIBRATION",
-            MenuAction::InputTest => "INPUT TEST",
             MenuAction::About => "ABOUT",
             MenuAction::Quit => "QUIT",
         }
@@ -149,6 +158,8 @@ pub(crate) fn menu_input(
     rows: Query<(&MenuRow, &Interaction), Changed<Interaction>>,
     mut cursor: ResMut<MenuCursor>,
     mut roster: ResMut<crate::multiplayer::PlayerRoster>,
+    players: Res<crate::players::Players>,
+    mut chosen: ResMut<crate::stats_ui::StatsFor>,
     mut next_state: ResMut<NextState<AppState>>,
     mut quit: MessageWriter<crate::crt::QuitRequested>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
@@ -204,10 +215,19 @@ pub(crate) fn menu_input(
             }
             MenuAction::Multiplayer => next_state.set(AppState::MultiplayerSetup),
             MenuAction::Players => next_state.set(AppState::Players),
+            // With a player chosen the statistics are about them;
+            // without one there is nothing to show, so the roster is
+            // the honest answer rather than an empty screen.
+            MenuAction::Statistics => {
+                if players.0.selected.is_some() {
+                    chosen.0 = players.0.selected;
+                    next_state.set(AppState::Stats);
+                } else {
+                    next_state.set(AppState::Players);
+                }
+            }
             MenuAction::Achievements => next_state.set(AppState::Achievements),
             MenuAction::Settings => next_state.set(AppState::Settings),
-            MenuAction::Calibration => next_state.set(AppState::Calibration),
-            MenuAction::InputTest => next_state.set(AppState::InputTest),
             MenuAction::About => next_state.set(AppState::About),
             MenuAction::Quit => {
                 quit.write(crate::crt::QuitRequested);

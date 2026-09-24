@@ -830,7 +830,13 @@ fn spawn_chip(parent: &mut ChildSpawnerCommands, font: &UiFont, chip: ChipSpec) 
         });
 }
 
-fn chip_colours(enabled: bool, hot: bool) -> (Color, Color, Color) {
+/// Text, border and fill for an action chip.
+///
+/// Public because one control is hand-rolled rather than spawned by
+/// `spawn_chip` — the browser's INFO button — and it must say
+/// "nothing here" in the same voice as the chips beside it.
+#[must_use]
+pub fn chip_colours(enabled: bool, hot: bool) -> (Color, Color, Color) {
     if !enabled {
         return (
             palette::dimmed(palette::TEXT_DIM, 0.45),

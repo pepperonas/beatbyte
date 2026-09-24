@@ -627,6 +627,7 @@ impl Plugin for SongSelectPlugin {
                     // the selection is heard as a move, not a start.
                     crate::preview::drive_preview,
                     refresh_browser,
+                    refresh_info_button,
                     rebuild_after_import,
                     follow_selection,
                 )
@@ -1044,7 +1045,7 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
             crate::prompts::device_footer(
                 parent,
                 font,
-                "UP/DOWN song  LEFT/RIGHT difficulty  ENTER rock  chips above  DEL asks, Y confirms  ESC back",
+                "UP/DOWN song  LEFT/RIGHT difficulty  ENTER rock  ESC back  everything else is a chip above",
                 "D-PAD song and difficulty  SOUTH rock  EAST back",
             );
             ui_kit::back_button(parent, font, "MAIN MENU");
@@ -2429,6 +2430,39 @@ fn refresh_browser(
         if text.0 != line {
             text.0 = line;
         }
+    }
+}
+
+/// Dim INFO where there is nothing behind it.
+///
+/// ⚠️ A built-in song has no folder and therefore no document, so
+/// both the `I` key and this button did nothing at all — a control
+/// that is available and inert teaches the player that the screen is
+/// broken. The EDIT chip has said this for the same songs all along;
+/// INFO is hand-rolled and was left out of the rule.
+///
+/// ⚠️ Its own system on purpose. Folded into `refresh_browser` as one
+/// more parameter it compiled and then PANICKED at startup: that
+/// system already writes `TextColor` and `BorderColor` through four
+/// other queries, and Bevy cannot prove a `With<InfoButton>` query
+/// disjoint from them. The autopilot found it; nothing else would
+/// have.
+#[allow(clippy::needless_pass_by_value)] // Bevy system params
+fn refresh_info_button(
+    library: Res<SongLibrary>,
+    view: Res<BrowserView>,
+    cursor: Res<BrowserCursor>,
+    mut info: Query<(&mut TextColor, &mut BorderColor), With<InfoButton>>,
+) {
+    let has_document = view
+        .order
+        .get(cursor.0)
+        .and_then(|i| library.entries.get(*i))
+        .is_some_and(|entry| matches!(entry.source, crate::library::SongSource::File { .. }));
+    let (fg, line, _) = ui_kit::chip_colours(has_document, false);
+    for (mut colour, mut border) in &mut info {
+        colour.0 = fg;
+        *border = BorderColor::all(line);
     }
 }
 
