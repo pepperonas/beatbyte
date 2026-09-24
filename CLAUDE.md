@@ -65,12 +65,14 @@ that may touch Bevy (the full layering and its invariants:
 - **`beatbyte-game`** (everything above) — the only Bevy crate:
   screens, HUD, 3D stage, input routing, library, settings, harnesses.
 - **`beatbyte-cli`** (all but game and editor) — the offline tool.
-- **`apps/beatbyte`** — thin launcher; it also holds the two gates
+- **`apps/beatbyte`** — thin launcher; it also holds the three gates
   that watch the repository itself: `tests/docs_stay_true.rs` (the
-  documents must state what the code actually is) and
+  documents must state what the code actually is),
   `tests/rock_is_unchanged.rs` (the built-in songs' charts are
   fingerprinted — when a change to the default IS intended, updating
-  the constant is the deliberate act of recording that).
+  the constant is the deliberate act of recording that) and
+  `tests/telemetry_stays_evidence.rs` (the store is read back in
+  exactly one place, read-only, and nothing decides from it).
 
 `beatbyte-game` is by far the largest crate. `src/gameplay/` is the
 playing screen (input, notes, HUD, lyrics, 3D stage, light show); the
@@ -236,8 +238,12 @@ tech writer, release manager. Operate accordingly:
   different measurements; and it is **local-first** — no upload, no
   microphone audio, no key that BeatByte is not bound to.
 
-  Analytics over it produce **evidence**, never a change. Nothing
-  reads the store back into the game.
+  Analytics over it produce **evidence**, never a change. The game
+  reads the store back in **exactly one place** — the statistics
+  screen, read-only and off the frame thread, to SHOW the player what
+  happened. Nothing reads it to DECIDE anything: achievements still
+  derive from the play history (ADR-0017). A third repository gate,
+  `telemetry_stays_evidence.rs`, pins that rather than trusting it.
 
 ## Data-driven gameplay
 

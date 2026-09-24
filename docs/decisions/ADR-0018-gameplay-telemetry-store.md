@@ -185,7 +185,23 @@ is not designed here and would need its own decision.
 ### What analytics may do
 
 Produce evidence. Nothing in the crate changes a chart, a score, a
-difficulty or a setting, and the game does not read the store back.
+difficulty or a setting.
+
+⚠️ **The game does read the store back, and in exactly one place.**
+Until the Player Analytics work it did not, and that absence WAS the
+guarantee: with no reader, nothing could act on what the store said.
+The change was deliberate (design spec 2026-09-23, "Store read policy
+— A") so the statistics screen can show a player what actually
+happened — `Store::open_readonly`, on a background task, never the
+writable handle (which would let a display bug run the migrations and
+alter the record it is displaying).
+
+What the rule protects is unchanged: the store may be read to **show**,
+never to **decide**. Achievements still derive from the play history
+(ADR-0017), not from here. Because the property now rests on a
+discipline rather than on an absence, it is pinned in
+`apps/beatbyte/tests/telemetry_stays_evidence.rs` — one reader, one
+writer, and the reader never writable.
 The note-quality signal (hit rate, median offset, spread, confidence)
 is **computed on demand and never written into a chart** — a chart
 that carried its own quality score would be a chart that argues with
