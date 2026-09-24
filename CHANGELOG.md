@@ -14,6 +14,20 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.31] - 2026-09-24
+
+### Fixed
+
+- **`classic` carries the analysis sidecar to the version it
+  writes.** A redesign has always written one; this did not, so a
+  run played on a classic version recorded evidence that could never
+  be joined to what the analysis said at those notes. The parent's
+  sidecar travels over with its hash rewritten — honest only because
+  the ingredient changes flags and nothing else — and only after the
+  entry count is checked against the new chart's own tracks. One
+  that does not line up is refused rather than written: every later
+  reading would otherwise blame the wrong note.
+
 ## [0.18.30] - 2026-09-24
 
 ### Fixed
