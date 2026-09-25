@@ -273,6 +273,12 @@ tech writer, release manager. Operate accordingly:
   options, input map) and the API key never travel. A new setting is
   classified as shared or device before it ships (a test fails
   otherwise), and a new player id never comes from a counter.
+  **What comes from the hub is untrusted input**, like a chart: a
+  manifest path that is not a plain relative path, a blob name that
+  is not a SHA-256, a pointer to anything but a chart version, or a
+  device folder name this tool never makes refuses that device whole
+  (`beatbyte_sync::library::validate`), and every blob is verified
+  against its hash before it is written.
 
 ## Data-driven gameplay
 

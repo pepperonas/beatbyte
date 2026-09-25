@@ -516,3 +516,52 @@ fn settings_are_read_where_the_game_keeps_them() {
         "a settings file appeared in the data dir"
     );
 }
+
+/// ⚠️ The hub is shared: a manifest whose path climbs out of the
+/// library is refused whole, and nothing lands outside it.
+#[test]
+fn a_manifest_that_climbs_out_of_the_library_is_refused() {
+    let root = scratch("traverse");
+    let hub = root.join("hub");
+    let (a, b) = (device(&root, "mac-a"), device(&root, "mac-b"));
+    song(&a, "s", "song.m4a", "evil");
+    sync_now(&a, &hub);
+    let path = hub.join("devices/mac-a/library.json");
+    let mut manifest = read_json(&path).expect("manifest");
+    let entry = manifest["files"]["s/song.m4a"].clone();
+    manifest["files"] = json!({ "../../escaped": entry });
+    write_json(&path, &manifest).expect("tamper");
+    let err = sync(&Options {
+        settings: b.join("settings.json"),
+        data: b.clone(),
+        hub: Some(hub.to_string_lossy().into_owned()),
+        dry_run: false,
+        models: false,
+        check_game: false,
+    })
+    .expect_err("must refuse");
+    assert!(err.contains("refused"), "{err}");
+    assert!(!b.join("escaped").exists() && !root.join("escaped").exists());
+    assert!(!hub.join("lock").exists());
+}
+
+/// A device folder with a name this tool never makes is refused.
+#[test]
+fn a_device_name_this_tool_never_makes_is_refused() {
+    let root = scratch("devname");
+    let hub = root.join("hub");
+    let a = device(&root, "mac-a");
+    std::fs::create_dir_all(hub.join("devices").join("Evil Name")).expect("odd");
+    let err = sync(&Options {
+        settings: a.join("settings.json"),
+        data: a.clone(),
+        hub: Some(hub.to_string_lossy().into_owned()),
+        dry_run: false,
+        models: false,
+        check_game: false,
+    })
+    .expect_err("must refuse");
+    assert!(err.contains("refusing"), "{err}");
+    assert!(is_device_id("macbookpro-1a0d7b86052"));
+    assert!(!is_device_id("../x") && !is_device_id("A") && !is_device_id(""));
+}

@@ -170,10 +170,71 @@ pub fn version_of(name: &str) -> Option<u32> {
     if name == "chart.json" {
         return Some(1);
     }
-    name.strip_prefix("chart.v")?
-        .strip_suffix(".json")?
-        .parse()
-        .ok()
+    let digits = name.strip_prefix("chart.v")?.strip_suffix(".json")?;
+    // Digits only: `parse` would also take `+5`, a second spelling of
+    // the same version.
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    digits.parse().ok()
+}
+
+/// Whether `path` is a safe relative path under the library root:
+/// `/`-separated, every component an ordinary name — no `..` or `.`,
+/// nothing empty, no backslash, no drive colon, no control character.
+///
+/// ⚠️ Another device's manifest is UNTRUSTED input, like a chart: the
+/// hub is a shared directory, and a path that climbs out of the
+/// library would make the sync write anywhere the user can.
+#[must_use]
+pub fn is_safe_path(path: &str) -> bool {
+    !path.is_empty()
+        && path.len() <= 4096
+        && path.split('/').all(|part| {
+            !part.is_empty()
+                && part != "."
+                && part != ".."
+                && !part
+                    .chars()
+                    .any(|c| c == '\\' || c == ':' || c.is_control())
+        })
+}
+
+/// Whether `hash` is a SHA-256 as the manifests write it.
+#[must_use]
+pub fn is_hash(hash: &str) -> bool {
+    hash.len() == 64
+        && hash
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// Check another device's manifest before anything is planned from it.
+///
+/// # Errors
+/// The first entry that is not safe — and then the WHOLE manifest is
+/// refused: a device that writes one bad path is not trusted for the
+/// rest.
+pub fn validate(manifest: &Manifest) -> Result<(), String> {
+    for (path, entry) in &manifest.files {
+        if !is_safe_path(path) {
+            return Err(format!("unsafe path in the manifest: {path:?}"));
+        }
+        if !is_hash(&entry.hash) {
+            return Err(format!("{path}: not a SHA-256: {:?}", entry.hash));
+        }
+        if let Some(target) = &entry.points_to
+            && (version_of(target).is_none() || target.contains('/'))
+        {
+            return Err(format!("{path}: the pointer names {target:?}"));
+        }
+    }
+    for (path, tombstone) in &manifest.tombstones {
+        if !is_safe_path(path) || !is_hash(&tombstone.hash) {
+            return Err(format!("unsafe tombstone in the manifest: {path:?}"));
+        }
+    }
+    Ok(())
 }
 
 fn version_name(n: u32) -> String {
@@ -668,5 +729,58 @@ mod tests {
         assert_eq!(version_of("chart-active.json"), None);
         assert_eq!(version_name(1), "chart.json");
         assert_eq!(version_name(7), "chart.v7.json");
+        assert_eq!(version_of("chart.v+5.json"), None, "a second spelling of 5");
+        assert_eq!(version_of("chart.v.json"), None);
+    }
+
+    /// ⚠️ Another device's manifest is untrusted: a path that leaves
+    /// the library, a hash that is not one, or a pointer to anything
+    /// but a version refuses the WHOLE manifest.
+    #[test]
+    fn a_manifest_that_leaves_the_library_is_refused() {
+        let good = "a".repeat(64);
+        let ok = |path: &str| validate(&manifest(&[(path, entry(&good, 1))]));
+        assert!(ok("song/chart.json").is_ok());
+        for bad in [
+            "../outside",
+            "song/../../outside",
+            "/etc/passwd",
+            "song//chart.json",
+            "./song",
+            "C:/x",
+            "song\\..\\x",
+            "",
+            "song/\u{0}x",
+        ] {
+            assert!(ok(bad).is_err(), "{bad:?} was accepted");
+        }
+        let hash = |h: &str| validate(&manifest(&[("s/a", entry(h, 1))]));
+        assert!(hash(&good).is_ok());
+        for bad in [
+            "../../x",
+            "ABC",
+            &"A".repeat(64),
+            &"a".repeat(63),
+            &format!("{}/", "a".repeat(63)),
+        ] {
+            assert!(hash(bad).is_err(), "{bad:?} passed as a hash");
+        }
+        let pointer = |to: &str| {
+            let mut e = entry(&good, 1);
+            e.points_to = Some(to.to_owned());
+            validate(&manifest(&[("s/chart-active.json", e)]))
+        };
+        assert!(pointer("chart.v3.json").is_ok());
+        assert!(pointer("../chart.json").is_err());
+        assert!(pointer("song.m4a").is_err());
+        let mut tomb = Manifest::default();
+        tomb.tombstones.insert(
+            "../x".to_owned(),
+            Tombstone {
+                hash: good.clone(),
+                deleted_ms: 1,
+            },
+        );
+        assert!(validate(&tomb).is_err());
     }
 }

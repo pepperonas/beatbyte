@@ -244,6 +244,16 @@ fn load_config(data: &Path, dry_run: bool) -> Result<Config, String> {
     Ok(config)
 }
 
+/// A device id as `load_config` makes them: lowercase letters, digits
+/// and dashes.
+fn is_device_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 80
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
 fn read_json(path: &Path) -> Option<Value> {
     std::fs::read_to_string(path)
         .ok()
@@ -650,9 +660,16 @@ fn merge_device(
     // With the deletions since the last publish as tombstones — a song
     // deleted here must not come straight back from the other copy.
     let local_manifest = scan(data, !dry_run)?.with_deletions_since(&last_manifest(data), now_ms());
-    let remote_manifest: Manifest = read_json(&remote_dir.join("library.json"))
-        .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_default();
+    // Another device's manifest is untrusted input: a path that climbs
+    // out of the library, or a blob name that is not a hash, refuses it
+    // whole — nothing is planned from a device that writes one.
+    let remote_manifest: Manifest = match read_json(&remote_dir.join("library.json")) {
+        Some(value) => serde_json::from_value(value)
+            .map_err(|e| format!("{}: library.json: {e}", remote_dir.display()))?,
+        None => Manifest::default(),
+    };
+    beatbyte_sync::library::validate(&remote_manifest)
+        .map_err(|e| format!("{}: {e} — refused", remote_dir.display()))?;
     let plan = beatbyte_sync::library::plan(&local_manifest, &remote_manifest);
     merged.notes.extend(plan.notes.iter().cloned());
 
@@ -862,6 +879,11 @@ pub fn sync(options: &Options) -> Result<String, String> {
         .filter(|d| !d.is_empty() && *d != config.device)
         .map(str::to_owned)
         .collect();
+    // A device folder's name becomes a local path: only names this
+    // tool makes (see `load_config`) are taken.
+    if let Some(odd) = others.iter().find(|d| !is_device_id(d)) {
+        return Err(format!("the hub lists a device named {odd:?}; refusing"));
+    }
     for device in &others {
         let local = sync_dir(data).join("remote").join(device);
         std::fs::create_dir_all(&local).map_err(|e| e.to_string())?;

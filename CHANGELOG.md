@@ -14,6 +14,21 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.41] - 2026-09-25
+
+### Security
+
+- **The sync refuses a manifest that reaches outside the library.**
+  What another device published on the hub was trusted as it came: a
+  file path like `../../somewhere` would have been written outside the
+  song library, anywhere the user may write. Every path, blob name,
+  pointer and device name from the hub is now checked first, and a
+  device that publishes one bad entry is refused whole, with nothing
+  changed. Found by a review of the pushed code; the hub in use (the
+  raspi5, reached with an SSH key) held only this Mac's own snapshot.
+- A chart version is only `chart.vN.json` with digits — `chart.v+5.json`
+  was read as a second spelling of version 5.
+
 ## [0.18.40] - 2026-09-25
 
 ### Added
