@@ -144,6 +144,9 @@ impl Plugin for AutopilotPlugin {
                     autopilot_menu.run_if(in_state(AppState::MainMenu)),
                     autopilot_song_select.run_if(in_state(AppState::SongSelect)),
                     autopilot_edit.run_if(in_state(AppState::Editor)),
+                    autopilot_edit_mouse
+                        .run_if(in_state(AppState::Editor))
+                        .before(crate::editor_ui::pointer::editor_pointer),
                     autopilot_results.run_if(in_state(AppState::Results)),
                     autopilot_drop.run_if(in_state(AppState::SongSelect)),
                     fail_if_window_vanishes,
@@ -641,12 +644,15 @@ fn autopilot_edit(
     time: Res<Time>,
     mut delay: Local<f32>,
     mut edits_done: Local<bool>,
+    mut keys_ok: Local<Option<bool>>,
     state: Option<ResMut<crate::editor_ui::EditorState>>,
     music: Res<crate::audio_sys::Music>,
     mut game_clock: ResMut<crate::audio_sys::GameClock>,
     clicks: Res<crate::editor_ui::AuditionClicks>,
     settings: Res<crate::config::Settings>,
     drill: Option<Res<EditDrill>>,
+    mouse: Option<Res<MouseDrill>>,
+    mut commands: Commands,
     mut app_exit: MessageWriter<AppExit>,
 ) {
     let Some(mut state) = state else {
@@ -677,6 +683,35 @@ fn autopilot_edit(
             );
             deliver(&mut app_exit, AppExit::error());
         }
+        return;
+    }
+    // Phase 1b: the keyboard-side edits are done; the mouse drill runs
+    // one gesture per frame, then the audition starts.
+    if let Some(keys) = *keys_ok {
+        let Some(mouse) = mouse.as_deref() else {
+            return;
+        };
+        if !mouse.done {
+            return;
+        }
+        if !(keys && mouse.ok) {
+            error!("autopilot: editor validation FAILED — the mouse drill");
+            deliver(&mut app_exit, AppExit::error());
+            return;
+        }
+        // Start the audition (preview from the cursor) and let phase 2
+        // assert the metronome overlay; four seconds of it.
+        music.0.set_volume(0.3);
+        music.0.play_file(state.audio_path.clone());
+        music.0.set_song_gain(crate::loudness::song_gain_for(
+            &crate::boot::SongAudio::File(state.audio_path.clone()),
+            &settings,
+        ));
+        music.0.seek_s(state.cursor_s);
+        game_clock.begin(time.elapsed_secs_f64(), state.cursor_s);
+        state.previewing = true;
+        *edits_done = true;
+        *delay = 1.0;
         return;
     }
     use beatbyte_editor::EditOp;
@@ -830,22 +865,258 @@ fn autopilot_edit(
         }
         ok &= untouched;
     }
+    *keys_ok = Some(ok);
     if ok {
-        // Edits verified; start the audition (preview from cursor)
-        // and let phase 2 assert the metronome overlay.
-        music.0.set_volume(0.3);
-        music.0.play_file(state.audio_path.clone());
-        music.0.set_song_gain(crate::loudness::song_gain_for(
-            &crate::boot::SongAudio::File(state.audio_path.clone()),
-            &settings,
-        ));
-        music.0.seek_s(state.cursor_s);
-        game_clock.begin(time.elapsed_secs_f64(), state.cursor_s);
-        state.previewing = true;
-        *edits_done = true;
+        commands.insert_resource(MouseDrill::default());
     } else {
         error!("autopilot: editor validation FAILED");
         deliver(&mut app_exit, AppExit::error());
+    }
+}
+
+/// The editor drill's mouse half: where it is and what it found.
+#[derive(Resource, Default)]
+pub struct MouseDrill {
+    step: usize,
+    /// Where the probe note is (time, lane) as the drill goes.
+    probe: (f64, u8),
+    /// The empty spot the box starts from.
+    empty: Vec2,
+    notes_before: usize,
+    depth_before: usize,
+    zoom_pivot: Option<(f32, f64, f64)>,
+    /// Whether every check passed.
+    pub ok: bool,
+    /// Whether the drill is over.
+    pub done: bool,
+}
+
+/// Drive the REAL pointer code, one gesture per frame: place a note
+/// with a click, drag it to another time and lane, drag its length,
+/// box-select it, right-click empty space and then the note, zoom with
+/// Cmd + wheel — and undo back to where it started. Runs before
+/// `editor_pointer`, so what it presses is what that system reads.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
+#[allow(clippy::too_many_lines)] // one script, one step per frame
+fn autopilot_edit_mouse(
+    mut commands: Commands,
+    drill: Option<ResMut<MouseDrill>>,
+    state: Option<ResMut<crate::editor_ui::EditorState>>,
+    mut buttons: ResMut<ButtonInput<MouseButton>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut wheel: MessageWriter<bevy::input::mouse::MouseWheel>,
+    windows: Query<Entity, With<bevy::window::PrimaryWindow>>,
+) {
+    use beatbyte_editor::view;
+    let (Some(mut drill), Some(mut state)) = (drill, state) else {
+        return;
+    };
+    if drill.done {
+        return;
+    }
+    let point = |commands: &mut Commands, at: Vec2| {
+        commands.insert_resource(crate::editor_ui::pointer::InjectedPointer(at));
+    };
+    let note_at = |state: &crate::editor_ui::EditorState, key: (f64, u8)| {
+        state
+            .notes()
+            .iter()
+            .copied()
+            .find(|n| view::same_note(key, n))
+    };
+    let check = |drill: &mut MouseDrill, what: &str, passed: bool| {
+        if passed {
+            info!("autopilot: mouse {what}: ok");
+        } else {
+            error!("autopilot: mouse {what}: FAILED");
+            drill.ok = false;
+        }
+    };
+    let v = state.view;
+    let xy = |lane: u8, time: f64| Vec2::new(view::lane_x(lane) as f32, v.y_of(time) as f32);
+    let step = drill.step;
+    drill.step += 1;
+    match step {
+        0 => {
+            drill.ok = true;
+            // A quiet spot: lanes 3 and 4 free for three seconds.
+            let busy = |t: f64| {
+                state
+                    .notes()
+                    .iter()
+                    .any(|n| n.lane >= 3 && (n.time - t).abs() < 2.5)
+            };
+            let mut t = 2.0;
+            while busy(t) && t < 600.0 {
+                t += 0.5;
+            }
+            state.snap_on = true;
+            state.division = 4;
+            state.follow = false;
+            state.selection.clear();
+            state.view.center_s = t + 0.5;
+            state.view.px_per_s = 150.0;
+            state.dirty_view = true;
+            drill.probe = (t, 4);
+            drill.notes_before = state.notes().len();
+            drill.depth_before = state.session.undo_depth();
+            let target = Vec2::new(view::lane_x(4) as f32, state.view.y_of(t) as f32);
+            point(&mut commands, target);
+        }
+        // Click: a note, snapped, selected.
+        1 => buttons.press(MouseButton::Left),
+        2 => buttons.release(MouseButton::Left),
+        3 => {
+            let placed = state.snap_with(drill.probe.0, false);
+            let found = note_at(&state, (placed, 4));
+            check(&mut drill, "click places a snapped note", found.is_some());
+            check(
+                &mut drill,
+                "the placed note is selected",
+                state.selection.len() == 1,
+            );
+            drill.probe = (placed, 4);
+            point(&mut commands, xy(4, placed));
+            buttons.press(MouseButton::Left);
+        }
+        // Drag: half a second later, one lane left.
+        4 => point(&mut commands, xy(3, drill.probe.0 + 0.5)),
+        5 => buttons.release(MouseButton::Left),
+        6 => {
+            let expected = state.snap_with(drill.probe.0 + 0.5, false);
+            let passed =
+                note_at(&state, (expected, 3)).is_some() && note_at(&state, drill.probe).is_none();
+            check(&mut drill, "drag moves the note in time and lane", passed);
+            drill.probe = (expected, 3);
+            // The length tab above the head.
+            let head = xy(3, expected);
+            point(
+                &mut commands,
+                Vec2::new(head.x, head.y + (view::HEAD_REACH + 4.0) as f32),
+            );
+            buttons.press(MouseButton::Left);
+        }
+        7 => point(&mut commands, xy(3, drill.probe.0 + 1.0)),
+        8 => buttons.release(MouseButton::Left),
+        9 => {
+            let want = state.snap_with(drill.probe.0 + 1.0, false) - drill.probe.0;
+            let len = note_at(&state, drill.probe).map_or(-1.0, |n| n.len);
+            check(
+                &mut drill,
+                "dragging the tab sets the length",
+                (len - want).abs() < 1e-6,
+            );
+            // An empty spot for the box: lane 0, below the note.
+            let mut empty = Vec2::new(view::lane_x(0) as f32, v.y_of(drill.probe.0) as f32 - 30.0);
+            for _ in 0..40 {
+                let hit = view::hit_test(
+                    state.notes(),
+                    &state.view,
+                    f64::from(empty.x),
+                    f64::from(empty.y),
+                );
+                if matches!(hit, view::Hit::Lane { .. }) {
+                    break;
+                }
+                empty.y -= 7.0;
+            }
+            drill.empty = empty;
+            // ⚠️ Nothing selected before the box: the length drag had
+            // selected the note, and a box that selected nothing still
+            // passed (the mutation probe showed it).
+            state.selection.clear();
+            point(&mut commands, empty);
+            buttons.press(MouseButton::Left);
+        }
+        10 => {
+            let far = xy(4, drill.probe.0);
+            point(&mut commands, Vec2::new(far.x, far.y + 30.0));
+            // A picture of the box being drawn, when asked for (this
+            // frame renders it; the next one releases it).
+            if let Some(dir) = std::env::var_os("BEATBYTE_SHOT_DIR") {
+                let path = std::path::PathBuf::from(dir).join("beatbyte-editor-box.png");
+                commands
+                    .spawn(Screenshot::primary_window())
+                    .observe(save_to_disk(path));
+            }
+        }
+        11 => buttons.release(MouseButton::Left),
+        12 => {
+            let probe = drill.probe;
+            check(
+                &mut drill,
+                "a box selects the note",
+                state.selection.iter().any(|k| {
+                    view::same_note(
+                        *k,
+                        &beatbyte_chart::ChartNote {
+                            time: probe.0,
+                            lane: probe.1,
+                            len: 0.0,
+                            hopo: false,
+                        },
+                    )
+                }),
+            );
+            let empty = drill.empty;
+            point(&mut commands, empty);
+            buttons.press(MouseButton::Right);
+        }
+        13 => buttons.release(MouseButton::Right),
+        14 => {
+            check(
+                &mut drill,
+                "right-click on empty space clears the selection",
+                state.selection.is_empty(),
+            );
+            point(&mut commands, xy(drill.probe.1, drill.probe.0));
+            buttons.press(MouseButton::Right);
+        }
+        15 => buttons.release(MouseButton::Right),
+        16 => {
+            let passed =
+                note_at(&state, drill.probe).is_none() && state.notes().len() == drill.notes_before;
+            check(&mut drill, "right-click deletes the note", passed);
+            // Cmd/Ctrl + wheel: zoom around the pointer.
+            let pivot_y = 40.0f32;
+            point(&mut commands, Vec2::new(view::lane_x(2) as f32, pivot_y));
+            drill.zoom_pivot = Some((
+                pivot_y,
+                state.view.time_at(f64::from(pivot_y)),
+                state.view.px_per_s,
+            ));
+            keys.press(KeyCode::ControlLeft);
+            if let Ok(window) = windows.single() {
+                wheel.write(bevy::input::mouse::MouseWheel {
+                    unit: bevy::input::mouse::MouseScrollUnit::Line,
+                    x: 0.0,
+                    y: 1.0,
+                    window,
+                    phase: bevy::input::touch::TouchPhase::Moved,
+                });
+            }
+        }
+        17 => {
+            keys.release(KeyCode::ControlLeft);
+            if let Some((pivot_y, pivot_time, zoom)) = drill.zoom_pivot {
+                check(
+                    &mut drill,
+                    "cmd-wheel zooms in around the pointer",
+                    state.view.px_per_s > zoom * 1.1
+                        && (state.view.time_at(f64::from(pivot_y)) - pivot_time).abs() < 1e-3,
+                );
+            }
+            // Everything the mouse did undoes, back to the start.
+            let mut undone = 0;
+            while state.session.undo_depth() > drill.depth_before && state.session.undo() {
+                undone += 1;
+            }
+            let passed = undone == 4 && state.notes().len() == drill.notes_before;
+            check(&mut drill, "the mouse edits undo exactly (4 steps)", passed);
+            commands.remove_resource::<crate::editor_ui::pointer::InjectedPointer>();
+            drill.done = true;
+        }
+        _ => drill.done = true,
     }
 }
 

@@ -114,15 +114,23 @@ impl Grid {
         (anchor_place.0 + bars, beat)
     }
 
-    /// Beats per bar where the grid's bars are regular, else 4.
+    /// The beats of the grid's most common complete bar (4 when it
+    /// has none). ⚠️ The MOST COMMON, not the longest: a tracked grid
+    /// carries the odd irregular bar, and the longest one turned the
+    /// pickup before the first bar line into "bar -1, beat 5".
     fn bar_length(&self) -> u32 {
-        let mut longest = 0u32;
+        let mut counts = std::collections::BTreeMap::<u32, usize>::new();
         for window in self.place.windows(2) {
-            if window[1].0 != window[0].0 {
-                longest = longest.max(window[0].1);
+            // A complete bar ends where the next begins; the first one
+            // may be a pickup (bar 0) and is not counted.
+            if window[1].0 != window[0].0 && window[0].0 >= 1 {
+                *counts.entry(window[0].1).or_default() += 1;
             }
         }
-        if longest == 0 { 4 } else { longest }
+        counts
+            .into_iter()
+            .max_by_key(|(beats, count)| (*count, std::cmp::Reverse(*beats)))
+            .map_or(4, |(beats, _)| beats)
     }
 
     /// The fractional beat index of a time (0 = the first mark),
@@ -358,6 +366,34 @@ mod tests {
             (grid.snap(-0.26, 1) - (-0.5)).abs() < 1e-9,
             "snapping works before the grid too"
         );
+    }
+
+    /// One irregular 5-beat bar in a grid of 4-beat bars does not make
+    /// the grid "5 beats a bar" past its ends.
+    #[test]
+    fn the_common_bar_length_extends_the_grid() {
+        let mut marks = Vec::new();
+        let mut t = 1.0;
+        for bar in 0..6 {
+            let beats = if bar == 2 { 5 } else { 4 };
+            for beat in 0..beats {
+                marks.push((t, beat == 0));
+                t += 0.5;
+            }
+        }
+        let grid = Grid::from_marks(&marks).unwrap();
+        let before = grid.position(0.5);
+        assert_eq!(
+            before,
+            Position {
+                bar: 0,
+                beat: 4,
+                tick: 0
+            },
+            "a pickup, not beat 5"
+        );
+        let after = grid.position(t + 2.0);
+        assert!(after.beat <= 4, "{after}");
     }
 
     #[test]

@@ -14,6 +14,31 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.44] - 2026-09-25
+
+### Added
+
+- **The chart editor works with the mouse.** Click in a lane to place
+  a note (it snaps to the grid; hold Alt for the exact spot), click a
+  note to select it (Shift adds more), drag it to another time or
+  lane, drag the small tab above it to make it a held note, drag
+  across empty space to select everything inside, right-click to
+  delete. The wheel scrolls, Cmd/Ctrl + wheel zooms around the
+  pointer, and clicking the ruler or the waveform moves the playhead.
+  Every action is also a button in the toolbar, with its key on it.
+- **The song's waveform beside the lanes**, with bar numbers and beat
+  lines from the song's own grid (the snap division's lines too, when
+  zoomed in far enough), so a stroke can be seen where it is heard.
+- **Zoom from a whole song down to a few milliseconds**, a snap grid
+  from whole beats to sixteenths (triplets included) that can be
+  switched off, and an information block that shows exactly where the
+  playhead is, what the pointer is over and the selected note's stored
+  time, lane, length and HOPO.
+- **Keys:** Delete/Backspace deletes the selection, Shift + arrows move
+  it, Cmd/Ctrl+Z / Cmd+Shift+Z undo and redo, Cmd/Ctrl+A selects all,
+  Home/End jump, F toggles following the playhead, F1 shows the full
+  reference. The browser's chip reads "Edit chart".
+
 ## [0.18.43] - 2026-09-25
 
 ### Changed

@@ -11,6 +11,8 @@ pub mod ops;
 pub mod save;
 pub mod session;
 pub mod timecode;
+pub mod view;
+pub mod waveform;
 
 pub use ops::{EDIT_EPSILON_S, EditError, EditOp};
 pub use save::{Saved, Saver};

@@ -739,7 +739,7 @@ fn browser_chips() -> [ui_kit::ChipSpec; 13] {
         },
         ui_kit::ChipSpec {
             id: chip::EDIT,
-            label: "Edit",
+            label: "Edit chart",
             enabled: true,
         },
         ui_kit::ChipSpec {
