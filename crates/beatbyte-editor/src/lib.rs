@@ -8,9 +8,12 @@
 //! (ADR-0002).
 
 pub mod ops;
+pub mod save;
 pub mod session;
+pub mod timecode;
 
 pub use ops::{EDIT_EPSILON_S, EditError, EditOp};
+pub use save::{Saved, Saver};
 pub use session::EditorSession;
 
 /// The crate version, kept in sync with the workspace version.

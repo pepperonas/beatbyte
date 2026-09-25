@@ -956,6 +956,20 @@ fn plan_chart_write(
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
         .collect();
     let version_name = versions::next_version_name(&existing);
+    // ⚠️ A version the player edited by hand stays the active one: the
+    // fresh chart is written beside it for whoever wants it, but play
+    // does not move away from the edits (`versions::is_hand_edited`).
+    let pointer_text = std::fs::read_to_string(folder.join(versions::POINTER_FILE)).ok();
+    let active = versions::resolve_active(pointer_text.as_deref(), &existing);
+    let hand_edited = beatbyte_chart::load_chart_file(&folder.join(&active))
+        .is_ok_and(|chart| versions::is_hand_edited(&chart));
+    if hand_edited {
+        info!(
+            "import: `{active}` was edited by hand — the fresh chart is written as \
+             `{version_name}` and the edits stay active"
+        );
+        return Ok((folder.join(version_name), None));
+    }
     let pointer = versions::ActivePointer {
         active: version_name.clone(),
     };
@@ -1396,6 +1410,40 @@ mod write_plan_tests {
         let (pointer_path, text) = pointer.expect("a pointer moves play to the new version");
         assert_eq!(pointer_path, dir.join("chart-active.json"));
         assert!(text.contains("chart.v2.json"));
+    }
+
+    /// ⚠️ A re-import writes its chart beside a hand-edited active
+    /// version and leaves the pointer on the edits.
+    #[test]
+    fn a_reimport_leaves_a_hand_edited_version_active() {
+        let dir = scratch("hand");
+        let mut chart = beatbyte_chart::ChartFile::from_json(
+            r#"{"format_version":1,"song":{"title":"T","audio":"a.ogg","bpm":120.0},"charts":[]}"#,
+        )
+        .expect("chart");
+        std::fs::write(dir.join("chart.json"), "{}").expect("base");
+        chart.provenance = Some(beatbyte_chart::Provenance {
+            parent_hash: "p".to_owned(),
+            designer: beatbyte_chart::versions::EDITOR_DESIGNER.to_owned(),
+            created_ms: 1,
+            directive: None,
+        });
+        beatbyte_chart::save_chart_file(&dir.join("chart.v2.json"), &chart).expect("v2");
+        std::fs::write(
+            dir.join("chart-active.json"),
+            r#"{"active": "chart.v2.json"}"#,
+        )
+        .expect("pointer");
+        let (path, pointer) = plan_chart_write(&dir).expect("plans");
+        assert_eq!(
+            path,
+            dir.join("chart.v3.json"),
+            "written beside, never over"
+        );
+        assert!(
+            pointer.is_none(),
+            "the pointer moved away from the hand edits"
+        );
     }
 
     #[test]

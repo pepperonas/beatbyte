@@ -14,6 +14,38 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.43] - 2026-09-25
+
+### Changed
+
+- **Saving in the editor keeps the chart you started from.** A save
+  used to write over the chart it opened. It now writes the next
+  version beside it (`chart.v7.json`), makes it the one that plays,
+  and marks it as edited by hand; saving again in the same session
+  updates that version instead of piling up new ones. Going back is
+  pointing at the older file.
+- **Your hand edits stay the active chart.** Regenerating a song
+  (`redesign`, the browser's `G`), applying the classic recipe, and
+  re-importing the same audio used to put a fresh version above
+  whatever played — including a chart edited by hand. They now leave a
+  hand-edited version active (a re-import still writes its chart
+  beside it).
+- **Chart files are written safely.** Every chart is written to a
+  temporary file and renamed into place, so an interrupted save
+  leaves the previous file intact.
+
+### Added
+
+- Editor groundwork: star-power phrases and empty difficulties can
+  be edited and undone; positions in bars, beats and ticks follow the
+  song's own beat grid, tempo changes included.
+
+### Fixed
+
+- The editor drill (`BEATBYTE_AUTOPILOT_EDIT`) saved into the real
+  library; it edits a scratch copy now and checks that the real chart
+  did not change.
+
 ## [0.18.42] - 2026-09-25
 
 ### Fixed

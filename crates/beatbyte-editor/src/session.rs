@@ -275,6 +275,71 @@ mod tests {
         assert!(!session.dirty());
     }
 
+    /// ⚠️ Every kind of edit on one difficulty — notes, moves,
+    /// lengths, HOPO, phrases, undo and redo — leaves every other
+    /// difficulty exactly as it was.
+    #[test]
+    fn edits_on_one_difficulty_never_touch_another() {
+        let mut file = chart();
+        file.charts.insert(
+            0,
+            beatbyte_chart::ChartDef {
+                difficulty: Difficulty::Medium,
+                lanes: 5,
+                notes: vec![ChartNote {
+                    time: 1.0,
+                    lane: 0,
+                    len: 0.5,
+                    hopo: true,
+                }],
+                phrases: vec![beatbyte_chart::ChartPhrase {
+                    start: 0.5,
+                    end: 2.0,
+                }],
+            },
+        );
+        let medium = file.chart_for(Difficulty::Medium).cloned();
+        let mut session = EditorSession::new(file, Difficulty::Expert).unwrap();
+        session.edit(add(1.0, 0)).unwrap();
+        session
+            .edit_batch(vec![
+                EditOp::MoveNote {
+                    difficulty: Difficulty::Expert,
+                    from_time: 1.0,
+                    from_lane: 0,
+                    to_time: 1.5,
+                    to_lane: 2,
+                },
+                EditOp::SetLen {
+                    difficulty: Difficulty::Expert,
+                    time: 1.5,
+                    lane: 2,
+                    len: 0.75,
+                    previous: 0.0,
+                },
+                EditOp::ToggleHopo {
+                    difficulty: Difficulty::Expert,
+                    time: 1.5,
+                    lane: 2,
+                },
+                EditOp::AddPhrase {
+                    difficulty: Difficulty::Expert,
+                    phrase: beatbyte_chart::ChartPhrase {
+                        start: 1.0,
+                        end: 3.0,
+                    },
+                },
+            ])
+            .unwrap();
+        assert!(session.undo());
+        assert!(session.redo());
+        assert_eq!(
+            session.chart().chart_for(Difficulty::Medium).cloned(),
+            medium
+        );
+        assert_eq!(session.chart().charts.len(), 2);
+    }
+
     #[test]
     fn validity_follows_the_edits() {
         let mut session = EditorSession::new(chart(), Difficulty::Expert).unwrap();

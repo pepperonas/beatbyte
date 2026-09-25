@@ -2180,6 +2180,21 @@ the models synced once, the same name on two devices is one person.
 - [x] S7 **End to end on both Macs** *(v0.18.42)* — the 2015's first sync pulled everything (2 994 files fetched, 603 sessions / 297 353 events inserted); after two rounds each way the library is identical by hash (3 074 files, one fingerprint on both manifests) and history, scores and achievements are byte-identical. Then offline play on each — the 2015 three autopilot runs, this Mac one — and two syncs each way: before A 391 runs / 604 sessions, B 392 / 606; after both 393 / 607 (A +2, B +1: every run once), no duplicates, further rounds change nothing. **It found three defects the tests had not**: a fresh device's DEFAULTS were stamped as the newest settings and overwrote four of the player's on this Mac (fixed: a key that appears is a default; a pre-stamp value is `LEGACY`; the four restored from the S0 backup), the fresh device selected nobody, and pointers in two spellings were republished as new files. Scores went 86 → 84 on both by the documented rule, not a loss: this Mac held a name-keyed and an id-keyed record for one twin, and the better one (225 714 / 176 199) stays. *Verified: 1903 tests (+4), gate green; 9 more mutations caught (pointer bytes ×4, fresh selection ×2, default stamping ×3).*
 - [ ] S8 **Frame rate on the 2015** — ~21 fps at 2880×1800 on the Radeon R9 M370X in 3D AND 2D. A render-scale setting (device key) that renders the world below native resolution and scales up is the lever to measure first; the goal is a steady 60 on that machine.
 
+## Chart editor v3 (IN PROGRESS 2026-09-25 — docs/plans/chart-editor.md)
+
+The editor from M11/E1–E3, grown into a full one: mouse and keyboard
+equal, timeline with waveform, playback control, clipboard, warnings,
+playtest. Decided defaults: slow-down lowers the pitch (the practice
+path), the grid is shown and snapped to but not edited, best scores
+stay and older-version ones are marked, the vertical highway stays.
+
+- [x] ED0 **Foundation and data safety** *(v0.18.43)* — the inventory found that the editor saved OVER the file it opened (the active version), that `save_chart_file` was not atomic, that four writers of versions would each bury a hand edit under a new active version, and that `BEATBYTE_AUTOPILOT_EDIT` saved into the player's real library. Now: every chart write goes through `io::write_atomic` (temp file + rename; pinned in the source, since atomicity cannot be seen from outside); a save is a NEW version (`beatbyte_editor::Saver`) with provenance `designer: "editor"` bound to its parent, made active, one version per editing session (later saves rewrite it), nothing written when nothing plays differently, nothing written when the chart does not validate, the analysis sidecar carried where every note still has one; `redesign` (and the browser's `G`), `classic` and a re-import leave a hand-edited active version active (`versions::is_hand_edited`); new invertible ops for star-power phrases (add, remove, set bounds) and for adding an empty difficulty (removing only an empty one); `timecode::Grid` measures from the chart's beat marks — seconds ↔ bar:beat:tick (192 ticks a beat), snap by division, local tempo, extended past both ends of the grid; the library is read again after a save so the browser plays the new version; the drill edits a scratch COPY (real chart checked byte for byte) and takes `BEATBYTE_AUTOPILOT_SONG`. *Verified: 1927 tests (+24), gate green; the drill PASSED on "Heroes" (saved as `chart.v2.json` in the scratch folder, the real chart unchanged); 14 mutations caught (after two invalid or blind probes were sharpened: a non-compiling mutant, and an atomicity that only a source pin can see).*
+- [ ] ED1 Timeline: zoom, free scroll, waveform, bar/beat lines, full mouse editing, hover info, toolbar.
+- [ ] ED2 Playback: scrub, loop region, 0.5×/0.75×, auto-follow.
+- [ ] ED3 Multi-select, clipboard, duplicate, inspector fields, context menu, phrases, difficulties.
+- [ ] ED4 Warnings, exit guard, older-version best scores marked.
+- [ ] ED5 Playtest with return to the same place.
+
 ## Backlog (explicitly out of scope until after 1.0)
 
 Not started without a deliberate roadmap edit pulling them forward:

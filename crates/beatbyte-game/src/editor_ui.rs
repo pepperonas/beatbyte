@@ -13,7 +13,7 @@
 
 use beatbyte_chart::ChartNote;
 use beatbyte_core::{Lane, TempoMap};
-use beatbyte_editor::{EditOp, EditorSession};
+use beatbyte_editor::{EditOp, EditorSession, Saved, Saver};
 use bevy::prelude::*;
 use bevy::sprite::Anchor;
 
@@ -27,8 +27,14 @@ use crate::ui::UiFont;
 pub struct EditorState {
     /// The edit session (chart + undo/redo).
     pub session: EditorSession,
-    /// Where the chart is saved.
+    /// The file the chart was opened from — after a save, the version
+    /// the save wrote.
     pub chart_path: std::path::PathBuf,
+    /// Saves an edit as a new chart version (never an overwrite).
+    pub saver: Saver,
+    /// Whether anything was saved this session (the library is read
+    /// again on the way out, so the browser plays the new version).
+    pub saved_any: bool,
     /// The song's audio for preview.
     pub audio_path: std::path::PathBuf,
     /// Cursor position on the song timeline.
@@ -84,10 +90,13 @@ pub fn open_editor(
     difficulty: beatbyte_core::Difficulty,
 ) -> Result<(), String> {
     let chart = beatbyte_chart::load_chart_file(chart_path).map_err(|error| error.to_string())?;
+    let saver = Saver::new(chart_path, chart.clone());
     let session = EditorSession::new(chart, difficulty).map_err(|error| error.to_string())?;
     commands.insert_resource(EditorState {
         session,
         chart_path: chart_path.to_path_buf(),
+        saver,
+        saved_any: false,
         audio_path: audio_path.to_path_buf(),
         cursor_s: 0.0,
         lane: Lane::Three,
@@ -425,17 +434,7 @@ fn editor_input(
 
     // Save.
     if keys.just_pressed(KeyCode::KeyS) {
-        if state.session.is_valid() {
-            match beatbyte_chart::save_chart_file(&state.chart_path, state.session.chart()) {
-                Ok(()) => {
-                    state.session.mark_saved();
-                    state.status = format!("saved to {}", state.chart_path.display());
-                }
-                Err(error) => state.status = format!("save failed: {error}"),
-            }
-        } else {
-            state.status = "chart has validation errors - not saved".to_owned();
-        }
+        state.status = save(&mut state);
     }
 
     // Exit (twice if dirty). ESC first cancels a pending move.
@@ -450,6 +449,30 @@ fn editor_input(
         } else {
             next_state.set(AppState::SongSelect);
         }
+    }
+}
+
+/// Save the edit as a new chart version (see [`Saver`]); the status
+/// line it leaves.
+pub fn save(state: &mut EditorState) -> String {
+    let now = crate::players::now_ms();
+    let chart = state.session.chart().clone();
+    match state.saver.save(&chart, now) {
+        Ok(Saved::Unchanged) => {
+            state.session.mark_saved();
+            "nothing changed - nothing written".to_owned()
+        }
+        Ok(Saved::Written { name, rewritten }) => {
+            state.session.mark_saved();
+            state.saved_any = true;
+            state.chart_path = state.saver.current_path();
+            if rewritten {
+                format!("saved ({name})")
+            } else {
+                format!("saved as {name} - the earlier version is kept")
+            }
+        }
+        Err(error) => error,
     }
 }
 
@@ -567,12 +590,20 @@ fn teardown_editor(
     entities: Query<Entity, With<EditorScreen>>,
     music: Res<Music>,
     mut game_clock: ResMut<GameClock>,
+    state: Option<Res<EditorState>>,
+    builtins: Res<crate::boot::BuiltinSongs>,
+    mut library: ResMut<crate::library::SongLibrary>,
 ) {
     for entity in &entities {
         commands.entity(entity).despawn();
     }
     music.0.stop();
     game_clock.clock.stop();
+    // A saved edit is a new active version: read the library again so
+    // the browser plays it, not the file the scan saw before.
+    if state.is_some_and(|state| state.saved_any) {
+        *library = crate::boot::scan_with_builtins(&builtins.0);
+    }
 }
 
 /// Ticks played by the audition metronome this session — the editor

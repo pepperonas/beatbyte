@@ -622,6 +622,18 @@ fn autopilot_menu(
     }
 }
 
+/// The editor drill's bookkeeping: the real chart it must not change,
+/// and the scratch folder it edits instead.
+#[derive(Resource)]
+pub struct EditDrill {
+    /// The player's chart the drill copied.
+    pub original: std::path::PathBuf,
+    /// Its bytes before the drill.
+    pub original_bytes: Vec<u8>,
+    /// Where the copy lives.
+    pub scratch: std::path::PathBuf,
+}
+
 /// In editor-validation mode (`BEATBYTE_AUTOPILOT_EDIT=1`), drive the
 /// real editor: add a note, undo, redo, save, verify, exit.
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
@@ -634,6 +646,7 @@ fn autopilot_edit(
     mut game_clock: ResMut<crate::audio_sys::GameClock>,
     clicks: Res<crate::editor_ui::AuditionClicks>,
     settings: Res<crate::config::Settings>,
+    drill: Option<Res<EditDrill>>,
     mut app_exit: MessageWriter<AppExit>,
 ) {
     let Some(mut state) = state else {
@@ -651,6 +664,9 @@ fn autopilot_edit(
         }
         music.0.stop();
         game_clock.clock.stop();
+        if let Some(drill) = &drill {
+            let _ = std::fs::remove_dir_all(&drill.scratch);
+        }
         if clicks.0 >= 3 {
             info!("autopilot: editor validation PASSED ({} clicks)", clicks.0);
             deliver(&mut app_exit, AppExit::Success);
@@ -766,14 +782,54 @@ fn autopilot_edit(
     ok &= note_at(&state, 0.777, 1) && note_at(&state, 0.888, 2);
     ok &= state.session.undo();
     ok &= !note_at(&state, 0.777, 1) && !note_at(&state, 0.888, 2);
+    // A star-power phrase: added, undone, redone — then left in, so the
+    // save below has a real change to write.
+    let phrase = beatbyte_chart::ChartPhrase {
+        start: 0.2,
+        end: 0.9,
+    };
+    let phrases = |state: &crate::editor_ui::EditorState| {
+        state
+            .session
+            .chart()
+            .chart_for(difficulty)
+            .map_or(0, |d| d.phrases.len())
+    };
+    let before_phrase = phrases(&state);
+    ok &= state
+        .session
+        .edit(EditOp::AddPhrase { difficulty, phrase })
+        .is_ok();
+    ok &= state.session.undo() && phrases(&state) == before_phrase;
+    ok &= state.session.redo() && phrases(&state) == before_phrase + 1;
     ok &= state.session.is_valid();
-    ok &= beatbyte_chart::save_chart_file(&state.chart_path, state.session.chart()).is_ok();
-    state.session.mark_saved();
-    // Verify on disk.
-    ok &= beatbyte_chart::load_chart_file(&state.chart_path)
-        .ok()
+    // Save through the editor's own path: a NEW version beside the
+    // copy, made active, marked as hand-made.
+    let status = crate::editor_ui::save(&mut state);
+    info!("autopilot: editor save — {status}");
+    let written = state.chart_path.clone();
+    ok &= written.file_name().is_some_and(|n| n == "chart.v2.json");
+    let back = beatbyte_chart::load_chart_file(&written).ok();
+    ok &= back
+        .as_ref()
         .and_then(|chart| chart.chart_for(difficulty).map(|d| d.notes.len()))
         == after_redo;
+    ok &= back
+        .as_ref()
+        .is_some_and(beatbyte_chart::versions::is_hand_edited);
+    ok &= std::fs::read_to_string(written.with_file_name("chart-active.json"))
+        .is_ok_and(|pointer| pointer.contains("chart.v2.json"));
+    // ⚠️ The player's real chart is untouched, byte for byte.
+    if let Some(drill) = &drill {
+        let untouched = std::fs::read(&drill.original).is_ok_and(|b| b == drill.original_bytes);
+        if !untouched {
+            error!(
+                "autopilot: the editor drill CHANGED the real chart {}",
+                drill.original.display()
+            );
+        }
+        ok &= untouched;
+    }
     if ok {
         // Edits verified; start the audition (preview from cursor)
         // and let phase 2 assert the metronome overlay.
@@ -816,17 +872,30 @@ fn autopilot_song_select(
         *delay = 0.0;
         // Editor mode: open the first file-based song instead.
         if std::env::var_os("BEATBYTE_AUTOPILOT_EDIT").is_some() {
-            let file_entry = library.entries.iter().find_map(|entry| {
-                if let crate::library::SongSource::File {
-                    chart_path,
-                    audio_path,
-                } = &entry.source
-                {
-                    Some((entry, chart_path.clone(), audio_path.clone()))
-                } else {
-                    None
-                }
-            });
+            // `BEATBYTE_AUTOPILOT_SONG` names the song, as for a played
+            // run; without it the first file-based one.
+            let wanted = std::env::var("BEATBYTE_AUTOPILOT_SONG")
+                .ok()
+                .map(|s| s.to_lowercase());
+            let file_entry = library
+                .entries
+                .iter()
+                .filter(|entry| {
+                    wanted
+                        .as_ref()
+                        .is_none_or(|w| entry.title.to_lowercase().contains(w.as_str()))
+                })
+                .find_map(|entry| {
+                    if let crate::library::SongSource::File {
+                        chart_path,
+                        audio_path,
+                    } = &entry.source
+                    {
+                        Some((entry, chart_path.clone(), audio_path.clone()))
+                    } else {
+                        None
+                    }
+                });
             let Some((entry, chart_path, audio_path)) = file_entry else {
                 error!("autopilot: no file-based song to edit");
                 std::process::exit(1);
@@ -836,8 +905,28 @@ fn autopilot_song_select(
                 .first()
                 .copied()
                 .unwrap_or(beatbyte_core::Difficulty::Medium);
-            match crate::editor_ui::open_editor(&mut commands, &chart_path, &audio_path, difficulty)
+            // ⚠️ The drill SAVES, and it used to save into the player's
+            // real chart. It edits a copy in a scratch folder instead;
+            // the audio is only read. The verdict checks that the real
+            // file did not change by a byte.
+            let scratch =
+                std::env::temp_dir().join(format!("beatbyte-editor-drill-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&scratch);
+            let copy = scratch.join(beatbyte_chart::versions::BASE_CHART);
+            let original = std::fs::read(&chart_path).unwrap_or_default();
+            if std::fs::create_dir_all(&scratch)
+                .and_then(|()| std::fs::write(&copy, &original))
+                .is_err()
             {
+                error!("autopilot: cannot prepare the editor drill's scratch copy");
+                std::process::exit(1);
+            }
+            commands.insert_resource(EditDrill {
+                original: chart_path.clone(),
+                original_bytes: original,
+                scratch: scratch.clone(),
+            });
+            match crate::editor_ui::open_editor(&mut commands, &copy, &audio_path, difficulty) {
                 Ok(()) => {
                     info!("autopilot: editing \"{}\"", entry.title);
                     next_state.set(AppState::Editor);

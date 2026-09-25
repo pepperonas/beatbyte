@@ -5,7 +5,7 @@
 //! bolted on. Operations are strict: editing a note that is not there
 //! is an error, not a silent no-op, so stacks never desynchronize.
 
-use beatbyte_chart::{ChartFile, ChartNote};
+use beatbyte_chart::{ChartDef, ChartFile, ChartNote, ChartPhrase};
 use beatbyte_core::Difficulty;
 use thiserror::Error;
 
@@ -65,6 +65,42 @@ pub enum EditOp {
         /// Previous sustain length (filled by `apply` when inverting).
         previous: f64,
     },
+    /// Insert a star-power phrase (a time range).
+    AddPhrase {
+        /// The difficulty chart to edit.
+        difficulty: Difficulty,
+        /// The phrase to insert.
+        phrase: ChartPhrase,
+    },
+    /// Remove a star-power phrase (matched by both bounds).
+    RemovePhrase {
+        /// The difficulty chart to edit.
+        difficulty: Difficulty,
+        /// The phrase to remove.
+        phrase: ChartPhrase,
+    },
+    /// Change a phrase's bounds.
+    SetPhrase {
+        /// The difficulty chart to edit.
+        difficulty: Difficulty,
+        /// The phrase as it is now.
+        from: ChartPhrase,
+        /// The phrase as it should be.
+        to: ChartPhrase,
+    },
+    /// Add an empty chart for a difficulty the file does not carry —
+    /// so a song can be charted from nothing at that level.
+    AddDifficulty {
+        /// The difficulty to add.
+        difficulty: Difficulty,
+    },
+    /// Remove a difficulty's chart — only an EMPTY one (the inverse of
+    /// [`EditOp::AddDifficulty`]); a chart with notes is never dropped
+    /// by one keystroke.
+    RemoveEmptyDifficulty {
+        /// The difficulty to remove.
+        difficulty: Difficulty,
+    },
 }
 
 /// Errors applying an edit.
@@ -81,6 +117,28 @@ pub enum EditError {
         /// The conflicting lane.
         lane: u8,
     },
+    /// No phrase with these bounds exists.
+    #[error("no phrase at {start:.3}–{end:.3}s")]
+    PhraseNotFound {
+        /// The searched start.
+        start: f64,
+        /// The searched end.
+        end: f64,
+    },
+    /// A phrase's end is not after its start.
+    #[error("a phrase must end after it starts ({start:.3}–{end:.3}s)")]
+    EmptyPhrase {
+        /// The start.
+        start: f64,
+        /// The end.
+        end: f64,
+    },
+    /// The chart already has that difficulty.
+    #[error("chart already has `{0}`")]
+    DifficultyExists(Difficulty),
+    /// Only an empty difficulty may be removed.
+    #[error("`{0}` still has notes or phrases")]
+    DifficultyNotEmpty(Difficulty),
     /// No note exists at that time and lane.
     #[error("no note at {time:.3}s lane {lane}")]
     NoteNotFound {
@@ -98,14 +156,63 @@ fn find_note(notes: &[ChartNote], time: f64, lane: u8) -> Option<usize> {
         .position(|note| note.lane == lane && (note.time - time).abs() <= EDIT_EPSILON_S)
 }
 
+/// Find a phrase by both bounds within the edit epsilon.
+fn find_phrase(phrases: &[ChartPhrase], phrase: ChartPhrase) -> Option<usize> {
+    phrases.iter().position(|p| {
+        (p.start - phrase.start).abs() <= EDIT_EPSILON_S
+            && (p.end - phrase.end).abs() <= EDIT_EPSILON_S
+    })
+}
+
+fn sort_phrases(phrases: &mut [ChartPhrase]) {
+    phrases.sort_by(|a, b| a.start.total_cmp(&b.start));
+}
+
 /// Apply an operation, returning its inverse.
+#[allow(clippy::too_many_lines)] // one match, one arm per operation
 pub fn apply(chart: &mut ChartFile, op: EditOp) -> Result<EditOp, EditError> {
+    // The two operations on whole difficulties come first: they are
+    // the ones that do not start from an existing chart.
+    match op {
+        EditOp::AddDifficulty { difficulty } => {
+            if chart.chart_for(difficulty).is_some() {
+                return Err(EditError::DifficultyExists(difficulty));
+            }
+            chart.charts.push(ChartDef {
+                difficulty,
+                lanes: 5,
+                notes: Vec::new(),
+                phrases: Vec::new(),
+            });
+            chart.charts.sort_by_key(|def| def.difficulty);
+            return Ok(EditOp::RemoveEmptyDifficulty { difficulty });
+        }
+        EditOp::RemoveEmptyDifficulty { difficulty } => {
+            let index = chart
+                .charts
+                .iter()
+                .position(|def| def.difficulty == difficulty)
+                .ok_or(EditError::MissingDifficulty(difficulty))?;
+            let def = &chart.charts[index];
+            if !def.notes.is_empty() || !def.phrases.is_empty() {
+                return Err(EditError::DifficultyNotEmpty(difficulty));
+            }
+            chart.charts.remove(index);
+            return Ok(EditOp::AddDifficulty { difficulty });
+        }
+        _ => {}
+    }
     let difficulty = match op {
         EditOp::AddNote { difficulty, .. }
         | EditOp::RemoveNote { difficulty, .. }
         | EditOp::ToggleHopo { difficulty, .. }
         | EditOp::MoveNote { difficulty, .. }
-        | EditOp::SetLen { difficulty, .. } => difficulty,
+        | EditOp::SetLen { difficulty, .. }
+        | EditOp::AddPhrase { difficulty, .. }
+        | EditOp::RemovePhrase { difficulty, .. }
+        | EditOp::SetPhrase { difficulty, .. }
+        | EditOp::AddDifficulty { difficulty }
+        | EditOp::RemoveEmptyDifficulty { difficulty } => difficulty,
     };
     let def = chart
         .charts
@@ -192,6 +299,50 @@ pub fn apply(chart: &mut ChartFile, op: EditOp) -> Result<EditOp, EditError> {
                 previous: len,
             })
         }
+        EditOp::AddPhrase { phrase, .. } => {
+            if phrase.end <= phrase.start {
+                return Err(EditError::EmptyPhrase {
+                    start: phrase.start,
+                    end: phrase.end,
+                });
+            }
+            def.phrases.push(phrase);
+            sort_phrases(&mut def.phrases);
+            Ok(EditOp::RemovePhrase { difficulty, phrase })
+        }
+        EditOp::RemovePhrase { phrase, .. } => {
+            let index = find_phrase(&def.phrases, phrase).ok_or(EditError::PhraseNotFound {
+                start: phrase.start,
+                end: phrase.end,
+            })?;
+            let removed = def.phrases.remove(index);
+            Ok(EditOp::AddPhrase {
+                difficulty,
+                phrase: removed,
+            })
+        }
+        EditOp::SetPhrase { from, to, .. } => {
+            if to.end <= to.start {
+                return Err(EditError::EmptyPhrase {
+                    start: to.start,
+                    end: to.end,
+                });
+            }
+            let index = find_phrase(&def.phrases, from).ok_or(EditError::PhraseNotFound {
+                start: from.start,
+                end: from.end,
+            })?;
+            let was = def.phrases[index];
+            def.phrases[index] = to;
+            sort_phrases(&mut def.phrases);
+            Ok(EditOp::SetPhrase {
+                difficulty,
+                from: to,
+                to: was,
+            })
+        }
+        // Handled above, before a chart is looked up.
+        EditOp::AddDifficulty { .. } | EditOp::RemoveEmptyDifficulty { .. } => Ok(op),
     }
 }
 
@@ -421,6 +572,106 @@ mod tests {
             },
         );
         assert!(matches!(result, Err(EditError::NoteNotFound { .. })));
+    }
+
+    fn phrase(start: f64, end: f64) -> ChartPhrase {
+        ChartPhrase { start, end }
+    }
+
+    /// Every phrase operation undoes EXACTLY: apply, invert, compare.
+    #[test]
+    fn phrase_operations_invert_exactly() {
+        let mut c = chart();
+        let before = c.clone();
+        let add = EditOp::AddPhrase {
+            difficulty: Difficulty::Expert,
+            phrase: phrase(4.0, 8.0),
+        };
+        let undo_add = apply(&mut c, add).unwrap();
+        assert_eq!(c.charts[0].phrases, vec![phrase(4.0, 8.0)]);
+        let with_one = c.clone();
+        let undo_set = apply(
+            &mut c,
+            EditOp::SetPhrase {
+                difficulty: Difficulty::Expert,
+                from: phrase(4.0, 8.0),
+                to: phrase(5.0, 9.5),
+            },
+        )
+        .unwrap();
+        assert_eq!(c.charts[0].phrases, vec![phrase(5.0, 9.5)]);
+        apply(&mut c, undo_set).unwrap();
+        assert_eq!(c, with_one);
+        let undo_remove = apply(
+            &mut c,
+            EditOp::RemovePhrase {
+                difficulty: Difficulty::Expert,
+                phrase: phrase(4.0, 8.0),
+            },
+        )
+        .unwrap();
+        assert!(c.charts[0].phrases.is_empty());
+        apply(&mut c, undo_remove).unwrap();
+        assert_eq!(c, with_one);
+        apply(&mut c, undo_add).unwrap();
+        assert_eq!(c, before);
+    }
+
+    #[test]
+    fn an_empty_phrase_is_refused() {
+        let mut c = chart();
+        let result = apply(
+            &mut c,
+            EditOp::AddPhrase {
+                difficulty: Difficulty::Expert,
+                phrase: phrase(4.0, 4.0),
+            },
+        );
+        assert!(matches!(result, Err(EditError::EmptyPhrase { .. })));
+        assert!(c.charts[0].phrases.is_empty());
+    }
+
+    /// A difficulty can be added empty and removed again — but a chart
+    /// with notes is never removed.
+    #[test]
+    fn a_difficulty_is_added_empty_and_only_removed_empty() {
+        let mut c = chart();
+        let before = c.clone();
+        let undo = apply(
+            &mut c,
+            EditOp::AddDifficulty {
+                difficulty: Difficulty::Easy,
+            },
+        )
+        .unwrap();
+        let easy = c.chart_for(Difficulty::Easy).unwrap();
+        assert!(easy.notes.is_empty() && easy.lanes == 5);
+        assert_eq!(
+            c.charts[0].difficulty,
+            Difficulty::Easy,
+            "kept in difficulty order"
+        );
+        assert!(matches!(
+            apply(
+                &mut c,
+                EditOp::AddDifficulty {
+                    difficulty: Difficulty::Easy
+                }
+            ),
+            Err(EditError::DifficultyExists(_))
+        ));
+        apply(&mut c, undo).unwrap();
+        assert_eq!(c, before);
+        assert!(matches!(
+            apply(
+                &mut c,
+                EditOp::RemoveEmptyDifficulty {
+                    difficulty: Difficulty::Expert
+                }
+            ),
+            Err(EditError::DifficultyNotEmpty(_))
+        ));
+        assert_eq!(c, before, "a refused removal changed the chart");
     }
 
     #[test]

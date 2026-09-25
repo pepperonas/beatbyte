@@ -370,6 +370,13 @@ fn one(folder: &Path, dry_run: bool, recipe: classic::Recipe) -> Result<String, 
     let active_path = folder.join(&active_name);
     let before = load_chart_file(&active_path)
         .map_err(|error| format!("cannot load `{active_name}`: {error}"))?;
+    // A version the player edited by hand stays the active one: the
+    // recipe would write a new version above it and bury the edits.
+    if versions::is_hand_edited(&before) {
+        return Err(format!(
+            "`{active_name}` was edited by hand in the editor — left alone"
+        ));
+    }
 
     if recipe.names().is_empty() {
         return Err("no ingredients: a new version would be a copy".to_owned());
@@ -595,6 +602,33 @@ mod tests {
             .expect("twin chart");
         let report = one_twin(&song, true, classic::Recipe::default()).expect("a report");
         assert!(report.contains("already there"), "{report}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// ⚠️ A version saved from the editor is the player's work: the
+    /// recipe refuses to write a version above it.
+    #[test]
+    fn a_hand_edited_version_is_left_alone() {
+        let dir = std::env::temp_dir().join(format!(
+            "bb-cli-classic-hand-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let mut edited = chart(&[(1.0, false), (1.5, false)]);
+        edited.provenance = Some(beatbyte_chart::Provenance {
+            parent_hash: "p".to_owned(),
+            designer: versions::EDITOR_DESIGNER.to_owned(),
+            created_ms: 1,
+            directive: None,
+        });
+        beatbyte_chart::save_chart_file(&dir.join(versions::BASE_CHART), &edited).expect("chart");
+        let error = one(&dir, true, classic::Recipe::default()).expect_err("must refuse");
+        assert!(error.contains("by hand"), "{error}");
+        let files = std::fs::read_dir(&dir).expect("list").count();
+        assert_eq!(files, 1, "something was written beside the hand edit");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -33,6 +33,10 @@ const REDESIGNED: [Difficulty; 2] = [Difficulty::Hard, Difficulty::Expert];
 /// carried notes are moved onto the fresh grid note by note anyway.
 const BPM_RATIO_TOLERANCE: f64 = 0.05;
 
+/// Why a hand-edited active version is not redesigned.
+pub const HAND_EDITED: &str = "the active version was edited by hand in the editor — not redesigned (activate an \
+     earlier version first if a regenerated chart is wanted)";
+
 /// The active version's song block and easy/medium, the fresh
 /// generation's hard/expert, provenance binding the result to its
 /// parent. Pure — the whole decision, no filesystem.
@@ -41,6 +45,11 @@ pub fn merged_redesign(
     fresh: &ChartFile,
     created_ms: u64,
 ) -> Result<ChartFile, String> {
+    // The player's hand edits are never buried under a regenerated
+    // version (see `versions::is_hand_edited`).
+    if versions::is_hand_edited(active) {
+        return Err(HAND_EDITED.to_owned());
+    }
     if active.song.bpm <= 0.0
         || (fresh.song.bpm / active.song.bpm - 1.0).abs() > BPM_RATIO_TOLERANCE
     {
@@ -182,6 +191,10 @@ pub fn redesign_folder(
         .map_err(|error| format!("cannot read `{}`: {error}", active_path.display()))?;
     let mut active =
         ChartFile::from_json(&text).map_err(|error| format!("`{active_name}`: {error}"))?;
+    // Early, before the analysis costs its seconds.
+    if versions::is_hand_edited(&active) {
+        return Err(HAND_EDITED.to_owned());
+    }
 
     let audio_path = folder.join(&active.song.audio);
     // One timeline for the merge: the fresh charts come from a decode
@@ -453,6 +466,22 @@ mod tests {
                 "{difficulty} must come from the fresh generation"
             );
         }
+    }
+
+    /// ⚠️ A version saved from the editor is the player's work: a
+    /// redesign refuses it rather than burying it under a new one.
+    #[test]
+    fn a_hand_edited_version_is_never_redesigned() {
+        let mut active = chart_file(120.0, |_| 0);
+        active.provenance = Some(Provenance {
+            parent_hash: "p".to_owned(),
+            designer: versions::EDITOR_DESIGNER.to_owned(),
+            created_ms: 1,
+            directive: None,
+        });
+        let fresh = chart_file(120.0, |_| 3);
+        let error = merged_redesign(&active, &fresh, 7).expect_err("must refuse");
+        assert!(error.contains("by hand"), "{error}");
     }
 
     #[test]

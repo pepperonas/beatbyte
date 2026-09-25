@@ -59,6 +59,25 @@ pub fn next_version_name(existing: &[String]) -> String {
     format!("chart.v{}.json", highest + 1)
 }
 
+/// The `designer` a chart version saved from the in-game editor
+/// carries in its provenance.
+pub const EDITOR_DESIGNER: &str = "editor";
+
+/// Whether a chart version was saved by hand from the editor.
+///
+/// ⚠️ Such a version is the player's work, and every tool that writes
+/// versions — `redesign`, the classic recipe, a re-import — must leave
+/// it the ACTIVE one: a new version above it would silently replace
+/// what the player placed note by note. Those tools refuse, or write
+/// beside it without moving the pointer.
+#[must_use]
+pub fn is_hand_edited(chart: &crate::ChartFile) -> bool {
+    chart
+        .provenance
+        .as_ref()
+        .is_some_and(|p| p.designer == EDITOR_DESIGNER)
+}
+
 /// Whether a pointer target is a name this scheme could have written.
 ///
 /// The pointer is UNTRUSTED INPUT like every chart file: a target of

@@ -81,7 +81,13 @@ pub fn load_chart_file(path: &Path) -> Result<ChartFile, ChartIoError> {
     })
 }
 
-/// Serialize and write a chart file as pretty JSON.
+/// Serialize and write a chart file as pretty JSON — atomically.
+///
+/// The JSON goes to a temporary file beside the target and is renamed
+/// over it, so a crash, a full disk or a failing serializer leaves the
+/// previous file exactly as it was. A chart may carry hours of hand
+/// editing and every recorded session is bound to its hash; a
+/// half-written one is the one outcome that must not exist.
 pub fn save_chart_file(path: &Path, chart: &ChartFile) -> Result<(), ChartIoError> {
     let json = chart
         .to_json_pretty()
@@ -89,10 +95,32 @@ pub fn save_chart_file(path: &Path, chart: &ChartFile) -> Result<(), ChartIoErro
             path: path.to_path_buf(),
             source,
         })?;
-    fs::write(path, json).map_err(|source| ChartIoError::Io {
+    write_atomic(path, json.as_bytes()).map_err(|source| ChartIoError::Io {
         path: path.to_path_buf(),
         source,
     })
+}
+
+/// Write `bytes` to `path` through a temporary sibling and a rename.
+///
+/// # Errors
+/// Any IO error; the temporary file is removed and `path` is left as
+/// it was.
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let name = path
+        .file_name()
+        .map_or_else(|| "chart".into(), |n| n.to_string_lossy().into_owned());
+    let tmp = path.with_file_name(format!(".{name}.tmp-{}", std::process::id()));
+    let result = (|| {
+        let mut file = fs::File::create(&tmp)?;
+        std::io::Write::write_all(&mut file, bytes)?;
+        file.sync_all()?;
+        fs::rename(&tmp, path)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    result
 }
 
 /// Resolve the chart's audio reference against the chart's directory,
@@ -128,6 +156,60 @@ pub fn resolve_audio_path(chart_dir: &Path, audio: &str) -> Result<PathBuf, Char
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    /// ⚠️ `save_chart_file` goes THROUGH `write_atomic` — whether a
+    /// write is atomic cannot be seen from outside without a crash in
+    /// the middle, so the call itself is pinned (comments stripped:
+    /// the doc comment names the function too).
+    #[test]
+    fn saving_a_chart_goes_through_the_atomic_write() {
+        let source = include_str!("io.rs");
+        let start = source.find("pub fn save_chart_file").unwrap();
+        let body: String = source[start..]
+            .lines()
+            .take_while(|line| *line != "}")
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(body.contains("write_atomic(path"), "{body}");
+        assert!(!body.contains("fs::write("), "{body}");
+    }
+
+    /// The write is atomic: the target holds the new chart, no
+    /// temporary file is left behind, and a write that cannot happen
+    /// leaves the old file untouched.
+    #[test]
+    fn a_chart_is_written_atomically() {
+        let dir = std::env::temp_dir().join(format!(
+            "bb-atomic-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("chart.json");
+        fs::write(&path, "the old chart").unwrap();
+        write_atomic(&path, b"the new chart").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "the new chart");
+        let leftovers: Vec<_> = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n != "chart.json")
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
+        // A target the rename cannot replace: a directory in its way.
+        let blocked = dir.join("blocked");
+        fs::create_dir_all(blocked.join("inside")).unwrap();
+        assert!(write_atomic(&blocked, b"x").is_err());
+        assert!(
+            blocked.join("inside").is_dir(),
+            "the old content was touched"
+        );
+        let leftovers = fs::read_dir(&dir).unwrap().count();
+        assert_eq!(leftovers, 2, "a temporary file was left behind");
+    }
 
     /// Forward compatibility: charts written by a NEWER BeatByte may
     /// carry fields this build does not know. They must parse AND

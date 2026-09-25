@@ -1055,6 +1055,12 @@ artifact, smoke-test it (neutral CWD!), then
   GPUFamily macOS 1: its compiler fails wgpu's and Bevy's compute
   pipelines, device lost at start). Bevy takes the AMD by default;
   `WGPU_POWER_PREF=low` reproduces the crash.
+- **A drill that SAVES must save into a copy.** `BEATBYTE_AUTOPILOT_EDIT`
+  wrote its probe edits into the first song of the player's real
+  library for months — first swept back out by hand, then left in. It
+  edits a scratch copy now and fails if the real chart changed by a
+  byte. Any harness mode that writes: scratch folder, and a byte check
+  on what it must not touch.
 - **A drill nobody runs rots without a sound.** `BEATBYTE_AUTOPILOT_DELETE`
   still answered the delete question with a second Backspace months
   after the answer became `Y` (Backspace only ASKS since a player lost
