@@ -1,0 +1,17 @@
+[package]
+name = "beatbyte-sync"
+description = "BeatByte's merge rules for two devices, one career: pure functions from two snapshots to one — history, scores, achievements, players, settings, telemetry and the library. No I/O, no transport, no clock (ADR-0021)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+beatbyte-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

@@ -27,6 +27,7 @@ contradicted** — if a decision is reversed, the ADR says so.
 | [0018](ADR-0018-gameplay-telemetry-store.md) | Gameplay telemetry as a versioned local event store: events never frames, nothing derivable stored, the song referenced rather than copied, and the physical input layer opt-in | Accepted |
 | [0019](ADR-0019-song-metadata-and-the-library-index.md) | A song's metadata lives in its own folder and the queryable index is a rebuildable projection; a given `SongId` rather than a derived one; playing stays an event, never a counter | Accepted |
 | [0020](ADR-0020-classic-rules-in-the-chart.md) | The classic programme: a judgment rule travels in the chart (and its hash), classic levels are derived from the chart's own Expert by deletion only, and chords come only from a polyphonic transcription of the separated stem (`beatbyte-poly`, Basic Pitch) | Accepted |
+| [0021](ADR-0021-two-devices-one-career.md) | Two devices, one career: device-owned snapshots on a hub (the raspi5), pure per-data merge rules in `beatbyte-sync` (never last writer wins), device-independent player ids, one library root in the data directory | Accepted |
 
 ## The gap at 0009
 

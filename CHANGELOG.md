@@ -14,6 +14,24 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.38] - 2026-09-25
+
+### Added
+
+- **`beatbyte-sync`, the merge rules for two devices** (ADR-0021): pure
+  functions that turn two devices' play logs, scores, achievements,
+  players, settings, telemetry and song folders into one — each by its
+  own rule, never "the newest file wins". Nothing uses them yet; the
+  sync command follows.
+
+### Changed
+
+- **A new player's id no longer comes from a per-device counter.** It
+  is made from the moment the player was created and their name, so two
+  machines can never hand the same id to two different people. Existing
+  players keep their ids. Renaming a player, or a new preferred
+  difficulty, now records when it happened.
+
 ## [0.18.37] - 2026-09-25
 
 ### Fixed

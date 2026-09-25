@@ -1668,6 +1668,7 @@ fn browser_input(
             sounds.write(crate::sfx::UiSound::Slider);
             if let Some(id) = start.players.0.selected {
                 start.players.0.set_preferred_difficulty(id, next);
+                start.players.0.stamp(id, crate::players::now_ms());
                 crate::players::save_roster(&start.players);
             }
         }

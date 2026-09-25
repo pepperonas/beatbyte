@@ -2162,6 +2162,23 @@ offset on 2 of 7 tracks, sitting just outside the tolerance —
 `docs/audio-eval-baseline.md` names the candidates and does not
 guess between them. Not started.
 
+## Two Macs, one career (IN PROGRESS 2026-09-25 — ADR-0021, docs/plans/two-macs-sync.md)
+
+The user's commission: BeatByte on this Mac and on a MacBook Pro 2015
+(Intel, at most Monterey), with songs and charts, players, scores,
+history, achievements, telemetry and shared settings the same on both.
+Decided: the raspi5 as hub, one library root in the data directory,
+the models synced once, the same name on two devices is one person.
+
+- [x] S0 **Backup before any migration** — `~/Library/Application Support/beatbyte` without `models/` as a tar with its SHA-256, a consistent `.backup` copy of `telemetry.db` beside it (the live file had its WAL), and the SHA-256 of all 3 070 files of the repo's `songs/imported/` (`local/backup-20260925-095346/`, `RESTORE.md` there; `shasum -c` verified).
+- [x] S1 **The pure merge crate** *(v0.18.38)* — `beatbyte-sync`, one rule per kind of data, never a blanket last-writer-wins: players (collisions from the old counter, one person under two ids, a remap per side), history (union by start ms + song + difficulty — no new id field, the key is unique; the richer copy wins because the roster adoption rewrote old lines on one device only), scores (the game's own rule: score, then accuracy, then streak), achievements (earliest date), settings (shared keys by newest change stamp, device keys and the API key never), telemetry (insert by `uid`, the finished or longer copy replaces), library (by content, tombstones for deletions, a version regenerated on both devices kept twice under the next free name, the pointer naming the newest version after renames, the older song id kept). Every rule is shown to converge by applying it on both sides. **Player ids** are now `created_ms << 10 | hash(name)` (core), never a counter, and a rename or a new preferred difficulty stamps `updated_ms`. *Verified: 1881 tests (+38 in the new crate, +2 in core), gate green; 31 mutations seen to fail, at least one per rule (one first failed to apply because `cargo fmt` had reflowed its line — a mutation must match before it can prove anything).*
+- [ ] S2 Telemetry merge executor in `beatbyte-telemetry` (rows by `uid`, events and notes along, `note_context` by key, player and song remaps).
+- [ ] S3 Settings: `changed_ms` stamps written by the game on save; every key classified (a test).
+- [ ] S4 Library: imports into the data root; the repo's `songs/imported/` migrated there (the two folders present in both compared file by file).
+- [ ] S5 `beatbyte-cli sync` against the raspi5 hub (rsync over SSH, device-owned folders, a `mkdir` lock, snapshot last), refusing while the game runs; a launcher that syncs around the game.
+- [ ] S6 The 2015: x86_64 build (`packaging/macos.sh` gains the triple/universal path and the deployment target), smoke, autopilot, frame times on Iris, calibration.
+- [ ] S7 End to end on both machines: counts before, offline play on each, sync both ways twice, counts after.
+
 ## Backlog (explicitly out of scope until after 1.0)
 
 Not started without a deliberate roadmap edit pulling them forward:

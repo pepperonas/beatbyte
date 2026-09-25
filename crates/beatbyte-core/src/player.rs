@@ -23,6 +23,31 @@ use crate::difficulty::Difficulty;
 /// by accident.
 pub type PlayerId = u64;
 
+/// A player id that is unique across DEVICES, not just on one
+/// (ADR-0021): the creation millisecond shifted up ten bits, with ten
+/// bits of the case-folded name below it.
+///
+/// ⚠️ It replaced a per-device counter, which gave two players made
+/// offline on two machines the same id — and every run, record and
+/// achievement of one would have been credited to the other when the
+/// machines met. From a timestamp and a name, two devices only agree
+/// on an id for the same name in the same millisecond, which is the
+/// same person (the roster allows one name per person). No randomness:
+/// the core is deterministic, and a hash of the name is enough.
+///
+/// Small ids from the old counter (`1`, `2`, …) can never come out of
+/// this, so they stay what they are. The result fits an SQLite
+/// `INTEGER` with room to spare (under 2^62).
+#[must_use]
+pub fn device_independent_id(created_ms: u64, name: &str) -> PlayerId {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in name.to_lowercase().bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    ((created_ms & ((1 << 51) - 1)) << 10) | (hash & 0x3ff)
+}
+
 /// The longest name the roster accepts.
 ///
 /// A name is drawn in one row of a list and printed in headers; past
@@ -55,6 +80,20 @@ pub struct Player {
     /// falls back for the session without clearing this field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preferred_difficulty: Option<Difficulty>,
+    /// Unix milliseconds of the last change to this player (a rename,
+    /// a new preferred difficulty). `None`: unchanged since creation.
+    /// When two devices hold different versions of one player, the
+    /// newer change wins (ADR-0021).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_ms: Option<u64>,
+}
+
+impl Player {
+    /// When this player last changed: the stamp, or its creation.
+    #[must_use]
+    pub fn changed_ms(&self) -> u64 {
+        self.updated_ms.unwrap_or(self.created_ms)
+    }
 }
 
 /// Why a name was refused.
@@ -132,19 +171,21 @@ impl Roster {
         if self.players.iter().any(|p| same_name(&p.name, &name)) {
             return Err(NameError::Taken);
         }
-        // Ids climb past whatever is already in the file, so a
-        // hand-edited roster cannot make two players share one id.
-        let id = self
-            .next_id
-            .max(self.players.iter().map(|p| p.id + 1).max().unwrap_or(1))
-            .max(1);
-        self.next_id = id + 1;
+        // Unique across devices (ADR-0021); an id already in the file
+        // — a hand edit, or two names that hash alike in the same
+        // millisecond — moves up rather than colliding.
+        let mut id = device_independent_id(now_ms, &name);
+        while self.players.iter().any(|p| p.id == id) {
+            id += 1;
+        }
+        self.next_id = self.next_id.max(id + 1);
         self.players.push(Player {
             id,
             name,
             created_ms: now_ms,
             colour: self.players.len() % COLOURS,
             preferred_difficulty: None,
+            updated_ms: None,
         });
         // The first player to exist is the one playing: nobody
         // creates a roster in order to then pick from it.
@@ -175,6 +216,15 @@ impl Roster {
             player.name = name;
         }
         Ok(())
+    }
+
+    /// Record that a player changed at `now_ms` — call it after a
+    /// rename or a new preferred difficulty, so a device that holds an
+    /// older version of the player knows this one is newer.
+    pub fn stamp(&mut self, id: PlayerId, now_ms: u64) {
+        if let Some(player) = self.players.iter_mut().find(|p| p.id == id) {
+            player.updated_ms = Some(now_ms);
+        }
     }
 
     /// Make this player the one runs are attributed to. Unknown ids
@@ -320,13 +370,53 @@ mod tests {
                 created_ms: 0,
                 colour: 0,
                 preferred_difficulty: None,
+                updated_ms: None,
             }],
             selected: None,
             next_id: 1,
             adopted: false,
         };
         let id = roster.add("New", 1).unwrap();
-        assert_eq!(id, 8);
+        assert_ne!(id, 7);
+        // And an id the file already holds is stepped past, never
+        // shared.
+        let taken = device_independent_id(5, "Twin");
+        roster.players[0].id = taken;
+        let next = roster.add("Twin", 5).unwrap();
+        assert_ne!(next, taken, "two players share an id");
+    }
+
+    /// ⚠️ ADR-0021: an id from the creation time and the name, never a
+    /// per-device counter — two devices adding their first player each
+    /// used to both hand out id 1.
+    #[test]
+    fn a_new_id_is_the_same_on_every_device_and_never_a_counter() {
+        let mut here = Roster::default();
+        let mut there = Roster::default();
+        let a = here.add("Anna", 1_790_000_000_000).unwrap();
+        let b = there.add("Ben", 1_790_000_000_001).unwrap();
+        assert_ne!(a, b, "two devices' first players share an id");
+        assert!(a > 1_000_000, "a counter-sized id: {a}");
+        // The same person made at the same moment is the same id.
+        assert_eq!(
+            device_independent_id(1_790_000_000_000, "anna"),
+            device_independent_id(1_790_000_000_000, "ANNA")
+        );
+        // Ordered by creation, and small legacy ids cannot come out.
+        assert!(device_independent_id(2, "x") > device_independent_id(1, "x"));
+        assert!(device_independent_id(0, "x") < 1024);
+        assert!(device_independent_id(u64::MAX, "x") < (1 << 62));
+    }
+
+    #[test]
+    fn a_stamp_marks_a_player_as_changed() {
+        let mut roster = Roster::default();
+        let id = roster.add("Martin", 1_000).unwrap();
+        assert_eq!(roster.get(id).unwrap().changed_ms(), 1_000);
+        roster.stamp(id, 5_000);
+        assert_eq!(roster.get(id).unwrap().changed_ms(), 5_000);
+        roster.stamp(id + 99, 9_000);
+        assert_eq!(roster.get(id).unwrap().changed_ms(), 5_000);
     }
 
     #[test]

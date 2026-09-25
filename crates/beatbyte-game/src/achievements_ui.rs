@@ -964,6 +964,13 @@ mod tests {
         app
     }
 
+    /// The id the roster gives "Martin" created at millisecond 1.
+    /// ⚠️ Not `1`: ids stopped coming from a counter (ADR-0021), and
+    /// these tests had silently assumed the first player is id 1.
+    fn martin() -> PlayerId {
+        beatbyte_core::player::device_independent_id(1, "Martin")
+    }
+
     /// One finished run, filed under a player.
     fn a_run(player: PlayerId) -> beatbyte_core::history::PlayEntry {
         beatbyte_core::history::PlayEntry {
@@ -1048,10 +1055,10 @@ mod tests {
         let mut store = Unlocked::default();
         store
             .0
-            .entry(1)
+            .entry(martin())
             .or_default()
             .merge(&[("cal_valentine".to_owned(), 1_771_070_400_000)]);
-        let found = screen_text(vec![a_run(1)], store);
+        let found = screen_text(vec![a_run(martin())], store);
         assert!(
             found.iter().any(|line| line.contains("LOVE SONG")),
             "an earned secret is still covered"
@@ -1074,7 +1081,7 @@ mod tests {
         roster
             .add("Martin", 1)
             .expect("a fresh roster takes a name");
-        let mut app = wired(vec![a_run(1)], roster, Unlocked::default());
+        let mut app = wired(vec![a_run(martin())], roster, Unlocked::default());
         app.add_systems(Update, spawn_screen);
         app.update();
         let (mut texts, mut wrapped) = (0, 0);
@@ -1110,7 +1117,7 @@ mod tests {
         let mut store = Unlocked::default();
         store
             .0
-            .entry(1)
+            .entry(martin())
             .or_default()
             .merge(&[("first_run".to_owned(), 1_000)]);
         // No history on purpose: a run would earn a handful of
@@ -1174,7 +1181,7 @@ mod tests {
         roster
             .add("Martin", 1)
             .expect("a fresh roster takes a name");
-        let mut app = wired(vec![a_run(1)], roster, Unlocked::default());
+        let mut app = wired(vec![a_run(martin())], roster, Unlocked::default());
         // Spawn once, the way `OnEnter` does, and leave only the
         // redraw in `Update`. Running the spawner every frame would
         // stack screens and the count below would mean nothing.
@@ -1281,11 +1288,11 @@ mod tests {
         // drawn: the standing line counts, so it moves.
         let nothing = screen_text(Vec::new(), Unlocked::default());
         let mut store = Unlocked::default();
-        store.0.entry(1).or_default().merge(&[
+        store.0.entry(martin()).or_default().merge(&[
             ("first_run".to_owned(), 1_000),
             ("first_finish".to_owned(), 2_000),
         ]);
-        let played = screen_text(vec![a_run(1)], store);
+        let played = screen_text(vec![a_run(martin())], store);
         let standing_of = |lines: &[String]| {
             lines
                 .iter()

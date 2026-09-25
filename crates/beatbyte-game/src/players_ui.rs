@@ -478,7 +478,12 @@ fn commit_field(
         return;
     };
     let result = match field.renaming {
-        Some(id) => players.0.rename(id, &field.text).map(|()| id),
+        Some(id) => players.0.rename(id, &field.text).map(|()| {
+            // A rename is the newest version of this player; another
+            // device's older one must not win it back (ADR-0021).
+            players.0.stamp(id, now_ms());
+            id
+        }),
         None => {
             // The one-time adoption: a log older than the roster
             // belongs to the first person who says they play here.

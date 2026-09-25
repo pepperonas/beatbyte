@@ -9,7 +9,7 @@ file wins over habit; the roadmap wins over improvisation.
 
 **BeatByte** — an original five-lane rhythm game in **Rust + Bevy
 0.19** (repo `pepperonas/beatbyte`, MIT, © 2026 Martin Pfeffer, public).
-A Cargo workspace of thirteen crates plus a thin launcher (map below);
+A Cargo workspace of fourteen crates plus a thin launcher (map below);
 all logic lives in the crates. UI language is English; the game is
 fully keyboard/gamepad driven.
 
@@ -42,6 +42,10 @@ that may touch Bevy (the full layering and its invariants:
   step that invents unstruck notes. Read only at authoring time, by the
   classic `chords` ingredient, through the `<audio>.poly.json` sidecar
   `beatbyte-cli poly` writes (ADR-0020).
+- **`beatbyte-sync`** (core) — two devices, one career (ADR-0021):
+  the merge rules for every kind of data as pure functions, no I/O,
+  no transport, no clock. `beatbyte-cli sync` reads and writes the
+  files and moves the bytes through the hub (the raspi5).
 - **`beatbyte-telemetry`** (core) — the gameplay blackbox (ADR-0018):
   the versioned event history a played song leaves behind, the local
   SQLite store that keeps it, the bounded queue and worker thread the
@@ -256,6 +260,16 @@ tech writer, release manager. Operate accordingly:
   happened. Nothing reads it to DECIDE anything: achievements still
   derive from the play history (ADR-0017). A third repository gate,
   `telemetry_stays_evidence.rs`, pins that rather than trusting it.
+
+- **Two devices, one career** (ADR-0021). Every kind of runtime
+  data has an explicit merge rule in `beatbyte-sync` — never a blanket
+  "last writer wins" — and every rule is pure, order-independent and
+  idempotent (tests apply it on both devices and compare). Devices
+  never write the same file on the hub; sync never runs while the game
+  runs; a device setting (calibration, volume, display, GPU-bound
+  options, input map) and the API key never travel. A new setting is
+  classified as shared or device before it ships (a test fails
+  otherwise), and a new player id never comes from a counter.
 
 ## Data-driven gameplay
 
