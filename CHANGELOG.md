@@ -14,6 +14,25 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.47] - 2026-09-25
+
+### Added
+
+- **The chart editor warns about what looks wrong**: a note that
+  starts under another note's held tail on the same lane, two notes
+  stacked on one lane, a length that makes no sense, a note before the
+  song or after the music has ended (the music, not the file — a rip
+  can end in a minute of silence). Warnings are marked red beside the
+  lanes and around the note, the information block counts them and
+  names the next, and W jumps to it and selects the note. Errors that
+  keep the chart from saving are counted too.
+- **Quitting with unsaved chart edits warns first**: closing the
+  window or Cmd+Q in the editor asks once; the second time quits.
+- **A best score set on an older version of a chart says so**: the
+  browser's detail line reads "best 12345 (98.7%, older chart)" when
+  the chart has been edited or regenerated since. Scores recorded
+  from now on remember their chart; older records say nothing.
+
 ## [0.18.46] - 2026-09-25
 
 ### Added

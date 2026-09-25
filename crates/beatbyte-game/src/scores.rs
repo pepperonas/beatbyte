@@ -65,6 +65,10 @@ struct Record {
     best: BestScore,
     title: String,
     artist: String,
+    /// The `chart_hash` of the chart the best was played on (records
+    /// from before it was kept have none) — a best on an older version
+    /// of a chart is not a best on the one that plays now.
+    chart: Option<String>,
 }
 
 /// All best results, keyed by song + difficulty.
@@ -110,6 +114,38 @@ impl ScoreBoard {
             .map(|record| record.best)
     }
 
+    /// The chart the best was played on, when the record knows it.
+    #[must_use]
+    pub fn best_chart(
+        &self,
+        song_id: Option<&str>,
+        title: &str,
+        artist: &str,
+        difficulty: Difficulty,
+    ) -> Option<&str> {
+        song_id
+            .and_then(|id| self.entries.get(&Self::by_id(id, difficulty)))
+            .or_else(|| self.entries.get(&Self::named(title, artist, difficulty)))
+            .and_then(|record| record.chart.as_deref())
+    }
+
+    /// Whether the best was played on ANOTHER chart than `current` —
+    /// `false` when either is unknown (an old record says nothing).
+    #[must_use]
+    pub fn best_is_from_another_chart(
+        &self,
+        song_id: Option<&str>,
+        title: &str,
+        artist: &str,
+        difficulty: Difficulty,
+        current: Option<&str>,
+    ) -> bool {
+        match (self.best_chart(song_id, title, artist, difficulty), current) {
+            (Some(recorded), Some(current)) => recorded != current,
+            _ => false,
+        }
+    }
+
     /// Record a result. Returns `true` when it is a new record.
     ///
     /// Writing under an id **retires the name-keyed twin**, so a song
@@ -123,6 +159,7 @@ impl ScoreBoard {
         artist: &str,
         difficulty: Difficulty,
         result: BestScore,
+        chart: Option<&str>,
     ) -> bool {
         let key = match song_id {
             Some(id) => Self::by_id(id, difficulty),
@@ -139,6 +176,7 @@ impl ScoreBoard {
             best: result,
             title: title.to_owned(),
             artist: artist.to_owned(),
+            chart: chart.map(str::to_owned),
         };
         match previous {
             Some(best) if best.best.score >= result.score => {
@@ -146,6 +184,7 @@ impl ScoreBoard {
                 // to the id, or the removal above would lose it.
                 self.entries.entry(key).or_insert(Record {
                     best: best.best,
+                    chart: best.chart,
                     ..named
                 });
                 false
@@ -193,6 +232,10 @@ struct StoredRecord {
     score: u64,
     accuracy: f64,
     best_streak: u32,
+    /// The chart the best was played on (additive: older files and
+    /// older builds do without it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    chart: Option<String>,
 }
 
 /// The format before version 2: a map from `title|artist|difficulty`
@@ -271,6 +314,7 @@ impl ScoreBoard {
                             },
                             title: r.title,
                             artist: r.artist,
+                            chart: r.chart,
                         },
                     );
                 }
@@ -291,6 +335,7 @@ impl ScoreBoard {
                                     best,
                                     title,
                                     artist,
+                                    chart: None,
                                 },
                             );
                         }
@@ -328,6 +373,7 @@ impl ScoreBoard {
                     score: b.best.score,
                     accuracy: b.best.accuracy,
                     best_streak: b.best.best_streak,
+                    chart: b.chart.clone(),
                 })
                 .collect(),
         };
@@ -413,7 +459,7 @@ mod tests {
     #[test]
     fn a_first_result_is_always_a_record() {
         let mut board = ScoreBoard::default();
-        assert!(board.record(None, "Song", "Artist", Difficulty::Medium, score(100)));
+        assert!(board.record(None, "Song", "Artist", Difficulty::Medium, score(100), None));
         assert_eq!(
             board
                 .best(None, "Song", "Artist", Difficulty::Medium)
@@ -425,13 +471,13 @@ mod tests {
     #[test]
     fn only_a_higher_score_replaces_the_record() {
         let mut board = ScoreBoard::default();
-        board.record(None, "Song", "Artist", Difficulty::Medium, score(100));
-        assert!(!board.record(None, "Song", "Artist", Difficulty::Medium, score(80)));
+        board.record(None, "Song", "Artist", Difficulty::Medium, score(100), None);
+        assert!(!board.record(None, "Song", "Artist", Difficulty::Medium, score(80), None));
         assert!(
-            !board.record(None, "Song", "Artist", Difficulty::Medium, score(100)),
+            !board.record(None, "Song", "Artist", Difficulty::Medium, score(100), None),
             "matching the record is not beating it"
         );
-        assert!(board.record(None, "Song", "Artist", Difficulty::Medium, score(101)));
+        assert!(board.record(None, "Song", "Artist", Difficulty::Medium, score(101), None));
         assert_eq!(
             board
                 .best(None, "Song", "Artist", Difficulty::Medium)
@@ -444,8 +490,8 @@ mod tests {
     fn difficulties_keep_separate_records() {
         // Playing Easy well must never overwrite an Expert record.
         let mut board = ScoreBoard::default();
-        board.record(None, "Song", "Artist", Difficulty::Easy, score(500));
-        board.record(None, "Song", "Artist", Difficulty::Expert, score(200));
+        board.record(None, "Song", "Artist", Difficulty::Easy, score(500), None);
+        board.record(None, "Song", "Artist", Difficulty::Expert, score(200), None);
         assert_eq!(
             board
                 .best(None, "Song", "Artist", Difficulty::Expert)
@@ -462,13 +508,85 @@ mod tests {
     #[test]
     fn songs_are_told_apart_by_title_and_artist() {
         let mut board = ScoreBoard::default();
-        board.record(None, "Song", "One", Difficulty::Medium, score(100));
-        board.record(None, "Song", "Two", Difficulty::Medium, score(200));
+        board.record(None, "Song", "One", Difficulty::Medium, score(100), None);
+        board.record(None, "Song", "Two", Difficulty::Medium, score(200), None);
         assert_eq!(
             board
                 .best(None, "Song", "One", Difficulty::Medium)
                 .map(|b| b.score),
             Some(100)
+        );
+    }
+
+    /// The chart a best was played on survives the file and decides
+    /// "older chart": a different chart is older, an unknown one says
+    /// nothing, and a worse run never takes the best's chart away.
+    #[test]
+    fn a_best_remembers_its_chart() {
+        let mut board = ScoreBoard::default();
+        board.record(
+            Some("id"),
+            "S",
+            "A",
+            Difficulty::Hard,
+            score(100),
+            Some("h1"),
+        );
+        board.record(
+            Some("id"),
+            "S",
+            "A",
+            Difficulty::Hard,
+            score(50),
+            Some("h2"),
+        );
+        assert_eq!(
+            board.best_chart(Some("id"), "S", "A", Difficulty::Hard),
+            Some("h1")
+        );
+        let back = ScoreBoard::from_json(&board.to_json()).expect("reads back");
+        assert_eq!(
+            back.best_chart(Some("id"), "S", "A", Difficulty::Hard),
+            Some("h1")
+        );
+        assert!(back.best_is_from_another_chart(
+            Some("id"),
+            "S",
+            "A",
+            Difficulty::Hard,
+            Some("h2")
+        ));
+        assert!(!back.best_is_from_another_chart(
+            Some("id"),
+            "S",
+            "A",
+            Difficulty::Hard,
+            Some("h1")
+        ));
+        assert!(!back.best_is_from_another_chart(Some("id"), "S", "A", Difficulty::Hard, None));
+        // A name-keyed best that MOVES to the song's id with a worse run
+        // keeps its own chart, not the worse run's.
+        let mut moving = ScoreBoard::default();
+        moving.record(None, "S", "A", Difficulty::Hard, score(100), Some("h1"));
+        moving.record(
+            Some("id"),
+            "S",
+            "A",
+            Difficulty::Hard,
+            score(50),
+            Some("h2"),
+        );
+        assert_eq!(
+            moving.best_chart(Some("id"), "S", "A", Difficulty::Hard),
+            Some("h1")
+        );
+        // A record from before charts were kept says nothing.
+        let mut old = ScoreBoard::default();
+        old.record(None, "S", "A", Difficulty::Hard, score(100), None);
+        assert!(!old.best_is_from_another_chart(None, "S", "A", Difficulty::Hard, Some("h9")));
+        assert!(
+            !old.to_json().contains("\"chart\""),
+            "no empty field written"
         );
     }
 
@@ -483,6 +601,7 @@ mod tests {
             "Blondie",
             Difficulty::Hard,
             score(9000),
+            None,
         );
         assert_eq!(
             board
@@ -499,7 +618,14 @@ mod tests {
         // record must keep showing, and must MOVE the first time the
         // song is played — two records for one song would diverge.
         let mut board = ScoreBoard::default();
-        board.record(None, "Maria", "Blondie", Difficulty::Hard, score(9000));
+        board.record(
+            None,
+            "Maria",
+            "Blondie",
+            Difficulty::Hard,
+            score(9000),
+            None,
+        );
         assert_eq!(
             board
                 .best(Some("bb_song"), "Maria", "Blondie", Difficulty::Hard)
@@ -514,7 +640,8 @@ mod tests {
             "Maria",
             "Blondie",
             Difficulty::Hard,
-            score(10)
+            score(10),
+            None
         ));
         assert_eq!(board.len(), 1, "one song, one record");
         assert_eq!(
@@ -556,7 +683,7 @@ mod tests {
         // come from file names, where "|" is legal on macOS and
         // Linux. The key is a struct now.
         let mut board = ScoreBoard::default();
-        board.record(None, "A|B", "C", Difficulty::Medium, score(100));
+        board.record(None, "A|B", "C", Difficulty::Medium, score(100), None);
         assert_eq!(board.best(None, "A", "B|C", Difficulty::Medium), None);
         assert_eq!(
             board
@@ -629,9 +756,9 @@ mod tests {
     #[test]
     fn the_new_file_round_trips_pipes_and_is_stable() {
         let mut board = ScoreBoard::default();
-        board.record(None, "A|B", "C", Difficulty::Medium, score(100));
-        board.record(None, "A", "B|C", Difficulty::Medium, score(200));
-        board.record(None, "Zed", "Y", Difficulty::Easy, score(1));
+        board.record(None, "A|B", "C", Difficulty::Medium, score(100), None);
+        board.record(None, "A", "B|C", Difficulty::Medium, score(200), None);
+        board.record(None, "Zed", "Y", Difficulty::Easy, score(1), None);
         let text = board.to_json();
         let back = ScoreBoard::from_json(&text).expect("parses");
         assert_eq!(back, board);

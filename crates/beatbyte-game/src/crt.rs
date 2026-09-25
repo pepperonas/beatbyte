@@ -459,12 +459,25 @@ fn begin_power_off(
     settings: Res<Settings>,
     mut crt: ResMut<Crt>,
     mut exit: MessageWriter<AppExit>,
+    editor: Option<ResMut<crate::editor_ui::EditorState>>,
+    app_state: Option<Res<State<crate::states::AppState>>>,
 ) {
     // The titlebar's X and Cmd-Q arrive as a close request, the
     // menu's QUIT as our own message — both mean the same thing, and
     // both must play the tube. `close_when_requested` is switched
     // off in the window config so this is the only handler.
     if requests.read().count() == 0 && closes.read().count() == 0 {
+        return;
+    }
+    // Unsaved chart edits: the first request only warns, as leaving
+    // the editor does (the second within the warning window quits).
+    if app_state.is_some_and(|s| *s.get() == crate::states::AppState::Editor)
+        && let Some(mut editor) = editor
+        && editor.session.dirty()
+        && editor.exit_armed <= 0.0
+    {
+        editor.exit_armed = 3.0;
+        editor.status = "unsaved changes! quit again to discard them, S saves".to_owned();
         return;
     }
     if !settings.backdrop_motion || matches!(*crt, Crt::Off(_)) {

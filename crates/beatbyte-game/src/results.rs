@@ -334,7 +334,7 @@ fn spawn_results(
     // drill needs the REAL path (a gate here would force the drill
     // to test a bypass instead).
     let can_rate = last_run.open();
-    let can_versus = can_rate && song.is_some_and(|s| s.chart.provenance.is_some());
+    let can_versus = can_rate && song.as_ref().is_some_and(|s| s.chart.provenance.is_some());
     // A blind test asks its own question instead: which of the two
     // passages just heard was better. It is offered only once BOTH
     // sides have actually played — an abandoned test has nothing to
@@ -373,6 +373,11 @@ fn spawn_results(
                 accuracy: perf.accuracy(),
                 best_streak: perf.best_streak(),
             },
+            // The chart it was played on: a later edit makes this a
+            // best on an older version, and the browser says so.
+            song.as_ref()
+                .map(|song| beatbyte_chart::chart_hash(&song.chart))
+                .as_deref(),
         );
         if new_record {
             save_scores(&scores);

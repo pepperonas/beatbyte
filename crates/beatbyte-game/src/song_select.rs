@@ -2412,6 +2412,7 @@ type ArtistColors<'w, 's> = Query<
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)] // Bevy system
 fn refresh_browser(
+    mut chart_hashes: Local<std::collections::HashMap<std::path::PathBuf, Option<String>>>,
     settings: Res<crate::config::Settings>,
     library: Res<SongLibrary>,
     view: Res<BrowserView>,
@@ -2507,7 +2508,33 @@ fn refresh_browser(
         .get(cursor.0)
         .and_then(|i| library.entries.get(*i));
     if let Ok(mut text) = texts.p0().single_mut() {
+        // The chart that plays now, for "a best on an older chart":
+        // parsed once per file, only for the highlighted song (a hash
+        // for every row would parse the whole library). Forgotten when
+        // the library is read again — an editor save may rewrite a
+        // file under the same name.
+        if library.is_changed() {
+            chart_hashes.clear();
+        }
+        let current = entry.and_then(|entry| match &entry.source {
+            crate::library::SongSource::File { chart_path, .. } => chart_hashes
+                .entry(chart_path.clone())
+                .or_insert_with(|| {
+                    beatbyte_chart::load_chart_file(chart_path)
+                        .ok()
+                        .map(|chart| beatbyte_chart::chart_hash(&chart))
+                })
+                .clone(),
+            crate::library::SongSource::Builtin(_) => None,
+        });
         let line = detail_line(cursor.0, view.order.len(), entry, selected.0, |entry| {
+            let older = scores.best_is_from_another_chart(
+                entry.song_id.as_deref(),
+                &entry.title,
+                &entry.artist,
+                selected.0,
+                current.as_deref(),
+            );
             scores
                 .best(
                     entry.song_id.as_deref(),
@@ -2515,7 +2542,7 @@ fn refresh_browser(
                     &entry.artist,
                     selected.0,
                 )
-                .map(|b| (b.score, b.accuracy))
+                .map(|b| (b.score, b.accuracy, older))
         });
         if text.0 != line {
             text.0 = line;
@@ -2565,7 +2592,7 @@ fn detail_line(
     count: usize,
     entry: Option<&SongEntry>,
     difficulty: Difficulty,
-    best: impl Fn(&SongEntry) -> Option<(u64, f64)>,
+    best: impl Fn(&SongEntry) -> Option<(u64, f64, bool)>,
 ) -> String {
     let Some(entry) = entry else {
         return String::new();
@@ -2575,7 +2602,12 @@ fn detail_line(
     });
     let best = best(entry).map_or_else(
         || "no record yet".to_owned(),
-        |(score, accuracy)| format!("best {score}  ({:.1}%)", accuracy * 100.0),
+        |(score, accuracy, older)| {
+            // A best set on an earlier version of the chart (before an
+            // edit, a redesign) is said to be one.
+            let older = if older { ", older chart" } else { "" };
+            format!("best {score}  ({:.1}%{older})", accuracy * 100.0)
+        },
     );
     let rating = entry
         .rating(difficulty)
@@ -3396,7 +3428,7 @@ mod view_tests {
     fn the_details_line_goes_blank_under_an_empty_list() {
         let songs = lib();
         let line = detail_line(0, 4, songs.first(), Difficulty::Medium, |_| {
-            Some((1234, 0.987))
+            Some((1234, 0.987, false))
         });
         assert_eq!(
             line,
@@ -3406,6 +3438,14 @@ mod view_tests {
             detail_line(0, 0, None, Difficulty::Medium, |_| None),
             "",
             "no song, no line - not the previous song's line"
+        );
+        // A best on an older version of the chart says so.
+        let older = detail_line(0, 4, songs.first(), Difficulty::Medium, |_| {
+            Some((1234, 0.987, true))
+        });
+        assert!(
+            older.ends_with("best 1234  (98.7%, older chart)"),
+            "{older}"
         );
     }
 

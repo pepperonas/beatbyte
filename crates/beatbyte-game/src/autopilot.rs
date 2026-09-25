@@ -986,6 +986,7 @@ pub struct MouseDrill {
     depth_before: usize,
     zoom_pivot: Option<(f32, f64, f64)>,
     notes_seen: usize,
+    under: (f64, u8),
     phrases_before: usize,
     home: Option<(beatbyte_core::Difficulty, Vec<beatbyte_chart::ChartNote>)>,
     pasted: (f64, u8),
@@ -1036,6 +1037,7 @@ fn autopilot_edit_mouse(
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut wheel: MessageWriter<bevy::input::mouse::MouseWheel>,
     mut typed: MessageWriter<bevy::input::keyboard::KeyboardInput>,
+    mut closes: MessageWriter<bevy::window::WindowCloseRequested>,
     windows: Query<Entity, With<bevy::window::PrimaryWindow>>,
     mut chip_actions: ResMut<crate::editor_ui::ChipActions>,
 ) {
@@ -1381,17 +1383,66 @@ fn autopilot_edit_mouse(
                 let _ = state.session.set_difficulty(home);
                 state.selection.clear();
             }
+            // A note under the typed note's tail: a warning to find.
+            let under = (drill.typed_to + 0.2, drill.pasted.1);
+            let difficulty = state.session.difficulty;
+            let added = state
+                .session
+                .edit(beatbyte_editor::EditOp::AddNote {
+                    difficulty,
+                    note: beatbyte_chart::ChartNote {
+                        time: under.0,
+                        lane: under.1,
+                        len: 0.0,
+                        hopo: false,
+                    },
+                })
+                .is_ok();
+            check(&mut drill, "a note under a held note can be placed", added);
+            state.dirty_view = true;
+            state.cursor_s = 0.0;
+            drill.under = under;
+        }
+        // The warnings are drawn (and counted) after this system; W
+        // is pressed the frame after.
+        28 => chip_actions.0.push(crate::editor_ui::actions::NEXT_WARNING),
+        29 => {
+            let under = drill.under;
+            let passed = state.warnings.iter().any(|w| {
+                w.lane == under.1
+                    && (w.time - under.0).abs() < 1e-6
+                    && matches!(w.kind, beatbyte_editor::lint::Kind::UnderTail { .. })
+            }) && (state.cursor_s - under.0).abs() < 1e-6
+                && state.selection == vec![under];
+            check(
+                &mut drill,
+                "a note under a tail is warned about and W jumps to it",
+                passed,
+            );
+            // Quitting with unsaved edits: the first request only warns.
+            if let Ok(window) = windows.single() {
+                closes.write(bevy::window::WindowCloseRequested { window });
+            }
+        }
+        30 => {
+            let passed = state.exit_armed > 0.0 && state.status.contains("quit again");
+            check(
+                &mut drill,
+                "quitting with unsaved edits only warns the first time",
+                passed,
+            );
+            state.exit_armed = 0.0;
             // Everything the drill did undoes, back to the start.
             let mut undone = 0;
             while state.session.undo_depth() > drill.depth_before && state.session.undo() {
                 undone += 1;
             }
-            let passed = undone == 6
+            let passed = undone == 7
                 && state.notes().len() == drill.notes_before
                 && phrase_count(&state) == drill.phrases_before;
             check(
                 &mut drill,
-                "the drill's edits undo exactly (6 steps)",
+                "the drill's edits undo exactly (7 steps)",
                 passed,
             );
             commands.remove_resource::<crate::editor_ui::pointer::InjectedPointer>();

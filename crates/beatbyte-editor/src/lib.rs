@@ -9,6 +9,7 @@
 
 pub mod clipboard;
 pub mod inspector;
+pub mod lint;
 pub mod ops;
 pub mod playback;
 pub mod save;

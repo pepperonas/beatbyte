@@ -186,7 +186,7 @@ pub(crate) fn spawn_editor(
 }
 
 /// The toolbar, left to right.
-const TOOLBAR: [ui_kit::ChipSpec; 23] = [
+const TOOLBAR: [ui_kit::ChipSpec; 24] = [
     chip_spec(chip::PLAY, "Play P"),
     chip_spec(chip::SPEED, "Speed T"),
     chip_spec(chip::LOOP, "Loop L"),
@@ -208,6 +208,7 @@ const TOOLBAR: [ui_kit::ChipSpec; 23] = [
     chip_spec(chip::FIELD_TIME, "Time ,"),
     chip_spec(chip::FIELD_LANE, "Lane ."),
     chip_spec(chip::FIELD_LENGTH, "Length ;"),
+    chip_spec(chip::WARNING, "Warning W"),
     chip_spec(chip::HELP, "Help F1"),
     chip_spec(chip::BACK, "Back Esc"),
 ];
@@ -346,6 +347,7 @@ KEYS
   Y  star phrase over the selection (or remove the one here)
   Q  next difficulty (a missing one starts empty)
   ,  .  ;  type the time, lane, length of the selected note
+  W  jump to the next warning (overlaps, bad lengths, past the music)
   right-click  the menu
   S  save as a new version      Esc  cancel, leave
 
@@ -379,6 +381,10 @@ pub(crate) fn redraw(
     for entity in &old {
         commands.entity(entity).despawn();
     }
+    // The warnings follow every change (sorting a difficulty's notes
+    // is cheap next to drawing them).
+    let warnings = beatbyte_editor::lint::lint(state.notes(), state.sounding_end);
+    state.warnings = warnings;
     let v = state.view;
     let (t_lo, t_hi) = (v.time_at(BOTTOM_Y), v.time_at(TOP_Y));
     let visible = |y: f64| (BOTTOM_Y..=TOP_Y).contains(&y);
@@ -669,6 +675,28 @@ pub(crate) fn redraw(
         }
     }
 
+    // Warnings: a red mark beside the lanes and around the note.
+    for warning in &state.warnings {
+        let y = v.y_of(warning.time);
+        if !visible(y) {
+            continue;
+        }
+        put(
+            &mut commands,
+            (
+                Sprite::from_color(palette::MISS, Vec2::new(8.0, 8.0)),
+                Transform::from_xyz(-GRID_RIGHT - 10.0, y as f32, 1.0),
+            ),
+        );
+        put(
+            &mut commands,
+            (
+                Sprite::from_color(palette::MISS.with_alpha(0.9), HEAD + Vec2::new(10.0, 10.0)),
+                Transform::from_xyz(view::lane_x(warning.lane) as f32, y as f32, -0.7),
+            ),
+        );
+    }
+
     // The note a click would place.
     if state.drag.is_none()
         && let Some(Hit::Lane { time, lane }) = state.hover
@@ -879,6 +907,24 @@ pub(crate) fn refresh_hud(
             lines.push(format!("SELECTED {} notes", many.len()));
             lines.push(format!("  from {first:.3} s to {last:.3} s"));
         }
+    }
+    // What looks wrong: the count, and the next one after the playhead.
+    let errors = state
+        .session
+        .chart()
+        .validate()
+        .into_iter()
+        .filter(|i| i.severity == beatbyte_chart::Severity::Error)
+        .count();
+    if errors > 0 {
+        lines.push(format!("{errors} ERROR(S) - the chart will not save"));
+    }
+    match beatbyte_editor::lint::next_after(&state.warnings, state.cursor_s) {
+        Some(next) => {
+            lines.push(format!("warnings {} - W jumps", state.warnings.len()));
+            lines.push(format!("  next {}", next.describe()));
+        }
+        None => lines.push("no warnings".to_owned()),
     }
     if let Some((field, text)) = &state.field {
         lines.push(String::new());

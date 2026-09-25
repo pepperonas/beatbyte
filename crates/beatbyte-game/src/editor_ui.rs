@@ -21,6 +21,7 @@ use beatbyte_chart::ChartNote;
 use beatbyte_core::Lane;
 use beatbyte_editor::clipboard::{self, Clip};
 use beatbyte_editor::inspector::{self, Field};
+use beatbyte_editor::lint::{self, Warning};
 use beatbyte_editor::playback::{self, LoopRegion};
 use beatbyte_editor::timecode::Grid;
 use beatbyte_editor::view::{self, Hit, NoteKey, View};
@@ -166,6 +167,11 @@ pub struct EditorState {
     pub typing_ate_keys: bool,
     /// The right-click menu, while open.
     pub menu: Option<Menu>,
+    /// Where the music actually ends (for "after the music"), once the
+    /// song is decoded.
+    pub sounding_end: Option<f64>,
+    /// What looks wrong in the difficulty being edited.
+    pub warnings: Vec<Warning>,
     /// The view needs a rebuild.
     pub dirty_view: bool,
 }
@@ -341,6 +347,8 @@ pub fn open_editor(
         field: None,
         typing_ate_keys: false,
         menu: None,
+        sounding_end: None,
+        warnings: Vec::new(),
         dirty_view: true,
     });
     Ok(())
@@ -394,9 +402,10 @@ impl Plugin for EditorUiPlugin {
 #[derive(Component)]
 pub(crate) struct EditorScreen;
 
-/// The song's waveform, decoding in the background.
+/// The song's waveform (and where its music ends), decoding in the
+/// background.
 #[derive(Resource)]
-struct WaveformTask(Task<Option<Envelope>>);
+struct WaveformTask(Task<Option<(Envelope, f64)>>);
 
 /// Decode the song once, off the frame thread, for the waveform.
 fn start_waveform(mut commands: Commands, state: Option<Res<EditorState>>) {
@@ -406,7 +415,13 @@ fn start_waveform(mut commands: Commands, state: Option<Res<EditorState>>) {
     let path = state.audio_path.clone();
     let task = AsyncComputeTaskPool::get().spawn(async move {
         let audio = beatbyte_audio::decode_file(&path).ok()?;
-        Some(Envelope::from_samples(audio.samples(), audio.sample_rate()))
+        // The music's end, not the file's: a rip can end in a minute
+        // of digital silence (the -60 dBFS floor the analysis uses).
+        let end = audio.sounding_end_s(0.001);
+        Some((
+            Envelope::from_samples(audio.samples(), audio.sample_rate()),
+            end,
+        ))
     });
     commands.insert_resource(WaveformTask(task));
 }
@@ -425,7 +440,10 @@ fn collect_waveform(
         return;
     };
     commands.remove_resource::<WaveformTask>();
-    state.envelope = result;
+    if let Some((envelope, end)) = result {
+        state.envelope = Some(envelope);
+        state.sounding_end = Some(end);
+    }
     state.dirty_view = true;
 }
 
@@ -483,6 +501,8 @@ pub(crate) mod chip {
     pub const PASTE_HERE: u8 = 25;
     /// Close the menu.
     pub const MENU_CLOSE: u8 = 26;
+    /// Jump to the next warning.
+    pub const WARNING: u8 = 27;
 }
 
 /// The actions both the keyboard and the chips trigger.
@@ -514,6 +534,7 @@ pub(crate) enum Action {
     Level,
     Edit(Field),
     CloseMenu,
+    NextWarning,
 }
 
 /// The actions the chips asked for this frame (read by `editor_input`).
@@ -537,6 +558,8 @@ pub(crate) mod actions {
     pub const PHRASE: super::Action = super::Action::Phrase;
     /// The next difficulty.
     pub const LEVEL: super::Action = super::Action::Level;
+    /// Jump to the next warning.
+    pub const NEXT_WARNING: super::Action = super::Action::NextWarning;
 }
 
 #[allow(clippy::type_complexity)] // Bevy query tuple
@@ -585,6 +608,7 @@ fn editor_chips(
             chip::FIELD_LANE => Some(Action::Edit(Field::Lane)),
             chip::FIELD_LENGTH => Some(Action::Edit(Field::Length)),
             chip::MENU_CLOSE => Some(Action::CloseMenu),
+            chip::WARNING => Some(Action::NextWarning),
             _ => None,
         })
         .collect();
@@ -738,6 +762,7 @@ pub(crate) fn editor_input(
         (pressed(KeyCode::Comma), Action::Edit(Field::Time)),
         (pressed(KeyCode::Period), Action::Edit(Field::Lane)),
         (pressed(KeyCode::Semicolon), Action::Edit(Field::Length)),
+        (pressed(KeyCode::KeyW), Action::NextWarning),
     ];
     actions.extend(
         key_actions
@@ -1016,6 +1041,15 @@ pub(crate) fn editor_input(
                 }
             }
             Action::CloseMenu => {}
+            Action::NextWarning => match lint::next_after(&state.warnings, state.cursor_s) {
+                Some(warning) => {
+                    seek(&mut state, &music, &mut game_clock, warning.time, now);
+                    state.reveal_cursor();
+                    state.selection = vec![(warning.time, warning.lane)];
+                    state.status = warning.describe();
+                }
+                None => state.status = "no warnings".to_owned(),
+            },
             Action::LoopIn | Action::LoopOut => {
                 let at = state.cursor_s;
                 let region = match (state.loop_region, action) {
