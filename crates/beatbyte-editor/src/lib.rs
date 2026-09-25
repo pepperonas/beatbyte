@@ -8,6 +8,7 @@
 //! (ADR-0002).
 
 pub mod ops;
+pub mod playback;
 pub mod save;
 pub mod session;
 pub mod timecode;

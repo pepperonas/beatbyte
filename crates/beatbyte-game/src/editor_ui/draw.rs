@@ -186,8 +186,10 @@ pub(crate) fn spawn_editor(
 }
 
 /// The toolbar, left to right.
-const TOOLBAR: [ui_kit::ChipSpec; 13] = [
+const TOOLBAR: [ui_kit::ChipSpec; 15] = [
     chip_spec(chip::PLAY, "Play P"),
+    chip_spec(chip::SPEED, "Speed T"),
+    chip_spec(chip::LOOP, "Loop L"),
     chip_spec(chip::GRID, "Grid Tab"),
     chip_spec(chip::SNAP, "Snap G"),
     chip_spec(chip::ZOOM_OUT, "Zoom -"),
@@ -222,10 +224,13 @@ MOUSE
   drag in empty space ...... box select   Shift: add
   right-click .............. delete (the selection, if it is in it)
   click / drag the ruler ... move the playhead
+  Shift + drag the ruler ... a loop region
   wheel .................... scroll   Cmd/Ctrl + wheel: zoom
 
 KEYS
   P / Enter  play, pause        F  follow the playhead
+  T  speed 100 / 75 / 50 %      L  loop on / off
+  I / O  loop from / to the playhead (or Shift-drag the ruler)
   Up / Down  step the grid      PgUp / PgDn  a bar
   Home / End start, last note   Left / Right  lane
   Space      note at cursor     M  pick up, put down
@@ -345,6 +350,43 @@ pub(crate) fn redraw(
                         ),
                     );
                 }
+            }
+        }
+    }
+
+    // The loop region, across the ruler and the lanes.
+    let loop_band = match state.drag {
+        Some(Drag::LoopRegion { from, to }) => Some((from.min(to), from.max(to), true)),
+        _ => state.loop_region.map(|r| (r.start, r.end, state.looping)),
+    };
+    if let Some((start, end, on)) = loop_band {
+        let (lo, hi) = (v.y_of(start).max(BOTTOM_Y), v.y_of(end).min(TOP_Y));
+        if hi > lo {
+            let alpha = if on { 0.03 } else { 0.012 };
+            put(
+                &mut commands,
+                (
+                    Sprite::from_color(
+                        palette::HYPE.with_alpha(alpha),
+                        Vec2::new(full_w, (hi - lo) as f32),
+                    ),
+                    Transform::from_xyz(full_x, ((lo + hi) / 2.0) as f32, -7.8),
+                ),
+            );
+        }
+        for edge in [start, end] {
+            let y = v.y_of(edge);
+            if visible(y) {
+                put(
+                    &mut commands,
+                    (
+                        Sprite::from_color(
+                            palette::HYPE.with_alpha(if on { 0.9 } else { 0.4 }),
+                            Vec2::new(full_w, 2.0),
+                        ),
+                        Transform::from_xyz(full_x, y as f32, -6.5),
+                    ),
+                );
             }
         }
     }
@@ -640,6 +682,15 @@ pub(crate) fn refresh_hud(
             if state.snap_on { "on" } else { "off" },
             state.view.px_per_s,
             if state.previewing { "  PLAYING" } else { "" }
+        ),
+        format!(
+            "speed {:.0} %  {}",
+            state.speed * 100.0,
+            match (state.loop_region, state.looping) {
+                (Some(r), true) => format!("loop {:.2}-{:.2} s", r.start, r.end),
+                (Some(_), false) => "loop off".to_owned(),
+                (None, _) => "no loop".to_owned(),
+            }
         ),
         format!(
             "notes {}  undo {}",

@@ -13,7 +13,7 @@
 //! - right-click a note: delete it (the whole selection when it is in
 //!   it); right-click empty space: clear the selection;
 //! - click or drag the ruler / waveform: move the playhead (the music
-//!   follows while it plays);
+//!   follows while it plays); Shift-drag there: a loop region;
 //! - wheel: scroll; Cmd/Ctrl + wheel: zoom around the pointer.
 //!
 //! A pointer over a toolbar chip belongs to the chip, never to the
@@ -169,6 +169,12 @@ pub fn editor_pointer(
             Hit::Lane { time, lane } => {
                 state.drag = Some(Drag::Pending { time, lane, at });
             }
+            Hit::Ruler { time } if shift => {
+                state.drag = Some(Drag::LoopRegion {
+                    from: time,
+                    to: time,
+                });
+            }
             Hit::Ruler { time } => {
                 state.drag = Some(Drag::Scrub);
                 seek(&mut state, &music, &mut game_clock, time, now);
@@ -231,6 +237,10 @@ pub fn editor_pointer(
                 seek(&mut state, &music, &mut game_clock, time_here, now);
                 Some(Drag::Scrub)
             }
+            Drag::LoopRegion { from, .. } => Some(Drag::LoopRegion {
+                from,
+                to: state.snap_with(time_here, free),
+            }),
         };
         if next != state.drag {
             state.drag = next;
@@ -300,6 +310,17 @@ pub fn editor_pointer(
                 }
             }
             Drag::Scrub => {}
+            Drag::LoopRegion { from, to } => {
+                let from = state.snap_with(from, free);
+                match beatbyte_editor::playback::LoopRegion::between(from, to) {
+                    Some(region) => {
+                        state.loop_region = Some(region);
+                        state.looping = true;
+                        state.status = format!("loop {:.3} - {:.3} s", region.start, region.end);
+                    }
+                    None => state.status = "a loop needs some length".to_owned(),
+                }
+            }
         }
     }
 

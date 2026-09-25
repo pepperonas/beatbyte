@@ -645,6 +645,7 @@ fn autopilot_edit(
     mut delay: Local<f32>,
     mut edits_done: Local<bool>,
     mut keys_ok: Local<Option<bool>>,
+    mut looped: Local<Option<LoopCheck>>,
     state: Option<ResMut<crate::editor_ui::EditorState>>,
     music: Res<crate::audio_sys::Music>,
     mut game_clock: ResMut<crate::audio_sys::GameClock>,
@@ -668,10 +669,88 @@ fn autopilot_edit(
         if *delay < 5.0 {
             return;
         }
+        // Phase 3: the loop at half speed — the playhead must wrap,
+        // never run past the end, and move at half the wall's pace
+        // (the clock AND the music slowed, together).
+        if clicks.0 >= 3 && looped.is_none() {
+            let start = state.cursor_s;
+            state.previewing = true;
+            crate::editor_ui::toggle_preview(&mut state, &music, &mut game_clock, &settings, 0.0);
+            state.speed = 0.5;
+            state.loop_region = beatbyte_editor::playback::LoopRegion::between(start, start + 0.8);
+            state.looping = true;
+            state.cursor_s = start;
+            let now = time.elapsed_secs_f64();
+            crate::editor_ui::toggle_preview(&mut state, &music, &mut game_clock, &settings, now);
+            *looped = Some(LoopCheck {
+                wall0: now,
+                song0: start,
+                ..LoopCheck::default()
+            });
+            return;
+        }
+        if let Some(check) = looped.as_mut()
+            && !check.done
+        {
+            let wall = time.elapsed_secs_f64() - check.wall0;
+            let song = state.cursor_s;
+            // The MUSIC's own position, inside the first pass: it must
+            // run at the same half speed as the clock, or the notes
+            // drift off the audio (the clock alone cannot show that).
+            if check.device.is_none() && wall >= 0.4 {
+                check.device = Some((wall, music.0.position_s(), None));
+            }
+            if let Some((w0, p0, None)) = check.device
+                && wall >= 1.3
+            {
+                check.device = Some((w0, p0, Some((music.0.position_s() - p0) / (wall - w0))));
+            }
+            if song + 0.3 < check.last {
+                check.wraps += 1;
+                if check.slope.is_none() {
+                    check.slope = Some((check.last - check.song0) / check.last_wall.max(1e-6));
+                }
+            }
+            if check.last_wall < 2.0
+                && wall >= 2.0
+                && let Some(dir) = std::env::var_os("BEATBYTE_SHOT_DIR")
+            {
+                let path = std::path::PathBuf::from(dir).join("beatbyte-editor-loop.png");
+                commands
+                    .spawn(Screenshot::primary_window())
+                    .observe(save_to_disk(path));
+            }
+            check.max = check.max.max(song);
+            check.last = song;
+            check.last_wall = wall;
+            if wall < 4.0 {
+                return;
+            }
+            check.done = true;
+        }
         music.0.stop();
         game_clock.clock.stop();
         if let Some(drill) = &drill {
             let _ = std::fs::remove_dir_all(&drill.scratch);
+        }
+        let loop_ok = looped.as_ref().is_some_and(|check| {
+            let end = check.song0 + 0.8;
+            let slope = check.slope.unwrap_or(0.0);
+            info!(
+                "autopilot: loop at 50 %: {} wrap(s), furthest {:.3} s (end {:.3}), pace {:.2}",
+                check.wraps, check.max, end, slope
+            );
+            let device = check.device.and_then(|d| d.2).unwrap_or(0.0);
+            info!("autopilot: the music itself ran at {device:.2}");
+            check.wraps >= 1
+                && check.max <= end + 0.1
+                && (slope - 0.5).abs() < 0.1
+                && (device - 0.5).abs() < 0.1
+        });
+        if !loop_ok {
+            error!("autopilot: editor validation FAILED — the loop at half speed");
+            deliver(&mut app_exit, AppExit::error());
+            return;
         }
         if clicks.0 >= 3 {
             info!("autopilot: editor validation PASSED ({} clicks)", clicks.0);
@@ -872,6 +951,21 @@ fn autopilot_edit(
         error!("autopilot: editor validation FAILED");
         deliver(&mut app_exit, AppExit::error());
     }
+}
+
+/// The editor drill's loop check: what the playhead did.
+#[derive(Default)]
+pub struct LoopCheck {
+    wall0: f64,
+    song0: f64,
+    last: f64,
+    last_wall: f64,
+    max: f64,
+    wraps: u32,
+    slope: Option<f64>,
+    /// (wall, music position, measured pace) of the music thread.
+    device: Option<(f64, f64, Option<f64>)>,
+    done: bool,
 }
 
 /// The editor drill's mouse half: where it is and what it found.

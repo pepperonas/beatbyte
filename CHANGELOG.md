@@ -14,6 +14,18 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.45] - 2026-09-25
+
+### Added
+
+- **Loop and slow playback in the chart editor.** Shift-drag across
+  the ruler (or press I and O at the playhead) to mark a loop, L turns
+  it on and off, and playback circles inside it. T plays at 100, 75
+  or 50 % — the notes stay on the music, because the song clock and
+  the audio slow down together (the pitch drops, as in practice mode).
+  Both are also buttons in the toolbar, and the information block
+  shows the speed and the loop.
+
 ## [0.18.44] - 2026-09-25
 
 ### Added

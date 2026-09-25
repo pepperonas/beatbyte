@@ -19,6 +19,7 @@ pub mod pointer;
 
 use beatbyte_chart::ChartNote;
 use beatbyte_core::Lane;
+use beatbyte_editor::playback::{self, LoopRegion};
 use beatbyte_editor::timecode::Grid;
 use beatbyte_editor::view::{self, Hit, NoteKey, View};
 use beatbyte_editor::waveform::Envelope;
@@ -87,6 +88,13 @@ pub enum Drag {
     },
     /// Scrubbing the playhead on the ruler or waveform.
     Scrub,
+    /// Shift-dragging a loop region on the ruler.
+    LoopRegion {
+        /// Where the drag started.
+        from: f64,
+        /// Where it is now.
+        to: f64,
+    },
 }
 
 /// Everything the editor screen needs.
@@ -115,6 +123,12 @@ pub struct EditorState {
     pub snap_on: bool,
     /// Whether audio preview is running.
     pub previewing: bool,
+    /// Playback speed (1, 0.75, 0.5 — the pitch drops with it).
+    pub speed: f64,
+    /// The loop region, once set.
+    pub loop_region: Option<LoopRegion>,
+    /// Whether playback loops over the region.
+    pub looping: bool,
     /// Whether the view follows the playhead while it plays; any
     /// manual scroll turns it off until the next play (or `F`).
     pub follow: bool,
@@ -282,6 +296,9 @@ pub fn open_editor(
         division: 4,
         snap_on: true,
         previewing: false,
+        speed: 1.0,
+        loop_region: None,
+        looping: false,
         follow: true,
         exit_armed: 0.0,
         status: String::new(),
@@ -401,6 +418,10 @@ pub(crate) mod chip {
     pub const HELP: u8 = 12;
     /// Leave.
     pub const BACK: u8 = 13;
+    /// Cycle the playback speed.
+    pub const SPEED: u8 = 14;
+    /// Loop on / off.
+    pub const LOOP: u8 = 15;
 }
 
 /// The actions both the keyboard and the chips trigger.
@@ -419,6 +440,10 @@ enum Action {
     Follow,
     Help,
     Back,
+    Speed,
+    Loop,
+    LoopIn,
+    LoopOut,
 }
 
 /// The actions the chips asked for this frame (read by `editor_input`).
@@ -455,6 +480,8 @@ fn editor_chips(
             chip::FOLLOW => Some(Action::Follow),
             chip::HELP => Some(Action::Help),
             chip::BACK => Some(Action::Back),
+            chip::SPEED => Some(Action::Speed),
+            chip::LOOP => Some(Action::Loop),
             _ => None,
         })
         .collect();
@@ -481,7 +508,7 @@ pub(crate) fn alt_held(keys: &ButtonInput<KeyCode>) -> bool {
 }
 
 /// Start or stop the audition from the cursor.
-fn toggle_preview(
+pub(crate) fn toggle_preview(
     state: &mut EditorState,
     music: &Music,
     game_clock: &mut GameClock,
@@ -500,8 +527,18 @@ fn toggle_preview(
             settings,
         ));
         game_clock.expect_song = true;
+        if state.looping
+            && let Some(region) = state.loop_region
+            && let Some(start) = region.wrap(state.cursor_s)
+        {
+            state.cursor_s = start;
+        }
         music.0.seek_s(state.cursor_s);
         game_clock.begin(now, state.cursor_s);
+        // Explicitly: the clock keeps whatever rate it last had (a
+        // practice run may have left 0.5 behind).
+        game_clock.clock.set_rate(now, state.speed);
+        music.0.set_speed(state.speed);
         state.previewing = true;
         state.follow = true;
     }
@@ -578,6 +615,10 @@ fn editor_input(
             Action::Help,
         ),
         (pressed(KeyCode::Escape), Action::Back),
+        (pressed(KeyCode::KeyT), Action::Speed),
+        (pressed(KeyCode::KeyL), Action::Loop),
+        (pressed(KeyCode::KeyI), Action::LoopIn),
+        (pressed(KeyCode::KeyO), Action::LoopOut),
     ];
     actions.extend(
         key_actions
@@ -753,6 +794,47 @@ fn editor_input(
             }
             Action::Help => state.help = !state.help,
             Action::Back => back(&mut state, &mut next_state),
+            Action::Speed => {
+                state.speed = playback::next_speed(state.speed);
+                if state.previewing {
+                    game_clock.clock.set_rate(now, state.speed);
+                    music.0.set_speed(state.speed);
+                }
+                state.status = format!("speed {:.0} %", state.speed * 100.0);
+            }
+            Action::Loop => {
+                if state.loop_region.is_some() {
+                    state.looping = !state.looping;
+                    state.status = if state.looping {
+                        "looping".to_owned()
+                    } else {
+                        "loop off".to_owned()
+                    };
+                } else {
+                    state.status =
+                        "no loop yet - I and O set its ends, or Shift-drag the ruler".to_owned();
+                }
+                state.dirty_view = true;
+            }
+            Action::LoopIn | Action::LoopOut => {
+                let at = state.cursor_s;
+                let region = match (state.loop_region, action) {
+                    (Some(region), Action::LoopIn) => region.with_in(at),
+                    (Some(region), _) => region.with_out(at),
+                    // The first end: a bar's worth from here.
+                    (None, Action::LoopIn) => LoopRegion::between(at, at + 2.0),
+                    (None, _) => LoopRegion::between(at - 2.0, at),
+                };
+                match region {
+                    Some(region) => {
+                        state.loop_region = Some(region);
+                        state.looping = true;
+                        state.status = format!("loop {:.3} - {:.3} s", region.start, region.end);
+                    }
+                    None => state.status = "a loop needs some length".to_owned(),
+                }
+                state.dirty_view = true;
+            }
         }
     }
 }
@@ -867,15 +949,35 @@ pub fn save(state: &mut EditorState) -> String {
     }
 }
 
-/// While previewing, the playhead follows the music — and the view
-/// follows the playhead unless the player scrolled away.
-fn follow_preview(state: Option<ResMut<EditorState>>, game_clock: Res<GameClock>, time: Res<Time>) {
+/// While previewing, the playhead follows the music — around the loop
+/// when one plays — and the view follows the playhead unless the
+/// player scrolled away.
+fn follow_preview(
+    state: Option<ResMut<EditorState>>,
+    music: Res<Music>,
+    mut game_clock: ResMut<GameClock>,
+    time: Res<Time>,
+) {
     let Some(mut state) = state else {
         return;
     };
     if state.previewing
         && let Some(now) = game_clock.song_time(&time)
     {
+        if state.looping
+            && state.drag.is_none()
+            && let Some(region) = state.loop_region
+            && let Some(start) = region.wrap(now)
+        {
+            seek(
+                &mut state,
+                &music,
+                &mut game_clock,
+                start,
+                time.elapsed_secs_f64(),
+            );
+            return;
+        }
         state.cursor_s = now;
         if state.follow && state.drag.is_none() {
             state.view.center_s = now;
@@ -898,7 +1000,9 @@ fn teardown_editor(
     }
     commands.remove_resource::<WaveformTask>();
     music.0.stop();
+    music.0.set_speed(1.0);
     game_clock.clock.stop();
+    game_clock.clock.set_rate(0.0, 1.0);
     // A saved edit is a new active version: read the library again so
     // the browser plays it, not the file the scan saw before.
     if state.is_some_and(|state| state.saved_any) {
