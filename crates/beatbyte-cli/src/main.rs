@@ -30,6 +30,7 @@ mod poly;
 mod redesign;
 mod review;
 mod study;
+mod sync;
 mod telemetry;
 mod vocals;
 
@@ -497,6 +498,27 @@ enum Command {
         #[arg(long)]
         completed_only: bool,
     },
+    /// Sync this device's career with the others through a hub
+    /// (ADR-0021): play log, scores, achievements, players, shared
+    /// settings, telemetry and the song library, each merged by its
+    /// own rule. Refuses while the game runs. The API key, the
+    /// calibration and the machine's own settings never leave it.
+    Sync {
+        /// The hub: `host:path` over SSH (e.g. `raspi5:beatbyte-hub`)
+        /// or a local directory. Remembered after the first sync.
+        #[arg(long)]
+        hub: Option<String>,
+        /// Show what would change; write nothing here or on the hub.
+        #[arg(long)]
+        dry_run: bool,
+        /// Leave the ML models out (by default they are carried once;
+        /// files a side already has are never copied again).
+        #[arg(long)]
+        no_models: bool,
+        /// The data directory to sync (default: the game's own).
+        #[arg(long)]
+        data: Option<PathBuf>,
+    },
     /// The local roster: who plays on this machine.
     ///
     /// Adding the FIRST player credits them with every run the log
@@ -881,6 +903,33 @@ fn main() -> ExitCode {
             status,
         } => vocals::run(&path, &vocals::Args { all, force, status }),
         Command::SetGenre { chart, genre } => set_genre(&chart, &genre),
+        Command::Sync {
+            hub,
+            dry_run,
+            no_models,
+            data,
+        } => {
+            // A data directory given by hand carries its own settings;
+            // the game's own lives in the config directory.
+            let settings = match &data {
+                Some(dir) => Some(dir.join("settings.json")),
+                None => sync::default_settings_path(),
+            };
+            match (data.or_else(sync::default_data_dir), settings) {
+                (Some(data), Some(settings)) => sync::run(&sync::Options {
+                    data,
+                    settings,
+                    hub,
+                    dry_run,
+                    models: !no_models,
+                    check_game: true,
+                }),
+                _ => {
+                    eprintln!("sync: no data directory on this platform");
+                    ExitCode::FAILURE
+                }
+            }
+        }
         Command::Players { add } => players::run(add.as_deref()),
         Command::Stats { player } => players::stats(player.as_deref()),
         Command::Awards { player, locked } => players::awards(player.as_deref(), locked),

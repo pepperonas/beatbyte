@@ -195,6 +195,18 @@ impl Roster {
         Ok(id)
     }
 
+    /// Take over another copy's counters, so two devices that merged
+    /// their rosters end with the same file (ADR-0021): the id counter
+    /// climbs to the larger of the two (and past every id present),
+    /// and the one-time adoption counts as done if it happened on
+    /// either — it only ever fires when the FIRST player is added, and
+    /// a merged roster already has one.
+    pub fn absorb_counters(&mut self, other: &Roster) {
+        let past_all = self.players.iter().map(|p| p.id + 1).max().unwrap_or(0);
+        self.next_id = self.next_id.max(other.next_id).max(past_all);
+        self.adopted = self.adopted || other.adopted;
+    }
+
     /// Rename a player in place.
     ///
     /// # Errors

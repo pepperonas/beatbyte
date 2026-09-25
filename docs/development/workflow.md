@@ -151,6 +151,26 @@ configuration happens once and is never rebuilt — a full-workspace
 ever read. Put `CARGO_INCREMENTAL=0` in front of those when disk is
 tight.
 
+## Syncing two devices
+
+One career on several machines (ADR-0021, plan in
+`docs/plans/two-macs-sync.md`). The hub is a directory reachable with
+rsync — here `raspi5:beatbyte-hub`:
+
+```bash
+beatbyte-cli sync --hub raspi5:beatbyte-hub --dry-run  # what would change
+beatbyte-cli sync --hub raspi5:beatbyte-hub            # the first time
+beatbyte-cli sync                                      # the hub is remembered
+tools/play-synced.sh                                   # sync → game → sync
+```
+
+It refuses while the game runs, prints the counts before and after,
+and carries the ML models once (`--no-models` to leave them). The API
+key, the calibration and the machine's own settings never leave the
+device. A failed sync changes nothing half-way that the next one does
+not complete; a lock older than 30 minutes is a crashed sync and is
+broken.
+
 ## Reading the telemetry store
 
 The gameplay store ([ADR-0018](../decisions/ADR-0018-gameplay-telemetry-store.md))

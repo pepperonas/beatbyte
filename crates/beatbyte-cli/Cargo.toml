@@ -14,6 +14,8 @@ beatbyte-chart = { workspace = true }
 beatbyte-audio = { workspace = true }
 beatbyte-telemetry = { workspace = true }
 beatbyte-library = { workspace = true }
+beatbyte-sync = { workspace = true }
+sha2 = { workspace = true }
 beatbyte-catalogue = { workspace = true, optional = true }
 beatbyte-ml = { workspace = true, optional = true }
 beatbyte-lyrics = { workspace = true, optional = true }

@@ -14,6 +14,40 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.40] - 2026-09-25
+
+### Added
+
+- **`beatbyte-cli sync` — one career on several Macs** (ADR-0021).
+  Through a hub any device reaches with rsync (here the raspi5:
+  `beatbyte-cli sync --hub raspi5:beatbyte-hub`, remembered after the
+  first time), each device publishes its whole state and takes in the
+  others': the play log (every run once), the best scores, the
+  achievements (the earliest date each was earned), the players (the
+  same name on two devices is one person), the shared settings (the
+  newer change per setting), the telemetry sessions (row by row) and
+  the song library (file by file; a chart version made on each device
+  is kept twice, a song deleted on one is deleted on the other). The
+  calibration, volumes, display settings and the API key never leave
+  the device. It refuses while the game runs, shows the counts before
+  and after, and carries the ML models once. Song files travel
+  content-addressed, so a twin that shares its audio with its original
+  costs nothing twice: the first sync put 3 074 files (4.96 GB) on the
+  hub as 1 839 blobs (1.4 GB).
+- **`tools/play-synced.sh`** syncs, plays, and syncs again; a sync that
+  fails is said and skipped — the game is always playable offline.
+- **Intel Macs:** `packaging/macos.sh` builds for `x86_64-apple-darwin`
+  and `universal-apple-darwin` (both architectures joined with `lipo`),
+  claims the macOS it was built for (`MACOSX_DEPLOYMENT_TARGET`)
+  instead of a fixed 11.0, and puts `beatbyte-cli` and the launcher
+  into the bundle.
+
+### Fixed
+
+- **Two devices that merged their players kept different id
+  counters**, so their rosters never became the same file. The counter
+  now climbs to the larger of the two.
+
 ## [0.18.39] - 2026-09-25
 
 ### Changed

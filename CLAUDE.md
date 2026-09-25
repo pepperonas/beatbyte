@@ -125,7 +125,9 @@ writes. On macOS both directories below are
   autopilot verdict reads quickest with `telemetry show <id>`),
   `telemetry/` (the older per-session JSONL files — **nothing writes
   them any more**; they are imported by `telemetry import` and kept),
-  and the downloaded ML models.
+  the downloaded ML models, and `sync/` — this device's id and hub
+  (`device.json`), the last published manifest and the hash cache
+  (`state/`), and the other devices' pulled folders (`remote/`).
 - Beside each chart version in a song folder: **`*.context.json`**,
   what the analysis said at each of its notes. Generated with the
   chart, or backfilled by `beatbyte-cli context --all <data>/beatbyte/songs/imported`.

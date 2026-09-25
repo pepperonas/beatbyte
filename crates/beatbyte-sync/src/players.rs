@@ -164,6 +164,7 @@ pub fn merge(local: &Roster, remote: &Roster) -> Merged {
     let mut roster = local.clone();
     roster.players = kept;
     roster.selected = local.selected.map(|id| map(&local_map, id));
+    roster.absorb_counters(remote);
     Merged {
         roster,
         local: local_map,
@@ -276,6 +277,27 @@ mod tests {
         let again = merge(&here.roster, &there.roster);
         assert_eq!(ids(&again), ids(&here));
         assert!(again.local.is_empty() && again.remote.is_empty());
+    }
+
+    /// The WHOLE file converges, not only the ids: the counters too.
+    /// Only `selected` is a device's own (who sits at this machine).
+    /// Comparing ids alone let two devices keep different counters —
+    /// the end-to-end sync test found it.
+    #[test]
+    fn both_devices_end_with_the_same_roster_file() {
+        let mut a = Roster::default();
+        a.add("Martin", 1_000).expect("adds");
+        let mut b = Roster::default();
+        b.add("martin", 2_000).expect("adds");
+        b.add("Kim", 3_000).expect("adds");
+        let file = |r: &Roster| {
+            let mut v = serde_json::to_value(r).expect("roster");
+            v["selected"] = serde_json::Value::Null;
+            v
+        };
+        let here = merge(&a, &b).roster;
+        let there = merge(&b, &a).roster;
+        assert_eq!(file(&here), file(&there));
     }
 
     #[test]

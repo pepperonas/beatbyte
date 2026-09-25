@@ -421,7 +421,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "beatbyte"
-version = "0.18.39"
+version = "0.18.40"
 dependencies = [
  "beatbyte-audio",
  "beatbyte-chart",
@@ -435,7 +435,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-audio"
-version = "0.18.39"
+version = "0.18.40"
 dependencies = [
  "beatbyte-core",
  "cpal",
@@ -451,7 +451,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-catalogue"
-version = "0.18.39"
+version = "0.18.40"
 dependencies = [
  "beatbyte-chart",
  "serde",
@@ -461,7 +461,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-chart"
-version = "0.18.39"
+version = "0.18.40"
 dependencies = [
  "beatbyte-core",
  "serde",
@@ -471,7 +471,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-cli"
-version = "0.18.39"
+version = "0.18.40"
 dependencies = [
  "beatbyte-audio",
  "beatbyte-catalogue",
@@ -482,16 +482,18 @@ dependencies = [
  "beatbyte-meter",
  "beatbyte-ml",
  "beatbyte-poly",
+ "beatbyte-sync",
  "beatbyte-telemetry",
  "clap",
  "dirs",
  "serde",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]
 name = "beatbyte-core"
-version = "0.18.39"
+version = "0.18.40"
 dependencies = [
  "serde",
  "serde_json",
@@ -499,7 +501,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-editor"
-version = "0.18.39"
+version = "0.18.40"
 dependencies = [
  "beatbyte-chart",
  "beatbyte-core",
@@ -508,7 +510,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-game"
-version = "0.18.39"
+version = "0.18.40"
 dependencies = [
  "arboard",
  "beatbyte-audio",
@@ -531,7 +533,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-library"
-version = "0.18.39"
+version = "0.18.40"
 dependencies = [
  "beatbyte-audio",
  "beatbyte-chart",
@@ -543,7 +545,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-lyrics"
-version = "0.18.39"
+version = "0.18.40"
 dependencies = [
  "beatbyte-audio",
  "beatbyte-ml",
@@ -554,7 +556,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-meter"
-version = "0.18.39"
+version = "0.18.40"
 dependencies = [
  "beatbyte-audio",
  "beatbyte-core",
@@ -564,7 +566,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-ml"
-version = "0.18.39"
+version = "0.18.40"
 dependencies = [
  "dirs",
  "rten",
@@ -576,7 +578,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-poly"
-version = "0.18.39"
+version = "0.18.40"
 dependencies = [
  "beatbyte-audio",
  "beatbyte-ml",
@@ -585,7 +587,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-sync"
-version = "0.18.39"
+version = "0.18.40"
 dependencies = [
  "beatbyte-core",
  "serde",
@@ -594,7 +596,7 @@ dependencies = [
 
 [[package]]
 name = "beatbyte-telemetry"
-version = "0.18.39"
+version = "0.18.40"
 dependencies = [
  "beatbyte-core",
  "rusqlite",
