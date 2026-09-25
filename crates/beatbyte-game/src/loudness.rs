@@ -203,6 +203,7 @@ mod tests {
                 loudness_range_lu: None,
                 true_peak_dbtp: -0.5,
                 sample_peak_dbfs: -0.6,
+                sounding_s: None,
                 duration_s: 1.0,
             },
             quality: beatbyte_audio::quality::Quality {

@@ -1622,8 +1622,18 @@ public corpus, cannot regress a note.
   Aguilera: real K, file written, same verdict as the CLI) and
   `BEATBYTE_AUTOPILOT_MODEL` (PASSED twice under a scratch HOME:
   378 MB each). Vocal separation switch waits for L6.
-- [ ] Fix `BEATBYTE_AUTOPILOT_DELETE`'s arrow count (library order vs
-  the browser's sorted order — the align drill shows the way).
+- [x] Fix `BEATBYTE_AUTOPILOT_DELETE`'s arrow count (library order vs
+  the browser's sorted order — the align drill shows the way)
+  *(v0.18.36)*. Rows from `BrowserView.order`, counted from the cursor
+  in BOTH directions (`arrows_to`, pinned), a settle across the entry
+  fade, and the target fixed on the first frame by its SOURCE: asked
+  by title, "is it gone?" would still find `[GS] <title>` after the
+  original was deleted and never see the deletion it made. ⚠️ And the drill could not have passed at all since Backspace
+  became the key that only ASKS: the answer is `Y`, and it still
+  pressed Backspace twice. *Verified: 1840 tests (+4), gate green;
+  the drill on two throwaway songs, "Delete Drill Probe" and
+  "[GS] Delete Drill Probe" — PASSED, exactly the first one gone, the
+  second still there; 9 mutations across the two fixes seen to fail.*
 - [x] **L5 — eval harness AND the first measurement** *(v0.14.16 /
   v0.14.17)*. `beatbyte-lyrics::eval` + `beatbyte-cli lyrics-eval`
   + the `eval_gates` regression test; **measured on all 79
@@ -1746,8 +1756,15 @@ public corpus, cannot regress a note.
   song where the mix derails 24; every song legible (17 cross the
   floor upward, none down); the plain pass on a stem has the best
   fine placement (median 0.082 s, PCO@0.3 94.3 %).
-- [ ] **The lookup should ask with the sound's length**, not the
-  container's (a rip with a silent tail matched the wrong entries).
+- [x] **The lookup should ask with the sound's length**, not the
+  container's (a rip with a silent tail matched the wrong entries)
+  *(v0.18.36)*. The loudness report now measures `sounding_s` (the
+  last sample any channel sounds above −60 dBFS, one floor shared with
+  the aligner as `decode::SOUNDING_FLOOR`), the song document carries
+  it (`musical.sounding_s` — declared since ADR-0019, never filled
+  before), and `library --catalogue` asks with it where there is one.
+  Reports written before the field read it as absent; `loudness --all
+  --write` re-measures them.
 - [ ] **A text for the five songs no catalogue entry fits**: manual
   (the single's text duplicated for an extended mix, a plain text for
   a remix). And plain texts for the eleven without lyrics — the

@@ -255,6 +255,19 @@ pub struct Musical {
     pub preview_start_s: Option<f64>,
 }
 
+impl Musical {
+    /// How long the song is for anything that MATCHES by length — a
+    /// catalogue lookup: the sounding length where one was measured,
+    /// the container's otherwise. A rip that kept two minutes of
+    /// silence matched catalogue entries two minutes too long.
+    #[must_use]
+    pub fn length_for_matching(&self) -> Option<f64> {
+        self.sounding_s
+            .filter(|s| s.is_finite() && *s > 0.0)
+            .or(self.duration_s)
+    }
+}
+
 /// A musical key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Key {
@@ -603,6 +616,23 @@ mod tests {
     /// constant (that crate is BELOW this one and the import would
     /// be a cycle), so it spells the name out. This is the one place
     /// that can see both and say they still agree.
+    #[test]
+    fn a_length_match_asks_with_what_sounds() {
+        let mut musical = Musical {
+            duration_s: Some(282.9),
+            ..Musical::default()
+        };
+        assert_eq!(musical.length_for_matching(), Some(282.9));
+        musical.sounding_s = Some(168.7);
+        assert_eq!(musical.length_for_matching(), Some(168.7));
+        musical.sounding_s = Some(0.0);
+        assert_eq!(
+            musical.length_for_matching(),
+            Some(282.9),
+            "a zero is no measurement"
+        );
+    }
+
     #[test]
     fn the_twin_writer_and_this_crate_name_the_same_document() {
         assert_eq!(beatbyte_chart::twin::DOC_FILE, DOC_FILE);

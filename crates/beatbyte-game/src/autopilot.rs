@@ -1739,58 +1739,119 @@ fn autopilot_drop(
     }
 }
 
-/// `BEATBYTE_AUTOPILOT_DELETE=<title-substring>`: arrow down to the
-/// matching entry with real key presses, hit Backspace twice through
-/// the real confirm flow, and succeed once the song left the library.
+/// The arrow key and the number of presses that move the browser's
+/// cursor from `cursor` to `row`. Pure — tested.
+///
+/// ⚠️ Signed: a target ABOVE the cursor needs `ArrowUp`. A count that
+/// saturates at zero instead leaves the cursor where it is and the
+/// drill acts on whatever song sits there.
+#[must_use]
+pub fn arrows_to(row: usize, cursor: usize) -> (KeyCode, u32) {
+    if row >= cursor {
+        (KeyCode::ArrowDown, (row - cursor) as u32)
+    } else {
+        (KeyCode::ArrowUp, (cursor - row) as u32)
+    }
+}
+
+/// How long a drill waits in the browser before its first key: the
+/// screen's entry fade swallows keys pressed into it.
+const BROWSER_SETTLE_S: f32 = 0.8;
+
+/// What the delete drill fixed on its first frame.
+#[derive(Default)]
+struct DeletePlan {
+    /// The song to delete, by where it lives — not by title.
+    source: Option<crate::library::SongSource>,
+    /// The key and presses that reach it from the cursor.
+    arrows: Option<(KeyCode, u32)>,
+}
+
+/// `BEATBYTE_AUTOPILOT_DELETE=<title>`: arrow to the matching entry
+/// with real key presses, ask with the real Backspace, answer with the
+/// real `Y`, and succeed once the song left the library.
+///
+/// ⚠️ Three things the first version got wrong. The answer had become
+/// `Y` (Backspace only ever ASKS since a player deleted songs while
+/// clearing text — `song_select::delete_step`), and the drill still
+/// pressed Backspace twice: it could not have passed since. The other
+/// two are fixed the way the align drill does it. It counted arrows in LIBRARY order, but the
+/// browser shows the library sorted, so it deleted whichever song sat
+/// that many rows down. And it asked "is it gone?" by title — after
+/// deleting "Maria" a title search still finds "[GS] Maria", and the
+/// drill would never see the deletion it made. The target is now
+/// fixed on the first frame by its SOURCE, and the rows come from the
+/// browser's own order.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn autopilot_delete(
     mut keys: ResMut<ButtonInput<KeyCode>>,
     library: Res<crate::library::SongLibrary>,
+    view: Res<crate::song_select::BrowserView>,
+    cursor: Res<crate::song_select::BrowserCursor>,
     time: Res<Time>,
     mut frame: Local<u32>,
+    mut plan: Local<DeletePlan>,
     mut waited: Local<f32>,
     mut app_exit: MessageWriter<AppExit>,
 ) {
     let Some(target) = std::env::var("BEATBYTE_AUTOPILOT_DELETE").ok() else {
         return;
     };
-    let needle = target.to_lowercase();
-    let index = library
-        .entries
-        .iter()
-        .position(|e| e.title.to_lowercase().contains(&needle));
     *waited += time.delta_secs();
     if *waited > 30.0 {
         error!(
             "autopilot: delete timed out (target still present: {:?})",
-            index
+            plan.source
         );
         deliver(&mut app_exit, AppExit::error());
         return;
     }
-    let Some(index) = index else {
-        // Gone — deletion done (only counts after we actually acted).
-        if *frame > 0 {
-            info!("autopilot: delete validation PASSED");
-            deliver(&mut app_exit, AppExit::Success);
-        }
+    if *waited < BROWSER_SETTLE_S {
+        return;
+    }
+    if plan.source.is_none() {
+        let Some(index) = title_match(
+            library.entries.iter().map(|entry| entry.title.as_str()),
+            &target,
+        ) else {
+            error!("autopilot: no song matching `{target}` to delete");
+            deliver(&mut app_exit, AppExit::error());
+            return;
+        };
+        let row = view.order.iter().position(|&i| i == index).unwrap_or(0);
+        plan.source = Some(library.entries[index].source.clone());
+        plan.arrows = Some(arrows_to(row, cursor.0));
+    }
+    let present = library
+        .entries
+        .iter()
+        .any(|entry| Some(&entry.source) == plan.source.as_ref());
+    if !present {
+        info!("autopilot: delete validation PASSED");
+        deliver(&mut app_exit, AppExit::Success);
+        return;
+    }
+    let Some((arrow, presses)) = plan.arrows else {
         return;
     };
-    // Alternate press/release frames: downs to reach the entry, then
-    // Backspace, a pause across the confirm window, Backspace again.
-    let downs = index as u32;
+    // Alternate press/release frames: the arrows to reach the entry,
+    // then Backspace to ask, a short pause, `Y` to answer.
     let step = *frame / 2;
     let pressing = (*frame).is_multiple_of(2);
-    if step < downs {
+    let key = if step < presses {
+        Some(arrow)
+    } else if step == presses {
+        Some(KeyCode::Backspace)
+    } else if step == presses + 8 {
+        Some(KeyCode::KeyY)
+    } else {
+        None
+    };
+    if let Some(key) = key {
         if pressing {
-            keys.press(KeyCode::ArrowDown);
+            keys.press(key);
         } else {
-            keys.release(KeyCode::ArrowDown);
-        }
-    } else if step == downs || step == downs + 8 {
-        if pressing {
-            keys.press(KeyCode::Backspace);
-        } else {
-            keys.release(KeyCode::Backspace);
+            keys.release(key);
         }
     }
     *frame += 1;
@@ -2368,6 +2429,18 @@ mod tests {
     use super::shot_state;
     use super::title_match;
     use crate::states::AppState;
+
+    /// ⚠️ The drills count rows in the browser's order FROM the
+    /// cursor, and a target above it is reached going up. A count that
+    /// saturated at zero left the cursor where it was, and the delete
+    /// drill would have deleted whatever song sat there.
+    #[test]
+    fn the_arrows_reach_a_row_from_the_cursor_either_way() {
+        use bevy::input::keyboard::KeyCode;
+        assert_eq!(super::arrows_to(5, 2), (KeyCode::ArrowDown, 3));
+        assert_eq!(super::arrows_to(2, 5), (KeyCode::ArrowUp, 3));
+        assert_eq!(super::arrows_to(4, 4), (KeyCode::ArrowDown, 0));
+    }
 
     #[test]
     fn an_exact_title_beats_a_twin_that_merely_contains_it() {

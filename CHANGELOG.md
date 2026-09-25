@@ -14,6 +14,28 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.36] - 2026-09-25
+
+### Added
+
+- **The sounding length of a song.** The loudness report now measures
+  where the music stops (`sounding_s`: the last sample any channel
+  sounds above −60 dBFS), and the song document carries it. A rip
+  with a long silent tail is as long as its music.
+
+### Fixed
+
+- **The catalogue lookup asks with the sounding length.** A rip that
+  kept two minutes of silence was matched against catalogue entries
+  two minutes too long (*Mexico*: 283 s of file, 169 s of music).
+- **The delete drill (`BEATBYTE_AUTOPILOT_DELETE`) works again.** It
+  still answered the delete question with a second Backspace, but the
+  answer has been `Y` since Backspace only asks; it counted arrow
+  presses in library order rather than the browser's sorted order;
+  and it asked whether the song was gone by title, which after
+  deleting a song still finds its `[GS]` twin. The target is now fixed
+  by its files and reached from the cursor in either direction.
+
 ## [0.18.35] - 2026-09-25
 
 ### Added

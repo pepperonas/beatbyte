@@ -42,6 +42,7 @@ pub fn loudness_facts(report: &Report) -> LoudnessFacts {
     LoudnessFacts {
         bytes: Some(report.bytes),
         duration_s: Some(report.measurement.duration_s),
+        sounding_s: report.measurement.sounding_s,
         integrated_lufs: report.measurement.integrated_lufs,
         loudness_range_lu: report.measurement.loudness_range_lu,
         sample_rate: Some(report.quality.sample_rate),
@@ -219,6 +220,38 @@ pub fn duplicates(songs: &[SongPrint]) -> Vec<Duplicate> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The report's sounding length reaches the facts a document is
+    /// built from — the one field the catalogue lookup asks with.
+    #[test]
+    fn the_sounding_length_travels_from_the_report_to_the_facts() {
+        use beatbyte_audio::decode::Channels;
+        // Two seconds of tone, then eight of silence.
+        let mut samples = vec![0.0f32; 10 * 8_000];
+        for (i, s) in samples.iter_mut().take(2 * 8_000).enumerate() {
+            *s = (i as f32 * 0.3).sin() * 0.5;
+        }
+        let channels = Channels {
+            interleaved: samples,
+            channels: 1,
+            sample_rate: 8_000,
+            truncated: false,
+        };
+        let measurement = beatbyte_audio::loudness::measure(&channels);
+        let quality = beatbyte_audio::quality::assess(&channels, 1_000, false, 0.0);
+        let report = Report {
+            schema: beatbyte_audio::loudness::REPORT_SCHEMA.to_owned(),
+            measured_by: "test".to_owned(),
+            audio: "a.wav".to_owned(),
+            bytes: 1_000,
+            measurement,
+            quality,
+        };
+        let facts = loudness_facts(&report);
+        assert_eq!(facts.duration_s, Some(10.0));
+        let sounding = facts.sounding_s.expect("the sounding length travelled");
+        assert!((sounding - 2.0).abs() < 0.01, "{sounding}");
+    }
 
     #[test]
     fn fnv1a_matches_the_published_vectors() {

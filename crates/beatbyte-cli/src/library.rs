@@ -437,8 +437,11 @@ pub fn catalogue(root: &Path, dry_run: bool) -> ExitCode {
             skipped += 1;
             continue;
         }
-        let (Some(artist), Some(duration)) = (doc.identity.artists.first(), doc.musical.duration_s)
-        else {
+        // ⚠️ The SOUNDING length, where the report measured one: a rip
+        // that kept two minutes of silence matched catalogue entries
+        // two minutes too long (Mexico: 283 s of file, 168 of music).
+        let length = doc.musical.length_for_matching();
+        let (Some(artist), Some(duration)) = (doc.identity.artists.first(), length) else {
             skipped += 1;
             continue;
         };

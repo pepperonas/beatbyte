@@ -45,6 +45,8 @@ pub struct LoudnessFacts {
     pub bytes: Option<u64>,
     /// Seconds of audio.
     pub duration_s: Option<f64>,
+    /// Seconds that actually sound.
+    pub sounding_s: Option<f64>,
     /// Integrated loudness, LUFS.
     pub integrated_lufs: Option<f64>,
     /// Loudness range, LU.
@@ -559,6 +561,13 @@ fn apply_file(doc: &mut SongDoc, facts: &FolderFacts<'_>) {
         && doc.musical.duration_s.is_none()
     {
         doc.musical.duration_s = Some(duration);
+    }
+    // A measurement, not an opinion: a fresh report replaces an older
+    // reading, as the file's own facts above do.
+    if let Some(sounding) = loud.sounding_s.filter(|s| *s > 0.0)
+        && doc.musical.sounding_s != Some(sounding)
+    {
+        doc.musical.sounding_s = Some(sounding);
     }
 
     let lufs = loud.integrated_lufs.map(|v| v as f32);
@@ -1100,6 +1109,7 @@ mod tests {
         facts.loudness = Some(LoudnessFacts {
             bytes: Some(14_183_370),
             duration_s: Some(252.416),
+            sounding_s: Some(168.2),
             integrated_lufs: Some(-23.0),
             loudness_range_lu: Some(3.39),
             sample_rate: Some(48_000),
@@ -1108,6 +1118,9 @@ mod tests {
             lossy: Some(true),
         });
         let doc = document_for(&facts, None, SongId::from_parts(1, 1), 5_000).doc;
+        // The sounding length travels as its own fact: what a catalogue
+        // lookup should ask with, where the container is longer.
+        assert_eq!(doc.musical.sounding_s, Some(168.2));
         assert_eq!(doc.file.sample_rate, Some(48_000));
         assert_eq!(doc.file.lossy, Some(true));
         assert_eq!(doc.file.codec.as_deref(), Some("m4a"));

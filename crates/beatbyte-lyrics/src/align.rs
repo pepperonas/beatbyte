@@ -696,8 +696,8 @@ pub fn align_with(
 }
 
 /// Linear amplitude under which a sample is silence for
-/// [`AudioData::sounding_end_s`] (−60 dBFS).
-pub const SOUNDING_FLOOR: f32 = 0.001;
+/// [`AudioData::sounding_end_s`] (−60 dBFS) — the audio crate's own.
+pub const SOUNDING_FLOOR: f32 = beatbyte_audio::decode::SOUNDING_FLOOR;
 
 /// What the anchored alignment produced.
 #[derive(Debug, Clone, PartialEq)]

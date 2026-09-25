@@ -63,6 +63,12 @@ pub struct Measurement {
     pub sample_peak_dbfs: f64,
     /// Seconds measured.
     pub duration_s: f64,
+    /// Seconds until the last sample any channel sounds above
+    /// [`crate::decode::SOUNDING_FLOOR`] — a rip that kept two minutes
+    /// of the next track's silence is not two minutes longer. `None`
+    /// in a report written before the field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sounding_s: Option<f64>,
 }
 
 /// Measure a decoded song.
@@ -78,6 +84,16 @@ pub fn measure_planes(planes: &[Vec<f32>], sample_rate: u32) -> Measurement {
     let rate = f64::from(sample_rate.max(1));
     let frames = planes.iter().map(Vec::len).min().unwrap_or(0);
     let duration_s = frames as f64 / rate;
+    let last_sounding = planes
+        .iter()
+        .filter_map(|plane| {
+            plane[..frames.min(plane.len())]
+                .iter()
+                .rposition(|s| s.abs() > crate::decode::SOUNDING_FLOOR)
+        })
+        .max();
+    // Silence throughout sounds nowhere; the length is then the whole.
+    let sounding_s = Some(last_sounding.map_or(duration_s, |i| (i + 1) as f64 / rate));
     // Sample and true peak over every channel.
     let mut sample_peak = 0.0f32;
     let mut true_peak = 0.0f32;
@@ -100,6 +116,7 @@ pub fn measure_planes(planes: &[Vec<f32>], sample_rate: u32) -> Measurement {
         true_peak_dbtp: to_db(f64::from(true_peak)),
         sample_peak_dbfs: to_db(f64::from(sample_peak)),
         duration_s,
+        sounding_s,
     }
 }
 
@@ -480,6 +497,35 @@ mod tests {
             .collect()
     }
 
+    /// ⚠️ The sounding length: a song followed by digital silence is as
+    /// long as its music, whichever channel sounds last, and a silent
+    /// file is as long as itself rather than zero.
+    #[test]
+    fn the_sounding_length_ends_at_the_last_sample_any_channel_sounds() {
+        let rate = 1_000u32;
+        let mut left = vec![0.0f32; 10_000];
+        let mut right = vec![0.0f32; 10_000];
+        left[..3_000].fill(0.5);
+        right[..4_500].fill(0.5);
+        let m = measure_planes(&[left.clone(), right], rate);
+        assert!((m.duration_s - 10.0).abs() < 1e-9);
+        assert_eq!(m.sounding_s, Some(4.5));
+        // Under the floor is silence.
+        let mut hiss = left.clone();
+        hiss[3_000..].fill(crate::decode::SOUNDING_FLOOR * 0.5);
+        assert_eq!(measure_planes(&[hiss], rate).sounding_s, Some(3.0));
+        // Nothing sounds: the length is the whole.
+        assert_eq!(
+            measure_planes(&[vec![0.0; 2_000]], rate).sounding_s,
+            Some(2.0)
+        );
+        // A report from before the field reads it as absent.
+        let old = r#"{"integrated_lufs":-14.0,"loudness_range_lu":5.0,
+            "true_peak_dbtp":-1.0,"sample_peak_dbfs":-1.1,"duration_s":200.0}"#;
+        let parsed: Measurement = serde_json::from_str(old).expect("an old report parses");
+        assert_eq!(parsed.sounding_s, None);
+    }
+
     #[test]
     fn the_standards_calibration_signals_read_what_the_standard_says() {
         // BS.1770: a 997 Hz sine at −20 dBFS in BOTH channels of a
@@ -625,6 +671,7 @@ mod tests {
                 loudness_range_lu: Some(6.0),
                 true_peak_dbtp: -3.0,
                 sample_peak_dbfs: -3.2,
+                sounding_s: None,
                 duration_s: 30.0,
             },
             quality: Quality::default(),

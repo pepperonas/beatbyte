@@ -265,6 +265,13 @@ pub fn probe_sample_rate(path: &Path) -> Option<u32> {
     Some(decoder.sample_rate().get())
 }
 
+/// Linear amplitude under which a sample is silence (−60 dBFS): the
+/// floor every "where does the song stop sounding" question uses —
+/// [`AudioData::sounding_end_s`], the loudness report's `sounding_s`,
+/// the aligner's "beyond the end". One number, so they cannot answer
+/// the same question differently.
+pub const SOUNDING_FLOOR: f32 = 0.001;
+
 /// Decode an audio file to mono for analysis. Multi-channel input is
 /// downmixed by averaging; decoding stops at [`MAX_ANALYSIS_SECONDS`].
 ///
