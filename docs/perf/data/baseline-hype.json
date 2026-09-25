@@ -1,0 +1,203 @@
+{
+  "scenario": "hype",
+  "machine": {
+    "model": "MacBookPro11,5",
+    "cpu": "Intel(R) Core(TM) i7-4870HQ CPU @ 2.50GHz",
+    "arch": "x86_64",
+    "macos": "12.7.6",
+    "host": "Martins-MacBook-Pro-2015"
+  },
+  "commit": "43745e3+bench",
+  "dirty": false,
+  "runs": [
+    {
+      "backend": "Metal",
+      "clock_jumps": 0,
+      "cpu_main_ms": {
+        "avg": 8.392621994018555,
+        "max": 81.90725708007812,
+        "median": 4.282367706298828,
+        "n": 1926,
+        "p95": 58.76555633544922,
+        "p99": 69.86245727539062
+      },
+      "difficulty": "Expert",
+      "entities_max": 3450,
+      "frame_ms": {
+        "avg": 105.86426544189453,
+        "max": 139.76943969726562,
+        "median": 105.02230072021484,
+        "n": 1926,
+        "p95": 116.4748306274414,
+        "p99": 121.48233795166016
+      },
+      "frames_over_16_7": 1926,
+      "gpu": "AMD Radeon R9 M370X",
+      "gpu_ms": null,
+      "notes_visible_max": 48,
+      "particles_max": 40,
+      "resolution": [
+        2880,
+        1752
+      ],
+      "scale_factor": 2.0,
+      "scenario": "hype",
+      "settings": {
+        "fx_intensity": 1.0,
+        "particles": true,
+        "reduced_flashing": false,
+        "stage_3d": true
+      },
+      "song": "\"Heroes\"",
+      "song_start_ms": 34.6098518371582,
+      "truncated": false,
+      "uncapped": true,
+      "version": "0.18.50",
+      "warmup_s": 5.0
+    },
+    {
+      "backend": "Metal",
+      "clock_jumps": 0,
+      "cpu_main_ms": {
+        "avg": 8.581718444824219,
+        "max": 89.65897369384766,
+        "median": 4.254992961883545,
+        "n": 1925,
+        "p95": 59.42163848876953,
+        "p99": 70.1871566772461
+      },
+      "difficulty": "Expert",
+      "entities_max": 3447,
+      "frame_ms": {
+        "avg": 105.91284942626953,
+        "max": 142.5339813232422,
+        "median": 104.63468170166016,
+        "n": 1925,
+        "p95": 116.6800308227539,
+        "p99": 122.90641784667969
+      },
+      "frames_over_16_7": 1925,
+      "gpu": "AMD Radeon R9 M370X",
+      "gpu_ms": null,
+      "notes_visible_max": 54,
+      "particles_max": 46,
+      "resolution": [
+        2880,
+        1752
+      ],
+      "scale_factor": 2.0,
+      "scenario": "hype",
+      "settings": {
+        "fx_intensity": 1.0,
+        "particles": true,
+        "reduced_flashing": false,
+        "stage_3d": true
+      },
+      "song": "\"Heroes\"",
+      "song_start_ms": 35.670013427734375,
+      "truncated": false,
+      "uncapped": true,
+      "version": "0.18.50",
+      "warmup_s": 5.0
+    },
+    {
+      "backend": "Metal",
+      "clock_jumps": 0,
+      "cpu_main_ms": {
+        "avg": 8.939400672912598,
+        "max": 80.78709411621094,
+        "median": 4.243402004241943,
+        "n": 1923,
+        "p95": 59.601531982421875,
+        "p99": 71.00780487060547
+      },
+      "difficulty": "Expert",
+      "entities_max": 3450,
+      "frame_ms": {
+        "avg": 105.9620361328125,
+        "max": 135.6744842529297,
+        "median": 104.83745574951172,
+        "n": 1923,
+        "p95": 116.5052490234375,
+        "p99": 121.53502655029297
+      },
+      "frames_over_16_7": 1923,
+      "gpu": "AMD Radeon R9 M370X",
+      "gpu_ms": null,
+      "notes_visible_max": 54,
+      "particles_max": 40,
+      "resolution": [
+        2880,
+        1752
+      ],
+      "scale_factor": 2.0,
+      "scenario": "hype",
+      "settings": {
+        "fx_intensity": 1.0,
+        "particles": true,
+        "reduced_flashing": false,
+        "stage_3d": true
+      },
+      "song": "\"Heroes\"",
+      "song_start_ms": 31.056930541992188,
+      "truncated": false,
+      "uncapped": true,
+      "version": "0.18.50",
+      "warmup_s": 5.0
+    }
+  ],
+  "summary": {
+    "frame_avg": {
+      "mean": 105.91305033365886,
+      "min": 105.86426544189453,
+      "max": 105.9620361328125,
+      "stdev": 0.04888565508897837
+    },
+    "frame_median": {
+      "mean": 104.83147939046223,
+      "min": 104.63468170166016,
+      "max": 105.02230072021484,
+      "stdev": 0.19387860515523886
+    },
+    "frame_p95": {
+      "mean": 116.55337015787761,
+      "min": 116.4748306274414,
+      "max": 116.6800308227539,
+      "stdev": 0.11074074554527782
+    },
+    "frame_p99": {
+      "mean": 121.97459411621094,
+      "min": 121.48233795166016,
+      "max": 122.90641784667969,
+      "stdev": 0.8074129182797335
+    },
+    "frame_max": {
+      "mean": 139.32596842447916,
+      "min": 135.6744842529297,
+      "max": 142.5339813232422,
+      "stdev": 3.4511845925343625
+    },
+    "cpu_main_p99": {
+      "mean": 70.35247294108073,
+      "min": 69.86245727539062,
+      "max": 71.00780487060547,
+      "stdev": 0.5902985505507263
+    },
+    "gpu_p99": null,
+    "frames_over_16_7": [
+      1926,
+      1925,
+      1923
+    ],
+    "song_start_ms": [
+      34.6098518371582,
+      35.670013427734375,
+      31.056930541992188
+    ],
+    "load_after": [
+      2.34,
+      2.92,
+      2.51
+    ]
+  }
+}

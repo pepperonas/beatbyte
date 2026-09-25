@@ -3086,6 +3086,12 @@ fn autopilot_play(
     mut hands: ResMut<AutopilotHands>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
+    // The frame's WALL length: `Time`'s delta is virtual and Bevy
+    // clamps it to 250 ms, so a one-second stall read as a 0.25 s
+    // frame that moved song time a second — a false teleport. It
+    // failed every run on the 2015 MacBook Pro, whose first frames
+    // of a song stall for about a second.
+    real: Res<Time<Real>>,
     fail_drill: Option<Res<FailDrill>>,
     // The injector owns the session while it plays, so the human
     // input path never sees these: without recording here, the action
@@ -3114,12 +3120,19 @@ fn autopilot_play(
     // moves song time one second, which is not a teleport. Measured
     // against the frame's own length, not against a constant.
     if let Some(last) = *last_now
-        && teleported(now - last, time.delta_secs_f64())
+        && teleported(now - last, real.delta_secs_f64())
     {
         error!(
-            "autopilot: song time jumped {last:.3} -> {now:.3} in one frame — the clock teleported"
+            "autopilot: song time jumped {last:.3} -> {now:.3} in one frame (the frame took {:.3} s) — the clock teleported",
+            real.delta_secs_f64()
         );
-        deliver(&mut app_exit, AppExit::error());
+        // A bench run measures; the jump is one of its findings, and
+        // counted there, rather than the end of the measurement.
+        if crate::bench::active() {
+            crate::bench::CLOCK_JUMPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        } else {
+            deliver(&mut app_exit, AppExit::error());
+        }
     }
     *last_now = Some(now);
     hands.ensure(players.iter().count());

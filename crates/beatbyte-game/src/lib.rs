@@ -9,6 +9,7 @@ pub mod achievements;
 pub mod achievements_ui;
 pub mod audio_sys;
 pub mod autopilot;
+pub mod bench;
 pub mod boot;
 pub mod calibration;
 pub mod chore;
@@ -157,13 +158,25 @@ pub fn run() -> AppExit {
                     // platforms where winit returns at all). With
                     // BEATBYTE_SHOT_DIR set, full size wins because
                     // the screenshots are the point.
-                    resolution: if let Some((w, h)) = parse_window_env() {
+                    // A bench run is windowed (1280x720) unless full
+                    // screen is asked for: it runs on machines people
+                    // are using, and a full-screen window takes the
+                    // whole display from them.
+                    mode: if bench::fullscreen() && parse_window_env().is_none() {
+                        bevy::window::WindowMode::BorderlessFullscreen(MonitorSelection::Primary)
+                    } else {
+                        bevy::window::WindowMode::Windowed
+                    },
+                    resolution: bench::probe_resolution(if let Some((w, h)) = parse_window_env() {
                         (w, h).into()
-                    } else if harness && std::env::var_os("BEATBYTE_SHOT_DIR").is_none() {
+                    } else if harness
+                        && !bench::active()
+                        && std::env::var_os("BEATBYTE_SHOT_DIR").is_none()
+                    {
                         (320, 180).into()
                     } else {
                         (1280, 720).into()
-                    },
+                    }),
                     // Uncapped rendering exists for MEASUREMENT
                     // (BEATBYTE_UNCAPPED=1): under vsync every
                     // frame-time median is pinned to the display and
@@ -235,6 +248,7 @@ pub fn run() -> AppExit {
         crt::CrtPlugin,
         transition::TransitionPlugin,
         autopilot::AutopilotPlugin,
+        bench::BenchPlugin,
     ))
     .add_plugins((
         telemetry::TelemetryStorePlugin,

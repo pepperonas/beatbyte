@@ -610,7 +610,10 @@ fn apply_settings(
     effects.reduced_flashing = settings.reduced_flashing;
     effects.intensity = settings.fx_intensity;
     if let Ok(mut window) = windows.single_mut() {
-        let wanted = if settings.fullscreen {
+        // A full-screen bench run is full screen whatever the file says.
+        let wanted = if settings.fullscreen
+            || (crate::bench::fullscreen() && std::env::var_os("BEATBYTE_WINDOW").is_none())
+        {
             bevy::window::WindowMode::BorderlessFullscreen(MonitorSelection::Current)
         } else {
             bevy::window::WindowMode::Windowed

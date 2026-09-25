@@ -1,0 +1,157 @@
+{
+  "scenario": "normal",
+  "machine": {
+    "model": "MacBookPro11,5",
+    "cpu": "Intel(R) Core(TM) i7-4870HQ CPU @ 2.50GHz",
+    "arch": "x86_64",
+    "macos": "12.7.6",
+    "host": "Martins-MacBook-Pro-2015"
+  },
+  "commit": "43745e3+probes",
+  "dirty": false,
+  "runs": [
+    {
+      "backend": "Metal",
+      "clock_jumps": 0,
+      "cpu_main_ms": {
+        "avg": 7.790741920471191,
+        "max": 81.30564880371094,
+        "median": 2.8905138969421387,
+        "n": 2583,
+        "p95": 68.81932067871094,
+        "p99": 75.92496490478516
+      },
+      "difficulty": "Medium",
+      "entities_max": 3660,
+      "frame_ms": {
+        "avg": 94.12018585205078,
+        "max": 749.2365112304688,
+        "median": 93.17216491699219,
+        "n": 2583,
+        "p95": 102.97938537597656,
+        "p99": 154.97964477539062
+      },
+      "frames_over_16_7": 2533,
+      "gpu": "AMD Radeon R9 M370X",
+      "gpu_ms": null,
+      "notes_visible_max": 34,
+      "particles_max": 26,
+      "probes": "shadows",
+      "resolution": [
+        2880,
+        1752
+      ],
+      "scale_factor": 2.0,
+      "scenario": "normal",
+      "settings": {
+        "fx_intensity": 1.0,
+        "particles": true,
+        "reduced_flashing": false,
+        "stage_3d": true
+      },
+      "song": "Maria",
+      "song_start_ms": 27.324604034423828,
+      "truncated": false,
+      "uncapped": true,
+      "version": "0.18.50",
+      "warmup_s": 5.0
+    },
+    {
+      "backend": "Metal",
+      "clock_jumps": 0,
+      "cpu_main_ms": {
+        "avg": 6.407079219818115,
+        "max": 80.29508972167969,
+        "median": 2.919116973876953,
+        "n": 2614,
+        "p95": 9.836124420166016,
+        "p99": 75.62687683105469
+      },
+      "difficulty": "Medium",
+      "entities_max": 3674,
+      "frame_ms": {
+        "avg": 93.01460266113281,
+        "max": 817.2018432617188,
+        "median": 93.03492736816406,
+        "n": 2614,
+        "p95": 152.94888305664062,
+        "p99": 224.31884765625
+      },
+      "frames_over_16_7": 2475,
+      "gpu": "AMD Radeon R9 M370X",
+      "gpu_ms": null,
+      "notes_visible_max": 34,
+      "particles_max": 38,
+      "probes": "shadows",
+      "resolution": [
+        2880,
+        1752
+      ],
+      "scale_factor": 2.0,
+      "scenario": "normal",
+      "settings": {
+        "fx_intensity": 1.0,
+        "particles": true,
+        "reduced_flashing": false,
+        "stage_3d": true
+      },
+      "song": "Maria",
+      "song_start_ms": 28.7146053314209,
+      "truncated": false,
+      "uncapped": true,
+      "version": "0.18.50",
+      "warmup_s": 5.0
+    }
+  ],
+  "summary": {
+    "frame_avg": {
+      "mean": 93.5673942565918,
+      "min": 93.01460266113281,
+      "max": 94.12018585205078,
+      "stdev": 0.7817653714639571
+    },
+    "frame_median": {
+      "mean": 93.10354614257812,
+      "min": 93.03492736816406,
+      "max": 93.17216491699219,
+      "stdev": 0.09704160140978711
+    },
+    "frame_p95": {
+      "mean": 127.9641342163086,
+      "min": 102.97938537597656,
+      "max": 152.94888305664062,
+      "stdev": 35.33377066248302
+    },
+    "frame_p99": {
+      "mean": 189.6492462158203,
+      "min": 154.97964477539062,
+      "max": 224.31884765625,
+      "stdev": 49.03022055912545
+    },
+    "frame_max": {
+      "mean": 783.2191772460938,
+      "min": 749.2365112304688,
+      "max": 817.2018432617188,
+      "stdev": 48.05874716489215
+    },
+    "cpu_main_p99": {
+      "mean": 75.77592086791992,
+      "min": 75.62687683105469,
+      "max": 75.92496490478516,
+      "stdev": 0.21078009832565
+    },
+    "gpu_p99": null,
+    "frames_over_16_7": [
+      2533,
+      2475
+    ],
+    "song_start_ms": [
+      27.324604034423828,
+      28.7146053314209
+    ],
+    "load_after": [
+      2.03,
+      2.91
+    ]
+  }
+}

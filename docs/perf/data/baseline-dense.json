@@ -1,0 +1,203 @@
+{
+  "scenario": "dense",
+  "machine": {
+    "model": "MacBookPro11,5",
+    "cpu": "Intel(R) Core(TM) i7-4870HQ CPU @ 2.50GHz",
+    "arch": "x86_64",
+    "macos": "12.7.6",
+    "host": "Martins-MacBook-Pro-2015"
+  },
+  "commit": "43745e3+bench",
+  "dirty": false,
+  "runs": [
+    {
+      "backend": "Metal",
+      "clock_jumps": 0,
+      "cpu_main_ms": {
+        "avg": 8.891241073608398,
+        "max": 99.64315032958984,
+        "median": 3.0649259090423584,
+        "n": 2468,
+        "p95": 70.90514373779297,
+        "p99": 77.80044555664062
+      },
+      "difficulty": "Expert",
+      "entities_max": 3831,
+      "frame_ms": {
+        "avg": 105.85935974121094,
+        "max": 128.47296142578125,
+        "median": 104.81311798095703,
+        "n": 2468,
+        "p95": 113.94975280761719,
+        "p99": 118.68263244628906
+      },
+      "frames_over_16_7": 2468,
+      "gpu": "AMD Radeon R9 M370X",
+      "gpu_ms": null,
+      "notes_visible_max": 100,
+      "particles_max": 81,
+      "resolution": [
+        2880,
+        1752
+      ],
+      "scale_factor": 2.0,
+      "scenario": "dense",
+      "settings": {
+        "fx_intensity": 1.0,
+        "particles": true,
+        "reduced_flashing": false,
+        "stage_3d": true
+      },
+      "song": "[CL] What You Get Is What You See",
+      "song_start_ms": 24.128570556640625,
+      "truncated": false,
+      "uncapped": true,
+      "version": "0.18.50",
+      "warmup_s": 5.0
+    },
+    {
+      "backend": "Metal",
+      "clock_jumps": 1,
+      "cpu_main_ms": {
+        "avg": 8.019939422607422,
+        "max": 92.76903533935547,
+        "median": 3.420938014984131,
+        "n": 2473,
+        "p95": 67.13577270507812,
+        "p99": 77.04867553710938
+      },
+      "difficulty": "Expert",
+      "entities_max": 3838,
+      "frame_ms": {
+        "avg": 105.63288116455078,
+        "max": 131.11386108398438,
+        "median": 104.74076080322266,
+        "n": 2473,
+        "p95": 114.59188842773438,
+        "p99": 119.55107879638672
+      },
+      "frames_over_16_7": 2473,
+      "gpu": "AMD Radeon R9 M370X",
+      "gpu_ms": null,
+      "notes_visible_max": 106,
+      "particles_max": 83,
+      "resolution": [
+        2880,
+        1752
+      ],
+      "scale_factor": 2.0,
+      "scenario": "dense",
+      "settings": {
+        "fx_intensity": 1.0,
+        "particles": true,
+        "reduced_flashing": false,
+        "stage_3d": true
+      },
+      "song": "[CL] What You Get Is What You See",
+      "song_start_ms": 23.815366744995117,
+      "truncated": false,
+      "uncapped": true,
+      "version": "0.18.50",
+      "warmup_s": 5.0
+    },
+    {
+      "backend": "Metal",
+      "clock_jumps": 0,
+      "cpu_main_ms": {
+        "avg": 9.221772193908691,
+        "max": 83.01171875,
+        "median": 4.401523113250732,
+        "n": 2422,
+        "p95": 61.337886810302734,
+        "p99": 69.7678451538086
+      },
+      "difficulty": "Expert",
+      "entities_max": 3830,
+      "frame_ms": {
+        "avg": 107.84554290771484,
+        "max": 147.27308654785156,
+        "median": 107.06550598144531,
+        "n": 2422,
+        "p95": 117.25933074951172,
+        "p99": 122.47124481201172
+      },
+      "frames_over_16_7": 2422,
+      "gpu": "AMD Radeon R9 M370X",
+      "gpu_ms": null,
+      "notes_visible_max": 96,
+      "particles_max": 69,
+      "resolution": [
+        2880,
+        1752
+      ],
+      "scale_factor": 2.0,
+      "scenario": "dense",
+      "settings": {
+        "fx_intensity": 1.0,
+        "particles": true,
+        "reduced_flashing": false,
+        "stage_3d": true
+      },
+      "song": "[CL] What You Get Is What You See",
+      "song_start_ms": 36.67748260498047,
+      "truncated": false,
+      "uncapped": true,
+      "version": "0.18.50",
+      "warmup_s": 5.0
+    }
+  ],
+  "summary": {
+    "frame_avg": {
+      "mean": 106.44592793782552,
+      "min": 105.63288116455078,
+      "max": 107.84554290771484,
+      "stdev": 1.2173802546350176
+    },
+    "frame_median": {
+      "mean": 105.539794921875,
+      "min": 104.74076080322266,
+      "max": 107.06550598144531,
+      "stdev": 1.321799745900942
+    },
+    "frame_p95": {
+      "mean": 115.2669906616211,
+      "min": 113.94975280761719,
+      "max": 117.25933074951172,
+      "stdev": 1.755035272585095
+    },
+    "frame_p99": {
+      "mean": 120.2349853515625,
+      "min": 118.68263244628906,
+      "max": 122.47124481201172,
+      "stdev": 1.9847397931683535
+    },
+    "frame_max": {
+      "mean": 135.6199696858724,
+      "min": 128.47296142578125,
+      "max": 147.27308654785156,
+      "stdev": 10.177914187120155
+    },
+    "cpu_main_p99": {
+      "mean": 74.87232208251953,
+      "min": 69.7678451538086,
+      "max": 77.80044555664062,
+      "stdev": 4.43655869761386
+    },
+    "gpu_p99": null,
+    "frames_over_16_7": [
+      2468,
+      2473,
+      2422
+    ],
+    "song_start_ms": [
+      24.128570556640625,
+      23.815366744995117,
+      36.67748260498047
+    ],
+    "load_after": [
+      2.73,
+      3.38,
+      3.33
+    ]
+  }
+}
