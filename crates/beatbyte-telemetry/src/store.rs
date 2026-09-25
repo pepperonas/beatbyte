@@ -522,6 +522,12 @@ impl Store {
     pub fn connection(&self) -> &Connection {
         &self.conn
     }
+
+    /// The connection for writing, for the merge (`crate::merge`) — a
+    /// sibling module, so it cannot reach the field itself.
+    pub(crate) fn connection_mut(&mut self) -> &mut Connection {
+        &mut self.conn
+    }
 }
 
 /// One session that has no song yet, and what is known about it.
@@ -659,7 +665,7 @@ impl std::fmt::Debug for Store {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::model::{Action, Rating, micros};
     use beatbyte_core::Lane;

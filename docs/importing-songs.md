@@ -5,12 +5,23 @@ minute: analyze → generate → play, with the built-in editor as the
 correction pass. Every command below was run exactly as written
 (against an MP3) while writing this guide.
 
+**Where the library lives.** Every import lands in the data
+directory: `~/Library/Application Support/beatbyte/songs/imported` on
+macOS, `~/.local/share/beatbyte/songs/imported` on Linux,
+`%APPDATA%\beatbyte\songs\imported` on Windows — one library per
+device, the one the sync keeps identical (ADR-0021). The commands
+below write it as `$LIB`:
+
+```bash
+LIB="$HOME/Library/Application Support/beatbyte/songs/imported"
+```
+
 ## By name, from inside the game
 
 Press **D** in the browser, type the song and press **Enter** (**Esc**
 cancels). The search looks it up, judges the recordings it finds, fetches the best one,
 measures it, pulls the lyrics and charts it — the result lands in
-`songs/imported/` exactly as a dropped file does, and appears in the
+the library folder exactly as a dropped file does, and appears in the
 browser the moment it is there.
 
 **It runs in the background.** Start a search, then browse, change a
@@ -132,8 +143,8 @@ audio beforehand (below).
 ```bash
 beatbyte-cli classic <folder> --twin              # one song, blind-tested recipe
 beatbyte-cli classic <folder> --twin --with all   # every ingredient
-beatbyte-cli classic songs/imported --all --twin  # every folder
-beatbyte-cli classic songs/imported --all --twin --dry-run
+beatbyte-cli classic "$LIB" --all --twin  # every folder
+beatbyte-cli classic "$LIB" --all --twin --dry-run
 ```
 
 Without `--with` a run uses only the ingredients that have passed a
@@ -143,7 +154,7 @@ plays the new version against its parent, which differ by that
 ingredient and nothing else.
 
 ```bash
-beatbyte-cli classic songs/imported/classic-<song> --with strum
+beatbyte-cli classic "$LIB/classic-<song>" --with strum
 ```
 
 ### Chords need a polyphony sidecar
@@ -156,9 +167,9 @@ transcribes the song once with Spotify's *Basic Pitch* (Apache-2.0,
 
 ```bash
 beatbyte-cli models install basic-pitch              # once
-beatbyte-cli poly songs/imported/<song>              # one song, ~1 min
-beatbyte-cli poly songs/imported --all               # every folder
-beatbyte-cli classic songs/imported/classic-<song> --with chords
+beatbyte-cli poly "$LIB/<song>"              # one song, ~1 min
+beatbyte-cli poly "$LIB" --all               # every folder
+beatbyte-cli classic "$LIB/classic-<song>" --with chords
 ```
 
 The song is separated first (a local `demucs`, as for the `[GS]`
@@ -180,7 +191,7 @@ is worse than none.
 
 ⚠️ A twin copies the audio, so a whole library of them costs what
 the library costs. Nothing in the song's own folder is touched, and
-removing them again is `rm -rf songs/imported/classic-*`.
+removing them again is `rm -rf "$LIB"/classic-*`.
 
 Without `--twin` the same command writes the ingredient as a new
 chart VERSION inside the folder and moves the pointer, which is the
@@ -201,13 +212,13 @@ file goes and your audio stays.
 
 ## 1. Put the audio where BeatByte looks
 
-Create a folder per song under `songs/` (in development / portable
-layouts) — `songs/imported/` is the conventional place for your own
-music and is never committed:
+Create a folder per song in the library (`$LIB`, above) — the game
+imports there itself, and a folder you make by hand is read the same
+way:
 
 ```bash
-mkdir -p songs/imported/my-song
-cp ~/Music/my-song.mp3 songs/imported/my-song/
+mkdir -p "$LIB/my-song"
+cp ~/Music/my-song.mp3 "$LIB/my-song/"
 ```
 
 Installed builds also scan the user songs directory
@@ -218,11 +229,11 @@ on Windows). Both locations are scanned up to two folder levels deep.
 ## 2. Analyze (optional, but tells you what to expect)
 
 ```bash
-beatbyte-cli analyze songs/imported/my-song/my-song.mp3
+beatbyte-cli analyze "$LIB/my-song/my-song.mp3"
 ```
 
 ```text
-Analysis of `songs/imported/my-song/my-song.mp3`
+Analysis of `$LIB/my-song/my-song.mp3`
   duration          69.8 s
   bpm               92.1   (confidence 51%)
   beats              108
@@ -237,12 +248,12 @@ the wrong tempo octave — the editor pass will show it immediately
 ## 3. Generate the chart
 
 ```bash
-beatbyte-cli generate songs/imported/my-song/my-song.mp3 \
+beatbyte-cli generate "$LIB/my-song/my-song.mp3" \
   --title "Test Drive" --artist "You"
 ```
 
 ```text
-Generated `songs/imported/my-song/my-song.chart.json` — 92.1 BPM, 70 s
+Generated `$LIB/my-song/my-song.chart.json` — 92.1 BPM, 70 s
   easy        67 notes,  2 phrases
   medium      93 notes,  3 phrases
   hard       170 notes,  3 phrases

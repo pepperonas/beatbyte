@@ -14,6 +14,34 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.39] - 2026-09-25
+
+### Changed
+
+- **Your songs live in the data directory now.** Every import — a
+  dropped file, a search by name — lands in
+  `~/Library/Application Support/beatbyte/songs/imported` (Linux:
+  `~/.local/share/beatbyte/songs/imported`), even when the game is
+  started from a checkout. Before, a game started from the source tree
+  imported into the repository, which is how one library ended up in
+  two places. The existing library was moved there in one piece (341
+  folders, every file checked against its checksum); nothing is lost
+  and nothing needs to be imported again. `songs/` beside the game is
+  still read, so a portable layout keeps working.
+- **Settings remember when you changed them.** Each preference that
+  follows you between devices (theme, scroll speed, lyrics, the
+  browser's sort …) is stamped with the moment it last changed, so a
+  second device can tell which choice is newer. Calibration, volumes,
+  the screen and the API key are kept per device and are never
+  stamped or shared.
+
+### Added
+
+- **The telemetry store can take in another device's sessions** —
+  row by row, never by copying the file: a session the other store has
+  and this one does not comes in with all its events and notes; one
+  both have is kept once, the more complete copy. Nothing calls it yet.
+
 ## [0.18.38] - 2026-09-25
 
 ### Added

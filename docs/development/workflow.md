@@ -180,8 +180,8 @@ energy around it, where in the bar it fell — is computed at import and
 never kept, so it has to be written down beside the chart:
 
 ```bash
-beatbyte-cli context --all songs/imported     # a sidecar per chart version
-beatbyte-cli telemetry context songs/imported # load them into the store
+beatbyte-cli context --all "$LIB"           # a sidecar per chart version
+beatbyte-cli telemetry context "$LIB"       # load them into the store
 beatbyte-cli telemetry music                  # what the misses have in common
 ```
 

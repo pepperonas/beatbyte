@@ -15,7 +15,7 @@ use bevy::tasks::{AsyncComputeTaskPool, Task, block_on};
 use beatbyte_audio::{Analyzer, SpectralAnalyzer};
 use beatbyte_chart::{GenerateMeta, generate_chart};
 
-use crate::library::{SONGS_DIR, user_songs_dir};
+use crate::library::user_songs_dir;
 use crate::states::AppState;
 
 /// Extensions the decoder is verified to read (see the decode tests).
@@ -967,13 +967,16 @@ fn plan_chart_write(
     ))
 }
 
-/// Where imports land: `songs/imported/` next to a development /
-/// portable install, the user songs dir otherwise.
+/// Where imports land: the user songs directory, always.
+///
+/// ⚠️ It used to prefer a `songs/` next to the working directory, so a
+/// game started from a checkout imported into the repository — which
+/// is how this Mac's library came to live in `songs/imported/` of the
+/// repo while every other device would use the data directory. One
+/// library root per device is what the sync keeps identical
+/// (ADR-0021); `songs/` next to the binary is still READ, for the
+/// fixtures and a portable layout, but nothing lands there.
 fn import_dir() -> Result<PathBuf, String> {
-    let local = PathBuf::from(SONGS_DIR);
-    if local.is_dir() {
-        return Ok(local.join("imported"));
-    }
     user_songs_dir()
         .map(|dir| dir.join("imported"))
         .ok_or_else(|| "no songs directory on this platform".to_owned())
@@ -1290,7 +1293,30 @@ mod watch_tests {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use super::{sanitize_folder_name, song_name_from_stem};
+    use super::{import_dir, sanitize_folder_name, song_name_from_stem, user_songs_dir};
+
+    /// ⚠️ Imports land in the data directory and nowhere else — never
+    /// in a `songs/` beside the working directory, which is how the
+    /// library once ended up inside the repository (ADR-0021). The body
+    /// is read without its comments, because the comment names the old
+    /// rule.
+    #[test]
+    fn imports_always_land_in_the_data_directory() {
+        let dir = import_dir().expect("a data directory");
+        assert!(dir.is_absolute(), "{dir:?}");
+        assert_eq!(Some(dir), user_songs_dir().map(|d| d.join("imported")));
+        let source = include_str!("import.rs");
+        let start = source.find("fn import_dir()").expect("import_dir");
+        let body: Vec<&str> = source[start..]
+            .lines()
+            .take_while(|line| *line != "}")
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect();
+        let body = body.join("\n");
+        for forbidden in ["SONGS_DIR", "is_dir", "current_dir"] {
+            assert!(!body.contains(forbidden), "import_dir consults {forbidden}");
+        }
+    }
 
     #[test]
     fn downloaded_file_names_come_out_clean() {

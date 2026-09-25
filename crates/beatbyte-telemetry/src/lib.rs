@@ -72,6 +72,7 @@ pub mod analytics;
 pub mod bench;
 pub mod export;
 pub mod legacy;
+pub mod merge;
 pub mod model;
 pub mod schema;
 pub mod store;

@@ -550,7 +550,16 @@ pub fn save_settings(settings: &Settings) {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let json = serde_json::to_string_pretty(settings).unwrap_or_default();
+        // The shared keys that changed since the file on disk get a
+        // change stamp, so a second device can tell which of two
+        // choices is newer (ADR-0021).
+        let mut value = serde_json::to_value(settings).unwrap_or_default();
+        let old = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+            .unwrap_or_default();
+        beatbyte_sync::settings::stamp_changes(&old, &mut value, crate::players::now_ms());
+        let json = serde_json::to_string_pretty(&value).unwrap_or_default();
         std::fs::write(&path, json)
     };
     if let Err(error) = write() {
@@ -615,6 +624,23 @@ fn apply_settings(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+    /// ⚠️ ADR-0021: every key the game writes is classified — shared
+    /// between devices, or kept on this one. A new setting that is in
+    /// neither list would silently stay local forever (the safe
+    /// default), and nobody would have decided that.
+    #[test]
+    fn every_setting_is_classified_as_shared_or_device() {
+        use beatbyte_sync::settings::{DEVICE, SHARED};
+        let value = serde_json::to_value(Settings::default()).expect("settings serialize");
+        let keys: Vec<&String> = value.as_object().expect("an object").keys().collect();
+        for key in keys {
+            assert!(
+                SHARED.contains(&key.as_str()) || DEVICE.contains(&key.as_str()),
+                "`{key}` is neither shared nor device — classify it in beatbyte-sync::settings"
+            );
+        }
+    }
+
     #[test]
     fn a_mangled_browser_sort_falls_back_and_a_real_one_survives() {
         let mut s = super::Settings {

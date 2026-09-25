@@ -143,6 +143,37 @@ pub fn merge(local: &Value, remote: &Value) -> Merged {
     }
 }
 
+/// Stamp the shared keys a save changes: `new` is the file about to
+/// be written, `old` the one on disk. Every shared key whose value
+/// differs gets `now_ms`; the stamps already on disk are carried over.
+/// Pure — tested.
+///
+/// ⚠️ This is why the game rewriting the whole file on exit is not a
+/// problem: the diff against what is on disk finds only the keys that
+/// really changed, however often the file is written.
+pub fn stamp_changes(old: &Value, new: &mut Value, now_ms: u64) {
+    let mut stamps = old
+        .get(STAMPS)
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    if let Some(carried) = new.get(STAMPS).and_then(Value::as_object) {
+        for (key, value) in carried {
+            stamps.insert(key.clone(), value.clone());
+        }
+    }
+    for key in SHARED {
+        let before = old.get(*key);
+        let after = new.get(*key);
+        if after.is_some() && before != after {
+            stamps.insert((*key).to_owned(), Value::from(now_ms));
+        }
+    }
+    if let Some(object) = new.as_object_mut() {
+        object.insert(STAMPS.to_owned(), Value::Object(stamps));
+    }
+}
+
 /// The shared part of a settings file — what a device publishes. The
 /// device keys, and above all the API key, are not in it at all.
 #[must_use]
@@ -185,6 +216,30 @@ mod tests {
             &json!({"anthropic_api_key": "theirs", "changed_ms": {"anthropic_api_key": 9}}),
         );
         assert_eq!(merged.settings["anthropic_api_key"], "mine");
+    }
+
+    /// A save stamps only what changed; the rest keep their stamps,
+    /// and a device key is never stamped.
+    #[test]
+    fn a_save_stamps_only_the_shared_keys_it_changed() {
+        let old = json!({"theme": "neon", "tap_mode": false, "music_volume": 0.5,
+            "changed_ms": {"tap_mode": 100}});
+        let mut new = json!({"theme": "ember", "tap_mode": false, "music_volume": 0.9});
+        stamp_changes(&old, &mut new, 5_000);
+        assert_eq!(new["changed_ms"]["theme"], 5_000);
+        assert_eq!(
+            new["changed_ms"]["tap_mode"], 100,
+            "an unchanged key was restamped"
+        );
+        assert!(
+            new["changed_ms"].get("music_volume").is_none(),
+            "a device key was stamped"
+        );
+        // Saving the same thing again stamps nothing new.
+        let again_old = new.clone();
+        let mut again = new.clone();
+        stamp_changes(&again_old, &mut again, 9_000);
+        assert_eq!(again["changed_ms"]["theme"], 5_000);
     }
 
     #[test]

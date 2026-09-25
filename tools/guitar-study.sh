@@ -1,7 +1,7 @@
 #!/bin/bash
 # Build the [GS] twin of every song folder that has none.
 #
-#   tools/guitar-study.sh [<songs/imported>] [<scratch dir>]
+#   tools/guitar-study.sh [<library folder>] [<scratch dir>]
 #
 # Per song: decode the audio to the timeline the analysis uses
 # (`beatbyte-cli decode`), separate the "other" stem with demucs on that
@@ -11,7 +11,7 @@
 # evidence) is listed at the end and keeps its original as the only
 # version. The originals are never written to.
 set -u
-ROOT="${1:-songs/imported}"
+ROOT="${1:-$HOME/Library/Application Support/beatbyte/songs/imported}"
 SCRATCH="${2:-${TMPDIR:-/tmp}/guitar-study}"
 CLI="${BEATBYTE_CLI:-target/release/beatbyte-cli}"
 DEVICE="${DEMUCS_DEVICE:-mps}"

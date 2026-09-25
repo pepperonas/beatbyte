@@ -113,8 +113,10 @@ None of this is in the repository; it is per-machine state the game
 writes. On macOS both directories below are
 `~/Library/Application Support`.
 
-- `songs/` (repo-relative) and `<data>/beatbyte/songs/` — the library.
-  Imports land in `songs/imported/<song>/`, which is gitignored.
+- `<data>/beatbyte/songs/imported/<song>/` — the library; every import
+  lands there (since 0.18.39 — before, a game started from the checkout
+  imported into the repo, ADR-0021). `songs/` beside the working
+  directory is still read, but nothing is written to it.
 - `<config>/beatbyte/settings.json` — settings. The game REWRITES it
   on exit; read the gotcha before editing it to set up a run.
 - `<data>/beatbyte/` — `scores.json`, `players.json`, `history.jsonl`,
@@ -126,8 +128,7 @@ writes. On macOS both directories below are
   and the downloaded ML models.
 - Beside each chart version in a song folder: **`*.context.json`**,
   what the analysis said at each of its notes. Generated with the
-  chart, or backfilled by `beatbyte-cli context --all songs/imported`;
-  gitignored like everything else under `songs/imported/`.
+  chart, or backfilled by `beatbyte-cli context --all <data>/beatbyte/songs/imported`.
 
 ### Where to look before deriving something twice
 
@@ -739,7 +740,7 @@ artifact, smoke-test it (neutral CWD!), then
   and moving pointers while the user played turned every Enter on that
   song into "cannot load" until a rescan (eleven error lines in two
   seconds). The browser now re-resolves a vanished version from the
-  folder's pointer; still, batch edits to `songs/imported/` while the
+  folder's pointer; still, batch edits to the library while the
   game runs are edits the user sees.
 - **A chart's constant `bpm` is not its grid.** The analysis tracked a
   time-varying grid since Phase 2; the generator, the highway, the
