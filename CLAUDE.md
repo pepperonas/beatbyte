@@ -1032,6 +1032,23 @@ artifact, smoke-test it (neutral CWD!), then
   song's scratch once its output exists (the script now reports the
   failures by name — the first version lost that list to bash 3.2's
   `set -u` on an empty array).
+- **A value that APPEARS is a default, not a change.** The settings
+  stamps first marked every shared key `now` when the old file lacked
+  it — so a freshly installed Mac's first save, pure defaults, was the
+  newest choice of everything, and its first sync overwrote the
+  player's theme, scroll speed, tap mode and sort order on the other
+  Mac. Every "newest wins" rule needs an answer to "newest what?":
+  here only a CHANGE of a value that was there is evidence of a
+  choice. The pure tests were green; it took two real devices.
+- **Test sync on a device that starts from nothing.** Three defects
+  surfaced only on the fresh 2015 (the default stamps, nobody
+  selected, pointers republished in another spelling), none on the
+  device that had the data. A merge that is correct between two full
+  states can still be wrong from an empty one.
+- **The Iris Pro in the 2015 cannot run this renderer** (Metal
+  GPUFamily macOS 1: its compiler fails wgpu's and Bevy's compute
+  pipelines, device lost at start). Bevy takes the AMD by default;
+  `WGPU_POWER_PREF=low` reproduces the crash.
 - **A drill nobody runs rots without a sound.** `BEATBYTE_AUTOPILOT_DELETE`
   still answered the delete question with a second Backspace months
   after the answer became `Y` (Backspace only ASKS since a player lost

@@ -26,6 +26,10 @@ use serde_json::{Map, Value};
 /// The field of `settings.json` that carries the change stamps.
 pub const STAMPS: &str = "changed_ms";
 
+/// The stamp of a value that predates stamping: older than any real
+/// change, newer than a default (which carries no stamp at all).
+pub const LEGACY: u64 = 1;
+
 /// Keys that describe the player and follow them from device to
 /// device.
 pub const SHARED: &[&str] = &[
@@ -151,6 +155,14 @@ pub fn merge(local: &Value, remote: &Value) -> Merged {
 /// ⚠️ This is why the game rewriting the whole file on exit is not a
 /// problem: the diff against what is on disk finds only the keys that
 /// really changed, however often the file is written.
+///
+/// ⚠️ A key the old file did not have is a DEFAULT, not a change. The
+/// first version stamped it `now`, so a freshly installed device's
+/// first save — nothing but defaults — was the newest choice of every
+/// shared setting, and its first sync overwrote the player's theme,
+/// scroll speed and sort order on the other device (measured on the
+/// two Macs, 2026-09-25). A file written before stamps existed marks
+/// its values [`LEGACY`]: the player's own, beaten by any real change.
 pub fn stamp_changes(old: &Value, new: &mut Value, now_ms: u64) {
     let mut stamps = old
         .get(STAMPS)
@@ -162,11 +174,21 @@ pub fn stamp_changes(old: &Value, new: &mut Value, now_ms: u64) {
             stamps.insert(key.clone(), value.clone());
         }
     }
+    // A file without any stamp map was written before stamps existed:
+    // what it holds is the player's own choice, of unknown age.
+    let predates_stamps =
+        old.as_object().is_some_and(|o| !o.is_empty()) && old.get(STAMPS).is_none();
     for key in SHARED {
-        let before = old.get(*key);
-        let after = new.get(*key);
-        if after.is_some() && before != after {
-            stamps.insert((*key).to_owned(), Value::from(now_ms));
+        match (old.get(*key), new.get(*key)) {
+            (Some(before), Some(after)) if before != after => {
+                stamps.insert((*key).to_owned(), Value::from(now_ms));
+            }
+            (Some(_), Some(_)) if predates_stamps && !stamps.contains_key(*key) => {
+                stamps.insert((*key).to_owned(), Value::from(LEGACY));
+            }
+            // Absent before: a default the game wrote, not a choice —
+            // unstamped, so it never beats a choice made elsewhere.
+            _ => {}
         }
     }
     if let Some(object) = new.as_object_mut() {
@@ -240,6 +262,43 @@ mod tests {
         let mut again = new.clone();
         stamp_changes(&again_old, &mut again, 9_000);
         assert_eq!(again["changed_ms"]["theme"], 5_000);
+    }
+
+    /// ⚠️ A fresh device's first save is all defaults: nothing is
+    /// stamped, and its defaults never beat a choice made elsewhere.
+    #[test]
+    fn a_fresh_devices_defaults_never_beat_a_choice() {
+        let mut fresh = json!({"theme": "neon", "scroll_speed": 1.0});
+        stamp_changes(&Value::Null, &mut fresh, 9_000);
+        assert_eq!(fresh["changed_ms"], json!({}), "defaults were stamped");
+        // The second save, unchanged: still nothing.
+        let mut again = fresh.clone();
+        stamp_changes(&fresh, &mut again, 9_500);
+        assert_eq!(again["changed_ms"], json!({}), "defaults became a choice");
+
+        // The other device: a file from before stamps, the player's own.
+        let old = json!({"theme": "ember", "scroll_speed": 2.0});
+        let mut mine = old.clone();
+        stamp_changes(&old, &mut mine, 5_000);
+        assert_eq!(mine["changed_ms"]["theme"], LEGACY);
+
+        let m = merge(&mine, &shared_part(&again));
+        assert_eq!(m.settings["theme"], "ember", "a default beat a choice");
+        assert!(m.taken.is_empty());
+        let m = merge(&again, &shared_part(&mine));
+        assert_eq!(
+            m.settings["theme"], "ember",
+            "the fresh device did not take the choice"
+        );
+
+        // And a real change on the fresh device still wins.
+        let mut changed = again.clone();
+        changed["theme"] = json!("ocean");
+        stamp_changes(&again, &mut changed, 10_000);
+        assert_eq!(
+            merge(&mine, &shared_part(&changed)).settings["theme"],
+            "ocean"
+        );
     }
 
     #[test]

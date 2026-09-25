@@ -459,16 +459,30 @@ pub fn plan(local: &Manifest, remote: &Manifest) -> Plan {
             (None, Some(b)) => b.clone(),
             (None, None) => continue,
         };
-        let stale = local
-            .files
-            .get(&path)
+        let here = local.files.get(&path);
+        let there = remote.files.get(&path);
+        let stale = here
             .and_then(|e| e.points_to.as_ref())
             .is_none_or(|p| *p != chosen);
-        if stale {
-            fetches.push(Action::Point {
+        // The other side's file already says exactly this: take its
+        // BYTES rather than writing an equivalent — pointers exist in
+        // several spellings (`{"active": …}`, pretty, compact), and a
+        // rewrite would make two devices differ by whitespace for ever.
+        // Where both say the same thing in different spellings, the
+        // smaller hash wins on both devices, so they converge.
+        let theirs_says_it = there.filter(|e| e.points_to.as_deref() == Some(chosen.as_str()));
+        match theirs_says_it {
+            Some(r) if stale || here.is_some_and(|l| r.hash < l.hash) => {
+                fetches.push(Action::Fetch {
+                    path,
+                    hash: r.hash.clone(),
+                });
+            }
+            _ if stale => fetches.push(Action::Point {
                 path,
                 active: chosen,
-            });
+            }),
+            _ => {}
         }
     }
 
@@ -712,6 +726,62 @@ mod tests {
     }
 
     /// Once converged, a second sync has nothing to do.
+    /// A pointer the other side has and this one lacks arrives as its
+    /// own BYTES — rewriting it compact made the first real sync of a
+    /// second Mac publish ten "new" pointer blobs that meant nothing.
+    #[test]
+    fn a_pointer_arrives_as_its_own_bytes() {
+        let remote = manifest(&[
+            ("s/chart.v2.json", chart("c2", 5)),
+            ("s/chart-active.json", pointer("chart.v2.json")),
+        ]);
+        let plan = plan(&Manifest::default(), &remote);
+        assert!(
+            plan.actions.contains(&Action::Fetch {
+                path: "s/chart-active.json".to_owned(),
+                hash: "ptr-chart.v2.json".to_owned(),
+            }),
+            "{:?}",
+            plan.actions
+        );
+        assert!(
+            !plan
+                .actions
+                .iter()
+                .any(|a| matches!(a, Action::Point { .. }))
+        );
+    }
+
+    /// Two spellings of the same pointer converge on one — the smaller
+    /// hash, on both devices — and then stay put.
+    #[test]
+    fn two_spellings_of_one_pointer_converge() {
+        let spelled = |hash: &str| Entry {
+            points_to: Some("chart.v2.json".to_owned()),
+            ..entry(hash, 0)
+        };
+        let a = manifest(&[
+            ("s/chart.v2.json", chart("c2", 5)),
+            ("s/chart-active.json", spelled("aaa")),
+        ]);
+        let b = manifest(&[
+            ("s/chart.v2.json", chart("c2", 5)),
+            ("s/chart-active.json", spelled("bbb")),
+        ]);
+        assert!(
+            plan(&a, &b).actions.is_empty(),
+            "the smaller spelling was replaced"
+        );
+        assert_eq!(
+            plan(&b, &a).actions,
+            vec![Action::Fetch {
+                path: "s/chart-active.json".to_owned(),
+                hash: "aaa".to_owned()
+            }]
+        );
+        assert!(plan(&a, &a).actions.is_empty());
+    }
+
     #[test]
     fn a_second_sync_does_nothing() {
         let a = manifest(&[

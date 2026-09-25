@@ -14,6 +14,31 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.42] - 2026-09-25
+
+### Fixed
+
+- **A freshly installed device's defaults overwrote your settings on
+  the other one.** The first save on a new Mac is nothing but default
+  values, and they were marked as just changed — so the first sync
+  gave the other Mac the new one's theme, scroll speed, tap mode and
+  sort order. A value that appears for the first time is now a
+  default and never beats a choice; a value from before settings were
+  stamped counts as your own. Found on the two real Macs; the four
+  settings were restored from the morning's backup.
+- **A freshly synced device had nobody selected**, so its first run
+  belonged to no player. A device with no players of its own now
+  selects the first one it receives — the game's own rule for the
+  first player.
+- **Two devices kept different spellings of the same chart pointer**
+  (`{"active": …}` with and without a space) and published them as new
+  files. A pointer now arrives as the other side's bytes, and two
+  spellings of the same pointer settle on one.
+- **The Mac bundle failed its signature check after a plain copy**:
+  the launcher script sat in `Contents/MacOS`, where a script's
+  signature lives in extended attributes that rsync or zip drop. It
+  moved to `Contents/Resources`.
+
 ## [0.18.41] - 2026-09-25
 
 ### Security

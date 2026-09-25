@@ -164,6 +164,13 @@ pub fn merge(local: &Roster, remote: &Roster) -> Merged {
     let mut roster = local.clone();
     roster.players = kept;
     roster.selected = local.selected.map(|id| map(&local_map, id));
+    // A device that had nobody of its own takes the first player it
+    // receives — the game's own rule for the first player to exist
+    // (nobody builds a roster to then pick from it). Without it the
+    // first run on a freshly synced device belongs to no one.
+    if roster.selected.is_none() && local.players.is_empty() {
+        roster.selected = roster.players.first().map(|p| p.id);
+    }
     roster.absorb_counters(remote);
     Merged {
         roster,
@@ -298,6 +305,17 @@ mod tests {
         let here = merge(&a, &b).roster;
         let there = merge(&b, &a).roster;
         assert_eq!(file(&here), file(&there));
+    }
+
+    /// A fresh device selects the first player it receives; a device
+    /// with players of its own keeps its choice, even if that is none.
+    #[test]
+    fn a_fresh_device_selects_the_player_it_receives() {
+        let remote = roster(vec![player(5, "Martin", 100)]);
+        assert_eq!(merge(&Roster::default(), &remote).roster.selected, Some(5));
+        let mut mine = roster(vec![player(9, "Kim", 50)]);
+        mine.selected = None;
+        assert_eq!(merge(&mine, &remote).roster.selected, None);
     }
 
     #[test]

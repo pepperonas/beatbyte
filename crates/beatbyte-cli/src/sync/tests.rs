@@ -231,6 +231,14 @@ fn two_devices_end_with_one_career() {
         r#"{"provenance":{"created_ms":1}}"#,
     );
     song(&a, "only-a", "song.m4a", "audio-a");
+    // A pointer in the spelling the game's older writer used: it must
+    // arrive as these bytes, not as an equivalent rewrite.
+    song(
+        &a,
+        "only-a",
+        "chart-active.json",
+        "{\"active\": \"chart.json\"}",
+    );
     song(
         &b,
         "only-b",
@@ -332,6 +340,10 @@ fn two_devices_end_with_one_career() {
     // chart — the earlier keeps its name, the later is v3, each with
     // its own analysis.
     let lib = library_root(&b);
+    assert_eq!(
+        std::fs::read_to_string(lib.join("only-a/chart-active.json")).expect("pointer"),
+        "{\"active\": \"chart.json\"}"
+    );
     assert_eq!(
         std::fs::read_to_string(lib.join("only-a/song.m4a")).expect("fetched"),
         "audio-a"

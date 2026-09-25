@@ -4,10 +4,10 @@
 # A sync that fails (hub asleep, no network) is said and skipped — the
 # game is always playable offline, and the next sync catches up.
 # The hub is the one `beatbyte-cli sync --hub …` remembered.
-# Inside BeatByte.app the two binaries sit beside this script; in a
-# checkout they are in target/release.
+# Inside BeatByte.app this script is in Contents/Resources and the two
+# binaries in Contents/MacOS; in a checkout they are in target/release.
 HERE="$(cd "$(dirname "$0")" && pwd)"
-if [ -x "$HERE/beatbyte-cli" ]; then BIN="$HERE"; else BIN="$HERE/../target/release"; fi
+if [ -x "$HERE/../MacOS/beatbyte-cli" ]; then BIN="$HERE/../MacOS"; else BIN="$HERE/../target/release"; fi
 CLI="${BEATBYTE_CLI:-$BIN/beatbyte-cli}"
 GAME="${BEATBYTE_GAME:-$BIN/beatbyte}"
 "$CLI" sync || echo "play-synced: sync before failed — playing offline"

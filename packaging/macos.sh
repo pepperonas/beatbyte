@@ -51,7 +51,10 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/beatbyte"
 if CLI="$(binary beatbyte-cli)"; then
   cp "$CLI" "$APP/Contents/MacOS/beatbyte-cli"
-  cp "$ROOT/tools/play-synced.sh" "$APP/Contents/MacOS/play-synced.sh"
+  # A script in Contents/MacOS is signed through extended attributes,
+  # which a plain copy (rsync, zip) drops — the bundle then fails
+  # verification. Resources is not a code location.
+  cp "$ROOT/tools/play-synced.sh" "$APP/Contents/Resources/play-synced.sh"
 fi
 cp -R "$ROOT/assets" "$APP/Contents/Resources/assets"
 
