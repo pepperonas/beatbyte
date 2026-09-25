@@ -173,6 +173,21 @@ fn one_twin(folder: &Path, dry_run: bool, recipe: classic::Recipe) -> Result<Str
         || folder.display().to_string(),
         |n| n.to_string_lossy().into_owned(),
     );
+    // ⚠️ The dry run answers what the real run would, and the real run
+    // leaves a finished twin alone: without this a library that
+    // already had four twins was promised 170 new ones.
+    if dry_run
+        && let Some(out) = twin::folder_for(folder, classic::KIND)
+        && twin::is_finished(&out)
+    {
+        return Ok(format!(
+            "{name}: `{}` is already there",
+            out.file_name().map_or_else(
+                || out.display().to_string(),
+                |n| n.to_string_lossy().into_owned()
+            )
+        ));
+    }
     if dry_run {
         let Some((before, after, window, rules)) = preview(folder, recipe)? else {
             return Ok(format!("{name}: no twin — legacy layout"));
@@ -553,6 +568,34 @@ mod tests {
             changed_in_window(&before, &moved, Difficulty::Hard, (0.0, 30.0)),
             2
         );
+    }
+
+    /// ⚠️ The dry run says what the real run would: a folder whose
+    /// twin is finished is "already there", not a promise to write it
+    /// again (a library with four twins was promised 170 new ones).
+    #[test]
+    fn a_dry_run_leaves_a_finished_twin_alone_as_the_real_run_does() {
+        let dir = std::env::temp_dir().join(format!(
+            "bb-cli-twin-dry-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        let song = dir.join("band---song-m4a");
+        let twin_dir = dir.join("classic-band---song-m4a");
+        std::fs::create_dir_all(&song).expect("song");
+        std::fs::create_dir_all(&twin_dir).expect("twin");
+        let flags: Vec<(f64, bool)> = (0..8).map(|i| (1.0 + f64::from(i) * 0.25, true)).collect();
+        beatbyte_chart::save_chart_file(&song.join(versions::BASE_CHART), &chart(&flags))
+            .expect("chart");
+        let report = one_twin(&song, true, classic::Recipe::default()).expect("a report");
+        assert!(report.contains("would write"), "{report}");
+        beatbyte_chart::save_chart_file(&twin_dir.join(versions::BASE_CHART), &chart(&flags))
+            .expect("twin chart");
+        let report = one_twin(&song, true, classic::Recipe::default()).expect("a report");
+        assert!(report.contains("already there"), "{report}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// A difficulty the chart does not carry counts nothing rather

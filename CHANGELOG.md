@@ -14,6 +14,14 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.37] - 2026-09-25
+
+### Fixed
+
+- **`classic --twin --dry-run` no longer promises twins that already
+  exist.** The real run leaves a finished twin alone; the dry run now
+  says "already there" for it as well, instead of "would write".
+
 ## [0.18.36] - 2026-09-25
 
 ### Added
