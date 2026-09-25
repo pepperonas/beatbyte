@@ -140,8 +140,8 @@ pub(crate) fn spawn_editor(
     commands.spawn((
         EditorScreen,
         Text2d::new(
-            "click place  drag move  top tab length  drag empty box  right-click delete  \
-             wheel scroll  cmd-wheel zoom  F1 help",
+            "click place  drag move  top tab length  drag empty box  right-click menu  \
+             wheel scroll  cmd-wheel zoom  shift-drag ruler loop  F1 help",
         ),
         font.text(ui_kit::SMALL * 0.8),
         TextColor(palette::dimmed(palette::TEXT_DIM, 0.8)),
@@ -186,7 +186,7 @@ pub(crate) fn spawn_editor(
 }
 
 /// The toolbar, left to right.
-const TOOLBAR: [ui_kit::ChipSpec; 15] = [
+const TOOLBAR: [ui_kit::ChipSpec; 23] = [
     chip_spec(chip::PLAY, "Play P"),
     chip_spec(chip::SPEED, "Speed T"),
     chip_spec(chip::LOOP, "Loop L"),
@@ -200,9 +200,110 @@ const TOOLBAR: [ui_kit::ChipSpec; 15] = [
     chip_spec(chip::HOPO, "HOPO H"),
     chip_spec(chip::DELETE, "Delete Del"),
     chip_spec(chip::SAVE, "Save S"),
+    chip_spec(chip::COPY, "Copy Cmd+C"),
+    chip_spec(chip::PASTE, "Paste Cmd+V"),
+    chip_spec(chip::DUPLICATE, "Dup Cmd+D"),
+    chip_spec(chip::PHRASE, "Star Y"),
+    chip_spec(chip::LEVEL, "Level Q"),
+    chip_spec(chip::FIELD_TIME, "Time ,"),
+    chip_spec(chip::FIELD_LANE, "Lane ."),
+    chip_spec(chip::FIELD_LENGTH, "Length ;"),
     chip_spec(chip::HELP, "Help F1"),
     chip_spec(chip::BACK, "Back Esc"),
 ];
+
+/// The right-click menu on a note.
+const NOTE_MENU: [ui_kit::ChipSpec; 10] = [
+    chip_spec(chip::DELETE, "Delete"),
+    chip_spec(chip::HOPO, "HOPO"),
+    chip_spec(chip::COPY, "Copy"),
+    chip_spec(chip::CUT, "Cut"),
+    chip_spec(chip::DUPLICATE, "Duplicate"),
+    chip_spec(chip::PHRASE, "Star phrase"),
+    chip_spec(chip::FIELD_TIME, "Time..."),
+    chip_spec(chip::FIELD_LANE, "Lane..."),
+    chip_spec(chip::FIELD_LENGTH, "Length..."),
+    chip_spec(chip::MENU_CLOSE, "Close"),
+];
+
+/// The right-click menu on empty space.
+const SPACE_MENU: [ui_kit::ChipSpec; 3] = [
+    chip_spec(chip::PASTE_HERE, "Paste here"),
+    chip_spec(chip::PHRASE, "Remove star phrase"),
+    chip_spec(chip::MENU_CLOSE, "Close"),
+];
+
+/// The height of one menu row (a chip and the bar's gap), logical px.
+const MENU_ROW: f32 = 32.0;
+
+/// The open menu's UI.
+#[derive(Component)]
+pub(crate) struct MenuNode;
+
+/// Show the right-click menu where it was opened; rebuilt only when
+/// it opens, moves or closes.
+pub(crate) fn sync_menu(
+    mut commands: Commands,
+    state: Option<Res<EditorState>>,
+    open: Query<Entity, With<MenuNode>>,
+    cameras: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    font: Res<UiFont>,
+    mut shown: Local<Option<super::Menu>>,
+) {
+    let wanted = state.and_then(|s| s.menu);
+    if wanted == *shown {
+        return;
+    }
+    *shown = wanted;
+    for entity in &open {
+        commands.entity(entity).despawn();
+    }
+    let Some(menu) = wanted else {
+        return;
+    };
+    let Ok((camera, transform)) = cameras.single() else {
+        return;
+    };
+    let Ok(at) = camera.world_to_viewport(transform, menu.at.extend(0.0)) else {
+        return;
+    };
+    let items: &[ui_kit::ChipSpec] = if menu.target.is_some() {
+        &NOTE_MENU
+    } else {
+        &SPACE_MENU
+    };
+    // Kept inside the window: a menu opened near the bottom opens
+    // upwards (one row is a chip and the bar's gap, ~32 px).
+    let height = items.len() as f32 * MENU_ROW + 16.0;
+    let bottom = windows.single().map_or(f32::MAX, Window::height);
+    let top = at.y.min(bottom - height - 8.0).max(8.0);
+    commands
+        .spawn((
+            EditorScreen,
+            MenuNode,
+            Node {
+                position_type: PositionType::Absolute,
+                left: px(at.x + 8.0),
+                top: px(top),
+                // One item per row: a chip bar only wraps at the page
+                // width, and a menu is a column.
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Stretch,
+                padding: UiRect::all(px(ui_kit::PANEL_BORDER * 6.0)),
+                border: UiRect::all(px(ui_kit::PANEL_BORDER)),
+                ..default()
+            },
+            BackgroundColor(palette::BACKGROUND.with_alpha(0.95)),
+            BorderColor::all(palette::BRAND.with_alpha(0.6)),
+            GlobalZIndex(10),
+        ))
+        .with_children(|panel| {
+            for item in items {
+                ui_kit::action_bar(panel, &font, std::slice::from_ref(item));
+            }
+        });
+}
 
 const fn chip_spec(id: u8, label: &'static str) -> ui_kit::ChipSpec {
     ui_kit::ChipSpec {
@@ -222,7 +323,7 @@ MOUSE
   drag a note .............. move the selection (time and lane)
   drag the tab above ....... set its length (hold)
   drag in empty space ...... box select   Shift: add
-  right-click .............. delete (the selection, if it is in it)
+  right-click .............. the menu: delete, HOPO, copy, paste ...
   click / drag the ruler ... move the playhead
   Shift + drag the ruler ... a loop region
   wheel .................... scroll   Cmd/Ctrl + wheel: zoom
@@ -240,6 +341,12 @@ KEYS
   Del / Backspace  delete       Cmd/Ctrl+A  select all
   U / Cmd+Z  undo               R / Cmd+Shift+Z  redo
   V  range from here, X deletes it
+  Cmd+C / X / V  copy, cut, paste at the playhead
+  Cmd+D  duplicate after the selection
+  Y  star phrase over the selection (or remove the one here)
+  Q  next difficulty (a missing one starts empty)
+  ,  .  ;  type the time, lane, length of the selected note
+  right-click  the menu
   S  save as a new version      Esc  cancel, leave
 
 F1 / ?  close";
@@ -388,6 +495,34 @@ pub(crate) fn redraw(
                     ),
                 );
             }
+        }
+    }
+
+    // Star-power phrases: a band across the lanes and a stripe beside.
+    if let Some(def) = state.session.chart().chart_for(state.session.difficulty) {
+        for phrase in &def.phrases {
+            if phrase.end < t_lo || phrase.start > t_hi {
+                continue;
+            }
+            let (lo, hi) = (
+                v.y_of(phrase.start).max(BOTTOM_Y),
+                v.y_of(phrase.end).min(TOP_Y),
+            );
+            let (mid, height) = (((lo + hi) / 2.0) as f32, (hi - lo).max(2.0) as f32);
+            put(
+                &mut commands,
+                (
+                    Sprite::from_color(palette::HYPE.with_alpha(0.018), Vec2::new(lanes_w, height)),
+                    Transform::from_xyz(0.0, mid, -8.2),
+                ),
+            );
+            put(
+                &mut commands,
+                (
+                    Sprite::from_color(palette::HYPE.with_alpha(0.85), Vec2::new(6.0, height)),
+                    Transform::from_xyz(GRID_RIGHT + 8.0, mid, 0.0),
+                ),
+            );
         }
     }
 
@@ -744,6 +879,10 @@ pub(crate) fn refresh_hud(
             lines.push(format!("SELECTED {} notes", many.len()));
             lines.push(format!("  from {first:.3} s to {last:.3} s"));
         }
+    }
+    if let Some((field, text)) = &state.field {
+        lines.push(String::new());
+        lines.push(format!("{}: {text}_", field.label()));
     }
     lines.push(String::new());
     lines.push(state.status.clone());

@@ -14,6 +14,34 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.46] - 2026-09-25
+
+### Added
+
+- **Copy, cut, paste and duplicate in the chart editor** (Cmd/Ctrl +
+  C, X, V, D). A pasted passage keeps its rhythm, lanes, lengths and
+  HOPO flags exactly; one that would land on a note already there is
+  refused whole rather than half-pasted.
+- **A right-click menu** on a note (delete, HOPO, copy, cut, duplicate,
+  star phrase, type its time / lane / length) or on empty space (paste
+  here, remove the star phrase there). It opens upwards near the
+  bottom of the window.
+- **Type a note's exact values**: `,` its time — in seconds or as
+  bar:beat:tick —, `.` its lane, `;` its length; Enter sets, Esc
+  cancels, and a value that makes no sense says why.
+- **Star-power phrases**: Y lays one over the selected notes
+  (replacing any it overlaps) or removes the one under the playhead;
+  they show as a violet band beside the lanes.
+- **Switch difficulty in the editor** with Q; one the song does not
+  have yet starts empty.
+
+### Changed
+
+- **Undo and redo stay on the difficulty you are editing.** An undo
+  on Expert never takes back something on Medium out of sight.
+- **Right-click opens the menu** instead of deleting at once (Delete
+  is its first item).
+
 ## [0.18.45] - 2026-09-25
 
 ### Added

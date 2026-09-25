@@ -19,6 +19,8 @@ pub mod pointer;
 
 use beatbyte_chart::ChartNote;
 use beatbyte_core::Lane;
+use beatbyte_editor::clipboard::{self, Clip};
+use beatbyte_editor::inspector::{self, Field};
 use beatbyte_editor::playback::{self, LoopRegion};
 use beatbyte_editor::timecode::Grid;
 use beatbyte_editor::view::{self, Hit, NoteKey, View};
@@ -155,6 +157,15 @@ pub struct EditorState {
     pub hover: Option<Hit>,
     /// Whether the key/mouse reference is shown.
     pub help: bool,
+    /// What Cmd+C copied.
+    pub clip: Clip,
+    /// The inspector field being typed into, and the text so far.
+    pub field: Option<(Field, String)>,
+    /// Set for the frame a field closes, so its Enter / Esc is not
+    /// read again as play / leave.
+    pub typing_ate_keys: bool,
+    /// The right-click menu, while open.
+    pub menu: Option<Menu>,
     /// The view needs a rebuild.
     pub dirty_view: bool,
 }
@@ -284,6 +295,17 @@ pub fn open_editor(
     let chart = beatbyte_chart::load_chart_file(chart_path).map_err(|error| error.to_string())?;
     let saver = Saver::new(chart_path, chart.clone());
     let grid = Grid::from_marks(&chart.beat_marks());
+    // A difficulty the chart lacks: open on one it has (Q switches,
+    // and creates the missing one empty).
+    let difficulty = if chart.chart_for(difficulty).is_some() {
+        difficulty
+    } else {
+        chart
+            .charts
+            .first()
+            .map(|def| def.difficulty)
+            .ok_or("the chart has no difficulty to edit")?
+    };
     let session = EditorSession::new(chart, difficulty).map_err(|error| error.to_string())?;
     commands.insert_resource(EditorState {
         session,
@@ -315,9 +337,24 @@ pub fn open_editor(
         drag: None,
         hover: None,
         help: false,
+        clip: Clip::default(),
+        field: None,
+        typing_ate_keys: false,
+        menu: None,
         dirty_view: true,
     });
     Ok(())
+}
+
+/// The right-click menu.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Menu {
+    /// Where it was opened, world units.
+    pub at: Vec2,
+    /// The song time there (Paste here).
+    pub time: f64,
+    /// The note it was opened on, if any.
+    pub target: Option<NoteKey>,
 }
 
 /// The editor plugin.
@@ -336,6 +373,7 @@ impl Plugin for EditorUiPlugin {
                 (
                     collect_waveform,
                     editor_chips,
+                    editor_typing,
                     editor_input,
                     pointer::editor_pointer,
                     follow_preview,
@@ -343,6 +381,7 @@ impl Plugin for EditorUiPlugin {
                     draw::redraw,
                     draw::place_playhead,
                     draw::refresh_hud,
+                    draw::sync_menu,
                 )
                     .chain()
                     .run_if(in_state(AppState::Editor)),
@@ -422,11 +461,33 @@ pub(crate) mod chip {
     pub const SPEED: u8 = 14;
     /// Loop on / off.
     pub const LOOP: u8 = 15;
+    /// Copy.
+    pub const COPY: u8 = 16;
+    /// Paste at the playhead.
+    pub const PASTE: u8 = 17;
+    /// Duplicate after the selection.
+    pub const DUPLICATE: u8 = 18;
+    /// Star-power phrase over the selection.
+    pub const PHRASE: u8 = 19;
+    /// Next difficulty.
+    pub const LEVEL: u8 = 20;
+    /// Type the selected note's time.
+    pub const FIELD_TIME: u8 = 21;
+    /// Type its lane.
+    pub const FIELD_LANE: u8 = 22;
+    /// Type its length.
+    pub const FIELD_LENGTH: u8 = 23;
+    /// Cut (menu).
+    pub const CUT: u8 = 24;
+    /// Paste where the menu was opened (menu).
+    pub const PASTE_HERE: u8 = 25;
+    /// Close the menu.
+    pub const MENU_CLOSE: u8 = 26;
 }
 
 /// The actions both the keyboard and the chips trigger.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Action {
+pub(crate) enum Action {
     Play,
     Grid,
     Snap,
@@ -444,11 +505,39 @@ enum Action {
     Loop,
     LoopIn,
     LoopOut,
+    Copy,
+    Cut,
+    Paste,
+    PasteHere,
+    Duplicate,
+    Phrase,
+    Level,
+    Edit(Field),
+    CloseMenu,
 }
 
 /// The actions the chips asked for this frame (read by `editor_input`).
+/// Public to the crate so the editor drill can press a menu item the
+/// way a click on it does.
 #[derive(Resource, Default)]
-struct ChipActions(Vec<Action>);
+pub(crate) struct ChipActions(pub(crate) Vec<Action>);
+
+/// The actions, for the editor drill.
+pub(crate) mod actions {
+    /// Delete (a menu item).
+    pub const DELETE: super::Action = super::Action::Delete;
+    /// Copy.
+    pub const COPY: super::Action = super::Action::Copy;
+    /// Paste at the playhead.
+    pub const PASTE: super::Action = super::Action::Paste;
+    /// Type the selected note's time.
+    pub const EDIT_TIME: super::Action =
+        super::Action::Edit(beatbyte_editor::inspector::Field::Time);
+    /// A star-power phrase over the selection.
+    pub const PHRASE: super::Action = super::Action::Phrase;
+    /// The next difficulty.
+    pub const LEVEL: super::Action = super::Action::Level;
+}
 
 #[allow(clippy::type_complexity)] // Bevy query tuple
 fn editor_chips(
@@ -464,7 +553,10 @@ fn editor_chips(
     mut out: ResMut<ChipActions>,
 ) {
     let pressed = crate::ui_kit::read_chips(&mut chips, &mut labels);
-    out.0 = pressed
+    // Appended, never assigned: `editor_input` takes the list each
+    // frame, and whatever else asked for an action this frame (the
+    // drill pressing a menu item) must not be overwritten.
+    let asked: Vec<Action> = pressed
         .into_iter()
         .filter_map(|id| match id {
             chip::PLAY => Some(Action::Play),
@@ -482,9 +574,21 @@ fn editor_chips(
             chip::BACK => Some(Action::Back),
             chip::SPEED => Some(Action::Speed),
             chip::LOOP => Some(Action::Loop),
+            chip::COPY => Some(Action::Copy),
+            chip::CUT => Some(Action::Cut),
+            chip::PASTE => Some(Action::Paste),
+            chip::PASTE_HERE => Some(Action::PasteHere),
+            chip::DUPLICATE => Some(Action::Duplicate),
+            chip::PHRASE => Some(Action::Phrase),
+            chip::LEVEL => Some(Action::Level),
+            chip::FIELD_TIME => Some(Action::Edit(Field::Time)),
+            chip::FIELD_LANE => Some(Action::Edit(Field::Lane)),
+            chip::FIELD_LENGTH => Some(Action::Edit(Field::Length)),
+            chip::MENU_CLOSE => Some(Action::CloseMenu),
             _ => None,
         })
         .collect();
+    out.0.extend(asked);
 }
 
 /// Whether a command modifier (Cmd on macOS, Ctrl elsewhere) is held.
@@ -562,7 +666,7 @@ pub(crate) fn seek(
 
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 #[allow(clippy::too_many_lines)] // the key map, read top to bottom
-fn editor_input(
+pub(crate) fn editor_input(
     keys: Res<ButtonInput<KeyCode>>,
     state: Option<ResMut<EditorState>>,
     music: Res<Music>,
@@ -576,6 +680,12 @@ fn editor_input(
         return;
     };
     state.exit_armed = (state.exit_armed - time.delta_secs()).max(0.0);
+    // A field being typed into owns the keyboard; the frame it closes
+    // on, its Enter / Esc are spent.
+    if state.field.is_some() || std::mem::take(&mut state.typing_ate_keys) {
+        chips.0.clear();
+        return;
+    }
     let now = time.elapsed_secs_f64();
     let command = command_held(&keys);
     let shift = shift_held(&keys);
@@ -619,6 +729,15 @@ fn editor_input(
         (pressed(KeyCode::KeyL), Action::Loop),
         (pressed(KeyCode::KeyI), Action::LoopIn),
         (pressed(KeyCode::KeyO), Action::LoopOut),
+        (command && pressed(KeyCode::KeyC), Action::Copy),
+        (command && pressed(KeyCode::KeyX), Action::Cut),
+        (command && pressed(KeyCode::KeyV), Action::Paste),
+        (command && pressed(KeyCode::KeyD), Action::Duplicate),
+        (pressed(KeyCode::KeyY), Action::Phrase),
+        (pressed(KeyCode::KeyQ), Action::Level),
+        (pressed(KeyCode::Comma), Action::Edit(Field::Time)),
+        (pressed(KeyCode::Period), Action::Edit(Field::Lane)),
+        (pressed(KeyCode::Semicolon), Action::Edit(Field::Length)),
     ];
     actions.extend(
         key_actions
@@ -706,7 +825,7 @@ fn editor_input(
         }
     }
     // V: set/clear the time-range anchor at the cursor.
-    if pressed(KeyCode::KeyV) {
+    if pressed(KeyCode::KeyV) && !command {
         state.status = if state.select_anchor.take().is_some() {
             "range cleared".to_owned()
         } else {
@@ -734,6 +853,11 @@ fn editor_input(
     }
 
     for action in actions {
+        // Any action from the menu (or anywhere) closes the menu.
+        let from_menu = state.menu.take();
+        if from_menu.is_some() {
+            state.dirty_view = true;
+        }
         match action {
             Action::Play => toggle_preview(&mut state, &music, &mut game_clock, &settings, now),
             Action::Grid => {
@@ -816,6 +940,82 @@ fn editor_input(
                 }
                 state.dirty_view = true;
             }
+            Action::Copy | Action::Cut => {
+                state.clip = Clip::copy(state.notes(), &state.selection);
+                if state.clip.is_empty() {
+                    state.status = "nothing selected to copy".to_owned();
+                } else if action == Action::Cut {
+                    let count = state.clip.len();
+                    state.delete_selection();
+                    state.status = format!("{count} note(s) cut");
+                } else {
+                    state.status = format!("{} note(s) copied", state.clip.len());
+                }
+            }
+            Action::Paste | Action::PasteHere | Action::Duplicate => {
+                let at = match (action, from_menu) {
+                    (Action::PasteHere, Some(menu)) => Some(state.snap(menu.time)),
+                    (Action::Duplicate, _) => {
+                        // Right after the selection, one grid step on.
+                        state.clip = Clip::copy(state.notes(), &state.selection);
+                        clipboard::selection_span(state.notes(), &state.selection).map(|span| {
+                            match &state.grid {
+                                Some(grid) => grid.step(span.1, state.division, 1),
+                                None => span.1 + 0.25,
+                            }
+                        })
+                    }
+                    _ => Some(state.snap(state.cursor_s)),
+                };
+                match at {
+                    Some(at) if !state.clip.is_empty() => {
+                        let (ops, keys) = state.clip.paste(state.session.difficulty, at);
+                        let count = keys.len();
+                        if state.apply(ops, &format!("{count} note(s) pasted")) {
+                            state.selection = keys;
+                        }
+                    }
+                    _ => state.status = "nothing to paste - copy first (Cmd+C)".to_owned(),
+                }
+            }
+            Action::Phrase => phrase(&mut state),
+            Action::Level => {
+                let order = [
+                    beatbyte_core::Difficulty::Easy,
+                    beatbyte_core::Difficulty::Medium,
+                    beatbyte_core::Difficulty::Hard,
+                    beatbyte_core::Difficulty::Expert,
+                ];
+                let at = order
+                    .iter()
+                    .position(|d| *d == state.session.difficulty)
+                    .unwrap_or(0);
+                let next = order[(at + 1) % order.len()];
+                state.selection.clear();
+                state.status = match state.session.set_difficulty(next) {
+                    Ok(true) => format!("{next}: new and empty (U undoes creating it)"),
+                    Ok(false) => format!("editing {next} - the others stay as they are"),
+                    Err(error) => error.to_string(),
+                };
+                state.dirty_view = true;
+            }
+            Action::Edit(field) => {
+                let one = state
+                    .notes()
+                    .iter()
+                    .filter(|n| state.is_selected(n))
+                    .copied()
+                    .collect::<Vec<_>>();
+                match one.as_slice() {
+                    [note] => {
+                        state.field = Some((field, field.current(note)));
+                        state.status =
+                            format!("type the {} - Enter sets, Esc cancels", field.label());
+                    }
+                    _ => state.status = "select exactly one note to type its values".to_owned(),
+                }
+            }
+            Action::CloseMenu => {}
             Action::LoopIn | Action::LoopOut => {
                 let at = state.cursor_s;
                 let region = match (state.loop_region, action) {
@@ -841,7 +1041,9 @@ fn editor_input(
 
 /// ESC / Back: cancel what is pending, else leave (twice if unsaved).
 fn back(state: &mut EditorState, next_state: &mut NextState<AppState>) {
-    if state.help {
+    if state.menu.take().is_some() {
+        state.dirty_view = true;
+    } else if state.help {
         state.help = false;
     } else if state.drag.take().is_some() {
         state.status = "cancelled".to_owned();
@@ -923,6 +1125,97 @@ fn grab_or_place(state: &mut EditorState) {
             None => "no note here to move".to_owned(),
         };
     }
+}
+
+/// Y: a star-power phrase over the selection (replacing what it
+/// overlaps), or — nothing selected — remove the phrase at the
+/// playhead.
+fn phrase(state: &mut EditorState) {
+    let difficulty = state.session.difficulty;
+    let phrases = state
+        .session
+        .chart()
+        .chart_for(difficulty)
+        .map(|def| def.phrases.clone())
+        .unwrap_or_default();
+    if let Some(span) = clipboard::selection_span(state.notes(), &state.selection) {
+        let ops = clipboard::phrase_over(difficulty, &phrases, span);
+        state.apply(ops, "star-power phrase over the selection");
+    } else if let Some(phrase) = clipboard::phrase_at(&phrases, state.cursor_s) {
+        state.apply(
+            vec![EditOp::RemovePhrase { difficulty, phrase }],
+            "star-power phrase removed",
+        );
+    } else {
+        state.status =
+            "select notes for a phrase, or put the playhead in one to remove it".to_owned();
+    }
+}
+
+/// Typing into an inspector field: digits and separators the field
+/// takes, Backspace, Enter sets, Esc cancels.
+pub(crate) fn editor_typing(
+    state: Option<ResMut<EditorState>>,
+    mut typed: MessageReader<bevy::input::keyboard::KeyboardInput>,
+) {
+    let Some(mut state) = state else {
+        typed.clear();
+        return;
+    };
+    let Some((field, mut text)) = state.field.clone() else {
+        typed.clear();
+        return;
+    };
+    use bevy::input::keyboard::Key;
+    let mut close: Option<bool> = None;
+    for event in typed.read() {
+        if !event.state.is_pressed() {
+            continue;
+        }
+        match &event.logical_key {
+            Key::Character(chars) => {
+                text.extend(chars.chars().filter(|c| field.accepts(*c)));
+            }
+            Key::Backspace => {
+                text.pop();
+            }
+            Key::Enter => close = Some(true),
+            Key::Escape => close = Some(false),
+            _ => {}
+        }
+    }
+    match close {
+        None => state.field = Some((field, text)),
+        Some(apply) => {
+            state.field = None;
+            state.typing_ate_keys = true;
+            if !apply {
+                state.status = "unchanged".to_owned();
+                return;
+            }
+            let note = state.notes().iter().find(|n| state.is_selected(n)).copied();
+            let Some(note) = note else {
+                return;
+            };
+            let difficulty = state.session.difficulty;
+            match inspector::apply_field(difficulty, &note, field, &text, state.grid.as_ref()) {
+                Ok(Some(op)) => {
+                    let key = match op {
+                        EditOp::MoveNote {
+                            to_time, to_lane, ..
+                        } => (to_time, to_lane),
+                        _ => (note.time, note.lane),
+                    };
+                    if state.apply(vec![op], "set") {
+                        state.selection = vec![key];
+                    }
+                }
+                Ok(None) => state.status = "unchanged".to_owned(),
+                Err(message) => state.status = message,
+            }
+        }
+    }
+    state.dirty_view = true;
 }
 
 /// Save the edit as a new chart version (see [`Saver`]); the status

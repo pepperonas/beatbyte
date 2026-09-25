@@ -139,6 +139,9 @@ pub enum EditError {
     /// Only an empty difficulty may be removed.
     #[error("`{0}` still has notes or phrases")]
     DifficultyNotEmpty(Difficulty),
+    /// One step may edit one difficulty only (undo is per difficulty).
+    #[error("one edit step touched more than one difficulty")]
+    MixedDifficulties,
     /// No note exists at that time and lane.
     #[error("no note at {time:.3}s lane {lane}")]
     NoteNotFound {
@@ -154,6 +157,25 @@ fn find_note(notes: &[ChartNote], time: f64, lane: u8) -> Option<usize> {
     notes
         .iter()
         .position(|note| note.lane == lane && (note.time - time).abs() <= EDIT_EPSILON_S)
+}
+
+impl EditOp {
+    /// The difficulty an operation edits.
+    #[must_use]
+    pub fn difficulty(&self) -> Difficulty {
+        match *self {
+            EditOp::AddNote { difficulty, .. }
+            | EditOp::RemoveNote { difficulty, .. }
+            | EditOp::ToggleHopo { difficulty, .. }
+            | EditOp::MoveNote { difficulty, .. }
+            | EditOp::SetLen { difficulty, .. }
+            | EditOp::AddPhrase { difficulty, .. }
+            | EditOp::RemovePhrase { difficulty, .. }
+            | EditOp::SetPhrase { difficulty, .. }
+            | EditOp::AddDifficulty { difficulty }
+            | EditOp::RemoveEmptyDifficulty { difficulty } => difficulty,
+        }
+    }
 }
 
 /// Find a phrase by both bounds within the edit epsilon.
@@ -202,18 +224,7 @@ pub fn apply(chart: &mut ChartFile, op: EditOp) -> Result<EditOp, EditError> {
         }
         _ => {}
     }
-    let difficulty = match op {
-        EditOp::AddNote { difficulty, .. }
-        | EditOp::RemoveNote { difficulty, .. }
-        | EditOp::ToggleHopo { difficulty, .. }
-        | EditOp::MoveNote { difficulty, .. }
-        | EditOp::SetLen { difficulty, .. }
-        | EditOp::AddPhrase { difficulty, .. }
-        | EditOp::RemovePhrase { difficulty, .. }
-        | EditOp::SetPhrase { difficulty, .. }
-        | EditOp::AddDifficulty { difficulty }
-        | EditOp::RemoveEmptyDifficulty { difficulty } => difficulty,
-    };
+    let difficulty = op.difficulty();
     let def = chart
         .charts
         .iter_mut()

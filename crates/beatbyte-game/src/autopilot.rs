@@ -144,9 +144,15 @@ impl Plugin for AutopilotPlugin {
                     autopilot_menu.run_if(in_state(AppState::MainMenu)),
                     autopilot_song_select.run_if(in_state(AppState::SongSelect)),
                     autopilot_edit.run_if(in_state(AppState::Editor)),
+                    // After the text field and before the editor's keys:
+                    // injected key events then reach the field and the
+                    // key state in the same frame, as real ones do (run
+                    // before the field, the Backspaces that cleared it
+                    // arrived a frame later as Delete).
                     autopilot_edit_mouse
                         .run_if(in_state(AppState::Editor))
-                        .before(crate::editor_ui::pointer::editor_pointer),
+                        .after(crate::editor_ui::editor_typing)
+                        .before(crate::editor_ui::editor_input),
                     autopilot_results.run_if(in_state(AppState::Results)),
                     autopilot_drop.run_if(in_state(AppState::SongSelect)),
                     fail_if_window_vanishes,
@@ -979,10 +985,40 @@ pub struct MouseDrill {
     notes_before: usize,
     depth_before: usize,
     zoom_pivot: Option<(f32, f64, f64)>,
+    notes_seen: usize,
+    phrases_before: usize,
+    home: Option<(beatbyte_core::Difficulty, Vec<beatbyte_chart::ChartNote>)>,
+    pasted: (f64, u8),
+    typed_to: f64,
     /// Whether every check passed.
     pub ok: bool,
     /// Whether the drill is over.
     pub done: bool,
+}
+
+/// The star-power phrases of the difficulty being edited.
+fn phrase_count(state: &crate::editor_ui::EditorState) -> usize {
+    state
+        .session
+        .chart()
+        .chart_for(state.session.difficulty)
+        .map_or(0, |def| def.phrases.len())
+}
+
+/// A key press as the window delivers it.
+fn key_event(
+    window: Entity,
+    key_code: KeyCode,
+    logical_key: bevy::input::keyboard::Key,
+) -> bevy::input::keyboard::KeyboardInput {
+    bevy::input::keyboard::KeyboardInput {
+        key_code,
+        logical_key,
+        state: bevy::input::ButtonState::Pressed,
+        text: None,
+        repeat: false,
+        window,
+    }
 }
 
 /// Drive the REAL pointer code, one gesture per frame: place a note
@@ -999,7 +1035,9 @@ fn autopilot_edit_mouse(
     mut buttons: ResMut<ButtonInput<MouseButton>>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut wheel: MessageWriter<bevy::input::mouse::MouseWheel>,
+    mut typed: MessageWriter<bevy::input::keyboard::KeyboardInput>,
     windows: Query<Entity, With<bevy::window::PrimaryWindow>>,
+    mut chip_actions: ResMut<crate::editor_ui::ChipActions>,
 ) {
     use beatbyte_editor::view;
     let (Some(mut drill), Some(mut state)) = (drill, state) else {
@@ -1158,19 +1196,52 @@ fn autopilot_edit_mouse(
         }
         13 => buttons.release(MouseButton::Right),
         14 => {
+            let passed =
+                state.selection.is_empty() && state.menu.is_some_and(|menu| menu.target.is_none());
             check(
                 &mut drill,
-                "right-click on empty space clears the selection",
-                state.selection.is_empty(),
+                "right-click on empty space opens the space menu, selection cleared",
+                passed,
             );
+            // A click beside the menu closes it and places nothing.
+            drill.notes_seen = state.notes().len();
+            buttons.press(MouseButton::Left);
+        }
+        15 => buttons.release(MouseButton::Left),
+        16 => {
+            let passed = state.menu.is_none() && state.notes().len() == drill.notes_seen;
+            check(&mut drill, "a click beside the menu only closes it", passed);
             point(&mut commands, xy(drill.probe.1, drill.probe.0));
             buttons.press(MouseButton::Right);
         }
-        15 => buttons.release(MouseButton::Right),
-        16 => {
-            let passed =
-                note_at(&state, drill.probe).is_none() && state.notes().len() == drill.notes_before;
-            check(&mut drill, "right-click deletes the note", passed);
+        17 => {
+            buttons.release(MouseButton::Right);
+            if let Some(dir) = std::env::var_os("BEATBYTE_SHOT_DIR") {
+                let path = std::path::PathBuf::from(dir).join("beatbyte-editor-menu.png");
+                commands
+                    .spawn(Screenshot::primary_window())
+                    .observe(save_to_disk(path));
+            }
+        }
+        18 => {
+            let probe = drill.probe;
+            let passed = state
+                .menu
+                .and_then(|menu| menu.target)
+                .is_some_and(|key| key.1 == probe.1 && (key.0 - probe.0).abs() < 1e-6);
+            check(&mut drill, "right-click on a note opens its menu", passed);
+            // The menu's Delete, exactly as a click on it arrives.
+            chip_actions.0.push(crate::editor_ui::actions::DELETE);
+        }
+        19 => {
+            let passed = note_at(&state, drill.probe).is_none()
+                && state.notes().len() == drill.notes_before
+                && state.menu.is_none();
+            check(
+                &mut drill,
+                "the menu's Delete deletes the note and closes",
+                passed,
+            );
             // Cmd/Ctrl + wheel: zoom around the pointer.
             let pivot_y = 40.0f32;
             point(&mut commands, Vec2::new(view::lane_x(2) as f32, pivot_y));
@@ -1190,7 +1261,7 @@ fn autopilot_edit_mouse(
                 });
             }
         }
-        17 => {
+        20 => {
             keys.release(KeyCode::ControlLeft);
             if let Some((pivot_y, pivot_time, zoom)) = drill.zoom_pivot {
                 check(
@@ -1200,13 +1271,129 @@ fn autopilot_edit_mouse(
                         && (state.view.time_at(f64::from(pivot_y)) - pivot_time).abs() < 1e-3,
                 );
             }
-            // Everything the mouse did undoes, back to the start.
+            // Copy and paste: the deleted note back (undo), copied,
+            // pasted two seconds later with its length.
+            let back = state.session.undo();
+            let passed = back && note_at(&state, drill.probe).is_some();
+            check(&mut drill, "undo brings the deleted note back", passed);
+            state.selection = vec![drill.probe];
+            chip_actions.0.push(crate::editor_ui::actions::COPY);
+        }
+        21 => {
+            state.cursor_s = drill.probe.0 + 2.0;
+            chip_actions.0.push(crate::editor_ui::actions::PASTE);
+        }
+        22 => {
+            let at = state.snap_with(drill.probe.0 + 2.0, false);
+            let original = note_at(&state, drill.probe);
+            let pasted = note_at(&state, (at, drill.probe.1));
+            let passed = pasted.is_some_and(|p| {
+                original.is_some_and(|o| (p.len - o.len).abs() < 1e-9 && p.len > 0.0)
+            }) && state.selection.len() == 1;
+            check(
+                &mut drill,
+                "copy and paste carry the note and its length",
+                passed,
+            );
+            drill.pasted = (at, drill.probe.1);
+            // Type its time: open the field, then real key events.
+            chip_actions.0.push(crate::editor_ui::actions::EDIT_TIME);
+        }
+        23 => {
+            let passed = state.field.is_some();
+            check(
+                &mut drill,
+                "the time field opens on the selected note",
+                passed,
+            );
+            let target = format!("{:.3}", drill.pasted.0 + 1.0);
+            // Replace the shown value: backspace it away, then type.
+            if let Ok(window) = windows.single() {
+                let shown = state.field.as_ref().map_or(0, |(_, text)| text.len());
+                for _ in 0..shown {
+                    typed.write(key_event(
+                        window,
+                        KeyCode::Backspace,
+                        bevy::input::keyboard::Key::Backspace,
+                    ));
+                }
+                for c in target.chars() {
+                    typed.write(key_event(
+                        window,
+                        KeyCode::Digit0,
+                        bevy::input::keyboard::Key::Character(c.to_string().into()),
+                    ));
+                }
+                typed.write(key_event(
+                    window,
+                    KeyCode::Enter,
+                    bevy::input::keyboard::Key::Enter,
+                ));
+            }
+            drill.typed_to = target.parse().unwrap_or(0.0);
+        }
+        24 => {}
+        25 => {
+            let lane = drill.pasted.1;
+            info!(
+                "autopilot: typed field: field {:?}, status `{}`, wanted {:.3} lane {lane}, selected {:?}",
+                state.field, state.status, drill.typed_to, state.selection
+            );
+            let passed = state.field.is_none()
+                && note_at(&state, (drill.typed_to, lane)).is_some()
+                && note_at(&state, drill.pasted).is_none()
+                && !state.previewing;
+            check(
+                &mut drill,
+                "a typed time moves the note exactly, Enter does not play",
+                passed,
+            );
+            // A star-power phrase over the selected note.
+            drill.phrases_before = phrase_count(&state);
+            chip_actions.0.push(crate::editor_ui::actions::PHRASE);
+        }
+        26 => {
+            let passed = phrase_count(&state) == drill.phrases_before + 1;
+            check(
+                &mut drill,
+                "Y lays a star-power phrase over the selection",
+                passed,
+            );
+            // The next difficulty: this one must stay exactly as it is.
+            drill.home = Some((state.session.difficulty, state.notes().to_vec()));
+            chip_actions.0.push(crate::editor_ui::actions::LEVEL);
+        }
+        27 => {
+            let passed = drill.home.as_ref().is_some_and(|(home, notes)| {
+                state.session.difficulty != *home
+                    && state
+                        .session
+                        .chart()
+                        .chart_for(*home)
+                        .is_some_and(|def| def.notes == *notes)
+            });
+            check(
+                &mut drill,
+                "Q switches difficulty and leaves the other untouched",
+                passed,
+            );
+            if let Some((home, _)) = drill.home.clone() {
+                let _ = state.session.set_difficulty(home);
+                state.selection.clear();
+            }
+            // Everything the drill did undoes, back to the start.
             let mut undone = 0;
             while state.session.undo_depth() > drill.depth_before && state.session.undo() {
                 undone += 1;
             }
-            let passed = undone == 4 && state.notes().len() == drill.notes_before;
-            check(&mut drill, "the mouse edits undo exactly (4 steps)", passed);
+            let passed = undone == 6
+                && state.notes().len() == drill.notes_before
+                && phrase_count(&state) == drill.phrases_before;
+            check(
+                &mut drill,
+                "the drill's edits undo exactly (6 steps)",
+                passed,
+            );
             commands.remove_resource::<crate::editor_ui::pointer::InjectedPointer>();
             drill.done = true;
         }

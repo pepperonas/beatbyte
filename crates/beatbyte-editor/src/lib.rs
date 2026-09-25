@@ -7,6 +7,8 @@
 //! unit-tested without an engine, mirroring the core/session split
 //! (ADR-0002).
 
+pub mod clipboard;
+pub mod inspector;
 pub mod ops;
 pub mod playback;
 pub mod save;

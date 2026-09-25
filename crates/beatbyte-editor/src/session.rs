@@ -12,7 +12,11 @@ pub struct EditorSession {
     /// The difficulty currently being edited.
     pub difficulty: Difficulty,
     /// Undo steps; each entry is a GROUP of inverses (a single edit is
-    /// a group of one, a bulk edit one group) applied in reverse.
+    /// a group of one, a bulk edit one group) applied in reverse. A
+    /// group edits one difficulty, and undo and redo take the newest
+    /// group OF THE DIFFICULTY BEING EDITED: an undo on Expert never
+    /// reaches into Medium out of sight. That is sound because groups
+    /// of different difficulties touch disjoint charts and commute.
     undo: Vec<Vec<EditOp>>,
     redo: Vec<Vec<EditOp>>,
     dirty: bool,
@@ -64,6 +68,10 @@ impl EditorSession {
         if ops.is_empty() {
             return Ok(());
         }
+        let difficulty = ops[0].difficulty();
+        if ops.iter().any(|op| op.difficulty() != difficulty) {
+            return Err(EditError::MixedDifficulties);
+        }
         let mut inverses = Vec::with_capacity(ops.len());
         for op in ops {
             match apply(&mut self.chart, op) {
@@ -80,16 +88,43 @@ impl EditorSession {
             }
         }
         self.undo.push(inverses);
-        self.redo.clear();
+        self.redo
+            .retain(|group| Self::group_difficulty(group) != Some(difficulty));
         self.dirty = true;
         Ok(())
     }
 
+    fn group_difficulty(group: &[EditOp]) -> Option<Difficulty> {
+        group.first().map(EditOp::difficulty)
+    }
+
+    /// The newest group on `stack` that edits the current difficulty.
+    fn newest_here(stack: &[Vec<EditOp>], difficulty: Difficulty) -> Option<usize> {
+        stack
+            .iter()
+            .rposition(|group| Self::group_difficulty(group) == Some(difficulty))
+    }
+
+    /// Switch to another difficulty. One the chart does not carry yet
+    /// is added EMPTY, as an undoable step of that difficulty.
+    ///
+    /// # Errors
+    /// Never in practice; the add is checked like every edit.
+    pub fn set_difficulty(&mut self, difficulty: Difficulty) -> Result<bool, EditError> {
+        let created = self.chart.chart_for(difficulty).is_none();
+        self.difficulty = difficulty;
+        if created {
+            self.edit(EditOp::AddDifficulty { difficulty })?;
+        }
+        Ok(created)
+    }
+
     /// Undo the last edit step. Returns whether anything happened.
     pub fn undo(&mut self) -> bool {
-        let Some(group) = self.undo.pop() else {
+        let Some(index) = Self::newest_here(&self.undo, self.difficulty) else {
             return false;
         };
+        let group = self.undo.remove(index);
         match Self::apply_group(&mut self.chart, group) {
             Ok(redo_group) => {
                 self.redo.push(redo_group);
@@ -105,9 +140,10 @@ impl EditorSession {
     /// Redo the last undone edit step. Returns whether anything
     /// happened.
     pub fn redo(&mut self) -> bool {
-        let Some(group) = self.redo.pop() else {
+        let Some(index) = Self::newest_here(&self.redo, self.difficulty) else {
             return false;
         };
+        let group = self.redo.remove(index);
         match Self::apply_group(&mut self.chart, group) {
             Ok(undo_group) => {
                 self.undo.push(undo_group);
@@ -129,10 +165,13 @@ impl EditorSession {
         Ok(produced)
     }
 
-    /// Depth of the undo stack.
+    /// Depth of the undo stack of the difficulty being edited.
     #[must_use]
     pub fn undo_depth(&self) -> usize {
-        self.undo.len()
+        self.undo
+            .iter()
+            .filter(|group| Self::group_difficulty(group) == Some(self.difficulty))
+            .count()
     }
 
     /// Whether the chart currently validates cleanly (no errors).
@@ -338,6 +377,86 @@ mod tests {
             medium
         );
         assert_eq!(session.chart().charts.len(), 2);
+    }
+
+    fn add_at(difficulty: Difficulty, time: f64) -> EditOp {
+        EditOp::AddNote {
+            difficulty,
+            note: ChartNote {
+                time,
+                lane: 0,
+                len: 0.0,
+                hopo: false,
+            },
+        }
+    }
+
+    /// ⚠️ Undo takes the newest step OF THE DIFFICULTY BEING EDITED:
+    /// work on Medium is never undone from Expert, and a new edit on
+    /// one difficulty keeps the other's redo.
+    #[test]
+    fn undo_and_redo_are_per_difficulty() {
+        let mut session = EditorSession::new(chart(), Difficulty::Expert).unwrap();
+        session.edit(add_at(Difficulty::Expert, 1.0)).unwrap();
+        assert!(
+            session.set_difficulty(Difficulty::Medium).unwrap(),
+            "created empty"
+        );
+        session.edit(add_at(Difficulty::Medium, 2.0)).unwrap();
+        session.edit(add_at(Difficulty::Medium, 3.0)).unwrap();
+        assert!(session.undo());
+        assert_eq!(
+            session.undo_depth(),
+            2,
+            "the add of Medium itself is a step"
+        );
+        session.difficulty = Difficulty::Expert;
+        assert_eq!(session.undo_depth(), 1);
+        assert!(session.undo(), "Expert's own step");
+        assert!(
+            session
+                .chart()
+                .chart_for(Difficulty::Expert)
+                .unwrap()
+                .notes
+                .is_empty()
+        );
+        assert_eq!(
+            session
+                .chart()
+                .chart_for(Difficulty::Medium)
+                .unwrap()
+                .notes
+                .len(),
+            1
+        );
+        assert!(!session.undo(), "nothing more on Expert");
+        // A new edit on Expert keeps Medium's redo.
+        session.edit(add_at(Difficulty::Expert, 5.0)).unwrap();
+        session.difficulty = Difficulty::Medium;
+        assert!(session.redo(), "Medium's redo survived");
+        assert_eq!(
+            session
+                .chart()
+                .chart_for(Difficulty::Medium)
+                .unwrap()
+                .notes
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn a_step_edits_one_difficulty() {
+        let mut session = EditorSession::new(chart(), Difficulty::Expert).unwrap();
+        session.set_difficulty(Difficulty::Easy).unwrap();
+        let before = session.chart().clone();
+        let result = session.edit_batch(vec![
+            add_at(Difficulty::Expert, 1.0),
+            add_at(Difficulty::Easy, 1.0),
+        ]);
+        assert_eq!(result, Err(EditError::MixedDifficulties));
+        assert_eq!(session.chart(), &before);
     }
 
     #[test]

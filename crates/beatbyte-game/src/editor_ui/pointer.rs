@@ -10,8 +10,9 @@
 //!   selection (one undo step);
 //! - drag the tab above a note: its length;
 //! - drag in empty lane space: box selection (Shift adds);
-//! - right-click a note: delete it (the whole selection when it is in
-//!   it); right-click empty space: clear the selection;
+//! - right-click: the menu (delete, HOPO, copy, cut, paste here,
+//!   duplicate, star phrase, type time / lane / length) on the note
+//!   under the pointer, or on empty space (the selection cleared);
 //! - click or drag the ruler / waveform: move the playhead (the music
 //!   follows while it plays); Shift-drag there: a loop region;
 //! - wheel: scroll; Cmd/Ctrl + wheel: zoom around the pointer.
@@ -121,6 +122,13 @@ pub fn editor_pointer(
             state.hover = hover;
             state.dirty_view = true;
         }
+    }
+
+    // A click beside an open menu closes it and does nothing else.
+    if state.menu.is_some() && buttons.just_pressed(MouseButton::Left) && !over_toolbar {
+        state.menu = None;
+        state.dirty_view = true;
+        return;
     }
 
     // Press.
@@ -324,10 +332,11 @@ pub fn editor_pointer(
         }
     }
 
-    // Right-click: delete what is under the pointer.
+    // Right-click: the menu, on the note under the pointer (selected
+    // with it) or on empty space (the selection cleared).
     if buttons.just_pressed(MouseButton::Right) && in_band {
         state.dirty_view = true;
-        match hit {
+        let target = match hit {
             Hit::Head { time, lane } | Hit::Handle { time, lane } => {
                 let key = (time, lane);
                 let in_selection = state
@@ -335,24 +344,20 @@ pub fn editor_pointer(
                     .iter()
                     .find(|n| view::same_note(key, n))
                     .is_some_and(|n| state.is_selected(n));
-                if in_selection {
-                    state.delete_selection();
-                } else if let Some(note) = state
-                    .notes()
-                    .iter()
-                    .find(|n| view::same_note(key, n))
-                    .copied()
-                {
-                    let difficulty = state.session.difficulty;
-                    state.apply(
-                        vec![EditOp::RemoveNote { difficulty, note }],
-                        "note deleted",
-                    );
+                if !in_selection {
+                    state.selection = vec![key];
                 }
+                Some(key)
             }
             Hit::Lane { .. } | Hit::Ruler { .. } => {
                 state.selection.clear();
+                None
             }
-        }
+        };
+        state.menu = Some(super::Menu {
+            at,
+            time: time_here,
+            target,
+        });
     }
 }
