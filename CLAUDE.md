@@ -1009,6 +1009,16 @@ artifact, smoke-test it (neutral CWD!), then
   song's scratch once its output exists (the script now reports the
   failures by name — the first version lost that list to bash 3.2's
   `set -u` on an empty array).
+- **A drill nobody runs rots without a sound.** `BEATBYTE_AUTOPILOT_DELETE`
+  still answered the delete question with a second Backspace months
+  after the answer became `Y` (Backspace only ASKS since a player lost
+  songs while clearing text) — it could not have passed, and nothing
+  said so, because no gate runs it. It also counted rows in library
+  order while the browser shows them sorted, and asked "is it gone?"
+  by title, which after a deletion still finds the `[GS]` twin. When a
+  screen's keys change, grep the autopilot for the drills that drive
+  that screen; and a drill identifies its target by what cannot
+  change under it (its files), not by what it shares with a twin.
 - **A number whose meaning is unknown must not decide anything.** The
   classic chord ingredient first took its minimum spacing (200 ms) from
   a field of the early games' configs, `min_combo_spacing`, that the
