@@ -1045,6 +1045,12 @@ artifact, smoke-test it (neutral CWD!), then
   selected, pointers republished in another spelling), none on the
   device that had the data. A merge that is correct between two full
   states can still be wrong from an empty one.
+- **On the 2015 a game started over SSH hangs while the display
+  sleeps** — right after the adapter line, 0 % CPU, state `U`, for as
+  long as the display stays off (30 min measured), and it continues
+  within a second of `caffeinate -u`. It first read as a slow "first
+  launch" and was written down as one. Remote runs there go under
+  `caffeinate -disu`.
 - **The Iris Pro in the 2015 cannot run this renderer** (Metal
   GPUFamily macOS 1: its compiler fails wgpu's and Bevy's compute
   pipelines, device lost at start). Bevy takes the AMD by default;
