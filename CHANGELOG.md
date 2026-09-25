@@ -14,6 +14,23 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.48] - 2026-09-25
+
+### Added
+
+- **Playtest a chart edit in the real highway** (F5 or the PLAYTEST
+  chip): the chart exactly as it is in the editor — saved or not —
+  plays with the song, the loop region if one is on, else the
+  selection, else from the playhead onward, each with two seconds of
+  music to come in on. The editor's playback speed carries into the
+  test. When the tested part is over (or on Esc) the game returns to
+  the editor where it was: same notes, same selection, same playhead,
+  same undo history, and the browser's difficulty and practice speed
+  as they were. The editor says how the test went ("12 of 14 hit, 2
+  missed"). A playtest is not a run: it sets no best score, adds no
+  line to the play history (achievements come from it) and records no
+  telemetry session.
+
 ## [0.18.47] - 2026-09-25
 
 ### Added

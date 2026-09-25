@@ -129,6 +129,15 @@ pub struct StoreRun {
 }
 
 impl StoreRun {
+    /// Whether a session is being recorded right now (a playtest must
+    /// never open one).
+    #[must_use]
+    pub fn recording(&self) -> bool {
+        !self.slots.is_empty()
+    }
+}
+
+impl StoreRun {
     /// Whether a session is open for this slot.
     fn open(&self, slot: u8) -> bool {
         self.slots.contains(&slot)
@@ -237,8 +246,11 @@ fn begin_store_session(
     settings: Res<crate::config::Settings>,
     autopilot: Option<Res<crate::autopilot::Autopilot>>,
     roster: Option<Res<crate::players::Players>>,
+    playtest: Option<Res<crate::editor_ui::Playtest>>,
 ) {
-    if !run.slots.is_empty() || players.is_empty() {
+    // A playtest plays a chart that exists in no file: a session would
+    // reference a hash nothing can resolve.
+    if !run.slots.is_empty() || players.is_empty() || playtest.is_some() {
         return;
     }
     let (Some(song), Some(difficulty)) = (song, difficulty) else {

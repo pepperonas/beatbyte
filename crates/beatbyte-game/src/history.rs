@@ -276,9 +276,15 @@ fn log_run(
     autopilot: Option<Res<crate::autopilot::Autopilot>>,
     roster: Option<Res<crate::multiplayer::PlayerRoster>>,
     players: Option<Res<crate::players::Players>>,
+    playtest: Option<Res<crate::editor_ui::Playtest>>,
 ) {
     commands.remove_resource::<RunCompleted>();
     commands.remove_resource::<RunStart>();
+    // A playtest is no run of the career: the chart it played exists
+    // in no file, and achievements are derived from this log.
+    if playtest.is_some() {
+        return;
+    }
     let (Some(start), Some(song), Some(difficulty)) = (start, song, difficulty) else {
         return;
     };

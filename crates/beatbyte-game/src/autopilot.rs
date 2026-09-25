@@ -144,6 +144,7 @@ impl Plugin for AutopilotPlugin {
                     autopilot_menu.run_if(in_state(AppState::MainMenu)),
                     autopilot_song_select.run_if(in_state(AppState::SongSelect)),
                     autopilot_edit.run_if(in_state(AppState::Editor)),
+                    autopilot_edit_playtest.run_if(in_state(AppState::Editor)),
                     // After the text field and before the editor's keys:
                     // injected key events then reach the field and the
                     // key state in the same frame, as real ones do (run
@@ -661,10 +662,15 @@ fn autopilot_edit(
     mouse: Option<Res<MouseDrill>>,
     mut commands: Commands,
     mut app_exit: MessageWriter<AppExit>,
+    stage: Option<Res<PlaytestStage>>,
 ) {
     let Some(mut state) = state else {
         return;
     };
+    // The playtest (phase 4) has its own system once it has begun.
+    if stage.is_some() {
+        return;
+    }
     *delay += time.delta_secs();
     if *delay < 1.0 {
         return;
@@ -736,9 +742,7 @@ fn autopilot_edit(
         }
         music.0.stop();
         game_clock.clock.stop();
-        if let Some(drill) = &drill {
-            let _ = std::fs::remove_dir_all(&drill.scratch);
-        }
+        state.previewing = false;
         let loop_ok = looped.as_ref().is_some_and(|check| {
             let end = check.song0 + 0.8;
             let slope = check.slope.unwrap_or(0.0);
@@ -758,16 +762,16 @@ fn autopilot_edit(
             deliver(&mut app_exit, AppExit::error());
             return;
         }
-        if clicks.0 >= 3 {
-            info!("autopilot: editor validation PASSED ({} clicks)", clicks.0);
-            deliver(&mut app_exit, AppExit::Success);
-        } else {
+        if clicks.0 < 3 {
             error!(
                 "autopilot: editor validation FAILED — audition ticked {} times (need >= 3)",
                 clicks.0
             );
             deliver(&mut app_exit, AppExit::error());
+            return;
         }
+        // Everything so far passed: the playtest phase takes over.
+        commands.insert_resource(PlaytestStage::default());
         return;
     }
     // Phase 1b: the keyboard-side edits are done; the mouse drill runs
@@ -785,7 +789,10 @@ fn autopilot_edit(
             return;
         }
         // Start the audition (preview from the cursor) and let phase 2
-        // assert the metronome overlay; four seconds of it.
+        // assert the metronome overlay; four seconds of it. From 5 s:
+        // the mouse drill may have worked near the song's end, past
+        // the music, where nothing plays.
+        state.cursor_s = 5.0;
         music.0.set_volume(0.3);
         music.0.play_file(state.audio_path.clone());
         music.0.set_song_gain(crate::loudness::song_gain_for(
@@ -957,6 +964,205 @@ fn autopilot_edit(
         error!("autopilot: editor validation FAILED");
         deliver(&mut app_exit, AppExit::error());
     }
+}
+
+/// The editor drill's last phase: the edited chart, saved and read
+/// back, played in the real highway from a selection — perfectly,
+/// with nothing recorded — and the editor where it was afterwards.
+#[derive(Resource, Default)]
+pub struct PlaytestStage {
+    snapshot: Option<PlaytestSnapshot>,
+}
+
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
+#[allow(clippy::too_many_lines)] // one phase, start and verdict
+fn autopilot_edit_playtest(
+    stage: Option<ResMut<PlaytestStage>>,
+    state: Option<ResMut<crate::editor_ui::EditorState>>,
+    drill: Option<Res<EditDrill>>,
+    clicks: Res<crate::editor_ui::AuditionClicks>,
+    mut chip_actions: ResMut<crate::editor_ui::ChipActions>,
+    report: Option<Res<crate::editor_ui::PlaytestReport>>,
+    playtest: Option<Res<crate::editor_ui::Playtest>>,
+    scores: Res<crate::scores::ScoreBoard>,
+    selected_difficulty: Res<crate::song_select::SelectedDifficulty>,
+    mut app_exit: MessageWriter<AppExit>,
+) {
+    let (Some(mut stage), Some(mut state)) = (stage, state) else {
+        return;
+    };
+    // Phase 4 (after everything else): back from the playtest — the
+    // edited chart played in the real highway, perfectly, nothing
+    // recorded, the editor where it was.
+    if let Some(snapshot) = stage.snapshot.as_ref() {
+        if playtest.is_some() {
+            return;
+        }
+        let Some(report) = report else {
+            error!("autopilot: editor validation FAILED — the playtest came back without a report");
+            deliver(&mut app_exit, AppExit::error());
+            return;
+        };
+        let history_now = history_lines();
+        info!(
+            "autopilot: playtest from {:.2}s — {} of {} hit, {} missed, {} overstrum(s), telemetry {}, history {} → {}",
+            report.began_s,
+            report.hit,
+            report.notes,
+            report.missed,
+            report.overstrums,
+            if report.recorded {
+                "RECORDED"
+            } else {
+                "not recorded"
+            },
+            snapshot.history,
+            history_now
+        );
+        let checks = [
+            (
+                "the window's notes were played",
+                report.notes == snapshot.notes && report.notes > 0,
+            ),
+            (
+                "every one hit, none missed",
+                report.hit == report.notes && report.missed == 0,
+            ),
+            ("no overstrum", report.overstrums == 0),
+            // It began at its window (less the lead and the count-in),
+            // not at the top of the song.
+            (
+                "it began at its window",
+                report.began_s
+                    > snapshot.from
+                        - beatbyte_editor::playback::PLAYTEST_LEAD_S
+                        - crate::gameplay::PREROLL_S
+                        - 1.0,
+            ),
+            ("no telemetry session", !report.recorded),
+            (
+                "no line in the play history",
+                history_now == snapshot.history,
+            ),
+            ("no best score touched", scores.to_json() == snapshot.scores),
+            (
+                "back where it was",
+                (state.cursor_s - snapshot.cursor).abs() < 1e-9
+                    && state.selection == snapshot.selection,
+            ),
+            (
+                "the browser's difficulty restored",
+                snapshot.difficulty == selected_difficulty.0,
+            ),
+        ];
+        let mut all = true;
+        for (what, passed) in checks {
+            if passed {
+                info!("autopilot: playtest {what}: ok");
+            } else {
+                error!("autopilot: playtest {what}: FAILED");
+                all = false;
+            }
+        }
+        if let Some(drill) = &drill {
+            let _ = std::fs::remove_dir_all(&drill.scratch);
+        }
+        if all {
+            info!("autopilot: editor validation PASSED ({} clicks)", clicks.0);
+            deliver(&mut app_exit, AppExit::Success);
+        } else {
+            error!("autopilot: editor validation FAILED — the playtest");
+            deliver(&mut app_exit, AppExit::error());
+        }
+        return;
+    }
+    if stage.snapshot.is_some() {
+        return;
+    }
+    // The saved version, read back from disk: what was edited is
+    // what is there (the mouse drill undid its own steps, so the
+    // session is back at the save).
+    let reloaded = beatbyte_chart::load_chart_file(&state.chart_path).ok();
+    let difficulty = state.session.difficulty;
+    let same = reloaded
+        .as_ref()
+        .and_then(|c| c.chart_for(difficulty))
+        .is_some_and(|def| {
+            def.notes.len() == state.notes().len()
+                && def.notes.iter().zip(state.notes()).all(|(a, b)| {
+                    a.lane == b.lane
+                        && (a.time - b.time).abs() < 1e-9
+                        && (a.len - b.len).abs() < 1e-9
+                        && a.hopo == b.hopo
+                })
+        });
+    if !same {
+        error!(
+            "autopilot: editor validation FAILED — the saved version does not read back as edited"
+        );
+        deliver(&mut app_exit, AppExit::error());
+        return;
+    }
+    info!("autopilot: the saved version reads back exactly as edited");
+    // Phase 4: a playtest of four seconds of notes, in the real
+    // highway, from a selection.
+    state.looping = false;
+    state.speed = 1.0;
+    let from = state
+        .notes()
+        .iter()
+        .map(|n| n.time)
+        .find(|t| *t >= 5.0)
+        .unwrap_or(0.0);
+    state.selection = state
+        .notes()
+        .iter()
+        .filter(|n| n.time >= from && n.time <= from + 4.0)
+        .map(|n| (n.time, n.lane))
+        .collect();
+    let notes = beatbyte_editor::playback::playtest_chart(
+        state.session.chart(),
+        difficulty,
+        from - beatbyte_editor::playback::PLAYTEST_LEAD_S,
+        beatbyte_editor::clipboard::selection_span(state.notes(), &state.selection)
+            .map(|span| span.1),
+    )
+    .to_track(difficulty)
+    .map_or(0, |track| track.len()) as u32;
+    stage.snapshot = Some(PlaytestSnapshot {
+        from,
+        notes,
+        history: history_lines(),
+        scores: scores.to_json(),
+        cursor: state.cursor_s,
+        selection: state.selection.clone(),
+        difficulty: selected_difficulty.0,
+    });
+    info!(
+        "autopilot: playtesting {} note event(s) from {from:.2}s",
+        notes
+    );
+    chip_actions.0.push(crate::editor_ui::actions::PLAYTEST);
+}
+
+/// What the drill saw before its playtest, to compare with after.
+pub struct PlaytestSnapshot {
+    from: f64,
+    notes: u32,
+    history: usize,
+    scores: String,
+    cursor: f64,
+    selection: Vec<(f64, u8)>,
+    difficulty: beatbyte_core::Difficulty,
+}
+
+/// Lines in the player's play history (the real one: a playtest must
+/// not add to it).
+fn history_lines() -> usize {
+    dirs::data_dir()
+        .map(|dir| dir.join("beatbyte").join("history.jsonl"))
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .map_or(0, |text| text.lines().count())
 }
 
 /// The editor drill's loop check: what the playhead did.
@@ -1400,7 +1606,10 @@ fn autopilot_edit_mouse(
                 .is_ok();
             check(&mut drill, "a note under a held note can be placed", added);
             state.dirty_view = true;
-            state.cursor_s = 0.0;
+            // Just before it: a real chart may carry warnings of its
+            // own earlier on, and W finds the next one AFTER the
+            // playhead.
+            state.cursor_s = under.0 - 0.005;
             drill.under = under;
         }
         // The warnings are drawn (and counted) after this system; W
@@ -1503,11 +1712,21 @@ fn autopilot_song_select(
                 error!("autopilot: no file-based song to edit");
                 std::process::exit(1);
             };
-            let difficulty = entry
-                .difficulties
-                .first()
-                .copied()
-                .unwrap_or(beatbyte_core::Difficulty::Medium);
+            // `BEATBYTE_AUTOPILOT_DIFFICULTY` as for a played run; the
+            // song's first difficulty otherwise.
+            let wanted = std::env::var("BEATBYTE_AUTOPILOT_DIFFICULTY").ok();
+            let difficulty = match resolve_difficulty(wanted.as_deref(), &entry.difficulties) {
+                Ok(Some(difficulty)) => difficulty,
+                Ok(None) => entry
+                    .difficulties
+                    .first()
+                    .copied()
+                    .unwrap_or(beatbyte_core::Difficulty::Medium),
+                Err(reason) => {
+                    error!("autopilot: {reason}");
+                    std::process::exit(1);
+                }
+            };
             // ⚠️ The drill SAVES, and it used to save into the player's
             // real chart. It edits a copy in a scratch folder instead;
             // the audio is only read. The verdict checks that the real

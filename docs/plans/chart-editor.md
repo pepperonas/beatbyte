@@ -49,11 +49,11 @@ drill saved into the player's real library.
 | # | What | State |
 |---|---|---|
 | 0 | Foundation: atomic chart writes; a save is a NEW version marked `designer: "editor"`, one per editing session; `redesign`, `classic` and a re-import never supersede a hand-edited active version; phrase and empty-difficulty ops; musical time (`timecode::Grid`: seconds ↔ bar:beat:tick, snap by division, tempo changes, past the grid's ends); the drill edits a scratch copy | done (v0.18.43) |
-| 1 | Timeline: zoom, free scroll, waveform, bar/beat lines with numbers, mouse (place, select, drag move, drag length, box select, right-click delete, wheel scroll, Cmd/Ctrl-wheel zoom, click/drag to scrub), hover info, toolbar | |
-| 2 | Playback: play/pause, scrub, loop region, 0.5×/0.75×/1×, auto-follow that yields to manual scrolling | |
-| 3 | Multi-select, clipboard, duplicate, inspector fields (time, lane, length), context menu, phrases, difficulty switch/creation | |
-| 4 | Warnings panel (same-lane overlap, bad lengths, notes past the sounding end, validation), exit guard, older-version best scores marked | |
-| 5 | Playtest: song or section, unsaved notes, in the real highway, back to the same place | |
+| 1 | Timeline: zoom, free scroll, waveform, bar/beat lines with numbers, mouse (place, select, drag move, drag length, box select, right-click delete, wheel scroll, Cmd/Ctrl-wheel zoom, click/drag to scrub), hover info, toolbar | done (v0.18.44) |
+| 2 | Playback: play/pause, scrub, loop region, 0.5×/0.75×/1×, auto-follow that yields to manual scrolling | done (v0.18.45) |
+| 3 | Multi-select, clipboard, duplicate, inspector fields (time, lane, length), context menu, phrases, difficulty switch/creation | done (v0.18.46) |
+| 4 | Warnings panel (same-lane overlap, bad lengths, notes past the sounding end, validation), exit guard, older-version best scores marked | done (v0.18.47) |
+| 5 | Playtest: song or section, unsaved notes, in the real highway, back to the same place | done (v0.18.48) |
 
 Each stage: gate, the extended drill, version + CHANGELOG + roadmap,
 committed and pushed.

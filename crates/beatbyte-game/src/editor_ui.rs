@@ -354,6 +354,44 @@ pub fn open_editor(
     Ok(())
 }
 
+/// A playtest in progress: the editor's chart, as it is now, in the
+/// real highway. The editor's state stays where it was; this says
+/// how to come back.
+///
+/// ⚠️ A playtest is not a run of the career: no best score, no line
+/// in the play history (achievements are derived from it), no
+/// telemetry session (the chart it plays exists in no file). The
+/// guards sit in `log_run`, `begin_store_session` and the results
+/// screen, and the playtest returns before the results are reached.
+#[derive(Resource, Debug, Clone, Copy, PartialEq)]
+pub struct Playtest {
+    /// Where the music starts.
+    pub start_s: f64,
+    /// Where the test ends (`None` = the song's end).
+    pub end_s: Option<f64>,
+    /// The browser's difficulty before the test, restored after.
+    pub restore_difficulty: beatbyte_core::Difficulty,
+    /// The practice speed before the test, restored after.
+    pub restore_speed: u32,
+}
+
+/// What the last playtest's player did.
+#[derive(Resource, Debug, Clone, Copy, Default, PartialEq)]
+pub struct PlaytestReport {
+    /// Notes in the tested window.
+    pub notes: u32,
+    /// Hit (any judgment but a miss).
+    pub hit: u32,
+    /// Missed.
+    pub missed: u32,
+    /// Strums that hit nothing.
+    pub overstrums: u32,
+    /// Whether a telemetry session was open (it must not be).
+    pub recorded: bool,
+    /// The song time the test's timeline began at (its count-in).
+    pub began_s: f64,
+}
+
 /// The right-click menu.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Menu {
@@ -374,7 +412,7 @@ impl Plugin for EditorUiPlugin {
             .init_resource::<ChipActions>()
             .add_systems(
                 OnEnter(AppState::Editor),
-                (draw::spawn_editor, start_waveform),
+                (end_playtest, draw::spawn_editor, start_waveform).chain(),
             )
             .add_systems(
                 Update,
@@ -407,9 +445,38 @@ pub(crate) struct EditorScreen;
 #[derive(Resource)]
 struct WaveformTask(Task<Option<(Envelope, f64)>>);
 
+/// Back from a playtest: the browser's difficulty and the practice
+/// speed as they were, and a word about where the test was.
+fn end_playtest(
+    mut commands: Commands,
+    playtest: Option<Res<Playtest>>,
+    state: Option<ResMut<EditorState>>,
+    mut selected: ResMut<crate::song_select::SelectedDifficulty>,
+    mut practice: ResMut<crate::gameplay::PracticeState>,
+    report: Option<Res<PlaytestReport>>,
+) {
+    let Some(playtest) = playtest else {
+        return;
+    };
+    selected.0 = playtest.restore_difficulty;
+    practice.speed_percent = playtest.restore_speed;
+    commands.remove_resource::<Playtest>();
+    if let Some(mut state) = state {
+        state.status = match report.as_deref() {
+            Some(report) => format!(
+                "playtest: {} of {} hit, {} missed, {} overstrum(s) - nothing was recorded",
+                report.hit, report.notes, report.missed, report.overstrums
+            ),
+            None => "back from the playtest (stopped) - nothing was recorded".to_owned(),
+        };
+        state.dirty_view = true;
+    }
+}
+
 /// Decode the song once, off the frame thread, for the waveform.
 fn start_waveform(mut commands: Commands, state: Option<Res<EditorState>>) {
-    let Some(state) = state else {
+    // Back from a playtest: the song was decoded already.
+    let Some(state) = state.filter(|state| state.envelope.is_none()) else {
         return;
     };
     let path = state.audio_path.clone();
@@ -503,6 +570,8 @@ pub(crate) mod chip {
     pub const MENU_CLOSE: u8 = 26;
     /// Jump to the next warning.
     pub const WARNING: u8 = 27;
+    /// Playtest the edit in the real highway.
+    pub const PLAYTEST: u8 = 28;
 }
 
 /// The actions both the keyboard and the chips trigger.
@@ -535,6 +604,7 @@ pub(crate) enum Action {
     Edit(Field),
     CloseMenu,
     NextWarning,
+    Playtest,
 }
 
 /// The actions the chips asked for this frame (read by `editor_input`).
@@ -560,6 +630,8 @@ pub(crate) mod actions {
     pub const LEVEL: super::Action = super::Action::Level;
     /// Jump to the next warning.
     pub const NEXT_WARNING: super::Action = super::Action::NextWarning;
+    /// Playtest.
+    pub const PLAYTEST: super::Action = super::Action::Playtest;
 }
 
 #[allow(clippy::type_complexity)] // Bevy query tuple
@@ -609,6 +681,7 @@ fn editor_chips(
             chip::FIELD_LENGTH => Some(Action::Edit(Field::Length)),
             chip::MENU_CLOSE => Some(Action::CloseMenu),
             chip::WARNING => Some(Action::NextWarning),
+            chip::PLAYTEST => Some(Action::Playtest),
             _ => None,
         })
         .collect();
@@ -691,6 +764,7 @@ pub(crate) fn seek(
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 #[allow(clippy::too_many_lines)] // the key map, read top to bottom
 pub(crate) fn editor_input(
+    mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
     state: Option<ResMut<EditorState>>,
     music: Res<Music>,
@@ -699,6 +773,8 @@ pub(crate) fn editor_input(
     time: Res<Time>,
     mut chips: ResMut<ChipActions>,
     mut next_state: ResMut<NextState<AppState>>,
+    mut selected: ResMut<crate::song_select::SelectedDifficulty>,
+    mut practice: ResMut<crate::gameplay::PracticeState>,
 ) {
     let Some(mut state) = state else {
         return;
@@ -763,6 +839,7 @@ pub(crate) fn editor_input(
         (pressed(KeyCode::Period), Action::Edit(Field::Lane)),
         (pressed(KeyCode::Semicolon), Action::Edit(Field::Length)),
         (pressed(KeyCode::KeyW), Action::NextWarning),
+        (pressed(KeyCode::F5), Action::Playtest),
     ];
     actions.extend(
         key_actions
@@ -1041,6 +1118,48 @@ pub(crate) fn editor_input(
                 }
             }
             Action::CloseMenu => {}
+            Action::Playtest => {
+                if !state.session.is_valid() {
+                    state.status = "the chart has errors - fix them before a playtest".to_owned();
+                    continue;
+                }
+                let looping = state.loop_region.filter(|_| state.looping);
+                let span = clipboard::selection_span(state.notes(), &state.selection);
+                let (start_s, end_s) = playback::playtest_window(looping, span, state.cursor_s);
+                let difficulty = state.session.difficulty;
+                let chart =
+                    playback::playtest_chart(state.session.chart(), difficulty, start_s, end_s);
+                if state.previewing {
+                    toggle_preview(&mut state, &music, &mut game_clock, &settings, now);
+                }
+                commands.remove_resource::<PlaytestReport>();
+                commands.insert_resource(Playtest {
+                    start_s,
+                    end_s,
+                    restore_difficulty: selected.0,
+                    restore_speed: practice.speed_percent,
+                });
+                // The editor's speed carries into the test (and makes
+                // it practice, which a test is anyway).
+                practice.speed_percent = (state.speed * 100.0).round() as u32;
+                selected.0 = difficulty;
+                commands.remove_resource::<crate::taste::TasteTest>();
+                commands.insert_resource(crate::boot::LoadedSong {
+                    chart,
+                    audio: crate::boot::SongAudio::File(state.audio_path.clone()),
+                    lyrics: None,
+                    vocals: None,
+                    lyric_offset_ms: 0,
+                    // Not recorded as this song: a test of a chart
+                    // that exists in no file is no run of it.
+                    song_id: None,
+                });
+                info!(
+                    "playtest: {difficulty} from {start_s:.2}s to {}",
+                    end_s.map_or("the end".to_owned(), |e| format!("{e:.2}s"))
+                );
+                next_state.set(AppState::Gameplay);
+            }
             Action::NextWarning => match lint::next_after(&state.warnings, state.cursor_s) {
                 Some(warning) => {
                     seek(&mut state, &music, &mut game_clock, warning.time, now);

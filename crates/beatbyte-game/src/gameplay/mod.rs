@@ -463,7 +463,9 @@ impl Plugin for GameplayPlugin {
                     lyrics::update_lyrics,
                     taste_transition,
                     mc_transition,
-                    check_song_end,
+                    // Grouped (Bevy's tuple cap): a playtest leaves
+                    // before the song's end is taken as a run's end.
+                    (playtest_watch, check_song_end).chain(),
                     check_failure,
                 )
                     .chain()
@@ -556,6 +558,7 @@ fn setup_gameplay(
     mut clear: ResMut<ClearColor>,
     mut next_state: ResMut<NextState<AppState>>,
     taste: Option<Res<crate::taste::TasteTest>>,
+    playtest: Option<Res<crate::editor_ui::Playtest>>,
 ) {
     // Stage identity for this song.
     theme.0 = crate::theme::choose_theme(&settings.theme, &song.chart.song.title);
@@ -602,7 +605,10 @@ fn setup_gameplay(
     // Count-in: the clock starts a count-in BEFORE the run's first
     // sounding moment — zero for an ordinary run, the window's start
     // for a taste test (which plays one passage twice).
-    let start_s = taste.map_or(0.0, |test| crate::taste::side_start(test.window));
+    let start_s = taste.map_or_else(
+        || playtest.as_ref().map_or(0.0, |test| test.start_s),
+        |test| crate::taste::side_start(test.window),
+    );
     // A karaoke run plays the backing rather than the song. Only an
     // ORDINARY run: a taste test compares two charts of one recording
     // and swapping the recording under it would compare something
@@ -946,6 +952,64 @@ fn mc_transition(
     swaps.write(crate::mc::McSwapped);
 }
 
+/// A playtest ends back in the editor — at its window's end, when its
+/// notes are done, or when the rock meter runs out — and never
+/// reaches the outro or the results (where a run is recorded).
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
+fn playtest_watch(
+    mut commands: Commands,
+    playtest: Option<Res<crate::editor_ui::Playtest>>,
+    mut first_seen: Local<Option<f64>>,
+    store_run: Res<crate::telemetry::StoreRun>,
+    players: Query<&PlayerSession>,
+    game_clock: Res<GameClock>,
+    time: Res<Time>,
+    mut next_state: ResMut<NextState<AppState>>,
+) {
+    let Some(playtest) = playtest else {
+        return;
+    };
+    let Some(now) = game_clock.song_time(&time) else {
+        return;
+    };
+    // Where this test's timeline began (a new test starts afresh).
+    if playtest.is_added() {
+        *first_seen = None;
+    }
+    let began = *first_seen.get_or_insert(now);
+    let content_end = players
+        .iter()
+        .map(|player| player.session.track().content_end_s())
+        .fold(0.0, f64::max);
+    let done = !players.is_empty() && players.iter().all(|p| p.session.finished());
+    let failed = players.iter().any(|p| p.session.performance().failed());
+    let past_end = playtest.end_s.is_some_and(|end| now > end + 1.0);
+    if failed || past_end || (done && now > content_end + 1.0) {
+        let mut report = playtest_report(&players);
+        report.recorded = store_run.recording();
+        report.began_s = began;
+        info!(
+            "playtest: over at {now:.2}s - {} of {} hit, {} missed, {} overstrum(s) - back to the editor",
+            report.hit, report.notes, report.missed, report.overstrums
+        );
+        commands.insert_resource(report);
+        next_state.set(AppState::Editor);
+    }
+}
+
+/// What a playtest's player did — shown by the editor on return.
+fn playtest_report(players: &Query<&PlayerSession>) -> crate::editor_ui::PlaytestReport {
+    let mut report = crate::editor_ui::PlaytestReport::default();
+    for player in players {
+        let counts = player.session.performance().counts();
+        report.notes += player.session.track().len() as u32;
+        report.hit += counts.perfect + counts.great + counts.good;
+        report.missed += counts.miss;
+        report.overstrums += player.session.performance().overstrums();
+    }
+    report
+}
+
 /// End of song → snapshot results → results screen.
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn check_song_end(
@@ -1202,6 +1266,7 @@ fn cleanup_outro(mut commands: Commands) {
 
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI
 fn pause_input(
+    playtest: Option<Res<crate::editor_ui::Playtest>>,
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<&bevy::input::gamepad::Gamepad>,
     map: Res<crate::controls::InputMap>,
@@ -1218,7 +1283,11 @@ fn pause_input(
     let pause = sources.just_pressed(&map, crate::controls::GameAction::Pause);
     match phase.get() {
         GamePhase::Playing => {
-            if pause {
+            // In a playtest the way out is the way back to the editor.
+            if pause && playtest.is_some() {
+                info!("playtest: stopped - back to the editor");
+                next_state.set(AppState::Editor);
+            } else if pause {
                 next_phase.set(GamePhase::Paused);
             }
         }

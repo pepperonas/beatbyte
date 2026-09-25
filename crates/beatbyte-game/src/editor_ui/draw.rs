@@ -186,8 +186,9 @@ pub(crate) fn spawn_editor(
 }
 
 /// The toolbar, left to right.
-const TOOLBAR: [ui_kit::ChipSpec; 24] = [
+const TOOLBAR: [ui_kit::ChipSpec; 25] = [
     chip_spec(chip::PLAY, "Play P"),
+    chip_spec(chip::PLAYTEST, "Test F5"),
     chip_spec(chip::SPEED, "Speed T"),
     chip_spec(chip::LOOP, "Loop L"),
     chip_spec(chip::GRID, "Grid Tab"),
@@ -331,6 +332,8 @@ MOUSE
 
 KEYS
   P / Enter  play, pause        F  follow the playhead
+  F5  playtest in the real highway (the loop, the selection, or from
+      the playhead; unsaved notes too; Esc comes back; nothing recorded)
   T  speed 100 / 75 / 50 %      L  loop on / off
   I / O  loop from / to the playhead (or Shift-drag the ruler)
   Up / Down  step the grid      PgUp / PgDn  a bar

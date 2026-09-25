@@ -61,6 +61,47 @@ impl LoopRegion {
     }
 }
 
+/// Music that plays before a playtest's first note, so the notes
+/// scroll in rather than start on the strike line.
+pub const PLAYTEST_LEAD_S: f64 = 2.0;
+
+/// What a playtest plays: where the music starts and where the test
+/// ends (`None` = the song's end). The loop when it is on, else the
+/// selection, else from the playhead.
+#[must_use]
+pub fn playtest_window(
+    looping: Option<LoopRegion>,
+    selection: Option<(f64, f64)>,
+    playhead: f64,
+) -> (f64, Option<f64>) {
+    let (from, to) = match (looping, selection) {
+        (Some(region), _) => (region.start, Some(region.end)),
+        (None, Some((lo, hi))) => (lo, Some(hi)),
+        (None, None) => (playhead, None),
+    };
+    ((from - PLAYTEST_LEAD_S).max(0.0), to)
+}
+
+/// The chart a playtest plays: the edited chart as it is NOW (saved
+/// or not), with the tested difficulty cut to the window — a note
+/// before the start would be a miss nobody could hit, one after the
+/// end would keep the test running.
+#[must_use]
+pub fn playtest_chart(
+    chart: &beatbyte_chart::ChartFile,
+    difficulty: beatbyte_core::Difficulty,
+    from: f64,
+    to: Option<f64>,
+) -> beatbyte_chart::ChartFile {
+    let mut out = chart.clone();
+    let inside = |t: f64| t >= from - 1e-6 && to.is_none_or(|end| t <= end + 1e-6);
+    if let Some(def) = out.charts.iter_mut().find(|d| d.difficulty == difficulty) {
+        def.notes.retain(|note| inside(note.time));
+        def.phrases.retain(|phrase| inside(phrase.start));
+    }
+    out
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -92,6 +133,96 @@ mod tests {
         assert_eq!(region.wrap(4.0), Some(2.0));
         assert_eq!(region.wrap(7.5), Some(2.0));
         assert_eq!(region.wrap(1.0), Some(2.0));
+    }
+
+    /// The loop wins, then the selection, then the playhead — each
+    /// with its lead-in, never before zero.
+    #[test]
+    fn a_playtest_plays_the_loop_or_the_selection_or_from_here() {
+        let region = LoopRegion::between(10.0, 14.0);
+        assert_eq!(
+            playtest_window(region, Some((20.0, 22.0)), 30.0),
+            (8.0, Some(14.0))
+        );
+        assert_eq!(
+            playtest_window(None, Some((20.0, 22.0)), 30.0),
+            (18.0, Some(22.0))
+        );
+        assert_eq!(playtest_window(None, None, 30.0), (28.0, None));
+        assert_eq!(playtest_window(None, None, 1.0), (0.0, None));
+    }
+
+    /// The tested difficulty is cut to the window; the others and the
+    /// song stay as they are, and the source chart is not touched.
+    #[test]
+    fn a_playtest_chart_is_cut_to_its_window() {
+        use beatbyte_chart::{ChartDef, ChartFile, ChartNote, ChartPhrase, SongMeta};
+        use beatbyte_core::Difficulty;
+        let notes = |times: &[f64]| {
+            times
+                .iter()
+                .map(|t| ChartNote {
+                    time: *t,
+                    lane: 0,
+                    len: 0.0,
+                    hopo: false,
+                })
+                .collect::<Vec<_>>()
+        };
+        let chart = ChartFile {
+            format_version: 1,
+            song: SongMeta {
+                title: "T".into(),
+                artist: "A".into(),
+                audio: "a.ogg".into(),
+                bpm: 120.0,
+                offset_s: 0.0,
+                preview_start_s: None,
+                duration_s: None,
+                genre: None,
+            },
+            charts: vec![
+                ChartDef {
+                    difficulty: Difficulty::Medium,
+                    lanes: 5,
+                    notes: notes(&[1.0, 5.0]),
+                    phrases: vec![],
+                },
+                ChartDef {
+                    difficulty: Difficulty::Expert,
+                    lanes: 5,
+                    notes: notes(&[1.0, 5.0, 9.0, 13.0]),
+                    phrases: vec![
+                        ChartPhrase {
+                            start: 0.5,
+                            end: 1.5,
+                        },
+                        ChartPhrase {
+                            start: 8.5,
+                            end: 9.5,
+                        },
+                    ],
+                },
+            ],
+            provenance: None,
+            audio_trim: None,
+            grid: None,
+            rules: None,
+        };
+        let cut = playtest_chart(&chart, Difficulty::Expert, 4.0, Some(10.0));
+        let expert = cut.chart_for(Difficulty::Expert).unwrap();
+        assert_eq!(
+            expert.notes.iter().map(|n| n.time).collect::<Vec<_>>(),
+            vec![5.0, 9.0]
+        );
+        assert_eq!(expert.phrases.len(), 1);
+        assert_eq!(
+            cut.chart_for(Difficulty::Medium),
+            chart.chart_for(Difficulty::Medium)
+        );
+        assert_eq!(chart.charts[1].notes.len(), 4, "the source changed");
+        let open = playtest_chart(&chart, Difficulty::Expert, 4.0, None);
+        assert_eq!(open.chart_for(Difficulty::Expert).unwrap().notes.len(), 3);
     }
 
     #[test]
