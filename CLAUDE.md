@@ -1094,6 +1094,26 @@ artifact, smoke-test it (neutral CWD!), then
   three notes starting within 3 ms of the strike — the peaky onset head
   read as notes could not have produced either. The driver test now
   writes those names out itself.
+- **Under additive blending the colour is premultiplied by the
+  alpha, so a base alpha that scales with a level dims TWICE.** The
+  Hype aura's first ladder scaled `base_color.a` and the emissive by
+  the same share — level 4 came out at 0.36 × 0.36 of its glow, and
+  the aura measured as +15 blue beside the rail where a cyan strip
+  was expected. Keep alpha at 1 (or fixed) and put the level into
+  the colour; use the texture's or the vertex's alpha only for the
+  SHAPE of the fade.
+- **A mesh with a vertex layout new to the scene compiles a pipeline
+  on the frame it is first drawn, and the compile is a stall.** The
+  aura slab first carried vertex colours (`ATTRIBUTE_COLOR`), which
+  nothing else on the stage has; the autopilot reported a one-second
+  clock teleport twice in five runs — once at the first Hype frame,
+  once at the song's first frame after the slab was made
+  always-visible — and never on the baseline binary. The slab now
+  wears the rig's own variant (unlit, additive, textured, position +
+  normal + uv) and the teleports stopped. Draw a new effect through a
+  pipeline the scene already has, or show it (dark) from the first
+  frame — and read the autopilot's teleport line as "a frame stalled
+  here", not only as a clock fault.
 - **An autopilot verdict could be failed by the room, and the
   telemetry says so.** Real device input went into the same session
   the injector plays into: a key, a pad button or a click at the desk

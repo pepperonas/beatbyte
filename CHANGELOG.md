@@ -14,6 +14,26 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.49] - 2026-09-25
+
+### Changed
+
+- **The Hype arc is electric blue, with an aura.** The lightning
+  along the highway's edges was near white; it is now a blue bolt
+  with a hot core — every segment wears a wider electric-blue hull
+  around a pale core, so it reads as lightning rather than ice. A
+  broad cyan-blue **aura** glows along both edges on the deck outside
+  the neck, pulsing and flickering with the bolt (it flares on the
+  same steps the bolt flashes on), never a steady strip. And the
+  whole arc **surges toward the horizon**: a wave runs up the neck
+  lifting the bolt's height, the forks and the aura as it passes.
+  The outer lanes' gems stay clear: the aura reaches only a short,
+  faint lip over the neck. `reduced_flashing` keeps a calm arc — no
+  gaps, no flashes, the aura at one level, the surge slow and low —
+  and `fx_intensity` scales the aura with the rest. Measured
+  uncapped with the window in front: 6.2 ms a frame during Hype
+  before and after.
+
 ## [0.18.48] - 2026-09-25
 
 ### Added
