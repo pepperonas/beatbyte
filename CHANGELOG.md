@@ -14,6 +14,24 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.50] - 2026-09-25
+
+### Changed
+
+- **A star-power phrase lands as a lightning strike on its last
+  fret** (3D stage). The full-screen white flash is gone there: a
+  jagged bolt — near-white core, blue hull, the edge arc's own
+  colour and vocabulary — comes down out of the dark above the
+  player's own highway and hits the phrase's last note on the hit
+  line, one arm per fret when it is a chord; the fret and its
+  surroundings light up blue-white, then it all fades inside a third
+  of a second. The neck's glow and the ceiling burst stay as they
+  were. A second phrase restarts it; two players strike on their own
+  necks and never over the other's. `reduced_flashing` gives a
+  steady bolt with a soft glow and no flare; `fx_intensity` scales
+  it. The flat view has no meshes and no lights and keeps its screen
+  flash. Frame time unchanged (6.5 ms uncapped, before and after).
+
 ## [0.18.49] - 2026-09-25
 
 ### Changed

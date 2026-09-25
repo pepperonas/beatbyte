@@ -32,6 +32,7 @@ pub mod rig;
 pub mod spark3d;
 pub mod stage3d;
 pub mod starpower;
+pub mod strike;
 pub mod vocal;
 
 use beatbyte_core::{
@@ -404,6 +405,9 @@ impl Plugin for GameplayPlugin {
         // ceiling and the screen. Registered here because it belongs
         // to gameplay, not to any one of the three.
         starpower::register(app);
+        // The strike on the fret that replaces the screen flash on
+        // the 3D stage: its own clock, armed off the same bus.
+        strike::register(app);
         app.add_message::<SessionFeedback>()
             .add_plugins(fx::FxPlugin)
             .add_systems(

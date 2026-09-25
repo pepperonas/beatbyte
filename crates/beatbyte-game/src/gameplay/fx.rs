@@ -755,11 +755,20 @@ fn celebrate_outro(
 /// Its own system rather than another arm of `react_to_feedback`,
 /// because the two read the bus for different reasons and this one
 /// has to be ordered against the drain as well as against the driver.
+///
+/// Flat view only since 0.18.50: on the 3D stage the strike on the
+/// fret (`strike.rs`) is what marks the moment, and the full-screen
+/// flash is gone there.
 fn flash_on_star_power(
     settings: Res<EffectSettings>,
+    game_settings: Res<crate::config::Settings>,
     mut flash: ResMut<ScreenFlash>,
     mut feedback: MessageReader<SessionFeedback>,
 ) {
+    if super::stage3d::active(&game_settings) {
+        feedback.clear();
+        return;
+    }
     let landed = feedback
         .read()
         .any(|message| matches!(message.event, SessionEvent::PhraseCompleted { .. }));

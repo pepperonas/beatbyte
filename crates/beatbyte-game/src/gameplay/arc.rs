@@ -59,7 +59,7 @@ pub const CALM_HZ: f32 = 2.0;
 /// The rail's span in z the arc runs along.
 const SPAN: (f32, f32) = (-25.0, 2.0);
 /// Sideways jitter of a bolt point, world units.
-const JITTER_X: f32 = 0.22;
+pub const JITTER_X: f32 = 0.22;
 /// Height range of a bolt point above the rail.
 const HEIGHT: (f32, f32) = (0.04, 0.34);
 /// Share of segments dropped per step: the gaps in a bolt.
@@ -78,8 +78,12 @@ pub const CORE: Color = Color::srgb(0.6, 0.85, 1.0);
 pub const HULL: Color = Color::srgb(0.08, 0.4, 1.0);
 /// The aura's cyan-blue.
 pub const AURA: Color = Color::srgb(0.12, 0.72, 1.0);
+/// The emissive push of the core and the hull.
+pub const CORE_GLOW: f32 = 2.4;
+/// The emissive push of the hull.
+pub const HULL_GLOW: f32 = 2.2;
 /// How much thicker the hull is than the core it wraps.
-const HULL_FACTOR: f32 = 3.2;
+pub const HULL_FACTOR: f32 = 3.2;
 
 /// How far the aura reaches OUT from the rail, away from the neck.
 pub const AURA_OUT: f32 = 1.4;
@@ -408,8 +412,9 @@ pub fn slab_mesh(slab: usize) -> Mesh {
 }
 
 /// An additive, strongly emissive material in `tone`, never written
-/// after this.
-fn bolt_material(
+/// after this. Shared with the star-power strike (`strike.rs`), which
+/// wears the same core and hull.
+pub fn bolt_material(
     materials: &mut Assets<StandardMaterial>,
     tone: Color,
     glow: f32,
@@ -445,8 +450,8 @@ pub fn spawn_arcs(
     // thicker.
     let segment_hull = meshes.add(Cuboid::new(1.0, 0.035 * HULL_FACTOR, 0.035 * HULL_FACTOR));
     let fork_hull = meshes.add(Cuboid::new(1.0, 0.022 * HULL_FACTOR, 0.022 * HULL_FACTOR));
-    let core = bolt_material(&mut materials, CORE, 2.4);
-    let hull = bolt_material(&mut materials, HULL, 2.2);
+    let core = bolt_material(&mut materials, CORE, CORE_GLOW);
+    let hull = bolt_material(&mut materials, HULL, HULL_GLOW);
     // The aura's ladder: level 0 is dark, the top is full glow. The
     // lit base colour stays faint so the stage lights do not paint
     // the slab; the glow is the emissive.

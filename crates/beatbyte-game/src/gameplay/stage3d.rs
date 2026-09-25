@@ -3001,6 +3001,7 @@ impl Plugin for Stage3dPlugin {
                 super::band::spawn_band,
                 super::flame::spawn_flames,
                 super::arc::spawn_arcs,
+                super::strike::spawn_strikes,
             )
                 .chain()
                 .after(super::setup_gameplay),
@@ -3024,7 +3025,8 @@ impl Plugin for Stage3dPlugin {
                 // strike, not the one after.
                 super::flame::drive_flames,
                 super::flame::drive_embers,
-                super::arc::crackle_arcs,
+                // Grouped: the tuple is at Bevy's cap.
+                (super::arc::crackle_arcs, super::strike::drive_strikes).chain(),
                 apply_note_events,
                 sync_phrase_rims,
                 super::rig::sweep_beams,

@@ -26,10 +26,13 @@
 //! |---|---|---|
 //! | [`highway_lift`] | `stage3d::tint_stage_for_hype` | per player — each neck is their own |
 //! | [`lamp_burst`] | `lightshow::drive_highlight` | the stage, which everyone shares |
-//! | [`screen_shape`] | `fx`'s screen flash | the screen, which everyone shares |
+//! | [`screen_shape`] | `fx`'s screen flash | the screen, which everyone shares — **flat view only** |
 //!
-//! Without the 3D stage there are no neck surfaces and no ceiling,
-//! so the flat view reads the lift on its lane guide strips instead
+//! On the 3D stage the screen flash is gone (0.18.50): a lightning
+//! strike on the last fret of the phrase marks the moment instead
+//! (`strike.rs`, its own clock, armed off the same bus). Without the
+//! 3D stage there are no neck surfaces, no ceiling and no bolt, so
+//! the flat view reads the lift on its lane guide strips instead
 //! (`notes::star_lift_guides`) and keeps the screen flash. The
 //! impulse itself is the same clock either way.
 //!
