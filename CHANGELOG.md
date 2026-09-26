@@ -14,6 +14,22 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.53] - 2026-09-26
+
+### Changed
+
+- **Sharp highway borders.** The decorated strips along the neck were
+  drawn from soft waves at 128 px and read as a smear; every theme's
+  border is now drawn as crisp shapes in real proportions (rivets,
+  studs, chevrons, tier blocks, a wave ribbon with dots, a ruler) in a
+  metal channel with two bright edge lines, at 512 px with sharper
+  filtering along the neck. The patterns no longer show a seam every
+  84 cm, and they stand out in relief under the lights.
+- **The rail is a round chrome bar**, so the light draws a thin bright
+  line along it.
+- **The neck sits on the stage:** a soft shadow on the deck along both
+  outer edges, instead of floating over the floor.
+
 ## [0.18.52] - 2026-09-26
 
 ### Changed

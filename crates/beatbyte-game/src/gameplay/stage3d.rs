@@ -108,6 +108,9 @@ pub const DECK_CLEARCOAT_ROUGHNESS: f32 = 0.46;
 pub const DECK_BASE: Color = Color::srgb(0.9, 0.9, 0.92);
 /// The edge of one deck texture tile, metres (see `surfaces::DECK_TILE`).
 pub const DECK_TILE_METRES: f32 = 4.0;
+/// The height of the deck's top surface (the riser is 0.9 tall,
+/// centred at −0.75).
+pub const STAGE_DECK_TOP: f32 = -0.30;
 
 /// Where the floor's side fills hang, per side.
 ///
@@ -483,57 +486,129 @@ pub fn board_shade(u: f32, v: f32) -> f32 {
 /// garage, not a copy of somebody else's - and each is chosen to rhyme
 /// with the backdrop its theme already has.
 ///
-/// `u` runs across the strip, `v` along the neck. The motif is carried
-/// by `v`, because at this width the strip is read as a rhythm going
-/// away from you, not as a picture.
+/// `u` runs across the strip, `v` along the neck, one texture tile.
+///
+/// Drawn as VECTOR shapes with a one-texel anti-aliased edge, in real
+/// metres. The first borders were soft sine waves and linear ramps in
+/// texture units: with no edges anywhere they read as a smear ("Pixel-
+/// brei"), and because a tile is 0.17 m across but 0.84 m along, every
+/// round shape came out as a stretched blob. Every motif repeats a
+/// whole number of times per tile, so the tile has no seam. Each sits
+/// in the same metal channel: a dark plate between two thin bright
+/// edges, which is what makes the strip read as a machined part.
 #[must_use]
 pub fn rail_shade(theme_id: &str, u: f32, v: f32) -> f32 {
-    // Every motif sits on the same cross-section: brighter toward the
-    // outer edge, so the strip reads as a bevelled piece of trim
-    // rather than a flat decal.
-    let bevel = 0.72 + 0.28 * (u * core::f32::consts::PI).sin();
-    let motif = match theme_id {
-        // Rivets, punched at regular intervals down a plate.
+    // Where the texel is, in metres on the strip.
+    let x = u * TRIM_WIDTH;
+    let y = v * TRIM_TILE_LENGTH;
+    let dx = x - TRIM_WIDTH / 2.0;
+    // The coarser of the two texel sizes: edges are a texel wide.
+    let px = TRIM_TILE_LENGTH / RAIL_TILE as f32;
+    let (coverage, tone) = match theme_id {
+        // Domed rivets punched down a plate.
         "garage" => {
-            let along = ((v * 22.0).fract() - 0.5).abs() * 2.0;
-            let across = ((u - 0.5).abs() * 2.4).min(1.0);
-            let head = (1.0 - (along / 0.55).min(1.0)) * (1.0 - across);
-            0.30 + 0.70 * head
+            let dy = centred(y, TRIM_TILE_LENGTH / 20.0);
+            let r = 0.011;
+            let dist = dx.hypot(dy);
+            // Lit from up-left: brighter on that shoulder of the dome.
+            let shoulder = ((-dx - dy) / r).clamp(-1.0, 1.0);
+            let dome = (1.0 - (dist / r).powi(2)).max(0.0).sqrt();
+            (edge(dist - r, px), 0.62 + 0.26 * dome + 0.12 * shoulder)
         }
-        // Sawteeth - the studded strap, abstracted to its rhythm.
+        // Pyramid studs — the studded strap — with two lit facets.
         "punk" => {
-            let saw = (v * 30.0).fract();
-            0.22 + 0.78 * (1.0 - (saw * 2.0 - 1.0).abs()).powf(0.6)
+            let dy = centred(y, TRIM_TILE_LENGTH / 24.0);
+            let a = 0.0125;
+            let d = (dx.abs() + dy.abs() - a) * core::f32::consts::FRAC_1_SQRT_2;
+            let facet = if dx + dy < 0.0 { 1.0 } else { 0.66 };
+            (edge(d, px), facet)
         }
-        // Chevrons, leaning because a straight bar reads as a fret.
+        // Chevrons: a V stroke, pointing down the neck.
         "metal" => {
-            let lean = (v * 26.0 + u * 3.0).fract();
-            0.24 + 0.76 * (1.0 - (lean * 2.0 - 1.0).abs()).powf(1.4)
+            let slope = 0.7f32;
+            let stroke = centred(y - slope * dx.abs(), TRIM_TILE_LENGTH / 14.0);
+            let d = stroke.abs() / slope.hypot(1.0) - 0.0045;
+            let clip = dx.abs() - 0.058;
+            (edge(d.max(clip), px), 1.0)
         }
-        // Broad clean bands, the way seating tiers stripe an arena.
+        // Rounded tier blocks, the way seating stripes an arena.
         "stadium" => {
-            let band = ((v * 9.0).sin() * 0.5 + 0.5).powf(1.8);
-            0.34 + 0.66 * band
+            let dy = centred(y, TRIM_TILE_LENGTH / 10.0);
+            let d = rounded_box(dx, dy, 0.052, 0.031, 0.007);
+            // A lighter lip on the block's near end, as a tier has.
+            let lip = if dy > 0.019 { 1.0 } else { 0.78 };
+            (edge(d, px), lip)
         }
-        // Two waves of incommensurable length, so the pattern never
-        // visibly repeats as it slides past.
+        // A sharp ribbon swinging across the strip, with a dot in
+        // each of its bays.
         "psychedelic" => {
-            let a = (v * 13.0).sin() * 0.5 + 0.5;
-            let b = (v * 20.0 + u * 2.0).sin() * 0.5 + 0.5;
-            0.26 + 0.74 * (0.6f32.mul_add(a, 0.4 * b))
+            let wave = core::f32::consts::TAU * 3.0 / TRIM_TILE_LENGTH;
+            let amplitude = 0.036;
+            let centre = amplitude * (wave * y).sin();
+            let slope = amplitude * wave * (wave * y).cos();
+            let ribbon = (dx - centre).abs() / slope.hypot(1.0) - 0.008;
+            // The bays: where the ribbon swings out, a dot sits on the
+            // other side of the centre line.
+            let bay = TRIM_TILE_LENGTH / 6.0;
+            let side = if (y / bay).rem_euclid(2.0) < 1.0 {
+                -1.0
+            } else {
+                1.0
+            };
+            let dot = (dx - side * 0.036).hypot(centred(y - bay / 2.0, bay)) - 0.0105;
+            let on_ribbon = edge(ribbon, px);
+            let on_dot = edge(dot, px);
+            (
+                on_ribbon.max(on_dot),
+                if on_ribbon >= on_dot { 1.0 } else { 0.72 },
+            )
         }
         // A measuring scale: a long tick every fourth, short between.
         "cyber" => {
-            let cell = (v * 34.0).fract();
-            let long = ((v * 34.0) as i32).rem_euclid(4) == 0;
-            let reach = if long { 0.85 } else { 0.40 };
-            let lit = f32::from(cell < 0.30 && u < reach);
-            0.20 + 0.80 * lit
+            let step = TRIM_TILE_LENGTH / 32.0;
+            let index = (y / step).floor() as i32;
+            let long = index.rem_euclid(4) == 0;
+            let half = if long { 0.055 } else { 0.026 };
+            let d = rounded_box(dx, centred(y, step), half, 0.0016, 0.0);
+            (edge(d, px), if long { 1.0 } else { 0.8 })
         }
         // An unknown theme still gets a surface, never a flat bar.
-        _ => 0.35 + 0.65 * ((v * 18.0).sin() * 0.5 + 0.5),
+        _ => {
+            let d = rounded_box(dx, centred(y, TRIM_TILE_LENGTH / 12.0), 0.055, 0.02, 0.004);
+            (edge(d, px), 0.9)
+        }
     };
-    (bevel * motif).clamp(0.0, 1.0)
+    // The channel's two bright edges, 4 mm wide, 3 mm in from the
+    // strip's sides.
+    let rim =
+        edge((x - 0.005).abs() - 0.002, px).max(edge((x - (TRIM_WIDTH - 0.005)).abs() - 0.002, px));
+    let inlay = TRIM_PLATE + (tone.clamp(0.0, 1.0) - TRIM_PLATE) * coverage;
+    inlay.max(TRIM_RIM * rim).clamp(0.0, 1.0)
+}
+
+/// The dark plate the border motifs sit on.
+const TRIM_PLATE: f32 = 0.16;
+/// The border's two edge lines.
+const TRIM_RIM: f32 = 0.78;
+
+/// Signed position of `y` in a repeating cell of length `period`,
+/// measured from the cell's centre: −period/2 .. period/2.
+fn centred(y: f32, period: f32) -> f32 {
+    y.rem_euclid(period) - period / 2.0
+}
+
+/// Coverage of a shape from its signed distance (negative inside),
+/// with a one-texel anti-aliased edge.
+fn edge(distance: f32, texel: f32) -> f32 {
+    (0.5 - distance / texel).clamp(0.0, 1.0)
+}
+
+/// Signed distance to a box of half-sizes `hx`, `hy` with corner
+/// radius `r`.
+fn rounded_box(x: f32, y: f32, hx: f32, hy: f32, r: f32) -> f32 {
+    let qx = x.abs() - hx + r;
+    let qy = y.abs() - hy + r;
+    qx.max(0.0).hypot(qy.max(0.0)) + qx.max(qy).min(0.0) - r
 }
 
 /// How one cell of the rear-wall backdrop is shaded, in 0..1.
@@ -622,9 +697,193 @@ fn board_texture() -> Image {
     shaded_tile(128, board_shade, true)
 }
 
-/// The decorated border strip for a theme.
+/// The decorated border strip for a theme, with its full mip chain.
+///
+/// Without mips the motif — a rivet every few centimetres, repeated
+/// down twenty-eight metres of neck — aliased into a crawling shimmer
+/// as it receded: far away, one screen pixel spans dozens of texels
+/// and a single sample picks one of them at random each frame.
 fn rail_texture(theme_id: &'static str) -> Image {
-    shaded_tile(128, move |u, v| rail_shade(theme_id, u, v), true)
+    grazing_sampler(crate::surfaces::with_mips(
+        crate::surfaces::color_tile(RAIL_TILE, move |u, v| rail_shade(theme_id, u, v)),
+        false,
+    ))
+}
+
+/// The sampler for a texture seen almost edge-on: the border runs
+/// straight away from the camera, so a screen pixel covers a long,
+/// thin footprint on it. The house sampler's 4× anisotropy blurred the
+/// motif along the neck; 16× keeps it sharp for two thin strips.
+fn grazing_sampler(mut image: Image) -> Image {
+    use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
+    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+        address_mode_u: ImageAddressMode::ClampToEdge,
+        address_mode_v: ImageAddressMode::Repeat,
+        mag_filter: ImageFilterMode::Linear,
+        min_filter: ImageFilterMode::Linear,
+        mipmap_filter: ImageFilterMode::Linear,
+        anisotropy_clamp: 16,
+        ..ImageSamplerDescriptor::linear()
+    });
+    image
+}
+
+/// The border strip's relief: the same motif read as height, so the
+/// rivets, teeth and chevrons stand proud of the plate and catch the
+/// key light instead of being printed on it.
+fn rail_normal(theme_id: &'static str) -> Image {
+    grazing_sampler(crate::surfaces::with_mips(
+        crate::surfaces::normal_tile(
+            RAIL_TILE,
+            move |u, v| rail_shade(theme_id, u, v),
+            rail_relief(theme_id),
+        ),
+        true,
+    ))
+}
+
+/// The normal-map strength that makes a theme's steepest flank lean
+/// `RAIL_LEAN`. The motifs differ tenfold in steepness — a rivet
+/// rises in a few texels, a stadium band over half the tile — so one
+/// fixed strength left the broad bands flat and would have turned the
+/// rivets into noise. Measured the way `normals_from_height` measures:
+/// central differences per unit of UV. Pure — tested.
+#[must_use]
+pub fn rail_relief(theme_id: &str) -> f32 {
+    let n = RAIL_TILE;
+    let at = |x: usize, y: usize| {
+        rail_shade(
+            theme_id,
+            ((x % n) as f32 + 0.5) / n as f32,
+            ((y % n) as f32 + 0.5) / n as f32,
+        )
+    };
+    let per_uv = n as f32 * 0.5;
+    let mut steepest = 0.0f32;
+    for y in 0..n {
+        for x in 0..n {
+            let gx = (at(x + 1, y) - at(x + n - 1, y)) * per_uv;
+            let gy = (at(x, y + 1) - at(x, y + n - 1)) * per_uv;
+            steepest = steepest.max(gx.hypot(gy));
+        }
+    }
+    if steepest <= f32::EPSILON {
+        0.0
+    } else {
+        RAIL_LEAN.tan() / steepest
+    }
+}
+
+/// Texels per side of the border-strip tile. 512 along 0.84 m of
+/// neck is 1.6 mm a texel — at 128 it was 6.5 mm, and near the camera
+/// every texel spanned several screen pixels.
+const RAIL_TILE: usize = 512;
+
+/// How many times the border tile repeats down the neck.
+const TRIM_REPEATS: f32 = 34.0;
+
+/// The length of neck one border tile covers, metres.
+const TRIM_TILE_LENGTH: f32 = (HIGHWAY_LENGTH + HIGHWAY_BEHIND) / TRIM_REPEATS;
+
+/// How far the steepest flank of a border motif leans in its normal
+/// map, radians (~40°): enough to catch a highlight without turning
+/// the strip into noise.
+const RAIL_LEAN: f32 = 0.7;
+
+/// The decorated trim: its width across, and how far its centre sits
+/// outside the neck's edge. The outer edge of the neck is where the
+/// deck starts to show, so the contact shadow begins there.
+const TRIM_WIDTH: f32 = 0.17;
+/// See [`TRIM_WIDTH`].
+const TRIM_OFFSET: f32 = 0.115;
+
+/// Radius of the chrome rail — a round bar, not a flat strip, so the
+/// key light draws one bright line along its crown.
+const RAIL_RADIUS: f32 = 0.021;
+
+/// How far out from the neck the contact shadow reaches, metres.
+pub const CONTACT_WIDTH: f32 = 0.7;
+
+/// The contact shadow's darkest alpha, at the neck's edge. A neck
+/// that casts nothing floats: the eye reads "resting on" from the
+/// darkening where two things meet, not from the geometry.
+pub const CONTACT_PEAK: f32 = 0.85;
+
+/// Where the neck's outermost edge (the trim's outer edge) sits,
+/// measured from the neck's centre line.
+#[must_use]
+pub fn neck_outer_edge(neck_width: f32) -> f32 {
+    neck_width / 2.0 + TRIM_OFFSET + TRIM_WIDTH / 2.0
+}
+
+/// The contact shadow's alpha at `u`, 0 at the neck's edge and 1 at
+/// the strip's far side: a smoothstep, so it HOLDS its dark near the
+/// neck and leaves with zero slope (no visible outer border).
+///
+/// Not the square it first was. The blend runs in linear light, where
+/// black at alpha 0.3 is a barely visible dimming in sRGB; a square
+/// fall-off is below that by a third of the way out, and the band
+/// measured 48 → 44 luma — present, and invisible. Pure — tested.
+#[must_use]
+pub fn contact_shade(u: f32) -> f32 {
+    let u = u.clamp(0.0, 1.0);
+    CONTACT_PEAK * (1.0 - u * u * (3.0 - 2.0 * u))
+}
+
+/// The contact-shadow strip for one side, in local space: a flat quad
+/// on the deck from the neck's edge (`u` = 0) out to `CONTACT_WIDTH`
+/// (`u` = 1), `length` long, centred on z = 0. Built by hand so the
+/// gradient's direction is explicit per side instead of depending on
+/// a primitive's UV convention.
+fn contact_strip(side: f32, length: f32) -> Mesh {
+    let (inner, outer) = (0.0, side * CONTACT_WIDTH);
+    let half = length / 2.0;
+    let positions = vec![
+        [inner, 0.0, -half],
+        [outer, 0.0, -half],
+        [outer, 0.0, half],
+        [inner, 0.0, half],
+    ];
+    let uvs = vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+    let normals = vec![[0.0, 1.0, 0.0]; 4];
+    // Counter-clockwise seen from above for either side.
+    let indices = if side > 0.0 {
+        vec![0, 2, 1, 0, 3, 2]
+    } else {
+        vec![0, 1, 2, 0, 2, 3]
+    };
+    Mesh::new(
+        bevy::mesh::PrimitiveTopology::TriangleList,
+        bevy::asset::RenderAssetUsages::RENDER_WORLD | bevy::asset::RenderAssetUsages::MAIN_WORLD,
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+    .with_inserted_indices(bevy::mesh::Indices::U32(indices))
+}
+
+/// The contact shadow's texture: black, alpha from [`contact_shade`]
+/// along `u`. Linear, clamped — it must not wrap back to dark.
+fn contact_texture() -> Image {
+    const WIDE: usize = 64;
+    let mut data = Vec::with_capacity(WIDE * 4 * 2);
+    for _ in 0..2 {
+        for x in 0..WIDE {
+            let a = contact_shade((x as f32 + 0.5) / WIDE as f32);
+            data.extend_from_slice(&[0, 0, 0, (a * 255.0).round() as u8]);
+        }
+    }
+    Image::new(
+        bevy::render::render_resource::Extent3d {
+            width: WIDE as u32,
+            height: 2,
+            depth_or_array_layers: 1,
+        },
+        bevy::render::render_resource::TextureDimension::D2,
+        data,
+        bevy::render::render_resource::TextureFormat::Rgba8Unorm,
+        bevy::asset::RenderAssetUsages::RENDER_WORLD | bevy::asset::RenderAssetUsages::MAIN_WORLD,
+    )
 }
 
 /// A stage surface that takes the energy tint while hype runs.
@@ -1777,11 +2036,35 @@ pub fn setup_stage(
 
     let board = images.add(board_texture());
     let bed = meshes.add(Cuboid::new(1.0, 0.06, HIGHWAY_LENGTH + HIGHWAY_BEHIND));
-    let rail = meshes.add(Cuboid::new(0.035, 0.05, HIGHWAY_LENGTH + HIGHWAY_BEHIND));
+    // A round bar lying along the neck (a cylinder stood on its side),
+    // not the flat strip it was: a flat top reflects the key light as
+    // a uniform band, a round one as a single bright crown line.
+    let rail = meshes.add(Cylinder::new(RAIL_RADIUS, HIGHWAY_LENGTH + HIGHWAY_BEHIND));
     // The decorated border sits OUTSIDE the bright rail, so it costs
     // no playfield: the rail still marks exactly where the neck ends.
-    let trim = meshes.add(Cuboid::new(0.17, 0.035, HIGHWAY_LENGTH + HIGHWAY_BEHIND));
+    let trim = meshes.add(crate::surfaces::tangent_mesh(Mesh::from(Cuboid::new(
+        TRIM_WIDTH,
+        0.035,
+        HIGHWAY_LENGTH + HIGHWAY_BEHIND,
+    ))));
     let trim_texture = images.add(rail_texture(stage.id));
+    let trim_normal = images.add(rail_normal(stage.id));
+    // The contact shadow on the deck along both outer edges. It ends
+    // at the deck's front lip (z = 1): past it there is no floor to
+    // darken. ONE material for every strip, never written again.
+    let contact_length = HIGHWAY_LENGTH + 1.0;
+    let contact_centre = (1.0 - HIGHWAY_LENGTH) / 2.0;
+    let contact_meshes = [
+        meshes.add(contact_strip(-1.0, contact_length)),
+        meshes.add(contact_strip(1.0, contact_length)),
+    ];
+    let contact_material = materials.add(StandardMaterial {
+        base_color: Color::BLACK,
+        base_color_texture: Some(images.add(contact_texture())),
+        alpha_mode: AlphaMode::Blend,
+        unlit: true,
+        ..default()
+    });
     let lane_strip = meshes.add(Cuboid::new(0.018, 0.012, HIGHWAY_LENGTH + HIGHWAY_BEHIND));
     // A ring, not a disc: with both drawn as discs a resting receptor
     // and an approaching note were the same shape.
@@ -1859,8 +2142,10 @@ pub fn setup_stage(
                 MeshMaterial3d(materials.add(StandardMaterial {
                     base_color: rail_base,
                     emissive: rail_base.to_linear() * rail_glow,
-                    perceptual_roughness: 0.3,
-                    metallic: 0.6,
+                    // Polished: the round bar only reads as chrome
+                    // if its crown takes a tight highlight.
+                    perceptual_roughness: 0.22,
+                    metallic: 0.75,
                     ..default()
                 })),
                 HypeTinted {
@@ -1870,7 +2155,8 @@ pub fn setup_stage(
                     glow_lift: 0.8,
                     reach: 0.9,
                 },
-                Transform::from_xyz(origin + side * width / 2.0, 0.015, centre),
+                Transform::from_xyz(origin + side * width / 2.0, RAIL_RADIUS - 0.004, centre)
+                    .with_rotation(Quat::from_rotation_x(core::f32::consts::FRAC_PI_2)),
                 RenderLayers::layer(STAGE_LAYER),
             ));
 
@@ -1886,9 +2172,10 @@ pub fn setup_stage(
                     base_color_texture: Some(trim_texture.clone()),
                     emissive: stage.accent.to_linear() * trim_glow,
                     emissive_texture: Some(trim_texture.clone()),
+                    normal_map_texture: Some(trim_normal.clone()),
                     // Repeated far more down the neck than across it:
                     // the motif is a rhythm going away from you.
-                    uv_transform: bevy::math::Affine2::from_scale(Vec2::new(1.0, 34.0)),
+                    uv_transform: bevy::math::Affine2::from_scale(Vec2::new(1.0, TRIM_REPEATS)),
                     perceptual_roughness: 0.55,
                     metallic: 0.35,
                     ..default()
@@ -1900,7 +2187,25 @@ pub fn setup_stage(
                     glow_lift: 0.5,
                     reach: 0.9,
                 },
-                Transform::from_xyz(origin + side * (width / 2.0 + 0.115), 0.004, centre),
+                Transform::from_xyz(origin + side * (width / 2.0 + TRIM_OFFSET), 0.004, centre),
+                RenderLayers::layer(STAGE_LAYER),
+            ));
+
+            // Where the neck meets the deck's light: a soft dark band
+            // on the floor right outside the trim. The neck casts no
+            // real shadow (it is a reading surface, `on_the_neck`), and
+            // without this it floated over the panels.
+            commands.spawn((
+                GameplayScreen,
+                Stage3d,
+                on_the_neck(),
+                Mesh3d(contact_meshes[usize::from(side > 0.0)].clone()),
+                MeshMaterial3d(contact_material.clone()),
+                Transform::from_xyz(
+                    origin + side * neck_outer_edge(width),
+                    STAGE_DECK_TOP + 0.004,
+                    contact_centre,
+                ),
                 RenderLayers::layer(STAGE_LAYER),
             ));
         }
@@ -3342,7 +3647,7 @@ mod tests {
         let right = forward.cross(Vec3::Y).normalize();
         let up = right.cross(forward);
         let half = (CAMERA_FOV / 2.0).tan();
-        const DECK_TOP: f32 = -0.30;
+        const DECK_TOP: f32 = super::STAGE_DECK_TOP;
         // 21:9 is the widest shape anyone plays on; 3.0 is past every
         // monitor sold.
         for aspect in [16.0 / 9.0, 2.4, 3.0] {
@@ -3769,7 +4074,146 @@ mod tests {
 
 #[cfg(test)]
 mod rail_tests {
-    use super::rail_shade;
+    use super::{
+        CONTACT_PEAK, CONTACT_WIDTH, contact_shade, contact_strip, contact_texture,
+        neck_outer_edge, rail_normal, rail_shade, rail_texture,
+    };
+    use bevy::mesh::{Mesh, VertexAttributeValues};
+
+    #[test]
+    fn the_border_strip_has_mips_and_relief() {
+        // Without a mip chain the motif shimmered as it receded; the
+        // normal map is what makes it read as embossed, not printed.
+        for theme in THEMES {
+            let colour = rail_texture(theme);
+            let normal = rail_normal(theme);
+            assert!(
+                colour.texture_descriptor.mip_level_count > 1,
+                "{theme} colour"
+            );
+            assert!(
+                normal.texture_descriptor.mip_level_count > 1,
+                "{theme} normal"
+            );
+            let data = normal.data.as_ref().expect("normal texels");
+            let tilted = data
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .take(super::RAIL_TILE * super::RAIL_TILE)
+                // Leaning by more than ~5°. The stadium's broad bands
+                // stand far gentler than a rivet, so the bar is "some
+                // relief", not "steep relief".
+                .filter(|t| t[2] < 254)
+                .count();
+            assert!(
+                tilted > super::RAIL_TILE * super::RAIL_TILE / 20,
+                "{theme}: relief on {tilted} texels"
+            );
+            // And no theme's steepest flank goes past the chosen lean
+            // by more than the texel rounding.
+            let steepest = data
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .take(super::RAIL_TILE * super::RAIL_TILE)
+                .map(|t| t[2])
+                .min()
+                .expect("texels");
+            let floor = (super::RAIL_LEAN.cos() * 0.5 + 0.5) * 255.0;
+            assert!(
+                f32::from(steepest) >= floor - 2.0,
+                "{theme}: {steepest} vs {floor}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_contact_shadow_is_darkest_at_the_neck_and_gone_at_its_end() {
+        assert!((contact_shade(0.0) - CONTACT_PEAK).abs() < 1e-6);
+        assert!(contact_shade(1.0).abs() < 1e-6, "no visible outer border");
+        // Blended in linear light, anything under ~0.3 barely shows:
+        // the band must still be past that a third of the way out.
+        assert!(
+            contact_shade(0.33) > 0.5,
+            "holds its dark: {}",
+            contact_shade(0.33)
+        );
+        let mut last = f32::INFINITY;
+        for i in 0..=40 {
+            let a = contact_shade(i as f32 / 40.0);
+            assert!(a <= last, "monotone fall-off");
+            last = a;
+        }
+        // The texture carries the same curve: dark at u = 0, clear at u = 1.
+        let data = contact_texture().data.expect("texels");
+        let alpha: Vec<u8> = data
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .take(64)
+            .map(|t| t[3])
+            .collect();
+        assert!(alpha[0] > 140 && alpha[63] < 3, "{alpha:?}");
+        assert!(
+            data.as_chunks::<4>().0.iter().all(|t| t[..3] == [0, 0, 0]),
+            "black"
+        );
+    }
+
+    fn strip_positions(side: f32) -> Vec<[f32; 3]> {
+        let mesh = contact_strip(side, 10.0);
+        match mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
+            Some(VertexAttributeValues::Float32x3(p)) => p.clone(),
+            _ => panic!("positions"),
+        }
+    }
+
+    #[test]
+    fn each_contact_strip_starts_at_the_neck_and_runs_outward() {
+        for side in [-1.0f32, 1.0] {
+            let mesh = contact_strip(side, 10.0);
+            let Some(VertexAttributeValues::Float32x2(uv)) = mesh.attribute(Mesh::ATTRIBUTE_UV_0)
+            else {
+                panic!("uvs");
+            };
+            for (p, t) in strip_positions(side).iter().zip(uv) {
+                // u = 0 (darkest) on the neck's edge, u = 1 at the far side.
+                let expected = if t[0] == 0.0 {
+                    0.0
+                } else {
+                    side * CONTACT_WIDTH
+                };
+                assert!((p[0] - expected).abs() < 1e-6, "side {side}: {p:?} {t:?}");
+                assert!(p[1].abs() < 1e-6, "flat on the deck");
+            }
+            // Faces up for either side: a strip that faced down would
+            // be culled and simply never appear.
+            let Some(bevy::mesh::Indices::U32(ix)) = mesh.indices() else {
+                panic!("indices");
+            };
+            let p = strip_positions(side);
+            for tri in ix.as_chunks::<3>().0 {
+                let (a, b, c) = (
+                    bevy::math::Vec3::from(p[tri[0] as usize]),
+                    bevy::math::Vec3::from(p[tri[1] as usize]),
+                    bevy::math::Vec3::from(p[tri[2] as usize]),
+                );
+                assert!((b - a).cross(c - a).y > 0.0, "side {side} faces up");
+            }
+        }
+    }
+
+    #[test]
+    fn the_contact_shadow_begins_outside_the_trim() {
+        // It darkens the DECK beside the neck; on the trim it would
+        // dim the border the eye reads the neck's edge from.
+        for width in [1.2f32, 2.4, 3.5] {
+            let edge = neck_outer_edge(width);
+            assert!(edge >= width / 2.0 + super::TRIM_OFFSET + super::TRIM_WIDTH / 2.0 - 1e-6);
+            assert!(edge < width / 2.0 + 0.3, "and touches it: {edge}");
+        }
+    }
 
     /// The theme ids that ship, in the order they are declared.
     const THEMES: [&str; 6] = ["garage", "punk", "metal", "stadium", "psychedelic", "cyber"];
@@ -3814,6 +4258,71 @@ mod rail_tests {
                 high - low
             );
         }
+    }
+
+    #[test]
+    fn every_border_tiles_without_a_seam() {
+        // The tile repeats 34 times down the neck; a motif with a
+        // fractional count per tile (the old psychedelic and stadium
+        // waves) breaks at every repeat. Almost every texel must match
+        // its twin one tile further on — the few exceptions are float
+        // rounding exactly on an anti-aliased edge.
+        for theme in THEMES {
+            let mut off = 0;
+            for i in 0..64 {
+                for j in 0..256 {
+                    let (u, v) = ((i as f32 + 0.5) / 64.0, (j as f32 + 0.5) / 256.0);
+                    if (rail_shade(theme, u, v) - rail_shade(theme, u, v + 1.0)).abs() > 0.02 {
+                        off += 1;
+                    }
+                }
+            }
+            assert!(
+                off < 64 * 256 / 100,
+                "{theme}: {off} texels break at the seam"
+            );
+        }
+    }
+
+    #[test]
+    fn every_border_has_real_edges() {
+        // "Pixelbrei": borders drawn from soft waves and ramps have no
+        // edge anywhere, and at any resolution read as a smear. Down
+        // the strip's middle, one texel apart, each motif must jump.
+        for theme in THEMES {
+            let n = 512;
+            let steepest = (0..n)
+                .map(|j| {
+                    let (a, b) = (j as f32 / n as f32, (j + 1) as f32 / n as f32);
+                    (rail_shade(theme, 0.5, a) - rail_shade(theme, 0.5, b)).abs()
+                })
+                .fold(0.0f32, f32::max);
+            assert!(
+                steepest > 0.3,
+                "{theme}'s sharpest edge is {steepest:.3} a texel"
+            );
+        }
+    }
+
+    #[test]
+    fn a_rivet_is_round_in_metres_not_in_texels() {
+        // The strip is 0.17 m across and a tile 0.84 m along; drawn in
+        // texture units, circles came out five times longer than wide.
+        // Measure one rivet's extent both ways, in metres.
+        let (w, l) = (super::TRIM_WIDTH, super::TRIM_TILE_LENGTH);
+        let period = l / 20.0;
+        let on = |x: f32, y: f32| rail_shade("garage", x / w, y / l) > 0.4;
+        let (cx, cy) = (w / 2.0, period / 2.0);
+        let reach = |dx: f32, dy: f32| {
+            (0..200)
+                .map(|k| k as f32 * 0.0002)
+                .take_while(|&t| on(cx + dx * t, cy + dy * t))
+                .count() as f32
+                * 0.0002
+        };
+        let (across, along) = (reach(1.0, 0.0), reach(0.0, 1.0));
+        assert!(across > 0.008, "a rivet exists: {across}");
+        assert!((across - along).abs() < 0.003, "round: {across} × {along}");
     }
 
     #[test]
