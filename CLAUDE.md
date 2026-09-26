@@ -142,6 +142,14 @@ writes. On macOS both directories below are
   `BEATBYTE_*` switch (a test enforces that the list stays complete)
 - `docs/gameplay/`, `docs/audio/`, `docs/chart-format/`,
   `docs/lyrics/`, `docs/ui/`, `docs/releases/` — the living specs
+- [`docs/perf/`](docs/perf/) — the bench (`tools/bench.sh`), how to
+  measure, and the baseline of both Macs
+- `website/` — the product page at https://beatbyte.celox.io,
+  generated from `website/site.json` by the product-page kit
+  (`/Users/martin/claude/_templates/apps/product-page`); edit
+  `site.json`, rebuild with `build.py --force`, deploy with
+  `website/deploy.sh`. New releases reach it by themselves (a VPS
+  timer); never hand-edit the generated files
 
 ## Autonomous execution protocol
 

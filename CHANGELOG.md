@@ -16,6 +16,14 @@ the manifest ever carries a version this file does not describe.
 
 ## [0.18.51] - 2026-09-26
 
+### Added
+
+- **A product website: [beatbyte.celox.io](https://beatbyte.celox.io)**
+  (`beat-byte.celox.io` leads there too). Downloads for Apple silicon
+  and Intel Macs, Windows and the Linux AppImage, with the SHA-256 of
+  every file; `/download` picks the file for your platform. The page
+  follows new releases by itself. The README links it at the top.
+
 ### Fixed
 
 - **The players screen follows the roster while it is open.** A new
