@@ -299,9 +299,19 @@ impl SmartLyrics {
 pub fn poll_smart_lyrics(
     mut smart: ResMut<SmartLyrics>,
     mut status: ResMut<crate::import::ImportStatus>,
+    builtins: Option<Res<crate::boot::BuiltinSongs>>,
+    library: Option<ResMut<crate::library::SongLibrary>>,
 ) {
     let was_aligning = smart.aligning.clone();
     if let Some(outcome) = smart.poll() {
+        // A finished alignment wrote `words.json`: rescan, so the
+        // browser's LYRICS column says "word-timed" now rather than
+        // after the next restart.
+        if matches!(outcome, AlignOutcome::Done(_))
+            && let (Some(builtins), Some(mut library)) = (builtins, library)
+        {
+            *library = crate::boot::scan_with_builtins(&builtins.0);
+        }
         let title = was_aligning.map(|p| p.title).unwrap_or_default();
         status.0 = match outcome {
             AlignOutcome::Done(message) => format!("aligned \"{title}\": {message}"),

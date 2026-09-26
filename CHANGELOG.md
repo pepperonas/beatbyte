@@ -14,6 +14,27 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.51] - 2026-09-26
+
+### Fixed
+
+- **The players screen follows the roster while it is open.** A new
+  player, a new name or choosing who plays used to show only after
+  leaving the screen and coming back. The list now rebuilds the moment
+  the roster changes, the player who is playing stands at the top with
+  the PLAYING mark, and the cursor stays on the player it was on. The
+  footer also switches to the typing hints while a name is being
+  entered (it never did).
+- **The song browser's LYRICS column updates after a lookup (L) or an
+  alignment (K)**, instead of showing the old state until the next
+  restart.
+- **The song info page shows the current document** when the
+  background librarian or a chore rewrites it while the page is open,
+  keeping the scroll position.
+- **An achievement credited on entering the achievements screen shows
+  as earned on that same visit** — the screen could be drawn before the
+  credit landed.
+
 ## [0.18.50] - 2026-09-25
 
 ### Changed

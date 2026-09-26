@@ -5,6 +5,12 @@
 //! already learned once in the song browser: **while a field is
 //! taking keys, a printable key is TEXT.** Typing "Sam" must not
 //! leave the screen because "S" also opens statistics.
+//!
+//! The list is live: it is rebuilt whenever the roster or the play
+//! history changes, so a new player, a new name or a new "playing"
+//! mark shows the moment it happens — not on the next visit. The
+//! player who is playing stands at the top ([`display_order`]), and
+//! the cursor follows the player it was on across a rebuild.
 
 use beatbyte_core::player::{NameError, PlayerId};
 use beatbyte_core::stats::{self, Filter};
@@ -22,9 +28,46 @@ use crate::ui_kit;
 #[derive(Component)]
 struct PlayersScreen;
 
-/// A row standing for one player.
+/// A row standing for one player, by its position on screen.
 #[derive(Component)]
 struct PlayerRow(usize);
+
+/// The panel node the rows live in — what a rebuild empties.
+#[derive(Component)]
+struct RosterList;
+
+/// The roster as it is on screen: which roster index each row shows.
+#[derive(Resource, Debug, Clone, Default)]
+struct RosterView {
+    order: Vec<usize>,
+}
+
+impl RosterView {
+    /// The player shown on screen row `row`.
+    fn player<'a>(
+        &self,
+        players: &'a Players,
+        row: usize,
+    ) -> Option<&'a beatbyte_core::player::Player> {
+        self.order
+            .get(row)
+            .and_then(|&index| players.0.players.get(index))
+    }
+}
+
+/// The order the roster is shown in: the player who is playing first,
+/// everybody else in the order they joined. Pure — tested.
+#[must_use]
+pub fn display_order(
+    players: &[beatbyte_core::player::Player],
+    selected: Option<PlayerId>,
+) -> Vec<usize> {
+    let playing = players.iter().position(|p| Some(p.id) == selected);
+    playing
+        .into_iter()
+        .chain((0..players.len()).filter(|&i| Some(i) != playing))
+        .collect()
+}
 
 /// The line under the list that reports what just happened.
 #[derive(Component)]
@@ -221,6 +264,7 @@ impl Plugin for PlayersUiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<RosterCursor>()
             .init_resource::<ActionBarClicks>()
+            .init_resource::<RosterView>()
             .add_systems(
                 OnEnter(AppState::Players),
                 spawn_roster.after(crate::history::HistoryReloaded),
@@ -229,7 +273,7 @@ impl Plugin for PlayersUiPlugin {
                 Update,
                 (
                     paint_action_bar.before(roster_keys),
-                    (roster_keys, roster_nav, refresh_rows).chain(),
+                    (roster_keys, roster_nav, rebuild_list, refresh_rows).chain(),
                 )
                     .run_if(in_state(AppState::Players)),
             )
@@ -243,9 +287,11 @@ fn spawn_roster(
     players: Res<Players>,
     history: Res<crate::history::PlayHistory>,
     mut cursor: ResMut<RosterCursor>,
+    mut view: ResMut<RosterView>,
 ) {
     cursor.row = cursor.row.min(players.0.len().saturating_sub(1));
     cursor.field = None;
+    view.order = display_order(&players.0.players, players.0.selected);
     commands
         .spawn((ui_kit::screen_root(), PlayersScreen))
         .with_children(|root| {
@@ -257,27 +303,15 @@ fn spawn_roster(
             );
             ui_kit::action_bar(root, &font, &roster_chips(!players.0.is_empty()));
             root.spawn(ui_kit::panel()).with_children(|panel| {
-                if players.0.is_empty() {
-                    crate::plot::empty_note(
-                        panel,
-                        &font,
-                        "NOBODY YET - PRESS N TO ADD THE FIRST PLAYER",
-                    );
-                } else {
-                    for (index, player) in players.0.players.iter().enumerate() {
-                        let runs = stats::runs_of(&history.0, player.id, Filter::default());
-                        let summary = stats::summarize(&runs);
-                        spawn_row(
-                            panel,
-                            &font,
-                            index,
-                            &player.name,
-                            player.colour,
-                            players.0.selected == Some(player.id),
-                            &player_line(summary.runs, summary.songs, summary.last_played_ms),
-                        );
-                    }
-                }
+                panel
+                    .spawn((
+                        Node {
+                            flex_direction: FlexDirection::Column,
+                            ..default()
+                        },
+                        RosterList,
+                    ))
+                    .with_children(|list| spawn_rows(list, &font, &players, &history, &view));
                 panel.spawn((
                     Node {
                         margin: UiRect::top(px(10.0)),
@@ -303,6 +337,91 @@ fn spawn_roster(
                 "D-PAD select  SOUTH play as  EAST back",
             );
         });
+}
+
+/// The rows (or the note that there are none), in [`RosterView`] order.
+fn spawn_rows(
+    list: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    players: &Players,
+    history: &crate::history::PlayHistory,
+    view: &RosterView,
+) {
+    if players.0.is_empty() {
+        crate::plot::empty_note(list, font, "NOBODY YET - PRESS N TO ADD THE FIRST PLAYER");
+        return;
+    }
+    for (row, &index) in view.order.iter().enumerate() {
+        let Some(player) = players.0.players.get(index) else {
+            continue;
+        };
+        let runs = stats::runs_of(&history.0, player.id, Filter::default());
+        let summary = stats::summarize(&runs);
+        spawn_row(
+            list,
+            font,
+            row,
+            &player.name,
+            player.colour,
+            players.0.selected == Some(player.id),
+            &player_line(summary.runs, summary.songs, summary.last_played_ms),
+        );
+    }
+}
+
+/// Rebuild the rows whenever the roster or the history changed: a new
+/// player, a rename, a new "playing" mark, runs adopted. The cursor
+/// stays on the player it was on — which, for the one just chosen or
+/// just added, is the top row.
+#[allow(clippy::too_many_arguments)] // Bevy system params
+fn rebuild_list(
+    mut commands: Commands,
+    font: Res<UiFont>,
+    players: Res<Players>,
+    history: Res<crate::history::PlayHistory>,
+    mut view: ResMut<RosterView>,
+    mut cursor: ResMut<RosterCursor>,
+    lists: Query<Entity, With<RosterList>>,
+    mut hints: Query<&mut crate::prompts::DeviceHint>,
+) {
+    let field_open = cursor.field.is_some();
+    let wanted_hint = footer_hint(field_open, !players.0.is_empty());
+    for mut hint in &mut hints {
+        if hint.keyboard != wanted_hint {
+            hint.keyboard = wanted_hint.clone();
+        }
+    }
+    if !players.is_changed() && !history.is_changed() {
+        return;
+    }
+    let on = view.player(&players, cursor.row).map(|p| p.id);
+    view.order = display_order(&players.0.players, players.0.selected);
+    cursor.row = cursor_after_rebuild(&players.0.players, &view.order, on, cursor.row);
+    for list in &lists {
+        commands.entity(list).despawn_children();
+        commands
+            .entity(list)
+            .with_children(|list| spawn_rows(list, &font, &players, &history, &view));
+    }
+}
+
+/// Where the cursor goes after a rebuild: onto the player it was on,
+/// wherever that player now stands; else clamped into the list. Pure
+/// — tested.
+#[must_use]
+pub fn cursor_after_rebuild(
+    players: &[beatbyte_core::player::Player],
+    order: &[usize],
+    was_on: Option<PlayerId>,
+    row: usize,
+) -> usize {
+    was_on
+        .and_then(|id| {
+            order
+                .iter()
+                .position(|&index| players.get(index).is_some_and(|p| p.id == id))
+        })
+        .unwrap_or_else(|| row.min(order.len().saturating_sub(1)))
 }
 
 fn spawn_row(
@@ -360,6 +479,7 @@ fn spawn_row(
 fn apply_gesture(
     gesture: Gesture,
     cursor: &mut RosterCursor,
+    view: &RosterView,
     players: &Players,
     next: &mut NextState<AppState>,
     chosen: &mut crate::stats_ui::StatsFor,
@@ -374,7 +494,7 @@ fn apply_gesture(
             cursor.status.clear();
         }
         Gesture::Rename => {
-            if let Some(player) = players.0.players.get(cursor.row) {
+            if let Some(player) = view.player(players, cursor.row) {
                 cursor.field = Some(Field {
                     text: player.name.clone(),
                     renaming: Some(player.id),
@@ -383,13 +503,13 @@ fn apply_gesture(
             }
         }
         Gesture::Stats => {
-            if let Some(player) = players.0.players.get(cursor.row) {
+            if let Some(player) = view.player(players, cursor.row) {
                 chosen.0 = Some(player.id);
                 next.set(AppState::Stats);
             }
         }
         Gesture::Achievements => {
-            if let Some(player) = players.0.players.get(cursor.row) {
+            if let Some(player) = view.player(players, cursor.row) {
                 awards.0 = Some(player.id);
                 next.set(AppState::Achievements);
             }
@@ -404,6 +524,7 @@ fn roster_keys(
     mut typed: MessageReader<bevy::input::keyboard::KeyboardInput>,
     clicks: Res<ActionBarClicks>,
     mut cursor: ResMut<RosterCursor>,
+    view: Res<RosterView>,
     mut players: ResMut<Players>,
     mut history: ResMut<crate::history::PlayHistory>,
     mut next: ResMut<NextState<AppState>>,
@@ -418,6 +539,7 @@ fn roster_keys(
         apply_gesture(
             gesture,
             &mut cursor,
+            &view,
             &players,
             &mut next,
             &mut chosen,
@@ -449,6 +571,7 @@ fn roster_keys(
                 apply_gesture(
                     gesture,
                     &mut cursor,
+                    &view,
                     &players,
                     &mut next,
                     &mut chosen,
@@ -505,8 +628,10 @@ fn commit_field(
     match result {
         Ok(id) => {
             if field.renaming.is_none() {
+                // Added and chosen: it moves to the top on the rebuild,
+                // and the cursor with it.
                 players.0.select(id);
-                cursor.row = players.0.len().saturating_sub(1);
+                cursor.row = 0;
             }
             save_roster(players);
             cursor.field = None;
@@ -530,6 +655,7 @@ fn roster_nav(
         With<ui_kit::BackButton>,
     >,
     mut cursor: ResMut<RosterCursor>,
+    view: Res<RosterView>,
     mut players: ResMut<Players>,
     mut selected: ResMut<crate::song_select::SelectedDifficulty>,
     mut next: ResMut<NextState<AppState>>,
@@ -561,7 +687,7 @@ fn roster_nav(
             cursor.row = index;
         }
         if (nav.confirm || pointer.clicked)
-            && let Some(player) = players.0.players.get(cursor.row)
+            && let Some(player) = view.player(&players, cursor.row)
         {
             let id = player.id;
             let name = player.name.clone();
@@ -702,5 +828,130 @@ mod tests {
         // and its ":" separator, which is noise in a list row.
         assert!(!dated.contains(':'), "a time of day is noise here: {dated}");
         assert!(!dated.contains('Z'), "{dated}");
+    }
+
+    fn roster(names: &[&str]) -> beatbyte_core::player::Roster {
+        let mut roster = beatbyte_core::player::Roster::default();
+        for (i, name) in names.iter().enumerate() {
+            roster.add(name, i as u64 + 1).expect("a fresh name");
+        }
+        roster
+    }
+
+    /// The one playing comes first; the rest keep the order they
+    /// joined in; nobody is dropped or shown twice.
+    #[test]
+    fn the_player_who_is_playing_stands_at_the_top() {
+        let mut r = roster(&["Ann", "Ben", "Cid"]);
+        let cid = r.players[2].id;
+        r.select(cid);
+        assert_eq!(display_order(&r.players, r.selected), vec![2, 0, 1]);
+        let ann = r.players[0].id;
+        r.select(ann);
+        assert_eq!(display_order(&r.players, r.selected), vec![0, 1, 2]);
+        assert_eq!(display_order(&r.players, None), vec![0, 1, 2]);
+        assert!(display_order(&[], None).is_empty());
+    }
+
+    /// The cursor follows its player across a rebuild; a player who is
+    /// gone leaves the cursor clamped into the list.
+    #[test]
+    fn the_cursor_follows_its_player_across_a_rebuild() {
+        let mut r = roster(&["Ann", "Ben", "Cid"]);
+        let ben = r.players[1].id;
+        r.select(r.players[2].id);
+        let order = display_order(&r.players, r.selected);
+        // Ben is now the third row (Cid, Ann, Ben).
+        assert_eq!(cursor_after_rebuild(&r.players, &order, Some(ben), 1), 2);
+        assert_eq!(cursor_after_rebuild(&r.players, &order, None, 9), 2);
+        assert_eq!(cursor_after_rebuild(&[], &[], None, 3), 0);
+    }
+
+    /// An app that runs the real screen: the roster screen, then a
+    /// change to the roster, then one more frame.
+    fn wired(roster: beatbyte_core::player::Roster) -> App {
+        let mut app = App::new();
+        app.add_plugins((bevy::MinimalPlugins, bevy::asset::AssetPlugin::default()))
+            .init_asset::<Font>()
+            .insert_resource(Players(roster))
+            .insert_resource(crate::history::PlayHistory::default())
+            .init_resource::<crate::config::Settings>()
+            .init_resource::<RosterCursor>()
+            .init_resource::<RosterView>()
+            .add_systems(Startup, spawn_roster)
+            .add_systems(Update, rebuild_list);
+        let font = app
+            .world_mut()
+            .resource_mut::<Assets<Font>>()
+            .reserve_handle();
+        app.insert_resource(UiFont::from_handle(font));
+        app.update();
+        app
+    }
+
+    /// The names on the rows, top to bottom.
+    fn names_on_screen(app: &mut App) -> Vec<String> {
+        let mut rows: Vec<(usize, Entity)> = app
+            .world_mut()
+            .query::<(Entity, &PlayerRow)>()
+            .iter(app.world())
+            .map(|(e, row)| (row.0, e))
+            .collect();
+        rows.sort_unstable();
+        rows.into_iter()
+            .map(|(_, row)| {
+                let children = app
+                    .world()
+                    .get::<Children>(row)
+                    .expect("a row has children");
+                children
+                    .iter()
+                    .filter_map(|child| app.world().get::<Text>(child))
+                    .map(|text| text.0.clone())
+                    .find(|text| !text.contains("RUN"))
+                    .unwrap_or_default()
+            })
+            .collect()
+    }
+
+    /// The bug this screen had: a player added while it was open did
+    /// not appear until the screen was left and entered again, and
+    /// choosing a player did not move them or their PLAYING mark.
+    #[test]
+    fn the_list_follows_the_roster_while_the_screen_is_open() {
+        let mut app = wired(roster(&["Ann", "Ben"]));
+        assert_eq!(names_on_screen(&mut app), vec!["Ann", "Ben"]);
+        // Added (and chosen, as the screen does): on the next frame it
+        // is on screen, at the top.
+        {
+            let mut players = app.world_mut().resource_mut::<Players>();
+            let id = players.0.add("Cid", 9).expect("a new name");
+            players.0.select(id);
+        }
+        app.update();
+        assert_eq!(names_on_screen(&mut app), vec!["Cid", "Ann", "Ben"]);
+        // Choosing Ben moves Ben up, and the PLAYING mark with him.
+        {
+            let mut players = app.world_mut().resource_mut::<Players>();
+            let ben = players.0.players[1].id;
+            players.0.select(ben);
+        }
+        app.update();
+        assert_eq!(names_on_screen(&mut app), vec!["Ben", "Ann", "Cid"]);
+        let marks = app
+            .world_mut()
+            .query::<&Text>()
+            .iter(app.world())
+            .filter(|text| text.0 == "PLAYING")
+            .count();
+        assert_eq!(marks, 1, "one PLAYING mark, not one per rebuild");
+        // A rename shows too.
+        {
+            let mut players = app.world_mut().resource_mut::<Players>();
+            let ann = players.0.players[0].id;
+            players.0.rename(ann, "Anna").expect("a new name");
+        }
+        app.update();
+        assert!(names_on_screen(&mut app).contains(&"Anna".to_owned()));
     }
 }

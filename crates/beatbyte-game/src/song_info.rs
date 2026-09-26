@@ -31,6 +31,18 @@ pub struct Showing {
     pub title: String,
     /// The sections to draw.
     pub sections: Vec<beatbyte_library::report::Section>,
+    /// The folder it was read from — to read it again when the
+    /// librarian or a chore rewrites the document while it is shown.
+    pub folder: std::path::PathBuf,
+    /// The document's modification time when it was read.
+    pub modified: Option<std::time::SystemTime>,
+}
+
+/// When a document was last written, if it can be told.
+fn modified(folder: &std::path::Path) -> Option<std::time::SystemTime> {
+    std::fs::metadata(beatbyte_library::store::path(folder))
+        .and_then(|meta| meta.modified())
+        .ok()
 }
 
 impl Showing {
@@ -44,6 +56,8 @@ impl Showing {
         Some(Showing {
             title: beatbyte_chart::twin::display_title(&doc.identity.title.value),
             sections: beatbyte_library::report::describe(&doc),
+            folder: folder.to_path_buf(),
+            modified: modified(folder),
         })
     }
 }
@@ -64,7 +78,9 @@ impl Plugin for SongInfoPlugin {
         app.add_systems(OnEnter(AppState::SongInfo), spawn)
             .add_systems(
                 Update,
-                (scroll, leave).chain().run_if(in_state(AppState::SongInfo)),
+                (restore_scroll, reread, scroll, leave)
+                    .chain()
+                    .run_if(in_state(AppState::SongInfo)),
             )
             .add_systems(OnExit(AppState::SongInfo), despawn);
     }
@@ -143,6 +159,63 @@ fn spawn(mut commands: Commands, font: Res<UiFont>, showing: Option<Res<Showing>
                 "D-PAD scroll  EAST back",
             );
         });
+}
+
+/// How often the shown document is checked for a newer write.
+const REREAD_EVERY_S: f32 = 1.0;
+
+/// Read the document again when it was rewritten while shown — the
+/// librarian fills in a fingerprint or features, a redesign chore
+/// finishes — and redraw, keeping the scroll position. A check is one
+/// `stat` a second; nothing is parsed unless the file changed.
+fn reread(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut since: Local<f32>,
+    showing: Option<ResMut<Showing>>,
+    screens: Query<Entity, With<SongInfoScreen>>,
+    bodies: Query<&ScrollPosition, With<Body>>,
+) {
+    *since += time.delta_secs();
+    if *since < REREAD_EVERY_S {
+        return;
+    }
+    *since = 0.0;
+    let Some(mut showing) = showing else {
+        return;
+    };
+    let now = modified(&showing.folder);
+    if now.is_none() || now == showing.modified {
+        return;
+    }
+    let Some(fresh) = Showing::read(&showing.folder) else {
+        return;
+    };
+    let scrolled = bodies.iter().next().map_or(0.0, |position| position.y);
+    *showing = fresh;
+    for screen in &screens {
+        commands.entity(screen).despawn();
+    }
+    commands.run_system_cached(spawn);
+    commands.insert_resource(RestoreScroll(scrolled));
+}
+
+/// A scroll position to put back once the redrawn body exists.
+#[derive(Resource)]
+struct RestoreScroll(f32);
+
+fn restore_scroll(
+    mut commands: Commands,
+    restore: Option<Res<RestoreScroll>>,
+    mut bodies: Query<&mut ScrollPosition, With<Body>>,
+) {
+    let Some(restore) = restore else {
+        return;
+    };
+    if let Some(mut position) = bodies.iter_mut().next() {
+        position.y = restore.0;
+        commands.remove_resource::<RestoreScroll>();
+    }
 }
 
 fn despawn(mut commands: Commands, screens: Query<Entity, With<SongInfoScreen>>) {
@@ -239,6 +312,84 @@ mod tests {
                 .iter()
                 .any(|section| section.title == "Song"),
             "the report reached the screen"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn doc(title: &str) -> beatbyte_library::doc::SongDoc {
+        beatbyte_library::doc::SongDoc::new(
+            beatbyte_library::SongId::from_parts(1, 1),
+            beatbyte_library::Sourced::stated(
+                title.to_owned(),
+                beatbyte_library::MetaSource::Inferred,
+            ),
+            "song.m4a".to_owned(),
+            beatbyte_library::SourceKind::LocalFile,
+            1_000,
+        )
+    }
+
+    /// The document rewritten while the screen shows it — the
+    /// librarian, a finished chore — is read again and redrawn; an
+    /// unchanged one is left alone.
+    #[test]
+    fn a_document_rewritten_while_shown_is_shown_anew() {
+        let dir = std::env::temp_dir().join(format!("bb-info-live-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("folder");
+        beatbyte_library::store::save(&dir, &doc("Maria")).expect("writes");
+        let mut app = App::new();
+        app.add_plugins((bevy::MinimalPlugins, bevy::asset::AssetPlugin::default()))
+            .init_asset::<Font>()
+            .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+                std::time::Duration::from_millis(600),
+            ))
+            .insert_resource(Showing::read(&dir).expect("a document"))
+            .add_systems(Startup, spawn)
+            .add_systems(Update, (restore_scroll, reread).chain());
+        let font = app
+            .world_mut()
+            .resource_mut::<Assets<Font>>()
+            .reserve_handle();
+        app.insert_resource(UiFont::from_handle(font));
+        let headers = |app: &mut App| -> Vec<String> {
+            app.world_mut()
+                .query::<&Text>()
+                .iter(app.world())
+                .map(|text| text.0.clone())
+                .filter(|text| text.contains("Maria") || text.contains("Heroes"))
+                .collect()
+        };
+        for _ in 0..4 {
+            app.update();
+        }
+        // The title stands twice: the header and the document's own row.
+        let before = headers(&mut app);
+        assert!(
+            !before.is_empty() && before.iter().all(|t| t == "Maria"),
+            "{before:?}"
+        );
+        // Rewritten, and dated a minute later so the stamp surely moves.
+        beatbyte_library::store::save(&dir, &doc("Heroes")).expect("writes");
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(60);
+        std::fs::File::options()
+            .write(true)
+            .open(beatbyte_library::store::path(&dir))
+            .and_then(|file| file.set_modified(later))
+            .expect("re-dated");
+        for _ in 0..4 {
+            app.update();
+        }
+        assert_eq!(app.world().resource::<Showing>().title, "Heroes");
+        let after = headers(&mut app);
+        assert_eq!(
+            after.len(),
+            before.len(),
+            "one screen, redrawn, not two: {after:?}"
+        );
+        assert!(
+            after.iter().all(|t| t == "Heroes"),
+            "the old screen is gone: {after:?}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

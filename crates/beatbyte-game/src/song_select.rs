@@ -1529,6 +1529,8 @@ struct LyricsTask(bevy::tasks::Task<crate::lyrics_fetch::Outcome>);
 fn poll_lyrics_lookup(
     mut lookup: ResMut<LyricsLookup>,
     mut status: ResMut<crate::import::ImportStatus>,
+    builtins: Option<Res<crate::boot::BuiltinSongs>>,
+    library: Option<ResMut<SongLibrary>>,
 ) {
     let Some(task) = lookup.task.as_mut() else {
         return;
@@ -1540,6 +1542,12 @@ fn poll_lyrics_lookup(
     };
     status.0 = outcome.message(&lookup.title);
     lookup.task = None;
+    // A lookup that wrote a file changed what the LYRICS column should
+    // say; the rows only learn it from a rescan (`sync_view` rebuilds
+    // on the library changing), as after an import or a delete.
+    if let (Some(builtins), Some(mut library)) = (builtins, library) {
+        *library = crate::boot::scan_with_builtins(&builtins.0);
+    }
 }
 
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API

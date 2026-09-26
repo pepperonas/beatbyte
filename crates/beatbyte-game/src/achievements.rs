@@ -172,7 +172,7 @@ fn credit_the_past(mut store: ResMut<Unlocked>, players: Res<crate::players::Pla
 /// Same sweep, on the way into the overview: a history edited by the
 /// CLI between sessions is credited when the screen opens.
 #[allow(clippy::needless_pass_by_value)] // Bevy system params
-fn credit_quietly(
+pub(crate) fn credit_quietly(
     mut store: ResMut<Unlocked>,
     history: Res<crate::history::PlayHistory>,
     players: Res<crate::players::Players>,

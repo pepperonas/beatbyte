@@ -459,8 +459,13 @@ impl Plugin for AchievementsUiPlugin {
             .add_systems(
                 OnEnter(AppState::Achievements),
                 // Behind the reload: this reads `PlayHistory`, and
-                // the same state entry rewrites it.
-                spawn_screen.after(crate::history::HistoryReloaded),
+                // the same state entry rewrites it. And behind the
+                // quiet credit, which writes `Unlocked` on this same
+                // entry: unordered, the screen could draw before it and
+                // leave a just-earned achievement locked on screen.
+                spawn_screen
+                    .after(crate::history::HistoryReloaded)
+                    .after(crate::achievements::credit_quietly),
             )
             .add_systems(
                 Update,
