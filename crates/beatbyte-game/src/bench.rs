@@ -251,6 +251,7 @@ fn write_result(
     settings: Res<crate::config::Settings>,
     song: Option<Res<crate::boot::LoadedSong>>,
     difficulty: Res<crate::song_select::SelectedDifficulty>,
+    store: Option<Res<DiagnosticsStore>>,
 ) {
     if bench.written || bench.frame_ms.is_empty() {
         return;
@@ -272,7 +273,20 @@ fn write_result(
         || ("unknown".to_owned(), "unknown".to_owned()),
         |info| (info.0.name.clone(), format!("{:?}", info.0.backend)),
     );
+    // Every render pass's own GPU and CPU time, averaged over the
+    // store's history (BEATBYTE_BENCH_GPU): where a frame's GPU time
+    // goes, pass by pass.
+    let passes: serde_json::Map<String, serde_json::Value> = store
+        .iter()
+        .flat_map(|store| store.iter())
+        .filter(|d| d.path().as_str().starts_with("render/"))
+        .filter_map(|d| {
+            d.average()
+                .map(|avg| (d.path().as_str().to_owned(), serde_json::json!(avg)))
+        })
+        .collect();
     let result = serde_json::json!({
+        "render_passes": passes,
         "scenario": bench.scenario,
         "song": song.map_or_else(String::new, |song| song.chart.song.title.clone()),
         "difficulty": format!("{}", difficulty.0),
@@ -357,6 +371,58 @@ fn apply_probes(
     }
 }
 
+/// Take a whole part of the stage out: its roots are despawned (with
+/// their children) the frame they appear. The systems that drive them
+/// then find nothing to do, so the probe removes the part's render
+/// cost AND its animation cost.
+#[allow(clippy::type_complexity)]
+fn despawn_probes(
+    mut commands: Commands,
+    crowd: Query<Entity, Added<crate::gameplay::crowd::Dancer>>,
+    band: Query<
+        Entity,
+        Or<(
+            Added<crate::gameplay::band::Band>,
+            Added<crate::gameplay::band::BandMember>,
+        )>,
+    >,
+    rig: Query<
+        Entity,
+        Or<(
+            Added<crate::gameplay::rig::RigLamp>,
+            Added<crate::gameplay::rig::SpotBeam>,
+            Added<crate::gameplay::rig::RigBeam>,
+        )>,
+    >,
+    fog: Query<Entity, Added<crate::gameplay::fog::Puff>>,
+    arcs: Query<
+        Entity,
+        Or<(
+            Added<crate::gameplay::arc::BoltSegment>,
+            Added<crate::gameplay::arc::BoltFork>,
+            Added<crate::gameplay::arc::AuraSlab>,
+            Added<crate::gameplay::strike::StrikeSegment>,
+        )>,
+    >,
+    monitors: Query<Entity, Added<crate::gameplay::monitors::Monitor>>,
+) {
+    let mut drop = |on: bool, entities: &mut dyn Iterator<Item = Entity>| {
+        if on {
+            for entity in entities {
+                if let Ok(mut e) = commands.get_entity(entity) {
+                    e.despawn();
+                }
+            }
+        }
+    };
+    drop(probe("crowd"), &mut crowd.iter());
+    drop(probe("band"), &mut band.iter());
+    drop(probe("rig"), &mut rig.iter());
+    drop(probe("fog"), &mut fog.iter());
+    drop(probe("arcs"), &mut arcs.iter());
+    drop(probe("monitors"), &mut monitors.iter());
+}
+
 /// The `hidpi` probe: render at one pixel per point — a quarter of
 /// a Retina display's pixels, the stand-in for a render scale of 50 %
 /// until one exists. Anything else passes through.
@@ -386,7 +452,7 @@ impl Plugin for BenchPlugin {
         app.insert_resource(Bench::new(scenario))
             .add_systems(First, mark_frame_start)
             .add_systems(Last, record_frame)
-            .add_systems(PostUpdate, apply_probes)
+            .add_systems(PostUpdate, (apply_probes, despawn_probes))
             .add_systems(OnEnter(AppState::Gameplay), mark_gameplay_entered)
             .add_systems(OnExit(GamePhase::Playing), write_result);
     }

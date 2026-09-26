@@ -154,7 +154,12 @@ pub fn clock_move(
 }
 
 /// Reconcile the song clock against the device-reported position.
-fn sync_clock(time: Res<Time>, music: Res<Music>, mut game_clock: ResMut<GameClock>) {
+fn sync_clock(
+    time: Res<Time>,
+    real: Res<Time<Real>>,
+    music: Res<Music>,
+    mut game_clock: ResMut<GameClock>,
+) {
     let mono = time.elapsed_secs_f64();
     let generation = music.0.generation();
     let position = music.0.position_s();
@@ -185,9 +190,19 @@ fn sync_clock(time: Res<Time>, music: Res<Music>, mut game_clock: ResMut<GameClo
             game_clock.generation = generation;
         }
         ClockMove::Reconcile => {
-            // Returns the correction it applied; the caller has no
-            // use for it.
-            game_clock.clock.reconcile(mono, position);
+            let correction = game_clock.clock.reconcile(mono, position);
+            // A correction this large is a visible jump of the
+            // highway. Say so, with what the frame looked like: the
+            // one line that tells a stalled frame (virtual time
+            // clamped) from a stalled audio thread (the device
+            // position lagging, then catching up).
+            if correction.abs() > 0.1 {
+                warn!(
+                    "clock: snapped {correction:+.3} s at song {position:.3} (frame: wall {:.3} s, virtual {:.3} s)",
+                    real.delta_secs_f64(),
+                    time.delta_secs_f64()
+                );
+            }
         }
         ClockMove::Nothing => {}
     }
