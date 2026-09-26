@@ -2213,6 +2213,16 @@ Goal: 60 fps under vsync on both machines, no missed frame over a whole song, al
 - [x] P1 **Baseline, device B** — `docs/perf/baseline.md`: p99 117.7–123.2 ms at 2880×1752 (~10 fps), scenario-independent; probes put the point and spot lights at −41 % of the frame, MSAA/bloom/shadows at −8 to −11 % each, and a floor of 30–40 ms that depends on neither pixels nor lights. Device A still to measure on an idle machine.
 - [ ] P2 Profile the floor (render thread / draw calls) with Instruments; the table to the user; halt.
 
+## Stage realism III — floor, neck, crowd, band, fog (IN PROGRESS 2026-09-26)
+
+Commission: "der Boden, die seitliche Begrenzung des Highway, die Zuschauer, die Band und der Nebel sollen schöner und realistischer aussehen." Five stages, one commit each, screenshots to the user before each commit; no new dynamic lights, no per-frame material writes, no large pixel cost (the 2015 is GPU-bound).
+
+- [x] S1 **Floor: black stage panels** *(v0.18.52)* — 2 × 1 m panels in a 512-px tile (4 m repeat), eased rims, dark joints (not holes), worn paths, sparse gaffer tape; neutral base colour so the light carries the colour; satin clearcoat (0.18, roughness still inside the tested window). First iteration read as a grey car park with road markings (paint 0.18, tape 0.82, frequent) — darkened and thinned after looking. *Verified: surfaces tests (a panel grid, eased rim, black paint, sparse tape off the joints, never-polished joints, seamless tile) — the joint test failed at GAP 0.08 against the darker paint and forced GAP 0.05; before/after shots at 0:30 of "Heroes" approved by the user.* Bench not run: load average 33 on the M1 (other sessions) and the 2015 offline; the change is one texture set (256 → 512 px, mipped) on an existing material, no draw or light added.
+- [ ] S2 Highway edges: neck side faces, rounded chrome rail, mipped + normal-mapped trim, contact shadow.
+- [ ] S3 Crowd: clothing palette, backlight without new lights, billboard mass behind, phone lights.
+- [ ] S4 Band: backline amps, extruded guitar outlines, out of the fog.
+- [ ] S5 Fog: noise-cloud sprites, tinted by the wash, material ladder (batching), low fog.
+
 ## Backlog (explicitly out of scope until after 1.0)
 
 Not started without a deliberate roadmap edit pulling them forward:

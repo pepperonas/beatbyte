@@ -79,13 +79,14 @@ const HIGHWAY_BEHIND: f32 = 2.5;
 const FOG_START: f32 = 12.0;
 const FOG_END: f32 = 52.0;
 
-/// How much lacquer the stage deck wears: the strength of its
+/// How much sheen the stage deck's paint has: the strength of its
 /// clearcoat layer.
 ///
-/// A sealed floor is the difference between a stage and a plank. It
-/// is deliberately short of 1.0 — a working deck is scuffed, and a
-/// mirror-bright one would read as ice.
-pub const DECK_CLEARCOAT: f32 = 0.32;
+/// Since the deck became black-painted panels (2026-09-26) the coat
+/// is a satin finish, not varnish: enough that a light pool reads as
+/// light on a floor, far short of the old sealed wood (0.32) — a
+/// glossy black floor reads as a wet one.
+pub const DECK_CLEARCOAT: f32 = 0.18;
 /// How broad the lacquer's reflections are. The finish now spreads light
 /// farther than the wood's own roughness (0.30 on a board flat), keeping
 /// both material layers visible without a hard stripe along each board.
@@ -100,6 +101,13 @@ pub const DECK_CLEARCOAT: f32 = 0.32;
 /// solid angle they are a sheen down the boards instead, which is
 /// what a sealed floor actually looks like from the third row.
 pub const DECK_CLEARCOAT_ROUGHNESS: f32 = 0.46;
+
+/// The deck's base colour: neutral, so the panels' own texture sets
+/// the albedo and the stage lights set the colour. Never derived from
+/// the theme — that tint is what made the old deck read as stripes.
+pub const DECK_BASE: Color = Color::srgb(0.9, 0.9, 0.92);
+/// The edge of one deck texture tile, metres (see `surfaces::DECK_TILE`).
+pub const DECK_TILE_METRES: f32 = 4.0;
 
 /// Where the floor's side fills hang, per side.
 ///
@@ -1280,15 +1288,19 @@ fn spawn_venue(
     // The stage riser (P6): the highway STANDS on something — a
     // dark platform with a visible front edge, instead of a board
     // floating in the void.
-    // Since 2026-09-07 the riser is the stage DECK: planks with
-    // seams and scuffs, a low roughness between the scuffs so the
-    // rig's pools reflect, tangents so the normal map works. The
-    // tile's own roughness/metallic rule (scalars at 1.0).
+    // Since 2026-09-26 the deck is black-painted stage panels (2 x 1 m,
+    // the common staging module) with worn paint, gaffer tape and
+    // joints — `surfaces::deck_*`. It was seventy-two narrow boards
+    // tinted from the theme, and under a coloured wash they read as
+    // purple stripes. The base colour is now NEUTRAL: the texture
+    // carries the albedo (black paint, light-grey tape) and the light
+    // carries the colour. The tile's own roughness/metallic rule
+    // (scalars at 1.0).
     let riser = meshes.add(crate::surfaces::tangent_mesh(Mesh::from(Cuboid::new(
         DECK_WIDTH, 0.9, 30.0,
     ))));
     let riser_material = materials.add(StandardMaterial {
-        base_color: dark.mix(&Color::BLACK, 0.5),
+        base_color: DECK_BASE,
         base_color_texture: Some(surfaces.deck_color.clone()),
         normal_map_texture: Some(surfaces.deck_normal.clone()),
         metallic_roughness_texture: Some(surfaces.deck_rough.clone()),
@@ -1308,9 +1320,13 @@ fn spawn_venue(
         // detail lives underneath them.
         clearcoat: DECK_CLEARCOAT,
         clearcoat_perceptual_roughness: DECK_CLEARCOAT_ROUGHNESS,
-        // Seventy-two boards across twenty metres: broad stage planks,
-        // rather than the old 83 cm bands that read as floor stripes.
-        uv_transform: bevy::math::Affine2::from_scale(Vec2::new(12.0, 9.0)),
+        // One tile is 4 x 4 m (two panels across, four along): five
+        // across the twenty-metre deck, seven and a half along its
+        // thirty.
+        uv_transform: bevy::math::Affine2::from_scale(Vec2::new(
+            DECK_WIDTH / DECK_TILE_METRES,
+            30.0 / DECK_TILE_METRES,
+        )),
         ..default()
     });
     commands.spawn((

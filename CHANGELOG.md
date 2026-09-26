@@ -14,6 +14,17 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.52] - 2026-09-26
+
+### Changed
+
+- **The stage floor is black stage panels.** The narrow boards tinted
+  from the theme read as purple stripes; the deck is now matte black
+  2 × 1 m platforms with eased edges and dark joints, scuffed paths
+  where people walk, and the odd strip of grey gaffer tape. The paint
+  is neutral, so every colour on the floor now comes from the lights,
+  and the lacquer is satin instead of glossy.
+
 ## [0.18.51] - 2026-09-26
 
 ### Added
