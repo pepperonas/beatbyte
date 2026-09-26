@@ -6,7 +6,7 @@ Everything below is also available without JavaScript: the page's HTML carries t
 
 ## Get the app
 
-- [Newest release](https://beatbyte.celox.io/download): the file for your platform — 302 to the current GitHub release asset
+- [Newest release](https://beatbyte.celox.io/download): the file for your platform — 302 to the newest file, a verified copy served from this site (resumable)
 - [macOS (Apple silicon)](https://beatbyte.celox.io/download/macos): macOS 11+ · Apple silicon
 - [macOS (Intel)](https://beatbyte.celox.io/download/macos-intel): macOS 11+ · Intel
 - [Windows](https://beatbyte.celox.io/download/windows): Windows 10/11 · 64-bit · portable zip
