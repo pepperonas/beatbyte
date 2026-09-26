@@ -5,6 +5,11 @@
 
 **An original five-lane rhythm game. Your music. Pixel-art or polished — your call.**
 
+<h2>🌐 <a href="https://beatbyte.celox.io">beatbyte.celox.io</a></h2>
+
+<a href="https://beatbyte.celox.io"><img src="https://img.shields.io/badge/website-beatbyte.celox.io-8fe3ff?style=for-the-badge&logo=googlechrome&logoColor=black" alt="Product website: beatbyte.celox.io"/></a>
+<a href="https://beatbyte.celox.io/download"><img src="https://img.shields.io/badge/download-for%20your%20platform-e040fb?style=for-the-badge&logo=github&logoColor=white" alt="Download the newest build for your platform"/></a>
+
 <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fpepperonas%2Fbeatbyte%2Fmain%2FCargo.toml&query=%24.workspace.package.version&prefix=v&label=version&color=ffd940&style=for-the-badge&logo=rust&logoColor=black" alt="Current version, read live from Cargo.toml"/></a>
 <a href="#development"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fpepperonas%2Fbeatbyte%2Fmain%2Fdocs%2Fbadges%2Floc.json&style=for-the-badge&logo=github&logoColor=white" alt="Lines of code, recounted by CI on every push"/></a>
 
@@ -286,7 +291,12 @@ rule.
 
 ## Installation
 
-Grab a build from the
+**The easiest way:** [beatbyte.celox.io/download](https://beatbyte.celox.io/download)
+hands you the newest build for your platform. The product page at
+[beatbyte.celox.io](https://beatbyte.celox.io) lists every file with its
+SHA-256.
+
+Or grab a build from the
 [Releases](https://github.com/pepperonas/beatbyte/releases) page:
 
 - **macOS**: `BeatByte-<version>-<arch>.dmg` (or the portable tar.gz).

@@ -22,3 +22,6 @@
 # Imported songs are user content, never committed.
 # Bundled demo songs live in songs/ and are explicitly added.
 /songs/imported/
+
+# Browser-check screenshots (Playwright MCP) — scratch, never committed.
+.playwright-mcp/

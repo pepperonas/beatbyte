@@ -1,0 +1,473 @@
+{
+ "name": "BeatByte",
+ "slug": "beatbyte",
+ "aliases": [
+  "beat-byte.celox.io"
+ ],
+ "repo": "pepperonas/beatbyte",
+ "branch": "main",
+ "release_tag": "^v[0-9]",
+ "tagline": "Your music. Five lanes. One stage.",
+ "license": "MIT",
+ "year": 2026,
+ "asset_version": 1,
+ "theme_source": "packaging/icon.png (neon cyan to magenta on near-black) and crates/beatbyte-game/src/palette.rs (BACKGROUND, SURFACE, TEXT)",
+ "theme": {
+  "bg": "#0b0b16",
+  "bg-lowest": "#07070f",
+  "surface-low": "#11121f",
+  "surface": "#141422",
+  "surface-high": "#1c1d2e",
+  "surface-highest": "#26283b",
+  "on-bg": "#eaedf7",
+  "on-variant": "#b8c0d8",
+  "outline": "#8c93ab",
+  "outline-variant": "#3a3d55",
+  "primary": "#8fe3ff",
+  "on-primary": "#00344a",
+  "primary-container": "#1d4a6e",
+  "on-primary-container": "#cfefff",
+  "secondary-container": "#3b2a55",
+  "on-secondary-container": "#f1dcff",
+  "tertiary": "#ff8ad8",
+  "accent": "#e040fb"
+ },
+ "hero": {
+  "bg": "#0b0b16",
+  "width": 2912,
+  "height": 1440
+ },
+ "screens": null,
+ "ld": {
+  "type": "SoftwareApplication",
+  "category": "GameApplication",
+  "subcategory": "Rhythm game",
+  "os": "macOS 11+, Windows 10/11 (64-bit), Linux x86_64"
+ },
+ "targets": [
+  {
+   "id": "macos",
+   "label": "Download for macOS",
+   "short": "macOS (Apple silicon)",
+   "asset": "^BeatByte-[0-9][0-9.]*-aarch64-apple-darwin\\.dmg$",
+   "requirement": "macOS 11+ · Apple silicon",
+   "ua": "macintosh|mac os x"
+  },
+  {
+   "id": "macos-intel",
+   "label": "Download for Intel Mac",
+   "short": "macOS (Intel)",
+   "asset": "^BeatByte-[0-9][0-9.]*-x86_64-apple-darwin\\.dmg$",
+   "requirement": "macOS 11+ · Intel",
+   "i18n": {
+    "en": "Download for Intel Mac",
+    "de": "Für Intel-Mac laden",
+    "es": "Descargar para Mac Intel",
+    "it": "Scarica per Mac Intel",
+    "fr": "Télécharger pour Mac Intel"
+   },
+   "i18n_short": {
+    "en": "macOS (Intel)",
+    "de": "macOS (Intel)",
+    "es": "macOS (Intel)",
+    "it": "macOS (Intel)",
+    "fr": "macOS (Intel)"
+   }
+  },
+  {
+   "id": "windows",
+   "label": "Download for Windows",
+   "short": "Windows",
+   "asset": "^beatbyte-v[0-9][0-9.]*-x86_64-pc-windows-msvc\\.zip$",
+   "requirement": "Windows 10/11 · 64-bit · portable zip",
+   "ua": "windows"
+  },
+  {
+   "id": "linux-appimage",
+   "label": "Download AppImage",
+   "short": "Linux AppImage",
+   "asset": "^BeatByte-[0-9][0-9.]*-x86_64\\.AppImage$",
+   "requirement": "Linux · x86_64",
+   "ua": "^(?!.*android).*linux"
+  }
+ ],
+ "chips": [
+  {
+   "label": "Keyboard",
+   "color": "#2ecc71"
+  },
+  {
+   "label": "Gamepad",
+   "color": "#e74c3c"
+  },
+  {
+   "label": "Guitar controller",
+   "color": "#f1c40f"
+  },
+  {
+   "label": "MP3 · M4A · FLAC · OGG · WAV",
+   "color": "#3498db"
+  },
+  {
+   "label": "2–4 players",
+   "color": "#e67e22"
+  }
+ ],
+ "verify_rows": [],
+ "content": {
+  "meta": {
+   "title": "BeatByte — Free Rhythm Game for Your Own Music",
+   "description": "A free, open-source five-lane rhythm game: import your own songs, get playable charts in four difficulties, sing along. macOS, Windows, Linux.",
+   "og_title": "BeatByte — Your music. Five lanes. One stage.",
+   "og_description": "Free, open-source five-lane rhythm game for macOS, Windows and Linux. Bring your own music; BeatByte charts it and puts it on a 3D stage.",
+   "twitter_description": "Free, open-source five-lane rhythm game. Bring your own music; BeatByte charts it and puts it on a 3D stage.",
+   "image_alt": "BeatByte in play: a five-lane highway on a 3D concert stage, a lightning strike landing on a fret"
+  },
+  "summary": "BeatByte is a free, open-source (MIT) five-lane rhythm game for macOS, Windows and Linux, written in Rust. It turns the player's own music files into playable charts in four difficulties, shows karaoke lyrics, runs on a 3D concert stage, and plays with a keyboard, gamepads or a guitar controller, for one to four local players. No song ships with the game; nothing is uploaded.",
+  "meta_fallback": "Newest release · macOS, Windows, Linux · free, MIT licence",
+  "feature_list": [
+   "Automatic charts from your own music in four difficulties",
+   "Add a song by name (with yt-dlp installed)",
+   "Karaoke lyrics from lrclib or your own .lrc file",
+   "3D concert stage with lights, crowd and effects",
+   "Keyboard, gamepads and a native Guitar Hero X-plorer driver",
+   "Local multiplayer for two to four players",
+   "In-game latency calibration and practice mode",
+   "Built-in chart editor",
+   "Three hundred achievements and per-player statistics"
+  ],
+  "limits": [
+   "No songs ship with the game; you bring your own music",
+   "Generated charts are playable, not hand-authored; the editor is the correction pass",
+   "No online multiplayer",
+   "No mobile or web version",
+   "The macOS builds are not notarized: open them once with right-click → Open",
+   "Xbox 360 wireless guitars are not supported on macOS"
+  ],
+  "hero.kicker": {
+   "en": "Rhythm game · Open source · Free",
+   "de": "Rhythmusspiel · Open Source · Kostenlos",
+   "es": "Juego de ritmo · Código abierto · Gratis",
+   "it": "Gioco ritmico · Open source · Gratis",
+   "fr": "Jeu de rythme · Open source · Gratuit"
+  },
+  "hero.title": {
+   "en": "Your music. <br>Five lanes.",
+   "de": "Deine Musik. <br>Fünf Spuren.",
+   "es": "Tu música. <br>Cinco carriles.",
+   "it": "La tua musica. <br>Cinque corsie.",
+   "fr": "Votre musique. <br>Cinq couloirs."
+  },
+  "hero.lead": {
+   "en": "Drop in the songs you love — BeatByte charts them in four difficulties and puts you on a 3D stage with karaoke lyrics, a crowd and a light show. Keyboard, gamepad or guitar.",
+   "de": "Zieh deine Lieblingssongs hinein — BeatByte erstellt Charts in vier Schwierigkeitsgraden und stellt dich auf eine 3D-Bühne mit Karaoke-Lyrics, Publikum und Lichtshow. Tastatur, Gamepad oder Gitarre.",
+   "es": "Suelta las canciones que te gustan: BeatByte crea charts en cuatro dificultades y te sube a un escenario 3D con letras de karaoke, público y espectáculo de luces. Teclado, mando o guitarra.",
+   "it": "Trascina le canzoni che ami: BeatByte crea i chart in quattro difficoltà e ti porta su un palco 3D con testi karaoke, pubblico e giochi di luce. Tastiera, gamepad o chitarra.",
+   "fr": "Déposez vos morceaux préférés : BeatByte les transforme en partitions en quatre difficultés et vous place sur une scène 3D avec paroles karaoké, public et jeu de lumières. Clavier, manette ou guitare."
+  },
+  "pl.h": {
+   "en": "Plays with",
+   "de": "Spielt mit",
+   "es": "Se juega con",
+   "it": "Si gioca con",
+   "fr": "Se joue avec"
+  },
+  "f.h": {
+   "en": "A rhythm game for the music you already have",
+   "de": "Ein Rhythmusspiel für die Musik, die du schon hast",
+   "es": "Un juego de ritmo para la música que ya tienes",
+   "it": "Un gioco ritmico per la musica che hai già",
+   "fr": "Un jeu de rythme pour la musique que vous avez déjà"
+  },
+  "features": [
+   {
+    "t": {
+     "en": "Your songs become charts",
+     "de": "Deine Songs werden Charts",
+     "es": "Tus canciones se vuelven charts",
+     "it": "Le tue canzoni diventano chart",
+     "fr": "Vos morceaux deviennent des partitions"
+    },
+    "p": {
+     "en": "MP3, M4A, FLAC, OGG or WAV: BeatByte analyses tempo, beats and onsets and builds a playable chart in Easy, Medium, Hard and Expert. Drop a folder on the window and it watches it for new tracks.",
+     "de": "MP3, M4A, FLAC, OGG oder WAV: BeatByte analysiert Tempo, Beats und Einsätze und baut einen spielbaren Chart in Easy, Medium, Hard und Expert. Zieh einen Ordner aufs Fenster, und BeatByte beobachtet ihn auf neue Titel.",
+     "es": "MP3, M4A, FLAC, OGG o WAV: BeatByte analiza tempo, pulsos y ataques y crea un chart jugable en Easy, Medium, Hard y Expert. Suelta una carpeta en la ventana y vigilará si llegan pistas nuevas.",
+     "it": "MP3, M4A, FLAC, OGG o WAV: BeatByte analizza tempo, battiti e attacchi e crea un chart giocabile in Easy, Medium, Hard ed Expert. Trascina una cartella sulla finestra e la tiene d’occhio per i nuovi brani.",
+     "fr": "MP3, M4A, FLAC, OGG ou WAV : BeatByte analyse le tempo, les temps et les attaques et crée une partition jouable en Easy, Medium, Hard et Expert. Déposez un dossier sur la fenêtre et il le surveille pour les nouveaux titres."
+    }
+   },
+   {
+    "t": {
+     "en": "Karaoke on the highway",
+     "de": "Karaoke über dem Highway",
+     "es": "Karaoke sobre la pista",
+     "it": "Karaoke sopra la pista",
+     "fr": "Karaoké au-dessus de la piste"
+    },
+    "p": {
+     "en": "Press <code>L</code> and BeatByte fetches synced lyrics from lrclib’s open catalogue, or drop your own <code>.lrc</code>. The words fill in on the same clock the notes fall on; an optional local aligner times them word by word.",
+     "de": "Drück <code>L</code>, und BeatByte holt synchronisierte Lyrics aus dem offenen Katalog von lrclib — oder leg eine eigene <code>.lrc</code> dazu. Die Wörter füllen sich im selben Takt, in dem die Noten fallen; ein optionaler lokaler Aligner setzt sie Wort für Wort.",
+     "es": "Pulsa <code>L</code> y BeatByte trae letras sincronizadas del catálogo abierto de lrclib, o añade tu propio <code>.lrc</code>. Las palabras se rellenan con el mismo reloj con el que caen las notas; un alineador local opcional las ajusta palabra a palabra.",
+     "it": "Premi <code>L</code> e BeatByte recupera i testi sincronizzati dal catalogo aperto di lrclib, oppure aggiungi il tuo <code>.lrc</code>. Le parole si riempiono con lo stesso orologio con cui cadono le note; un allineatore locale opzionale le sincronizza parola per parola.",
+     "fr": "Appuyez sur <code>L</code> et BeatByte récupère des paroles synchronisées dans le catalogue ouvert de lrclib, ou ajoutez votre propre <code>.lrc</code>. Les mots se remplissent au même rythme que tombent les notes ; un aligneur local optionnel les cale mot par mot."
+    }
+   },
+   {
+    "t": {
+     "en": "A stage, not a backdrop",
+     "de": "Eine Bühne, kein Hintergrund",
+     "es": "Un escenario, no un fondo",
+     "it": "Un palco, non uno sfondo",
+     "fr": "Une scène, pas un décor"
+    },
+    "p": {
+     "en": "A 3D concert venue with moving heads, PA stacks, fog and a crowd that dances to the song. Land a star-power phrase and lightning strikes the fret.",
+     "de": "Eine 3D-Konzerthalle mit Moving Heads, PA-Türmen, Nebel und einem Publikum, das zum Song tanzt. Triffst du eine Star-Power-Phrase ganz, schlägt ein Blitz ins Fret ein.",
+     "es": "Una sala de conciertos 3D con cabezas móviles, torres de sonido, niebla y un público que baila la canción. Completa una frase de star power y un rayo cae sobre el traste.",
+     "it": "Una sala concerti 3D con teste mobili, torri audio, nebbia e un pubblico che balla la canzone. Completa una frase di star power e un fulmine colpisce il tasto.",
+     "fr": "Une salle de concert 3D avec lyres, murs d’enceintes, fumée et un public qui danse sur le morceau. Réussissez une phrase de star power et la foudre frappe la frette."
+    }
+   },
+   {
+    "t": {
+     "en": "Keyboard, gamepad or guitar",
+     "de": "Tastatur, Gamepad oder Gitarre",
+     "es": "Teclado, mando o guitarra",
+     "it": "Tastiera, gamepad o chitarra",
+     "fr": "Clavier, manette ou guitare"
+    },
+    "p": {
+     "en": "Every input is remappable in the game. Gamepads work through the system, and a built-in driver reads the wired Guitar Hero X-plorer directly. Two to four players share the screen.",
+     "de": "Jede Eingabe lässt sich im Spiel neu belegen. Gamepads laufen über das System, und ein eingebauter Treiber liest die kabelgebundene Guitar-Hero-X-plorer direkt. Zwei bis vier Spieler teilen sich den Bildschirm.",
+     "es": "Todos los controles se pueden reasignar en el juego. Los mandos funcionan a través del sistema y un controlador integrado lee directamente la guitarra Guitar Hero X-plorer con cable. De dos a cuatro jugadores comparten pantalla.",
+     "it": "Ogni comando si può rimappare nel gioco. I gamepad funzionano tramite il sistema e un driver integrato legge direttamente la chitarra Guitar Hero X-plorer cablata. Da due a quattro giocatori condividono lo schermo.",
+     "fr": "Chaque commande se réassigne dans le jeu. Les manettes passent par le système, et un pilote intégré lit directement la guitare filaire Guitar Hero X-plorer. De deux à quatre joueurs partagent l’écran."
+    }
+   },
+   {
+    "t": {
+     "en": "Timing you can trust",
+     "de": "Timing, auf das du dich verlassen kannst",
+     "es": "Un timing en el que confiar",
+     "it": "Un timing di cui fidarsi",
+     "fr": "Un timing fiable"
+    },
+    "p": {
+     "en": "Judgment runs on input timestamps against a clock reconciled with the audio device, not on frames. Calibrate latency in the game, slow any section to 50 % and loop it in practice mode.",
+     "de": "Gewertet wird nach Eingabe-Zeitstempeln gegen eine mit dem Audiogerät abgeglichene Uhr, nicht nach Frames. Kalibriere die Latenz im Spiel, verlangsame jeden Abschnitt auf 50 % und wiederhole ihn im Übungsmodus.",
+     "es": "La puntuación se basa en marcas de tiempo de la entrada frente a un reloj sincronizado con el dispositivo de audio, no en fotogramas. Calibra la latencia en el juego, ralentiza cualquier sección al 50 % y repítela en modo práctica.",
+     "it": "Il giudizio si basa sui timestamp degli input rispetto a un orologio allineato al dispositivo audio, non sui fotogrammi. Calibra la latenza nel gioco, rallenta qualsiasi sezione al 50 % e ripetila in modalità pratica.",
+     "fr": "Le jugement repose sur l’horodatage des entrées face à une horloge recalée sur le périphérique audio, pas sur les images. Calibrez la latence dans le jeu, ralentissez n’importe quel passage à 50 % et bouclez-le en mode entraînement."
+    }
+   },
+   {
+    "t": {
+     "en": "Edit, track, improve",
+     "de": "Bearbeiten, verfolgen, besser werden",
+     "es": "Edita, sigue, mejora",
+     "it": "Modifica, segui, migliora",
+     "fr": "Éditez, suivez, progressez"
+    },
+    "p": {
+     "en": "A built-in chart editor fixes what the generator got wrong and playtests it in the real highway. A local roster files every run under its player, with statistics and three hundred achievements.",
+     "de": "Ein eingebauter Chart-Editor korrigiert, was der Generator falsch gemacht hat, und testet es direkt im echten Highway. Eine lokale Spielerliste ordnet jeden Lauf seinem Spieler zu, mit Statistiken und dreihundert Erfolgen.",
+     "es": "Un editor de charts integrado corrige lo que el generador hizo mal y lo prueba en la pista real. Una lista local de jugadores guarda cada partida con su jugador, con estadísticas y trescientos logros.",
+     "it": "Un editor di chart integrato corregge ciò che il generatore ha sbagliato e lo prova sulla pista vera. Un elenco locale di giocatori registra ogni partita sotto il suo giocatore, con statistiche e trecento obiettivi.",
+     "fr": "Un éditeur de partitions intégré corrige ce que le générateur a raté et le teste sur la vraie piste. Une liste locale de joueurs range chaque partie sous son joueur, avec statistiques et trois cents succès."
+    }
+   }
+  ],
+  "s.h": {
+   "en": "Screenshots",
+   "de": "Screenshots",
+   "es": "Capturas",
+   "it": "Schermate",
+   "fr": "Captures"
+  },
+  "s.alt": {
+   "en": "BeatByte in play",
+   "de": "BeatByte im Spiel",
+   "es": "BeatByte en juego",
+   "it": "BeatByte in gioco",
+   "fr": "BeatByte en jeu"
+  },
+  "install": [
+   {
+    "t": {
+     "en": "Download your build",
+     "de": "Build herunterladen",
+     "es": "Descarga tu versión",
+     "it": "Scarica la tua build",
+     "fr": "Téléchargez votre version"
+    },
+    "p": {
+     "en": "The button above picks your platform: a DMG for Apple silicon or Intel Macs, a portable zip for Windows, an AppImage for Linux.",
+     "de": "Der Button oben wählt deine Plattform: eine DMG für Apple-Silicon- oder Intel-Macs, ein portables Zip für Windows, ein AppImage für Linux.",
+     "es": "El botón de arriba elige tu plataforma: un DMG para Mac con Apple silicon o Intel, un zip portátil para Windows, un AppImage para Linux.",
+     "it": "Il pulsante qui sopra sceglie la tua piattaforma: un DMG per Mac Apple silicon o Intel, uno zip portatile per Windows, un AppImage per Linux.",
+     "fr": "Le bouton ci-dessus choisit votre plateforme : un DMG pour Mac Apple silicon ou Intel, un zip portable pour Windows, une AppImage pour Linux."
+    }
+   },
+   {
+    "t": {
+     "en": "Start it",
+     "de": "Starten",
+     "es": "Ábrelo",
+     "it": "Avvialo",
+     "fr": "Lancez-le"
+    },
+    "p": {
+     "en": "macOS: drag it to Applications, then right-click → <em>Open</em> the first time (the build is not notarized). Windows: unzip and run <code>beatbyte.exe</code>. Linux: <code>chmod +x</code> the AppImage and run it.",
+     "de": "macOS: in „Programme“ ziehen, beim ersten Mal Rechtsklick → <em>Öffnen</em> (der Build ist nicht notarisiert). Windows: entpacken und <code>beatbyte.exe</code> starten. Linux: das AppImage mit <code>chmod +x</code> ausführbar machen und starten.",
+     "es": "macOS: arrástralo a Aplicaciones y la primera vez haz clic derecho → <em>Abrir</em> (la versión no está notarizada). Windows: descomprime y ejecuta <code>beatbyte.exe</code>. Linux: haz <code>chmod +x</code> al AppImage y ejecútalo.",
+     "it": "macOS: trascinalo in Applicazioni, poi la prima volta clic destro → <em>Apri</em> (la build non è notarizzata). Windows: estrai ed esegui <code>beatbyte.exe</code>. Linux: rendi eseguibile l’AppImage con <code>chmod +x</code> e avvialo.",
+     "fr": "macOS : glissez-le dans Applications, puis la première fois clic droit → <em>Ouvrir</em> (la version n’est pas notarisée). Windows : décompressez et lancez <code>beatbyte.exe</code>. Linux : rendez l’AppImage exécutable avec <code>chmod +x</code> et lancez-la."
+    }
+   },
+   {
+    "t": {
+     "en": "Bring your music",
+     "de": "Musik mitbringen",
+     "es": "Trae tu música",
+     "it": "Porta la tua musica",
+     "fr": "Apportez votre musique"
+    },
+    "p": {
+     "en": "Drop an audio file or a whole folder onto the window. BeatByte charts it in the background and it appears in the song browser.",
+     "de": "Zieh eine Audiodatei oder einen ganzen Ordner aufs Fenster. BeatByte erstellt die Charts im Hintergrund, und der Song erscheint im Song-Browser.",
+     "es": "Suelta un archivo de audio o una carpeta entera en la ventana. BeatByte crea el chart en segundo plano y la canción aparece en el explorador.",
+     "it": "Trascina un file audio o un’intera cartella sulla finestra. BeatByte crea il chart in background e il brano compare nel browser dei brani.",
+     "fr": "Déposez un fichier audio ou tout un dossier sur la fenêtre. BeatByte crée la partition en arrière-plan et le morceau apparaît dans le navigateur."
+    }
+   }
+  ],
+  "v.p": {
+   "en": "The checksums are the ones GitHub computed for the release files. Compare with <code>shasum -a 256</code> on macOS and Linux or <code>Get-FileHash</code> on Windows.",
+   "de": "Die Prüfsummen hat GitHub für die Release-Dateien berechnet. Vergleiche mit <code>shasum -a 256</code> unter macOS und Linux oder <code>Get-FileHash</code> unter Windows.",
+   "es": "Las sumas de comprobación son las que GitHub calculó para los archivos de la versión. Compáralas con <code>shasum -a 256</code> en macOS y Linux o <code>Get-FileHash</code> en Windows.",
+   "it": "I checksum sono quelli calcolati da GitHub per i file della release. Confrontali con <code>shasum -a 256</code> su macOS e Linux o <code>Get-FileHash</code> su Windows.",
+   "fr": "Les sommes de contrôle sont celles que GitHub a calculées pour les fichiers de la version. Comparez avec <code>shasum -a 256</code> sous macOS et Linux ou <code>Get-FileHash</code> sous Windows."
+  },
+  "i.note": {
+   "en": "No song ships with the game — BeatByte plays the music you bring. Everything it learns about your songs stays on your machine.",
+   "de": "Mit dem Spiel kommt kein einziger Song — BeatByte spielt die Musik, die du mitbringst. Alles, was es über deine Songs lernt, bleibt auf deinem Rechner.",
+   "es": "El juego no incluye ninguna canción: BeatByte toca la música que tú traes. Todo lo que aprende de tus canciones se queda en tu equipo.",
+   "it": "Il gioco non include nessun brano: BeatByte suona la musica che porti tu. Tutto ciò che impara sui tuoi brani resta sul tuo computer.",
+   "fr": "Aucun morceau n’est livré avec le jeu : BeatByte joue la musique que vous apportez. Tout ce qu’il apprend de vos morceaux reste sur votre machine."
+  },
+  "faq": [
+   {
+    "q": {
+     "en": "Is BeatByte free?",
+     "de": "Ist BeatByte kostenlos?",
+     "es": "¿BeatByte es gratis?",
+     "it": "BeatByte è gratuito?",
+     "fr": "BeatByte est-il gratuit ?"
+    },
+    "a": {
+     "en": "Yes. It is free and open source under the MIT licence, with no ads, no account and no in-game purchases.",
+     "de": "Ja. Es ist kostenlos und quelloffen unter der MIT-Lizenz, ohne Werbung, ohne Konto und ohne In-Game-Käufe.",
+     "es": "Sí. Es gratuito y de código abierto con licencia MIT, sin anuncios, sin cuenta y sin compras dentro del juego.",
+     "it": "Sì. È gratuito e open source con licenza MIT, senza pubblicità, senza account e senza acquisti nel gioco.",
+     "fr": "Oui. Il est gratuit et open source sous licence MIT, sans publicité, sans compte et sans achats intégrés."
+    }
+   },
+   {
+    "q": {
+     "en": "Which songs can I play?",
+     "de": "Welche Songs kann ich spielen?",
+     "es": "¿Qué canciones puedo tocar?",
+     "it": "Quali canzoni posso suonare?",
+     "fr": "Quels morceaux puis-je jouer ?"
+    },
+    "a": {
+     "en": "Your own: MP3, M4A, FLAC, OGG and WAV files. No song ships with the game. With <code>yt-dlp</code> installed you can also add a song by typing its name.",
+     "de": "Deine eigenen: MP3-, M4A-, FLAC-, OGG- und WAV-Dateien. Mit dem Spiel kommt kein Song. Ist <code>yt-dlp</code> installiert, kannst du einen Song auch über seinen Namen hinzufügen.",
+     "es": "Las tuyas: archivos MP3, M4A, FLAC, OGG y WAV. El juego no incluye canciones. Con <code>yt-dlp</code> instalado también puedes añadir una canción escribiendo su nombre.",
+     "it": "Le tue: file MP3, M4A, FLAC, OGG e WAV. Il gioco non include brani. Con <code>yt-dlp</code> installato puoi anche aggiungere un brano scrivendone il nome.",
+     "fr": "Les vôtres : fichiers MP3, M4A, FLAC, OGG et WAV. Aucun morceau n’est livré. Avec <code>yt-dlp</code> installé, vous pouvez aussi ajouter un morceau en tapant son nom."
+    }
+   },
+   {
+    "q": {
+     "en": "What do I need to run it?",
+     "de": "Was brauche ich dafür?",
+     "es": "¿Qué necesito para jugarlo?",
+     "it": "Cosa serve per giocarci?",
+     "fr": "De quoi ai-je besoin ?"
+    },
+    "a": {
+     "en": "macOS 11 or later on Apple silicon or Intel, 64-bit Windows 10 or 11, or 64-bit Linux, with a GPU that runs Metal, DirectX 12 or Vulkan. A keyboard is enough to play.",
+     "de": "macOS 11 oder neuer auf Apple Silicon oder Intel, 64-Bit-Windows 10 oder 11 oder 64-Bit-Linux, mit einer GPU für Metal, DirectX 12 oder Vulkan. Zum Spielen reicht eine Tastatur.",
+     "es": "macOS 11 o posterior en Apple silicon o Intel, Windows 10 u 11 de 64 bits, o Linux de 64 bits, con una GPU compatible con Metal, DirectX 12 o Vulkan. Para jugar basta un teclado.",
+     "it": "macOS 11 o successivo su Apple silicon o Intel, Windows 10 o 11 a 64 bit, o Linux a 64 bit, con una GPU che supporti Metal, DirectX 12 o Vulkan. Per giocare basta una tastiera.",
+     "fr": "macOS 11 ou ultérieur sur Apple silicon ou Intel, Windows 10 ou 11 64 bits, ou Linux 64 bits, avec un GPU compatible Metal, DirectX 12 ou Vulkan. Un clavier suffit pour jouer."
+    }
+   },
+   {
+    "q": {
+     "en": "Why does macOS warn me the first time?",
+     "de": "Warum warnt macOS beim ersten Start?",
+     "es": "¿Por qué macOS avisa la primera vez?",
+     "it": "Perché macOS mostra un avviso la prima volta?",
+     "fr": "Pourquoi macOS m’avertit-il au premier lancement ?"
+    },
+    "a": {
+     "en": "The macOS builds are signed ad hoc but not notarized by Apple. Right-click the app and choose <em>Open</em> once; after that it starts normally.",
+     "de": "Die macOS-Builds sind ad hoc signiert, aber nicht von Apple notarisiert. Klick einmal mit rechts auf die App und wähle <em>Öffnen</em>; danach startet sie normal.",
+     "es": "Las versiones para macOS están firmadas ad hoc pero no notarizadas por Apple. Haz clic derecho en la app y elige <em>Abrir</em> una vez; después se abre con normalidad.",
+     "it": "Le build per macOS sono firmate ad hoc ma non notarizzate da Apple. Fai clic destro sull’app e scegli <em>Apri</em> una volta; dopo si avvia normalmente.",
+     "fr": "Les versions macOS sont signées ad hoc mais pas notarisées par Apple. Faites un clic droit sur l’app et choisissez <em>Ouvrir</em> une fois ; ensuite elle s’ouvre normalement."
+    }
+   },
+   {
+    "q": {
+     "en": "How do I update?",
+     "de": "Wie aktualisiere ich?",
+     "es": "¿Cómo actualizo?",
+     "it": "Come si aggiorna?",
+     "fr": "Comment mettre à jour ?"
+    },
+    "a": {
+     "en": "Download the newest build from this page and replace the old one. Your songs, charts, scores, players and settings live in your user data folder and stay where they are.",
+     "de": "Lade den neuesten Build von dieser Seite und ersetze den alten. Deine Songs, Charts, Punkte, Spieler und Einstellungen liegen in deinem Benutzerdatenordner und bleiben erhalten.",
+     "es": "Descarga la versión más reciente desde esta página y sustituye la anterior. Tus canciones, charts, puntuaciones, jugadores y ajustes están en tu carpeta de datos de usuario y se conservan.",
+     "it": "Scarica la build più recente da questa pagina e sostituisci la vecchia. Brani, chart, punteggi, giocatori e impostazioni stanno nella cartella dati utente e restano dove sono.",
+     "fr": "Téléchargez la version la plus récente sur cette page et remplacez l’ancienne. Vos morceaux, partitions, scores, joueurs et réglages sont dans votre dossier de données utilisateur et restent en place."
+    }
+   },
+   {
+    "q": {
+     "en": "Is the download genuine?",
+     "de": "Ist der Download echt?",
+     "es": "¿La descarga es auténtica?",
+     "it": "Il download è autentico?",
+     "fr": "Le téléchargement est-il authentique ?"
+    },
+    "a": {
+     "en": "Every file comes straight from the project’s GitHub Releases, built by its release workflow. The SHA-256 of each file is listed on this page; compare it with the file you downloaded.",
+     "de": "Jede Datei kommt direkt aus den GitHub Releases des Projekts, gebaut vom Release-Workflow. Die SHA-256 jeder Datei steht auf dieser Seite; vergleiche sie mit deiner heruntergeladenen Datei.",
+     "es": "Cada archivo viene directamente de los GitHub Releases del proyecto, compilado por su flujo de publicación. El SHA-256 de cada archivo aparece en esta página; compáralo con el que descargaste.",
+     "it": "Ogni file arriva direttamente dalle GitHub Releases del progetto, compilato dal suo workflow di rilascio. Lo SHA-256 di ogni file è riportato in questa pagina; confrontalo con quello scaricato.",
+     "fr": "Chaque fichier provient directement des GitHub Releases du projet, compilé par son workflow de publication. Le SHA-256 de chaque fichier figure sur cette page ; comparez-le avec celui que vous avez téléchargé."
+    }
+   }
+  ],
+  "agent_queries": [
+   "Download the latest BeatByte for macOS",
+   "Which version of BeatByte is current?",
+   "Free rhythm game that plays my own MP3 files",
+   "How do I verify the BeatByte download?"
+  ],
+  "tags": [
+   "rhythm-game",
+   "game",
+   "open-source",
+   "rust",
+   "macos",
+   "windows",
+   "linux"
+  ],
+  "skill_description": "Download, verify and install the newest BeatByte — the free, open-source five-lane rhythm game for macOS, Windows and Linux that charts your own music. Use when someone asks for the game, its latest version, a download link for their platform, or how to check the file is genuine."
+ }
+}

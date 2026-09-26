@@ -1,0 +1,32 @@
+{
+  "specVersion": "1.0",
+  "host": {
+    "displayName": "BeatByte",
+    "identifier": "did:web:beatbyte.celox.io",
+    "documentationUrl": "https://beatbyte.celox.io/llms.txt"
+  },
+  "entries": [
+    {
+      "identifier": "urn:air:beatbyte.celox.io:skills:get-beatbyte",
+      "displayName": "Get BeatByte",
+      "type": "text/markdown; profile=\"urn:air:agent-skills\"",
+      "url": "https://beatbyte.celox.io/skills/get-beatbyte/SKILL.md",
+      "description": "BeatByte is a free, open-source (MIT) five-lane rhythm game for macOS, Windows and Linux, written in Rust. It turns the player's own music files into playable charts in four difficulties, shows karaoke lyrics, runs on a 3D concert stage, and plays with a keyboard, gamepads or a guitar controller, for one to four local players. No song ships with the game; nothing is uploaded.",
+      "tags": [
+        "rhythm-game",
+        "game",
+        "open-source",
+        "rust",
+        "macos",
+        "windows",
+        "linux"
+      ],
+      "representativeQueries": [
+        "Download the latest BeatByte for macOS",
+        "Which version of BeatByte is current?",
+        "Free rhythm game that plays my own MP3 files",
+        "How do I verify the BeatByte download?"
+      ]
+    }
+  ]
+}

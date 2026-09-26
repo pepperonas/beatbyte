@@ -1,0 +1,58 @@
+# BeatByte
+
+> BeatByte is a free, open-source (MIT) five-lane rhythm game for macOS, Windows and Linux, written in Rust. It turns the player's own music files into playable charts in four difficulties, shows karaoke lyrics, runs on a 3D concert stage, and plays with a keyboard, gamepads or a guitar controller, for one to four local players. No song ships with the game; nothing is uploaded.
+
+Everything below is also available without JavaScript: the page's HTML carries the current version and checksums, and `/` returns Markdown for `Accept: text/markdown`.
+
+## Get the app
+
+- [Newest release](https://beatbyte.celox.io/download): the file for your platform — 302 to the current GitHub release asset
+- [macOS (Apple silicon)](https://beatbyte.celox.io/download/macos): macOS 11+ · Apple silicon
+- [macOS (Intel)](https://beatbyte.celox.io/download/macos-intel): macOS 11+ · Intel
+- [Windows](https://beatbyte.celox.io/download/windows): Windows 10/11 · 64-bit · portable zip
+- [Linux AppImage](https://beatbyte.celox.io/download/linux-appimage): Linux · x86_64
+- [Newest release as JSON](https://beatbyte.celox.io/latest.json): `version`, `published`, `notes`, and `assets[]` with `target`, `name`, `url`, `size` (bytes), `sha256`; refreshed every 15 minutes
+- [All releases and notes](https://github.com/pepperonas/beatbyte/releases)
+
+## Docs
+
+- [Product page as Markdown](https://beatbyte.celox.io/index.md): features, install steps, verification, FAQ, with the current version and checksums filled in
+- [Agent skill: get BeatByte](https://beatbyte.celox.io/skills/get-beatbyte/SKILL.md): download, verify and install, step by step
+- [Changelog](https://beatbyte.celox.io/changelog.md): Markdown, mirrored from GitHub every 15 minutes
+- [README](https://github.com/pepperonas/beatbyte#readme)
+
+## Install
+
+1. The button above picks your platform: a DMG for Apple silicon or Intel Macs, a portable zip for Windows, an AppImage for Linux.
+2. macOS: drag it to Applications, then right-click → *Open* the first time (the build is not notarized). Windows: unzip and run `beatbyte.exe`. Linux: `chmod +x` the AppImage and run it.
+3. Drop an audio file or a whole folder onto the window. BeatByte charts it in the background and it appears in the song browser.
+
+## Verify
+
+- SHA-256 of every file: `assets[].sha256` in [latest.json](https://beatbyte.celox.io/latest.json)
+
+
+## Features
+
+- Your songs become charts: MP3, M4A, FLAC, OGG or WAV: BeatByte analyses tempo, beats and onsets and builds a playable chart in Easy, Medium, Hard and Expert. Drop a folder on the window and it watches it for new tracks.
+- Karaoke on the highway: Press `L` and BeatByte fetches synced lyrics from lrclib’s open catalogue, or drop your own `.lrc`. The words fill in on the same clock the notes fall on; an optional local aligner times them word by word.
+- A stage, not a backdrop: A 3D concert venue with moving heads, PA stacks, fog and a crowd that dances to the song. Land a star-power phrase and lightning strikes the fret.
+- Keyboard, gamepad or guitar: Every input is remappable in the game. Gamepads work through the system, and a built-in driver reads the wired Guitar Hero X-plorer directly. Two to four players share the screen.
+- Timing you can trust: Judgment runs on input timestamps against a clock reconciled with the audio device, not on frames. Calibrate latency in the game, slow any section to 50 % and loop it in practice mode.
+- Edit, track, improve: A built-in chart editor fixes what the generator got wrong and playtests it in the real highway. A local roster files every run under its player, with statistics and three hundred achievements.
+
+## Scope and limits
+
+- No songs ship with the game; you bring your own music
+- Generated charts are playable, not hand-authored; the editor is the correction pass
+- No online multiplayer
+- No mobile or web version
+- The macOS builds are not notarized: open them once with right-click → Open
+- Xbox 360 wireless guitars are not supported on macOS
+
+## Optional
+
+- [Source code](https://github.com/pepperonas/beatbyte)
+- [Licence (MIT)](https://github.com/pepperonas/beatbyte/blob/main/LICENSE)
+- [Agent resource catalog](https://beatbyte.celox.io/.well-known/ai-catalog.json)
+- [Author: Martin Pfeffer, celox.io](https://celox.io)
