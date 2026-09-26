@@ -10,7 +10,7 @@
  "tagline": "Your music. Five lanes. One stage.",
  "license": "MIT",
  "year": 2026,
- "asset_version": 1,
+ "asset_version": 2,
  "theme_source": "packaging/icon.png (neon cyan to magenta on near-black) and crates/beatbyte-game/src/palette.rs (BACKGROUND, SURFACE, TEXT)",
  "theme": {
   "bg": "#0b0b16",
