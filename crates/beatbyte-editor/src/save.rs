@@ -86,6 +86,21 @@ impl Saver {
         versions::revision_number(&self.file_name())
     }
 
+    /// The number a new revision would get now, if the file being
+    /// edited is in the revision scheme (reads the folder).
+    #[must_use]
+    pub fn next_revision(&self) -> Option<u32> {
+        if !self.versioned() {
+            return None;
+        }
+        let existing: Vec<String> = std::fs::read_dir(self.folder())
+            .ok()?
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        versions::version_number(&versions::next_version_name(&existing))
+    }
+
     /// Whether the file being edited was made by hand.
     #[must_use]
     pub fn current_is_hand_made(&self) -> bool {
@@ -378,6 +393,7 @@ mod tests {
         edited.charts[1].notes.remove(0);
         saver.save(&edited, SaveTarget::NewRevision, 1).unwrap();
         assert_eq!(saver.current_revision(), Some(2));
+        assert_eq!(saver.next_revision(), Some(3));
         assert!(
             saver.can_overwrite(),
             "a hand-made revision may be overwritten"

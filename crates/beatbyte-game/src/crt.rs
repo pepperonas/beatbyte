@@ -469,15 +469,17 @@ fn begin_power_off(
     if requests.read().count() == 0 && closes.read().count() == 0 {
         return;
     }
-    // Unsaved chart edits: the first request only warns, as leaving
-    // the editor does (the second within the warning window quits).
+    // Unsaved chart edits: ask first, in the editor's own dialog (SAVE
+    // / DISCARD / CANCEL). Its answer comes back here as a new quit
+    // request once it is safe — after a save, or with `leaving` set.
     if app_state.is_some_and(|s| *s.get() == crate::states::AppState::Editor)
         && let Some(mut editor) = editor
         && editor.session.dirty()
-        && editor.exit_armed <= 0.0
+        && !editor.leaving
     {
-        editor.exit_armed = 3.0;
-        editor.status = "unsaved changes! quit again to discard them, S saves".to_owned();
+        if editor.dialog.is_none() {
+            editor.dialog = Some(crate::editor_ui::dialog::Dialog::leave(true));
+        }
         return;
     }
     if !settings.backdrop_motion || matches!(*crt, Crt::Off(_)) {

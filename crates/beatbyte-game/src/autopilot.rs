@@ -930,9 +930,23 @@ fn autopilot_edit(
     ok &= state.session.undo() && phrases(&state) == before_phrase;
     ok &= state.session.redo() && phrases(&state) == before_phrase + 1;
     ok &= state.session.is_valid();
-    // Save through the editor's own path: a NEW version beside the
+    // S asks where the save goes. The copy's chart is generated, so
+    // there is nothing to overwrite: NEW REVISION or CANCEL.
+    {
+        use crate::editor_ui::dialog::Choice;
+        crate::editor_ui::ask_save(&mut state, false, false);
+        let offered = state.dialog.as_ref().map(|d| d.choices.clone());
+        let fine = offered == Some(vec![Choice::NewRevision, Choice::Cancel]);
+        info!(
+            "autopilot: editor save dialog offers {offered:?}: {}",
+            if fine { "ok" } else { "FAILED" }
+        );
+        ok &= fine;
+        state.dialog = None;
+    }
+    // Save through the editor's own path: a NEW revision beside the
     // copy, made active, marked as hand-made.
-    let status = crate::editor_ui::save(&mut state);
+    let status = crate::editor_ui::save_to(&mut state, beatbyte_editor::SaveTarget::NewRevision);
     info!("autopilot: editor save — {status}");
     let written = state.chart_path.clone();
     ok &= written.file_name().is_some_and(|n| n == "chart.v2.json");
@@ -946,6 +960,43 @@ fn autopilot_edit(
         .is_some_and(beatbyte_chart::versions::is_hand_edited);
     ok &= std::fs::read_to_string(written.with_file_name("chart-active.json"))
         .is_ok_and(|pointer| pointer.contains("chart.v2.json"));
+    // A second change: now the revision just saved is hand-made, the
+    // dialog offers to overwrite it and preselects that — and doing so
+    // stays on revision 2.
+    {
+        use crate::editor_ui::dialog::Choice;
+        ok &= state
+            .session
+            .edit(EditOp::AddNote {
+                difficulty,
+                note: beatbyte_chart::ChartNote {
+                    time: 0.999,
+                    lane: 3,
+                    len: 0.0,
+                    hopo: false,
+                },
+            })
+            .is_ok();
+        crate::editor_ui::ask_save(&mut state, false, false);
+        let preselected = state
+            .dialog
+            .as_ref()
+            .and_then(|d| d.choices.get(d.cursor).copied());
+        let fine = preselected == Some(Choice::Overwrite);
+        info!(
+            "autopilot: editor second save preselects {preselected:?}: {}",
+            if fine { "ok" } else { "FAILED" }
+        );
+        ok &= fine;
+        state.dialog = None;
+        let status = crate::editor_ui::save_to(&mut state, beatbyte_editor::SaveTarget::Overwrite);
+        info!("autopilot: editor overwrite — {status}");
+        ok &= !written.with_file_name("chart.v3.json").exists();
+        ok &= beatbyte_chart::load_chart_file(&written)
+            .ok()
+            .and_then(|chart| chart.chart_for(difficulty).map(|d| d.notes.len()))
+            == after_redo.map(|n| n + 1);
+    }
     // ⚠️ The player's real chart is untouched, byte for byte.
     if let Some(drill) = &drill {
         let untouched = std::fs::read(&drill.original).is_ok_and(|b| b == drill.original_bytes);
@@ -1246,6 +1297,8 @@ fn autopilot_edit_mouse(
     mut closes: MessageWriter<bevy::window::WindowCloseRequested>,
     windows: Query<Entity, With<bevy::window::PrimaryWindow>>,
     mut chip_actions: ResMut<crate::editor_ui::ChipActions>,
+    mut dialog_click: ResMut<crate::editor_ui::dialog::DialogClick>,
+    dialog_nodes: Query<&ComputedNode, With<crate::editor_ui::dialog::DialogNode>>,
 ) {
     use beatbyte_editor::view;
     let (Some(mut drill), Some(mut state)) = (drill, state) else {
@@ -1628,19 +1681,105 @@ fn autopilot_edit_mouse(
                 "a note under a tail is warned about and W jumps to it",
                 passed,
             );
-            // Quitting with unsaved edits: the first request only warns.
+            // Quitting with unsaved edits: the game asks before it goes.
             if let Ok(window) = windows.single() {
                 closes.write(bevy::window::WindowCloseRequested { window });
             }
         }
         30 => {
-            let passed = state.exit_armed > 0.0 && state.status.contains("quit again");
+            let passed = matches!(
+                state.dialog.as_ref().map(|d| d.kind),
+                Some(crate::editor_ui::dialog::Kind::Leave { quit: true })
+            );
             check(
                 &mut drill,
-                "quitting with unsaved edits only warns the first time",
+                "quitting with unsaved edits opens the save / discard / cancel dialog",
                 passed,
             );
-            state.exit_armed = 0.0;
+        }
+        31 => {
+            // Laid out and on screen, not merely in the resource: the
+            // pause menu once shipped invisible behind a green drill.
+            let visible = dialog_nodes
+                .iter()
+                .any(|node| node.size().x > 0.0 && node.size().y > 0.0);
+            check(&mut drill, "the dialog is drawn", visible);
+            if let Some(dir) = std::env::var_os("BEATBYTE_SHOT_DIR") {
+                let path = std::path::PathBuf::from(dir).join("beatbyte-editor-leave-dialog.png");
+                commands
+                    .spawn(Screenshot::primary_window())
+                    .observe(save_to_disk(path));
+            }
+        }
+        32 => dialog_click.0 = Some(crate::editor_ui::dialog::Choice::Cancel),
+        33 => {
+            let passed = state.dialog.is_none() && !state.leaving && state.session.dirty();
+            check(
+                &mut drill,
+                "CANCEL keeps the editor open with the edits",
+                passed,
+            );
+            // S asks where the save goes; the revision being edited is
+            // hand-made by now (the keyboard drill saved it), so
+            // OVERWRITE is offered and preselected.
+            crate::editor_ui::ask_save(&mut state, false, false);
+        }
+        34 => {
+            use crate::editor_ui::dialog::Choice;
+            let preselected = state
+                .dialog
+                .as_ref()
+                .and_then(|d| d.choices.get(d.cursor).copied());
+            check(
+                &mut drill,
+                "S opens the save dialog with OVERWRITE preselected",
+                preselected == Some(Choice::Overwrite),
+            );
+        }
+        35 => {
+            let visible = dialog_nodes
+                .iter()
+                .any(|node| node.size().x > 0.0 && node.size().y > 0.0);
+            check(&mut drill, "the save dialog is drawn", visible);
+            if let Some(dir) = std::env::var_os("BEATBYTE_SHOT_DIR") {
+                let path = std::path::PathBuf::from(dir).join("beatbyte-editor-save-dialog.png");
+                commands
+                    .spawn(Screenshot::primary_window())
+                    .observe(save_to_disk(path));
+            }
+        }
+        36 => dialog_click.0 = Some(crate::editor_ui::dialog::Choice::Cancel),
+        37 => {
+            check(
+                &mut drill,
+                "CANCEL closes the save dialog without saving",
+                state.dialog.is_none() && state.session.dirty(),
+            );
+            // ESC with unsaved edits (nothing selected, or ESC would
+            // only clear the selection) asks too — leaving the editor,
+            // not quitting.
+            state.selection.clear();
+            keys.press(KeyCode::Escape);
+        }
+        38 => {
+            keys.release(KeyCode::Escape);
+            let passed = matches!(
+                state.dialog.as_ref().map(|d| d.kind),
+                Some(crate::editor_ui::dialog::Kind::Leave { quit: false })
+            );
+            check(
+                &mut drill,
+                "ESC with unsaved edits opens the leave dialog",
+                passed,
+            );
+            dialog_click.0 = Some(crate::editor_ui::dialog::Choice::Cancel);
+        }
+        39 => {
+            check(
+                &mut drill,
+                "and CANCEL stays in the editor",
+                state.dialog.is_none() && !state.leaving,
+            );
             // Everything the drill did undoes, back to the start.
             let mut undone = 0;
             while state.session.undo_depth() > drill.depth_before && state.session.undo() {

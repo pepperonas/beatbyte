@@ -14,6 +14,7 @@
 //! Saving writes a NEW chart version (`beatbyte_editor::Saver`); the
 //! file the editor opened stays as it was.
 
+pub(crate) mod dialog;
 mod draw;
 pub mod pointer;
 
@@ -135,8 +136,12 @@ pub struct EditorState {
     /// Whether the view follows the playhead while it plays; any
     /// manual scroll turns it off until the next play (or `F`).
     pub follow: bool,
-    /// Seconds since an unsaved-exit warning was shown.
-    pub exit_armed: f32,
+    /// The question the editor is waiting on (leaving, saving): while
+    /// it is open every other key and click is the dialog's.
+    pub dialog: Option<dialog::Dialog>,
+    /// Set once the player chose to leave (or quit) without saving,
+    /// so the quit path does not ask a second time.
+    pub leaving: bool,
     /// A transient status line ("saved", validation errors, …).
     pub status: String,
     /// A note picked up with M, waiting to be placed (time, lane).
@@ -328,7 +333,8 @@ pub fn open_editor(
         loop_region: None,
         looping: false,
         follow: true,
-        exit_armed: 0.0,
+        dialog: None,
+        leaving: false,
         status: String::new(),
         grabbed: None,
         select_anchor: None,
@@ -410,6 +416,7 @@ impl Plugin for EditorUiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AuditionClicks>()
             .init_resource::<ChipActions>()
+            .init_resource::<dialog::DialogClick>()
             .add_systems(
                 OnEnter(AppState::Editor),
                 (end_playtest, draw::spawn_editor, start_waveform).chain(),
@@ -419,6 +426,7 @@ impl Plugin for EditorUiPlugin {
                 (
                     collect_waveform,
                     editor_chips,
+                    dialog::paint_and_click,
                     editor_typing,
                     editor_input,
                     pointer::editor_pointer,
@@ -428,6 +436,7 @@ impl Plugin for EditorUiPlugin {
                     draw::place_playhead,
                     draw::refresh_hud,
                     draw::sync_menu,
+                    dialog::sync_dialog,
                 )
                     .chain()
                     .run_if(in_state(AppState::Editor)),
@@ -775,17 +784,34 @@ pub(crate) fn editor_input(
     mut next_state: ResMut<NextState<AppState>>,
     mut selected: ResMut<crate::song_select::SelectedDifficulty>,
     mut practice: ResMut<crate::gameplay::PracticeState>,
+    mut click: ResMut<dialog::DialogClick>,
+    mut quit: MessageWriter<crate::crt::QuitRequested>,
 ) {
     let Some(mut state) = state else {
         return;
     };
-    state.exit_armed = (state.exit_armed - time.delta_secs()).max(0.0);
     // A field being typed into owns the keyboard; the frame it closes
     // on, its Enter / Esc are spent.
     if state.field.is_some() || std::mem::take(&mut state.typing_ate_keys) {
         chips.0.clear();
         return;
     }
+    // An open question owns every key and click until it is answered.
+    if let Some(mut open) = state.dialog.clone() {
+        chips.0.clear();
+        let mut answer = click.0.take();
+        for input in dialog::inputs(&keys, &open) {
+            if answer.is_none() {
+                answer = dialog::step(&mut open, input);
+            }
+        }
+        state.dialog = Some(open.clone());
+        if let Some(choice) = answer {
+            answer_dialog(&mut state, &open, choice, &mut next_state, &mut quit);
+        }
+        return;
+    }
+    click.0 = None;
     let now = time.elapsed_secs_f64();
     let command = command_held(&keys);
     let shift = shift_held(&keys);
@@ -1009,7 +1035,7 @@ pub(crate) fn editor_input(
             }
             Action::Hopo => toggle_hopo(&mut state),
             Action::Delete => state.delete_selection(),
-            Action::Save => state.status = save(&mut state),
+            Action::Save => ask_save(&mut state, false, false),
             Action::Follow => {
                 state.follow = !state.follow;
                 state.status = if state.follow {
@@ -1209,11 +1235,83 @@ fn back(state: &mut EditorState, next_state: &mut NextState<AppState>) {
         state.selection.clear();
         state.status = "selection cleared".to_owned();
         state.dirty_view = true;
-    } else if state.session.dirty() && state.exit_armed <= 0.0 {
-        state.exit_armed = 3.0;
-        state.status = "unsaved changes! ESC again to leave without saving, S saves".to_owned();
+    } else if state.session.dirty() {
+        state.dialog = Some(dialog::Dialog::leave(false));
     } else {
         next_state.set(AppState::SongSelect);
+    }
+}
+
+/// S (and SAVE on the way out): ask where the save goes — or, with
+/// nothing to save, say so instead of asking.
+pub(crate) fn ask_save(state: &mut EditorState, then_leave: bool, quit: bool) {
+    if !state.saver.differs(state.session.chart()) {
+        state.session.mark_saved();
+        state.status = "nothing changed - nothing to save".to_owned();
+        return;
+    }
+    let facts = dialog::SaveFacts {
+        can_start: state.saver.can_start_revision(),
+        can_overwrite: state.saver.can_overwrite(),
+        current: state.saver.current_revision(),
+        next: state.saver.next_revision(),
+        saved_this_session: state.saved_any,
+    };
+    state.dialog = Some(dialog::Dialog::save(facts, then_leave, quit));
+}
+
+/// Leave the editor, or quit the game through the tube's power-off.
+fn leave_editor(
+    state: &mut EditorState,
+    quitting: bool,
+    next_state: &mut NextState<AppState>,
+    quit: &mut MessageWriter<crate::crt::QuitRequested>,
+) {
+    state.leaving = true;
+    if quitting {
+        quit.write(crate::crt::QuitRequested);
+    } else {
+        next_state.set(AppState::SongSelect);
+    }
+}
+
+/// Carry out a dialog's answer.
+fn answer_dialog(
+    state: &mut EditorState,
+    open: &dialog::Dialog,
+    choice: dialog::Choice,
+    next_state: &mut NextState<AppState>,
+    quit: &mut MessageWriter<crate::crt::QuitRequested>,
+) {
+    use dialog::{Choice, Kind};
+    state.dialog = None;
+    state.dirty_view = true;
+    match (open.kind, choice) {
+        (_, Choice::Cancel) => state.status = "cancelled".to_owned(),
+        (Kind::Leave { quit: quitting }, Choice::Save) => ask_save(state, true, quitting),
+        (Kind::Leave { quit: quitting }, Choice::Discard) => {
+            leave_editor(state, quitting, next_state, quit);
+        }
+        (
+            Kind::Save {
+                then_leave,
+                quit: quitting,
+            },
+            Choice::NewRevision | Choice::Overwrite,
+        ) => {
+            let target = if choice == Choice::Overwrite {
+                SaveTarget::Overwrite
+            } else {
+                SaveTarget::NewRevision
+            };
+            state.status = save_to(state, target);
+            // Leave only on a save that took: a refused one keeps the
+            // player here with the reason in the status line.
+            if then_leave && !state.session.dirty() {
+                leave_editor(state, quitting, next_state, quit);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -1406,8 +1504,8 @@ pub fn save_to(state: &mut EditorState, target: SaveTarget) -> String {
     }
 }
 
-/// Save the way a session always has: a new revision first, then that
-/// revision again.
+/// Save without asking, the way the editor drill does: a new revision
+/// first, then that revision again.
 pub fn save(state: &mut EditorState) -> String {
     let target = if state.saved_any {
         SaveTarget::Overwrite

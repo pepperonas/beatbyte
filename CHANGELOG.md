@@ -14,6 +14,24 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.56] - 2026-09-27
+
+### Changed
+
+- **The editor asks before your work is lost.** Leaving the editor
+  (Esc) or closing BeatByte with unsaved changes opens a dialog:
+  SAVE, DISCARD or CANCEL. It used to be a hint in the status line
+  that a second Esc — or a second click on the window's close button —
+  answered with "throw it away".
+- **Saving asks where the save goes.** S opens a dialog: NEW REVISION
+  (the next revision number, played from now on) or OVERWRITE (the
+  revision being edited). Only revisions made by hand can be
+  overwritten; on a generated one the dialog says so and offers a new
+  revision. Arrow keys and Enter, the answer's first letter, or a
+  click; Esc cancels.
+- **The editor shows which revision you are editing** — "REV 3 -
+  HAND-MADE" or "REV 1 - GENERATED" — instead of a file name.
+
 ## [0.18.55] - 2026-09-27
 
 ### Changed

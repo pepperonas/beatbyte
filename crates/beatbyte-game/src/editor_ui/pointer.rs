@@ -83,6 +83,12 @@ pub fn editor_pointer(
         wheel.clear();
         return;
     };
+    // An open dialog owns the pointer: a click on the chart behind it
+    // must not place a note.
+    if state.dialog.is_some() {
+        wheel.clear();
+        return;
+    }
     let over_toolbar = injected.is_none() && chips.iter().any(|i| *i != Interaction::None);
     let Some(at) = world_cursor(injected.as_deref(), &windows, &cameras) else {
         wheel.clear();

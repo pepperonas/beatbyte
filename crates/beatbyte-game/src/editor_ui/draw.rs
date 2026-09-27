@@ -307,6 +307,19 @@ pub(crate) fn sync_menu(
         });
 }
 
+/// What the HUD says about the file being edited: its revision and
+/// who made it, or — outside the revision scheme — its name. Pure —
+/// tested.
+pub(crate) fn revision_label(revision: Option<u32>, hand_made: bool, file: &str) -> String {
+    match revision {
+        Some(n) => format!(
+            "REV {n} - {}",
+            if hand_made { "HAND-MADE" } else { "GENERATED" }
+        ),
+        None => file.to_owned(),
+    }
+}
+
 const fn chip_spec(id: u8, label: &'static str) -> ui_kit::ChipSpec {
     ui_kit::ChipSpec {
         id,
@@ -352,7 +365,8 @@ KEYS
   ,  .  ;  type the time, lane, length of the selected note
   W  jump to the next warning (overlaps, bad lengths, past the music)
   right-click  the menu
-  S  save as a new version      Esc  cancel, leave
+  S  save: asks NEW REVISION or OVERWRITE (hand-made ones only)
+  Esc  cancel, leave (unsaved: asks SAVE / DISCARD / CANCEL)
 
 F1 / ?  close";
 
@@ -826,10 +840,14 @@ pub(crate) fn refresh_hud(
             } else {
                 "saved"
             },
-            state
-                .chart_path
-                .file_name()
-                .map_or_else(String::new, |n| n.to_string_lossy().into_owned()),
+            revision_label(
+                state.saver.current_revision(),
+                state.saver.current_is_hand_made(),
+                &state
+                    .chart_path
+                    .file_name()
+                    .map_or_else(String::new, |n| n.to_string_lossy().into_owned()),
+            ),
             if state.session.is_valid() {
                 ""
             } else {
