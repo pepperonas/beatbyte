@@ -620,6 +620,60 @@ pub fn color_tile(size: usize, shade: impl Fn(f32, f32) -> f32) -> Image {
     rgba_image(size, data, TextureFormat::Rgba8UnormSrgb)
 }
 
+// ---- fog -----------------------------------------------------------------
+
+/// Four octaves of [`value_noise`], 4 to 32 cells, weighted by half
+/// each step: soft large billows with finer curl on top. Pure.
+#[must_use]
+pub fn fbm(u: f32, v: f32, seed: usize) -> f32 {
+    let mut sum = 0.0;
+    let mut weight = 0.5;
+    let mut total = 0.0;
+    for (octave, cells) in [4u32, 8, 16, 32].into_iter().enumerate() {
+        sum += weight * value_noise(u, v, cells, cells, seed + octave * 17);
+        total += weight;
+        weight *= 0.5;
+    }
+    sum / total
+}
+
+/// How dense a fog sprite is at `(u, v)`: billowing noise inside an
+/// edge that is itself warped by noise, so the outline is ragged and
+/// no two variants share a silhouette. Zero at the tile's border.
+/// Pure — tested.
+#[must_use]
+pub fn fog_density(u: f32, v: f32, seed: usize) -> f32 {
+    let d = Vec2::new(u - 0.5, v - 0.5).length() * 2.0;
+    let warp = (fbm(u * 0.5 + 0.3, v * 0.5, seed + 5) - 0.5) * 0.9;
+    let t = ((d + warp - 0.35) / 0.65).clamp(0.0, 1.0);
+    let edge = 1.0 - t * t * (3.0 - 2.0 * t);
+    // The warp may pull the edge outward past the tile; the tile's own
+    // border fades regardless, so a sprite never shows its square.
+    // Zero from 0.96 out: the middle of an edge is at 0.98 (half a
+    // texel in), and a fade that ended at 1.0 still let 20 % through.
+    let rim = ((0.96 - d) / 0.12).clamp(0.0, 1.0);
+    let density = ((fbm(u, v, seed) - 0.28) / 0.5).clamp(0.0, 1.0).powf(1.3);
+    edge * rim * 0.75f32.mul_add(density, 0.25)
+}
+
+/// A fog sprite: white, its shape in the alpha. With mips, so a
+/// distant puff is soft rather than sparkling.
+#[must_use]
+pub fn fog_sprite(size: usize, seed: usize) -> Image {
+    let mut data = Vec::with_capacity(size * size * 4);
+    for y in 0..size {
+        for x in 0..size {
+            let a = fog_density(
+                (x as f32 + 0.5) / size as f32,
+                (y as f32 + 0.5) / size as f32,
+                seed,
+            );
+            data.extend_from_slice(&[255, 255, 255, (a * 255.0).round() as u8]);
+        }
+    }
+    with_mips(rgba_image(size, data, TextureFormat::Rgba8UnormSrgb), false)
+}
+
 // ---- mips ----------------------------------------------------------------
 
 /// The full mip chain of a square RGBA8 image: level 0 as given,
@@ -1027,6 +1081,50 @@ mod tests {
             color.texture_descriptor.format,
             TextureFormat::Rgba8UnormSrgb
         );
+    }
+
+    #[test]
+    fn a_fog_sprite_is_a_ragged_cloud_that_never_shows_its_square() {
+        let n = 64;
+        let at = |x: usize, y: usize, seed: usize| {
+            fog_density(
+                (x as f32 + 0.5) / n as f32,
+                (y as f32 + 0.5) / n as f32,
+                seed,
+            )
+        };
+        for seed in [3, 11, 29] {
+            // The tile's border is empty: no square outline, ever.
+            for i in 0..n {
+                for (x, y) in [(i, 0), (i, n - 1), (0, i), (n - 1, i)] {
+                    assert!(at(x, y, seed) < 1e-3, "seed {seed}: border ({x},{y})");
+                }
+            }
+            // Dense in the middle, thin at the rim.
+            let centre: f32 = (28..36)
+                .flat_map(|y| (28..36).map(move |x| (x, y)))
+                .map(|(x, y)| at(x, y, seed))
+                .sum::<f32>()
+                / 64.0;
+            assert!(centre > 0.3, "seed {seed}: a thin middle {centre}");
+            // Not a disc: round a ring the density varies a lot. A
+            // round sprite (the old `round_body`) is constant there.
+            let ring: Vec<f32> = (0..64)
+                .map(|k| {
+                    let a = k as f32 / 64.0 * core::f32::consts::TAU;
+                    let r = 0.3;
+                    fog_density(0.5 + r * a.cos(), 0.5 + r * a.sin(), seed)
+                })
+                .collect();
+            let hi = ring.iter().copied().fold(f32::MIN, f32::max);
+            let lo = ring.iter().copied().fold(f32::MAX, f32::min);
+            assert!(hi - lo > 0.2, "seed {seed}: a ball, {lo}..{hi}");
+        }
+        // Variants differ.
+        let diff: f32 = (0..n)
+            .map(|i| (at(i, n / 2, 3) - at(i, n / 2, 11)).abs())
+            .sum();
+        assert!(diff > 2.0, "two variants alike: {diff}");
     }
 
     #[test]

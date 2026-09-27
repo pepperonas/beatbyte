@@ -14,6 +14,20 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.60] - 2026-09-27
+
+### Changed
+
+- **Fog that looks like fog.** The fog machines threw round white
+  balls that stacked into a bright blob; each puff is now a torn
+  cloud, turned its own way, and the bank thins into wisps. The fog
+  takes the colour of the light on its side of the stage.
+- **Low fog.** A thin layer of ground fog now lies on the floor beside
+  the stage, outside the PA, drifting slowly. It is off with STAGE
+  MOTION.
+- The fog no longer rewrites a material every frame: a fading puff
+  steps through a shared set of materials, so the puffs batch.
+
 ## [0.18.59] - 2026-09-27
 
 ### Added

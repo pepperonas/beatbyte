@@ -253,6 +253,19 @@ pub fn active(settings: &Settings) -> bool {
     settings.stage_3d
 }
 
+/// The colour of the venue wash on one side (`side` < 0 is the left):
+/// the theme's accent on the left, the fourth lane's colour on the
+/// right. The fog machines on each side wear it too, so the fog is lit
+/// by the same light that fills the room. Pure.
+#[must_use]
+pub fn wash_colour(stage: crate::theme::Theme, side: f32) -> Color {
+    if side < 0.0 {
+        stage.accent
+    } else {
+        stage.lane_color(Lane::Four)
+    }
+}
+
 /// ⚠️ There is no depth of field on this stage, and that is a
 /// measured decision rather than an omission (roadmap H3).
 ///
@@ -1919,10 +1932,8 @@ pub fn setup_stage(
     // Both are RANGED so the room takes the light and the fretboard
     // does not — notes keep their contrast against the board, and
     // that is worth more than any amount of atmosphere.
-    for (side, tint, strength) in [
-        (-1.0f32, stage.accent, 1.0f32),
-        (1.0, stage.lane_color(Lane::Four), 0.85),
-    ] {
+    for (side, strength) in [(-1.0f32, 1.0f32), (1.0, 0.85)] {
+        let tint = wash_colour(stage, side);
         commands.spawn((
             GameplayScreen,
             Stage3d,
