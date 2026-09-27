@@ -14,6 +14,24 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.59] - 2026-09-27
+
+### Added
+
+- **A backline.** Four full amp stacks — two cabinets and a head each —
+  now stand behind the guitarist and the bassist, with a salt-and-pepper
+  grille, a brushed control panel and a glowing power lamp. The
+  drummer's step has a cloth skirt, so it reads as a riser.
+
+### Changed
+
+- **Real guitar bodies.** The guitar and the bass were two discs and a
+  block; they are now a proper double-cut body with two horns and a
+  cutaway, lacquered like the drum shells.
+- **Bronze cymbals** instead of chrome.
+- **The band stands out of the haze.** The venue's fog starts to close
+  further back, so the band is no longer more than half hidden in it.
+
 ## [0.18.58] - 2026-09-27
 
 ### Added

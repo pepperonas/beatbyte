@@ -76,8 +76,12 @@ const HIGHWAY_BEHIND: f32 = 2.5;
 /// Where the instrument neck's fog begins and ends, in camera
 /// distance. The camera is ~6 from the strike line and ~31 from the
 /// far end; the back wall is ~45.
+///
+/// The end was 52 until the backline went in: the band (~35 away)
+/// stood 58 % into the fog and read as haze in front of the amps.
+/// At 60 it is under half, the neck's end still about half.
 const FOG_START: f32 = 12.0;
-const FOG_END: f32 = 52.0;
+const FOG_END: f32 = 60.0;
 
 /// How much sheen the stage deck's paint has: the strength of its
 /// clearcoat layer.
@@ -4643,6 +4647,12 @@ mod instrument_neck_tests {
             (0.35..=0.65).contains(&end),
             "the far end should be about half fogged, got {end}"
         );
+        // The band stands a few units past the neck's end, straight
+        // down the view: it must be more out of the fog than in it.
+        let (_, band_z, _) = super::super::band::stand(super::super::band::Role::Guitarist);
+        let band = intensity(far_end + (-26.0 - band_z));
+        assert!(band < 0.5, "the band stands in the fog, {band}");
+        assert!(band > end, "and still further back than the neck's end");
         let wall = intensity(back_wall);
         assert!(
             wall < 1.0,

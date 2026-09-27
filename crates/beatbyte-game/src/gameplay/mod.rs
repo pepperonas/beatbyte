@@ -12,6 +12,7 @@
 //! one.
 
 pub mod arc;
+pub mod backline;
 pub mod band;
 pub mod crowd;
 pub mod crowd_cards;

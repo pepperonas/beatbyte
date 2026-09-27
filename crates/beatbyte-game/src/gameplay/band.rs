@@ -36,19 +36,26 @@ use crate::config::Settings;
 /// end (−26), so the band is the thing the neck runs INTO — the
 /// first placement, 7 units further back, put the figures 65 % into
 /// the fog and they read as more crowd.
-const RISER_Z: f32 = -30.0;
+pub(super) const RISER_Z: f32 = -30.0;
 /// The riser's depth; its front face sits at `RISER_Z + DEPTH/2`.
-const RISER_DEPTH: f32 = 8.0;
+pub(super) const RISER_DEPTH: f32 = 8.0;
 /// The riser's top surface. Raised, so the figures show above the
 /// neck's vanishing end rather than behind it.
-const RISER_TOP: f32 = 1.3;
+pub(super) const RISER_TOP: f32 = 1.3;
 /// The figures are drawn larger than life: at thirty units they
 /// would otherwise be a few pixels tall.
-const FIGURE_SCALE: f32 = 1.5;
+pub(super) const FIGURE_SCALE: f32 = 1.5;
 /// A band member's height before the stage scale.
 pub const BAND_HEIGHT: f32 = 1.78;
-/// The drummer's own riser, at the back of the band's.
-const DRUM_RISER_H: f32 = 0.5;
+/// The drummer's own riser, at the back of the band's: its height,
+/// width, depth and the z of its centre.
+pub(super) const DRUM_RISER_H: f32 = 0.5;
+/// The drum riser's width.
+pub(super) const DRUM_RISER_W: f32 = 4.2;
+/// The drum riser's depth.
+pub(super) const DRUM_RISER_DEPTH: f32 = 3.0;
+/// The drum riser's centre, front to back.
+pub(super) const DRUM_RISER_Z: f32 = RISER_Z - 2.6;
 
 /// Who a figure is. Drives both the look and the playing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -339,26 +346,140 @@ fn merged(mut base: Mesh, pieces: Vec<Mesh>) -> Mesh {
     base
 }
 
+/// The control points of a guitar body's outline in the figure's frame
+/// (units of its height), going round once: a round lower bout at −x,
+/// a waist, a narrower upper bout, and two horns of unequal length
+/// either side of a deep cutaway where the neck enters at +x. A
+/// generic offset double-cut — no maker's shape.
+const BODY_OUTLINE: [(f32, f32); 19] = [
+    (-0.190, 0.000),
+    (-0.172, 0.072),
+    (-0.105, 0.112),
+    (-0.025, 0.104),
+    (0.035, 0.080),
+    (0.085, 0.088),
+    (0.140, 0.098),
+    (0.205, 0.078),
+    (0.195, 0.050),
+    (0.150, 0.024),
+    (0.150, -0.024),
+    (0.178, -0.046),
+    (0.182, -0.074),
+    (0.135, -0.094),
+    (0.080, -0.090),
+    (0.030, -0.084),
+    (-0.030, -0.104),
+    (-0.110, -0.110),
+    (-0.174, -0.070),
+];
+
+/// Samples per control-point span of the outline.
+const OUTLINE_STEPS: usize = 8;
+
+/// The point inside the body the outline is fanned from. Every
+/// outline point is visible from it (tested), so the fan is valid.
+const BODY_CENTRE: Vec2 = Vec2::new(-0.02, 0.0);
+
+/// A guitar body's outline as a closed polygon: a Catmull-Rom curve
+/// through `BODY_OUTLINE`, scaled for a bass. Pure — tested.
+#[must_use]
+pub fn body_outline(bass: bool) -> Vec<Vec2> {
+    let scale = if bass { 1.12 } else { 1.0 };
+    let points: Vec<Vec2> = BODY_OUTLINE.iter().map(|&(x, y)| Vec2::new(x, y)).collect();
+    let n = points.len();
+    let mut out = Vec::with_capacity(n * OUTLINE_STEPS);
+    for i in 0..n {
+        let p0 = points[(i + n - 1) % n];
+        let p1 = points[i];
+        let p2 = points[(i + 1) % n];
+        let p3 = points[(i + 2) % n];
+        for step in 0..OUTLINE_STEPS {
+            let t = step as f32 / OUTLINE_STEPS as f32;
+            let (t2, t3) = (t * t, t * t * t);
+            let p = 0.5
+                * (2.0 * p1
+                    + (p2 - p0) * t
+                    + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+                    + (3.0 * p1 - p0 - 3.0 * p2 + p3) * t3);
+            out.push(p * scale);
+        }
+    }
+    out
+}
+
+/// A flat outline extruded to `thickness` along Z: front and back
+/// faces fanned from `centre`, a side wall with its own outward
+/// normals so the edge catches light like a real body's rim.
+fn extrude(outline: &[Vec2], centre: Vec2, thickness: f32) -> Mesh {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::mesh::{Indices, PrimitiveTopology};
+    let half = thickness * 0.5;
+    let n = outline.len();
+    let mut positions: Vec<[f32; 3]> = Vec::new();
+    let mut normals: Vec<[f32; 3]> = Vec::new();
+    let mut uvs: Vec<[f32; 2]> = Vec::new();
+    let mut indices: Vec<u32> = Vec::new();
+    // The outline runs clockwise seen from +Z (it starts at the lower
+    // bout and goes up and over), so the front fan is wound
+    // centre → next → this to face +Z.
+    for (z, facing) in [(half, 1.0f32), (-half, -1.0)] {
+        let base = positions.len() as u32;
+        positions.push([centre.x, centre.y, z]);
+        normals.push([0.0, 0.0, facing]);
+        uvs.push([0.5, 0.5]);
+        for p in outline {
+            positions.push([p.x, p.y, z]);
+            normals.push([0.0, 0.0, facing]);
+            uvs.push([p.x + 0.5, p.y + 0.5]);
+        }
+        for i in 0..n as u32 {
+            let this = base + 1 + i;
+            let next = base + 1 + (i + 1) % n as u32;
+            if facing > 0.0 {
+                indices.extend([base, next, this]);
+            } else {
+                indices.extend([base, this, next]);
+            }
+        }
+    }
+    // The side wall: a quad per outline edge, flat-shaded.
+    for i in 0..n {
+        let a = outline[i];
+        let b = outline[(i + 1) % n];
+        let edge = b - a;
+        // Clockwise outline: the outward normal is the edge turned left.
+        let out = Vec2::new(-edge.y, edge.x).normalize_or_zero();
+        let base = positions.len() as u32;
+        for (p, z) in [(a, half), (b, half), (b, -half), (a, -half)] {
+            positions.push([p.x, p.y, z]);
+            normals.push([out.x, out.y, 0.0]);
+            uvs.push([0.0, 0.0]);
+        }
+        // Wound so the geometric normal agrees with `out` (the test
+        // checks every triangle; the first winding faced inward and
+        // the wall would have been culled from the front).
+        indices.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
+    }
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+    .with_inserted_indices(Indices::U32(indices))
+}
+
 /// A guitar (or bass) in the figure's frame, hanging from the spine:
-/// a waisted body from two discs and a bridge block, a neck out to
-/// the figure's left, a tilted headstock. Sizes in units of the
-/// figure's height. Pure geometry — no logo, no maker's shape.
+/// an extruded double-cut body, a neck out to the figure's left, a
+/// tilted headstock. Sizes in units of the figure's height. Pure
+/// geometry — no logo, no maker's shape.
 fn guitar_mesh(bass: bool) -> Mesh {
-    let (lower, upper, neck_len) = if bass {
-        (0.11, 0.09, 0.38)
-    } else {
-        (0.10, 0.085, 0.32)
-    };
-    let disc = |r: f32, x: f32| {
-        Mesh::from(Cylinder::new(r, 0.02))
-            .rotated_by(Quat::from_rotation_x(FRAC_PI_2))
-            .translated_by(Vec3::new(x, 0.0, 0.0))
-    };
+    let neck_len = if bass { 0.38 } else { 0.32 };
+    let scale = if bass { 1.12 } else { 1.0 };
     merged(
-        disc(lower, -0.07),
+        extrude(&body_outline(bass), BODY_CENTRE * scale, 0.022),
         vec![
-            disc(upper, 0.13),
-            block(Vec3::new(0.18, 0.15, 0.02), Vec3::new(0.03, 0.0, 0.0)),
             block(
                 Vec3::new(neck_len, 0.026, 0.015),
                 Vec3::new(0.13 + neck_len * 0.5, 0.01, 0.0),
@@ -400,6 +521,7 @@ pub fn spawn_band(
     settings: Res<Settings>,
     theme: Res<crate::theme::ActiveTheme>,
     assets: Res<FigureAssets>,
+    surfaces: Res<crate::surfaces::StageSurfaces>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
@@ -429,21 +551,42 @@ pub fn spawn_band(
         layer.clone(),
     ));
     // The drummer's riser, one step higher at the back.
-    let drum_riser = meshes.add(Cuboid::new(4.2, DRUM_RISER_H, 3.0));
+    let drum_riser = meshes.add(Cuboid::new(DRUM_RISER_W, DRUM_RISER_H, DRUM_RISER_DEPTH));
     commands.spawn((
         GameplayScreen,
         Stage3d,
         Band,
         Mesh3d(drum_riser),
-        MeshMaterial3d(riser_material),
-        Transform::from_xyz(0.0, RISER_TOP + DRUM_RISER_H / 2.0, RISER_Z - 2.6),
+        MeshMaterial3d(riser_material.clone()),
+        Transform::from_xyz(0.0, RISER_TOP + DRUM_RISER_H / 2.0, DRUM_RISER_Z),
         layer.clone(),
     ));
+    // The amps behind the band and the drum riser's skirt.
+    super::backline::spawn_backline(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        &surfaces,
+        riser_material,
+    );
 
+    // Lacquer: a guitar body and a drum shell are finished, and the
+    // coat is what catches the rig's beams at this distance.
     let instrument_material = materials.add(StandardMaterial {
         base_color: dark.mix(&Color::BLACK, 0.5).mix(&stage.accent, 0.18),
         perceptual_roughness: 0.45,
         metallic: 0.3,
+        clearcoat: 0.8,
+        clearcoat_perceptual_roughness: 0.2,
+        ..default()
+    });
+    // Cymbals are bronze, not chrome: warm, and brushed along the
+    // lathe (the striation tile the PA's metal uses).
+    let bronze = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.72, 0.52, 0.26),
+        metallic_roughness_texture: Some(surfaces.metal_rough.clone()),
+        metallic: 1.0,
+        perceptual_roughness: 0.8,
         ..default()
     });
     let chrome = materials.add(StandardMaterial {
@@ -660,7 +803,7 @@ pub fn spawn_band(
                     );
                     place(
                         cymbal.clone(),
-                        chrome.clone(),
+                        bronze.clone(),
                         Vec3::new(
                             x + dx * FIGURE_SCALE,
                             kit_y + 1.22 * FIGURE_SCALE,
@@ -680,7 +823,7 @@ pub fn spawn_band(
                 for dy in [0.90, 0.94] {
                     place(
                         hihat.clone(),
-                        chrome.clone(),
+                        bronze.clone(),
                         hh + Vec3::new(0.0, dy * FIGURE_SCALE, 0.0),
                         Quat::from_rotation_z(0.06),
                     );
@@ -837,6 +980,106 @@ mod tests {
                 assert_ne!(a, b);
             }
         }
+    }
+
+    #[test]
+    fn a_guitar_body_is_one_star_shaped_outline_with_two_horns() {
+        for bass in [false, true] {
+            let outline = body_outline(bass);
+            let scale = if bass { 1.12 } else { 1.0 };
+            let centre = BODY_CENTRE * scale;
+            // Every fan triangle turns the same way: the fan from the
+            // centre is a valid triangulation of the body.
+            for (i, a) in outline.iter().enumerate() {
+                let b = outline[(i + 1) % outline.len()];
+                let turn = (*a - centre).perp_dot(b - centre);
+                assert!(
+                    turn < 0.0,
+                    "bass {bass}: point {i} is not seen from the centre"
+                );
+            }
+            // Two horns reach forward past the neck's root, with the
+            // cutaway between them behind it.
+            let root = 0.13 * scale;
+            let upper = outline
+                .iter()
+                .filter(|p| p.y > 0.03 * scale)
+                .map(|p| p.x)
+                .fold(f32::MIN, f32::max);
+            let lower = outline
+                .iter()
+                .filter(|p| p.y < -0.03 * scale)
+                .map(|p| p.x)
+                .fold(f32::MIN, f32::max);
+            assert!(
+                upper > root + 0.04 && lower > root + 0.03,
+                "horns {upper} {lower}"
+            );
+            assert!(
+                upper > lower,
+                "an offset double-cut: the upper horn is longer"
+            );
+            let cutaway = outline
+                .iter()
+                .filter(|p| p.y.abs() < 0.01 * scale)
+                .map(|p| p.x)
+                .fold(f32::MIN, f32::max);
+            assert!(
+                cutaway < upper - 0.03,
+                "the cutaway sits back between the horns"
+            );
+            // The lower bout is the widest part: a body, not a fish.
+            let width_at = |x0: f32, x1: f32| {
+                let ys: Vec<f32> = outline
+                    .iter()
+                    .filter(|p| (x0..x1).contains(&p.x))
+                    .map(|p| p.y)
+                    .collect();
+                ys.iter().copied().fold(f32::MIN, f32::max)
+                    - ys.iter().copied().fold(f32::MAX, f32::min)
+            };
+            assert!(
+                width_at(-0.14 * scale, -0.06 * scale) > width_at(0.06 * scale, 0.12 * scale),
+                "the lower bout is wider than the upper"
+            );
+        }
+    }
+
+    #[test]
+    fn every_face_of_the_body_points_the_way_its_normal_says() {
+        use bevy::mesh::{Indices, VertexAttributeValues};
+        let mesh = extrude(&body_outline(false), BODY_CENTRE, 0.022);
+        let Some(VertexAttributeValues::Float32x3(positions)) =
+            mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+        else {
+            panic!("positions");
+        };
+        let Some(VertexAttributeValues::Float32x3(normals)) =
+            mesh.attribute(Mesh::ATTRIBUTE_NORMAL)
+        else {
+            panic!("normals");
+        };
+        let Some(Indices::U32(indices)) = mesh.indices() else {
+            panic!("indices");
+        };
+        let mut sides = 0;
+        for tri in indices.chunks(3) {
+            let [a, b, c] = [0, 1, 2].map(|k| Vec3::from(positions[tri[k] as usize]));
+            let face = (b - a).cross(c - a);
+            let stored = Vec3::from(normals[tri[0] as usize]);
+            assert!(
+                face.dot(stored) > 0.0,
+                "a triangle faces against its normal: {face} vs {stored}"
+            );
+            if stored.z == 0.0 {
+                sides += 1;
+                // A side normal points away from the body's centre.
+                let mid = (a + b + c) / 3.0;
+                let out = mid.truncate() - BODY_CENTRE;
+                assert!(out.dot(stored.truncate()) > 0.0, "a side faces inward");
+            }
+        }
+        assert_eq!(sides, 2 * body_outline(false).len(), "a wall all round");
     }
 
     #[test]
