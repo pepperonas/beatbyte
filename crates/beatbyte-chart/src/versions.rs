@@ -113,9 +113,92 @@ pub fn resolve_active(pointer_text: Option<&str>, files: &[String]) -> String {
     }
 }
 
+/// A chart revision in a song folder: its number and file name.
+/// `chart.json` is revision 1, `chart.vN.json` revision N.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Revision {
+    /// The revision number (1 for the base chart).
+    pub number: u32,
+    /// The file name.
+    pub name: String,
+}
+
+/// The revision number of a spellable chart name: 1 for the base
+/// chart, N for `chart.vN.json`, nothing for anything else.
+#[must_use]
+pub fn revision_number(name: &str) -> Option<u32> {
+    if name == BASE_CHART {
+        Some(1)
+    } else {
+        version_number(name)
+    }
+}
+
+/// Every revision among a folder's file names, oldest first. Anything
+/// that is not a spellable chart name is left out, so a listing that
+/// also holds the audio, the pointer and the sidecars is fine.
+#[must_use]
+pub fn list_revisions(files: &[String]) -> Vec<Revision> {
+    let mut revisions: Vec<Revision> = files
+        .iter()
+        .filter_map(|name| {
+            revision_number(name).map(|number| Revision {
+                number,
+                name: name.clone(),
+            })
+        })
+        .collect();
+    revisions.sort_by_key(|r| r.number);
+    revisions.dedup_by_key(|r| r.number);
+    revisions
+}
+
+/// The pointer file's content naming `name` as the active chart.
+#[must_use]
+pub fn pointer_json(name: &str) -> String {
+    format!("{{\"active\": \"{name}\"}}\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn revisions_are_listed_oldest_first_and_nothing_else_is() {
+        let files = names(&[
+            "chart.v10.json",
+            "song.m4a",
+            "chart-active.json",
+            "chart.json",
+            "chart.v2.json",
+            "chart.v2.context.json",
+            "../chart.v3.json",
+        ]);
+        let listed: Vec<(u32, String)> = list_revisions(&files)
+            .into_iter()
+            .map(|r| (r.number, r.name))
+            .collect();
+        assert_eq!(
+            listed,
+            vec![
+                (1, "chart.json".to_owned()),
+                (2, "chart.v2.json".to_owned()),
+                (10, "chart.v10.json".to_owned()),
+            ]
+        );
+        assert_eq!(revision_number("chart.json"), Some(1));
+        assert_eq!(revision_number("chart.v4.json"), Some(4));
+        assert_eq!(revision_number("song.json"), None);
+    }
+
+    #[test]
+    fn a_written_pointer_is_one_the_resolver_follows() {
+        let files = names(&["chart.json", "chart.v3.json"]);
+        assert_eq!(
+            resolve_active(Some(&pointer_json("chart.v3.json")), &files),
+            "chart.v3.json"
+        );
+    }
 
     fn names(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| (*s).to_owned()).collect()

@@ -2224,6 +2224,14 @@ Commission: "der Boden, die seitliche Begrenzung des Highway, die Zuschauer, die
 - [ ] S4 Band: backline amps, extruded guitar outlines, out of the fog.
 - [ ] S5 Fog: noise-cloud sprites, tinted by the wash, material ladder (batching), low fog.
 
+## Chart revisions in the editor and the browser (IN PROGRESS 2026-09-27)
+
+User commission: a warning on leaving the editor with unsaved changes, a revision number set on every save, a choice between a new revision and overwriting, and the browser as a tree Song → Normal / GS / CL → revisions. Decided with the user: a SAVE / DISCARD / CANCEL dialog on ESC and on closing the window; a NEW REVISION / OVERWRITE dialog on every S; only hand-made revisions may be overwritten; Enter on a revision plays it and makes it active.
+
+- [x] R1 **Revisions API and a Saver with a target** *(v0.18.55)* — `versions::{Revision, revision_number, list_revisions, pointer_json}`, `io::activate_revision` (atomic, refuses names out of the folder and missing files); `Saver::save(chart, SaveTarget, now)`: a new revision always takes the next number and descends from the one being edited, an overwrite rewrites that one and keeps its parent, a generated revision is never overwritten, a file outside the scheme is never split. The editor keeps its old behaviour until R2 and names the revision in its status line. *Verified: 1999 tests (+7); five mutation probes on the Saver (guard off, everything overwritable, overwrite parent = itself, editing not followed, new revision without a parent) all caught.*
+- [ ] R2 Editor: SAVE / DISCARD / CANCEL on leaving (ESC and window close), NEW REVISION / OVERWRITE on S, the revision in the header.
+- [ ] R3 Browser: Song → Normal / GS / CL → revisions, Tab expands, Enter on a revision activates and plays it, E edits it.
+
 ## Backlog (explicitly out of scope until after 1.0)
 
 Not started without a deliberate roadmap edit pulling them forward:

@@ -123,6 +123,32 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     result
 }
 
+/// Make `name` the active chart revision of `folder`: the pointer
+/// file is rewritten atomically.
+///
+/// # Errors
+/// When `name` is not a spellable revision name (a pointer must never
+/// name a path out of its folder), when that file is not in the
+/// folder, or when the write fails — the old pointer then stays.
+pub fn activate_revision(folder: &Path, name: &str) -> std::io::Result<()> {
+    if !crate::versions::is_valid_target(name) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("`{name}` is not a chart revision name"),
+        ));
+    }
+    if !folder.join(name).is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("`{name}` is not in `{}`", folder.display()),
+        ));
+    }
+    write_atomic(
+        &folder.join(crate::versions::POINTER_FILE),
+        crate::versions::pointer_json(name).as_bytes(),
+    )
+}
+
 /// Resolve the chart's audio reference against the chart's directory,
 /// refusing anything that escapes it (path traversal, absolute paths).
 pub fn resolve_audio_path(chart_dir: &Path, audio: &str) -> Result<PathBuf, ChartIoError> {
@@ -316,5 +342,41 @@ mod tests {
                 "`{bad}` must be rejected"
             );
         }
+    }
+
+    #[test]
+    fn activating_a_revision_moves_the_pointer_and_nothing_else() {
+        let dir = scratch_dir("activate");
+        fs::write(dir.join("chart.json"), minimal_chart_json()).unwrap();
+        fs::write(dir.join("chart.v2.json"), minimal_chart_json()).unwrap();
+        activate_revision(&dir, "chart.v2.json").unwrap();
+        let names = vec!["chart.json".to_owned(), "chart.v2.json".to_owned()];
+        let pointer = fs::read_to_string(dir.join(crate::versions::POINTER_FILE)).unwrap();
+        assert_eq!(
+            crate::versions::resolve_active(Some(&pointer), &names),
+            "chart.v2.json"
+        );
+        activate_revision(&dir, "chart.json").unwrap();
+        let pointer = fs::read_to_string(dir.join(crate::versions::POINTER_FILE)).unwrap();
+        assert_eq!(
+            crate::versions::resolve_active(Some(&pointer), &names),
+            "chart.json"
+        );
+    }
+
+    #[test]
+    fn activating_refuses_escapes_and_missing_files_and_keeps_the_old_pointer() {
+        let dir = scratch_dir("activate-refuse");
+        fs::write(dir.join("chart.json"), minimal_chart_json()).unwrap();
+        fs::write(dir.join("chart.v2.json"), minimal_chart_json()).unwrap();
+        activate_revision(&dir, "chart.v2.json").unwrap();
+        let before = fs::read(dir.join(crate::versions::POINTER_FILE)).unwrap();
+        for bad in ["../chart.json", "/etc/passwd", "song.json", "chart.v9.json"] {
+            assert!(activate_revision(&dir, bad).is_err(), "{bad} was accepted");
+        }
+        assert_eq!(
+            fs::read(dir.join(crate::versions::POINTER_FILE)).unwrap(),
+            before
+        );
     }
 }

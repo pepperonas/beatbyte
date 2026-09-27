@@ -14,6 +14,17 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.55] - 2026-09-27
+
+### Changed
+
+- **The editor names the revision it saved.** "saved as revision 4" or
+  "revision 4 overwritten" instead of a file name. Underneath, a save
+  now always names its target — a new revision or the revision being
+  edited — and a generated revision (the imported chart, a redesign)
+  can never be overwritten, only saved over as a new one; the choice
+  itself comes to the editor in the next step.
+
 ## [0.18.54] - 2026-09-27
 
 ### Changed

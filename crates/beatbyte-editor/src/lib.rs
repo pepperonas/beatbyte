@@ -19,7 +19,7 @@ pub mod view;
 pub mod waveform;
 
 pub use ops::{EDIT_EPSILON_S, EditError, EditOp};
-pub use save::{Saved, Saver};
+pub use save::{SaveTarget, Saved, Saver};
 pub use session::EditorSession;
 
 /// The crate version, kept in sync with the workspace version.

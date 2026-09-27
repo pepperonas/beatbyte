@@ -26,7 +26,7 @@ use beatbyte_editor::playback::{self, LoopRegion};
 use beatbyte_editor::timecode::Grid;
 use beatbyte_editor::view::{self, Hit, NoteKey, View};
 use beatbyte_editor::waveform::Envelope;
-use beatbyte_editor::{EditOp, EditorSession, Saved, Saver};
+use beatbyte_editor::{EditOp, EditorSession, SaveTarget, Saved, Saver};
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task};
 
@@ -1378,28 +1378,43 @@ pub(crate) fn editor_typing(
     state.dirty_view = true;
 }
 
-/// Save the edit as a new chart version (see [`Saver`]); the status
-/// line it leaves.
-pub fn save(state: &mut EditorState) -> String {
+/// Save the edit to `target` (see [`Saver`]); the status line it
+/// leaves.
+pub fn save_to(state: &mut EditorState, target: SaveTarget) -> String {
     let now = crate::players::now_ms();
     let chart = state.session.chart().clone();
-    match state.saver.save(&chart, now) {
+    match state.saver.save(&chart, target, now) {
         Ok(Saved::Unchanged) => {
             state.session.mark_saved();
             "nothing changed - nothing written".to_owned()
         }
-        Ok(Saved::Written { name, rewritten }) => {
+        Ok(Saved::Written {
+            name,
+            revision,
+            overwritten,
+        }) => {
             state.session.mark_saved();
             state.saved_any = true;
             state.chart_path = state.saver.current_path();
-            if rewritten {
-                format!("saved ({name})")
-            } else {
-                format!("saved as {name} - the earlier version is kept")
+            match (revision, overwritten) {
+                (Some(n), true) => format!("revision {n} overwritten"),
+                (Some(n), false) => format!("saved as revision {n} - the earlier one is kept"),
+                (None, _) => format!("saved ({name})"),
             }
         }
         Err(error) => error,
     }
+}
+
+/// Save the way a session always has: a new revision first, then that
+/// revision again.
+pub fn save(state: &mut EditorState) -> String {
+    let target = if state.saved_any {
+        SaveTarget::Overwrite
+    } else {
+        SaveTarget::NewRevision
+    };
+    save_to(state, target)
 }
 
 /// While previewing, the playhead follows the music — around the loop
