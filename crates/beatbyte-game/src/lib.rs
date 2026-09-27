@@ -48,6 +48,7 @@ mod shapes;
 pub mod smart_lyrics;
 pub mod song_info;
 pub mod song_select;
+pub mod song_tree;
 pub mod states;
 pub mod stats_ui;
 pub mod study_twin;

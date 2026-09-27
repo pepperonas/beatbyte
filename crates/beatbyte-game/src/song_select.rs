@@ -156,6 +156,66 @@ pub struct BrowserView {
     pub searching: bool,
     /// Whether the sort runs against its default direction.
     pub flipped: bool,
+    /// The rows as a tree (song, variants, revisions), parallel to
+    /// `order`: `order[i]` is `tree[i].entry`.
+    pub tree: Vec<crate::song_tree::Row>,
+    /// What the player opened this session, by song folder and level.
+    /// Kept by FOLDER, not by library index: a rescan renumbers the
+    /// entries, and an open song must stay open through an import.
+    pub open: std::collections::HashSet<(std::path::PathBuf, crate::song_tree::Level)>,
+}
+
+/// The song folder of an entry, if it has one (built-ins do not).
+fn entry_folder(entry: &SongEntry) -> Option<std::path::PathBuf> {
+    match &entry.source {
+        SongSource::File { chart_path, .. } => {
+            chart_path.parent().map(std::path::Path::to_path_buf)
+        }
+        SongSource::Builtin(_) => None,
+    }
+}
+
+/// A folder's revisions and who made each, read from disk when a row
+/// needs them and kept until the library changes.
+#[derive(Resource, Default)]
+struct RevisionCache {
+    /// Revisions per folder (names and numbers only — cheap).
+    listed: std::collections::HashMap<std::path::PathBuf, Vec<beatbyte_chart::versions::Revision>>,
+    /// "HAND-MADE", "GENERATED", … per revision file (reads the chart).
+    labels: std::collections::HashMap<std::path::PathBuf, &'static str>,
+}
+
+impl RevisionCache {
+    fn listed(&mut self, folder: &std::path::Path) -> &[beatbyte_chart::versions::Revision] {
+        self.listed.entry(folder.to_path_buf()).or_insert_with(|| {
+            beatbyte_chart::versions::list_revisions(
+                &beatbyte_chart::twin::names_in(folder).unwrap_or_default(),
+            )
+        })
+    }
+
+    fn label(&mut self, file: &std::path::Path) -> &'static str {
+        self.labels.entry(file.to_path_buf()).or_insert_with(|| {
+            let chart = beatbyte_chart::load_chart_file(file).ok();
+            crate::song_tree::designer_label(
+                chart
+                    .as_ref()
+                    .and_then(|c| c.provenance.as_ref())
+                    .map(|p| p.designer.as_str()),
+            )
+        })
+    }
+}
+
+/// The entry a twin was made from, if that entry is in `order` — the
+/// same match `pair_twins` sorts by (title without one prefix, same
+/// artist).
+fn original_in(entries: &[SongEntry], order: &[usize], twin: usize) -> Option<usize> {
+    let base = beatbyte_chart::twin::base_title(&entries[twin].title)?;
+    order
+        .iter()
+        .copied()
+        .find(|&j| entries[j].title == base && entries[j].artist == entries[twin].artist)
 }
 
 /// Case- and diacritic-insensitive key for SORTING: `fold_latin` is
@@ -375,6 +435,53 @@ fn stable_cursor(old_order: &[usize], cursor: usize, new_order: &[usize]) -> usi
         .get(cursor)
         .and_then(|song| new_order.iter().position(|i| i == song))
         .unwrap_or_else(|| cursor.min(new_order.len().saturating_sub(1)))
+}
+
+/// Open or close the row at `cursor` (by its folder, so it stays open
+/// through a rescan). A row that does not open is left alone.
+///
+/// Returns whether it opened or closed anything: Enter and a click
+/// ask exactly that — a row that is a section opens or closes, a row
+/// that is not (a revision, a song with one revision, a built-in with
+/// no folder) plays.
+fn toggle_open(view: &mut BrowserView, entries: &[SongEntry], cursor: usize) -> bool {
+    let Some(row) = view.tree.get(cursor) else {
+        return false;
+    };
+    let (Some(level), Some(folder)) = (row.opens(), entries.get(row.entry).and_then(entry_folder))
+    else {
+        return false;
+    };
+    let key = (folder, level);
+    if !view.open.remove(&key) {
+        view.open.insert(key);
+    }
+    true
+}
+
+/// A row's title in the tree: a `+` on something that opens, a `-` on
+/// something open, indented by depth; a variant shows what it is
+/// (NORMAL / GS / CL), a revision its number and who made it. Pure —
+/// tested.
+fn tree_title(row: &crate::song_tree::Row, title: &str) -> String {
+    use crate::song_tree::Kind;
+    let indent = "  ".repeat(usize::from(row.depth));
+    let marker = |expandable: bool, open: bool| match (expandable, open) {
+        (true, true) => "- ",
+        (true, false) => "+ ",
+        _ => "  ",
+    };
+    match &row.kind {
+        Kind::Song { expandable, open } => format!("{}{title}", marker(*expandable, *open)),
+        Kind::Variant {
+            label,
+            expandable,
+            open,
+        } => format!("{indent}{}{label}", marker(*expandable, *open)),
+        Kind::Revision(revision) => {
+            format!("{indent}  REV {}  {}", revision.number, revision.label)
+        }
+    }
 }
 
 /// Truncate for a fixed column, marking the cut.
@@ -625,6 +732,7 @@ impl Plugin for SongSelectPlugin {
             .init_resource::<BrowserCursor>()
             .init_resource::<crate::mc::McQueue>()
             .init_resource::<BrowserView>()
+            .init_resource::<RevisionCache>()
             .init_resource::<crate::preview::SongPreview>()
             .init_resource::<ActionBarClicks>()
             .add_systems(Startup, load_browser_prefs)
@@ -681,6 +789,7 @@ mod chip {
     pub const DELETE: u8 = 10;
     pub const CONFIRM: u8 = 11;
     pub const CANCEL: u8 = 12;
+    pub const OPEN: u8 = 13;
 }
 
 /// Pressed ActionBar chip ids for this frame (filled by
@@ -690,8 +799,13 @@ struct ActionBarClicks(Vec<u8>);
 
 /// The chips the browser always shows. Confirm/Cancel start disabled
 /// until a delete is armed; Play set until the queue has songs.
-fn browser_chips() -> [ui_kit::ChipSpec; 13] {
+fn browser_chips() -> [ui_kit::ChipSpec; 14] {
     [
+        ui_kit::ChipSpec {
+            id: chip::OPEN,
+            label: "Open",
+            enabled: false,
+        },
         ui_kit::ChipSpec {
             id: chip::SEARCH,
             label: "Search",
@@ -1070,7 +1184,7 @@ fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
             crate::prompts::device_footer(
                 parent,
                 font,
-                "UP/DOWN song  LEFT/RIGHT difficulty  ENTER rock  ESC back  everything else is a chip above",
+                "UP/DOWN song  LEFT/RIGHT difficulty  ENTER/TAB open  ENTER on an entry rock  ESC back  everything else is a chip above",
                 "D-PAD song and difficulty  SOUTH rock  EAST back",
             );
             ui_kit::back_button(parent, font, "MAIN MENU");
@@ -1572,7 +1686,8 @@ fn browser_input(
     let nav = if view.searching {
         MenuNav::read_typing(&map, &keys, pads.iter())
     } else {
-        MenuNav::read(&map, &keys, pads.iter())
+        // Tab opens rows here, so it must not also move the cursor.
+        MenuNav::read_without_tab(&map, &keys, pads.iter())
     };
     // Letter shortcuts are suppressed while EITHER field is taking
     // keys: typing a song name must not open the editor, queue a set
@@ -1599,7 +1714,13 @@ fn browser_input(
     let count = view.order.len();
     if count == 0 {
         // Empty library: the hint opens the add-a-song prompt.
-        sync_chip_enables(&mut start.chips, false, !start.mc_queue.0.is_empty(), false);
+        sync_chip_enables(
+            &mut start.chips,
+            false,
+            !start.mc_queue.0.is_empty(),
+            false,
+            false,
+        );
         if empty_clicked && library.entries.is_empty() && !searching {
             start.prompt.open = true;
             start.prompt.text.clear();
@@ -1643,6 +1764,23 @@ fn browser_input(
         cursor.0 = index;
     }
     let clicked_selected = pointer.clicked;
+    // TAB (or OPEN) opens or closes the row under the cursor: a song
+    // onto its variants (or straight onto its revisions), a variant
+    // onto its revisions.
+    if !searching
+        && (keys.just_pressed(KeyCode::Tab) || ui_kit::chip_hit(clicks, chip::OPEN))
+        && toggle_open(&mut view, &library.entries, cursor.0)
+    {
+        sounds.write(crate::sfx::UiSound::Navigate);
+    }
+    // What a revision row asks for: its file, and whether choosing it
+    // changes which revision plays.
+    let revision_row = view.tree.get(cursor.0).and_then(|row| match &row.kind {
+        crate::song_tree::Kind::Revision(revision) => {
+            Some((revision.name.clone(), revision.number, revision.active))
+        }
+        _ => None,
+    });
     let Some(entry) = view
         .order
         .get(cursor.0)
@@ -1756,6 +1894,46 @@ fn browser_input(
             nav.confirm,
         ),
     );
+    // Enter or a click on a SECTION (a song or variant with something
+    // under it) opens or closes it; only an entry — a revision, or a
+    // row with nothing to open — plays.
+    if (start_song || clicked_selected) && toggle_open(&mut view, &library.entries, cursor.0) {
+        sounds.write(crate::sfx::UiSound::Navigate);
+        return;
+    }
+    if (start_song || clicked_selected)
+        && let Some((name, number, false)) = &revision_row
+    {
+        // An older revision: it becomes the one that plays — here and
+        // from the song's row from now on — and starts.
+        sounds.write(crate::sfx::UiSound::Confirm);
+        let title = entry.title.clone();
+        let Some(folder) = entry_folder(entry) else {
+            return;
+        };
+        match beatbyte_chart::io::activate_revision(&folder, name) {
+            Ok(()) => {
+                *library = crate::boot::scan_with_builtins(&start.builtins.0);
+                status.0 = format!("revision {number} of \"{title}\" plays from now on");
+                let fresh = library
+                    .entries
+                    .iter()
+                    .find(|e| entry_folder(e).as_deref() == Some(folder.as_path()));
+                if let Some(fresh) = fresh {
+                    match prepare_song(fresh, &start.builtins) {
+                        Ok(song) => {
+                            commands.remove_resource::<crate::taste::TasteTest>();
+                            commands.insert_resource(song);
+                            next_state.set(AppState::Gameplay);
+                        }
+                        Err(reason) => error!("cannot load \"{title}\": {reason}"),
+                    }
+                }
+            }
+            Err(reason) => status.0 = format!("cannot choose revision {number}: {reason}"),
+        }
+        return;
+    }
     if start_song || clicked_selected {
         sounds.write(crate::sfx::UiSound::Confirm);
         match prepare_song(entry, &start.builtins) {
@@ -1779,7 +1957,13 @@ fn browser_input(
             audio_path,
         } = &entry.source
     {
-        match crate::editor_ui::open_editor(&mut commands, chart_path, audio_path, selected.0) {
+        // A revision row edits THAT revision; any other row the one
+        // that plays.
+        let chart_path = revision_row
+            .as_ref()
+            .and_then(|(name, _, _)| chart_path.parent().map(|folder| folder.join(name)))
+            .unwrap_or_else(|| chart_path.clone());
+        match crate::editor_ui::open_editor(&mut commands, &chart_path, audio_path, selected.0) {
             Ok(()) => next_state.set(AppState::Editor),
             Err(reason) => error!("cannot edit \"{}\": {reason}", entry.title),
         }
@@ -2025,11 +2209,16 @@ fn browser_input(
             .map(|e| &e.source),
         Some(SongSource::File { .. })
     );
+    let opens = view
+        .tree
+        .get(cursor.0)
+        .is_some_and(|row| row.opens().is_some());
     sync_chip_enables(
         &mut start.chips,
         is_file,
         !start.mc_queue.0.is_empty(),
         delete_armed.0.is_some(),
+        opens,
     );
     if leave {
         sounds.write(crate::sfx::UiSound::Back);
@@ -2043,7 +2232,9 @@ fn sync_chip_enables(
     is_file: bool,
     queue_nonempty: bool,
     delete_armed: bool,
+    opens: bool,
 ) {
+    ui_kit::set_chip_enabled(chips, chip::OPEN, opens);
     ui_kit::set_chip_enabled(chips, chip::PLAY_SET, queue_nonempty);
     ui_kit::set_chip_enabled(chips, chip::EDIT, is_file);
     ui_kit::set_chip_enabled(chips, chip::REDESIGN, is_file);
@@ -2069,10 +2260,40 @@ fn spawn_rows_into(
 ) {
     commands.entity(list).despawn_children();
     commands.entity(list).with_children(|panel| {
-        for (position, song_index) in view.order.iter().enumerate() {
-            let Some(entry) = library.entries.get(*song_index) else {
+        for (position, row) in view.tree.iter().enumerate() {
+            let Some(entry) = library.entries.get(row.entry) else {
                 continue;
             };
+            // A revision is a row of its own: its number, who made it,
+            // and whether it is the one that plays — no song facts,
+            // those belong to the variant above it.
+            if let crate::song_tree::Kind::Revision(revision) = &row.kind {
+                panel
+                    .spawn((SongRow(position), Button, ui_kit::row()))
+                    .with_children(|line| {
+                        line.spawn((
+                            SongTitle(position),
+                            Text::new(font.safe(&tree_title(row, &entry.title))),
+                            font.text(ui_kit::ROW),
+                            TextColor(palette::TEXT_DIM),
+                            TextLayout::default().with_no_wrap(),
+                            Node {
+                                flex_grow: 1.0,
+                                min_width: px(0.0),
+                                overflow: Overflow::clip(),
+                                ..default()
+                            },
+                        ));
+                        cell(
+                            line,
+                            font,
+                            position,
+                            if revision.active { "PLAYING" } else { "" }.to_owned(),
+                            COL_ARTIST,
+                        );
+                    });
+                continue;
+            }
             // Facts follow the SELECTED difficulty; a song
             // that lacks it shows its first one instead.
             let effective = if entry.difficulties.contains(&selected) {
@@ -2088,12 +2309,13 @@ fn spawn_rows_into(
                     effective,
                 )
                 .map_or_else(|| "-".to_owned(), |b| b.score.to_string());
+            let tree_row = row;
             panel
                 .spawn((SongRow(position), Button, ui_kit::row()))
                 .with_children(|row| {
                     row.spawn((
                         SongTitle(position),
-                        Text::new(font.safe(&clip_chars(&entry.title, 32))),
+                        Text::new(font.safe(&clip_chars(&tree_title(tree_row, &entry.title), 32))),
                         font.text(ui_kit::ROW),
                         TextColor(palette::TEXT_DIM),
                         TextLayout::default().with_no_wrap(),
@@ -2680,7 +2902,8 @@ fn sync_view(
     selected: Res<SelectedDifficulty>,
     lists: Query<Entity, With<SongList>>,
     fresh: Query<(), Added<SongList>>,
-    mut rendered: Local<Option<(Vec<usize>, Difficulty, String)>>,
+    mut cache: ResMut<RevisionCache>,
+    mut rendered: Local<Option<RenderedKey>>,
     mut last_filter: Local<String>,
 ) {
     let entered = !fresh.is_empty();
@@ -2711,13 +2934,33 @@ fn sync_view(
     );
     let filter_changed = *last_filter != view.filter;
     last_filter.clone_from(&view.filter);
+    // A rescan (import, delete, a revision chosen, an editor save)
+    // may have changed any folder's revisions.
+    if library.is_changed() {
+        cache.listed.clear();
+        cache.labels.clear();
+    }
+    let tree = tree_rows(&library.entries, &order, &view.open, &mut cache);
     let raw = view.bypass_change_detection();
-    cursor.0 = cursor_after_change(filter_changed, &raw.order, cursor.0, &order);
-    raw.order = order;
-    // Rows rebuild only when their CONTENT changed — the order, or
-    // the difficulty the cells follow. A pure status change (opening
-    // the search) touches neither.
-    let key = rebuild_key(&raw.order, difficulty, &raw.filter);
+    let old_ids: Vec<crate::song_tree::RowId> =
+        raw.tree.iter().map(crate::song_tree::Row::id).collect();
+    cursor.0 = if filter_changed {
+        0
+    } else if raw.tree.is_empty() {
+        cursor_after_change(false, &raw.order, cursor.0, &order)
+    } else {
+        crate::song_tree::follow_cursor(&old_ids, cursor.0, &tree)
+    };
+    raw.order = tree.iter().map(|row| row.entry).collect();
+    raw.tree = tree;
+    // Rows rebuild only when their CONTENT changed — the order, the
+    // tree (something opened, another revision active), or the
+    // difficulty the cells follow. A pure status change (opening the
+    // search) touches none of them.
+    let key = (
+        rebuild_key(&raw.order, difficulty, &raw.filter),
+        raw.tree.clone(),
+    );
     if (entered || library.is_changed() || rendered.as_ref() != Some(&key))
         && let Ok(list) = lists.single()
     {
@@ -2732,6 +2975,63 @@ fn sync_view(
         );
         *rendered = Some(key);
     }
+}
+
+/// What the list was last drawn from: the order, the difficulty, the
+/// quoted filter — and the tree, which changes when a row opens.
+type RenderedKey = ((Vec<usize>, Difficulty, String), Vec<crate::song_tree::Row>);
+
+/// The browser's rows for a sorted, twin-paired `order`: songs closed
+/// unless opened, their variants, the revisions of what is open.
+fn tree_rows(
+    entries: &[SongEntry],
+    order: &[usize],
+    open: &std::collections::HashSet<(std::path::PathBuf, crate::song_tree::Level)>,
+    cache: &mut RevisionCache,
+) -> Vec<crate::song_tree::Row> {
+    // How many revisions each listed folder holds, up front: the tree
+    // asks for counts and for rows, and both come from the cache.
+    let counts: std::collections::HashMap<usize, usize> = order
+        .iter()
+        .map(|&i| {
+            (
+                i,
+                entry_folder(&entries[i]).map_or(0, |f| cache.listed(&f).len()),
+            )
+        })
+        .collect();
+    crate::song_tree::build(
+        order,
+        crate::song_tree::Facts {
+            parent_of: |i| original_in(entries, order, i),
+            label: |i| crate::song_tree::variant_label(&entries[i].title),
+            revision_count: |i| counts.get(&i).copied().unwrap_or(0),
+            revisions: |i| {
+                let entry = &entries[i];
+                let (Some(folder), SongSource::File { chart_path, .. }) =
+                    (entry_folder(entry), &entry.source)
+                else {
+                    return Vec::new();
+                };
+                let active = chart_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned());
+                let listed = cache.listed(&folder).to_vec();
+                listed
+                    .into_iter()
+                    .map(|revision| crate::song_tree::RevisionRow {
+                        label: cache.label(&folder.join(&revision.name)).to_owned(),
+                        active: active.as_deref() == Some(revision.name.as_str()),
+                        number: revision.number,
+                        name: revision.name,
+                    })
+                    .collect()
+            },
+            is_open: |i, level| {
+                entry_folder(&entries[i]).is_some_and(|f| open.contains(&(f, level)))
+            },
+        },
+    )
 }
 
 /// Restore the persisted sort. The filter deliberately starts empty.
@@ -3059,6 +3359,169 @@ mod view_tests {
             entry("Ella, elle l'a", "France Gall", None, 250.0),
             entry("Life", "Des'ree", Some("Pop"), 200.0),
         ]
+    }
+
+    fn chart_json(designer: Option<&str>) -> String {
+        let provenance = designer.map_or_else(String::new, |d| {
+            format!(r#","provenance": {{"parent_hash": "x", "designer": "{d}", "created_ms": 1}}"#)
+        });
+        format!(
+            r#"{{"format_version": 1, "song": {{"title": "T", "audio": "a.ogg", "bpm": 120.0}},
+                "charts": [{{"difficulty": "easy", "lanes": 5, "notes": []}}]{provenance}}}"#
+        )
+    }
+
+    fn file_entry(title: &str, chart_path: std::path::PathBuf) -> SongEntry {
+        let mut e = entry(title, "Band", None, 200.0);
+        e.source = SongSource::File {
+            audio_path: chart_path.with_file_name("a.ogg"),
+            chart_path,
+        };
+        e
+    }
+
+    /// The tree read from real folders: the original has a generated
+    /// revision 1 and a hand-made revision 2 that plays; its study has
+    /// one revision.
+    #[test]
+    fn the_tree_reads_revisions_who_made_them_and_which_plays() {
+        use crate::song_tree::{Kind, Level};
+        let root = std::env::temp_dir().join(format!("bb-tree-{}", std::process::id()));
+        let (song, study) = (root.join("song"), root.join("guitar-study-song"));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&song).expect("song folder");
+        std::fs::create_dir_all(&study).expect("study folder");
+        std::fs::write(song.join("chart.json"), chart_json(None)).expect("fixture");
+        std::fs::write(song.join("chart.v2.json"), chart_json(Some("editor"))).expect("fixture");
+        // A redesign written beside it later, not made active.
+        std::fs::write(
+            song.join("chart.v3.json"),
+            chart_json(Some("design-session")),
+        )
+        .expect("fixture");
+        std::fs::write(study.join("chart.json"), chart_json(Some("lead-study"))).expect("fixture");
+        let entries = vec![
+            file_entry("Song", song.join("chart.v2.json")),
+            file_entry("[GS] Song", study.join("chart.json")),
+        ];
+        let mut cache = RevisionCache::default();
+        let closed = tree_rows(
+            &entries,
+            &[0, 1],
+            &std::collections::HashSet::new(),
+            &mut cache,
+        );
+        assert_eq!(closed.len(), 1, "one row for the family: {closed:?}");
+        let open = std::collections::HashSet::from([
+            (song.clone(), Level::Song),
+            (song.clone(), Level::Variant),
+        ]);
+        let rows = tree_rows(&entries, &[0, 1], &open, &mut cache);
+        let titles: Vec<String> = rows
+            .iter()
+            .map(|r| tree_title(r, &entries[r.entry].title))
+            .collect();
+        assert_eq!(
+            titles,
+            vec![
+                "- Song",
+                "  - NORMAL",
+                "      REV 1  GENERATED",
+                "      REV 2  HAND-MADE",
+                "      REV 3  REDESIGN",
+                "    GS",
+            ]
+        );
+        let active: Vec<bool> = rows
+            .iter()
+            .filter_map(|r| match &r.kind {
+                Kind::Revision(rev) => Some(rev.active),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(active, vec![false, true, false], "revision 2 plays");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn tab_opens_and_closes_only_a_row_that_opens() {
+        use crate::song_tree::{Kind, Level, Row};
+        let folder = std::env::temp_dir().join("bb-tree-toggle");
+        let entries = vec![file_entry("Song", folder.join("chart.json"))];
+        let mut view = BrowserView {
+            tree: vec![Row {
+                entry: 0,
+                depth: 0,
+                kind: Kind::Song {
+                    expandable: true,
+                    open: false,
+                },
+            }],
+            ..BrowserView::default()
+        };
+        // The return value is what Enter and a click decide on:
+        // true = a section, opened or closed; false = an entry, it plays.
+        assert!(toggle_open(&mut view, &entries, 0), "a section opens");
+        assert!(view.open.contains(&(folder.clone(), Level::Song)));
+        assert!(toggle_open(&mut view, &entries, 0), "and closes");
+        assert!(view.open.is_empty(), "a second TAB closes it");
+        view.tree[0].kind = Kind::Song {
+            expandable: false,
+            open: false,
+        };
+        assert!(
+            !toggle_open(&mut view, &entries, 0),
+            "a song with nothing under it plays"
+        );
+        assert!(view.open.is_empty(), "nothing to open");
+        view.tree[0].kind = Kind::Revision(crate::song_tree::RevisionRow {
+            number: 2,
+            name: "chart.v2.json".to_owned(),
+            label: "HAND-MADE".to_owned(),
+            active: false,
+        });
+        assert!(!toggle_open(&mut view, &entries, 0), "a revision plays");
+        // A built-in has no folder: nothing to open, so Enter plays it.
+        view.tree[0].kind = Kind::Song {
+            expandable: true,
+            open: false,
+        };
+        let builtin = vec![SongEntry {
+            source: crate::library::SongSource::Builtin(0),
+            ..entries[0].clone()
+        }];
+        assert!(!toggle_open(&mut view, &builtin, 0), "a built-in plays");
+        assert!(!toggle_open(&mut view, &entries, 7), "no row, nothing");
+    }
+
+    #[test]
+    fn enter_and_a_click_open_a_section_before_anything_plays() {
+        // The rule lives inside `browser_input`, which needs the whole
+        // screen to run: pinned on the source, comments stripped (a
+        // comment naming the rule would satisfy a plain search).
+        let code: String = include_str!("song_select.rs")
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let opens = code
+            .find("if (start_song || clicked_selected) && toggle_open(")
+            .expect("Enter or a click on a section opens it");
+        let plays = code
+            .find("if start_song || clicked_selected {")
+            .expect("the ordinary start");
+        let revision = code
+            .find("&& let Some((name, number, false)) = &revision_row")
+            .expect("the revision start");
+        assert!(
+            opens < plays && opens < revision,
+            "opening is decided first"
+        );
+        let branch = &code[opens..revision];
+        assert!(
+            branch.contains("return;"),
+            "an opened section does not also play"
+        );
     }
 
     #[test]
@@ -3949,6 +4412,7 @@ mod search_input_tests {
             .init_resource::<ButtonInput<KeyCode>>()
             .init_resource::<Time>()
             .init_resource::<BrowserView>()
+            .init_resource::<RevisionCache>()
             .init_resource::<ActionBarClicks>()
             .insert_resource(crate::config::Settings::default())
             .add_systems(Update, search_sort_input);

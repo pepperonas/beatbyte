@@ -14,6 +14,23 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.57] - 2026-09-27
+
+### Changed
+
+- **The song list is a tree.** A song opens to its variants —
+  NORMAL, GS (the guitar study), CL (the classic chart) — and each
+  variant opens to its revisions: `REV 3 - HAND-MADE`, `REV 2 -
+  REDESIGN`, `REV 1 - GENERATED`, with the one that plays marked
+  PLAYING. Enter, a click, Tab or the OPEN chip opens and closes a
+  section; only an entry plays — a revision (which then becomes the
+  one that plays) or a row with nothing under it. E opens exactly the
+  highlighted revision in the editor. Everything is closed when the
+  browser opens.
+- **Tab no longer moves the cursor in the song list.** It meant
+  "next row" in every menu, so in the browser one press moved down
+  AND opened a row — the one below the row meant.
+
 ## [0.18.56] - 2026-09-27
 
 ### Changed

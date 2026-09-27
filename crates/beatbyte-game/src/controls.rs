@@ -692,6 +692,21 @@ mod tests {
         let nav = MenuNav::read(&map, &keys, std::iter::empty());
         assert!(nav.up && !nav.down, "Shift+Tab must reverse");
     }
+
+    #[test]
+    fn a_screen_that_owns_tab_reads_it_as_no_move() {
+        let map = InputMap::default();
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::Tab);
+        let nav = MenuNav::read_without_tab(&map, &keys, std::iter::empty());
+        assert!(!nav.down && !nav.up, "Tab must not move this cursor");
+        keys.press(KeyCode::ShiftLeft);
+        let nav = MenuNav::read_without_tab(&map, &keys, std::iter::empty());
+        assert!(!nav.down && !nav.up, "nor Shift+Tab");
+        keys.press(KeyCode::ArrowDown);
+        let nav = MenuNav::read_without_tab(&map, &keys, std::iter::empty());
+        assert!(nav.down, "the arrows still move it");
+    }
 }
 
 /// Merged menu navigation for one frame (keyboard arrows/Enter/Esc
@@ -727,7 +742,7 @@ impl MenuNav {
         keys: &ButtonInput<KeyCode>,
         pads: impl IntoIterator<Item = &'a Gamepad>,
     ) -> MenuNav {
-        MenuNav::read_mode(map, keys, pads, false)
+        MenuNav::read_mode(map, keys, pads, false, true)
     }
 
     /// [`MenuNav::read`] for screens that are currently TYPING (the
@@ -740,7 +755,20 @@ impl MenuNav {
         keys: &ButtonInput<KeyCode>,
         pads: impl IntoIterator<Item = &'a Gamepad>,
     ) -> MenuNav {
-        MenuNav::read_mode(map, keys, pads, true)
+        MenuNav::read_mode(map, keys, pads, true, true)
+    }
+
+    /// [`MenuNav::read`] for a screen where Tab has a job of its own
+    /// (the song browser opens a row with it): Tab and Shift+Tab do
+    /// NOT move the cursor. Read with [`MenuNav::read`], one Tab moved
+    /// the cursor AND opened a row — the one below the row meant.
+    #[must_use]
+    pub fn read_without_tab<'a>(
+        map: &InputMap,
+        keys: &ButtonInput<KeyCode>,
+        pads: impl IntoIterator<Item = &'a Gamepad>,
+    ) -> MenuNav {
+        MenuNav::read_mode(map, keys, pads, false, false)
     }
 
     fn read_mode<'a>(
@@ -748,6 +776,7 @@ impl MenuNav {
         keys: &ButtonInput<KeyCode>,
         pads: impl IntoIterator<Item = &'a Gamepad>,
         typing: bool,
+        tab_cycles: bool,
     ) -> MenuNav {
         let pads: Vec<&Gamepad> = pads.into_iter().collect();
         let hit = |action: UiAction| {
@@ -759,7 +788,7 @@ impl MenuNav {
             })
         };
         let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
-        let tab = keys.just_pressed(KeyCode::Tab);
+        let tab = tab_cycles && keys.just_pressed(KeyCode::Tab);
         // A guitar has no D-pad left/right: the strum bar IS the
         // D-pad's up/down and nothing else on the neck reports a
         // horizontal direction. Bound to the table alone, a guitarist
