@@ -924,7 +924,15 @@ artifact, smoke-test it (neutral CWD!), then
   `couldn't read .../libsqlite3-sys-*/out/bindgen.rs`: the crate's
   build-script output went and cargo does not notice it is gone.
   `cargo clean -p libsqlite3-sys` is the whole fix, and it comes
-  back every few weeks. **The one part that IS safe to prune is `incremental/`**, and
+  back every few weeks. ⚠️ **Without `--release` that clean empties
+  the RELEASE profile's build-script output too**, so fixing the
+  debug build this way breaks the next release build the same way —
+  it went back and forth four times in one session before the pattern
+  showed. Clean both at once (`cargo clean -p libsqlite3-sys` then
+  `cargo clean --release -p libsqlite3-sys`) and rebuild the one you
+  need, and read a release build's exit code rather than `tail`'s: a
+  failed build left the old binary in place and a screenshot run
+  photographed it. **The one part that IS safe to prune is `incremental/`**, and
   it is the part that grows while you work: cargo collects a superseded
   session only when it rebuilds that same unit, so a configuration that
   ran once (`clippy --all-features`, `cargo doc`, a one-off `-p <crate>`

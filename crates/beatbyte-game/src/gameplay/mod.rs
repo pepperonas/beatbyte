@@ -14,6 +14,7 @@
 pub mod arc;
 pub mod band;
 pub mod crowd;
+pub mod crowd_cards;
 pub mod debug_overlay;
 pub mod feedback;
 pub mod figure;

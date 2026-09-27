@@ -14,6 +14,24 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.58] - 2026-09-27
+
+### Added
+
+- **A full room.** Behind the dancing crowd, a dense mass of about 140
+  more people now fills the floor out to the PA on both sides — flat
+  silhouettes with a rim of stage light on their heads and shoulders,
+  bobbing on the beat with the dancers. Under Hype their arms go up
+  too, and a dozen phones light up in raised hands.
+
+### Changed
+
+- **The crowd dresses like an audience.** Shirts were the theme's
+  background colour darkened, so under a purple theme the whole room
+  wore purple; they are now black and dark tees, denim, navy, olive,
+  burgundy and one white shirt, and the theme reaches the crowd only
+  through the light.
+
 ## [0.18.57] - 2026-09-27
 
 ### Changed

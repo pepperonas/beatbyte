@@ -3309,6 +3309,8 @@ impl Plugin for Stage3dPlugin {
         // The room's own light show: the highlight on the measured
         // level and the white strips.
         super::lightshow::register(app);
+        // The crowd behind the crowd: flat cards that fill the room.
+        super::crowd_cards::register(app);
         app.add_systems(
             OnEnter(AppState::Gameplay),
             (

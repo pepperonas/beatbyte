@@ -829,6 +829,38 @@ fn hair_mesh(hair: Hair) -> Option<Mesh> {
     })
 }
 
+/// The shirts a crowd wears, by [`FigureSpec::top`] index: what a
+/// rock audience actually has on — mostly black and dark tees, denim,
+/// a few colours, one white.
+///
+/// They used to be the theme's BACKGROUND darkened, a few with a hint
+/// of its accent, so under the psychedelic theme the whole room was
+/// dressed in the same purple as the walls and read as one mass. The
+/// theme now reaches the crowd only through the light that falls on
+/// it. Indices 0..5 are the dark majority `from_hash` draws most
+/// often; 5 and 6 the colours; 7 the pale one. Pure — tested.
+#[must_use]
+pub fn shirt_palette() -> [Color; TOPS as usize] {
+    [
+        // Black tee.
+        Color::srgb(0.035, 0.035, 0.04),
+        // Charcoal.
+        Color::srgb(0.10, 0.10, 0.11),
+        // Washed-out black band shirt.
+        Color::srgb(0.07, 0.065, 0.07),
+        // Navy.
+        Color::srgb(0.06, 0.08, 0.16),
+        // Olive.
+        Color::srgb(0.17, 0.19, 0.10),
+        // Denim.
+        Color::srgb(0.17, 0.24, 0.37),
+        // Burgundy.
+        Color::srgb(0.32, 0.07, 0.09),
+        // White tee.
+        Color::srgb(0.70, 0.69, 0.66),
+    ]
+}
+
 fn matte(color: Color, roughness: f32) -> StandardMaterial {
     StandardMaterial {
         base_color: color,
@@ -860,17 +892,9 @@ impl FigureAssets {
             .iter()
             .map(|&hair| hair_mesh(hair).map(|mesh| meshes.add(mesh)))
             .collect();
-        let dark = |amount: f32| theme.background.mix(&Color::BLACK, amount);
-        let tops = vec![
-            dark(0.62),
-            dark(0.56).mix(&Color::srgb(0.40, 0.20, 0.10), 0.15),
-            dark(0.50).mix(&Color::srgb(0.10, 0.15, 0.35), 0.20),
-            dark(0.60),
-            dark(0.54).mix(&theme.accent, 0.08),
-            Color::srgb(0.16, 0.19, 0.27),
-            Color::srgb(0.26, 0.10, 0.12),
-            Color::srgb(0.62, 0.60, 0.58),
-        ];
+        // The theme only reaches the crowd through the light.
+        let _ = theme;
+        let tops = shirt_palette().to_vec();
         let bottoms = [
             Color::srgb(0.04, 0.04, 0.045),
             Color::srgb(0.10, 0.12, 0.18),
@@ -1117,6 +1141,28 @@ pub fn setup_figure_assets(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+
+    #[test]
+    fn the_crowd_dresses_like_an_audience_not_like_the_walls() {
+        // A dark majority, a real colour or two, one pale shirt — and
+        // none of it the theme's (no parameter carries it any more).
+        let luma = |c: &Color| {
+            let c = c.to_srgba();
+            0.2126 * c.red + 0.7152 * c.green + 0.0722 * c.blue
+        };
+        let palette = shirt_palette();
+        let dark = palette[..5].iter().filter(|c| luma(c) < 0.2).count();
+        assert_eq!(dark, 5, "the shirts drawn most often are dark");
+        assert!(luma(&palette[7]) > 0.5, "one pale shirt catches the light");
+        let coloured = palette
+            .iter()
+            .filter(|c| {
+                let hsl = Hsla::from(**c);
+                hsl.saturation > 0.3 && hsl.lightness > 0.1
+            })
+            .count();
+        assert!(coloured >= 2, "some colour in the room: {coloured}");
+    }
     use super::*;
     use core::f32::consts::FRAC_PI_2;
 
