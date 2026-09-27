@@ -1292,8 +1292,15 @@ fn phrase(state: &mut EditorState) {
         .map(|def| def.phrases.clone())
         .unwrap_or_default();
     if let Some(span) = clipboard::selection_span(state.notes(), &state.selection) {
-        let ops = clipboard::phrase_over(difficulty, &phrases, span);
-        state.apply(ops, "star-power phrase over the selection");
+        let ops = clipboard::phrase_over(difficulty, &phrases, state.notes(), span);
+        // Every op but the last add removed a phrase it merged with:
+        // say so, a merge is not obvious on screen.
+        let message = match ops.len() - 1 {
+            0 => "star-power phrase over the selection".to_owned(),
+            1 => "star-power phrase over the selection, merged with 1 phrase".to_owned(),
+            n => format!("star-power phrase over the selection, merged with {n} phrases"),
+        };
+        state.apply(ops, &message);
     } else if let Some(phrase) = clipboard::phrase_at(&phrases, state.cursor_s) {
         state.apply(
             vec![EditOp::RemovePhrase { difficulty, phrase }],

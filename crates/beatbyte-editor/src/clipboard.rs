@@ -96,20 +96,47 @@ pub fn selection_span(notes: &[ChartNote], selection: &[NoteKey]) -> Option<(f64
 /// are replaced by it (a phrase is a stretch of the song, and two of
 /// them overlapping is a validation error). A span of a single tap
 /// note still makes a phrase, of [`MIN_PHRASE_S`].
+///
+/// A phrase NEXT to the new one — with no note of `notes` between
+/// them — is joined into it, and so on outward: marking a run of
+/// notes in two passes, or next to a phrase that is already there,
+/// makes one continuous phrase instead of two with an empty gap. Two
+/// phrases with a note between them stay two, because that note is
+/// what separates them in play.
 #[must_use]
 pub fn phrase_over(
     difficulty: Difficulty,
     phrases: &[ChartPhrase],
+    notes: &[ChartNote],
     span: (f64, f64),
 ) -> Vec<EditOp> {
-    let (start, end) = (span.0, span.1.max(span.0 + MIN_PHRASE_S));
-    let mut ops: Vec<EditOp> = phrases
+    let (mut start, mut end) = (span.0, span.1.max(span.0 + MIN_PHRASE_S));
+    let mut removed: Vec<ChartPhrase> = phrases
         .iter()
+        .copied()
         .filter(|p| p.start <= end && p.end >= start)
-        .map(|phrase| EditOp::RemovePhrase {
-            difficulty,
-            phrase: *phrase,
-        })
+        .collect();
+    let empty_between = |a: f64, b: f64| {
+        !notes
+            .iter()
+            .any(|n| n.time > a + GAP_EPS && n.time < b - GAP_EPS)
+    };
+    // Grow outward until no neighbour joins: each join can make the
+    // next phrase a neighbour.
+    loop {
+        let neighbour = phrases.iter().copied().find(|p| {
+            !removed.contains(p)
+                && ((p.end <= start && empty_between(p.end, start))
+                    || (p.start >= end && empty_between(end, p.start)))
+        });
+        let Some(p) = neighbour else { break };
+        start = start.min(p.start);
+        end = end.max(p.end);
+        removed.push(p);
+    }
+    let mut ops: Vec<EditOp> = removed
+        .into_iter()
+        .map(|phrase| EditOp::RemovePhrase { difficulty, phrase })
         .collect();
     ops.push(EditOp::AddPhrase {
         difficulty,
@@ -117,6 +144,10 @@ pub fn phrase_over(
     });
     ops
 }
+
+/// How far inside a gap a note has to start to count as being in it:
+/// a note exactly on a phrase's edge belongs to that phrase.
+const GAP_EPS: f64 = 1e-6;
 
 /// A phrase over one tap note lasts at least this long.
 pub const MIN_PHRASE_S: f64 = 0.05;
@@ -244,8 +275,11 @@ mod tests {
                 end: 6.0,
             },
         ];
-        let mut s = session(vec![note(1.5, 0), note(3.0, 1)], old.to_vec());
-        let ops = phrase_over(Difficulty::Expert, &old, (1.5, 3.0));
+        // A note at 4.0 separates the new phrase from the one at 5.0,
+        // so that one is left alone.
+        let notes = vec![note(1.5, 0), note(3.0, 1), note(4.0, 2)];
+        let mut s = session(notes.clone(), old.to_vec());
+        let ops = phrase_over(Difficulty::Expert, &old, &notes, (1.5, 3.0));
         s.edit_batch(ops).unwrap();
         let phrases = &s.chart().charts[0].phrases;
         assert_eq!(
@@ -269,12 +303,69 @@ mod tests {
 
     #[test]
     fn a_phrase_over_one_tap_has_a_length() {
-        let ops = phrase_over(Difficulty::Expert, &[], (2.0, 2.0));
+        let ops = phrase_over(Difficulty::Expert, &[], &[], (2.0, 2.0));
         let Some(EditOp::AddPhrase { phrase, .. }) = ops.last() else {
             panic!("an add")
         };
         assert!(phrase.end > phrase.start);
         assert_eq!(phrase_at(&[*phrase], 2.01), Some(*phrase));
         assert_eq!(phrase_at(&[*phrase], 3.0), None);
+    }
+
+    fn phrase(start: f64, end: f64) -> ChartPhrase {
+        ChartPhrase { start, end }
+    }
+
+    /// The report that started this: marking the notes above an
+    /// existing phrase left two phrases with an empty gap between.
+    #[test]
+    fn a_phrase_next_to_another_with_nothing_between_joins_it() {
+        let old = [phrase(1.0, 2.0)];
+        let notes = vec![note(1.0, 0), note(2.0, 1), note(3.0, 2), note(4.0, 0)];
+        let mut s = session(notes.clone(), old.to_vec());
+        // Select the notes at 3.0 and 4.0: the gap 2.0..3.0 is empty.
+        let ops = phrase_over(Difficulty::Expert, &old, &notes, (3.0, 4.0));
+        s.edit_batch(ops).unwrap();
+        assert_eq!(s.chart().charts[0].phrases, vec![phrase(1.0, 4.0)]);
+        assert!(s.is_valid());
+        // One step: one undo brings both old states back.
+        assert_eq!(s.undo_depth(), 1);
+        s.undo();
+        assert_eq!(s.chart().charts[0].phrases, old.to_vec());
+    }
+
+    #[test]
+    fn a_note_in_the_gap_keeps_two_phrases_apart() {
+        let old = [phrase(1.0, 2.0)];
+        let notes = vec![note(1.0, 0), note(2.0, 1), note(2.5, 3), note(3.0, 2)];
+        let ops = phrase_over(Difficulty::Expert, &old, &notes, (3.0, 3.5));
+        assert_eq!(ops.len(), 1, "nothing removed: {ops:?}");
+    }
+
+    #[test]
+    fn joining_works_both_ways_and_chains() {
+        // Phrases before AND after the new span, and one beyond the
+        // later one: all empty gaps, so all four become one.
+        let old = [phrase(0.0, 1.0), phrase(4.0, 5.0), phrase(6.0, 7.0)];
+        let notes = vec![note(0.5, 0), note(2.0, 1), note(3.0, 1), note(6.5, 2)];
+        let ops = phrase_over(Difficulty::Expert, &old, &notes, (2.0, 3.0));
+        let Some(EditOp::AddPhrase { phrase: added, .. }) = ops.last() else {
+            panic!("an add")
+        };
+        assert_eq!(*added, phrase(0.0, 7.0));
+        assert_eq!(ops.len(), 4, "three removed, one added");
+    }
+
+    #[test]
+    fn a_note_on_a_phrase_edge_does_not_count_as_in_the_gap() {
+        // The old phrase ends ON its last note; that note is the
+        // phrase's, not the gap's.
+        let old = [phrase(1.0, 2.0)];
+        let notes = vec![note(1.0, 0), note(2.0, 1), note(3.0, 2)];
+        let ops = phrase_over(Difficulty::Expert, &old, &notes, (3.0, 3.0));
+        let Some(EditOp::AddPhrase { phrase: added, .. }) = ops.last() else {
+            panic!("an add")
+        };
+        assert_eq!(added.start, 1.0);
     }
 }

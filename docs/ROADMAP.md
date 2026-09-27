@@ -837,6 +837,7 @@ Kept as the dependency record and the map of where things live.
 - [x] M11.1 Invertible `EditOp` (Add/Remove/ToggleHopo/SetLen; apply returns inverse; strict misses = errors). *Verify: inverse round-trip tests.*
 - [x] M11.2 `EditorSession`: undo/redo/dirty/validity. *Verify: tests.*
 - [x] M11.3 Editor UI (open from song select, grid division stepping, save through chart validation). *Verify: editor autopilot cycle (add/undo/redo/save).*
+- [x] M11.4 *(v0.18.54, user report)* Y joins a star phrase with a neighbour that has no note between them, outward in a chain, as one undo step — marking in two passes left two phrases with an empty gap. *Verified: 1992 tests (+4), four mutation probes (no joining, edge note counted as in the gap, no forward join, no chain).*
 
 ### M12 — Packaging (v0.7.0) — dep: M7
 

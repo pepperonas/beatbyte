@@ -14,6 +14,17 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.54] - 2026-09-27
+
+### Changed
+
+- **Star-power phrases in the editor stay in one piece.** Pressing Y on
+  a selection that sits next to an existing phrase — with no note in
+  between — now joins them into one continuous phrase (and so on
+  outward), instead of leaving two phrases with an empty gap. Phrases
+  with a note between them stay separate. The status line says how
+  many phrases were merged, and it is one undo step.
+
 ## [0.18.53] - 2026-09-26
 
 ### Changed
