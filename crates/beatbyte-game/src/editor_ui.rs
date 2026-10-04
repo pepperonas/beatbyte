@@ -1457,6 +1457,18 @@ pub(crate) fn editor_typing(
             };
             let difficulty = state.session.difficulty;
             match inspector::apply_field(difficulty, &note, field, &text, state.grid.as_ref()) {
+                // A typed length is the chord's, like a dragged one.
+                Ok(Some(EditOp::SetLen { len, .. })) => {
+                    let ops = beatbyte_editor::view::plan_chord_length(
+                        difficulty,
+                        state.notes(),
+                        &note,
+                        note.time + len,
+                    );
+                    if state.apply(ops, "set") {
+                        state.selection = vec![(note.time, note.lane)];
+                    }
+                }
                 Ok(Some(op)) => {
                     let key = match op {
                         EditOp::MoveNote {

@@ -26,6 +26,7 @@ pub fn is_chart_candidate(name: &str) -> bool {
     name.ends_with(".json")
         && name != versions::POINTER_FILE
         && name != crate::DOC_FILE
+        && name != crate::bridge::SOURCE_FILE
         && !name.ends_with(".context.json")
         && !name.ends_with(".loudness.json")
         && !name.ends_with(".words.json")

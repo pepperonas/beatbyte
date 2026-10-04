@@ -210,8 +210,10 @@ where
         if !open {
             continue;
         }
-        for (variant, name) in std::iter::once((root, "NORMAL".to_owned()))
-            .chain(members.iter().map(|&m| (m, label(m))))
+        // The root is the song itself — "NORMAL" — unless it is a BG
+        // version standing in for a song the library does not have.
+        for (variant, name) in
+            std::iter::once((root, label(root))).chain(members.iter().map(|&m| (m, label(m))))
         {
             let expandable = revision_count(variant) >= 2;
             let variant_open = expandable && is_open(variant, Level::Variant);
@@ -233,17 +235,21 @@ where
 }
 
 /// A twin's label from its title's prefixes: `[GS] Maria` is "GS",
-/// `[CL] [GS] Maria` — a classic twin of the study — "CL / GS". Pure.
+/// `[CL] [GS] Maria` — a classic twin of the study — "CL / GS",
+/// `[BG-02] Maria` "BG-02". Pure.
 #[must_use]
 pub fn variant_label(title: &str) -> String {
-    let mut tags = Vec::new();
+    let mut tags: Vec<String> = Vec::new();
     let mut rest = title;
     loop {
-        if let Some(after) = rest.strip_prefix("[GS] ") {
-            tags.push("GS");
+        if let Some((number, after)) = beatbyte_chart::twin::split_bridge_title(rest) {
+            tags.push(format!("BG-{number:02}"));
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix("[GS] ") {
+            tags.push("GS".to_owned());
             rest = after;
         } else if let Some(after) = rest.strip_prefix("[CL] ") {
-            tags.push("CL");
+            tags.push("CL".to_owned());
             rest = after;
         } else {
             break;
@@ -479,6 +485,9 @@ mod tests {
         assert_eq!(variant_label("Maria"), "NORMAL");
         assert_eq!(variant_label("[GS] Maria"), "GS");
         assert_eq!(variant_label("[CL] [GS] Maria"), "CL / GS");
+        assert_eq!(variant_label("[BG-01] Maria"), "BG-01");
+        assert_eq!(variant_label("[BG-12] Maria"), "BG-12");
+        assert_eq!(variant_label("[BG-1] Maria"), "NORMAL");
         assert_eq!(designer_label(None), "GENERATED");
         assert_eq!(designer_label(Some("editor")), "HAND-MADE");
         assert_eq!(designer_label(Some("design-session")), "REDESIGN");

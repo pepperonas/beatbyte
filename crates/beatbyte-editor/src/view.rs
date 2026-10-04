@@ -145,8 +145,10 @@ pub fn hit_test(notes: &[ChartNote], view: &View, x: f64, y: f64) -> Hit {
     let mut best: Option<(f64, Hit)> = None;
     for note in notes.iter().filter(|note| note.lane == lane) {
         let head = view.y_of(note.time);
+        // Where the handle is DRAWN: at the length the game plays
+        // (a chord's longest), or it would be grabbed where it is not.
         let top = view
-            .y_of(note.time + note.len.max(0.0))
+            .y_of(note.time + played_len(notes, note).max(0.0))
             .max(head + HEAD_REACH);
         // The handle: a tab above the tail's end.
         if y > top && y <= top + HANDLE_REACH {
@@ -271,6 +273,49 @@ pub fn plan_length(difficulty: Difficulty, note: &ChartNote, end_time: f64) -> O
         len,
         previous: note.len,
     })
+}
+
+/// Whether `note` belongs to the chord struck at `time`: the same
+/// tolerance the game uses when it folds notes into chords
+/// ([`beatbyte_chart::convert::CHORD_EPSILON_S`]), so the editor and
+/// the game cannot disagree about what a chord is.
+#[must_use]
+pub fn same_chord(time: f64, note: &ChartNote) -> bool {
+    (note.time - time).abs() <= beatbyte_chart::convert::CHORD_EPSILON_S
+}
+
+/// The length the game plays for `note`: a chord is ONE event with ONE
+/// length in the game — the longest of its notes — so a chord note
+/// with a shorter tail in the file still rings as long as the longest.
+/// The editor draws this, so it shows what will be played. Pure —
+/// tested.
+#[must_use]
+pub fn played_len(notes: &[ChartNote], note: &ChartNote) -> f64 {
+    notes
+        .iter()
+        .filter(|other| same_chord(note.time, other))
+        .map(|other| other.len)
+        .fold(note.len, f64::max)
+}
+
+/// [`plan_length`] for the whole chord `note` belongs to: every note
+/// struck with it gets the same tail, as ONE undo step. Dragging one
+/// chord note's tail used to change that note alone, which the game
+/// then played at the chord's longest length anyway — the editor
+/// showed a shorter tail than the one played. Pure — tested.
+#[must_use]
+pub fn plan_chord_length(
+    difficulty: Difficulty,
+    notes: &[ChartNote],
+    note: &ChartNote,
+    end_time: f64,
+) -> Vec<EditOp> {
+    let end = end_time - note.time;
+    notes
+        .iter()
+        .filter(|other| same_chord(note.time, other))
+        .filter_map(|other| plan_length(difficulty, other, other.time + end))
+        .collect()
 }
 
 #[cfg(test)]
@@ -434,6 +479,107 @@ mod tests {
             grid: None,
             rules: None,
         }
+    }
+
+    fn held(time: f64, lane: u8, len: f64) -> ChartNote {
+        ChartNote {
+            len,
+            ..note(time, lane)
+        }
+    }
+
+    /// The editor draws what the GAME plays: checked against the
+    /// game's own conversion, not against a restatement of its rule.
+    #[test]
+    fn the_editor_shows_the_length_the_game_plays() {
+        let notes = vec![
+            held(1.0, 0, 0.5),
+            held(1.004, 2, 1.5), // inside the chord tolerance
+            held(1.0, 4, 0.0),
+            held(3.0, 1, 0.75), // a single note, alone
+        ];
+        let track = chart(notes.clone()).to_track(Difficulty::Expert).unwrap();
+        for n in &notes {
+            let event = track
+                .events()
+                .iter()
+                .find(|e| (e.time_s - n.time).abs() <= beatbyte_chart::convert::CHORD_EPSILON_S)
+                .unwrap();
+            assert!(
+                (played_len(&notes, n) - event.sustain_s).abs() < 1e-9,
+                "note at {} lane {}: editor {} vs game {}",
+                n.time,
+                n.lane,
+                played_len(&notes, n),
+                event.sustain_s
+            );
+        }
+        // A note just outside the tolerance is its own event, in both.
+        let apart = vec![held(1.0, 0, 0.5), held(1.02, 1, 1.5)];
+        assert!((played_len(&apart, &apart[0]) - 0.5).abs() < 1e-9);
+    }
+
+    /// Dragging one chord note's tail sets the whole chord's, as ONE
+    /// undo step, and leaves every other note alone.
+    #[test]
+    fn a_chord_takes_one_length_and_undoes_in_one_step() {
+        let notes = vec![
+            held(1.0, 0, 0.5),
+            held(1.0, 2, 0.0),
+            held(1.003, 3, 0.25),
+            held(2.0, 0, 0.0),
+        ];
+        let mut session = EditorSession::new(chart(notes.clone()), Difficulty::Expert).unwrap();
+        let ops = plan_chord_length(Difficulty::Expert, &notes, &notes[1], 2.0);
+        assert_eq!(ops.len(), 3, "every chord note, the lone note not");
+        session.edit_batch(ops).unwrap();
+        let after = &session.chart().charts[0].notes;
+        // One LENGTH for the chord, not one end: the game plays the
+        // chord as a single event at its first note, with one length.
+        for n in after.iter().filter(|n| n.time < 1.5) {
+            assert!(
+                (n.len - 1.0).abs() < 1e-9,
+                "every tail is the chord's: {n:?}"
+            );
+        }
+        let lone = after.iter().find(|n| n.time > 1.5).unwrap();
+        assert!(lone.len.abs() < 1e-12, "the next note untouched");
+        assert!(session.undo(), "one step");
+        assert_eq!(session.chart().charts[0].notes, notes, "and it is all back");
+        // A single note behaves exactly as before.
+        let single = vec![held(5.0, 1, 0.0)];
+        assert_eq!(
+            plan_chord_length(Difficulty::Expert, &single, &single[0], 5.5),
+            plan_length(Difficulty::Expert, &single[0], 5.5)
+                .into_iter()
+                .collect::<Vec<_>>()
+        );
+    }
+
+    /// The handle is grabbed where it is drawn: at the played length.
+    #[test]
+    fn a_shorter_chord_note_is_grabbed_at_the_chord_length() {
+        let v = view();
+        let notes = vec![held(10.0, 0, 0.2), held(10.0, 1, 1.0)];
+        // The short note's handle sits above the CHORD's tail end.
+        let end = v.y_of(11.0);
+        let x = lane_x(0);
+        assert_eq!(
+            hit_test(&notes, &v, x, end + HANDLE_REACH * 0.5),
+            Hit::Handle {
+                time: 10.0,
+                lane: 0
+            }
+        );
+        // And not above its own short tail any more.
+        let own = v.y_of(10.2).max(v.y_of(10.0) + HEAD_REACH);
+        assert_ne!(
+            hit_test(&notes, &v, x, own + HANDLE_REACH * 0.5),
+            Hit::Handle {
+                time: 10.0,
+                lane: 0
+            }
+        );
     }
 
     /// A group shifted by one step onto its own old spots moves as a

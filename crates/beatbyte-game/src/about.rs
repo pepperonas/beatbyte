@@ -29,6 +29,8 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 const REPO_URL: &str = "https://github.com/pepperonas/beatbyte";
 /// The MIT license text inside the repository.
 const LICENSE_URL: &str = "https://github.com/pepperonas/beatbyte/blob/main/LICENSE";
+/// The game's own page: downloads for every platform, the changelog.
+const HOMEPAGE_URL: &str = "https://beatbyte.celox.io";
 /// The author's site.
 const WEBSITE_URL: &str = "https://celox.io";
 /// The Google-Maps review page for celox.io.
@@ -242,6 +244,7 @@ fn open_external(url: &str) {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InfoRow {
     Author,
+    Homepage,
     License,
     Repo,
     Website,
@@ -252,8 +255,9 @@ enum InfoRow {
 }
 
 impl InfoRow {
-    const ALL: [InfoRow; 8] = [
+    const ALL: [InfoRow; 9] = [
         InfoRow::Author,
+        InfoRow::Homepage,
         InfoRow::License,
         InfoRow::Repo,
         InfoRow::Website,
@@ -266,6 +270,7 @@ impl InfoRow {
     const fn label(self) -> &'static str {
         match self {
             InfoRow::Author => "MADE BY",
+            InfoRow::Homepage => "HOMEPAGE",
             InfoRow::License => "LICENSE",
             InfoRow::Repo => "SOURCE CODE",
             InfoRow::Website => "WEBSITE",
@@ -281,6 +286,7 @@ impl InfoRow {
         match self {
             // The maker's row opens the maker's site.
             InfoRow::Author | InfoRow::Website => Some(WEBSITE_URL),
+            InfoRow::Homepage => Some(HOMEPAGE_URL),
             InfoRow::License => Some(LICENSE_URL),
             InfoRow::Repo => Some(REPO_URL),
             InfoRow::Review => Some(REVIEW_URL),
@@ -585,6 +591,7 @@ fn refresh_about(
         if let Some(row) = InfoRow::ALL.get(index) {
             let value = match row {
                 InfoRow::Author => "Martin Pfeffer - celox.io - 2026".to_owned(),
+                InfoRow::Homepage => "beatbyte.celox.io - downloads".to_owned(),
                 InfoRow::License => "MIT".to_owned(),
                 InfoRow::Repo => "github.com/pepperonas/beatbyte".to_owned(),
                 InfoRow::Website => "celox.io".to_owned(),
@@ -868,6 +875,16 @@ mod tests {
     fn every_info_row_targets_what_its_label_promises() {
         // The commission's link table, as a test.
         assert_eq!(InfoRow::Repo.target(), Some(REPO_URL));
+        assert_eq!(
+            InfoRow::Homepage.target(),
+            Some("https://beatbyte.celox.io"),
+            "the game's own page, not the maker's"
+        );
+        assert_eq!(
+            InfoRow::ALL[1],
+            InfoRow::Homepage,
+            "right under MADE BY: the first thing about the game"
+        );
         assert_eq!(InfoRow::Website.target(), Some("https://celox.io"));
         assert_eq!(
             InfoRow::Author.target(),

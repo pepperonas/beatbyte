@@ -142,7 +142,14 @@ impl Plugin for AutopilotPlugin {
                 Update,
                 (
                     autopilot_menu.run_if(in_state(AppState::MainMenu)),
-                    autopilot_song_select.run_if(in_state(AppState::SongSelect)),
+                    // After the browser: it applies the player's saved
+                    // difficulty every frame, and run in the other order
+                    // it overwrote BEATBYTE_AUTOPILOT_DIFFICULTY in the
+                    // very frame the song started — a run that asked for
+                    // Hard played the profile's Easy, and said "Hard".
+                    autopilot_song_select
+                        .run_if(in_state(AppState::SongSelect))
+                        .after(crate::song_select::BrowserInputSet),
                     autopilot_edit.run_if(in_state(AppState::Editor)),
                     autopilot_edit_playtest.run_if(in_state(AppState::Editor)),
                     // After the text field and before the editor's keys:
@@ -390,6 +397,28 @@ fn enter_shot_state(
     if let Ok(raw) = std::env::var("BEATBYTE_SHOT_SEARCH") {
         view.searching = true;
         view.filter = raw.to_lowercase();
+    }
+    // Photograph a song OPEN in the browser's tree — its variants
+    // (NORMAL / GS / CL / BG-01 …) only exist on screen once it is,
+    // and the tree starts closed.
+    if let Ok(raw) = std::env::var("BEATBYTE_SHOT_OPEN")
+        && let Some(library) = library.as_deref()
+    {
+        let folder =
+            title_match(library.entries.iter().map(|e| e.title.as_str()), &raw).and_then(|i| {
+                match &library.entries[i].source {
+                    crate::library::SongSource::File { chart_path, .. } => {
+                        chart_path.parent().map(std::path::Path::to_path_buf)
+                    }
+                    crate::library::SongSource::Builtin(_) => None,
+                }
+            });
+        match folder {
+            Some(folder) => {
+                view.open.insert((folder, crate::song_tree::Level::Song));
+            }
+            None => error!("BEATBYTE_SHOT_OPEN: no song folder matching `{raw}`"),
+        }
     }
     // The document screen is the one that cannot be entered cold:
     // the browser hands it what to show. For a photograph, hand it
@@ -3492,6 +3521,23 @@ mod tests {
     use super::shot_state;
     use super::title_match;
     use crate::states::AppState;
+
+    /// The browser applies the player's saved difficulty every frame;
+    /// the song start must come after it, or a run asked for Hard
+    /// plays the profile's choice (seen: Hard asked, Easy played, the
+    /// log saying Hard). Pinned on the registration itself.
+    #[test]
+    fn the_song_start_runs_after_the_browser_picked_its_difficulty() {
+        let code = include_str!("autopilot.rs");
+        let start = code
+            .find("autopilot_song_select\n")
+            .expect("the registration");
+        let window = &code[start..start + 200];
+        assert!(
+            window.contains(".after(crate::song_select::BrowserInputSet)"),
+            "{window}"
+        );
+    }
 
     /// ⚠️ The drills count rows in the browser's order FROM the
     /// cursor, and a target above it is reached going up. A count that

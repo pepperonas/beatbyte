@@ -18,6 +18,12 @@ use crate::ui_kit;
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SelectedDifficulty(pub Difficulty);
 
+/// The browser's input system, as a set others can order against —
+/// it applies the player's saved difficulty every frame, so anything
+/// that sets the difficulty for a song start must run after it.
+#[derive(bevy::ecs::schedule::SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BrowserInputSet;
+
 impl Default for SelectedDifficulty {
     fn default() -> Self {
         SelectedDifficulty(Difficulty::Medium)
@@ -210,12 +216,32 @@ impl RevisionCache {
 /// The entry a twin was made from, if that entry is in `order` — the
 /// same match `pair_twins` sorts by (title without one prefix, same
 /// artist).
+///
+/// A `[BG]` version of a song that is NOT in the library has no
+/// original to stand under; its BG siblings (same title behind the
+/// prefix, same artist) then gather under the lowest-numbered one, so
+/// two downloads of one song are one family rather than two songs.
+/// Pure — tested.
 fn original_in(entries: &[SongEntry], order: &[usize], twin: usize) -> Option<usize> {
     let base = beatbyte_chart::twin::base_title(&entries[twin].title)?;
+    let artist = &entries[twin].artist;
+    if let Some(original) = order
+        .iter()
+        .copied()
+        .find(|&j| entries[j].title == base && entries[j].artist == *artist)
+    {
+        return Some(original);
+    }
+    let (number, _) = beatbyte_chart::twin::split_bridge_title(&entries[twin].title)?;
     order
         .iter()
         .copied()
-        .find(|&j| entries[j].title == base && entries[j].artist == entries[twin].artist)
+        .filter_map(|j| {
+            let (n, rest) = beatbyte_chart::twin::split_bridge_title(&entries[j].title)?;
+            (rest == base && entries[j].artist == *artist && n < number).then_some((n, j))
+        })
+        .min()
+        .map(|(_, j)| j)
 }
 
 /// Case- and diacritic-insensitive key for SORTING: `fold_latin` is
@@ -378,20 +404,14 @@ pub fn pair_twins(entries: &[SongEntry], order: Vec<usize>) -> Vec<usize> {
     // re-insertion loop — which walks originals only — and was
     // DROPPED from the list. A song vanishing from the browser is a
     // worse outcome than any ordering.
-    let original_of = |twin: &SongEntry| -> Option<usize> {
-        let base = beatbyte_chart::twin::base_title(&twin.title)?;
-        order
-            .iter()
-            .copied()
-            .find(|&j| entries[j].title == base && entries[j].artist == twin.artist)
-    };
+    let original_of = |twin: usize| original_in(entries, &order, twin);
     // Twins with an original in the list step out; everyone else
     // keeps their order, and each twin is re-inserted right after
     // its original.
     let mut paired: Vec<(usize, usize)> = Vec::new(); // (twin, original)
     let mut rest: Vec<usize> = Vec::with_capacity(order.len());
     for &i in &order {
-        match original_of(&entries[i]) {
+        match original_of(i) {
             Some(original) => paired.push((i, original)),
             None => rest.push(i),
         }
@@ -749,7 +769,7 @@ impl Plugin for SongSelectPlugin {
             .add_systems(
                 Update,
                 (
-                    browser_input,
+                    browser_input.in_set(BrowserInputSet),
                     poll_lyrics_lookup,
                     download_input,
                     search_sort_input,
@@ -790,6 +810,7 @@ mod chip {
     pub const CONFIRM: u8 = 11;
     pub const CANCEL: u8 = 12;
     pub const OPEN: u8 = 13;
+    pub const BRIDGE: u8 = 14;
 }
 
 /// Pressed ActionBar chip ids for this frame (filled by
@@ -799,7 +820,7 @@ struct ActionBarClicks(Vec<u8>);
 
 /// The chips the browser always shows. Confirm/Cancel start disabled
 /// until a delete is armed; Play set until the queue has songs.
-fn browser_chips() -> [ui_kit::ChipSpec; 14] {
+fn browser_chips() -> [ui_kit::ChipSpec; 15] {
     [
         ui_kit::ChipSpec {
             id: chip::OPEN,
@@ -834,6 +855,11 @@ fn browser_chips() -> [ui_kit::ChipSpec; 14] {
         ui_kit::ChipSpec {
             id: chip::REDESIGN,
             label: "Redesign",
+            enabled: true,
+        },
+        ui_kit::ChipSpec {
+            id: chip::BRIDGE,
+            label: "Bridge",
             enabled: true,
         },
         ui_kit::ChipSpec {
@@ -2083,6 +2109,24 @@ fn browser_input(
             }
         }
     }
+    // B converts what the Bridge downloader fetched into BG versions
+    // of the library's songs — every download not converted yet, not
+    // only the highlighted song's. A chore, like the redesign: it
+    // transcodes audio, and the rescan when it finishes puts the new
+    // versions in the tree.
+    if !searching && (keys.just_pressed(KeyCode::KeyB) || ui_kit::chip_hit(clicks, chip::BRIDGE)) {
+        let line = "converting Bridge downloads...";
+        match start.chore.start(line, crate::bridge_import::import_all) {
+            Ok(()) => {
+                sounds.write(crate::sfx::UiSound::Confirm);
+                status.0 = line.to_owned();
+            }
+            Err(reason) => {
+                sounds.write(crate::sfx::UiSound::Error);
+                status.0 = reason.to_owned();
+            }
+        }
+    }
     // T hears the same half minute twice, on two chart versions, in
     // an order that is not told: the blind taste test. The verdict
     // and the rating land on the results screen like any other run's.
@@ -2141,18 +2185,19 @@ fn browser_input(
     // Q queues the highlighted song for an MC set (again removes it);
     // P plays the queued set as one continuous DJ performance.
     if !searching && (keys.just_pressed(KeyCode::KeyQ) || ui_kit::chip_hit(clicks, chip::QUEUE)) {
-        let song_index = view.order.get(cursor.0).copied();
-        if let Some(song_index) = song_index {
-            if let Some(at) = start.mc_queue.0.iter().position(|i| *i == song_index) {
+        // Queued by folder, not by list position: a rescan before P
+        // would otherwise play the neighbours of what was queued.
+        if let Some(key) = crate::mc::QueuedSong::of(entry) {
+            if let Some(at) = start.mc_queue.0.iter().position(|q| *q == key) {
                 start.mc_queue.0.remove(at);
             } else {
-                start.mc_queue.0.push(song_index);
+                start.mc_queue.0.push(key.clone());
             }
             sounds.write(crate::sfx::UiSound::Toggle);
             // The row list carries no queued-marker (rows rebuild on
             // view changes only); the status line names the action
             // and the count instead.
-            let added = start.mc_queue.0.contains(&song_index);
+            let added = start.mc_queue.0.contains(&key);
             status.0 = format!(
                 "{} \"{}\" - MC set: {} song(s), P plays it",
                 if added { "queued" } else { "removed" },
@@ -2165,8 +2210,27 @@ fn browser_input(
         && (keys.just_pressed(KeyCode::KeyP) || ui_kit::chip_hit(clicks, chip::PLAY_SET))
         && !start.mc_queue.0.is_empty()
     {
+        let keys: Vec<Option<crate::mc::QueuedSong>> = library
+            .entries
+            .iter()
+            .map(crate::mc::QueuedSong::of)
+            .collect();
+        let (found, missing) = crate::mc::resolve(&start.mc_queue.0, &keys);
+        if !missing.is_empty() {
+            // Said, not swallowed: the set is shorter than what was
+            // queued, and the player should know why.
+            warn!(
+                "mc set: {} queued song(s) no longer in the library",
+                missing.len()
+            );
+        }
+        if found.is_empty() {
+            status.0 = "MC set: the queued songs are no longer in the library".to_owned();
+            start.mc_queue.0.clear();
+            return;
+        }
         let mut songs = Vec::new();
-        for index in &start.mc_queue.0 {
+        for index in &found {
             let Some(entry) = library.entries.get(*index) else {
                 continue;
             };
@@ -3444,6 +3508,26 @@ mod view_tests {
     }
 
     #[test]
+    fn a_queued_song_is_its_folder_whichever_revision_plays() {
+        use crate::mc::QueuedSong;
+        let folder = std::env::temp_dir().join("bb-queue-key");
+        let first = file_entry("Song", folder.join("chart.json"));
+        let later = file_entry("Song", folder.join("chart.v3.json"));
+        // Choosing another revision changes the chart path; the queue
+        // must still know the song.
+        assert_eq!(
+            QueuedSong::of(&first),
+            Some(QueuedSong::Folder(folder.clone()))
+        );
+        assert_eq!(QueuedSong::of(&first), QueuedSong::of(&later));
+        let other = file_entry(
+            "Other",
+            std::env::temp_dir().join("bb-other").join("chart.json"),
+        );
+        assert_ne!(QueuedSong::of(&first), QueuedSong::of(&other));
+    }
+
+    #[test]
     fn tab_opens_and_closes_only_a_row_that_opens() {
         use crate::song_tree::{Kind, Level, Row};
         let folder = std::env::temp_dir().join("bb-tree-toggle");
@@ -3522,6 +3606,59 @@ mod view_tests {
             branch.contains("return;"),
             "an opened section does not also play"
         );
+    }
+
+    /// BG versions sit under the song when the library has it, and
+    /// under their lowest-numbered sibling when it does not — two
+    /// downloads of one song are one family, never two songs.
+    #[test]
+    fn bridge_versions_gather_under_the_song_or_under_bg_01() {
+        let mut lib = lib();
+        lib.push(entry("[BG-02] Life", "Des'ree", None, 200.0));
+        lib.push(entry("[BG-01] Life", "Des'ree", None, 200.0));
+        lib.push(entry("[BG-03] Only Here", "Band", None, 200.0));
+        lib.push(entry("[BG-01] Only Here", "Band", None, 200.0));
+        lib.push(entry("[BG-02] Only Here", "Other Band", None, 200.0));
+        let at = |title: &str| {
+            lib.iter()
+                .position(|e| e.title == title)
+                .expect("in the fixture")
+        };
+        let order: Vec<usize> = (0..lib.len()).collect();
+        assert_eq!(
+            original_in(&lib, &order, at("[BG-02] Life")),
+            Some(at("Life"))
+        );
+        assert_eq!(
+            original_in(&lib, &order, at("[BG-01] Life")),
+            Some(at("Life"))
+        );
+        assert_eq!(
+            original_in(&lib, &order, at("[BG-03] Only Here")),
+            Some(at("[BG-01] Only Here")),
+            "without the song, the lowest BG version stands in for it"
+        );
+        assert_eq!(original_in(&lib, &order, at("[BG-01] Only Here")), None);
+        assert_eq!(
+            original_in(&lib, &order, at("[BG-02] Only Here")),
+            None,
+            "another artist's song is another song"
+        );
+        let order = build_order(&lib, SortMode::Title, false, Difficulty::Medium, "", |_| {
+            None
+        });
+        let titles: Vec<&str> = order.iter().map(|i| lib[*i].title.as_str()).collect();
+        let life = titles.iter().position(|t| *t == "Life").expect("listed");
+        assert_eq!(
+            &titles[life + 1..life + 3],
+            &["[BG-01] Life", "[BG-02] Life"],
+            "{titles:?}"
+        );
+        let here = titles
+            .iter()
+            .position(|t| *t == "[BG-01] Only Here")
+            .expect("listed");
+        assert_eq!(titles[here + 1], "[BG-03] Only Here", "{titles:?}");
     }
 
     #[test]

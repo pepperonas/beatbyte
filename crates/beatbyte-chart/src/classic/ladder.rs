@@ -35,6 +35,14 @@ pub const HARD_SHARE: f64 = 0.89;
 /// 61–76 %).
 pub const MEDIUM_SHARE: (f64, f64) = (0.61, 0.76);
 
+/// The share of Medium's note events an Easy derived from it keeps.
+///
+/// The classic programme never needed an Easy (its twins keep the
+/// song's own); a Bridge download that ships only Expert does
+/// ([`crate::bridge`]). Half of Medium, single notes only — the
+/// sparse, chord-free level BeatByte's Easy is meant to be.
+pub const EASY_SHARE: f64 = 0.5;
+
 /// The density a classic Medium aims for inside that band (theirs:
 /// 2.0–2.45 notes a second).
 pub const MEDIUM_NOTES_PER_SECOND: f64 = 2.2;
@@ -390,6 +398,25 @@ pub fn derive_hard(expert: &ChartDef, beats: &Beats) -> ChartDef {
         lanes: expert.lanes,
         notes: notes_of(&source, &kept),
         phrases: phrases_for(&expert.phrases, &kept),
+    }
+}
+
+/// An Easy from a Medium: [`EASY_SHARE`] of its events, every chord
+/// reduced to its lowest note. Medium is already on four frets, so
+/// Easy is too. Pure — tested.
+#[must_use]
+pub fn derive_easy(medium: &ChartDef, beats: &Beats) -> ChartDef {
+    let source = events_of(&medium.notes);
+    let keep = ((source.len() as f64) * EASY_SHARE).round() as usize;
+    let mut kept = thin(source.clone(), keep, beats);
+    for event in &mut kept {
+        event.notes.truncate(1);
+    }
+    ChartDef {
+        difficulty: Difficulty::Easy,
+        lanes: medium.lanes,
+        notes: notes_of(&source, &kept),
+        phrases: phrases_for(&medium.phrases, &kept),
     }
 }
 

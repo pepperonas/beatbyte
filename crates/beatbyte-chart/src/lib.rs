@@ -35,6 +35,7 @@
 //! assert_eq!(track.len(), 1);
 //! ```
 
+pub mod bridge;
 pub mod catalogue;
 pub mod classic;
 pub mod context;

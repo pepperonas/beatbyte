@@ -13,6 +13,7 @@ use clap::{Parser, Subcommand};
 
 #[cfg(feature = "ml")]
 mod align;
+mod bridge;
 mod chart_check;
 mod classic;
 mod context;
@@ -367,6 +368,20 @@ enum Command {
         /// to the chart).
         #[arg(long)]
         out: Option<PathBuf>,
+    },
+    /// Convert charts the Bridge downloader fetched into BG versions
+    /// (`[BG-01]`, `[BG-02]`, …) of the library's songs. A download
+    /// of a song already in the library goes under it; any other
+    /// becomes a song of its own. A download converted before is
+    /// recognised and skipped. Needs ffmpeg for the audio.
+    Bridge {
+        /// A download folder, or a folder of them. Default: the
+        /// download folder in Bridge's settings.
+        source: Option<PathBuf>,
+        /// The library's song directory. Default: this machine's
+        /// `songs/imported`.
+        #[arg(long)]
+        library: Option<PathBuf>,
     },
     /// Apply the classic ingredients — the rules the early guitar
     /// games played by — as a NEW version whose parent is the one
@@ -860,6 +875,7 @@ fn main() -> ExitCode {
             include_autopilot,
             out,
         ),
+        Command::Bridge { source, library } => bridge::run(source, library),
         Command::Classic {
             folder,
             all,

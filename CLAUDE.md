@@ -932,7 +932,16 @@ artifact, smoke-test it (neutral CWD!), then
   `cargo clean --release -p libsqlite3-sys`) and rebuild the one you
   need, and read a release build's exit code rather than `tail`'s: a
   failed build left the old binary in place and a screenshot run
-  photographed it. **The one part that IS safe to prune is `incremental/`**, and
+  photographed it. What is known about the cause (2026-09-28, after
+  five hits in two days): the directory survives with `sqlite3.o` and
+  `libsqlite3.a` intact and ONLY `bindgen.rs` gone, so the build script
+  is not rerun. Ruled out by reproduction: `cargo clean -p` (it removes
+  the directories whole — a cure, not the cause), `cargo doc` both
+  ways, clippy `--all-features`, test builds, and
+  `tools/prune-incremental.py` (touches `incremental/` only). Still
+  unknown. The narrowest cure: `rm -rf target/<profile>/build/libsqlite3-sys-*`
+  — the build script reruns in seconds and nothing else rebuilds.
+  **The one part that IS safe to prune is `incremental/`**, and
   it is the part that grows while you work: cargo collects a superseded
   session only when it rebuilds that same unit, so a configuration that
   ran once (`clippy --all-features`, `cargo doc`, a one-off `-p <crate>`
@@ -1130,6 +1139,15 @@ artifact, smoke-test it (neutral CWD!), then
   pipeline the scene already has, or show it (dark) from the first
   frame — and read the autopilot's teleport line as "a frame stalled
   here", not only as a clock fault.
+- **`BEATBYTE_AUTOPILOT_DIFFICULTY` lost to the player's profile**
+  until 0.18.62: the browser applies the current player's saved
+  difficulty every frame, and the autopilot's song start ran in no
+  defined order against it — a run asked for Hard played Easy and
+  LOGGED "Hard" (the autopilot's line prints what it set, the
+  gameplay line what it got; compare the two). The start now runs
+  `.after(song_select::BrowserInputSet)`. Anything else that sets the
+  difficulty for a song start from inside the browser state needs the
+  same ordering.
 - **An autopilot verdict could be failed by the room, and the
   telemetry says so.** Real device input went into the same session
   the injector plays into: a key, a pad button or a click at the desk

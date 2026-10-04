@@ -14,6 +14,48 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.62] - 2026-10-04
+
+### Added
+
+- **Charts from the Bridge downloader, as BG versions.** Charts that
+  Bridge downloaded become playable BeatByte songs: **B** in the song
+  browser (or `beatbyte-cli bridge`) converts every download not
+  converted yet. A chart of a song already in the library appears
+  under that song as **BG-01**, beside NORMAL / GS / CL; a second
+  chart of the same song is **BG-02**, and so on. A song the library
+  does not have becomes a song of its own. Both chart formats are
+  read (`notes.chart` and `notes.mid`), with their tempo changes,
+  HOPOs, taps (played as HOPOs) and star power (as Hype phrases);
+  open notes have no lane in BeatByte and are left out, and the
+  report says how many. The chart plays against Bridge's own audio,
+  mixed from its stems into one file — this needs `ffmpeg`. A
+  download converted before is recognised and skipped.
+
+## [0.18.61] - 2026-09-28
+
+### Added
+
+- **The game's own page on the About screen.** A new HOMEPAGE row,
+  right under MADE BY, opens beatbyte.celox.io — downloads for every
+  platform and the changelog. WEBSITE still opens the maker's site.
+
+### Fixed
+
+- **The editor shows a chord's tails as long as the game plays them.**
+  The game plays a chord as one note with one length — the longest of
+  its notes — while the editor drew each note with its own, so a
+  chord could look shorter in the editor than it rang in the game.
+  Dragging the tail of one chord note (or typing its length) now sets
+  it for the whole chord, as one undo step, and the handle sits where
+  the tail ends.
+- **An MC set plays what you queued.** The queue remembered songs by
+  their place in the list, so an import, a delete or a revision chosen
+  while songs were queued made P play their neighbours. It now
+  remembers each song's folder; a queued song deleted in the meantime
+  is left out instead of replaced, and if none is left the browser
+  says so.
+
 ## [0.18.60] - 2026-09-27
 
 ### Changed

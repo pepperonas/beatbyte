@@ -599,9 +599,11 @@ pub(crate) fn redraw(
         _ => None,
     };
     for note in state.notes() {
+        // The tail the GAME plays: a chord rings as long as its
+        // longest note, and a drag on one chord note moves them all.
         let tail_len = match lengthening {
-            Some((key, end)) if view::same_note(key, note) => (end - note.time).max(0.0),
-            _ => note.len,
+            Some((key, end)) if view::same_chord(key.0, note) => (end - key.0).max(0.0),
+            _ => view::played_len(state.notes(), note),
         };
         if note.time + tail_len < t_lo || note.time > t_hi {
             continue;

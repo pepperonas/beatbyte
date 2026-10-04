@@ -28,6 +28,7 @@ contradicted** — if a decision is reversed, the ADR says so.
 | [0019](ADR-0019-song-metadata-and-the-library-index.md) | A song's metadata lives in its own folder and the queryable index is a rebuildable projection; a given `SongId` rather than a derived one; playing stays an event, never a counter | Accepted |
 | [0020](ADR-0020-classic-rules-in-the-chart.md) | The classic programme: a judgment rule travels in the chart (and its hash), classic levels are derived from the chart's own Expert by deletion only, and chords come only from a polyphonic transcription of the separated stem (`beatbyte-poly`, Basic Pitch) | Accepted |
 | [0021](ADR-0021-two-devices-one-career.md) | Two devices, one career: device-owned snapshots on a hub (the raspi5), pure per-data merge rules in `beatbyte-sync` (never last writer wins), device-independent player ids, one library root in the data directory | Accepted |
+| [0022](ADR-0022-bridge-charts-as-bg-twins.md) | Charts the Bridge downloader fetched become numbered `[BG-NN]` twins: a pure `.chart`/`.mid` converter, the library song matched by letters and digits, one number per download by fingerprint, the audio Bridge's own mixed to AAC by ffmpeg | Accepted |
 
 ## The gap at 0009
 

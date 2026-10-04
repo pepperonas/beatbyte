@@ -42,6 +42,7 @@
 //! - **`imported_at` is written once**, and `updated_at` moves only
 //!   on a real change ([`Lifecycle`]).
 
+pub mod bridge;
 pub mod build;
 pub mod clean;
 pub mod completeness;

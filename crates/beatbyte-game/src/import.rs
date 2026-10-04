@@ -990,7 +990,7 @@ fn plan_chart_write(
 /// library root per device is what the sync keeps identical
 /// (ADR-0021); `songs/` next to the binary is still READ, for the
 /// fixtures and a portable layout, but nothing lands there.
-fn import_dir() -> Result<PathBuf, String> {
+pub(crate) fn import_dir() -> Result<PathBuf, String> {
     user_songs_dir()
         .map(|dir| dir.join("imported"))
         .ok_or_else(|| "no songs directory on this platform".to_owned())

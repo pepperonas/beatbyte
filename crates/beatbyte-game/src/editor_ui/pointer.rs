@@ -319,8 +319,13 @@ pub fn editor_pointer(
                     .iter()
                     .find(|n| view::same_note(key, n))
                     .copied();
-                if let Some(op) = note.and_then(|n| view::plan_length(difficulty, &n, end)) {
-                    state.apply(vec![op], "length set");
+                // The whole chord: the game plays one length per chord,
+                // so a tail dragged on one of its notes is the chord's.
+                if let Some(note) = note {
+                    let ops = view::plan_chord_length(difficulty, state.notes(), &note, end);
+                    if !ops.is_empty() {
+                        state.apply(ops, "length set");
+                    }
                 }
             }
             Drag::Scrub => {}

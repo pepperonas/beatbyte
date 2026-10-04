@@ -11,6 +11,7 @@ pub mod audio_sys;
 pub mod autopilot;
 pub mod bench;
 pub mod boot;
+pub mod bridge_import;
 pub mod calibration;
 pub mod chore;
 pub mod clipboard;

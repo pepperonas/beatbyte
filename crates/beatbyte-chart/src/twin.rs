@@ -26,18 +26,28 @@ pub enum Kind {
     Study,
     /// `[CL]` — the classic ingredients applied to an existing chart.
     Classic,
+    /// `[BG-01]` — a community chart the Bridge downloader fetched,
+    /// converted ([`crate::bridge`]). The only kind that NUMBERS its
+    /// twins: one song can have several, one per chart downloaded,
+    /// and the number is part of both the folder and the title
+    /// ([`bridge_folder_name`], [`bridge_title`]). Unlike the other
+    /// kinds it brings its own audio.
+    Bridge,
 }
 
 impl Kind {
     /// Every kind, in the order they were introduced.
-    pub const ALL: [Kind; 2] = [Kind::Study, Kind::Classic];
+    pub const ALL: [Kind; 3] = [Kind::Study, Kind::Classic, Kind::Bridge];
 
-    /// The title prefix the browser shows this kind under.
+    /// The title prefix the browser shows this kind under. For
+    /// [`Kind::Bridge`] it is only the START of the prefix — the
+    /// number and the bracket follow ([`bridge_title`]).
     #[must_use]
     pub const fn title_prefix(self) -> &'static str {
         match self {
             Kind::Study => "[GS] ",
             Kind::Classic => "[CL] ",
+            Kind::Bridge => "[BG-",
         }
     }
 
@@ -49,8 +59,74 @@ impl Kind {
         match self {
             Kind::Study => "guitar-study-",
             Kind::Classic => "classic-",
+            Kind::Bridge => "bridge-",
         }
     }
+}
+
+/// Most Bridge versions one song can have (`BG-01` … `BG-99`).
+pub const MAX_BRIDGE_NUMBER: u8 = 99;
+
+/// `[BG-07] ` for 7. Pure — tested.
+#[must_use]
+pub fn bridge_prefix(number: u8) -> String {
+    format!("[BG-{number:02}] ")
+}
+
+/// The number and the rest of a title that starts with a Bridge
+/// prefix (`[BG-07] Maria` → `(7, "Maria")`). Exactly two digits, 01
+/// to 99 — anything else is a song that happens to start with a
+/// bracket. Pure — tested.
+#[must_use]
+pub fn split_bridge_title(title: &str) -> Option<(u8, &str)> {
+    let rest = title.strip_prefix(Kind::Bridge.title_prefix())?;
+    let digits = rest.get(..2)?;
+    let after = rest.get(2..)?.strip_prefix("] ")?;
+    if !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let number: u8 = digits.parse().ok()?;
+    (1..=MAX_BRIDGE_NUMBER)
+        .contains(&number)
+        .then_some((number, after))
+}
+
+/// The number in a Bridge twin's folder name (`bridge-07-…` → 7).
+/// Pure — tested.
+#[must_use]
+pub fn bridge_number_of_folder(name: &str) -> Option<u8> {
+    let rest = name.strip_prefix(Kind::Bridge.folder_prefix())?;
+    let digits = rest.get(..2)?;
+    rest.get(2..)?.strip_prefix('-')?;
+    if !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    digits
+        .parse::<u8>()
+        .ok()
+        .filter(|n| (1..=MAX_BRIDGE_NUMBER).contains(n))
+}
+
+/// The folder name of Bridge version `number` of the song whose folder
+/// is (or would be) `base`: `bridge-07-<base>`. Pure — tested.
+#[must_use]
+pub fn bridge_folder_name(base: &str, number: u8) -> String {
+    format!("{}{number:02}-{base}", Kind::Bridge.folder_prefix())
+}
+
+/// `title` as Bridge version `number`: any Bridge prefix it already
+/// carries is replaced, never stacked. Pure — tested.
+#[must_use]
+pub fn bridge_title(title: &str, number: u8) -> String {
+    let base = split_bridge_title(title).map_or(title, |(_, rest)| rest);
+    format!("{}{base}", bridge_prefix(number))
+}
+
+/// The lowest number from 1 not in `taken`, or `None` when all 99 are.
+/// Pure — tested.
+#[must_use]
+pub fn next_bridge_number(taken: &[u8]) -> Option<u8> {
+    (1..=MAX_BRIDGE_NUMBER).find(|n| !taken.contains(n))
 }
 
 /// The title prefix an older BeatByte wrote for a study.
@@ -90,7 +166,10 @@ pub fn folder_for(song_folder: &Path, kind: Kind) -> Option<PathBuf> {
 /// chart it was made from. Pure — tested.
 #[must_use]
 pub fn base_title(title: &str) -> Option<&str> {
-    Kind::ALL
+    if let Some((_, rest)) = split_bridge_title(title) {
+        return Some(rest);
+    }
+    [Kind::Study, Kind::Classic]
         .into_iter()
         .find_map(|kind| title.strip_prefix(kind.title_prefix()))
         .or_else(|| title.strip_prefix(LEGACY_STUDY_PREFIX))
@@ -110,7 +189,10 @@ pub fn display_title(title: &str) -> String {
     if let Some(rest) = title.strip_prefix(LEGACY_STUDY_PREFIX) {
         return format!("{}{}", Kind::Study.title_prefix(), display_title(rest));
     }
-    match Kind::ALL
+    if let Some((number, rest)) = split_bridge_title(title) {
+        return format!("{}{}", bridge_prefix(number), display_title(rest));
+    }
+    match [Kind::Study, Kind::Classic]
         .into_iter()
         .find(|kind| title.starts_with(kind.title_prefix()))
     {
@@ -124,9 +206,14 @@ pub fn display_title(title: &str) -> String {
 }
 
 /// `title` with this kind's prefix, added once and never twice.
+/// For [`Kind::Bridge`], which numbers its twins, use
+/// [`bridge_title`]; given it here the title comes back unchanged.
 /// Pure — tested.
 #[must_use]
 pub fn titled(title: &str, kind: Kind) -> String {
+    if kind == Kind::Bridge {
+        return title.to_owned();
+    }
     // Through `display_title` first: a twin written on top of a
     // title in the long legacy spelling would otherwise carry it for
     // ever, and the browser cannot pair what it cannot spell.
@@ -375,6 +462,51 @@ mod tests {
             display_title("Songs About [Guitar Study] Nights"),
             "Songs About [Guitar Study] Nights"
         );
+    }
+
+    /// The Bridge kind numbers its twins: two digits in the folder
+    /// and the title, read back exactly, nothing that merely looks
+    /// like one.
+    #[test]
+    fn bridge_twins_carry_a_two_digit_number() {
+        assert_eq!(bridge_prefix(1), "[BG-01] ");
+        assert_eq!(bridge_title("Maria", 3), "[BG-03] Maria");
+        assert_eq!(bridge_title("[BG-03] Maria", 4), "[BG-04] Maria");
+        assert_eq!(split_bridge_title("[BG-12] Maria"), Some((12, "Maria")));
+        for not_one in [
+            "[BG-+1] Maria",
+            "[BG-1] Maria",
+            "[BG-00] Maria",
+            "[BG-ab] Maria",
+            "[BG-12]Maria",
+            "Maria",
+        ] {
+            assert_eq!(split_bridge_title(not_one), None, "{not_one}");
+        }
+        assert_eq!(base_title("[BG-02] Maria"), Some("Maria"));
+        assert_eq!(base_title("[BG-02] [GS] Maria"), Some("[GS] Maria"));
+        assert_eq!(display_title("[BG-02] Maria"), "[BG-02] Maria");
+        assert_eq!(
+            bridge_folder_name("blondie---maria-m4a", 7),
+            "bridge-07-blondie---maria-m4a"
+        );
+        assert_eq!(
+            bridge_number_of_folder("bridge-07-blondie---maria-m4a"),
+            Some(7)
+        );
+        assert_eq!(bridge_number_of_folder("bridge-7-blondie"), None);
+        assert_eq!(bridge_number_of_folder("bridge-+7-blondie"), None);
+        assert_eq!(bridge_number_of_folder("classic-x"), None);
+        assert_eq!(kind_of_folder("bridge-07-x"), Some(Kind::Bridge));
+        assert_eq!(titled("Maria", Kind::Bridge), "Maria");
+    }
+
+    #[test]
+    fn the_next_bridge_number_fills_the_first_gap() {
+        assert_eq!(next_bridge_number(&[]), Some(1));
+        assert_eq!(next_bridge_number(&[1, 2, 4]), Some(3));
+        let all: Vec<u8> = (1..=MAX_BRIDGE_NUMBER).collect();
+        assert_eq!(next_bridge_number(&all), None);
     }
 
     /// A prefix is added once. Running the writer twice must not
