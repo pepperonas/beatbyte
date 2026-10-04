@@ -223,9 +223,16 @@ pub fn assemble(
                     continue;
                 }
                 let ticks = chord.sustain[usize::from(lane)];
+                // Saturating, and bounded in TIME: a sustain of 2^64
+                // ticks must neither overflow nor stretch the song
+                // (and its beat grid) to the end of the universe.
+                let end = chord.tick.saturating_add(ticks);
                 let len = if ticks > cutoff {
-                    last_tick = last_tick.max(chord.tick + ticks);
-                    at(chord.tick + ticks) - time
+                    let len = (at(end) - time).clamp(0.0, crate::validate::MAX_SUSTAIN_S);
+                    if time + len <= MAX_SONG_LENGTH_S {
+                        last_tick = last_tick.max(end);
+                    }
+                    len
                 } else {
                     0.0
                 };
@@ -258,7 +265,7 @@ pub fn assemble(
         return Err(BridgeError::NoGuitar);
     }
 
-    let end_tick = last_tick + u64::from(map.resolution()) * 8;
+    let end_tick = last_tick.saturating_add(u64::from(map.resolution()) * 8);
     let mut chart = ChartFile {
         format_version: FORMAT_VERSION,
         song: SongMeta {
@@ -353,7 +360,7 @@ fn phrases(star_power: &[(u64, u64)], at: &impl Fn(u64) -> f64) -> Vec<ChartPhra
         .iter()
         .map(|&(start, len)| ChartPhrase {
             start: at(start),
-            end: at(start + len),
+            end: at(start.saturating_add(len)),
         })
         .filter(|p| p.start >= 0.0 && p.end <= MAX_SONG_LENGTH_S && p.end >= p.start)
         .collect();
@@ -371,28 +378,41 @@ fn phrases(star_power: &[(u64, u64)], at: &impl Fn(u64) -> f64) -> Vec<ChartPhra
 /// The exact beat grid of the tempo map: a beat every quarter note up
 /// to `end_tick`, the downbeats where the time signatures put bars.
 fn grid(map: &TempoMap, signatures: &[(u64, u32, u32)], end_tick: u64, shift: f64) -> BeatGrid {
+    use crate::grid::MAX_GRID_BEATS;
     let beat = u64::from(map.resolution());
+    // Bounded twice: by count (untrusted input may ask for any number
+    // of ticks) and by the song's longest legal length in time.
+    let in_song = |t: f64| t <= MAX_SONG_LENGTH_S + 60.0;
     let beats: Vec<f64> = (0..=end_tick / beat)
-        .map(|i| map.seconds(i * beat) + shift)
+        .take(MAX_GRID_BEATS)
+        .map(|i| map.seconds(i.saturating_mul(beat)) + shift)
+        .take_while(|t| in_song(*t))
         .filter(|t| *t >= 0.0)
         .collect();
     let mut signatures: Vec<(u64, u32, u32)> = signatures
         .iter()
         .copied()
         .filter(|(_, num, den)| (1..=64).contains(num) && den.is_power_of_two() && *den <= 64)
+        .take(MAX_GRID_BEATS)
         .collect();
     signatures.sort_by_key(|s| s.0);
     if signatures.first().is_none_or(|s| s.0 != 0) {
         signatures.insert(0, (0, 4, 4));
     }
     let mut downbeats = Vec::new();
-    for (index, &(start, num, den)) in signatures.iter().enumerate() {
-        let until = signatures.get(index + 1).map_or(end_tick, |s| s.0);
+    'bars: for (index, &(start, num, den)) in signatures.iter().enumerate() {
+        let until = signatures
+            .get(index + 1)
+            .map_or(end_tick, |s| s.0.min(end_tick));
         let bar = (u64::from(num) * beat * 4 / u64::from(den)).max(1);
         let mut tick = start;
-        while tick < until && downbeats.len() < crate::grid::MAX_GRID_BEATS {
-            downbeats.push(map.seconds(tick) + shift);
-            tick += bar;
+        while tick < until {
+            let at = map.seconds(tick) + shift;
+            if downbeats.len() >= MAX_GRID_BEATS || !in_song(at) {
+                break 'bars;
+            }
+            downbeats.push(at);
+            tick = tick.saturating_add(bar);
         }
     }
     BeatGrid::from_beats(&beats).with_downbeats(&downbeats)
@@ -605,6 +625,32 @@ mod tests {
         assert_eq!(times.len(), before, "no chords on Easy");
         // A level the download has is left alone.
         assert!(report.notes.iter().all(|(d, _)| *d == Difficulty::Expert));
+        assert!(
+            chart
+                .validate()
+                .iter()
+                .all(|i| i.severity != crate::Severity::Error)
+        );
+    }
+
+    /// Untrusted input: ticks at the end of the integer range, a
+    /// resolution of one and star power to the end of time must
+    /// neither overflow nor produce a grid longer than the cap.
+    #[test]
+    fn absurd_ticks_neither_overflow_nor_grow_the_grid() {
+        let mut s = song(vec![note(1, 1), {
+            let mut far = note(u64::MAX - 10, 2);
+            far.sustain = [0, u64::MAX, 0, 0, 0];
+            far
+        }]);
+        s.resolution = 1;
+        s.tracks[0].notes[0].sustain = [u64::MAX, 0, 0, 0, 0];
+        s.tracks[0].star_power = vec![(u64::MAX - 1, u64::MAX)];
+        s.time_signatures = vec![(0, 1, 64)];
+        let (chart, _) = assemble(&s, &SongIni::default(), "a.m4a").unwrap();
+        let grid = chart.grid.clone().unwrap();
+        assert!(grid.beats.len() <= crate::grid::MAX_GRID_BEATS);
+        assert!(grid.downbeats.len() <= crate::grid::MAX_GRID_BEATS);
         assert!(
             chart
                 .validate()

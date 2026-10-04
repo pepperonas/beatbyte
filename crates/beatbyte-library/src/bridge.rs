@@ -37,6 +37,9 @@ use serde::{Deserialize, Serialize};
 /// The sidecar that says where a BG twin came from.
 pub const SOURCE_FILE: &str = "bridge-source.json";
 
+/// Largest chart file read: the parsers' own cap.
+const CHART_MAX_BYTES: u64 = convert::text::MAX_BYTES as u64;
+
 /// The audio file a BG twin plays.
 pub const AUDIO_FILE: &str = "song.m4a";
 
@@ -45,6 +48,45 @@ const AUDIO_EXTENSIONS: [&str; 6] = ["opus", "ogg", "mp3", "wav", "flac", "m4a"]
 
 /// Stems that are not part of the song (the download's preview clip).
 const NOT_A_STEM: [&str; 1] = ["preview"];
+
+/// Most stems one download may bring (real ones: up to about ten).
+pub const MAX_STEMS: usize = 16;
+
+/// Largest `song.ini` read, in bytes.
+const MAX_INI_BYTES: u64 = 1024 * 1024;
+
+/// Largest stem passed on, in bytes — a seven-minute song in stems is
+/// tens of megabytes.
+const MAX_STEM_BYTES: u64 = 1024 * 1024 * 1024;
+
+/// Read at most `max` bytes of `path`, refusing a larger file BEFORE
+/// reading it: untrusted input decides the size, and a parser's own
+/// cap only helps once the bytes are already in memory.
+fn read_capped(path: &Path, max: u64) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    let file =
+        std::fs::File::open(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let size = file
+        .metadata()
+        .map_err(|e| format!("cannot read {}: {e}", path.display()))?
+        .len();
+    if size > max {
+        return Err(format!("{} is too large ({size} bytes)", path.display()));
+    }
+    let mut bytes = Vec::with_capacity(usize::try_from(size).unwrap_or(0));
+    file.take(max + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    if bytes.len() as u64 > max {
+        return Err(format!("{} is too large", path.display()));
+    }
+    Ok(bytes)
+}
+
+fn read_text_capped(path: &Path, max: u64) -> Result<String, String> {
+    String::from_utf8(read_capped(path, max)?)
+        .map_err(|_| format!("{} is not text", path.display()))
+}
 
 /// Which chart format a download carries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -133,14 +175,27 @@ pub fn inspect(folder: &Path) -> Result<Download, String> {
         }
     };
     let ini = has("song.ini").map(|n| folder.join(n));
+    // Plain files only: a stem that is a symlink could hand the
+    // transcoder any file on the machine.
     let mut stems: Vec<PathBuf> = names
         .iter()
         .filter(|name| is_stem(name))
         .map(|name| folder.join(name))
+        .filter(|path| {
+            std::fs::symlink_metadata(path)
+                .is_ok_and(|m| m.file_type().is_file() && m.len() <= MAX_STEM_BYTES)
+        })
         .collect();
     stems.sort();
     if stems.is_empty() {
         return Err(format!("{} has no audio", folder.display()));
+    }
+    if stems.len() > MAX_STEMS {
+        return Err(format!(
+            "{} has {} audio files; a download has at most {MAX_STEMS}",
+            folder.display(),
+            stems.len()
+        ));
     }
     Ok(Download {
         folder: folder.to_path_buf(),
@@ -200,14 +255,14 @@ pub fn downloads_under(root: &Path) -> Vec<PathBuf> {
 /// # Errors
 /// When the chart cannot be read.
 pub fn fingerprint(download: &Download) -> Result<String, String> {
-    let read = |path: &Path| {
-        std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))
-    };
-    let mut hash = crate::folder::fnv1a_update(0xcbf2_9ce4_8422_2325, &read(&download.chart)?);
+    let mut hash = crate::folder::fnv1a_update(
+        0xcbf2_9ce4_8422_2325,
+        &read_capped(&download.chart, CHART_MAX_BYTES)?,
+    );
     // A separator, so moving bytes between the files moves the hash.
     hash = crate::folder::fnv1a_update(hash, &[0xff]);
     if let Some(ini) = &download.ini {
-        hash = crate::folder::fnv1a_update(hash, &read(ini)?);
+        hash = crate::folder::fnv1a_update(hash, &read_capped(ini, MAX_INI_BYTES)?);
     }
     Ok(format!("{hash:016x}"))
 }
@@ -350,21 +405,14 @@ pub fn import(
     let download = inspect(source)?;
     let fingerprint = fingerprint(&download)?;
     let ini = match &download.ini {
-        Some(path) => convert::parse_ini(
-            &std::fs::read_to_string(path)
-                .map_err(|e| format!("cannot read {}: {e}", path.display()))?,
-        ),
+        Some(path) => convert::parse_ini(&read_text_capped(path, MAX_INI_BYTES)?),
         None => convert::SongIni::default(),
     };
     let song = match download.format {
-        Format::Chart => convert::text::parse_chart(
-            &std::fs::read_to_string(&download.chart)
-                .map_err(|e| format!("cannot read {}: {e}", download.chart.display()))?,
-        ),
-        Format::Mid => convert::midi::parse_midi(
-            &std::fs::read(&download.chart)
-                .map_err(|e| format!("cannot read {}: {e}", download.chart.display()))?,
-        ),
+        Format::Chart => {
+            convert::text::parse_chart(&read_text_capped(&download.chart, CHART_MAX_BYTES)?)
+        }
+        Format::Mid => convert::midi::parse_midi(&read_capped(&download.chart, CHART_MAX_BYTES)?),
     }
     .map_err(|e: BridgeError| e.to_string())?;
     let (mut chart, report) =
@@ -526,6 +574,13 @@ pub fn find_ffmpeg() -> Option<PathBuf> {
 /// The ffmpeg command line that mixes `stems` into `out`: summed (not
 /// averaged — a stem split is a mix taken apart, adding the parts puts
 /// it back), resampled to 44.1 kHz, AAC at 256 kbit/s. Pure — tested.
+///
+/// ⚠️ The stems are untrusted input, and ffmpeg guesses a format from
+/// the CONTENT: a "song.ogg" that is really an HLS or concat playlist
+/// would make it open other files or the network. So every input
+/// names its demuxer from the extension (`-f`), may only use the
+/// `file` protocol, and is passed as `file:<absolute path>` so no
+/// name is read as a protocol or an option.
 #[must_use]
 pub fn ffmpeg_args(stems: &[PathBuf], out: &Path) -> Vec<String> {
     let mut args: Vec<String> = vec![
@@ -535,8 +590,12 @@ pub fn ffmpeg_args(stems: &[PathBuf], out: &Path) -> Vec<String> {
         "-y".into(),
     ];
     for stem in stems {
+        args.extend(["-protocol_whitelist".into(), "file".into()]);
+        if let Some(format) = demuxer_for(stem) {
+            args.extend(["-f".into(), format.into()]);
+        }
         args.push("-i".into());
-        args.push(stem.display().to_string());
+        args.push(format!("file:{}", stem.display()));
     }
     if stems.len() > 1 {
         args.push("-filter_complex".into());
@@ -552,13 +611,29 @@ pub fn ffmpeg_args(stems: &[PathBuf], out: &Path) -> Vec<String> {
         .into_iter()
         .map(String::from),
     );
-    args.push(out.display().to_string());
+    args.push(format!("file:{}", out.display()));
     args
+}
+
+/// The ffmpeg demuxer a stem's extension names. Pure — tested.
+#[must_use]
+pub fn demuxer_for(path: &Path) -> Option<&'static str> {
+    match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+        "opus" | "ogg" => Some("ogg"),
+        "mp3" => Some("mp3"),
+        "wav" => Some("wav"),
+        "flac" => Some("flac"),
+        "m4a" => Some("mov"),
+        _ => None,
+    }
 }
 
 /// A transcoder that runs `ffmpeg`.
 pub fn ffmpeg_transcoder(ffmpeg: PathBuf) -> impl Fn(&[PathBuf], &Path) -> Result<(), String> {
     move |stems, out| {
+        if let Some(unknown) = stems.iter().find(|s| demuxer_for(s).is_none()) {
+            return Err(format!("{} is not a known audio format", unknown.display()));
+        }
         let output = std::process::Command::new(&ffmpeg)
             .args(ffmpeg_args(stems, out))
             .output()
@@ -806,18 +881,78 @@ mod tests {
 
     #[test]
     fn ffmpeg_sums_several_stems_and_transcodes_one() {
-        let one = ffmpeg_args(&[PathBuf::from("a.opus")], Path::new("o.m4a"));
+        let one = ffmpeg_args(&[PathBuf::from("/d/a.opus")], Path::new("/l/o.m4a"));
         assert!(!one.iter().any(|a| a.contains("amix")));
         assert!(one.windows(2).any(|w| w == ["-c:a", "aac"]));
         let two = ffmpeg_args(
-            &[PathBuf::from("a.opus"), PathBuf::from("b.opus")],
-            Path::new("o.m4a"),
+            &[PathBuf::from("/d/a.opus"), PathBuf::from("/d/b.mp3")],
+            Path::new("/l/o.m4a"),
         );
         assert!(
             two.iter()
                 .any(|a| a == "amix=inputs=2:duration=longest:normalize=0")
         );
-        assert_eq!(two.last().map(String::as_str), Some("o.m4a"));
+        assert_eq!(two.last().map(String::as_str), Some("file:/l/o.m4a"));
+    }
+
+    /// ⚠️ ffmpeg must not guess: every input names its demuxer, may
+    /// only read local files, and is a `file:` URL — a playlist
+    /// dressed as a stem gets no say in what is opened.
+    #[test]
+    fn ffmpeg_is_told_the_format_and_may_only_read_files() {
+        let args = ffmpeg_args(
+            &[
+                PathBuf::from("/d/song.opus"),
+                PathBuf::from("/d/guitar.m4a"),
+            ],
+            Path::new("/l/o.m4a"),
+        );
+        let inputs: Vec<usize> = args
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| *a == "-i")
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(inputs.len(), 2);
+        for i in inputs {
+            assert!(args[i + 1].starts_with("file:/"), "{args:?}");
+            assert_eq!(args[i - 2], "-f", "{args:?}");
+            assert_eq!(
+                args[i - 4..i - 2],
+                ["-protocol_whitelist", "file"],
+                "{args:?}"
+            );
+        }
+        assert_eq!(demuxer_for(Path::new("x.OPUS")), Some("ogg"));
+        assert_eq!(demuxer_for(Path::new("x.m3u8")), None);
+    }
+
+    #[test]
+    fn oversized_inputs_are_refused_before_they_are_read() {
+        let dir = Scratch::new("caps");
+        let big = dir.0.join("song.ini");
+        std::fs::write(&big, vec![b'x'; (MAX_INI_BYTES + 1) as usize]).unwrap();
+        assert!(
+            read_capped(&big, MAX_INI_BYTES)
+                .unwrap_err()
+                .contains("too large")
+        );
+        assert!(read_capped(&big, MAX_INI_BYTES + 1).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_stem_is_not_audio_and_too_many_stems_are_refused() {
+        let dir = Scratch::new("links");
+        let folder = download(&dir.0, "Band", "Song", "Me");
+        std::fs::remove_file(folder.join("song.opus")).unwrap();
+        std::os::unix::fs::symlink("/etc/hosts", folder.join("song.opus")).unwrap();
+        assert!(inspect(&folder).unwrap_err().contains("no audio"));
+        std::fs::remove_file(folder.join("song.opus")).unwrap();
+        for i in 0..=MAX_STEMS {
+            std::fs::write(folder.join(format!("drums_{i}.opus")), b"x").unwrap();
+        }
+        assert!(inspect(&folder).unwrap_err().contains("at most"));
     }
 
     #[test]

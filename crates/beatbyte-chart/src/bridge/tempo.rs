@@ -96,7 +96,10 @@ impl TempoMap {
     /// tested.
     #[must_use]
     pub fn dominant_bpm(&self, end_tick: u64) -> f64 {
-        let mut weights: Vec<(f64, f64)> = Vec::new();
+        // Summed in a map keyed by the tempo's exact value: a linear
+        // search per segment is quadratic in the number of distinct
+        // tempos, and untrusted input decides that number.
+        let mut weights: std::collections::BTreeMap<u64, f64> = std::collections::BTreeMap::new();
         for (index, &(start, us, at)) in self.segments.iter().enumerate() {
             if start >= end_tick && index > 0 {
                 break;
@@ -106,16 +109,12 @@ impl TempoMap {
                 .get(index + 1)
                 .map_or(end_tick, |next| next.0.min(end_tick));
             let duration = self.seconds(until.max(start)) - at;
-            let bpm = 60_000_000.0 / us;
-            match weights.iter_mut().find(|(b, _)| (*b - bpm).abs() < 1e-6) {
-                Some(entry) => entry.1 += duration,
-                None => weights.push((bpm, duration)),
-            }
+            *weights.entry(us.to_bits()).or_insert(0.0) += duration;
         }
         weights
             .into_iter()
             .max_by(|a, b| a.1.total_cmp(&b.1))
-            .map_or(120.0, |(bpm, _)| bpm)
+            .map_or(120.0, |(us, _)| 60_000_000.0 / f64::from_bits(us))
     }
 }
 

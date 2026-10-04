@@ -14,6 +14,19 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.63] - 2026-10-05
+
+### Security
+
+- **The Bridge import treats a download as untrusted input all the
+  way through.** A chart with absurd tick values (a sustain or a star
+  power phrase reaching the end of the integer range) can no longer
+  overflow or grow the beat grid without bound; a file larger than its
+  limit is refused before it is read rather than after; a stem that is
+  a symlink, or a seventeenth stem, is not passed on; and ffmpeg is
+  told each stem's format and may only read local files, so an audio
+  file that is really a playlist cannot make it open anything else.
+
 ## [0.18.62] - 2026-10-04
 
 ### Added

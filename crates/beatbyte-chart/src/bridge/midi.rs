@@ -27,6 +27,8 @@ pub const MAX_BYTES: usize = 32 * 1024 * 1024;
 const MAX_TRACKS: usize = 128;
 /// Most events read per track.
 const MAX_EVENTS: usize = 2_000_000;
+/// Most tempo and time-signature events kept (the text format's cap).
+const MAX_MAP_EVENTS: usize = 100_000;
 
 /// The track that holds the lead guitar, in either spelling.
 const GUITAR_TRACKS: [&str; 2] = ["PART GUITAR", "T1 GEMS"];
@@ -114,8 +116,14 @@ pub fn parse_midi(bytes: &[u8]) -> Result<TickSong, BridgeError> {
         });
         for event in &events {
             match *event {
-                Event::Tempo { tick, us } => song.tempos.push((tick, us)),
-                Event::Signature { tick, num, den } => song.time_signatures.push((tick, num, den)),
+                Event::Tempo { tick, us } if song.tempos.len() < MAX_MAP_EVENTS => {
+                    song.tempos.push((tick, us));
+                }
+                Event::Signature { tick, num, den }
+                    if song.time_signatures.len() < MAX_MAP_EVENTS =>
+                {
+                    song.time_signatures.push((tick, num, den));
+                }
                 _ => {}
             }
         }
