@@ -26,7 +26,7 @@ use crate::states::AppState;
 pub static VERDICT_DELIVERED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
-fn deliver(app_exit: &mut MessageWriter<AppExit>, exit: AppExit) {
+pub(crate) fn deliver(app_exit: &mut MessageWriter<AppExit>, exit: AppExit) {
     VERDICT_DELIVERED.store(true, std::sync::atomic::Ordering::Relaxed);
     app_exit.write(exit);
 }

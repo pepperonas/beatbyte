@@ -14,6 +14,27 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.65] - 2026-10-05
+
+### Security
+
+- **The move record in the new library folder is untrusted input.** A
+  folder can come from anywhere — a drive another machine wrote, a
+  record someone edited — so deleting the old copy no longer trusts
+  what that record says: every path in it must be a plain relative
+  path (no `..`, no absolute path, no drive letter), the old place is
+  the one the game itself moved from (a record naming another source
+  deletes nothing), the two places may not overlap, and every file is
+  hashed in BOTH places right before it is removed and must match what
+  was copied. A forged or stale record now deletes nothing.
+
+### Fixed
+
+- The library-move drill (`BEATBYTE_AUTOPILOT_LIBRARY_MOVE`) passed
+  but exited without registering its verdict, so the harness failed
+  every successful run; it now reports through the autopilot's verdict
+  like every other drill.
+
 ## [0.18.64] - 2026-10-05
 
 ### Added

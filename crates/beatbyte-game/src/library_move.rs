@@ -39,11 +39,16 @@ pub enum Step {
     },
     /// Copying.
     Copying {
+        /// The old place.
+        from: PathBuf,
         /// The new place.
         to: PathBuf,
     },
     /// Copied and switched; the old copy is still there.
     Copied {
+        /// The old place — as the game knew it, never as the record on
+        /// the target says (that record is untrusted).
+        from: PathBuf,
         /// The new place.
         to: PathBuf,
         /// What was copied.
@@ -92,7 +97,7 @@ impl LibraryMove {
         match self.step.clone() {
             Step::Idle | Step::Done(_) | Step::Failed(_) => self.choose_folder(),
             Step::Confirm { to, .. } => self.start_copy(to),
-            Step::Copied { to, .. } => self.start_delete(to),
+            Step::Copied { from, to, .. } => self.start_delete(from, to),
             Step::Choosing | Step::Copying { .. } | Step::Deleting => {}
         }
     }
@@ -175,7 +180,10 @@ impl LibraryMove {
         let progress = Arc::clone(&self.progress);
         let from = root.path;
         let target = to.clone();
-        self.step = Step::Copying { to };
+        self.step = Step::Copying {
+            from: from.clone(),
+            to,
+        };
         self.task = Some(AsyncComputeTaskPool::get().spawn(async move {
             let _guard = guard;
             let result = relocate::copy_library(&from, &target, &mut |p| {
@@ -193,11 +201,11 @@ impl LibraryMove {
         }));
     }
 
-    fn start_delete(&mut self, to: PathBuf) {
+    fn start_delete(&mut self, from: PathBuf, to: PathBuf) {
         self.step = Step::Deleting;
         self.task = Some(
             AsyncComputeTaskPool::get()
-                .spawn(async move { Outcome::Deleted(relocate::delete_source(&to)) }),
+                .spawn(async move { Outcome::Deleted(relocate::delete_source(&from, &to)) }),
         );
     }
 }
@@ -309,11 +317,11 @@ fn poll_move(
                 relocate::human(moved.bytes),
                 moved.passes
             );
-            let to = match &state.step {
-                Step::Copying { to } => to.clone(),
-                _ => PathBuf::new(),
+            let (from, to) = match &state.step {
+                Step::Copying { from, to } => (from.clone(), to.clone()),
+                _ => (PathBuf::new(), PathBuf::new()),
             };
-            state.step = Step::Copied { to, moved };
+            state.step = Step::Copied { from, to, moved };
             if let (Some(builtins), Some(mut library)) = (builtins, library) {
                 *library = crate::boot::scan_with_builtins(&builtins.0);
             }
@@ -396,7 +404,7 @@ fn library_move_drill(
     }
     let fail = |exit: &mut MessageWriter<AppExit>, why: String| {
         error!("library move drill: {why}");
-        exit.write(AppExit::error());
+        crate::autopilot::deliver(exit, AppExit::error());
     };
     drill.frames += 1;
     if drill.frames > 60 * 600 {
@@ -470,7 +478,7 @@ fn library_move_drill(
                 return;
             }
             info!("library move drill: PASSED ({line})");
-            exit.write(AppExit::Success);
+            crate::autopilot::deliver(&mut exit, AppExit::Success);
         }
         Step::Failed(why) => fail(&mut exit, why),
         _ => {}
@@ -515,12 +523,30 @@ mod tests {
             copied: 3,
         };
         assert_eq!(
-            value_line(&Step::Copying { to: PathBuf::new() }, copying, None),
+            value_line(
+                &Step::Copying {
+                    from: PathBuf::new(),
+                    to: PathBuf::new()
+                },
+                copying,
+                None
+            ),
             "COPYING 25%"
         );
         let second = Progress { pass: 2, ..copying };
-        assert!(value_line(&Step::Copying { to: PathBuf::new() }, second, None).contains("PASS 2"));
+        assert!(
+            value_line(
+                &Step::Copying {
+                    from: PathBuf::new(),
+                    to: PathBuf::new()
+                },
+                second,
+                None
+            )
+            .contains("PASS 2")
+        );
         let copied = Step::Copied {
+            from: PathBuf::new(),
             to: PathBuf::new(),
             moved: Moved {
                 files: 1,
@@ -537,6 +563,7 @@ mod tests {
     fn declining_keeps_everything() {
         let mut state = LibraryMove {
             step: Step::Copied {
+                from: PathBuf::from("/old"),
                 to: PathBuf::from("/x"),
                 moved: Moved {
                     files: 1,

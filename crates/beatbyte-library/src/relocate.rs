@@ -259,8 +259,32 @@ pub fn human(bytes: u64) -> String {
     }
 }
 
+/// The record in `to`, if there is one and every path in it is a plain
+/// relative path. ⚠️ The record lives on the TARGET — an external drive
+/// anyone can write to — so it is untrusted input: one `..` or absolute
+/// path in it and it is no record at all, because its paths decide what
+/// is deleted.
 fn read_manifest(to: &Path) -> Option<Manifest> {
-    serde_json::from_str(&std::fs::read_to_string(to.join(MANIFEST_FILE)).ok()?).ok()
+    let manifest: Manifest =
+        serde_json::from_str(&std::fs::read_to_string(to.join(MANIFEST_FILE)).ok()?).ok()?;
+    manifest
+        .files
+        .keys()
+        .all(|rel| is_plain_rel(rel))
+        .then_some(manifest)
+}
+
+/// Whether `rel` names a file strictly inside a folder: `/`-separated
+/// names, none empty, `.` or `..`, no drive or root. Pure — tested.
+#[must_use]
+pub fn is_plain_rel(rel: &str) -> bool {
+    !rel.is_empty()
+        && !rel.starts_with('/')
+        && !rel.contains('\\')
+        && !rel.contains(':')
+        && rel
+            .split('/')
+            .all(|part| !part.is_empty() && part != "." && part != "..")
 }
 
 fn write_manifest(to: &Path, manifest: &Manifest) -> Result<(), String> {
@@ -497,14 +521,24 @@ pub struct Deleted {
 /// empty. Anything else stays and is counted. The record is removed
 /// last, when nothing was kept.
 ///
+/// `from` is the old library as the CALLER knows it — never taken from
+/// the record, which lives on the target and could name any folder.
+/// The record must name exactly `from`.
+///
 /// # Errors
-/// When there is no complete move recorded in `to`.
-pub fn delete_source(to: &Path) -> Result<Deleted, String> {
+/// When there is no complete, valid move from `from` recorded in `to`.
+pub fn delete_source(from: &Path, to: &Path) -> Result<Deleted, String> {
     let manifest = read_manifest(to).ok_or("no finished move is recorded there")?;
     if !manifest.complete {
         return Err("the move did not finish; nothing is deleted".to_owned());
     }
-    let from = &manifest.source;
+    if resolve(&manifest.source) != resolve(from) {
+        return Err("the record there is of another library; nothing is deleted".to_owned());
+    }
+    let (from_r, to_r) = (resolve(from), resolve(to));
+    if from_r == to_r || from_r.starts_with(&to_r) || to_r.starts_with(&from_r) {
+        return Err("the two places overlap; nothing is deleted".to_owned());
+    }
     let mut deleted = Deleted {
         removed: 0,
         kept: 0,
@@ -513,8 +547,14 @@ pub fn delete_source(to: &Path) -> Result<Deleted, String> {
         let source = local(from, rel);
         let same = std::fs::metadata(&source)
             .is_ok_and(|m| m.len() == copied.size && modified_ns(&m) == copied.modified_ns);
-        let target_ok = std::fs::metadata(local(to, rel)).is_ok_and(|m| m.len() == copied.size);
-        if same && target_ok && std::fs::remove_file(&source).is_ok() {
+        // Both read back against the record: a file is deleted only
+        // when a true copy of it provably exists. Size alone would let
+        // a forged record (it lives on the target) claim copies that
+        // are not there.
+        let verified = same
+            && hash_file(&local(to, rel)).is_ok_and(|h| h == copied.sha256)
+            && hash_file(&source).is_ok_and(|h| h == copied.sha256);
+        if verified && std::fs::remove_file(&source).is_ok() {
             deleted.removed += 1;
         }
     }
@@ -717,13 +757,16 @@ mod tests {
         let dir = Scratch::new("delete");
         let (from, to) = (dir.0.join("old"), dir.0.join("new"));
         library(&from);
-        assert!(delete_source(&to).is_err(), "no move, nothing deleted");
+        assert!(
+            delete_source(&from, &to).is_err(),
+            "no move, nothing deleted"
+        );
         copy_library(&from, &to, &mut |_| {}).unwrap();
         // After the copy, one file changes and a new one appears.
         std::thread::sleep(std::time::Duration::from_millis(20));
         std::fs::write(from.join("song-b/chart.json"), "{\"edited\":true}").unwrap();
         std::fs::write(from.join("song-c.json"), "new").unwrap();
-        let deleted = delete_source(&to).unwrap();
+        let deleted = delete_source(&from, &to).unwrap();
         assert_eq!(deleted.removed, 3);
         assert_eq!(deleted.kept, 2);
         assert!(from.join("song-b/chart.json").is_file());
@@ -751,7 +794,112 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(delete_source(&to).unwrap_err().contains("did not finish"));
+        assert!(
+            delete_source(&from, &to)
+                .unwrap_err()
+                .contains("did not finish")
+        );
+        assert_eq!(inventory(&from).unwrap().len(), 4);
+    }
+
+    #[test]
+    fn only_plain_relative_paths_are_paths() {
+        assert!(is_plain_rel("song-a/chart.json"));
+        for bad in [
+            "",
+            "/etc/hosts",
+            "../x",
+            "a/../../x",
+            "a//b",
+            "./a",
+            "C:/x",
+            "a\\..\\b",
+        ] {
+            assert!(!is_plain_rel(bad), "{bad}");
+        }
+    }
+
+    /// ⚠️ The record lives on the target drive and is untrusted: a
+    /// forged one must neither steer the deletion into another folder
+    /// nor reach outside the library with `..`.
+    #[test]
+    fn a_forged_record_deletes_nothing() {
+        let dir = Scratch::new("forged");
+        let (from, to) = (dir.0.join("old"), dir.0.join("new"));
+        library(&from);
+        let victim = dir.0.join("victim");
+        std::fs::create_dir_all(&victim).unwrap();
+        std::fs::write(victim.join("precious.txt"), "keep me").unwrap();
+        let meta = std::fs::metadata(victim.join("precious.txt")).unwrap();
+        let copied = Copied {
+            sha256: String::new(),
+            size: meta.len(),
+            modified_ns: modified_ns(&meta),
+        };
+        std::fs::create_dir_all(&to).unwrap();
+        std::fs::write(to.join("precious.txt"), "keep me").unwrap();
+        // A record naming another folder as its source.
+        let mut forged = Manifest {
+            source: victim.clone(),
+            complete: true,
+            ..Manifest::default()
+        };
+        forged.files.insert("precious.txt".into(), copied.clone());
+        write_manifest(&to, &forged).unwrap();
+        assert!(
+            delete_source(&from, &to)
+                .unwrap_err()
+                .contains("another library")
+        );
+        // A record of this library reaching out with `..`.
+        let mut escaping = Manifest {
+            source: from.clone(),
+            complete: true,
+            ..Manifest::default()
+        };
+        escaping
+            .files
+            .insert("../victim/precious.txt".into(), copied);
+        write_manifest(&to, &escaping).unwrap();
+        assert!(delete_source(&from, &to).is_err());
+        assert!(
+            victim.join("precious.txt").is_file(),
+            "nothing outside was touched"
+        );
+        assert_eq!(inventory(&from).unwrap().len(), 4, "nor inside");
+        // And a resumed copy refuses a target carrying such a record.
+        assert!(copy_library(&from, &to, &mut |_| {}).is_err());
+        assert!(victim.join("precious.txt").is_file());
+    }
+
+    /// A record of THIS library that claims copies which are not true
+    /// ones — right sizes, wrong content — deletes nothing: every file
+    /// is read back on both sides before it goes.
+    #[test]
+    fn a_record_claiming_false_copies_deletes_nothing() {
+        let dir = Scratch::new("lying");
+        let (from, to) = (dir.0.join("old"), dir.0.join("new"));
+        library(&from);
+        let mut lying = Manifest {
+            source: from.clone(),
+            complete: true,
+            ..Manifest::default()
+        };
+        for entry in inventory(&from).unwrap() {
+            let target = local(&to, &entry.rel);
+            std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+            std::fs::write(&target, vec![b'x'; entry.size as usize]).unwrap();
+            lying.files.insert(
+                entry.rel.clone(),
+                Copied {
+                    sha256: hash_file(&local(&from, &entry.rel)).unwrap(),
+                    size: entry.size,
+                    modified_ns: entry.modified_ns,
+                },
+            );
+        }
+        write_manifest(&to, &lying).unwrap();
+        assert_eq!(delete_source(&from, &to).unwrap().removed, 0);
         assert_eq!(inventory(&from).unwrap().len(), 4);
     }
 

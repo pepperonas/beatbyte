@@ -941,6 +941,10 @@ artifact, smoke-test it (neutral CWD!), then
   `tools/prune-incremental.py` (touches `incremental/` only). Still
   unknown. The narrowest cure: `rm -rf target/<profile>/build/libsqlite3-sys-*`
   — the build script reruns in seconds and nothing else rebuilds.
+  ⚠️ Not always: on 2026-10-05 the build failed the same way right
+  after that `rm`, because cargo's fingerprint still called the build
+  script fresh. When it does, fall back to the two `cargo clean -p`
+  lines above (both profiles) — that one has never failed.
   **The one part that IS safe to prune is `incremental/`**, and
   it is the part that grows while you work: cargo collects a superseded
   session only when it rebuilds that same unit, so a configuration that
