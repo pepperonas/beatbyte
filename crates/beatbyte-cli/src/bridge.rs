@@ -131,13 +131,19 @@ fn default_source() -> Option<PathBuf> {
     bridge::library_path_from_settings(&std::fs::read_to_string(settings).ok()?)
 }
 
+/// The library the game uses — the one chosen in SETTINGS when there
+/// is one. A chosen library that is not reachable is no default: the
+/// run stops rather than importing into the wrong place.
 fn default_library() -> Option<PathBuf> {
-    Some(
-        dirs::data_dir()?
-            .join("beatbyte")
-            .join("songs")
-            .join("imported"),
-    )
+    let root = beatbyte_library::location::library_root(&dirs::data_dir()?.join("beatbyte"));
+    if !root.reachable {
+        eprintln!(
+            "the library at {} is not reachable — connect its drive first",
+            root.path.display()
+        );
+        return None;
+    }
+    Some(root.path)
 }
 
 fn now_ms() -> u64 {

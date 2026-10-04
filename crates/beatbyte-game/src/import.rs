@@ -15,7 +15,6 @@ use bevy::tasks::{AsyncComputeTaskPool, Task, block_on};
 use beatbyte_audio::{Analyzer, SpectralAnalyzer};
 use beatbyte_chart::{GenerateMeta, generate_chart};
 
-use crate::library::user_songs_dir;
 use crate::states::AppState;
 
 /// Extensions the decoder is verified to read (see the decode tests).
@@ -990,10 +989,24 @@ fn plan_chart_write(
 /// library root per device is what the sync keeps identical
 /// (ADR-0021); `songs/` next to the binary is still READ, for the
 /// fixtures and a portable layout, but nothing lands there.
+///
+/// The library may live elsewhere (SETTINGS > LIBRARY). When it is on
+/// a drive that is not plugged in, nothing is imported — never into
+/// the default place instead, which would split the songs over two.
 pub(crate) fn import_dir() -> Result<PathBuf, String> {
-    user_songs_dir()
-        .map(|dir| dir.join("imported"))
-        .ok_or_else(|| "no songs directory on this platform".to_owned())
+    if beatbyte_library::location::moving() {
+        return Err("the library is being moved - import again when it is done".to_owned());
+    }
+    let root = crate::library::library_root()
+        .ok_or_else(|| "no songs directory on this platform".to_owned())?;
+    if root.reachable {
+        Ok(root.path)
+    } else {
+        Err(format!(
+            "the library at {} is not reachable - connect its drive or choose another place in SETTINGS",
+            root.path.display()
+        ))
+    }
 }
 
 /// A filesystem-safe folder name from a file name.
@@ -1307,7 +1320,7 @@ mod watch_tests {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use super::{import_dir, sanitize_folder_name, song_name_from_stem, user_songs_dir};
+    use super::{import_dir, sanitize_folder_name, song_name_from_stem};
 
     /// ⚠️ Imports land in the data directory and nowhere else — never
     /// in a `songs/` beside the working directory, which is how the
@@ -1318,7 +1331,7 @@ mod tests {
     fn imports_always_land_in_the_data_directory() {
         let dir = import_dir().expect("a data directory");
         assert!(dir.is_absolute(), "{dir:?}");
-        assert_eq!(Some(dir), user_songs_dir().map(|d| d.join("imported")));
+        assert_eq!(Some(dir), crate::library::library_root().map(|r| r.path));
         let source = include_str!("import.rs");
         let start = source.find("fn import_dir()").expect("import_dir");
         let body: Vec<&str> = source[start..]

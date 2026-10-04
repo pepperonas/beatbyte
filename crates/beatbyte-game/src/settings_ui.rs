@@ -49,6 +49,8 @@ pub(crate) enum Row {
     Fullscreen,
     Theme,
     WatchFolder,
+    /// Where the song library lives, and moving it there.
+    Library,
     ReducedFlashing,
     /// What the stage's white flashes are timed by.
     FlashSync,
@@ -103,7 +105,7 @@ impl Row {
     /// Every row, in the order the screen shows them: **alphabetical
     /// by label**, and kept that way by a test — a new row goes where
     /// its name falls, not at the end of the list.
-    const ALL: [Row; 39] = [
+    const ALL: [Row; 40] = [
         Row::AiSearch,
         Row::BeatPulse,
         Row::Calibration,
@@ -117,6 +119,7 @@ impl Row {
         Row::HitLabels,
         Row::InputTest,
         Row::LatencyOffset,
+        Row::Library,
         Row::LoudnessMatch,
         Row::Lyrics,
         Row::LyricsLeadIn,
@@ -182,6 +185,7 @@ impl Row {
             Row::Fullscreen => "FULLSCREEN",
             Row::Theme => "STAGE THEME",
             Row::WatchFolder => "SONG FOLDER",
+            Row::Library => "LIBRARY",
             Row::SongPreview => "SONG PREVIEW",
             Row::Controls => "CONTROLS",
             Row::Calibration => "CALIBRATION",
@@ -224,6 +228,8 @@ impl Row {
                 },
             ),
             Row::ReducedFlashing => on_off(settings.reduced_flashing),
+            // The live value comes from `LibraryMove` in the refresh.
+            Row::Library => "-".to_owned(),
             Row::AiSearch => {
                 if !settings.ai_search {
                     "OFF".to_owned()
@@ -294,6 +300,7 @@ impl Row {
             // Which of the two clocks this is, and what it costs:
             // one needs a microphone, the other needs nothing.
             Row::FlashSync => "ROOM LEVEL hears the room; SONG BEAT needs no mic".to_owned(),
+            Row::Library => "ENTER picks a new place - or drop a folder here".to_owned(),
             // The one row whose value cannot say everything: WHERE
             // the model runs decides whether a key is needed at all.
             Row::AiSearch => "picks which recording a song search fetches".to_owned(),
@@ -363,6 +370,9 @@ impl Row {
             Row::RoomLights => settings.room_lights = !settings.room_lights,
             Row::SongPreview => settings.song_preview = !settings.song_preview,
             Row::WatchFolder => settings.watch_folder = None,
+            // An ACTION row: ENTER and LEFT drive the move, see
+            // `library_move`; nothing here is a value to step.
+            Row::Library => {}
             Row::ReducedFlashing => settings.reduced_flashing = !settings.reduced_flashing,
             Row::AiSearch => settings.ai_search = !settings.ai_search,
             Row::FlashSync => {
@@ -479,6 +489,13 @@ fn on_off(value: bool) -> String {
 /// The highlighted settings row. Public so the screenshot harness
 /// can select a row below the fold.
 pub struct SettingsCursor(pub usize);
+
+/// Whether the cursor sits on the LIBRARY row (a dropped folder is
+/// then the answer to "where?").
+#[must_use]
+pub(crate) fn library_row_selected(cursor: &SettingsCursor) -> bool {
+    Row::ALL.get(cursor.0) == Some(&Row::Library)
+}
 
 /// Where the last in-app export landed (or why it did not). Shown
 /// on the export row itself, so the answer sits where the question
@@ -653,6 +670,7 @@ fn settings_input(
         With<ui_kit::BackButton>,
     >,
     mut smart: ResMut<crate::smart_lyrics::SmartLyrics>,
+    mut library_move: ResMut<crate::library_move::LibraryMove>,
 ) {
     let nav = MenuNav::read(&map, &keys, pads.iter());
     let count = Row::ALL.len();
@@ -701,6 +719,18 @@ fn settings_input(
             }
         }
         return;
+    }
+    if row == Row::Library {
+        if nav.confirm || clicked {
+            library_move.confirm();
+            sounds.write(crate::sfx::UiSound::Confirm);
+        } else if nav.left {
+            library_move.decline();
+            sounds.write(crate::sfx::UiSound::Back);
+        }
+        if nav.confirm || clicked || nav.left {
+            return;
+        }
     }
     if row == Row::LyricsModel && (nav.confirm || clicked) {
         // The one explicit action that fetches anything (README):
@@ -771,6 +801,7 @@ fn refresh_settings(
     export_note: Res<ExportNote>,
     mut subtitles: SubtitleText,
     mut smart: ResMut<crate::smart_lyrics::SmartLyrics>,
+    library_move: Res<crate::library_move::LibraryMove>,
 ) {
     // The model's standing is looked up the first time the screen
     // asks (a hash of the file, off the main thread); idempotent.
@@ -808,6 +839,7 @@ fn refresh_settings(
         let wanted = match Row::ALL[value.0] {
             Row::ExportHistory if !export_note.0.is_empty() => export_note.0.clone(),
             Row::LyricsModel => smart.model_text(),
+            Row::Library => library_move.value(),
             row => row.value(&settings),
         };
         if text.0 != wanted {

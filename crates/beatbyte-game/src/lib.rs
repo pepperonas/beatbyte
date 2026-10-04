@@ -27,6 +27,7 @@ pub mod import;
 mod input_test;
 pub mod librarian;
 pub mod library;
+pub mod library_move;
 pub mod loudness;
 pub mod lyrics_fetch;
 pub mod mc;
@@ -258,6 +259,7 @@ pub fn run() -> AppExit {
         gameplay::fog::FogPlugin,
         chore::ChorePlugin,
         librarian::LibrarianPlugin,
+        library_move::LibraryMovePlugin,
         song_info::SongInfoPlugin,
         study_twin::StudyTwinPlugin,
         players::PlayersPlugin,

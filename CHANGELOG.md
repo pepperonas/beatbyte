@@ -14,6 +14,24 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.64] - 2026-10-05
+
+### Added
+
+- **The song library can live anywhere — an external drive, say.**
+  SETTINGS > LIBRARY shows where it is; ENTER opens the folder dialog
+  (or drop a folder onto the window while the row is selected). The
+  library is then copied there, every file checked against its
+  checksum, in passes until nothing changes, and only then does the
+  game switch over. The old copy stays until you confirm deleting it,
+  and even then only files that are still exactly what was copied are
+  removed. A move cut off halfway resumes where it stopped; a folder
+  that already holds something else is refused.
+- **A library on an unplugged drive is said, not hidden.** The settings
+  row and the song browser say it is not reachable; nothing is
+  imported into the internal disk instead, and `beatbyte-cli sync`
+  refuses rather than send an empty library.
+
 ## [0.18.63] - 2026-10-05
 
 ### Security

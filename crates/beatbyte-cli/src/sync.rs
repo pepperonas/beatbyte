@@ -199,8 +199,10 @@ fn sync_dir(data: &Path) -> PathBuf {
     data.join("sync")
 }
 
+/// The library this device uses (`beatbyte_library::location`): the
+/// one chosen in the game's SETTINGS, else the default.
 fn library_root(data: &Path) -> PathBuf {
-    data.join("songs").join("imported")
+    beatbyte_library::location::library_root(data).path
 }
 
 fn hostname() -> String {
@@ -851,6 +853,16 @@ pub fn sync(options: &Options) -> Result<String, String> {
     let data = &options.data;
     if options.check_game && is_game_running() {
         return Err("the game is running — close it first (it rewrites its files on exit)".into());
+    }
+    // A library on a drive that is not plugged in would read as a
+    // library with no songs — and publishing that is how the other
+    // device would learn that every song was deleted.
+    let root = beatbyte_library::location::library_root(data);
+    if !root.reachable {
+        return Err(format!(
+            "the library at {} is not reachable — connect its drive first",
+            root.path.display()
+        ));
     }
     let mut config = load_config(data, options.dry_run)?;
     let spec = options

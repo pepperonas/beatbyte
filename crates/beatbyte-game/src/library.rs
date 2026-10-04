@@ -269,16 +269,35 @@ pub fn user_songs_dir() -> Option<PathBuf> {
     dirs::data_dir().map(|dir| dir.join("beatbyte").join("songs"))
 }
 
+/// The game's data directory, `<data>/beatbyte`.
+#[must_use]
+pub fn data_dir() -> Option<PathBuf> {
+    dirs::data_dir().map(|dir| dir.join("beatbyte"))
+}
+
+/// The library this device uses: the folder the player chose in
+/// SETTINGS, or `<data>/beatbyte/songs/imported` (ADR-0021, and see
+/// `beatbyte_library::location`).
+#[must_use]
+pub fn library_root() -> Option<beatbyte_library::location::Root> {
+    data_dir().map(|data| beatbyte_library::location::library_root(&data))
+}
+
 /// Every directory songs are read from, in scan order.
 ///
 /// ONE definition: the scan walks these, and the settings screen
 /// shows them. Two lists would drift, and the screen would then be
 /// telling the player about a folder the game does not read.
+///
+/// A chosen library REPLACES the default one rather than joining it:
+/// after a move the old place may still hold the copy the player
+/// kept, and reading both would list every song twice.
 #[must_use]
 pub fn scan_roots() -> Vec<PathBuf> {
     let mut roots = vec![PathBuf::from(SONGS_DIR)];
-    if let Some(user_dir) = user_songs_dir() {
-        roots.push(user_dir);
+    match library_root() {
+        Some(root) if root.chosen => roots.push(root.path),
+        _ => roots.extend(user_songs_dir()),
     }
     roots
 }

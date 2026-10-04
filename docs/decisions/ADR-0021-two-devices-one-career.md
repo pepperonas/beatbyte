@@ -93,6 +93,13 @@ a device that ran an old build.
 `<data>/beatbyte/songs/` on every device, the repo's `songs/imported/`
 is migrated into it on this Mac (a rename on the same volume, not a
 copy), and imports land there even when the game runs from a checkout.
+*Amended 2026-10-05 (v0.18.64):* the root may be put elsewhere —
+SETTINGS > LIBRARY, an external drive for instance. Still one root per
+device: the choice is recorded in `<data>/beatbyte/library-location.json`,
+a device setting sync never carries, and every reader asks
+`beatbyte_library::location`. A chosen root that is not reachable is
+never replaced by the default: imports stop, and sync refuses rather
+than publish an empty library as every song deleted.
 
 **6. Sync runs only while the game does not.** `beatbyte-cli sync`
 refuses while `beatbyte` runs, exactly as `classic` does; a launcher
