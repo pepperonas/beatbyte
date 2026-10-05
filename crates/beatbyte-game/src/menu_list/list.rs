@@ -141,6 +141,34 @@ pub fn held_row(held: Option<usize>, count: usize) -> Option<usize> {
     held.map(|row| row.min(count.saturating_sub(1)))
 }
 
+/// How many rows Page Up / Page Down move.
+pub const PAGE_ROWS: usize = 8;
+
+/// A jump key: Home, End, Page Up, Page Down.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Jump {
+    /// To the first row.
+    Home,
+    /// To the last row.
+    End,
+    /// [`PAGE_ROWS`] up, stopping at the first row.
+    PageUp,
+    /// [`PAGE_ROWS`] down, stopping at the last row.
+    PageDown,
+}
+
+/// Where a jump lands in a list of `count` rows. Pure — tested.
+#[must_use]
+pub fn jump_to(cursor: usize, count: usize, jump: Jump) -> usize {
+    let last = count.saturating_sub(1);
+    match jump {
+        Jump::Home => 0,
+        Jump::End => last,
+        Jump::PageUp => cursor.saturating_sub(PAGE_ROWS).min(last),
+        Jump::PageDown => (cursor + PAGE_ROWS).min(last),
+    }
+}
+
 /// What the player did to a list this frame.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct ListEvents {
@@ -254,6 +282,20 @@ impl<L: Send + Sync + 'static> ListInput<'_, '_, L> {
                 step_cursor(-1, cursor);
             } else if event.y < 0.0 {
                 step_cursor(1, cursor);
+            }
+        }
+        for (key, jump) in [
+            (KeyCode::Home, Jump::Home),
+            (KeyCode::End, Jump::End),
+            (KeyCode::PageUp, Jump::PageUp),
+            (KeyCode::PageDown, Jump::PageDown),
+        ] {
+            if self.keys.just_pressed(key) && count > 0 {
+                let landed = jump_to(*cursor, count, jump);
+                if landed != *cursor {
+                    *cursor = landed;
+                    moved = true;
+                }
             }
         }
         let pointer = ui_kit::read_rows(self.rows.iter().map(|(row, i)| (row.0, i)));
@@ -418,6 +460,23 @@ pub fn follow_cursor<L: Send + Sync + 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Home and End reach the ends; a page moves eight rows and stops
+    /// at an end rather than wrapping, like every list here.
+    #[test]
+    fn jumps_reach_the_ends_and_pages_stop_there() {
+        assert_eq!(jump_to(5, 40, Jump::Home), 0);
+        assert_eq!(jump_to(5, 40, Jump::End), 39);
+        assert_eq!(jump_to(5, 40, Jump::PageDown), 13);
+        assert_eq!(jump_to(5, 40, Jump::PageUp), 0);
+        assert_eq!(jump_to(20, 40, Jump::PageUp), 12);
+        assert_eq!(jump_to(35, 40, Jump::PageDown), 39);
+        assert_eq!(
+            jump_to(0, 0, Jump::End),
+            0,
+            "an empty list has nowhere to go"
+        );
+    }
 
     #[test]
     fn left_steps_down_and_right_or_enter_step_up() {

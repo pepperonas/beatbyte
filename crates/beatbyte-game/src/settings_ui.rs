@@ -581,7 +581,7 @@ fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
             crate::prompts::device_footer(
                 parent,
                 &font,
-                "UP/DOWN choose  LEFT/RIGHT adjust  click left/right half  ESC back",
+                "UP/DOWN choose  LEFT/RIGHT adjust  BACKSPACE default  ESC back",
                 "D-PAD choose and adjust  EAST back",
             );
             ui_kit::back_button(parent, &font, "MAIN MENU");
@@ -605,6 +605,7 @@ fn settings_input(
     >,
     mut smart: ResMut<crate::smart_lyrics::SmartLyrics>,
     mut library_move: ResMut<crate::library_move::LibraryMove>,
+    keys: Res<ButtonInput<KeyCode>>,
 ) {
     let events = list.read(&mut cursor.0, Row::ALL.len());
     let row = Row::ALL[cursor.0];
@@ -652,6 +653,15 @@ fn settings_input(
         }
         _ => {}
     }
+    // Backspace puts the row back to the shipped default — the value a
+    // player would otherwise have to remember. A row without a default
+    // (a door, a custom row) ignores it.
+    if keys.just_pressed(KeyCode::Backspace) {
+        if row.spec().reset(&mut settings, &Settings::default()) {
+            say(crate::sfx::UiSound::Toggle);
+        }
+        return;
+    }
     let stepped = events
         .step
         .filter(|direction| row.spec().step(&mut settings, *direction))
@@ -692,6 +702,7 @@ fn refresh_settings(
             text.0 = wanted;
         }
     }
+    let defaults = Settings::default();
     paint.paint(cursor.0, settings.high_contrast, |index| {
         let row = Row::ALL[index];
         match row.spec().action() {
@@ -701,9 +712,23 @@ fn refresh_settings(
             Some(Act::ExportHistory) if !export_note.0.is_empty() => export_note.0.clone(),
             Some(Act::LyricsModel) => smart.model_text(),
             Some(Act::Library) => library_move.value(),
-            _ => row.value(&settings),
+            _ => changed_mark(
+                row.value(&settings),
+                row.spec().differs(&settings, &defaults),
+            ),
         }
     });
+}
+
+/// A value that differs from the shipped default carries a dot, so a
+/// player sees at a glance what they changed — and BACKSPACE takes it
+/// back. Pure — tested.
+fn changed_mark(value: String, differs: bool) -> String {
+    if differs {
+        format!("• {value}")
+    } else {
+        value
+    }
 }
 
 fn persist_settings(settings: Res<Settings>) {
@@ -712,7 +737,28 @@ fn persist_settings(settings: Res<Settings>) {
 
 #[cfg(test)]
 mod tests {
-    use super::{SUBTITLE_CHARS, short_path};
+    use super::{SUBTITLE_CHARS, changed_mark, short_path};
+
+    /// The shipped settings show no dot at all; a changed value shows
+    /// one, and resetting the row takes it away again.
+    #[test]
+    fn a_changed_setting_carries_a_dot_until_it_is_reset() {
+        use super::{Row, Settings};
+        let defaults = Settings::default();
+        let mut settings = Settings::default();
+        for row in Row::ALL {
+            assert!(
+                !row.spec().differs(&settings, &defaults),
+                "{row:?} differs from itself"
+            );
+        }
+        assert!(Row::HIT_LABELS.spec().step(&mut settings, 1));
+        assert!(Row::HIT_LABELS.spec().differs(&settings, &defaults));
+        assert_eq!(changed_mark("OFF".to_owned(), true), "• OFF");
+        assert_eq!(changed_mark("ON".to_owned(), false), "ON");
+        assert!(Row::HIT_LABELS.spec().reset(&mut settings, &defaults));
+        assert!(!Row::HIT_LABELS.spec().differs(&settings, &defaults));
+    }
 
     #[test]
     fn a_long_path_keeps_its_end() {

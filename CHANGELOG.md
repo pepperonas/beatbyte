@@ -14,6 +14,17 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.74] - 2026-10-05
+
+### Added
+
+- **Page Up / Page Down, Home / End in every menu list** — settings,
+  pause, main menu, about, controls, players, achievements. A page is
+  eight rows; the cursor stops at the ends as before.
+- **Settings show what you changed.** A value that differs from the
+  shipped default carries a dot (`• 480 PX/S`), and BACKSPACE puts the
+  selected row back to its default.
+
 ## [0.18.73] - 2026-10-05
 
 ### Fixed

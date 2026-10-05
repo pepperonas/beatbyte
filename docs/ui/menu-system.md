@@ -44,6 +44,11 @@ The accessors are plain function pointers, so a toggle bound to a float
 does not compile. `Unit` formats a slider: `Percent`, `SignedMs`,
 `PxPerS`, `SecondsOfMs`.
 
+A value row also knows its default: `differs(state, default)` and
+`reset(state, default)` — the settings screen marks a changed value with
+a dot and resets the selected row on BACKSPACE, against
+`Settings::default()`. Doors and custom rows have no default.
+
 Everything a screen does with a row is a pure function on the spec —
 `value`, `step`, `feel`, `action`, `is_door`, `subtitle`,
 `next_index`, `format_unit` — tested on a toy state in `spec.rs`.
@@ -93,6 +98,8 @@ ListPanel::<BindingRows>                  // the scrolling panel
 | `HeldRow` | resource | holds every list's cursor on one row (`BEATBYTE_SHOT_ROW`) |
 
 The rules it enforces for every list: the cursor **stops at both ends**;
+Page Up / Page Down move eight rows and Home / End reach the ends
+(`jump_to`);
 the wheel moves the cursor (it never steps a value); the pointer selects
 a row only when it **moved** (a window opening under a resting mouse
 takes nothing); a click on a value row steps by the **half** it lands

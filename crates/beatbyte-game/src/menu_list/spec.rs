@@ -197,6 +197,34 @@ impl<S: 'static, X: Copy + 'static> RowSpec<S, X> {
         }
     }
 
+    /// Whether the row's value differs from `default`'s. Only a row
+    /// that holds a value has a default: a door and a custom row never
+    /// differ. Pure — tested.
+    #[must_use]
+    pub fn differs(&self, state: &S, default: &S) -> bool {
+        match &self.kind {
+            Kind::Toggle { get, .. } => get(state) != get(default),
+            Kind::Slider { get, step, .. } => (get(state) - get(default)).abs() > step * 0.5,
+            Kind::Choice { get, .. } => get(state) != get(default),
+            Kind::Door(_) | Kind::Custom { .. } => false,
+        }
+    }
+
+    /// Put the row back to `default`'s value. Returns whether anything
+    /// changed. Pure — tested.
+    pub fn reset(&self, state: &mut S, default: &S) -> bool {
+        if !self.differs(state, default) {
+            return false;
+        }
+        match &self.kind {
+            Kind::Toggle { get, set, .. } => set(state, get(default)),
+            Kind::Slider { get, set, .. } => set(state, get(default)),
+            Kind::Choice { get, set, .. } => set(state, get(default)),
+            Kind::Door(_) | Kind::Custom { .. } => return false,
+        }
+        true
+    }
+
     /// Which sound a step makes.
     #[must_use]
     pub fn feel(&self) -> Feel {
@@ -253,7 +281,7 @@ pub fn next_index(current: usize, count: usize, direction: i32, ends: Ends) -> u
 mod tests {
     use super::*;
 
-    #[derive(Default)]
+    #[derive(Debug, Default, PartialEq)]
     struct Toy {
         on: bool,
         level: f32,
@@ -317,6 +345,34 @@ mod tests {
         },
         subtitle: Subtitle::Live(|| "worked out".to_owned()),
     };
+
+    /// Every row that holds a value knows whether it left its default
+    /// and goes back to it; a door and a custom row have no default.
+    #[test]
+    fn a_value_row_resets_to_its_default_and_a_door_has_none() {
+        let default = Toy::default();
+        let mut toy = Toy::default();
+        for row in [&TOGGLE, &SLIDER, &SIZE] {
+            assert!(
+                !row.differs(&toy, &default),
+                "{} starts at its default",
+                row.label
+            );
+            assert!(row.step(&mut toy, 1));
+            assert!(row.differs(&toy, &default), "{} moved", row.label);
+            assert!(row.reset(&mut toy, &default));
+            assert!(!row.differs(&toy, &default), "{} is back", row.label);
+            assert!(
+                !row.reset(&mut toy, &default),
+                "a second reset changes nothing"
+            );
+        }
+        assert_eq!(toy, default);
+        for row in [&DOOR, &MINE] {
+            assert!(!row.differs(&toy, &default));
+            assert!(!row.reset(&mut toy, &default));
+        }
+    }
 
     #[test]
     fn a_toggle_flips_either_way_and_reads_on_off() {

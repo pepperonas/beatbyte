@@ -2255,7 +2255,8 @@ User commission: set the song library's folder in the settings, an external driv
 - [ ] P0 **platzwaechter** stops deleting `target/` files by age (the cause of the vanishing `bindgen.rs`); prune `incremental/` and whole profiles instead.
 - [ ] S0 **Data truth** — the 100 % miss contexts, finished runs at 0 %, runs without a player.
 - [ ] S1 **Statistics layout** — header anchored, panel width from `ui_kit`, plots full width.
-- [ ] M2 Page Up/Down, Home/End in `ListInput`. M3 changed-from-default marker + Backspace reset. M5 a line per main-menu item. M4 slider fill bars.
+- [x] M2 *(v0.18.74)* Page Up/Down, Home/End in `ListInput` (`jump_to`, a page is eight rows). M3 *(v0.18.74)* a dot on a setting that differs from `Settings::default()`, BACKSPACE resets the row (`RowSpec::differs` / `reset`; doors and custom rows have no default). *Verified: 2145 tests; the new pins seen to fail under a mutation; settings photographed with the real file — only SCROLL SPEED (480, default 420) carries the dot.*
+- [ ] M5 a line per main-menu item. M4 slider fill bars.
 - [ ] S2 **Plot shader spike** (`UiMaterial`), stop point: HDR/bloom look, frame time, the 2015 Mac.
 - [ ] S3 diagrams that answer their question; S4 a plot cursor instead of hover; M1 type-to-jump in Settings; S5 ADR-0016 amendment, docs, pins.
 - [ ] A1 **Warn about a delaying audio route** (user, 2026-10-05: "schreibe die beiden verbesserungen in die todos, machen wir auch später"). When the output device is a virtual driver (inspector-rust's "boom Audio", BlackHole, Soundflower, …), say so at song start: the sound is delayed and the game cannot see by how much — turn it off to play, or calibrate. Found when The Final Countdown felt late all through the song with boom on and was right through the MacBook speakers (CLAUDE.md gotcha).
