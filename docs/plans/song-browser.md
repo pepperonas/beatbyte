@@ -83,9 +83,10 @@ the presentation and the key layout change:
    row go.
 4. **Input:** type-to-search, the version selector, Page/Home/End, the
    action menu with Ctrl/Cmd shortcuts, the delete question inside it.
-5. **Harness:** `BEATBYTE_SHOT_*` keep working (`SHOT_OPEN` opens the
-   version list), the delete/align/taste drills move to the new keys;
-   new switch `BEATBYTE_SHOT_ACTIONS` photographs the action menu.
+5. **Harness:** `BEATBYTE_SHOT_*` keep working, the delete/align/taste
+   drills move to the new keys; `BEATBYTE_SHOT_OPEN` is gone (there is
+   no tree to open) and the new switch `BEATBYTE_SHOT_ACTIONS`
+   photographs the action menu.
 6. **Docs:** README controls, harness reference, CHANGELOG, this plan.
 
 Verification each step: the full gate; the browser photographed at

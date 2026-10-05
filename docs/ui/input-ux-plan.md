@@ -124,10 +124,11 @@ Phased; each phase lands as its own gated, versioned commit.
   with the same device that cancels).
 - **Editor keys stay raw**: the editor is a tool with tool shortcuts
   (17 of them), not a menu; remapping them is out of scope.
-- **Browser shortcuts stay as keys** (F search, S sort, E edit,
-  DEL delete, …): they are accelerators, not remappable navigation.
-  The ActionBar chips trigger the same paths; footers name the
-  chips (or “chips above”), not a wall of letters. Pad footers stay
+- **Browser shortcuts stay as keys** (since v0.18.75: typing
+  searches, Ctrl/Cmd + letter for every tool, Ctrl+S sort,
+  Ctrl/Cmd+Backspace delete): they are accelerators, not remappable
+  navigation. The action menu (Tab) triggers the same paths; footers
+  name the menu, not a wall of letters. Pad footers stay
   short (D-pad / South / East).
 - **Join has no mouse-join**: seats are device-bound; leave works
   by Back. Deliberate — a click cannot invent a pad.
