@@ -14,6 +14,31 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.69] - 2026-10-05
+
+### Added
+
+- **`tools/shot-check.sh` and `beatbyte-cli shots compare`: proof that
+  a change left the screens alone.** Photograph the screens before a
+  change (`record`), again after (`compare`), and the comparison fails
+  when a single pixel moved — shown failing on one letter removed from
+  a subtitle, with the box of the changed pixels around it.
+
+### Fixed
+
+- **Screenshots of a screen entered from boot were half covered.** The
+  harness took them while the tube was still powering on: black bars at
+  the top and bottom and the bright scanline across the middle. They
+  now wait until it has opened.
+- **The menus were laid out a few pixels differently from one start to
+  the next.** The UI scale followed the window height only when it was
+  more than 1 % off, so it kept whatever value the window passed through
+  on its way to its size — the same screen came out up to 8 px taller or
+  shifted. It now lands exactly on its target.
+- **A screenshot could show the wrong row.** The mouse resting where the
+  window opened moved the list's cursor; the harness now holds the row
+  `BEATBYTE_SHOT_ROW` asks for.
+
 ## [0.18.68] - 2026-10-05
 
 ### Changed

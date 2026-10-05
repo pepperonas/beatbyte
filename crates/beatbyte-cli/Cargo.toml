@@ -25,6 +25,9 @@ clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 dirs = { workspace = true }
+# Reads the harness screenshots `shots compare` checks. Already in the
+# graph through Bevy; PNG only.
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [features]
 # Local ML models (ADR-0013): the `models` subcommand. Off by default;

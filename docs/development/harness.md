@@ -132,6 +132,47 @@ because the autopilot only ever reaches the menu, the browser and the
 results screen — which left the four hand-reached screens as the ones
 least likely to be checked after a change.
 
+### Did a change leave the screens alone? `tools/shot-check.sh`
+
+```bash
+tools/shot-check.sh record  /tmp/before   # BEFORE the change
+# … change the code …
+tools/shot-check.sh compare /tmp/before   # fails if a picture changed
+```
+
+Both halves photograph the same screens (default: settings at rows
+0, 13 and 39, and the main menu; `SHOTS="settings:5 about"` picks
+others) in a throwaway `HOME` and a pinned 1280x800 window, and
+`beatbyte-cli shots compare` checks them pixel for pixel. **Two runs of
+the same build give identical files** — by default not one pixel may
+change, because a tolerance was measured against and lost: one letter
+removed from a subtitle changes 0.062 % of the picture. The comparison
+was seen to fail on exactly that one-letter change (the counter-check),
+with the box of the changed pixels around the subtitle. When it fails,
+LOOK at the two pictures: a changed picture can be the point of the
+change.
+
+Identical files took three fixes (0.18.69), each found by comparing
+two runs of the same build:
+
+- **The shot waits for the tube.** The power-on effect (`crt.rs`) runs
+  over the first screen, and a shot 0.6 s into a screen entered from
+  boot caught its black bars and its scanline across the middle — every
+  `BEATBYTE_SHOT_STATE` picture had them, and the line, landing
+  somewhere else each run, read as "noise".
+- **The UI scale lands exactly on its target.** `sync_ui_scale` only
+  wrote when the scale was more than 0.01 off, so it stayed on whatever
+  the window passed through on its way to its size: the same screen came
+  out up to 8 px taller or shifted from one start to the next.
+- **The photographed row is held.** The pointer moves a list's cursor,
+  and a window that opens under a resting mouse gets exactly that — one
+  shot in five showed the wrong row. `BEATBYTE_SHOT_ROW` is re-applied
+  every frame.
+
+A picture of a different SIZE than its reference means the window
+opened on the other display (Retina 2560x1600, a plain monitor
+1280x800); the comparison says so instead of counting pixels.
+
 **Take screenshots in a separate run from any pass/fail verdict.**
 Capturing a frame stalls it long enough for the key injector to miss a
 note: a song that scores 624 perfect without capture produced 16 misses

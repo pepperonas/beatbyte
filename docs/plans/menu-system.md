@@ -1,6 +1,6 @@
 # Plan: declarative settings rows and one list renderer
 
-Status: **phase 1 done (v0.18.67)**, phase 2 next (2026-10-05).
+Status: **phases 1–3 done (v0.18.67–0.18.69)**; stop and report before phase 4 (2026-10-05).
 
 ## The brief (rewritten, slim form)
 
@@ -204,3 +204,19 @@ engine's own screenshot and checks luma first.
 - Lines: `settings_ui.rs` 865 → 875 code lines (+ new tests), plus
   251 lines of generic model. The saving comes with phase 2, when the
   list screens share one renderer.
+
+## Phase 2 result (v0.18.68)
+
+`menu_list::list` (spawn, input, paint, follow, `step_of`, `sound_for`);
+settings and pause on it, both with `DespawnOnExit`. Pause behaves like
+settings now (click halves, a dial tick, one step for LEFT+RIGHT). The
+model drill, which had never run, runs. Lines: `settings_ui.rs`
+865 → 698 code lines, pause −89, renderer +309.
+
+## Phase 3 result (v0.18.69)
+
+`tools/shot-check.sh` + `beatbyte-cli shots compare`, exact by default.
+The "noise" was three bugs (CRT power-on in the shot, a UI scale off its
+target by up to 1 %, the pointer moving the photographed row); with them
+fixed, two runs give identical files. Counter-checked on a one-letter
+change.

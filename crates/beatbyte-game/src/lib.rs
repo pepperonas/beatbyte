@@ -388,7 +388,13 @@ fn sync_ui_scale(
         return;
     };
     let target = ui_scale_target(window.height(), settings.ui_scale);
-    if (scale.0 - target).abs() > 0.01 {
+    // Exactly the target. A tolerance here (it was 0.01) left the
+    // scale at whatever value the window passed through last on its
+    // way to its final size: the same screen came out up to 8 px
+    // taller or shifted from one start to the next, which a pixel
+    // comparison of two runs found. The guard only spares a change
+    // event when nothing changed.
+    if scale.0 != target {
         scale.0 = target;
     }
 }
@@ -507,7 +513,32 @@ mod tests {
 
 #[cfg(test)]
 mod scale_tests {
-    use super::ui_scale_target;
+    use super::{sync_ui_scale, ui_scale_target};
+    use bevy::ecs::system::RunSystemOnce;
+    use bevy::prelude::*;
+
+    /// The UI scale lands EXACTLY on its target. With a 0.01 tolerance
+    /// it stayed on whatever value the window passed through last, and
+    /// the same screen came out a few pixels taller or shifted from one
+    /// start to the next.
+    #[test]
+    fn the_ui_scale_lands_exactly_on_its_target() {
+        let mut world = World::new();
+        let mut window = bevy::window::Window::default();
+        window.resolution.set(1280.0, 800.0);
+        world.spawn(window);
+        world.insert_resource(crate::config::Settings::default());
+        let target = ui_scale_target(800.0, crate::config::Settings::default().ui_scale);
+        // A value the window passed through on its way: 0.005 off.
+        world.insert_resource(bevy::ui::UiScale(target - 0.005));
+        world
+            .run_system_once(sync_ui_scale)
+            .expect("the system runs");
+        assert!(
+            (world.resource::<bevy::ui::UiScale>().0 - target).abs() < 1e-6,
+            "the scale stayed off its target"
+        );
+    }
 
     #[test]
     fn the_user_multiplier_stacks_on_the_window_sync_and_stays_clamped() {

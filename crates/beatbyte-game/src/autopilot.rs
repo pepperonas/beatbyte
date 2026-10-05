@@ -118,10 +118,12 @@ impl Plugin for AutopilotPlugin {
         if let Ok(raw) = std::env::var("BEATBYTE_SHOT_STATE") {
             match shot_state(&raw) {
                 Some(target) => {
-                    app.insert_resource(ShotState(target)).add_systems(
-                        Update,
-                        (enter_shot_state, reopen_shot_search, quit_after_shot),
-                    );
+                    app.insert_resource(ShotState(target))
+                        .add_systems(
+                            Update,
+                            (enter_shot_state, reopen_shot_search, quit_after_shot),
+                        )
+                        .add_systems(PreUpdate, hold_shot_row);
                     if let Some(dir) = std::env::var_os("BEATBYTE_SHOT_DIR") {
                         let dir = std::path::PathBuf::from(dir);
                         if std::fs::create_dir_all(&dir).is_ok() {
@@ -449,6 +451,38 @@ fn enter_shot_state(
     next.set(target.0);
 }
 
+/// The row `BEATBYTE_SHOT_ROW` asks for, held there every frame of
+/// the photographed screen. The pointer moves a list's cursor when it
+/// moves over a row, and a window that opens under a resting mouse
+/// gets exactly that: one of five shots of the settings screen came
+/// out on LYRICS instead of LIBRARY, with the subtitle the other row
+/// does not have — the screen photographed, but not the one asked
+/// for. Held in `PreUpdate`, so a stray move is undone a frame later
+/// and long before the shot (which waits 0.6 s into the screen).
+fn hold_shot_row(
+    target: Res<ShotState>,
+    state: Res<State<AppState>>,
+    mut settings_cursor: ResMut<crate::settings_ui::SettingsCursor>,
+    mut awards: ResMut<crate::achievements_ui::AchievementsView>,
+) {
+    if *state.get() != target.0 {
+        return;
+    }
+    let Some(row) = shot_row() else {
+        return;
+    };
+    match target.0 {
+        AppState::Settings if settings_cursor.0 != row => settings_cursor.0 = row,
+        AppState::Achievements if awards.row != row => awards.row = row,
+        _ => {}
+    }
+}
+
+/// `BEATBYTE_SHOT_ROW`, if it is a number.
+fn shot_row() -> Option<usize> {
+    std::env::var("BEATBYTE_SHOT_ROW").ok()?.parse().ok()
+}
+
 /// `BEATBYTE_SHOT_SEARCH` wants the search OPEN in the picture, and
 /// the browser closes the field whenever it is entered (a field that
 /// swallows every letter read as a broken screen when a player came
@@ -540,6 +574,13 @@ pub fn next_shot(times: &[f64], now: f64, already: impl Fn(f64) -> bool) -> Opti
         .find(|&at| !already(at))
 }
 
+/// Whether the picture can be taken: the tube has opened. Pure —
+/// tested.
+#[must_use]
+pub fn shot_ready(crt: crate::crt::Crt) -> bool {
+    matches!(crt, crate::crt::Crt::Idle)
+}
+
 /// Take one screenshot per named moment of the run (state screens
 /// wait out the transition fade first).
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI
@@ -551,6 +592,7 @@ fn autopilot_screenshots(
     time: Res<Time>,
     players: Query<&crate::gameplay::PlayerSession>,
     phase: Option<Res<State<crate::states::GamePhase>>>,
+    crt: Res<crate::crt::Crt>,
     mut taken: Local<std::collections::HashSet<&'static str>>,
     mut in_state_for: Local<(Option<AppState>, f32)>,
 ) {
@@ -560,7 +602,11 @@ fn autopilot_screenshots(
     } else {
         in_state_for.1 += time.delta_secs();
     }
-    if in_state_for.1 < 0.6 {
+    // The tube's power-on runs over whatever screen comes first. Every
+    // shot of a screen entered straight from boot used to catch its
+    // black bars and its bright scanline mid-opening — which looked
+    // like noise in a pixel comparison and was half the picture.
+    if in_state_for.1 < 0.6 || !shot_ready(*crt) {
         return;
     }
     let moment = match state.get() {
@@ -3781,5 +3827,20 @@ mod end_tests {
         // three minutes inside another track.
         assert!(!song_ended_sanely(185.6, 63.3));
         assert!(!song_ended_sanely(600.0, 120.0));
+    }
+}
+
+#[cfg(test)]
+mod shot_tests {
+    use super::shot_ready;
+    use crate::crt::Crt;
+
+    /// The picture waits for the tube: a shot during the power-on
+    /// caught black bars and the scanline across half the screen.
+    #[test]
+    fn a_shot_waits_for_the_tube_to_open() {
+        assert!(shot_ready(Crt::Idle));
+        assert!(!shot_ready(Crt::On(0.4)));
+        assert!(!shot_ready(Crt::Off(0.1)));
     }
 }

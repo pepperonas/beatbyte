@@ -894,6 +894,13 @@ artifact, smoke-test it (neutral CWD!), then
 - **`RenderLayers` is per entity, never inherited**, and a joint or
   limb without the stage layer is simply invisible; the figure builder
   puts it on every entity it spawns and a wired test walks the tree.
+- **"Noise" between two screenshots of the same build is a bug until
+  shown otherwise.** What looked like a wandering line and a few pixels
+  of jitter were three defects: the shot caught the CRT power-on (black
+  bars, scanline), the UI scale kept a value within 0.01 of its target,
+  and the resting mouse moved the photographed row. With them fixed two
+  runs are bit-identical, and `tools/shot-check.sh` compares exactly —
+  a tolerance would have passed a removed letter (0.062 %).
 - **`BEATBYTE_SHOT_TIMES` frames are named `beatbyte-gameplay-t<time>.png`**
   — a capture loop that stops on "two PNGs exist" stops on the menu
   shot and the fixed `gameplay-phrase` frame, before the timed ones.

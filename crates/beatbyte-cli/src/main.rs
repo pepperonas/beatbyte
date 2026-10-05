@@ -30,6 +30,7 @@ mod players;
 mod poly;
 mod redesign;
 mod review;
+mod shots;
 mod study;
 mod sync;
 mod telemetry;
@@ -45,6 +46,22 @@ mod vocals;
 struct Cli {
     #[command(subcommand)]
     command: Command,
+}
+
+/// `shots` actions.
+#[derive(Subcommand)]
+enum ShotsAction {
+    /// Compare a reference picture (or folder) with a new one.
+    Compare {
+        /// The reference PNG, or a folder of them.
+        reference: PathBuf,
+        /// The new PNG, or the folder holding pictures of the same
+        /// names.
+        new: PathBuf,
+        /// The share of pixels allowed to change, 0..1.
+        #[arg(long, default_value_t = shots::DEFAULT_MAX_SHARE)]
+        max_share: f64,
+    },
 }
 
 /// The store's own subcommands.
@@ -269,6 +286,14 @@ enum Command {
         /// `<chart>.chart-check.wav`).
         #[arg(long)]
         out: Option<PathBuf>,
+    },
+    /// Compare harness screenshots (`BEATBYTE_SHOT_DIR`): two files,
+    /// or two folders by file name. Fails when a picture changed —
+    /// how a refactor of a screen proves it left the screen alone
+    /// (`tools/shot-check.sh`).
+    Shots {
+        #[command(subcommand)]
+        action: ShotsAction,
     },
     /// Read the gameplay telemetry store (ADR-0018).
     Telemetry {
@@ -876,6 +901,14 @@ fn main() -> ExitCode {
             out,
         ),
         Command::Bridge { source, library } => bridge::run(source, library),
+        Command::Shots {
+            action:
+                ShotsAction::Compare {
+                    reference,
+                    new,
+                    max_share,
+                },
+        } => shots::run_compare(&reference, &new, max_share),
         Command::Classic {
             folder,
             all,

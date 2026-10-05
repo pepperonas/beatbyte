@@ -205,7 +205,12 @@ BEATBYTE_SHOT_STATE=settings BEATBYTE_SHOT_DIR=/tmp/shots \
 ```
 
 That opens the screen, photographs it once the transition fade has
-finished, and quits. Take screenshots in a *separate* run from any
+finished, and quits.
+
+To prove a change left a screen alone, photograph it before and after
+and compare: `tools/shot-check.sh record <dir>` before the change,
+`tools/shot-check.sh compare <dir>` after (details and why two runs
+give identical files: `docs/development/harness.md`, "Screenshots"). Take screenshots in a *separate* run from any
 pass/fail verdict: capturing a frame stalls it long enough for the
 autopilot's key injector to miss a note.
 
