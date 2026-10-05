@@ -14,6 +14,24 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.72] - 2026-10-05
+
+### Fixed
+
+- **The game reaches the main menu in about a second instead of eleven.**
+  Measured on a 466-song library on an external SSD: the scan parsed
+  every chart file at every start, older versions included (1 464
+  files, 6.8 s), only to find them already on the trimmed audio
+  timeline, and listed 291 songs the slow way — chart parsed whole and
+  the audio probed for a genre tag (4.1 s) — because their folders had
+  no song document. The device now remembers which chart files it has
+  checked, by size and modification time, and checks only what is new
+  or changed (6.74 → 0.08 s); the scan logs how long each phase took.
+- **Songs from the Bridge downloader arrive with their song document**,
+  like every other import, so they are listed from it rather than read
+  the slow way. The document is stamped after the chart is written — a
+  stamp from the import's start would have made it stale on arrival.
+
 ## [0.18.71] - 2026-10-05
 
 ### Changed

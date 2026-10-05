@@ -381,6 +381,7 @@ pub fn scan_library(builtins: &[ChartFile]) -> SongLibrary {
         .collect();
     let builtin_count = entries.len();
 
+    let started = std::time::Instant::now();
     let roots = scan_roots();
     // Title+artist dedupe across ALL scan roots: the same song can
     // legitimately exist twice on disk (imported in the repo folder
@@ -397,8 +398,19 @@ pub fn scan_library(builtins: &[ChartFile]) -> SongLibrary {
     // Every version file, not only the active one: a pointer revert
     // must land on a chart that is on the same timeline as the
     // audio it plays against.
-    migrate_chart_timelines(&found, &migration_backup_dir());
+    let listed = started.elapsed();
+    let known_path = timeline_checked_path();
+    let mut known = known_path
+        .as_deref()
+        .map(TimelineChecked::load)
+        .unwrap_or_default();
+    migrate_chart_timelines_known(&found, &migration_backup_dir(), &mut known);
+    if let Some(path) = &known_path {
+        known.save(path);
+    }
+    let migrated = started.elapsed();
     let candidates = select_active_versions(found);
+    let chosen = started.elapsed();
     for chart_path in candidates {
         match load_entry(&chart_path) {
             Ok(Some(entry)) => {
@@ -414,6 +426,14 @@ pub fn scan_library(builtins: &[ChartFile]) -> SongLibrary {
     }
     // Built-ins stay first; the rest sorts by title.
     entries[builtin_count..].sort_by_key(|entry| entry.title.to_lowercase());
+    let loaded = started.elapsed();
+    info!(
+        "library scan: listing {:.2} s, timeline check {:.2} s, versions {:.2} s, entries {:.2} s",
+        listed.as_secs_f64(),
+        (migrated - listed).as_secs_f64(),
+        (chosen - migrated).as_secs_f64(),
+        (loaded - chosen).as_secs_f64(),
+    );
     SongLibrary { entries }
 }
 
@@ -425,6 +445,106 @@ fn migration_backup_dir() -> Option<PathBuf> {
             .parent()
             .map(|dir| dir.join("migrations").join("audio-trim"))
     })
+}
+
+/// Where the device remembers which chart files are already on the
+/// trimmed timeline (beside the migration backups).
+fn timeline_checked_path() -> Option<PathBuf> {
+    crate::config::settings_path().and_then(|settings| {
+        settings
+            .parent()
+            .map(|dir| dir.join("migrations").join("timeline-checked.json"))
+    })
+}
+
+/// A file's size and modification time in milliseconds — what tells a
+/// file that was checked from one that changed since.
+fn file_stamp(path: &Path) -> Option<(u64, u64)> {
+    let meta = std::fs::metadata(path).ok()?;
+    let modified = meta
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?;
+    Some((
+        meta.len(),
+        u64::try_from(modified.as_millis()).unwrap_or(u64::MAX),
+    ))
+}
+
+/// The chart files known to be on the trimmed timeline, each with the
+/// size and modification time it had when it was checked.
+///
+/// The timeline check used to parse EVERY chart file at every start,
+/// every older version included, only to find `audio_trim` already
+/// there — 1 464 files, 6.8 s of an 11 s boot on 2026-10-05. A file
+/// whose stamp is unchanged since it was found current is skipped;
+/// anything new or touched is checked as before. Device-local: losing
+/// the file costs one slow start, nothing else.
+#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TimelineChecked {
+    files: std::collections::BTreeMap<String, (u64, u64)>,
+}
+
+impl TimelineChecked {
+    /// Read the file; a missing or unreadable one is empty.
+    #[must_use]
+    pub fn load(path: &Path) -> TimelineChecked {
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default()
+    }
+
+    /// Write it, best effort.
+    pub fn save(&self, path: &Path) {
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        if let Ok(text) = serde_json::to_string(self) {
+            let _ = beatbyte_chart::io::write_atomic(path, text.as_bytes());
+        }
+    }
+
+    /// Whether `path` was found current with exactly this stamp.
+    /// Pure — tested.
+    #[must_use]
+    pub fn is_known(&self, path: &Path, stamp: (u64, u64)) -> bool {
+        self.files.get(&path.to_string_lossy().into_owned()) == Some(&stamp)
+    }
+}
+
+/// [`migrate_chart_timelines`], skipping the files `known` already
+/// vouches for and remembering the ones found (or made) current. The
+/// remembered set is rebuilt from `files`, so a deleted chart drops
+/// out instead of accumulating.
+pub fn migrate_chart_timelines_known(
+    files: &[PathBuf],
+    backup_dir: &Option<PathBuf>,
+    known: &mut TimelineChecked,
+) -> Vec<Migration> {
+    let mut next = TimelineChecked::default();
+    let mut to_check = Vec::new();
+    for path in files {
+        match file_stamp(path) {
+            Some(stamp) if known.is_known(path, stamp) => {
+                next.files
+                    .insert(path.to_string_lossy().into_owned(), stamp);
+            }
+            _ => to_check.push(path.clone()),
+        }
+    }
+    let outcomes = migrate_chart_timelines(&to_check, backup_dir);
+    for (path, outcome) in to_check.iter().zip(&outcomes) {
+        if *outcome != Migration::Skipped
+            && let Some(stamp) = file_stamp(path)
+        {
+            next.files
+                .insert(path.to_string_lossy().into_owned(), stamp);
+        }
+    }
+    *known = next;
+    outcomes
 }
 
 /// What happened to one chart file in [`migrate_chart_timelines`].
@@ -1300,7 +1420,10 @@ mod migration_tests {
 
     use beatbyte_chart::{ChartFile, load_chart_file};
 
-    use super::{Migration, migrate_chart_timelines};
+    use super::{
+        Migration, TimelineChecked, file_stamp, migrate_chart_timelines,
+        migrate_chart_timelines_known,
+    };
 
     fn scratch(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("beatbyte-mig-{name}-{}", std::process::id()));
@@ -1325,6 +1448,54 @@ mod migration_tests {
         let path = dir.join("chart.json");
         std::fs::write(&path, json).expect("write chart");
         path
+    }
+
+    /// A file the device already found current is not opened again —
+    /// proven with an OLD chart stamped as known: were it checked, it
+    /// would be moved. Touch it, and it is checked like any other.
+    #[test]
+    fn a_known_unchanged_chart_is_skipped_and_a_changed_one_is_checked() {
+        let dir = scratch("known");
+        std::fs::copy(fixture("click-ffmpeg.m4a"), dir.join("song.m4a")).expect("audio");
+        let chart = old_chart(&dir, "song.m4a");
+        let mut known = TimelineChecked::default();
+        known.files.insert(
+            chart.to_string_lossy().into_owned(),
+            file_stamp(&chart).expect("stamp"),
+        );
+        let before = std::fs::read_to_string(&chart).unwrap();
+
+        let outcomes =
+            migrate_chart_timelines_known(std::slice::from_ref(&chart), &None, &mut known);
+        assert!(outcomes.is_empty(), "a known file is not checked");
+        assert_eq!(std::fs::read_to_string(&chart).unwrap(), before);
+        assert!(
+            known.is_known(&chart, file_stamp(&chart).unwrap()),
+            "still remembered"
+        );
+
+        // The same file, changed: a different size is a different stamp.
+        std::fs::write(&chart, format!("{before} ")).unwrap();
+        let outcomes =
+            migrate_chart_timelines_known(std::slice::from_ref(&chart), &None, &mut known);
+        assert_eq!(outcomes, vec![Migration::Moved]);
+        assert!(
+            known.is_known(&chart, file_stamp(&chart).unwrap()),
+            "remembered as moved"
+        );
+    }
+
+    /// The remembered set follows the files: a chart that is gone
+    /// drops out rather than accumulating for ever.
+    #[test]
+    fn a_deleted_chart_drops_out_of_the_remembered_set() {
+        let dir = scratch("gone");
+        let mut known = TimelineChecked::default();
+        known
+            .files
+            .insert(dir.join("gone.json").to_string_lossy().into_owned(), (1, 1));
+        migrate_chart_timelines_known(&[], &None, &mut known);
+        assert_eq!(known, TimelineChecked::default());
     }
 
     #[test]

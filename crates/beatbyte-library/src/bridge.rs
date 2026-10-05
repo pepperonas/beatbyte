@@ -520,7 +520,63 @@ fn write_twin(
         .map_err(|e| format!("cannot write {SOURCE_FILE}: {e}"))?;
     // The chart last: until it exists, the folder is not a twin.
     beatbyte_chart::save_chart_file(&folder.join(versions::BASE_CHART), chart)
-        .map_err(|e| format!("cannot write the chart: {e}"))
+        .map_err(|e| format!("cannot write the chart: {e}"))?;
+    write_document(folder, chart, &audio, record);
+    Ok(())
+}
+
+/// The folder's document (ADR-0019), written AFTER the chart: the
+/// browser trusts a document only when it is newer than the chart it
+/// describes, and a twin without one was read the slow way at every
+/// start — the chart parsed whole and the audio probed for a genre
+/// tag (291 of 466 folders, 4 s of an 11 s boot, 2026-10-05).
+///
+/// A new folder gets a new song id: a BG twin is a chart of its own,
+/// with its own records, and must never inherit the original's.
+///
+/// A failure here is not a failed import — the twin plays without a
+/// document, only slower to list — so it is ignored, as the game's
+/// own import does.
+fn write_document(
+    folder: &Path,
+    chart: &beatbyte_chart::ChartFile,
+    audio: &Path,
+    record: &SourceRecord,
+) {
+    let chart_path = folder.join(versions::BASE_CHART);
+    let facts = crate::build::FolderFacts {
+        chart: Some(chart),
+        chart_version: Some(crate::fresh::generation(versions::BASE_CHART)),
+        chart_filename: Some(versions::BASE_CHART.to_owned()),
+        audio_filename: AUDIO_FILE.to_owned(),
+        extension: Some("m4a".to_owned()),
+        oldest_file_ms: record.imported_ms,
+        loudness: None,
+        lyrics: crate::folder::lyric_facts(audio, &chart_path),
+        content_hash: crate::folder::fingerprint(audio).map(|print| print.tagged()),
+        // ffmpeg writes no song tags into the mix, so this is empty —
+        // and empty must stay empty rather than become "Unknown".
+        tags: Some(beatbyte_audio::read_tags(audio)),
+        features: None,
+        source_kind: crate::SourceKind::Other,
+        source_id: Some(record.fingerprint.clone()),
+    };
+    // Stamped with the clock NOW, after the chart was written — not
+    // with the import's start, which lies before the chart's own
+    // modification time and would make the document stale on arrival
+    // (the test for this caught exactly that).
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(record.imported_ms, |since| {
+            u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
+        });
+    let built = crate::build::document_for(
+        &facts,
+        crate::store::read(folder),
+        crate::SongId::new(now),
+        now,
+    );
+    let _ = crate::store::save_if_changed(folder, &built);
 }
 
 /// Where Bridge keeps its settings, under the platform's config
@@ -808,6 +864,48 @@ mod tests {
                 .unwrap();
         assert_eq!(record.charter.as_deref(), Some("Stargazer"));
         assert_eq!(record.imported_ms, 7);
+    }
+
+    /// A twin arrives with its document, newer than its chart — so the
+    /// browser lists it from the document instead of parsing the chart
+    /// and probing the audio at every start — and with a song id of
+    /// its own, recording where it came from.
+    #[test]
+    fn an_imported_twin_carries_a_fresh_document_of_its_own() {
+        let dir = Scratch::new("doc");
+        let library = dir.0.join("imported");
+        library_song(
+            &library,
+            "europe---final-countdown",
+            "Europe",
+            "The Final Countdown",
+        );
+        let source = download(&dir.0, "Europe", "The Final Countdown", "EvaCH");
+        let Outcome::Imported { folder, .. } =
+            import(&source, &library, &fake_transcoder, 9).unwrap()
+        else {
+            panic!("expected an import");
+        };
+        let doc = crate::store::read(&folder).expect("the twin has a document");
+        let chart_modified = std::fs::metadata(folder.join(versions::BASE_CHART))
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+        assert!(
+            crate::fresh::describes(&doc, versions::BASE_CHART, chart_modified),
+            "the document must stand in for the chart"
+        );
+        let record: SourceRecord =
+            serde_json::from_str(&std::fs::read_to_string(folder.join(SOURCE_FILE)).unwrap())
+                .unwrap();
+        assert_eq!(
+            doc.identity.external.source_id.as_deref(),
+            Some(record.fingerprint.as_str())
+        );
+        if let Some(original) = crate::store::read(&library.join("europe---final-countdown")) {
+            assert_ne!(original.identity.song_id, doc.identity.song_id);
+        }
     }
 
     #[test]
