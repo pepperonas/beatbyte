@@ -539,7 +539,8 @@ impl Plugin for GameplayPlugin {
             )
             .add_systems(
                 OnExit(GamePhase::Paused),
-                (resume_audio, despawn_pause_overlay, persist_pause_settings),
+                // The overlay goes with the phase (`DespawnOnExit`).
+                (resume_audio, persist_pause_settings),
             )
             .add_systems(
                 OnExit(AppState::Gameplay),
@@ -1477,17 +1478,8 @@ fn previews_the_miss_sound(item: PauseItem) -> bool {
 #[derive(Resource, Default)]
 struct PauseCursor(usize);
 
-/// A pause-menu row (index into [`PAUSE_ROWS`]); carries `Button`.
-#[derive(Component)]
-struct PauseRow(usize);
-
-/// A pause row's static label.
-#[derive(Component)]
-struct PauseRowLabel(usize);
-
-/// A pause row's value text — the part that changes.
-#[derive(Component)]
-struct PauseRowValue(usize);
+/// The marker of the pause menu's rows (the shared list renderer).
+struct PauseRows;
 
 fn spawn_pause_overlay(
     mut commands: Commands,
@@ -1499,6 +1491,7 @@ fn spawn_pause_overlay(
         .spawn((
             PauseOverlay,
             GameplayScreen,
+            DespawnOnExit(GamePhase::Paused),
             Node {
                 width: percent(100),
                 height: percent(100),
@@ -1526,26 +1519,11 @@ fn spawn_pause_overlay(
                 TextColor(palette::MISS),
             ));
             parent.spawn(crate::ui_kit::panel()).with_children(|panel| {
-                for (index, item) in PAUSE_ROWS.iter().enumerate() {
-                    panel
-                        .spawn((PauseRow(index), Button, crate::ui_kit::row()))
-                        .with_children(|entry| {
-                            entry.spawn((
-                                PauseRowLabel(index),
-                                Text::new(item.label()),
-                                font.text(crate::ui_kit::ROW),
-                                TextColor(palette::TEXT_DIM),
-                                crate::ui_kit::label_node(),
-                            ));
-                            entry.spawn((
-                                PauseRowValue(index),
-                                Text::new(""),
-                                font.text(crate::ui_kit::ROW),
-                                TextColor(palette::TEXT_DIM),
-                                crate::ui_kit::value_node(),
-                            ));
-                        });
-                }
+                crate::menu_list::list::spawn_rows::<PauseRows>(
+                    panel,
+                    &font,
+                    PAUSE_ROWS.iter().map(|item| item.label()),
+                );
             });
             crate::ui_kit::action_bar(
                 parent,
@@ -1606,12 +1584,7 @@ fn paint_pause_bar(
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn pause_menu_input(
     mut commands: Commands,
-    keys: Res<ButtonInput<KeyCode>>,
-    map: Res<crate::controls::InputMap>,
-    pads: Query<&bevy::input::gamepad::Gamepad>,
-    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
-    mut moved: MessageReader<bevy::window::CursorMoved>,
-    rows: Query<(&PauseRow, &Interaction), Changed<Interaction>>,
+    mut list: crate::menu_list::list::ListInput<PauseRows>,
     mut cursor: ResMut<PauseCursor>,
     mut settings: ResMut<crate::config::Settings>,
     mut practice: ResMut<PracticeState>,
@@ -1620,141 +1593,85 @@ fn pause_menu_input(
     mut game_clock: ResMut<GameClock>,
     time: Res<Time>,
     sfx: Res<crate::sfx::SfxLib>,
+    mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
-    let nav = crate::controls::MenuNav::read(&map, &keys, pads.iter());
-    let count = PAUSE_ROWS.len();
-    let mut moved_cursor = false;
-    if nav.up {
-        cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, -1);
-        moved_cursor = true;
-    }
-    if nav.down {
-        cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, 1);
-        moved_cursor = true;
-    }
-    let pointer = crate::ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
-    let mouse_moved = moved.read().next().is_some();
-    if let Some(index) = crate::ui_kit::hover_moves_cursor(&pointer, mouse_moved) {
-        cursor.0 = index;
-    }
-    // The wheel scrolls the ROWS, like the song list - it used to
-    // step the hovered value, which changed a setting by accident
-    // while browsing the pause menu (user report, 2026-09-01).
-    for event in wheel.read() {
-        if event.y > 0.0 {
-            cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, -1);
-            moved_cursor = true;
-        } else if event.y < 0.0 {
-            cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, 1);
-            moved_cursor = true;
-        }
-    }
+    let events = list.read(&mut cursor.0, PAUSE_ROWS.len());
     let item = PAUSE_ROWS[cursor.0];
-    let mut adjust = |direction: f32,
-                      settings: &mut crate::config::Settings,
-                      practice: &mut PracticeState,
-                      song: &mut crate::boot::LoadedSong| match item {
-        PauseItem::LyricOffset => {
-            if song.lyrics.is_none() {
-                return;
-            }
-            let next = step_lyric_offset(song.lyric_offset_ms, direction);
-            if next == song.lyric_offset_ms {
-                return;
-            }
-            song.lyric_offset_ms = next;
-            // Saved beside the audio at once: the offset belongs to
-            // the song, not to this run.
-            if let crate::boot::SongAudio::File(path) = &song.audio
-                && let Err(error) = beatbyte_chart::lyrics::save_song_lyric_offset(path, next)
-            {
-                warn!(
-                    "could not save the lyric offset beside `{}`: {error}",
-                    path.display()
-                );
-            }
-        }
-        PauseItem::Speed => {
-            practice.step(direction);
-            // Applied live: music (paused, takes effect on resume)
-            // and clock together — the timeline has ONE speed.
-            music.0.set_speed(practice.rate());
-            game_clock
-                .clock
-                .set_rate(time.elapsed_secs_f64(), practice.rate());
-        }
-        PauseItem::LoopFrom | PauseItem::LoopTo => {
-            let end = item == PauseItem::LoopTo;
-            if direction < 0.0 {
-                // LEFT clears the bound (and with it the loop).
-                if end {
-                    practice.loop_to = None;
-                } else {
-                    practice.loop_from = None;
+    let stepped = events.step.map(|direction| {
+        let direction = direction as f32;
+        match item {
+            PauseItem::LyricOffset => {
+                if song.lyrics.is_some() {
+                    let next = step_lyric_offset(song.lyric_offset_ms, direction);
+                    if next != song.lyric_offset_ms {
+                        song.lyric_offset_ms = next;
+                        // Saved beside the audio at once: the offset
+                        // belongs to the song, not to this run.
+                        if let crate::boot::SongAudio::File(path) = &song.audio
+                            && let Err(error) =
+                                beatbyte_chart::lyrics::save_song_lyric_offset(path, next)
+                        {
+                            warn!(
+                                "could not save the lyric offset beside `{}`: {error}",
+                                path.display()
+                            );
+                        }
+                    }
                 }
-            } else if let Some(now) = game_clock.clock.song_time(time.elapsed_secs_f64()) {
-                practice.set_loop_bound(end, now);
+                crate::menu_list::spec::Feel::Tick
+            }
+            PauseItem::Speed => {
+                practice.step(direction);
+                // Applied live: music (paused, takes effect on resume)
+                // and clock together — the timeline has ONE speed.
+                music.0.set_speed(practice.rate());
+                game_clock
+                    .clock
+                    .set_rate(time.elapsed_secs_f64(), practice.rate());
+                crate::menu_list::spec::Feel::Tick
+            }
+            PauseItem::LoopFrom | PauseItem::LoopTo => {
+                let end = item == PauseItem::LoopTo;
+                if direction < 0.0 {
+                    // LEFT clears the bound (and with it the loop).
+                    if end {
+                        practice.loop_to = None;
+                    } else {
+                        practice.loop_from = None;
+                    }
+                } else if let Some(now) = game_clock.clock.song_time(time.elapsed_secs_f64()) {
+                    practice.set_loop_bound(end, now);
+                }
+                crate::menu_list::spec::Feel::Tick
+            }
+            PauseItem::Setting(row) => {
+                row.adjust(&mut settings, direction);
+                row.spec().feel()
             }
         }
-        PauseItem::Setting(row) => row.adjust(settings, direction),
-    };
-    let mut adjusted = false;
-    if nav.left {
-        adjust(-1.0, &mut settings, &mut practice, &mut song);
-        adjusted = true;
-    }
-    if nav.right || nav.confirm || pointer.clicked {
-        adjust(1.0, &mut settings, &mut practice, &mut song);
-        adjusted = true;
-    }
-    if adjusted {
-        let preview = if previews_the_miss_sound(item) {
-            &sfx.miss
-        } else {
-            &sfx.ui_move
-        };
-        crate::sfx::play(&mut commands, preview, settings.sfx_volume);
-    } else if moved_cursor {
-        crate::sfx::play(&mut commands, &sfx.ui_move, settings.sfx_volume);
+    });
+    if stepped.is_some() && previews_the_miss_sound(item) {
+        // The SFX volume IS the volume of the error sounds, and with
+        // the music paused there is nothing else to hear: every step
+        // plays the sound being set, at the level just set.
+        crate::sfx::play(&mut commands, &sfx.miss, settings.sfx_volume);
+    } else if let Some(sound) = crate::menu_list::list::sound_for(stepped, events.moved) {
+        sounds.write(sound);
     }
 }
 
-/// Row highlight + live values, exactly the settings screen's dress.
+/// Row highlight + live values, painted by the shared list renderer —
+/// exactly the settings screen's dress.
 fn refresh_pause_menu(
     settings: Res<crate::config::Settings>,
     practice: Res<PracticeState>,
     song: Res<crate::boot::LoadedSong>,
     cursor: Res<PauseCursor>,
-    mut rows: Query<(&PauseRow, &mut BackgroundColor, &mut BorderColor)>,
-    mut labels: Query<(&PauseRowLabel, &mut TextColor), Without<PauseRowValue>>,
-    mut values: Query<(&PauseRowValue, &mut Text, &mut TextColor), Without<PauseRowLabel>>,
+    mut paint: crate::menu_list::list::ListPaint<PauseRows>,
 ) {
-    for (row, mut background, mut border) in &mut rows {
-        let style = crate::ui_kit::styled_row(
-            crate::ui_kit::state_for(row.0 == cursor.0, false),
-            settings.high_contrast,
-        );
-        background.0 = style.background;
-        *border = BorderColor::all(style.accent);
-    }
-    for (label, mut color) in &mut labels {
-        color.0 = crate::ui_kit::styled_row(
-            crate::ui_kit::state_for(label.0 == cursor.0, false),
-            settings.high_contrast,
-        )
-        .label;
-    }
-    for (value, mut text, mut color) in &mut values {
-        let wanted = PAUSE_ROWS[value.0].value(&settings, &practice, &song);
-        if text.0 != wanted {
-            text.0 = wanted;
-        }
-        color.0 = crate::ui_kit::styled_row(
-            crate::ui_kit::state_for(value.0 == cursor.0, false),
-            settings.high_contrast,
-        )
-        .value;
-    }
+    paint.paint(cursor.0, settings.high_contrast, |index| {
+        PAUSE_ROWS[index].value(&settings, &practice, &song)
+    });
 }
 
 /// Changes made in the pause menu persist like the settings screen's:
@@ -1762,12 +1679,6 @@ fn refresh_pause_menu(
 /// sub-state exits with the gameplay state.
 fn persist_pause_settings(settings: Res<crate::config::Settings>) {
     crate::config::save_settings(&settings);
-}
-
-fn despawn_pause_overlay(mut commands: Commands, overlays: Query<Entity, With<PauseOverlay>>) {
-    for entity in &overlays {
-        commands.entity(entity).despawn();
-    }
 }
 
 /// The note entities a loop wrap sweeps away (both views' gems).

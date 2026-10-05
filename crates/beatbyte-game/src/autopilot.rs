@@ -141,7 +141,12 @@ impl Plugin for AutopilotPlugin {
             app.add_systems(
                 Update,
                 (
-                    autopilot_menu.run_if(in_state(AppState::MainMenu)),
+                    // The model drill leaves the menu for SETTINGS itself;
+                    // racing it to the browser (0.8 s against its 1 s) meant
+                    // the drill never ran and the run passed on a song.
+                    autopilot_menu
+                        .run_if(in_state(AppState::MainMenu))
+                        .run_if(|| std::env::var_os("BEATBYTE_AUTOPILOT_MODEL").is_none()),
                     // After the browser: it applies the player's saved
                     // difficulty every frame, and run in the other order
                     // it overwrote BEATBYTE_AUTOPILOT_DIFFICULTY in the

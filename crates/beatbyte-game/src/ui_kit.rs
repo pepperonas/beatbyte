@@ -1181,7 +1181,10 @@ mod cursor_tests {
                 if !text.contains("scroll_panel(") {
                     continue;
                 }
-                if !text.contains("MouseWheel") {
+                // A screen on the shared list renderer reads the wheel
+                // through `ListInput` — which must itself read it.
+                let through_renderer = text.contains("ListInput<");
+                if !text.contains("MouseWheel") && !through_renderer {
                     offenders.push(
                         path.file_name()
                             .unwrap_or_default()
@@ -1194,6 +1197,14 @@ mod cursor_tests {
         assert!(
             offenders.is_empty(),
             "these spawn a scroll panel but never read the mouse wheel: {offenders:#?}"
+        );
+        let renderer = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/menu_list/list.rs"),
+        )
+        .unwrap_or_default();
+        assert!(
+            renderer.contains("MessageReader<'w, 's, MouseWheel>"),
+            "the list renderer must read the mouse wheel for the screens on it"
         );
     }
 }

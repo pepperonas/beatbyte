@@ -946,8 +946,13 @@ artifact, smoke-test it (neutral CWD!), then
   script fresh. Remove the fingerprint with it —
   `rm -rf target/<profile>/build/libsqlite3-sys-* target/<profile>/.fingerprint/libsqlite3-sys-*`
   — which reruns the build script for that profile alone and leaves
-  the other one standing (verified the same day; it struck twice in
-  one evening, neither time after anything that touches `build/`).
+  the other one standing (verified the same day; it struck four times
+  that day). Ruled out by direct test on 2026-10-05, each step followed
+  by a check that the file is still there: `cargo check`, `cargo doc`
+  with and without `--all-features`, `clippy --all-features`, debug
+  builds with and without `--features ml`, `cargo test --no-run`.
+  None of them removes it — the cause lies outside the cargo commands
+  this project runs.
   **The one part that IS safe to prune is `incremental/`**, and
   it is the part that grows while you work: cargo collects a superseded
   session only when it rebuilds that same unit, so a configuration that
@@ -1110,6 +1115,13 @@ artifact, smoke-test it (neutral CWD!), then
   screen's keys change, grep the autopilot for the drills that drive
   that screen; and a drill identifies its target by what cannot
   change under it (its files), not by what it shares with a twin.
+  ⚠️ **A drill can also be raced out of existence and still PASS.**
+  `BEATBYTE_AUTOPILOT_MODEL` waited 1 s in the main menu before
+  opening the settings; the plain autopilot leaves for the browser at
+  0.8 s, so the drill never ran and the run passed on the song it
+  played (found 2026-10-05; the browser step now stands aside while
+  the drill is armed). Read the drill's OWN verdict line in the log —
+  `model PASSED`, `pause drill PASSED` — never only `run PASSED`.
 - **A number whose meaning is unknown must not decide anything.** The
   classic chord ingredient first took its minimum spacing (200 ms) from
   a field of the early games' configs, `min_combo_spacing`, that the

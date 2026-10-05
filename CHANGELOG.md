@@ -14,6 +14,31 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.68] - 2026-10-05
+
+### Changed
+
+- **The settings screen and the pause menu share one list renderer.**
+  Spawning the rows, reading keyboard, pad, guitar, wheel and pointer,
+  painting the selected row, writing the values and choosing the sound
+  now live in one place (`menu_list::list`) instead of two copies, and
+  both screens clean up through Bevy's state-scoped entities. Visible
+  to a player only in the pause menu, on purpose, so it behaves like
+  the settings screen:
+  - a click on a pause row's left half steps it down (it always
+    stepped up);
+  - stepping a pause row ticks like a dial instead of playing the
+    cursor blip (the SFX row still plays the miss sound it sets);
+  - LEFT and RIGHT pressed in the same frame step once, not twice.
+
+### Fixed
+
+- The model drill (`BEATBYTE_AUTOPILOT_MODEL`) never ran: the ordinary
+  autopilot left the main menu for the song browser 0.2 s before the
+  drill would have opened the settings, and the run passed on the song
+  it played instead. The browser step now stands aside while the drill
+  is armed.
+
 ## [0.18.67] - 2026-10-05
 
 ### Changed

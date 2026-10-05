@@ -2,14 +2,11 @@
 //! effect toggles, fullscreen. Changes apply immediately and persist
 //! on leaving the screen.
 
-use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
 
 use crate::config::{FlashSync, Settings, TelemetryLevel, save_settings};
-use crate::controls::MenuNav;
+use crate::menu_list::list::{self, ListInput, ListPaint, ListPanel, ListRow, ListValue};
 use crate::menu_list::spec::{self, Ends, Feel, Kind, RowSpec, Subtitle, Unit};
-use crate::palette;
 use crate::states::AppState;
 use crate::ui::UiFont;
 use crate::ui_kit;
@@ -360,16 +357,6 @@ impl Row {
         self.0
     }
 
-    /// The screen this row opens, for the rows that are doors rather
-    /// than settings.
-    #[must_use]
-    pub(crate) fn opens(self) -> Option<AppState> {
-        match self.0.kind {
-            Kind::Door(Act::Open(screen)) => Some(screen),
-            _ => None,
-        }
-    }
-
     /// Where a row sits in the list (for a drill that has to arrow
     /// down to it with real keys).
     #[must_use]
@@ -396,15 +383,6 @@ impl Row {
     /// Adjust by one step (direction −1 or +1).
     pub(crate) fn adjust(self, settings: &mut Settings, direction: f32) {
         self.0.step(settings, if direction < 0.0 { -1 } else { 1 });
-    }
-
-    /// The feedback voice a row speaks with when it adjusts: a switch
-    /// clicks, a dial ticks.
-    fn sound(self) -> crate::sfx::UiSound {
-        match self.0.feel() {
-            Feel::Click => crate::sfx::UiSound::Toggle,
-            Feel::Tick => crate::sfx::UiSound::Slider,
-        }
     }
 }
 
@@ -525,110 +503,51 @@ impl Plugin for SettingsUiPlugin {
                 (settings_input, refresh_settings, follow_settings_cursor)
                     .run_if(in_state(AppState::Settings)),
             )
-            .add_systems(
-                OnExit(AppState::Settings),
-                (persist_settings, despawn_settings),
-            );
+            // The screen's entities go with the state (`DespawnOnExit`);
+            // only the save is left to do on the way out.
+            .add_systems(OnExit(AppState::Settings), persist_settings);
     }
 }
 
-#[derive(Component)]
-struct SettingsScreen;
-
-/// The scrolling list of settings rows.
-#[derive(Component)]
-struct SettingsList;
+/// The marker of the settings list's rows.
+pub(crate) struct SettingsRows;
 
 /// Keep the cursor row in view — the same measured whole-row window
 /// the browser and the controls screen use. Seventeen rows outgrew
 /// the safe area exactly the way fifteen did on the controls screen.
 fn follow_settings_cursor(
     cursor: Res<SettingsCursor>,
-    rows: Query<(&RowText, &ComputedNode)>,
-    mut lists: Query<(&mut ScrollPosition, &mut Node), With<SettingsList>>,
+    rows: Query<(&ListRow<SettingsRows>, &ComputedNode)>,
+    mut lists: Query<(&mut ScrollPosition, &mut Node), With<ListPanel<SettingsRows>>>,
 ) {
-    let Ok((mut scroll, mut node)) = lists.single_mut() else {
-        return;
-    };
-    let Some(row) = rows
-        .iter()
-        .map(|(_, node)| node)
-        .find(|node| node.size().y > 0.0)
-    else {
-        return;
-    };
-    ui_kit::follow_list(cursor.0, Row::ALL.len(), row, &mut scroll, &mut node);
+    list::follow_cursor(cursor.0, Row::ALL.len(), &rows, &mut lists);
 }
-
-/// A settings row (index into [`Row::ALL`]). Stays on the entity that
-/// carries `Button`, so the existing input handler is untouched.
-#[derive(Component)]
-struct RowText(usize);
-
-/// A row's label text — static, written once at spawn.
-#[derive(Component)]
-struct SettingLabel(usize);
-
-/// A row's value text — the only part that changes at runtime.
-#[derive(Component)]
-struct SettingValue(usize);
 
 /// The line under the panel: the selected row's explanation.
 #[derive(Component)]
 struct SettingSubtitle;
 
-/// The subtitle's query, aliased for the lint's sake: it must
-/// exclude the row texts to satisfy Bevy's aliasing rules.
-type SubtitleText<'w, 's> = Query<
-    'w,
-    's,
-    &'static mut Text,
-    (
-        With<SettingSubtitle>,
-        Without<SettingLabel>,
-        Without<SettingValue>,
-    ),
->;
+/// The subtitle's query: it must exclude the value texts to satisfy
+/// Bevy's aliasing rules.
+type SubtitleText<'w, 's> =
+    Query<'w, 's, &'static mut Text, (With<SettingSubtitle>, Without<ListValue<SettingsRows>>)>;
 
 fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
     commands
-        .spawn((SettingsScreen, ui_kit::screen_root()))
+        .spawn((DespawnOnExit(AppState::Settings), ui_kit::screen_root()))
         .with_children(|parent| {
             ui_kit::header(parent, &font, "SETTINGS", "sound, feel and looks");
             parent
-                .spawn((SettingsList, ui_kit::scroll_panel(ui_kit::PANEL_WIDTH)))
+                .spawn((
+                    ListPanel::<SettingsRows>::new(),
+                    ui_kit::scroll_panel(ui_kit::PANEL_WIDTH),
+                ))
                 .with_children(|panel| {
-                    for (index, definition) in Row::ALL.iter().enumerate() {
-                        panel
-                            .spawn((
-                                RowText(index),
-                                Button,
-                                RelativeCursorPosition::default(),
-                                ui_kit::row(),
-                            ))
-                            .with_children(|row| {
-                                // Label and value are separate texts in a
-                                // space-between line. The old single-string
-                                // layout padded the label to 16 characters,
-                                // which "TAP MODE (NO STRUM)" overflows by
-                                // three — that one row's value hung out of
-                                // the column.
-                                row.spawn((
-                                    SettingLabel(index),
-                                    Text::new(definition.label()),
-                                    font.text(ui_kit::ROW),
-                                    TextColor(palette::TEXT_DIM),
-                                    ui_kit::label_node(),
-                                ));
-                                row.spawn((
-                                    SettingValue(index),
-                                    Text::new(""),
-                                    font.text(ui_kit::ROW),
-                                    TextColor(palette::TEXT_DIM),
-                                    ui_kit::value_node(),
-                                ));
-                            });
-                    }
+                    list::spawn_rows::<SettingsRows>(
+                        panel,
+                        &font,
+                        Row::ALL.iter().map(|row| row.label()),
+                    );
                 });
             // The selected row's explanation, under the panel — the
             // pattern the song browser already uses for the same
@@ -659,16 +578,12 @@ fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
         });
 }
 
+/// What a key or click does on the selected row. The list renderer
+/// reads the devices and moves the cursor; this decides what the row
+/// does: a custom row's own Enter, a door, or a step of its value.
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI
 fn settings_input(
-    keys: Res<ButtonInput<KeyCode>>,
-    map: Res<crate::controls::InputMap>,
-    pads: Query<&Gamepad>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
-    mut moved: MessageReader<bevy::window::CursorMoved>,
-    rows: Query<(&RowText, &Interaction), Changed<Interaction>>,
-    positions: Query<(&RowText, &RelativeCursorPosition)>,
+    mut list: ListInput<SettingsRows>,
     mut cursor: ResMut<SettingsCursor>,
     mut settings: ResMut<Settings>,
     mut next_state: ResMut<NextState<AppState>>,
@@ -681,132 +596,73 @@ fn settings_input(
     mut smart: ResMut<crate::smart_lyrics::SmartLyrics>,
     mut library_move: ResMut<crate::library_move::LibraryMove>,
 ) {
-    let nav = MenuNav::read(&map, &keys, pads.iter());
-    let count = Row::ALL.len();
-    if nav.up {
-        cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, -1);
-    }
-    if nav.down {
-        cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, 1);
-    }
-    if nav.up || nav.down {
-        sounds.write(crate::sfx::UiSound::Navigate);
-    }
-    // Mouse: hover selects; click on the selected row steps it (like
-    // RIGHT); the wheel steps the hovered value either way.
-    let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
-    let mouse_moved = moved.read().next().is_some();
-    if let Some(index) = ui_kit::hover_moves_cursor(&pointer, mouse_moved) {
-        cursor.0 = index;
-    }
-    let clicked = pointer.clicked;
-    // The wheel SCROLLS the rows, exactly like the song list - it
-    // used to step the hovered value, which changed settings by
-    // accident while browsing them (user report, 2026-09-01).
-    for event in wheel.read() {
-        if event.y > 0.0 {
-            cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, -1);
-        } else if event.y < 0.0 {
-            cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, 1);
-        }
-        if event.y != 0.0 {
-            sounds.write(crate::sfx::UiSound::Navigate);
-        }
-    }
+    let events = list.read(&mut cursor.0, Row::ALL.len());
     let row = Row::ALL[cursor.0];
-    if row == Row::EXPORT_HISTORY && (nav.confirm || clicked) {
-        match crate::history::export_csv() {
-            Ok(path) => {
-                sounds.write(crate::sfx::UiSound::Confirm);
-                // The path IS the feedback: an export that only says
-                // "done" leaves the player hunting for the file.
-                export_note.0 = path.display().to_string();
+    let activated = events.nav.confirm || events.clicked;
+    let mut say = |sound| {
+        sounds.write(sound);
+    };
+    match row.spec().action() {
+        Some(Act::ExportHistory) if activated => {
+            match crate::history::export_csv() {
+                Ok(path) => {
+                    say(crate::sfx::UiSound::Confirm);
+                    // The path IS the feedback: an export that only
+                    // says "done" leaves the player hunting for the file.
+                    export_note.0 = path.display().to_string();
+                }
+                Err(reason) => {
+                    say(crate::sfx::UiSound::Error);
+                    export_note.0 = format!("export failed: {reason}");
+                }
             }
-            Err(reason) => {
-                sounds.write(crate::sfx::UiSound::Error);
-                export_note.0 = format!("export failed: {reason}");
-            }
-        }
-        return;
-    }
-    if row == Row::LIBRARY {
-        if nav.confirm || clicked {
-            library_move.confirm();
-            sounds.write(crate::sfx::UiSound::Confirm);
-        } else if nav.left {
-            library_move.decline();
-            sounds.write(crate::sfx::UiSound::Back);
-        }
-        if nav.confirm || clicked || nav.left {
             return;
         }
-    }
-    if row == Row::LYRICS_MODEL && (nav.confirm || clicked) {
+        Some(Act::Library) if activated => {
+            library_move.confirm();
+            say(crate::sfx::UiSound::Confirm);
+            return;
+        }
+        Some(Act::Library) if events.nav.left => {
+            library_move.decline();
+            say(crate::sfx::UiSound::Back);
+            return;
+        }
         // The one explicit action that fetches anything (README):
         // nothing is downloaded until this row is confirmed.
-        smart.confirm_model_row();
-        sounds.write(crate::sfx::UiSound::Confirm);
-        return;
+        Some(Act::LyricsModel) if activated => {
+            smart.confirm_model_row();
+            say(crate::sfx::UiSound::Confirm);
+            return;
+        }
+        Some(Act::Open(screen)) if activated || events.nav.right => {
+            say(crate::sfx::UiSound::Confirm);
+            next_state.set(screen);
+            return;
+        }
+        _ => {}
     }
-    if let Some(screen) = row.opens()
-        && (nav.confirm || nav.right || clicked)
-    {
-        sounds.write(crate::sfx::UiSound::Confirm);
-        next_state.set(screen);
-        return;
-    }
-    let mut adjusted = false;
-    if nav.left {
-        row.adjust(&mut settings, -1.0);
-        adjusted = true;
-    }
-    if nav.right || nav.confirm {
-        row.adjust(&mut settings, 1.0);
-        adjusted = true;
-    }
-    // Mouse click: left half of the row steps down, right half up —
-    // so a mouse-only player can decrease values without the keyboard.
-    if clicked {
-        let x = positions
-            .iter()
-            .find(|(text, _)| text.0 == cursor.0)
-            .and_then(|(_, pos)| pos.normalized)
-            .map(|p| p.x);
-        row.adjust(&mut settings, click_adjust_direction(x));
-        adjusted = true;
-    }
-    if adjusted {
-        sounds.write(row.sound());
+    let stepped = events
+        .step
+        .filter(|direction| row.spec().step(&mut settings, *direction))
+        .map(|_| row.spec().feel());
+    if let Some(sound) = list::sound_for(stepped, events.moved) {
+        say(sound);
     }
     if ui_kit::wants_leave(
-        nav.back,
+        events.nav.back,
         ui_kit::back_pressed(&mut back),
-        mouse.just_pressed(MouseButton::Right),
+        events.right_click,
     ) {
-        sounds.write(crate::sfx::UiSound::Back);
+        say(crate::sfx::UiSound::Back);
         next_state.set(AppState::MainMenu);
     }
 }
 
-/// Mouse click on a settings row: left half decreases, right half increases.
-///
-/// Missing cursor position (no [`RelativeCursorPosition`] yet) steps up,
-/// matching the old click-only behaviour.
-#[must_use]
-fn click_adjust_direction(normalized_x: Option<f32>) -> f32 {
-    match normalized_x {
-        Some(x) if x < 0.5 => -1.0,
-        _ => 1.0,
-    }
-}
-
-#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn refresh_settings(
     settings: Res<Settings>,
     cursor: Res<SettingsCursor>,
-    mut rows: Query<(&RowText, &mut BackgroundColor, &mut BorderColor)>,
-    mut labels: Query<(&SettingLabel, &mut TextColor), Without<SettingValue>>,
-    mut values: Query<(&SettingValue, &mut Text, &mut TextColor), Without<SettingLabel>>,
+    mut paint: ListPaint<SettingsRows>,
     export_note: Res<ExportNote>,
     mut subtitles: SubtitleText,
     mut smart: ResMut<crate::smart_lyrics::SmartLyrics>,
@@ -815,21 +671,6 @@ fn refresh_settings(
     // The model's standing is looked up the first time the screen
     // asks (a hash of the file, off the main thread); idempotent.
     smart.probe_model();
-    for (row, mut background, mut border) in &mut rows {
-        let style = ui_kit::styled_row(
-            ui_kit::state_for(row.0 == cursor.0, false),
-            settings.high_contrast,
-        );
-        background.0 = style.background;
-        *border = BorderColor::all(style.accent);
-    }
-    for (label, mut color) in &mut labels {
-        color.0 = ui_kit::styled_row(
-            ui_kit::state_for(label.0 == cursor.0, false),
-            settings.high_contrast,
-        )
-        .label;
-    }
     if let Ok(mut text) = subtitles.single_mut() {
         let row = Row::ALL[cursor.0.min(Row::ALL.len() - 1)];
         let wanted = if row == Row::LYRICS_MODEL {
@@ -841,50 +682,27 @@ fn refresh_settings(
             text.0 = wanted;
         }
     }
-    for (value, mut text, mut color) in &mut values {
-        // The export row reports where the file went, once it has
-        // written one - the answer belongs where the question was
-        // asked, not in a log nobody reads.
-        let row = Row::ALL[value.0];
-        let wanted = match row.spec().action() {
+    paint.paint(cursor.0, settings.high_contrast, |index| {
+        let row = Row::ALL[index];
+        match row.spec().action() {
+            // The export row reports where the file went, once it has
+            // written one - the answer belongs where the question was
+            // asked, not in a log nobody reads.
             Some(Act::ExportHistory) if !export_note.0.is_empty() => export_note.0.clone(),
             Some(Act::LyricsModel) => smart.model_text(),
             Some(Act::Library) => library_move.value(),
             _ => row.value(&settings),
-        };
-        if text.0 != wanted {
-            text.0 = wanted;
         }
-        color.0 = ui_kit::styled_row(
-            ui_kit::state_for(value.0 == cursor.0, false),
-            settings.high_contrast,
-        )
-        .value;
-    }
+    });
 }
 
 fn persist_settings(settings: Res<Settings>) {
     save_settings(&settings);
 }
 
-fn despawn_settings(mut commands: Commands, entities: Query<Entity, With<SettingsScreen>>) {
-    for entity in &entities {
-        commands.entity(entity).despawn();
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{SUBTITLE_CHARS, click_adjust_direction, short_path};
-
-    #[test]
-    fn a_click_on_the_left_half_steps_down() {
-        assert_eq!(click_adjust_direction(Some(0.0)), -1.0);
-        assert_eq!(click_adjust_direction(Some(0.49)), -1.0);
-        assert_eq!(click_adjust_direction(Some(0.5)), 1.0);
-        assert_eq!(click_adjust_direction(Some(1.0)), 1.0);
-        assert_eq!(click_adjust_direction(None), 1.0);
-    }
+    use super::{SUBTITLE_CHARS, short_path};
 
     #[test]
     fn a_long_path_keeps_its_end() {
@@ -1213,7 +1031,11 @@ mod tests {
             Row::HIT_LABELS,
             Row::AI_SEARCH,
         ] {
-            assert_eq!(row.sound(), UiSound::Toggle, "{row:?}");
+            assert_eq!(
+                list::sound_for(Some(row.spec().feel()), false),
+                Some(UiSound::Toggle),
+                "{row:?}"
+            );
         }
         for row in [
             Row::MUSIC_VOLUME,
@@ -1221,7 +1043,11 @@ mod tests {
             Row::TELEMETRY,
             Row::LYRICS_SIZE,
         ] {
-            assert_eq!(row.sound(), UiSound::Slider, "{row:?}");
+            assert_eq!(
+                list::sound_for(Some(row.spec().feel()), false),
+                Some(UiSound::Slider),
+                "{row:?}"
+            );
         }
     }
 

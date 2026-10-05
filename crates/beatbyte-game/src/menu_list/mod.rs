@@ -6,4 +6,5 @@
 //! settings screen's forty rows are the first table (`settings_ui`),
 //! and the pause menu reads the same rows.
 
+pub mod list;
 pub mod spec;
