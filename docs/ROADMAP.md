@@ -2250,6 +2250,21 @@ User commission: set the song library's folder in the settings, an external driv
 - [x] L3 **Live progress, and the first real move** *(v0.18.66)* — the user moved their real library to an external SSD with 0.18.65: 3447 files, 5.6 GB, 2 passes, switched over without a hitch. Their one wish: see the copy happen. `relocate::Progress` now carries a `Phase` (Copying / Verifying / Deleting) and file counts, and the verify and the delete — which re-read the whole library and reported nothing for minutes — report after every file. The game measures the rate per phase (`report()` restarts the clock when phase or pass changes), shows the time left only after 3 s and never for a comparing pass, and puts the line on the shared progress panel on every screen (`PanelSource::LibraryMove`, after an import and before a search) as well as on the settings row. *Verified: 2114 tests; four new pins (phases and totals, the live line, time-left wording, the panel's lifetime) plus the panel's priority; four mutation probes all caught; the drill under a scratch `HOME` exits 0 (110 files, 279 MB) and its frame shows `COPYING 32% - 42/110 FILES - 90 MB OF 279 MB - 28 MB/S - 7 S LEFT`.*
 - [ ] L4 **Finish the real move** — rebuild `target/release/beatbyte --features ml` (needs ~10 GB free; 2.9 GB on 2026-10-05, so deferred to the next day by the user), play a few songs from the SSD library, then delete the old copy at `~/Library/Application Support/beatbyte/songs/imported` (5.6 GB) from SETTINGS > LIBRARY with the new build, so the delete's live progress gets its first real run. Backup of the data folder before the move: `local/beatbyte-data-20261005-0213.tar` (+ `.sha256`).
 
+## Menus as data (IN PROGRESS 2026-10-05; plan `docs/plans/menu-system.md`)
+
+A list screen as a table of rows, so a new setting is one entry
+instead of seven match arms. The user's first brief (RON files, hot
+reload, every screen wrapped) was slimmed after the phase-0 analysis:
+a typed Rust table, one renderer on top of `ui_kit`, cursors that keep
+stopping at the ends, special screens left alone.
+
+- [x] M1 **The row model and the settings table** *(v0.18.67)* — `menu_list::spec` (`RowSpec<S, X>`, `Kind` Toggle / Slider / Choice / Door / Custom, pure value / step / feel functions, tested on a toy state) and the forty settings rows as `Row::NAME` constants; `Row`'s methods keep their signatures, so the screen and the pause menu only saw a rename. Deliberate changes: TELEMETRY steps back on LEFT, VOCAL CHARTS and VOCAL PITCH click. *Verified: 2123 tests; a new pin that every row edits exactly one field and no two rows the same one, plus sound and telemetry pins; three mutation probes caught; screenshots of rows 0, 13 and 39 identical to before apart from the CRT sweep line and the mute icon, which differ between two runs of the same build.*
+- [ ] M2 **One list renderer** — spawn, refresh, input, sounds and the pointer for a table of rows, on `ui_kit`; settings and the pause menu on it; state-scoped despawn.
+- [ ] M3 **Reference check** — screenshot diff as a harness step with a tolerance that ignores the sweep line and the mute icon; stop and report.
+- [ ] M4 **Further list screens where it pays** (main menu first), one per commit, old code deleted in it.
+- [ ] M5 **Editor UI: `bevy_egui` or not** — ADR draft with an effort estimate, no implementation.
+- [ ] M6 **Docs** — `docs/ui/menu-system.md`, CLAUDE.md "Add a setting" / "Add a list screen", ADR, demo toggle added and removed.
+
 ## Backlog (explicitly out of scope until after 1.0)
 
 Not started without a deliberate roadmap edit pulling them forward:

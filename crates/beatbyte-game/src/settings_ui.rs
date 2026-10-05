@@ -6,91 +6,366 @@ use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
-use crate::config::{Settings, save_settings};
+use crate::config::{FlashSync, Settings, TelemetryLevel, save_settings};
 use crate::controls::MenuNav;
+use crate::menu_list::spec::{self, Ends, Feel, Kind, RowSpec, Subtitle, Unit};
 use crate::palette;
 use crate::states::AppState;
 use crate::ui::UiFont;
 use crate::ui_kit;
+use beatbyte_core::vocal::PitchMode;
 
-/// The adjustable rows, in display order. `pub(crate)` because the
-/// pause menu reuses a safe subset — one definition of every step
-/// size and clamp, two places that draw it.
+/// What a settings row does besides editing a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Row {
-    MusicVolume,
-    SfxVolume,
-    ScrollSpeed,
-    LatencyOffset,
-    VideoOffset,
-    Particles,
-    ScreenShake,
-    BeatPulse,
-    BackdropMotion,
-    HitLabels,
-    /// Loudness matching on/off.
-    LoudnessMatch,
-    /// A `[GS]` twin for every imported song.
-    GuitarStudyTwins,
-    /// A vocal chart and karaoke stems for every imported song.
-    VocalCharts,
-    /// The microphone's measured round-trip latency.
-    MicOffset,
-    /// Whether the written octave is the target.
-    VocalPitch,
-    /// How much of the original singer stays in the karaoke backing.
-    OriginalVocals,
-    NoFail,
-    /// Room Stage: the game's events drive lights on the LAN.
-    RoomLights,
-    /// Preview a song's hook while the browser cursor rests on it.
-    SongPreview,
-    TapMode,
-    Fullscreen,
-    Theme,
+pub(crate) enum Act {
+    /// Opens another screen.
+    Open(AppState),
+    /// The song folder that is watched for new tracks (a step clears it).
     WatchFolder,
-    /// Where the song library lives, and moving it there.
+    /// Where the library lives, and moving it there.
     Library,
-    ReducedFlashing,
-    /// What the stage's white flashes are timed by.
-    FlashSync,
-    /// Whether a model helps a song search pick its recording.
-    AiSearch,
-    /// How much of a run the gameplay telemetry records.
-    Telemetry,
-    FxIntensity,
-    TextScale,
-    HighContrast,
+    /// Writes the play history to Downloads.
     ExportHistory,
-    Lyrics,
-    LyricsSize,
-    LyricsOffset,
-    LyricsLeadIn,
+    /// The lyrics model: its standing, and the one download.
     LyricsModel,
-    Controls,
-    /// Measure how late your input reaches the game.
-    ///
-    /// This and [`Row::InputTest`] used to be entries in the MAIN
-    /// menu, which put two set-up tools among the things a player
-    /// came to do. They are settings: you visit them once.
-    Calibration,
-    /// Free-play tester for keyboard, pad and guitar.
-    InputTest,
+}
+
+/// The spec type of a settings row.
+pub(crate) type Spec = RowSpec<Settings, Act>;
+
+/// One settings row: a handle on its spec. Two rows are the same row
+/// when their labels are — labels are unique, a test says so.
+///
+/// `pub(crate)` because the pause menu reuses a safe subset — one
+/// definition of every step size and clamp, two places that draw it.
+#[derive(Clone, Copy)]
+pub(crate) struct Row(&'static Spec);
+
+impl PartialEq for Row {
+    fn eq(&self, other: &Row) -> bool {
+        self.0.label == other.0.label
+    }
+}
+
+impl Eq for Row {}
+
+impl std::fmt::Debug for Row {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.0.label)
+    }
+}
+
+/// `ON` / `OFF` for nearly every toggle.
+fn on_off(settings: &Settings, value: bool) -> String {
+    spec::on_off(settings, value)
+}
+
+/// A toggle on a `bool` field of `Settings`.
+macro_rules! toggle {
+    ($field:ident) => {
+        Kind::Toggle {
+            get: |s: &Settings| s.$field,
+            set: |s: &mut Settings, v| s.$field = v,
+            words: on_off,
+        }
+    };
+}
+
+/// A slider on an `f32` field of `Settings`.
+macro_rules! slider {
+    ($field:ident, $min:expr, $max:expr, $step:expr, $unit:ident) => {
+        Kind::Slider {
+            get: |s: &Settings| s.$field,
+            set: |s: &mut Settings, v| s.$field = v,
+            min: $min,
+            max: $max,
+            step: $step,
+            unit: Unit::$unit,
+        }
+    };
+}
+
+/// A row, written as one entry.
+macro_rules! row {
+    ($label:literal, $kind:expr) => {
+        Row(&RowSpec {
+            label: $label,
+            kind: $kind,
+            subtitle: Subtitle::None,
+        })
+    };
+    ($label:literal, $kind:expr, $subtitle:expr) => {
+        Row(&RowSpec {
+            label: $label,
+            kind: $kind,
+            subtitle: $subtitle,
+        })
+    };
 }
 
 impl Row {
+    // ---- The rows. One entry each; then list it in `ALL` where its
+    // ---- label falls. A row defined and not listed fails the build
+    // ---- (dead code under `-D warnings`).
+    pub(crate) const AI_SEARCH: Row = row!(
+        "AI SEARCH",
+        Kind::Toggle {
+            get: |s: &Settings| s.ai_search,
+            set: |s: &mut Settings, v| s.ai_search = v,
+            words: ai_search_words,
+        },
+        Subtitle::Text("picks which recording a song search fetches")
+    );
+    pub(crate) const BEAT_PULSE: Row = row!("BEAT PULSE", toggle!(beat_pulse));
+    pub(crate) const CALIBRATION: Row =
+        row!("CALIBRATION", Kind::Door(Act::Open(AppState::Calibration)));
+    pub(crate) const CONTROLS: Row = row!("CONTROLS", Kind::Door(Act::Open(AppState::Controls)));
+    pub(crate) const FX_INTENSITY: Row = row!(
+        "EFFECT INTENSITY",
+        slider!(fx_intensity, 0.0, 1.0, 0.1, Percent)
+    );
+    pub(crate) const EXPORT_HISTORY: Row = row!(
+        "EXPORT PLAY HISTORY",
+        Kind::Custom {
+            id: Act::ExportHistory,
+            value: |_: &Settings| "ENTER > DOWNLOADS".to_owned(),
+            adjust: None,
+            feel: Feel::Tick,
+        }
+    );
+    pub(crate) const FLASH_SYNC: Row = row!(
+        "FLASH SYNC",
+        Kind::Choice {
+            labels: || vec!["ROOM LEVEL".to_owned(), "SONG BEAT".to_owned()],
+            get: |s: &Settings| usize::from(s.flash_sync == FlashSync::Beat),
+            set: |s: &mut Settings, i| {
+                s.flash_sync = if i == 1 {
+                    FlashSync::Beat
+                } else {
+                    FlashSync::Level
+                };
+            },
+            ends: Ends::Wrap,
+        },
+        // Which of the two clocks this is, and what it costs: one
+        // needs a microphone, the other needs nothing.
+        Subtitle::Text("ROOM LEVEL hears the room; SONG BEAT needs no mic")
+    );
+    pub(crate) const FULLSCREEN: Row = row!("FULLSCREEN", toggle!(fullscreen));
+    pub(crate) const GUITAR_STUDY_TWINS: Row = row!(
+        "GUITAR STUDY TWINS",
+        toggle!(guitar_study_twins),
+        Subtitle::Live(crate::study_twin::row_subtitle)
+    );
+    pub(crate) const HIGH_CONTRAST: Row = row!("HIGH CONTRAST", toggle!(high_contrast));
+    pub(crate) const HIT_LABELS: Row = row!("HIT LABELS", toggle!(hit_labels));
+    pub(crate) const INPUT_TEST: Row =
+        row!("INPUT TEST", Kind::Door(Act::Open(AppState::InputTest)));
+    pub(crate) const LATENCY_OFFSET: Row = row!(
+        "LATENCY OFFSET",
+        slider!(latency_offset_ms, -250.0, 250.0, 5.0, SignedMs)
+    );
+    pub(crate) const LIBRARY: Row = row!(
+        "LIBRARY",
+        Kind::Custom {
+            id: Act::Library,
+            // The live value comes from `LibraryMove` in the refresh.
+            value: |_: &Settings| "-".to_owned(),
+            adjust: None,
+            feel: Feel::Tick,
+        },
+        Subtitle::Text("ENTER picks a new place - or drop a folder here")
+    );
+    pub(crate) const LOUDNESS_MATCH: Row = row!("LOUDNESS MATCH", toggle!(normalize_loudness));
+    pub(crate) const LYRICS: Row = row!("LYRICS", toggle!(lyrics));
+    pub(crate) const LYRICS_LEAD_IN: Row = row!(
+        "LYRICS LEAD-IN",
+        slider!(lyrics_lead_in_ms, 0.0, 4000.0, 250.0, SecondsOfMs)
+    );
+    pub(crate) const LYRICS_MODEL: Row = row!(
+        "LYRICS MODEL",
+        Kind::Custom {
+            id: Act::LyricsModel,
+            // The live value comes from `SmartLyrics` in the refresh;
+            // this is what a build without the resource would show.
+            value: |_: &Settings| "CHECKING...".to_owned(),
+            adjust: None,
+            feel: Feel::Tick,
+        }
+    );
+    pub(crate) const LYRICS_OFFSET: Row = row!(
+        "LYRICS OFFSET",
+        slider!(lyrics_offset_ms, -500.0, 500.0, 10.0, SignedMs)
+    );
+    pub(crate) const LYRICS_SIZE: Row = row!(
+        "LYRICS SIZE",
+        Kind::Choice {
+            labels: || ["SMALL", "MEDIUM", "LARGE"].map(str::to_owned).to_vec(),
+            get: |s: &Settings| match s.lyrics_size {
+                0 => 0,
+                2 => 2,
+                _ => 1,
+            },
+            set: |s: &mut Settings, i| s.lyrics_size = i as u8,
+            ends: Ends::Stop,
+        }
+    );
+    pub(crate) const MIC_OFFSET: Row = row!(
+        "MIC OFFSET",
+        slider!(mic_offset_ms, -250.0, 500.0, 5.0, SignedMs),
+        Subtitle::Text("how late the microphone hears the song")
+    );
+    pub(crate) const MUSIC_VOLUME: Row = row!(
+        "MUSIC VOLUME",
+        slider!(music_volume, 0.0, 1.0, 0.1, Percent)
+    );
+    pub(crate) const NO_FAIL: Row = row!("NO FAIL", toggle!(no_fail));
+    pub(crate) const ORIGINAL_VOCALS: Row = row!(
+        "ORIGINAL VOCALS",
+        slider!(original_vocals, 0.0, 1.0, 0.05, Percent),
+        Subtitle::Text("above zero marks a vocal run assisted")
+    );
+    pub(crate) const PARTICLES: Row = row!("PARTICLES", toggle!(particles));
+    pub(crate) const REDUCED_FLASHING: Row = row!("REDUCED FLASHING", toggle!(reduced_flashing));
+    pub(crate) const ROOM_LIGHTS: Row = row!("ROOM LIGHTS", toggle!(room_lights));
+    pub(crate) const SCREEN_SHAKE: Row = row!("SCREEN SHAKE", toggle!(screen_shake));
+    pub(crate) const SCROLL_SPEED: Row = row!(
+        "SCROLL SPEED",
+        slider!(scroll_speed, 240.0, 900.0, 30.0, PxPerS)
+    );
+    pub(crate) const SFX_VOLUME: Row =
+        row!("SFX VOLUME", slider!(sfx_volume, 0.0, 1.0, 0.1, Percent));
+    pub(crate) const WATCH_FOLDER: Row = row!(
+        "SONG FOLDER",
+        Kind::Custom {
+            id: Act::WatchFolder,
+            value: watch_folder_value,
+            adjust: Some(|s: &mut Settings| s.watch_folder = None),
+            feel: Feel::Click,
+        },
+        Subtitle::Live(watch_folder_subtitle)
+    );
+    pub(crate) const SONG_PREVIEW: Row = row!("SONG PREVIEW", toggle!(song_preview));
+    pub(crate) const BACKDROP_MOTION: Row = row!("STAGE MOTION", toggle!(backdrop_motion));
+    pub(crate) const THEME: Row = row!(
+        "STAGE THEME",
+        Kind::Choice {
+            labels: || theme_ids().iter().map(|id| id.to_uppercase()).collect(),
+            get: |s: &Settings| theme_ids()
+                .iter()
+                .position(|id| *id == s.theme)
+                .unwrap_or(0),
+            set: |s: &mut Settings, i| {
+                s.theme = theme_ids().get(i).copied().unwrap_or("auto").to_owned();
+            },
+            ends: Ends::Wrap,
+        }
+    );
+    pub(crate) const TAP_MODE: Row = row!("TAP MODE (NO STRUM)", toggle!(tap_mode));
+    pub(crate) const TELEMETRY: Row = row!(
+        "TELEMETRY",
+        Kind::Choice {
+            labels: || TelemetryLevel::ALL
+                .iter()
+                .map(|l| l.label().to_owned())
+                .collect(),
+            get: |s: &Settings| {
+                TelemetryLevel::ALL
+                    .iter()
+                    .position(|l| *l == s.telemetry)
+                    .unwrap_or(2)
+            },
+            set: |s: &mut Settings, i| s.telemetry = TelemetryLevel::ALL[i.min(3)],
+            ends: Ends::Wrap,
+        },
+        Subtitle::Text("what a run records, on this machine only")
+    );
+    pub(crate) const TEXT_SCALE: Row =
+        row!("UI SCALE", slider!(ui_scale, 0.75, 1.5, 0.05, Percent));
+    pub(crate) const VIDEO_OFFSET: Row = row!(
+        "VIDEO OFFSET",
+        slider!(video_offset_ms, -100.0, 100.0, 5.0, SignedMs)
+    );
+    pub(crate) const VOCAL_CHARTS: Row = row!(
+        "VOCAL CHARTS",
+        toggle!(vocal_charts),
+        Subtitle::Live(crate::study_twin::vocal_row_subtitle)
+    );
+    pub(crate) const VOCAL_PITCH: Row = row!(
+        "VOCAL PITCH",
+        Kind::Choice {
+            labels: || vec!["ANY OCTAVE".to_owned(), "AS WRITTEN".to_owned()],
+            get: |s: &Settings| usize::from(s.vocal_pitch_mode == PitchMode::Strict),
+            set: |s: &mut Settings, i| {
+                s.vocal_pitch_mode = if i == 1 {
+                    PitchMode::Strict
+                } else {
+                    PitchMode::OctaveIndependent
+                };
+            },
+            ends: Ends::Wrap,
+        },
+        Subtitle::Text("an octave out: forgiven, or counted")
+    );
+
+    /// Every row, in the order the screen shows them: **alphabetical
+    /// by label**, and kept that way by a test — a new row goes where
+    /// its name falls, not at the end of the list.
+    pub(crate) const ALL: [Row; 40] = [
+        Row::AI_SEARCH,
+        Row::BEAT_PULSE,
+        Row::CALIBRATION,
+        Row::CONTROLS,
+        Row::FX_INTENSITY,
+        Row::EXPORT_HISTORY,
+        Row::FLASH_SYNC,
+        Row::FULLSCREEN,
+        Row::GUITAR_STUDY_TWINS,
+        Row::HIGH_CONTRAST,
+        Row::HIT_LABELS,
+        Row::INPUT_TEST,
+        Row::LATENCY_OFFSET,
+        Row::LIBRARY,
+        Row::LOUDNESS_MATCH,
+        Row::LYRICS,
+        Row::LYRICS_LEAD_IN,
+        Row::LYRICS_MODEL,
+        Row::LYRICS_OFFSET,
+        Row::LYRICS_SIZE,
+        Row::MIC_OFFSET,
+        Row::MUSIC_VOLUME,
+        Row::NO_FAIL,
+        Row::ORIGINAL_VOCALS,
+        Row::PARTICLES,
+        Row::REDUCED_FLASHING,
+        Row::ROOM_LIGHTS,
+        Row::SCREEN_SHAKE,
+        Row::SCROLL_SPEED,
+        Row::SFX_VOLUME,
+        Row::WATCH_FOLDER,
+        Row::SONG_PREVIEW,
+        Row::BACKDROP_MOTION,
+        Row::THEME,
+        Row::TAP_MODE,
+        Row::TELEMETRY,
+        Row::TEXT_SCALE,
+        Row::VIDEO_OFFSET,
+        Row::VOCAL_CHARTS,
+        Row::VOCAL_PITCH,
+    ];
+
+    /// The row's spec.
+    #[must_use]
+    pub(crate) const fn spec(self) -> &'static Spec {
+        self.0
+    }
+
     /// The screen this row opens, for the rows that are doors rather
     /// than settings.
-    ///
-    /// One list, so a door cannot be added to the enum and forgotten
-    /// in the handler — which is how it was: `Controls` was matched
-    /// by name in one `if`.
     #[must_use]
-    pub(crate) const fn opens(self) -> Option<AppState> {
-        match self {
-            Row::Controls => Some(AppState::Controls),
-            Row::Calibration => Some(AppState::Calibration),
-            Row::InputTest => Some(AppState::InputTest),
+    pub(crate) fn opens(self) -> Option<AppState> {
+        match self.0.kind {
+            Kind::Door(Act::Open(screen)) => Some(screen),
             _ => None,
         }
     }
@@ -102,353 +377,91 @@ impl Row {
         Row::ALL.iter().position(|row| *row == self).unwrap_or(0)
     }
 
-    /// Every row, in the order the screen shows them: **alphabetical
-    /// by label**, and kept that way by a test — a new row goes where
-    /// its name falls, not at the end of the list.
-    const ALL: [Row; 40] = [
-        Row::AiSearch,
-        Row::BeatPulse,
-        Row::Calibration,
-        Row::Controls,
-        Row::FxIntensity,
-        Row::ExportHistory,
-        Row::FlashSync,
-        Row::Fullscreen,
-        Row::GuitarStudyTwins,
-        Row::HighContrast,
-        Row::HitLabels,
-        Row::InputTest,
-        Row::LatencyOffset,
-        Row::Library,
-        Row::LoudnessMatch,
-        Row::Lyrics,
-        Row::LyricsLeadIn,
-        Row::LyricsModel,
-        Row::LyricsOffset,
-        Row::LyricsSize,
-        Row::MicOffset,
-        Row::MusicVolume,
-        Row::NoFail,
-        Row::OriginalVocals,
-        Row::Particles,
-        Row::ReducedFlashing,
-        Row::RoomLights,
-        Row::ScreenShake,
-        Row::ScrollSpeed,
-        Row::SfxVolume,
-        Row::WatchFolder,
-        Row::SongPreview,
-        Row::BackdropMotion,
-        Row::Theme,
-        Row::TapMode,
-        Row::Telemetry,
-        Row::TextScale,
-        Row::VideoOffset,
-        Row::VocalCharts,
-        Row::VocalPitch,
-    ];
-
+    /// The row's name.
     pub(crate) const fn label(self) -> &'static str {
-        match self {
-            Row::MusicVolume => "MUSIC VOLUME",
-            Row::SfxVolume => "SFX VOLUME",
-            Row::ScrollSpeed => "SCROLL SPEED",
-            Row::LatencyOffset => "LATENCY OFFSET",
-            Row::VideoOffset => "VIDEO OFFSET",
-            Row::Particles => "PARTICLES",
-            Row::ScreenShake => "SCREEN SHAKE",
-            Row::BeatPulse => "BEAT PULSE",
-            Row::BackdropMotion => "STAGE MOTION",
-            Row::HitLabels => "HIT LABELS",
-            Row::LoudnessMatch => "LOUDNESS MATCH",
-            Row::GuitarStudyTwins => "GUITAR STUDY TWINS",
-            Row::VocalCharts => "VOCAL CHARTS",
-            Row::MicOffset => "MIC OFFSET",
-            Row::Telemetry => "TELEMETRY",
-            Row::VocalPitch => "VOCAL PITCH",
-            Row::OriginalVocals => "ORIGINAL VOCALS",
-            Row::NoFail => "NO FAIL",
-            Row::RoomLights => "ROOM LIGHTS",
-            Row::ReducedFlashing => "REDUCED FLASHING",
-            Row::FlashSync => "FLASH SYNC",
-            Row::AiSearch => "AI SEARCH",
-            Row::FxIntensity => "EFFECT INTENSITY",
-            Row::TextScale => "UI SCALE",
-            Row::HighContrast => "HIGH CONTRAST",
-            Row::ExportHistory => "EXPORT PLAY HISTORY",
-            Row::Lyrics => "LYRICS",
-            Row::LyricsSize => "LYRICS SIZE",
-            Row::LyricsOffset => "LYRICS OFFSET",
-            Row::LyricsLeadIn => "LYRICS LEAD-IN",
-            Row::LyricsModel => "LYRICS MODEL",
-            Row::TapMode => "TAP MODE (NO STRUM)",
-            Row::Fullscreen => "FULLSCREEN",
-            Row::Theme => "STAGE THEME",
-            Row::WatchFolder => "SONG FOLDER",
-            Row::Library => "LIBRARY",
-            Row::SongPreview => "SONG PREVIEW",
-            Row::Controls => "CONTROLS",
-            Row::Calibration => "CALIBRATION",
-            Row::InputTest => "INPUT TEST",
-        }
+        self.0.label
     }
 
+    /// The value as the row shows it.
     pub(crate) fn value(self, settings: &Settings) -> String {
-        match self {
-            Row::MusicVolume => format!("{:.0}%", settings.music_volume * 100.0),
-            Row::SfxVolume => format!("{:.0}%", settings.sfx_volume * 100.0),
-            Row::ScrollSpeed => format!("{:.0} px/s", settings.scroll_speed),
-            Row::LatencyOffset => format!("{:+.0} ms", settings.latency_offset_ms),
-            Row::VideoOffset => format!("{:+.0} ms", settings.video_offset_ms),
-            Row::Particles => on_off(settings.particles),
-            Row::ScreenShake => on_off(settings.screen_shake),
-            Row::BeatPulse => on_off(settings.beat_pulse),
-            Row::BackdropMotion => on_off(settings.backdrop_motion),
-            Row::HitLabels => on_off(settings.hit_labels),
-            Row::LoudnessMatch => on_off(settings.normalize_loudness),
-            Row::GuitarStudyTwins => on_off(settings.guitar_study_twins),
-            Row::VocalCharts => on_off(settings.vocal_charts),
-            Row::MicOffset => format!("{:+.0} ms", settings.mic_offset_ms),
-            Row::OriginalVocals => format!("{:.0}%", settings.original_vocals * 100.0),
-            Row::Telemetry => settings.telemetry.label().to_owned(),
-            Row::VocalPitch => match settings.vocal_pitch_mode {
-                beatbyte_core::vocal::PitchMode::OctaveIndependent => "ANY OCTAVE".to_owned(),
-                beatbyte_core::vocal::PitchMode::Strict => "AS WRITTEN".to_owned(),
-            },
-            Row::NoFail => on_off(settings.no_fail),
-            Row::RoomLights => on_off(settings.room_lights),
-            Row::SongPreview => on_off(settings.song_preview),
-            Row::WatchFolder => settings.watch_folder.as_ref().map_or_else(
-                || "drop a folder onto the window".to_owned(),
-                |path| {
-                    path.file_name().map_or_else(
-                        || path.display().to_string(),
-                        |name| format!("watching: {}", name.to_string_lossy()),
-                    )
-                },
-            ),
-            Row::ReducedFlashing => on_off(settings.reduced_flashing),
-            // The live value comes from `LibraryMove` in the refresh.
-            Row::Library => "-".to_owned(),
-            Row::AiSearch => {
-                if !settings.ai_search {
-                    "OFF".to_owned()
-                } else {
-                    match crate::discover::backend_for(
-                        true,
-                        crate::discover::cli_available(),
-                        crate::discover::api_key(&settings.anthropic_api_key).as_deref(),
-                    ) {
-                        crate::discover::Backend::Cli => "ON (CLAUDE CLI)".to_owned(),
-                        crate::discover::Backend::Api(_) => "ON (API KEY)".to_owned(),
-                        // Switched on with nothing to run it: the row
-                        // says so rather than promising a step that
-                        // will not happen.
-                        crate::discover::Backend::Off => "ON (NOTHING TO RUN IT)".to_owned(),
-                    }
-                }
-            }
-            Row::FlashSync => match settings.flash_sync {
-                crate::config::FlashSync::Level => "ROOM LEVEL",
-                crate::config::FlashSync::Beat => "SONG BEAT",
-            }
-            .to_owned(),
-            Row::FxIntensity => format!("{:.0}%", settings.fx_intensity * 100.0),
-            Row::TextScale => format!("{:.0}%", settings.ui_scale * 100.0),
-            Row::HighContrast => on_off(settings.high_contrast),
-            Row::ExportHistory => "ENTER > DOWNLOADS".to_owned(),
-            Row::Lyrics => on_off(settings.lyrics),
-            Row::LyricsSize => match settings.lyrics_size {
-                0 => "SMALL",
-                2 => "LARGE",
-                _ => "MEDIUM",
-            }
-            .to_owned(),
-            Row::LyricsOffset => format!("{:+.0} ms", settings.lyrics_offset_ms),
-            Row::LyricsLeadIn => format!("{:.2} s", settings.lyrics_lead_in_ms / 1000.0),
-            // The live value comes from `SmartLyrics` in the refresh;
-            // this is what a build without the resource would show.
-            Row::LyricsModel => "CHECKING...".to_owned(),
-            Row::TapMode => on_off(settings.tap_mode),
-            Row::Fullscreen => on_off(settings.fullscreen),
-            Row::Theme => settings.theme.to_uppercase(),
-            Row::Controls | Row::Calibration | Row::InputTest => "OPEN >".to_owned(),
-        }
+        self.0.value(settings)
     }
 
     /// The line under a row: the fact behind the setting, where
     /// there is one. Empty for every row that needs no explaining.
     pub(crate) fn subtitle(self) -> String {
-        match self {
-            // Where the tracks actually come from. The value line
-            // above says whether a folder is WATCHED for new ones;
-            // this says which directories the library is read from,
-            // which is a different question and the one a player
-            // asks when a song is missing.
-            Row::WatchFolder => {
-                let roots = crate::library::live_scan_roots();
-                if roots.is_empty() {
-                    "no song folder on disk yet".to_owned()
-                } else {
-                    roots
-                        .iter()
-                        .map(|root| short_path(&root.display().to_string(), SUBTITLE_CHARS))
-                        .collect::<Vec<_>>()
-                        .join("   ")
-                }
-            }
-            // Which of the two clocks this is, and what it costs:
-            // one needs a microphone, the other needs nothing.
-            Row::FlashSync => "ROOM LEVEL hears the room; SONG BEAT needs no mic".to_owned(),
-            Row::Library => "ENTER picks a new place - or drop a folder here".to_owned(),
-            // The one row whose value cannot say everything: WHERE
-            // the model runs decides whether a key is needed at all.
-            Row::AiSearch => "picks which recording a song search fetches".to_owned(),
-            Row::GuitarStudyTwins => crate::study_twin::row_subtitle(),
-            Row::VocalCharts => crate::study_twin::vocal_row_subtitle(),
-            Row::MicOffset => "how late the microphone hears the song".to_owned(),
-            Row::OriginalVocals => "above zero marks a vocal run assisted".to_owned(),
-            Row::VocalPitch => "an octave out: forgiven, or counted".to_owned(),
-            Row::Telemetry => "what a run records, on this machine only".to_owned(),
-            _ => String::new(),
-        }
+        self.0.subtitle()
     }
 
     /// Adjust by one step (direction −1 or +1).
     pub(crate) fn adjust(self, settings: &mut Settings, direction: f32) {
-        match self {
-            Row::MusicVolume => {
-                settings.music_volume = (settings.music_volume + 0.1 * direction).clamp(0.0, 1.0);
-            }
-            Row::SfxVolume => {
-                settings.sfx_volume = (settings.sfx_volume + 0.1 * direction).clamp(0.0, 1.0);
-            }
-            Row::ScrollSpeed => {
-                settings.scroll_speed =
-                    (settings.scroll_speed + 30.0 * direction).clamp(240.0, 900.0);
-            }
-            Row::LatencyOffset => {
-                settings.latency_offset_ms =
-                    (settings.latency_offset_ms + 5.0 * direction).clamp(-250.0, 250.0);
-            }
-            Row::VideoOffset => {
-                settings.video_offset_ms =
-                    (settings.video_offset_ms + 5.0 * direction).clamp(-100.0, 100.0);
-            }
-            Row::Particles => settings.particles = !settings.particles,
-            Row::ScreenShake => settings.screen_shake = !settings.screen_shake,
-            Row::BeatPulse => settings.beat_pulse = !settings.beat_pulse,
-            Row::BackdropMotion => settings.backdrop_motion = !settings.backdrop_motion,
-            Row::HitLabels => settings.hit_labels = !settings.hit_labels,
-            Row::LoudnessMatch => settings.normalize_loudness = !settings.normalize_loudness,
-            Row::GuitarStudyTwins => settings.guitar_study_twins = !settings.guitar_study_twins,
-            Row::VocalCharts => settings.vocal_charts = !settings.vocal_charts,
-            Row::MicOffset => {
-                settings.mic_offset_ms =
-                    (settings.mic_offset_ms + 5.0 * direction).clamp(-250.0, 500.0);
-            }
-            Row::OriginalVocals => {
-                settings.original_vocals =
-                    (settings.original_vocals + 0.05 * direction).clamp(0.0, 1.0);
-            }
-            Row::Telemetry => {
-                // One direction only: four states cycle, and the row
-                // says which one it is on.
-                settings.telemetry = settings.telemetry.next();
-            }
-            Row::VocalPitch => {
-                settings.vocal_pitch_mode = match settings.vocal_pitch_mode {
-                    beatbyte_core::vocal::PitchMode::OctaveIndependent => {
-                        beatbyte_core::vocal::PitchMode::Strict
-                    }
-                    beatbyte_core::vocal::PitchMode::Strict => {
-                        beatbyte_core::vocal::PitchMode::OctaveIndependent
-                    }
-                };
-            }
-            Row::NoFail => settings.no_fail = !settings.no_fail,
-            Row::RoomLights => settings.room_lights = !settings.room_lights,
-            Row::SongPreview => settings.song_preview = !settings.song_preview,
-            Row::WatchFolder => settings.watch_folder = None,
-            // An ACTION row: ENTER and LEFT drive the move, see
-            // `library_move`; nothing here is a value to step.
-            Row::Library => {}
-            Row::ReducedFlashing => settings.reduced_flashing = !settings.reduced_flashing,
-            Row::AiSearch => settings.ai_search = !settings.ai_search,
-            Row::FlashSync => {
-                settings.flash_sync = match settings.flash_sync {
-                    crate::config::FlashSync::Level => crate::config::FlashSync::Beat,
-                    crate::config::FlashSync::Beat => crate::config::FlashSync::Level,
-                };
-            }
-            Row::FxIntensity => {
-                settings.fx_intensity = (settings.fx_intensity + 0.1 * direction).clamp(0.0, 1.0);
-            }
-            Row::TextScale => {
-                settings.ui_scale = (settings.ui_scale + 0.05 * direction).clamp(0.75, 1.5);
-            }
-            Row::HighContrast => settings.high_contrast = !settings.high_contrast,
-            // The export is an ACTION, not a value: it happens on
-            // confirm, so stepping left/right must do nothing.
-            Row::ExportHistory => {}
-            Row::Lyrics => settings.lyrics = !settings.lyrics,
-            Row::LyricsSize => {
-                let step = i32::from(settings.lyrics_size) + direction as i32;
-                settings.lyrics_size = step.clamp(0, 2) as u8;
-            }
-            Row::LyricsOffset => {
-                settings.lyrics_offset_ms =
-                    (settings.lyrics_offset_ms + 10.0 * direction).clamp(-500.0, 500.0);
-            }
-            Row::LyricsLeadIn => {
-                settings.lyrics_lead_in_ms =
-                    (settings.lyrics_lead_in_ms + 250.0 * direction).clamp(0.0, 4000.0);
-            }
-            // An ACTION row like the export: confirm downloads or
-            // cancels; stepping left/right does nothing.
-            Row::LyricsModel => {}
-            Row::TapMode => settings.tap_mode = !settings.tap_mode,
-            Row::Fullscreen => settings.fullscreen = !settings.fullscreen,
-            Row::Theme => {
-                // Cycle auto → themes → auto.
-                let mut ids = vec!["auto"];
-                ids.extend(crate::theme::THEMES.iter().map(|theme| theme.id));
-                let position = ids.iter().position(|id| *id == settings.theme).unwrap_or(0) as i32;
-                let count = ids.len() as i32;
-                let next = (position + direction as i32 + count) % count;
-                settings.theme = ids[next as usize].to_owned();
-            }
-            Row::Controls | Row::Calibration | Row::InputTest => {}
-        }
+        self.0.step(settings, if direction < 0.0 { -1 } else { 1 });
     }
 
-    /// The feedback voice a row speaks with when it adjusts: toggles
-    /// click, stepped values tick.
-    const fn sound(self) -> crate::sfx::UiSound {
-        match self {
-            Row::Particles
-            | Row::ScreenShake
-            | Row::BeatPulse
-            | Row::BackdropMotion
-            | Row::HitLabels
-            | Row::LoudnessMatch
-            | Row::GuitarStudyTwins
-            | Row::NoFail
-            | Row::RoomLights
-            | Row::SongPreview
-            | Row::WatchFolder
-            | Row::ReducedFlashing
-            | Row::FlashSync
-            | Row::AiSearch
-            | Row::HighContrast
-            | Row::Lyrics
-            | Row::TapMode
-            | Row::Fullscreen => crate::sfx::UiSound::Toggle,
-            _ => crate::sfx::UiSound::Slider,
+    /// The feedback voice a row speaks with when it adjusts: a switch
+    /// clicks, a dial ticks.
+    fn sound(self) -> crate::sfx::UiSound {
+        match self.0.feel() {
+            Feel::Click => crate::sfx::UiSound::Toggle,
+            Feel::Tick => crate::sfx::UiSound::Slider,
         }
     }
 }
 
+/// `auto` and every stage theme, in the order the row cycles.
+fn theme_ids() -> Vec<&'static str> {
+    std::iter::once("auto")
+        .chain(crate::theme::THEMES.iter().map(|theme| theme.id))
+        .collect()
+}
+
+/// AI SEARCH's value names WHERE the model runs, or says that nothing
+/// can — switched on with nothing to run it, the row says so rather
+/// than promising a step that will not happen.
+fn ai_search_words(settings: &Settings, on: bool) -> String {
+    if !on {
+        return "OFF".to_owned();
+    }
+    match crate::discover::backend_for(
+        true,
+        crate::discover::cli_available(),
+        crate::discover::api_key(&settings.anthropic_api_key).as_deref(),
+    ) {
+        crate::discover::Backend::Cli => "ON (CLAUDE CLI)".to_owned(),
+        crate::discover::Backend::Api(_) => "ON (API KEY)".to_owned(),
+        crate::discover::Backend::Off => "ON (NOTHING TO RUN IT)".to_owned(),
+    }
+}
+
+/// SONG FOLDER's value: the watched folder's name, or how to set one.
+fn watch_folder_value(settings: &Settings) -> String {
+    settings.watch_folder.as_ref().map_or_else(
+        || "drop a folder onto the window".to_owned(),
+        |path| {
+            path.file_name().map_or_else(
+                || path.display().to_string(),
+                |name| format!("watching: {}", name.to_string_lossy()),
+            )
+        },
+    )
+}
+
+/// Where the tracks actually come from. The value line says whether a
+/// folder is WATCHED for new ones; this says which directories the
+/// library is read from, which is a different question and the one a
+/// player asks when a song is missing.
+fn watch_folder_subtitle() -> String {
+    let roots = crate::library::live_scan_roots();
+    if roots.is_empty() {
+        "no song folder on disk yet".to_owned()
+    } else {
+        roots
+            .iter()
+            .map(|root| short_path(&root.display().to_string(), SUBTITLE_CHARS))
+            .collect::<Vec<_>>()
+            .join("   ")
+    }
+}
 /// How many glyphs a subtitle may use before it is shortened.
 /// Press Start 2P advances a full em, and the panel is
 /// [`ui_kit::PANEL_WIDTH`] wide minus its padding — a test pins
@@ -481,10 +494,6 @@ pub fn short_path(path: &str, limit: usize) -> String {
     format!("...{tail}")
 }
 
-fn on_off(value: bool) -> String {
-    if value { "ON" } else { "OFF" }.to_owned()
-}
-
 #[derive(Resource, Default)]
 /// The highlighted settings row. Public so the screenshot harness
 /// can select a row below the fold.
@@ -494,7 +503,7 @@ pub struct SettingsCursor(pub usize);
 /// then the answer to "where?").
 #[must_use]
 pub(crate) fn library_row_selected(cursor: &SettingsCursor) -> bool {
-    Row::ALL.get(cursor.0) == Some(&Row::Library)
+    Row::ALL.get(cursor.0) == Some(&Row::LIBRARY)
 }
 
 /// Where the last in-app export landed (or why it did not). Shown
@@ -705,7 +714,7 @@ fn settings_input(
         }
     }
     let row = Row::ALL[cursor.0];
-    if row == Row::ExportHistory && (nav.confirm || clicked) {
+    if row == Row::EXPORT_HISTORY && (nav.confirm || clicked) {
         match crate::history::export_csv() {
             Ok(path) => {
                 sounds.write(crate::sfx::UiSound::Confirm);
@@ -720,7 +729,7 @@ fn settings_input(
         }
         return;
     }
-    if row == Row::Library {
+    if row == Row::LIBRARY {
         if nav.confirm || clicked {
             library_move.confirm();
             sounds.write(crate::sfx::UiSound::Confirm);
@@ -732,7 +741,7 @@ fn settings_input(
             return;
         }
     }
-    if row == Row::LyricsModel && (nav.confirm || clicked) {
+    if row == Row::LYRICS_MODEL && (nav.confirm || clicked) {
         // The one explicit action that fetches anything (README):
         // nothing is downloaded until this row is confirmed.
         smart.confirm_model_row();
@@ -823,7 +832,7 @@ fn refresh_settings(
     }
     if let Ok(mut text) = subtitles.single_mut() {
         let row = Row::ALL[cursor.0.min(Row::ALL.len() - 1)];
-        let wanted = if row == Row::LyricsModel {
+        let wanted = if row == Row::LYRICS_MODEL {
             smart.model_subtitle()
         } else {
             row.subtitle()
@@ -836,11 +845,12 @@ fn refresh_settings(
         // The export row reports where the file went, once it has
         // written one - the answer belongs where the question was
         // asked, not in a log nobody reads.
-        let wanted = match Row::ALL[value.0] {
-            Row::ExportHistory if !export_note.0.is_empty() => export_note.0.clone(),
-            Row::LyricsModel => smart.model_text(),
-            Row::Library => library_move.value(),
-            row => row.value(&settings),
+        let row = Row::ALL[value.0];
+        let wanted = match row.spec().action() {
+            Some(Act::ExportHistory) if !export_note.0.is_empty() => export_note.0.clone(),
+            Some(Act::LyricsModel) => smart.model_text(),
+            Some(Act::Library) => library_move.value(),
+            _ => row.value(&settings),
         };
         if text.0 != wanted {
             text.0 = wanted;
@@ -909,13 +919,13 @@ mod tests {
             FlashSync::Level,
             "the room's level is what the light show has always followed"
         );
-        assert_eq!(Row::FlashSync.label(), "FLASH SYNC");
-        assert_eq!(Row::FlashSync.value(&settings), "ROOM LEVEL");
-        Row::FlashSync.adjust(&mut settings, 1.0);
+        assert_eq!(Row::FLASH_SYNC.label(), "FLASH SYNC");
+        assert_eq!(Row::FLASH_SYNC.value(&settings), "ROOM LEVEL");
+        Row::FLASH_SYNC.adjust(&mut settings, 1.0);
         assert_eq!(settings.flash_sync, FlashSync::Beat);
-        assert_eq!(Row::FlashSync.value(&settings), "SONG BEAT");
+        assert_eq!(Row::FLASH_SYNC.value(&settings), "SONG BEAT");
         // Two values: either direction is the other one.
-        Row::FlashSync.adjust(&mut settings, -1.0);
+        Row::FLASH_SYNC.adjust(&mut settings, -1.0);
         assert_eq!(settings.flash_sync, FlashSync::Level);
     }
 
@@ -939,14 +949,14 @@ mod tests {
         // value line ("watching: …") does not answer, and neither
         // ROOM LEVEL nor SONG BEAT says on its own what it costs.
         use super::Row;
-        assert!(!Row::WatchFolder.subtitle().is_empty());
-        assert!(!Row::FlashSync.subtitle().is_empty());
+        assert!(!Row::WATCH_FOLDER.subtitle().is_empty());
+        assert!(!Row::FLASH_SYNC.subtitle().is_empty());
         assert!(
-            Row::FlashSync.subtitle().chars().count() <= SUBTITLE_CHARS,
+            Row::FLASH_SYNC.subtitle().chars().count() <= SUBTITLE_CHARS,
             "the subtitle runs past the panel: {}",
-            Row::FlashSync.subtitle()
+            Row::FLASH_SYNC.subtitle()
         );
-        for row in [Row::MusicVolume, Row::Lyrics, Row::Controls, Row::Theme] {
+        for row in [Row::MUSIC_VOLUME, Row::LYRICS, Row::CONTROLS, Row::THEME] {
             assert!(row.subtitle().is_empty(), "{row:?} should stay quiet");
         }
     }
@@ -965,24 +975,24 @@ mod tests {
         // Held LEFT must not drive the volume negative, which would
         // silence the game with no way back through the same key.
         let mut settings = Settings::default();
-        step(Row::MusicVolume, &mut settings, -1.0, 50);
+        step(Row::MUSIC_VOLUME, &mut settings, -1.0, 50);
         assert!((0.0..=1.0).contains(&settings.music_volume));
-        step(Row::MusicVolume, &mut settings, 1.0, 50);
+        step(Row::MUSIC_VOLUME, &mut settings, 1.0, 50);
         assert!((0.0..=1.0).contains(&settings.music_volume));
-        step(Row::SfxVolume, &mut settings, -1.0, 50);
+        step(Row::SFX_VOLUME, &mut settings, -1.0, 50);
         assert!((0.0..=1.0).contains(&settings.sfx_volume));
     }
 
     #[test]
     fn scroll_speed_and_latency_stay_playable() {
         let mut settings = Settings::default();
-        step(Row::ScrollSpeed, &mut settings, -1.0, 100);
+        step(Row::SCROLL_SPEED, &mut settings, -1.0, 100);
         assert!((240.0..=900.0).contains(&settings.scroll_speed));
-        step(Row::ScrollSpeed, &mut settings, 1.0, 100);
+        step(Row::SCROLL_SPEED, &mut settings, 1.0, 100);
         assert!((240.0..=900.0).contains(&settings.scroll_speed));
-        step(Row::LatencyOffset, &mut settings, 1.0, 200);
+        step(Row::LATENCY_OFFSET, &mut settings, 1.0, 200);
         assert!((-250.0..=250.0).contains(&settings.latency_offset_ms));
-        step(Row::LatencyOffset, &mut settings, -1.0, 200);
+        step(Row::LATENCY_OFFSET, &mut settings, -1.0, 200);
         assert!((-250.0..=250.0).contains(&settings.latency_offset_ms));
     }
 
@@ -996,7 +1006,7 @@ mod tests {
         let mut settings = Settings::default();
         for direction in [1.0, -1.0] {
             for _ in 0..(known.len() * 2 + 1) {
-                Row::Theme.adjust(&mut settings, direction);
+                Row::THEME.adjust(&mut settings, direction);
                 assert!(
                     known.contains(&settings.theme),
                     "cycled onto unknown theme `{}`",
@@ -1014,7 +1024,7 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         for _ in 0..known_count {
             seen.insert(settings.theme.clone());
-            Row::Theme.adjust(&mut settings, 1.0);
+            Row::THEME.adjust(&mut settings, 1.0);
         }
         assert_eq!(seen.len(), known_count, "cycle skipped a stage");
         assert_eq!(settings.theme, start, "cycle did not come back around");
@@ -1070,16 +1080,16 @@ mod tests {
     fn toggles_flip_and_report_themselves() {
         let mut settings = Settings::default();
         for row in [
-            Row::Particles,
-            Row::ScreenShake,
-            Row::BeatPulse,
-            Row::LoudnessMatch,
-            Row::GuitarStudyTwins,
-            Row::BackdropMotion,
-            Row::HitLabels,
-            Row::NoFail,
-            Row::TapMode,
-            Row::Fullscreen,
+            Row::PARTICLES,
+            Row::SCREEN_SHAKE,
+            Row::BEAT_PULSE,
+            Row::LOUDNESS_MATCH,
+            Row::GUITAR_STUDY_TWINS,
+            Row::BACKDROP_MOTION,
+            Row::HIT_LABELS,
+            Row::NO_FAIL,
+            Row::TAP_MODE,
+            Row::FULLSCREEN,
         ] {
             let before = row.value(&settings);
             row.adjust(&mut settings, 1.0);
@@ -1094,13 +1104,137 @@ mod tests {
         // It navigates; stepping it must not mutate anything.
         let mut settings = Settings::default();
         let before = settings.clone();
-        Row::Controls.adjust(&mut settings, 1.0);
-        Row::Controls.adjust(&mut settings, -1.0);
+        Row::CONTROLS.adjust(&mut settings, 1.0);
+        Row::CONTROLS.adjust(&mut settings, -1.0);
         assert_eq!(
             format!("{before:?}"),
             format!("{settings:?}"),
             "the CONTROLS row changed a setting"
         );
+    }
+
+    /// Which top-level fields of `Settings` differ between two values,
+    /// read off their pretty `Debug` form (one `name: value` line per
+    /// field at the first indentation).
+    fn changed_fields(before: &Settings, after: &Settings) -> Vec<String> {
+        let fields = |s: &Settings| -> Vec<(String, String)> {
+            let text = format!("{s:#?}");
+            let mut out: Vec<(String, String)> = Vec::new();
+            for line in text.lines().skip(1) {
+                if let Some(rest) = line.strip_prefix("    ")
+                    && !rest.starts_with(' ')
+                    && let Some((name, value)) = rest.split_once(':')
+                {
+                    out.push((name.to_owned(), value.to_owned()));
+                } else if let Some(last) = out.last_mut() {
+                    last.1.push_str(line);
+                }
+            }
+            out
+        };
+        let (a, b) = (fields(before), fields(after));
+        a.iter()
+            .zip(&b)
+            .filter(|(x, y)| x != y)
+            .map(|(x, _)| x.0.clone())
+            .collect()
+    }
+
+    /// The table binds every row to a field through a small closure,
+    /// and a copy-pasted entry bound to its neighbour's field would
+    /// still compile and still flip SOMETHING. So: every row that
+    /// steps changes exactly one field, and no two rows the same one.
+    #[test]
+    fn every_row_edits_one_field_of_its_own() {
+        let mut owner: std::collections::HashMap<String, &str> = std::collections::HashMap::new();
+        for row in Row::ALL {
+            let base = Settings::default();
+            let mut changed = Vec::new();
+            for direction in [1.0, -1.0] {
+                let mut edited = base.clone();
+                row.adjust(&mut edited, direction);
+                changed = changed_fields(&base, &edited);
+                if !changed.is_empty() {
+                    break;
+                }
+            }
+            match row.spec().kind {
+                Kind::Door(_) => assert!(
+                    changed.is_empty(),
+                    "{row:?} is a door and edited {changed:?}"
+                ),
+                Kind::Custom { adjust: None, .. } => {
+                    assert!(changed.is_empty(), "{row:?} edited {changed:?}");
+                }
+                // Clearing the watched folder changes nothing when no
+                // folder is set; set one and clear it.
+                Kind::Custom {
+                    adjust: Some(_), ..
+                } => {
+                    let mut set = Settings {
+                        watch_folder: Some(std::path::PathBuf::from("/x")),
+                        ..Settings::default()
+                    };
+                    let before = set.clone();
+                    row.adjust(&mut set, 1.0);
+                    let changed = changed_fields(&before, &set);
+                    assert_eq!(changed, ["watch_folder"], "{row:?}");
+                }
+                _ => {
+                    assert_eq!(changed.len(), 1, "{row:?} changed {changed:?}");
+                    if let Some(other) = owner.insert(changed[0].clone(), row.label()) {
+                        panic!("{} and {other} both edit `{}`", row.label(), changed[0]);
+                    }
+                }
+            }
+        }
+        // The probe itself: it must see a change where there is one.
+        let louder = Settings {
+            music_volume: 0.1,
+            ..Settings::default()
+        };
+        assert_eq!(
+            changed_fields(&Settings::default(), &louder),
+            ["music_volume"]
+        );
+    }
+
+    /// A switch clicks and a dial ticks. Two rows changed voice when
+    /// the table took over: VOCAL CHARTS was the one toggle missing
+    /// from the old hand-kept list of clicking rows, and VOCAL PITCH
+    /// is a two-way choice like FLASH SYNC, which already clicked.
+    #[test]
+    fn a_switch_clicks_and_a_dial_ticks() {
+        use crate::sfx::UiSound;
+        for row in [
+            Row::VOCAL_CHARTS,
+            Row::VOCAL_PITCH,
+            Row::FLASH_SYNC,
+            Row::HIT_LABELS,
+            Row::AI_SEARCH,
+        ] {
+            assert_eq!(row.sound(), UiSound::Toggle, "{row:?}");
+        }
+        for row in [
+            Row::MUSIC_VOLUME,
+            Row::THEME,
+            Row::TELEMETRY,
+            Row::LYRICS_SIZE,
+        ] {
+            assert_eq!(row.sound(), UiSound::Slider, "{row:?}");
+        }
+    }
+
+    /// TELEMETRY used to cycle forward on LEFT too; as a choice it
+    /// steps back on LEFT like every other row.
+    #[test]
+    fn telemetry_steps_both_ways() {
+        let mut settings = Settings::default();
+        let start = settings.telemetry;
+        Row::TELEMETRY.adjust(&mut settings, -1.0);
+        assert_ne!(settings.telemetry, start);
+        Row::TELEMETRY.adjust(&mut settings, 1.0);
+        assert_eq!(settings.telemetry, start, "left then right comes back");
     }
 
     #[test]

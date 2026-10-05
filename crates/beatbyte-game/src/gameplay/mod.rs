@@ -1434,7 +1434,7 @@ impl PauseItem {
 pub(crate) fn sfx_row_position() -> usize {
     PAUSE_ROWS
         .iter()
-        .position(|item| *item == PauseItem::Setting(crate::settings_ui::Row::SfxVolume))
+        .position(|item| *item == PauseItem::Setting(crate::settings_ui::Row::SFX_VOLUME))
         .unwrap_or(0)
 }
 
@@ -1444,9 +1444,9 @@ const PAUSE_ROWS: [PauseItem; 7] = [
     PauseItem::LoopFrom,
     PauseItem::LoopTo,
     PauseItem::LyricOffset,
-    PauseItem::Setting(crate::settings_ui::Row::MusicVolume),
-    PauseItem::Setting(crate::settings_ui::Row::SfxVolume),
-    PauseItem::Setting(crate::settings_ui::Row::ScrollSpeed),
+    PauseItem::Setting(crate::settings_ui::Row::MUSIC_VOLUME),
+    PauseItem::Setting(crate::settings_ui::Row::SFX_VOLUME),
+    PauseItem::Setting(crate::settings_ui::Row::SCROLL_SPEED),
 ];
 
 /// One step of the song's lyric offset, in milliseconds.
@@ -1470,7 +1470,7 @@ pub fn step_lyric_offset(current: i32, direction: f32) -> i32 {
 /// paused there is nothing else to hear — setting it blind would be
 /// guesswork, so every step plays the sound being set.
 fn previews_the_miss_sound(item: PauseItem) -> bool {
-    item == PauseItem::Setting(crate::settings_ui::Row::SfxVolume)
+    item == PauseItem::Setting(crate::settings_ui::Row::SFX_VOLUME)
 }
 
 /// Which pause row the cursor sits on.
@@ -1916,8 +1916,8 @@ mod pause_menu_tests {
         // overstrum sounds, and the practice speed is the pause
         // menu's own feature (optimization plan P1) — both must be
         // reachable mid-song.
-        assert!(PAUSE_ROWS.contains(&PauseItem::Setting(Row::SfxVolume)));
-        assert!(PAUSE_ROWS.contains(&PauseItem::Setting(Row::MusicVolume)));
+        assert!(PAUSE_ROWS.contains(&PauseItem::Setting(Row::SFX_VOLUME)));
+        assert!(PAUSE_ROWS.contains(&PauseItem::Setting(Row::MUSIC_VOLUME)));
         assert!(PAUSE_ROWS.contains(&PauseItem::Speed));
     }
 
@@ -1927,8 +1927,8 @@ mod pause_menu_tests {
         // the strum rules. Either one flipped inside a paused run
         // would judge the second half of the song by different laws
         // than the first — they stay on the settings screen.
-        assert!(!PAUSE_ROWS.contains(&PauseItem::Setting(Row::LatencyOffset)));
-        assert!(!PAUSE_ROWS.contains(&PauseItem::Setting(Row::TapMode)));
+        assert!(!PAUSE_ROWS.contains(&PauseItem::Setting(Row::LATENCY_OFFSET)));
+        assert!(!PAUSE_ROWS.contains(&PauseItem::Setting(Row::TAP_MODE)));
     }
 
     #[test]
@@ -1939,7 +1939,7 @@ mod pause_menu_tests {
         for item in PAUSE_ROWS {
             assert_eq!(
                 previews_the_miss_sound(item),
-                item == PauseItem::Setting(Row::SfxVolume)
+                item == PauseItem::Setting(Row::SFX_VOLUME)
             );
         }
     }

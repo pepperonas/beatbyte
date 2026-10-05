@@ -32,6 +32,7 @@ pub mod loudness;
 pub mod lyrics_fetch;
 pub mod mc;
 pub mod menu;
+pub mod menu_list;
 pub mod multiplayer;
 pub mod mute;
 pub mod palette;

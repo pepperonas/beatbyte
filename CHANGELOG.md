@@ -14,6 +14,23 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.67] - 2026-10-05
+
+### Changed
+
+- **The settings rows are a table.** Each of the forty rows is one
+  entry — its label, what kind of row it is (a switch, a dial with its
+  bounds and unit, a choice, a door to another screen, or a row of its
+  own such as the library move) and the line under it — instead of
+  seven match arms spread over the settings screen. The screen looks
+  the same pixel for pixel; three things behave differently, on
+  purpose:
+  - **TELEMETRY steps back on LEFT.** It used to cycle forward on
+    either key.
+  - **VOCAL CHARTS clicks like every other switch** (it was the one
+    toggle missing from the hand-kept list of clicking rows), and
+    **VOCAL PITCH**, a two-way choice like FLASH SYNC, clicks too.
+
 ## [0.18.66] - 2026-10-05
 
 ### Added

@@ -3086,7 +3086,7 @@ fn autopilot_model(
             deliver(&mut app_exit, AppExit::error());
         }
         ModelState::Missing | ModelState::Damaged if !*pressed_enter => {
-            let downs = crate::settings_ui::Row::LyricsModel.index() as u32;
+            let downs = crate::settings_ui::Row::LYRICS_MODEL.index() as u32;
             let step = *frame / 2;
             let pressing = (*frame).is_multiple_of(2);
             if step < downs {
