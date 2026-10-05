@@ -7,9 +7,12 @@ use bevy::prelude::*;
 use crate::controls::MenuNav;
 
 use crate::boot::{BuiltinSongs, LoadedSong, SongAudio};
-use crate::library::{ChartMark, LyricsMark, SongEntry, SongLibrary, SongSource};
-use crate::palette;
+use crate::library::{SongEntry, SongLibrary, SongSource};
 use crate::scores::ScoreBoard;
+use crate::song_browser_view::{
+    self as look, ActionsButton, BrowserScreen, DiffChip, EmptyHint, ImportNote, SongList, SongRow,
+    SortButton, VersionChip,
+};
 use crate::states::AppState;
 use crate::ui::UiFont;
 use crate::ui_kit;
@@ -169,47 +172,23 @@ pub struct BrowserView {
     /// Kept by FOLDER, not by library index: a rescan renumbers the
     /// entries, and an open song must stay open through an import.
     pub open: std::collections::HashSet<(std::path::PathBuf, crate::song_tree::Level)>,
+    /// The rows: one per song, its versions as members
+    /// (`crate::song_family`). Parallel to `order`: `order[i]` is the
+    /// member of `families[i]` that plays.
+    pub families: Vec<crate::song_family::Family>,
+    /// The version the player chose for a song this session: the
+    /// song's folder → the chosen member's folder. Folders, because a
+    /// rescan renumbers the entries.
+    pub chosen: std::collections::HashMap<std::path::PathBuf, std::path::PathBuf>,
 }
 
 /// The song folder of an entry, if it has one (built-ins do not).
-fn entry_folder(entry: &SongEntry) -> Option<std::path::PathBuf> {
+pub(crate) fn entry_folder(entry: &SongEntry) -> Option<std::path::PathBuf> {
     match &entry.source {
         SongSource::File { chart_path, .. } => {
             chart_path.parent().map(std::path::Path::to_path_buf)
         }
         SongSource::Builtin(_) => None,
-    }
-}
-
-/// A folder's revisions and who made each, read from disk when a row
-/// needs them and kept until the library changes.
-#[derive(Resource, Default)]
-struct RevisionCache {
-    /// Revisions per folder (names and numbers only — cheap).
-    listed: std::collections::HashMap<std::path::PathBuf, Vec<beatbyte_chart::versions::Revision>>,
-    /// "HAND-MADE", "GENERATED", … per revision file (reads the chart).
-    labels: std::collections::HashMap<std::path::PathBuf, &'static str>,
-}
-
-impl RevisionCache {
-    fn listed(&mut self, folder: &std::path::Path) -> &[beatbyte_chart::versions::Revision] {
-        self.listed.entry(folder.to_path_buf()).or_insert_with(|| {
-            beatbyte_chart::versions::list_revisions(
-                &beatbyte_chart::twin::names_in(folder).unwrap_or_default(),
-            )
-        })
-    }
-
-    fn label(&mut self, file: &std::path::Path) -> &'static str {
-        self.labels.entry(file.to_path_buf()).or_insert_with(|| {
-            let chart = beatbyte_chart::load_chart_file(file).ok();
-            crate::song_tree::designer_label(
-                chart
-                    .as_ref()
-                    .and_then(|c| c.provenance.as_ref())
-                    .map(|p| p.designer.as_str()),
-            )
-        })
     }
 }
 
@@ -222,7 +201,7 @@ impl RevisionCache {
 /// prefix, same artist) then gather under the lowest-numbered one, so
 /// two downloads of one song are one family rather than two songs.
 /// Pure — tested.
-fn original_in(entries: &[SongEntry], order: &[usize], twin: usize) -> Option<usize> {
+pub(crate) fn original_in(entries: &[SongEntry], order: &[usize], twin: usize) -> Option<usize> {
     let base = beatbyte_chart::twin::base_title(&entries[twin].title)?;
     let artist = &entries[twin].artist;
     if let Some(original) = order
@@ -457,98 +436,6 @@ fn stable_cursor(old_order: &[usize], cursor: usize, new_order: &[usize]) -> usi
         .unwrap_or_else(|| cursor.min(new_order.len().saturating_sub(1)))
 }
 
-/// Open or close the row at `cursor` (by its folder, so it stays open
-/// through a rescan). A row that does not open is left alone.
-///
-/// Returns whether it opened or closed anything: Enter and a click
-/// ask exactly that — a row that is a section opens or closes, a row
-/// that is not (a revision, a song with one revision, a built-in with
-/// no folder) plays.
-fn toggle_open(view: &mut BrowserView, entries: &[SongEntry], cursor: usize) -> bool {
-    let Some(row) = view.tree.get(cursor) else {
-        return false;
-    };
-    let (Some(level), Some(folder)) = (row.opens(), entries.get(row.entry).and_then(entry_folder))
-    else {
-        return false;
-    };
-    let key = (folder, level);
-    if !view.open.remove(&key) {
-        view.open.insert(key);
-    }
-    true
-}
-
-/// A row's title in the tree: a `+` on something that opens, a `-` on
-/// something open, indented by depth; a variant shows what it is
-/// (NORMAL / GS / CL), a revision its number and who made it. Pure —
-/// tested.
-fn tree_title(row: &crate::song_tree::Row, title: &str) -> String {
-    use crate::song_tree::Kind;
-    let indent = "  ".repeat(usize::from(row.depth));
-    let marker = |expandable: bool, open: bool| match (expandable, open) {
-        (true, true) => "- ",
-        (true, false) => "+ ",
-        _ => "  ",
-    };
-    match &row.kind {
-        Kind::Song { expandable, open } => format!("{}{title}", marker(*expandable, *open)),
-        Kind::Variant {
-            label,
-            expandable,
-            open,
-        } => format!("{indent}{}{label}", marker(*expandable, *open)),
-        Kind::Revision(revision) => {
-            format!("{indent}  REV {}  {}", revision.number, revision.label)
-        }
-    }
-}
-
-/// Truncate for a fixed column, marking the cut.
-fn clip_chars(text: &str, max: usize) -> String {
-    if text.chars().count() <= max {
-        return text.to_owned();
-    }
-    let mut out: String = text.chars().take(max.saturating_sub(1)).collect();
-    out.push('~');
-    out
-}
-
-/// The search's one button, beside the status line.
-#[derive(Component)]
-struct SearchButton;
-
-/// What the search button says — or `None` when there is nothing
-/// for it to do and it is hidden. Pure — tested.
-fn search_button_label(view: &BrowserView) -> Option<&'static str> {
-    if view.searching {
-        Some("CLOSE [ESC]")
-    } else if view.filter.is_empty() {
-        None
-    } else {
-        Some("CLEAR [ESC]")
-    }
-}
-
-/// Keep the search button's label and visibility on the view.
-fn sync_search_button(
-    view: Res<BrowserView>,
-    mut buttons: Query<(&mut Text, &mut Visibility), With<SearchButton>>,
-) {
-    let Ok((mut text, mut visibility)) = buttons.single_mut() else {
-        return;
-    };
-    match search_button_label(&view) {
-        Some(label) => {
-            if text.0 != label {
-                text.0 = label.to_owned();
-            }
-            *visibility = Visibility::Inherited;
-        }
-        None => *visibility = Visibility::Hidden,
-    }
-}
-
 /// Whether a keypress may start the highlighted song.
 ///
 /// CONFIRM is bound to Space AND Enter, and the browser used to act
@@ -642,47 +529,6 @@ pub fn starts_song(step: DeleteStep, may_start: bool) -> bool {
     !matches!(step, DeleteStep::Confirm) && may_start
 }
 
-/// Open the browser search field — F, `/`, or the Search chip.
-///
-/// Pure so a click-without-`F` path can be pinned the same way the
-/// letter key is.
-#[must_use]
-pub fn wants_open_search(key_f: bool, search_chip: bool, typed_slash: bool) -> bool {
-    key_f || search_chip || typed_slash
-}
-
-/// The status line's text for the current view state.
-fn status_text(view: &BrowserView) -> String {
-    let direction = if view.flipped { " (reversed)" } else { "" };
-    if view.searching {
-        format!(
-            "SEARCH: {}_   ({} match{}, best first)   ESC closes, filter stays",
-            view.filter,
-            view.order.len(),
-            if view.order.len() == 1 { "" } else { "es" }
-        )
-    } else if view.filter.is_empty() {
-        format!("sort {}{direction}   F to search", view.sort.label())
-    } else {
-        format!(
-            "sort {}{direction}   filter: {} ({} match{}, best first)   F edits  ESC clears",
-            view.sort.label(),
-            view.filter,
-            view.order.len(),
-            if view.order.len() == 1 { "" } else { "es" }
-        )
-    }
-}
-
-/// A caption's label: the active column carries the direction marker.
-fn caption_label(text: &str, mode: SortMode, view: &BrowserView) -> String {
-    if view.sort == mode {
-        format!("{text} {}", if view.flipped { "^" } else { "v" })
-    } else {
-        text.to_owned()
-    }
-}
-
 /// Where the cursor goes after the view rebuilt: typing a filter
 /// selects the FIRST match (the search expectation: type, Enter,
 /// play), any other change keeps the cursor on its song.
@@ -733,14 +579,6 @@ pub fn empty_hint(library_len: usize, filter: &str) -> String {
     }
 }
 
-/// `m:ss` for a duration column.
-fn length_label(duration_s: Option<f64>) -> String {
-    duration_s.map_or_else(
-        || "-".to_owned(),
-        |d| format!("{}:{:02}", d as u32 / 60, d as u32 % 60),
-    )
-}
-
 /// Plugin for the song browser.
 pub struct SongSelectPlugin;
 
@@ -752,9 +590,10 @@ impl Plugin for SongSelectPlugin {
             .init_resource::<BrowserCursor>()
             .init_resource::<crate::mc::McQueue>()
             .init_resource::<BrowserView>()
-            .init_resource::<RevisionCache>()
             .init_resource::<crate::preview::SongPreview>()
             .init_resource::<ActionBarClicks>()
+            .init_resource::<ActionMenu>()
+            .init_resource::<DeleteQuestion>()
             .add_systems(Startup, load_browser_prefs)
             .add_systems(
                 OnEnter(AppState::SongSelect),
@@ -762,7 +601,7 @@ impl Plugin for SongSelectPlugin {
             )
             .add_systems(
                 Update,
-                paint_action_bar
+                action_menu
                     .before(browser_input)
                     .run_if(in_state(AppState::SongSelect)),
             )
@@ -774,15 +613,16 @@ impl Plugin for SongSelectPlugin {
                     download_input,
                     search_sort_input,
                     sync_view,
-                    sync_search_button,
                     // After `sync_view`: the cursor and the order are
                     // settled for this frame, so a filter that moves
                     // the selection is heard as a move, not a start.
                     crate::preview::drive_preview,
-                    refresh_browser,
-                    refresh_info_button,
+                    look::sync_versions,
+                    look::paint_rows,
+                    look::paint_bar,
+                    look::paint_panel,
                     rebuild_after_import,
-                    follow_selection,
+                    look::follow_selection,
                 )
                     .chain()
                     .run_if(in_state(AppState::SongSelect)),
@@ -794,9 +634,217 @@ impl Plugin for SongSelectPlugin {
     }
 }
 
+/// The action menu: every tool the browser has, behind TAB or the
+/// ACTIONS button. Choosing an item presses the same chip id the old
+/// chip row pressed, so every tool runs through the handler it always
+/// ran through.
+#[derive(Resource, Debug, Default)]
+pub struct ActionMenu {
+    /// Whether the menu is on screen.
+    pub open: bool,
+    /// The highlighted item.
+    pub cursor: usize,
+    /// The key that closed the menu this frame was spent there: the
+    /// browser must not also read it (an Enter that chose "Edit chart"
+    /// must not start the song as well).
+    pub spent: bool,
+    /// The tools offered, as chip ids, fixed when the menu opened.
+    pub items: Vec<u8>,
+}
+
+/// One tool of the action menu: its label, its shortcut, its chip id.
+pub struct Tool {
+    /// What the row says.
+    pub label: &'static str,
+    /// The shortcut, as the row shows it.
+    pub keys: &'static str,
+    /// The chip id the tool's handler answers to.
+    pub id: u8,
+}
+
+/// Every tool, in menu order.
+pub const TOOLS: [Tool; 14] = [
+    Tool {
+        label: "PLAY",
+        keys: "ENTER",
+        id: chip::PLAY,
+    },
+    Tool {
+        label: "EDIT CHART",
+        keys: "CTRL E",
+        id: chip::EDIT,
+    },
+    Tool {
+        label: "SONG INFO",
+        keys: "CTRL I",
+        id: chip::INFO,
+    },
+    Tool {
+        label: "SWITCH REVISION",
+        keys: "",
+        id: chip::REVISION,
+    },
+    Tool {
+        label: "FETCH LYRICS",
+        keys: "CTRL L",
+        id: chip::LYRICS,
+    },
+    Tool {
+        label: "ALIGN LYRICS",
+        keys: "CTRL K",
+        id: chip::ALIGN,
+    },
+    Tool {
+        label: "REDESIGN CHART",
+        keys: "CTRL G",
+        id: chip::REDESIGN,
+    },
+    Tool {
+        label: "TASTE TEST",
+        keys: "CTRL T",
+        id: chip::TASTE,
+    },
+    Tool {
+        label: "ADD TO QUEUE / REMOVE",
+        keys: "CTRL Q",
+        id: chip::QUEUE,
+    },
+    Tool {
+        label: "PLAY THE QUEUE",
+        keys: "CTRL P",
+        id: chip::PLAY_SET,
+    },
+    Tool {
+        label: "ADD A SONG",
+        keys: "CTRL D",
+        id: chip::ADD,
+    },
+    Tool {
+        label: "IMPORT BRIDGE DOWNLOADS",
+        keys: "CTRL B",
+        id: chip::BRIDGE,
+    },
+    Tool {
+        label: "SORT",
+        keys: "CTRL S",
+        id: chip::SORT,
+    },
+    Tool {
+        label: "DELETE SONG",
+        keys: "CTRL BACKSPACE",
+        id: chip::DELETE,
+    },
+];
+
+/// The tools the menu offers for a song: everything that applies, in
+/// menu order — a built-in has no files to edit, inspect, redesign or
+/// delete, and an empty queue has nothing to play. Pure — tested.
+#[must_use]
+pub fn tools_for(is_file: bool, has_song: bool, queue_nonempty: bool) -> Vec<u8> {
+    TOOLS
+        .iter()
+        .filter(|tool| match tool.id {
+            chip::PLAY => has_song,
+            chip::EDIT
+            | chip::INFO
+            | chip::REVISION
+            | chip::REDESIGN
+            | chip::TASTE
+            | chip::DELETE => has_song && is_file,
+            chip::LYRICS | chip::ALIGN | chip::QUEUE => has_song,
+            chip::PLAY_SET => queue_nonempty,
+            _ => true,
+        })
+        .map(|tool| tool.id)
+        .collect()
+}
+
+/// The marker of the action menu's rows (the shared list renderer).
+pub struct ActionRows;
+
+/// The action menu's overlay.
+#[derive(Component)]
+pub struct ActionOverlay;
+
+/// Open, drive and close the action menu. Runs before the browser's
+/// input: a chosen tool becomes this frame's chip id, and the browser
+/// runs it through the handler it always had.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI
+pub(crate) fn action_menu(
+    mut commands: Commands,
+    font: Res<UiFont>,
+    settings: Res<crate::config::Settings>,
+    library: Res<SongLibrary>,
+    view: Res<BrowserView>,
+    cursor: Res<BrowserCursor>,
+    queue: Res<crate::mc::McQueue>,
+    mut menu: ResMut<ActionMenu>,
+    mut clicks: ResMut<ActionBarClicks>,
+    mut list: crate::menu_list::list::ListInput<ActionRows>,
+    mut paint: crate::menu_list::list::ListPaint<ActionRows>,
+    overlays: Query<Entity, With<ActionOverlay>>,
+    mut sounds: MessageWriter<crate::sfx::UiSound>,
+) {
+    clicks.0.clear();
+    if !menu.open {
+        for overlay in &overlays {
+            commands.entity(overlay).despawn();
+        }
+        return;
+    }
+    // The tools follow the selected song; rebuilt when they change
+    // (the screen can open the menu before the list exists).
+    let entry = view
+        .order
+        .get(cursor.0)
+        .and_then(|i| library.entries.get(*i));
+    let items = tools_for(
+        entry.is_some_and(look::is_file),
+        entry.is_some(),
+        !queue.0.is_empty(),
+    );
+    if overlays.is_empty() || items != menu.items {
+        for overlay in &overlays {
+            commands.entity(overlay).despawn();
+        }
+        menu.cursor = menu.cursor.min(items.len().saturating_sub(1));
+        menu.items = items;
+        let song = view.families.get(cursor.0).map_or_else(String::new, |f| {
+            crate::song_family::row_title(&library.entries, f)
+        });
+        look::spawn_action_menu(&mut commands, &font, &menu.items, &song);
+        return;
+    }
+    let count = menu.items.len();
+    let mut at = menu.cursor;
+    let events = list.read(&mut at, count);
+    menu.cursor = at;
+    if let Some(sound) = crate::menu_list::list::sound_for(None, events.moved) {
+        sounds.write(sound);
+    }
+    let close = events.nav.back || events.right_click;
+    if (events.nav.confirm || events.clicked)
+        && let Some(&id) = menu.items.get(menu.cursor)
+    {
+        clicks.0 = vec![id];
+        menu.open = false;
+        menu.spent = true;
+        sounds.write(crate::sfx::UiSound::Confirm);
+    } else if close {
+        menu.open = false;
+        menu.spent = true;
+        sounds.write(crate::sfx::UiSound::Back);
+    }
+    paint.paint(menu.cursor, settings.high_contrast, |index| {
+        menu.items
+            .get(index)
+            .and_then(|id| TOOLS.iter().find(|t| t.id == *id))
+            .map_or_else(String::new, |tool| tool.keys.to_owned())
+    });
+}
+
 /// Screen-local ActionBar chip ids. Keys and chips share one path.
 mod chip {
-    pub const SEARCH: u8 = 0;
     pub const ADD: u8 = 1;
     pub const SORT: u8 = 2;
     pub const LYRICS: u8 = 3;
@@ -809,143 +857,16 @@ mod chip {
     pub const DELETE: u8 = 10;
     pub const CONFIRM: u8 = 11;
     pub const CANCEL: u8 = 12;
-    pub const OPEN: u8 = 13;
     pub const BRIDGE: u8 = 14;
+    pub const INFO: u8 = 15;
+    pub const PLAY: u8 = 16;
+    pub const REVISION: u8 = 17;
 }
 
-/// Pressed ActionBar chip ids for this frame (filled by
-/// [`paint_action_bar`] before the input systems).
+/// The tool chosen in the action menu this frame, as a chip id (the
+/// menu fills it before the input systems; empty otherwise).
 #[derive(Resource, Default)]
-struct ActionBarClicks(Vec<u8>);
-
-/// The chips the browser always shows. Confirm/Cancel start disabled
-/// until a delete is armed; Play set until the queue has songs.
-fn browser_chips() -> [ui_kit::ChipSpec; 15] {
-    [
-        ui_kit::ChipSpec {
-            id: chip::OPEN,
-            label: "Open",
-            enabled: false,
-        },
-        ui_kit::ChipSpec {
-            id: chip::SEARCH,
-            label: "Search",
-            enabled: true,
-        },
-        ui_kit::ChipSpec {
-            id: chip::ADD,
-            label: "Add",
-            enabled: true,
-        },
-        ui_kit::ChipSpec {
-            id: chip::SORT,
-            label: "Sort",
-            enabled: true,
-        },
-        ui_kit::ChipSpec {
-            id: chip::LYRICS,
-            label: "Lyrics",
-            enabled: true,
-        },
-        ui_kit::ChipSpec {
-            id: chip::ALIGN,
-            label: "Align",
-            enabled: true,
-        },
-        ui_kit::ChipSpec {
-            id: chip::REDESIGN,
-            label: "Redesign",
-            enabled: true,
-        },
-        ui_kit::ChipSpec {
-            id: chip::BRIDGE,
-            label: "Bridge",
-            enabled: true,
-        },
-        ui_kit::ChipSpec {
-            id: chip::TASTE,
-            label: "Taste",
-            enabled: true,
-        },
-        ui_kit::ChipSpec {
-            id: chip::QUEUE,
-            label: "Queue",
-            enabled: true,
-        },
-        ui_kit::ChipSpec {
-            id: chip::PLAY_SET,
-            label: "Play set",
-            enabled: false,
-        },
-        ui_kit::ChipSpec {
-            id: chip::EDIT,
-            label: "Edit chart",
-            enabled: true,
-        },
-        ui_kit::ChipSpec {
-            id: chip::DELETE,
-            label: "Delete",
-            enabled: true,
-        },
-        ui_kit::ChipSpec {
-            id: chip::CONFIRM,
-            label: "Confirm",
-            enabled: false,
-        },
-        ui_kit::ChipSpec {
-            id: chip::CANCEL,
-            label: "Cancel",
-            enabled: false,
-        },
-    ]
-}
-
-/// Paint hover/disabled and publish which chips were pressed.
-fn paint_action_bar(
-    mut chips: Query<(
-        &ui_kit::ActionChip,
-        &ui_kit::ChipEnabled,
-        &Interaction,
-        &mut BackgroundColor,
-        &mut BorderColor,
-        &Children,
-    )>,
-    mut labels: Query<&mut TextColor>,
-    mut clicks: ResMut<ActionBarClicks>,
-) {
-    clicks.0 = ui_kit::read_chips(&mut chips, &mut labels);
-}
-
-#[derive(Component)]
-struct BrowserScreen;
-
-/// A song row (index into the library). Carries `Button`.
-#[derive(Component)]
-struct SongRow(usize);
-
-/// A row's title text.
-#[derive(Component)]
-struct SongTitle(usize);
-
-/// A clickable column caption. Carries the mode it sorts by.
-#[derive(Component)]
-struct SortHeader(SortMode);
-
-/// The sort/search status line.
-#[derive(Component)]
-struct StatusLine;
-
-/// The dimmed "no match" hint row inside an empty list.
-///
-/// When the library itself is empty this is a [`Button`] that opens
-/// the add-a-song prompt (same as `D`); a filtered-out list stays
-/// plain text — Esc clears the filter.
-#[derive(Component)]
-struct EmptyHint;
-
-/// Step the selected difficulty by `±1` among what the chart offers.
-#[derive(Component)]
-struct DiffStep(i8);
+pub(crate) struct ActionBarClicks(pub(crate) Vec<u8>);
 
 /// Pick the difficulty for the highlighted chart.
 ///
@@ -984,47 +905,26 @@ fn step_offered_difficulty(
     (effective != selected).then_some((effective, false))
 }
 
-/// Open the song's document (same as `I`).
-#[derive(Component)]
-struct InfoButton;
-
-/// A row's artist text, in the right-hand column.
-#[derive(Component)]
-struct SongArtist(usize);
-
-/// The details block under the list.
-#[derive(Component)]
-struct DetailText;
-
-/// The scrolling viewport the song rows live in.
-#[derive(Component)]
-struct SongList;
-
 // Column widths in px. Press Start 2P advances ~1 em per glyph, so
 // SMALL (10 px) columns hold width/10 characters.
-const COL_ARTIST: f32 = 190.0;
-const COL_GENRE: f32 = 120.0;
-const COL_LEN: f32 = 56.0;
-const COL_NOTES: f32 = 56.0;
-const COL_RATING: f32 = 62.0;
-const COL_BEST: f32 = 92.0;
-/// The LYRICS column: four characters of 10 px, plus room.
-const COL_LYRICS: f32 = 52.0;
-/// The CHART column: `BASE` or `v12`.
-const COL_CHART: f32 = 46.0;
-/// The AUDIO column: `OK`, `FAIR`, `POOR` or `-` — the loudness
-/// pass's verdict on the file, in words (a mark that is only a
-/// colour is unreadable to a player who cannot tell colours apart).
-const COL_AUDIO: f32 = 52.0;
 
-fn spawn_browser(mut commands: Commands, font: Res<UiFont>, mut view: ResMut<BrowserView>) {
+fn spawn_browser(
+    mut commands: Commands,
+    font: Res<UiFont>,
+    mut view: ResMut<BrowserView>,
+    library: Res<SongLibrary>,
+) {
     // The search is not open when the screen is entered: coming back
     // from a song into a field that swallows every letter (S, E, L,
     // Q, P all "dead") read as a broken screen. The FILTER stays, so
     // the next song is still a match away; F reopens the field, Esc
     // or the CLEAR button empties it.
-    view.searching = false;
-    spawn_shell(&mut commands, &font, &view);
+    // The search is ALWAYS taking keys now (the rebuild of
+    // 2026-10-05: "type to search"); the tools moved to Ctrl/Cmd and
+    // the action menu.
+    view.searching = true;
+    let total = library.entries.len();
+    look::spawn_shell(&mut commands, &font, &view, total);
 }
 
 /// Open song select on the current player's last difficulty.
@@ -1041,226 +941,35 @@ fn apply_preferred_difficulty(
     }
 }
 
-/// One SMALL-font cell of fixed width.
-fn cell(row: &mut ChildSpawnerCommands, font: &UiFont, marker: usize, text: String, width: f32) {
-    row.spawn((
-        SongArtist(marker),
-        Text::new(text),
-        font.text(ui_kit::SMALL),
-        TextColor(palette::TEXT_DIM),
-        TextLayout::default().with_no_wrap(),
-        Node {
-            width: px(width),
-            flex_shrink: 0.0,
-            overflow: Overflow::clip(),
-            ..default()
-        },
-    ));
-}
-
-fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView) {
-    commands
-        .spawn((BrowserScreen, ui_kit::screen_root()))
-        .with_children(|parent| {
-            ui_kit::header(parent, font, "SONG SELECT", "pick a track and a difficulty");
-            // Sort / search status line, with the one button the
-            // search has: CLOSE while the field is open, CLEAR while
-            // a filter narrows the list, gone otherwise.
-            parent
-                .spawn(Node {
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    column_gap: px(12),
-                    margin: UiRect::bottom(px(6)),
-                    ..default()
-                })
-                .with_children(|row| {
-                    row.spawn((
-                        StatusLine,
-                        Text::new(font.safe(&status_text(view))),
-                        font.text(ui_kit::SMALL),
-                        TextColor(palette::dimmed(palette::TEXT_DIM, 0.85)),
-                    ));
-                    let label = search_button_label(view);
-                    row.spawn((
-                        SearchButton,
-                        Button,
-                        Text::new(label.unwrap_or_default()),
-                        font.text(ui_kit::SMALL),
-                        TextColor(palette::BRAND),
-                        Node {
-                            padding: UiRect::axes(px(8), px(2)),
-                            border: UiRect::all(px(1)),
-                            border_radius: BorderRadius::all(px(4)),
-                            ..default()
-                        },
-                        BorderColor::all(palette::BRAND.with_alpha(0.7)),
-                        if label.is_some() {
-                            Visibility::Inherited
-                        } else {
-                            Visibility::Hidden
-                        },
-                    ));
-                });
-            // Secondary actions: letter keys stay; chips are the
-            // discoverable door for a mouse-only player.
-            ui_kit::action_bar(parent, font, &browser_chips());
-            // Column captions, aligned with the row cells.
-            parent
-                .spawn(Node {
-                    width: px(ui_kit::PANEL_WIDE),
-                    // The captions live outside the scrolling panel,
-                    // so they must be inset and spaced EXACTLY like
-                    // the rows inside it — from the same constants,
-                    // never a second set of numbers that agree today.
-                    padding: ui_kit::column_header_padding(),
-                    column_gap: px(ui_kit::CELL_GAP),
-                    ..default()
-                })
-                .with_children(|head| {
-                    // Every caption is a BUTTON that sorts its
-                    // column; the active one shows the direction and
-                    // wears the accent - the sort must be visible
-                    // where the data is, not only in a status line.
-                    let caption = |head: &mut ChildSpawnerCommands,
-                                   text: &str,
-                                   mode: SortMode,
-                                   width: Option<f32>| {
-                        let active = view.sort == mode;
-                        let mut node = Node {
-                            flex_shrink: 0.0,
-                            ..default()
-                        };
-                        if let Some(w) = width {
-                            node.width = px(w);
-                        } else {
-                            node.flex_grow = 1.0;
-                            node.min_width = px(0.0);
-                        }
-                        let label = caption_label(text, mode, view);
-                        head.spawn((
-                            SortHeader(mode),
-                            Button,
-                            Text::new(label),
-                            font.text(ui_kit::SMALL),
-                            TextColor(if active {
-                                palette::BRAND
-                            } else {
-                                palette::dimmed(palette::TEXT_DIM, 0.7)
-                            }),
-                            node,
-                        ));
-                    };
-                    caption(head, "TITLE", SortMode::Title, None);
-                    caption(head, "ARTIST", SortMode::Artist, Some(COL_ARTIST));
-                    caption(head, "GENRE", SortMode::Genre, Some(COL_GENRE));
-                    caption(head, "LEN", SortMode::Length, Some(COL_LEN));
-                    caption(head, "NOTES", SortMode::Notes, Some(COL_NOTES));
-                    caption(head, "DIFF", SortMode::Diff, Some(COL_RATING));
-                    caption(head, "CHART", SortMode::Chart, Some(COL_CHART));
-                    caption(head, "LYRICS", SortMode::Lyrics, Some(COL_LYRICS));
-                    caption(head, "AUDIO", SortMode::Audio, Some(COL_AUDIO));
-                    caption(head, "BEST", SortMode::Best, Some(COL_BEST));
-                });
-            parent.spawn((SongList, ui_kit::scroll_panel(ui_kit::PANEL_WIDE)));
-            // Facts + mouse difficulty steppers + INFO: LEFT/RIGHT
-            // still work; the buttons are the discoverable door.
-            parent
-                .spawn(Node {
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    column_gap: px(10),
-                    margin: UiRect::top(px(ui_kit::FOOTER_GAP)),
-                    ..default()
-                })
-                .with_children(|row| {
-                    spawn_diff_step(row, font, -1);
-                    row.spawn((
-                        DetailText,
-                        Text::new(""),
-                        font.text(ui_kit::ROW),
-                        TextColor(palette::TEXT),
-                    ));
-                    spawn_diff_step(row, font, 1);
-                    row.spawn((
-                        InfoButton,
-                        Button,
-                        Text::new("INFO"),
-                        font.text(ui_kit::SMALL),
-                        TextColor(palette::BRAND),
-                        Node {
-                            padding: UiRect::axes(px(8), px(2)),
-                            border: UiRect::all(px(1)),
-                            border_radius: BorderRadius::all(px(4)),
-                            ..default()
-                        },
-                        BorderColor::all(palette::BRAND.with_alpha(0.7)),
-                    ));
-                });
-            parent.spawn((
-                ImportNote,
-                Text::new("drag an audio file onto the window to import it"),
-                font.text(ui_kit::SMALL),
-                TextColor(palette::dimmed(palette::TEXT_DIM, 0.75)),
-                Node {
-                    margin: UiRect::top(px(10)),
-                    ..default()
-                },
-            ));
-            crate::prompts::device_footer(
-                parent,
-                font,
-                "UP/DOWN song  LEFT/RIGHT difficulty  ENTER/TAB open  ENTER on an entry rock  ESC back  everything else is a chip above",
-                "D-PAD song and difficulty  SOUTH rock  EAST back",
-            );
-            ui_kit::back_button(parent, font, "MAIN MENU");
-        });
-}
-
-/// A `<` / `>` button that steps difficulty the same way as pad LEFT/RIGHT.
-fn spawn_diff_step(parent: &mut ChildSpawnerCommands, font: &UiFont, step: i8) {
-    let label = if step < 0 { "<" } else { ">" };
-    parent.spawn((
-        DiffStep(step),
-        Button,
-        Text::new(label),
-        font.text(ui_kit::ROW),
-        TextColor(palette::BRAND),
-        Node {
-            padding: UiRect::axes(px(8), px(2)),
-            border: UiRect::all(px(1)),
-            border_radius: BorderRadius::all(px(4)),
-            ..default()
-        },
-        BorderColor::all(palette::BRAND.with_alpha(0.7)),
-    ));
-}
-
 /// Sort and search input. Its own system: `browser_input` sits at
 /// Bevy's parameter limit, and the two concerns share no state
-/// beyond the view. Runs AFTER `browser_input` in the chain, so the
-/// Esc that closes the search is not also read as "back to menu" -
-/// `browser_input` still sees the searching flag of this frame.
+/// beyond the view.
+///
+/// The search is always taking keys (the rebuild of 2026-10-05: "type
+/// to search"). Every printable key edits the filter — EXCEPT with
+/// Ctrl/Cmd held (a tool shortcut, never text), while the action menu
+/// is open or just closed, while the delete question waits for its
+/// `Y`, and while the ADD field owns the keys.
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn search_sort_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut typed: MessageReader<bevy::input::keyboard::KeyboardInput>,
     mut view: ResMut<BrowserView>,
-    headers: Query<(&SortHeader, &Interaction), Changed<Interaction>>,
-    button: Query<&Interaction, (With<SearchButton>, Changed<Interaction>)>,
+    sort_button: Query<&Interaction, (With<SortButton>, Changed<Interaction>)>,
     clicks: Res<ActionBarClicks>,
+    menu: Res<ActionMenu>,
+    question: Res<DeleteQuestion>,
+    prompt: Res<DownloadPrompt>,
     mut settings: ResMut<crate::config::Settings>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
-    let button_pressed = button.iter().any(|i| *i == Interaction::Pressed);
-    if view.searching {
-        // Printable keys EDIT THE FILTER - every letter shortcut is
-        // suppressed while searching (in `browser_input`, off this
-        // same flag), or typing "elle" would open the editor and arm
-        // a delete on the way. Every letter, q included: for a while
-        // a held q was the gesture that left the search, and a
-        // letter that is also a gesture is a letter typed late and
-        // a bar that pops up mid-word (the reported complaint).
+    let command = crate::editor_ui::command_held(&keys);
+    if typing_allowed(
+        command,
+        menu.open || menu.spent,
+        question.armed.is_some(),
+        prompt.open,
+    ) {
         for event in typed.read() {
             if !event.state.is_pressed() {
                 continue;
@@ -1279,79 +988,80 @@ fn search_sort_input(
                 _ => {}
             }
         }
-        // Esc — or the button — leaves the field and KEEPS the
-        // filter: the list stays narrowed, which is what was typed
-        // for. The next Esc (in `browser_input`) or the button, now
-        // reading CLEAR, empties it; the one after that goes back.
-        // Search chip while open closes the same way.
-        if keys.just_pressed(KeyCode::Escape)
-            || button_pressed
-            || ui_kit::chip_hit(&clicks.0, chip::SEARCH)
-        {
-            info!("search: closed, filter kept");
-            view.searching = false;
-            sounds.write(crate::sfx::UiSound::Back);
-        }
-        return;
-    }
-    if button_pressed && !view.filter.is_empty() {
-        info!("search: filter cleared by the button");
-        view.filter.clear();
-        sounds.write(crate::sfx::UiSound::Back);
-        return;
-    }
-    // Search opens on F (a letter key sits in the same place on every
-    // layout) or on a TYPED "/" - the logical character, because the
-    // physical Slash KeyCode is a US-layout position: on QWERTZ that
-    // key is "-", and "/" lives on Shift+7. The first wiring used the
-    // KeyCode and search was simply unreachable from a German
-    // keyboard. The Search chip is the mouse door (the SearchButton
-    // is only Close/Clear).
-    let mut typed_slash = false;
-    for event in typed.read() {
-        if event.state.is_pressed()
-            && let bevy::input::keyboard::Key::Character(text) = &event.logical_key
-            && text.as_str() == "/"
-        {
-            typed_slash = true;
-        }
-    }
-    let open_search = wants_open_search(
-        keys.just_pressed(KeyCode::KeyF),
-        ui_kit::chip_hit(&clicks.0, chip::SEARCH),
-        typed_slash,
-    );
-    if open_search {
-        info!("search: opened");
-        view.searching = true;
-        sounds.write(crate::sfx::UiSound::Confirm);
+    } else {
+        typed.clear();
     }
     let mut sorted = false;
-    if keys.just_pressed(KeyCode::KeyS) || ui_kit::chip_hit(&clicks.0, chip::SORT) {
-        let next = view.sort.next();
-        view.sort = next;
+    let clicked = sort_button.iter().any(|i| *i == Interaction::Pressed);
+    if (command && keys.just_pressed(KeyCode::KeyS))
+        || clicked
+        || ui_kit::chip_hit(&clicks.0, chip::SORT)
+    {
+        view.sort = view.sort.next();
         view.flipped = false;
         sorted = true;
     }
-    // Column headers sort on click; clicking the active one flips
-    // the direction - the convention of every library UI.
-    for (header, interaction) in &headers {
-        if *interaction == Interaction::Pressed {
-            let (sort, flipped) = sort_click(view.sort, view.flipped, header.0);
-            view.sort = sort;
-            view.flipped = flipped;
-            sorted = true;
-        }
+    if command && keys.just_pressed(KeyCode::KeyR) && view.sort != SortMode::Standard {
+        view.flipped = !view.flipped;
+        sorted = true;
     }
     // A sort ACTION blips like every other menu key and persists.
-    // Deliberately an explicit flag, not `view.is_changed()`: that
-    // also sees this system's own filter edits, and a blip per typed
-    // letter is noise, not feedback.
     if sorted {
         sounds.write(crate::sfx::UiSound::Toggle);
         settings.browser_sort = view.sort.label().to_lowercase();
         settings.browser_sort_reversed = view.flipped;
     }
+}
+
+/// Whether a printable key types into the search. Pure — tested.
+#[must_use]
+pub fn typing_allowed(command: bool, menu: bool, question: bool, field: bool) -> bool {
+    !command && !menu && !question && !field
+}
+
+/// The member `step` versions away from `current` in `family`,
+/// stopping at the ends like every list here. `None` for no step.
+/// Pure — tested.
+#[must_use]
+pub fn next_version(
+    family: &crate::song_family::Family,
+    current: Option<usize>,
+    step: i32,
+) -> Option<usize> {
+    if step == 0 {
+        return None;
+    }
+    let at = current.and_then(|c| family.members.iter().position(|&m| m == c))?;
+    let last = family.members.len().saturating_sub(1);
+    let next = (at as i64 + i64::from(step.signum())).clamp(0, last as i64) as usize;
+    (next != at).then(|| family.members[next])
+}
+
+/// The revision after `current` in `revisions` (wrapping), or `None`
+/// when there is no other. Pure — tested.
+#[must_use]
+pub fn next_revision<'a>(
+    revisions: &'a [beatbyte_chart::versions::Revision],
+    current: Option<&str>,
+) -> Option<&'a beatbyte_chart::versions::Revision> {
+    if revisions.len() < 2 {
+        return None;
+    }
+    let at = current
+        .and_then(|name| revisions.iter().position(|r| r.name == name))
+        .unwrap_or(0);
+    revisions.get((at + 1) % revisions.len())
+}
+
+/// The delete question: which song it is about (by LIBRARY index —
+/// a re-sort between the question and the answer moves rows, and
+/// the question was about a song) and how long it still waits.
+#[derive(Resource, Debug, Default)]
+pub struct DeleteQuestion {
+    /// The song asked about.
+    pub armed: Option<usize>,
+    /// Seconds left before the question lapses.
+    pub left_s: f32,
 }
 
 /// The browser's pointer inputs, bundled: `browser_input` sits at
@@ -1380,21 +1090,20 @@ struct StartDeps<'w, 's> {
         ),
         With<ui_kit::BackButton>,
     >,
-    /// Difficulty steppers (`<` / `>` beside the facts line).
-    diff_step: Query<'w, 's, (&'static DiffStep, &'static Interaction), Changed<Interaction>>,
-    /// Opens the song document (same as `I`).
-    info_button: Query<'w, 's, &'static Interaction, (With<InfoButton>, Changed<Interaction>)>,
+    /// The difficulty chips in the panel.
+    diff_chips: Query<'w, 's, (&'static DiffChip, &'static Interaction), Changed<Interaction>>,
+    /// The version chips in the panel.
+    version_chips:
+        Query<'w, 's, (&'static VersionChip, &'static Interaction), Changed<Interaction>>,
+    /// The ACTIONS button (same as Tab).
+    actions_button:
+        Query<'w, 's, &'static Interaction, (With<ActionsButton>, Changed<Interaction>)>,
+    /// The action menu's state.
+    menu: ResMut<'w, ActionMenu>,
+    /// The delete question.
+    question: ResMut<'w, DeleteQuestion>,
     /// Empty-library hint → add-a-song prompt (same as `D`).
     empty_hint: Query<'w, 's, &'static Interaction, (With<EmptyHint>, Changed<Interaction>)>,
-    /// Enable / disable ActionBar chips (Play set, Edit, Confirm…).
-    chips: Query<
-        'w,
-        's,
-        (
-            &'static ui_kit::ActionChip,
-            &'static mut ui_kit::ChipEnabled,
-        ),
-    >,
     builtins: Res<'w, BuiltinSongs>,
     mc_queue: ResMut<'w, crate::mc::McQueue>,
     /// Who is playing — their preferred difficulty drives the browser.
@@ -1544,7 +1253,8 @@ fn download_input(
         //
         // The Add chip is the mouse door; empty-library CTA opens
         // the same prompt from `browser_input`.
-        let opening = (keys.just_pressed(KeyCode::KeyD) || ui_kit::chip_hit(&clicks.0, chip::ADD))
+        let opening = ((crate::editor_ui::command_held(&keys) && keys.just_pressed(KeyCode::KeyD))
+            || ui_kit::chip_hit(&clicks.0, chip::ADD))
             && !discovery.running();
         for _ in typed.read() {}
         if opening {
@@ -1706,27 +1416,34 @@ fn browser_input(
     rows: Query<(&SongRow, &Interaction), Changed<Interaction>>,
     time: Res<Time>,
     mut status: ResMut<crate::import::ImportStatus>,
-    mut delete_armed: Local<(Option<usize>, f32)>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
-    let nav = if view.searching {
-        MenuNav::read_typing(&map, &keys, pads.iter())
+    // The action menu owns the keys while it is open; the frame that
+    // closed it is spent there too, but a tool it chose still runs
+    // below (through its chip id).
+    if start.menu.open {
+        return;
+    }
+    let spent = std::mem::take(&mut start.menu.spent);
+    let nav = if spent {
+        MenuNav::default()
     } else {
-        // Tab opens rows here, so it must not also move the cursor.
-        MenuNav::read_without_tab(&map, &keys, pads.iter())
+        // The search takes every printable key, and Tab opens the
+        // action menu — neither may move the cursor.
+        MenuNav::read_typing_without_tab(&map, &keys, pads.iter())
     };
-    // Letter shortcuts are suppressed while EITHER field is taking
-    // keys: typing a song name must not open the editor, queue a set
-    // and arm a delete on the way through.
-    let searching = view.searching || start.prompt.open;
+    // The ADD field owns the keys while it is open: nothing here may
+    // run from a keystroke meant for a song name.
+    let searching = start.prompt.open;
+    let command = crate::editor_ui::command_held(&keys) && !spent;
+    let shortcut = |key: KeyCode| command && keys.just_pressed(key);
     let clicks = &start.clicks.0;
     let clicked_back = ui_kit::back_pressed(&mut start.back_button);
     let empty_clicked = start.empty_hint.iter().any(|i| *i == Interaction::Pressed);
     // Esc with a filter still narrowing the list CLEARS it first and
     // leaves on the next press — the whole list is the state to
-    // return to, and a filtered list with no field open had no key
-    // that cleared it. The button and the right mouse button leave
-    // straight away: they are pointed at the door, not at the list.
+    // return to. The button and the right mouse button leave straight
+    // away: they are pointed at the door, not at the list.
     if !searching && nav.back && !view.filter.is_empty() {
         view.filter.clear();
         sounds.write(crate::sfx::UiSound::Back);
@@ -1737,16 +1454,20 @@ fn browser_input(
         !searching && clicked_back,
         pointer_in.mouse.just_pressed(MouseButton::Right),
     );
+    // TAB or the ACTIONS button opens the menu.
+    let actions_clicked = start
+        .actions_button
+        .iter()
+        .any(|i| *i == Interaction::Pressed);
+    if !searching && !spent && (keys.just_pressed(KeyCode::Tab) || actions_clicked) {
+        start.menu.open = true;
+        start.menu.cursor = 0;
+        sounds.write(crate::sfx::UiSound::Confirm);
+        return;
+    }
     let count = view.order.len();
     if count == 0 {
         // Empty library: the hint opens the add-a-song prompt.
-        sync_chip_enables(
-            &mut start.chips,
-            false,
-            !start.mc_queue.0.is_empty(),
-            false,
-            false,
-        );
         if empty_clicked && library.entries.is_empty() && !searching {
             start.prompt.open = true;
             start.prompt.text.clear();
@@ -1790,23 +1511,34 @@ fn browser_input(
         cursor.0 = index;
     }
     let clicked_selected = pointer.clicked;
-    // TAB (or OPEN) opens or closes the row under the cursor: a song
-    // onto its variants (or straight onto its revisions), a variant
-    // onto its revisions.
-    if !searching
-        && (keys.just_pressed(KeyCode::Tab) || ui_kit::chip_hit(clicks, chip::OPEN))
-        && toggle_open(&mut view, &library.entries, cursor.0)
+    // The version of the selected song: SHIFT+LEFT/RIGHT steps through
+    // them, a click on a version chip picks one. Remembered by folder
+    // for the session, so the song keeps it through a re-sort.
+    let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
+    let version_step = if shift && !spent {
+        i32::from(keys.just_pressed(KeyCode::ArrowRight))
+            - i32::from(keys.just_pressed(KeyCode::ArrowLeft))
+    } else {
+        0
+    };
+    let picked = start
+        .version_chips
+        .iter()
+        .find(|(_, i)| **i == Interaction::Pressed)
+        .map(|(chip, _)| chip.0);
+    if let Some(family) = view.families.get(cursor.0).cloned()
+        && let Some(member) = picked
+            .or_else(|| next_version(&family, view.order.get(cursor.0).copied(), version_step))
+        && Some(member) != view.order.get(cursor.0).copied()
+        && let (Some(head), Some(chosen)) = (
+            entry_folder(&library.entries[family.head]),
+            entry_folder(&library.entries[member]),
+        )
     {
-        sounds.write(crate::sfx::UiSound::Navigate);
+        view.chosen.insert(head, chosen);
+        sounds.write(crate::sfx::UiSound::Toggle);
+        return;
     }
-    // What a revision row asks for: its file, and whether choosing it
-    // changes which revision plays.
-    let revision_row = view.tree.get(cursor.0).and_then(|row| match &row.kind {
-        crate::song_tree::Kind::Revision(revision) => {
-            Some((revision.name.clone(), revision.number, revision.active))
-        }
-        _ => None,
-    });
     let Some(entry) = view
         .order
         .get(cursor.0)
@@ -1822,18 +1554,24 @@ fn browser_input(
     let preferred = start.players.0.current_preferred_difficulty();
     let offered = &entry.difficulties;
     let mut step_diff = 0i8;
-    if nav.left {
+    if nav.left && !shift {
         step_diff = -1;
     }
-    if nav.right {
+    if nav.right && !shift {
         step_diff = 1;
     }
-    for (step, interaction) in start.diff_step.iter() {
-        if *interaction == Interaction::Pressed {
-            step_diff = step.0;
-        }
-    }
-    if let Some(chosen) = step_offered_difficulty(selected.0, preferred, offered, step_diff) {
+    // A click on a difficulty chip goes straight there (when the song
+    // offers it) and persists, like a step.
+    let clicked_diff = start
+        .diff_chips
+        .iter()
+        .find(|(chip, i)| **i == Interaction::Pressed && offered.contains(&chip.0))
+        .map(|(chip, _)| chip.0);
+    let chosen = clicked_diff.map_or_else(
+        || step_offered_difficulty(selected.0, preferred, offered, step_diff),
+        |d| (d != selected.0).then_some((d, true)),
+    );
+    if let Some(chosen) = chosen {
         let (next, persist) = chosen;
         selected.0 = next;
         if persist {
@@ -1846,22 +1584,32 @@ fn browser_input(
         }
     }
 
-    // BACKSPACE/DEL asks to remove the highlighted song from disk;
-    // only ENTER answers, and it answers the QUESTION rather than
-    // starting the song. Built-ins cannot be removed.
-    delete_armed.1 = (delete_armed.1 - time.delta_secs()).max(0.0);
-    if delete_armed.1 <= 0.0 {
-        delete_armed.0 = None;
+    // CTRL/CMD+BACKSPACE (or DELETE in the action menu) asks to
+    // remove the highlighted song from disk; only `Y` answers, and it
+    // answers the QUESTION rather than starting the song. Backspace
+    // alone is text: it erases the search. Built-ins cannot be removed.
+    start.question.left_s = (start.question.left_s - time.delta_secs()).max(0.0);
+    if start.question.left_s <= 0.0 {
+        start.question.armed = None;
     }
-    let armed = delete_armed.0.is_some();
-    let yes = keys.just_pressed(KeyCode::KeyY) || ui_kit::chip_hit(clicks, chip::CONFIRM);
-    let remove = keys.just_pressed(KeyCode::Backspace)
-        || keys.just_pressed(KeyCode::Delete)
+    let armed = start.question.armed.is_some();
+    let yes =
+        (armed && keys.just_pressed(KeyCode::KeyY)) || ui_kit::chip_hit(clicks, chip::CONFIRM);
+    let remove = shortcut(KeyCode::Backspace)
+        || shortcut(KeyCode::Delete)
         || ui_kit::chip_hit(clicks, chip::DELETE);
-    let other = keys
-        .get_just_pressed()
-        .any(|key| !matches!(key, KeyCode::Backspace | KeyCode::Delete | KeyCode::KeyY))
-        || ui_kit::chip_hit(clicks, chip::CANCEL);
+    let other = keys.get_just_pressed().any(|key| {
+        !matches!(
+            key,
+            KeyCode::Backspace
+                | KeyCode::Delete
+                | KeyCode::KeyY
+                | KeyCode::ControlLeft
+                | KeyCode::ControlRight
+                | KeyCode::SuperLeft
+                | KeyCode::SuperRight
+        )
+    }) || ui_kit::chip_hit(clicks, chip::CANCEL);
     let step = if searching {
         // A field is taking keys: Backspace is text there, and a
         // question asked from a keystroke meant for a name is the
@@ -1887,23 +1635,23 @@ fn browser_input(
                 // Armed by LIBRARY index: a re-sort between the
                 // question and the answer moves positions, and the
                 // question was about a song, not a row number.
-                *delete_armed = (here, 3.0);
-                status.0 = format!(
-                    "delete \"{title}\" and its files? Confirm chip or Y, Cancel chip or anything else"
-                );
+                start.question.armed = here;
+                start.question.left_s = 8.0;
+                status.0 =
+                    format!("delete \"{title}\" and its files? Y deletes, any other key keeps it");
             }
         }
         DeleteStep::Confirm => {
             // Decided here so the ENTER is spent; CARRIED OUT at the
             // end of the function, where `entry` — a borrow of the
             // library this rescans — is finally out of scope.
-            if delete_armed.0 == here {
+            if start.question.armed == here {
                 confirmed_delete = removable.map(|path| (path, title.clone()));
             }
-            *delete_armed = (None, 0.0);
+            start.question.armed = None;
         }
         DeleteStep::Cancel => {
-            *delete_armed = (None, 0.0);
+            start.question.armed = None;
             status.0 = "delete cancelled".to_owned();
         }
         DeleteStep::Ignore => {}
@@ -1920,47 +1668,37 @@ fn browser_input(
             nav.confirm,
         ),
     );
-    // Enter or a click on a SECTION (a song or variant with something
-    // under it) opens or closes it; only an entry — a revision, or a
-    // row with nothing to open — plays.
-    if (start_song || clicked_selected) && toggle_open(&mut view, &library.entries, cursor.0) {
-        sounds.write(crate::sfx::UiSound::Navigate);
-        return;
-    }
-    if (start_song || clicked_selected)
-        && let Some((name, number, false)) = &revision_row
+    // SWITCH REVISION (action menu): the next revision of this song's
+    // chart becomes the one that plays — the browser's tree used to
+    // offer them as rows; one row per song keeps them a step away.
+    if ui_kit::chip_hit(clicks, chip::REVISION)
+        && let Some(folder) = entry_folder(entry)
     {
-        // An older revision: it becomes the one that plays — here and
-        // from the song's row from now on — and starts.
-        sounds.write(crate::sfx::UiSound::Confirm);
         let title = entry.title.clone();
-        let Some(folder) = entry_folder(entry) else {
-            return;
+        let names = beatbyte_chart::twin::names_in(&folder).unwrap_or_default();
+        let revisions = beatbyte_chart::versions::list_revisions(&names);
+        let current = match &entry.source {
+            SongSource::File { chart_path, .. } => chart_path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned()),
+            SongSource::Builtin(_) => None,
         };
-        match beatbyte_chart::io::activate_revision(&folder, name) {
-            Ok(()) => {
-                *library = crate::boot::scan_with_builtins(&start.builtins.0);
-                status.0 = format!("revision {number} of \"{title}\" plays from now on");
-                let fresh = library
-                    .entries
-                    .iter()
-                    .find(|e| entry_folder(e).as_deref() == Some(folder.as_path()));
-                if let Some(fresh) = fresh {
-                    match prepare_song(fresh, &start.builtins) {
-                        Ok(song) => {
-                            commands.remove_resource::<crate::taste::TasteTest>();
-                            commands.insert_resource(song);
-                            next_state.set(AppState::Gameplay);
-                        }
-                        Err(reason) => error!("cannot load \"{title}\": {reason}"),
-                    }
+        match next_revision(&revisions, current.as_deref()) {
+            None => status.0 = format!("\"{title}\" has only one revision"),
+            Some(next) => match beatbyte_chart::io::activate_revision(&folder, &next.name) {
+                Ok(()) => {
+                    *library = crate::boot::scan_with_builtins(&start.builtins.0);
+                    status.0 = format!("revision {} of \"{title}\" plays from now on", next.number);
+                    sounds.write(crate::sfx::UiSound::Toggle);
                 }
-            }
-            Err(reason) => status.0 = format!("cannot choose revision {number}: {reason}"),
+                Err(reason) => {
+                    status.0 = format!("cannot choose revision {}: {reason}", next.number);
+                }
+            },
         }
         return;
     }
-    if start_song || clicked_selected {
+    if start_song || clicked_selected || ui_kit::chip_hit(clicks, chip::PLAY) {
         sounds.write(crate::sfx::UiSound::Confirm);
         match prepare_song(entry, &start.builtins) {
             Ok(song) => {
@@ -1977,7 +1715,7 @@ fn browser_input(
     // E opens the chart editor (file-based songs only — the demo is
     // generated, editing it would be lost on the next boot).
     if !searching
-        && (keys.just_pressed(KeyCode::KeyE) || ui_kit::chip_hit(clicks, chip::EDIT))
+        && (shortcut(KeyCode::KeyE) || ui_kit::chip_hit(clicks, chip::EDIT))
         && let crate::library::SongSource::File {
             chart_path,
             audio_path,
@@ -1985,10 +1723,7 @@ fn browser_input(
     {
         // A revision row edits THAT revision; any other row the one
         // that plays.
-        let chart_path = revision_row
-            .as_ref()
-            .and_then(|(name, _, _)| chart_path.parent().map(|folder| folder.join(name)))
-            .unwrap_or_else(|| chart_path.clone());
+        let chart_path = chart_path.clone();
         match crate::editor_ui::open_editor(&mut commands, &chart_path, audio_path, selected.0) {
             Ok(()) => next_state.set(AppState::Editor),
             Err(reason) => error!("cannot edit \"{}\": {reason}", entry.title),
@@ -2000,9 +1735,9 @@ fn browser_input(
     // folder that has never been migrated has none yet either, and
     // in both cases the key does nothing rather than opening an
     // empty panel.
-    let info_clicked = start.info_button.iter().any(|i| *i == Interaction::Pressed);
+    let info_clicked = ui_kit::chip_hit(clicks, chip::INFO);
     if !searching
-        && (keys.just_pressed(KeyCode::KeyI) || info_clicked)
+        && (shortcut(KeyCode::KeyI) || info_clicked)
         && let crate::library::SongSource::File { chart_path, .. } = &entry.source
         && let Some(folder) = chart_path.parent()
     {
@@ -2020,7 +1755,7 @@ fn browser_input(
     // happens on its own: it is the one moment BeatByte talks to the
     // network, and only the artist and the title leave the machine.
     if !searching
-        && (keys.just_pressed(KeyCode::KeyL) || ui_kit::chip_hit(clicks, chip::LYRICS))
+        && (shortcut(KeyCode::KeyL) || ui_kit::chip_hit(clicks, chip::LYRICS))
         && start.lookup.task.is_none()
     {
         match &entry.source {
@@ -2051,7 +1786,7 @@ fn browser_input(
     // with the model from the settings screen; K again cancels. Every
     // reason it cannot run is a line on the status row. (`A` would be
     // the natural key and is menu LEFT: it changes the difficulty.)
-    if !searching && (keys.just_pressed(KeyCode::KeyK) || ui_kit::chip_hit(clicks, chip::ALIGN)) {
+    if !searching && (shortcut(KeyCode::KeyK) || ui_kit::chip_hit(clicks, chip::ALIGN)) {
         if start.smart.is_aligning() {
             start.smart.cancel_align();
             status.0 = "cancelling the alignment...".to_owned();
@@ -2083,8 +1818,7 @@ fn browser_input(
     // overlay, and collected wherever the player has gone by the time
     // it finishes. A four-minute song takes the better part of a
     // minute, which is not a wait to hold a browser still for.
-    if !searching && (keys.just_pressed(KeyCode::KeyG) || ui_kit::chip_hit(clicks, chip::REDESIGN))
-    {
+    if !searching && (shortcut(KeyCode::KeyG) || ui_kit::chip_hit(clicks, chip::REDESIGN)) {
         match chart_folder(&entry.source) {
             None => {
                 sounds.write(crate::sfx::UiSound::Error);
@@ -2114,7 +1848,7 @@ fn browser_input(
     // only the highlighted song's. A chore, like the redesign: it
     // transcodes audio, and the rescan when it finishes puts the new
     // versions in the tree.
-    if !searching && (keys.just_pressed(KeyCode::KeyB) || ui_kit::chip_hit(clicks, chip::BRIDGE)) {
+    if !searching && (shortcut(KeyCode::KeyB) || ui_kit::chip_hit(clicks, chip::BRIDGE)) {
         let line = "converting Bridge downloads...";
         match start.chore.start(line, crate::bridge_import::import_all) {
             Ok(()) => {
@@ -2130,7 +1864,7 @@ fn browser_input(
     // T hears the same half minute twice, on two chart versions, in
     // an order that is not told: the blind taste test. The verdict
     // and the rating land on the results screen like any other run's.
-    if !searching && (keys.just_pressed(KeyCode::KeyT) || ui_kit::chip_hit(clicks, chip::TASTE)) {
+    if !searching && (shortcut(KeyCode::KeyT) || ui_kit::chip_hit(clicks, chip::TASTE)) {
         match &entry.source {
             SongSource::Builtin(_) => {
                 sounds.write(crate::sfx::UiSound::Error);
@@ -2184,7 +1918,7 @@ fn browser_input(
     }
     // Q queues the highlighted song for an MC set (again removes it);
     // P plays the queued set as one continuous DJ performance.
-    if !searching && (keys.just_pressed(KeyCode::KeyQ) || ui_kit::chip_hit(clicks, chip::QUEUE)) {
+    if !searching && (shortcut(KeyCode::KeyQ) || ui_kit::chip_hit(clicks, chip::QUEUE)) {
         // Queued by folder, not by list position: a rescan before P
         // would otherwise play the neighbours of what was queued.
         if let Some(key) = crate::mc::QueuedSong::of(entry) {
@@ -2207,7 +1941,7 @@ fn browser_input(
         }
     }
     if !searching
-        && (keys.just_pressed(KeyCode::KeyP) || ui_kit::chip_hit(clicks, chip::PLAY_SET))
+        && (shortcut(KeyCode::KeyP) || ui_kit::chip_hit(clicks, chip::PLAY_SET))
         && !start.mc_queue.0.is_empty()
     {
         let keys: Vec<Option<crate::mc::QueuedSong>> = library
@@ -2266,221 +2000,10 @@ fn browser_input(
             Err(reason) => status.0 = format!("cannot delete: {reason}"),
         }
     }
-    let is_file = matches!(
-        view.order
-            .get(cursor.0)
-            .and_then(|i| library.entries.get(*i))
-            .map(|e| &e.source),
-        Some(SongSource::File { .. })
-    );
-    let opens = view
-        .tree
-        .get(cursor.0)
-        .is_some_and(|row| row.opens().is_some());
-    sync_chip_enables(
-        &mut start.chips,
-        is_file,
-        !start.mc_queue.0.is_empty(),
-        delete_armed.0.is_some(),
-        opens,
-    );
     if leave {
         sounds.write(crate::sfx::UiSound::Back);
         next_state.set(AppState::MainMenu);
     }
-}
-
-/// Enable / disable context-sensitive chips from the current selection.
-fn sync_chip_enables(
-    chips: &mut Query<(&ui_kit::ActionChip, &mut ui_kit::ChipEnabled)>,
-    is_file: bool,
-    queue_nonempty: bool,
-    delete_armed: bool,
-    opens: bool,
-) {
-    ui_kit::set_chip_enabled(chips, chip::OPEN, opens);
-    ui_kit::set_chip_enabled(chips, chip::PLAY_SET, queue_nonempty);
-    ui_kit::set_chip_enabled(chips, chip::EDIT, is_file);
-    ui_kit::set_chip_enabled(chips, chip::REDESIGN, is_file);
-    ui_kit::set_chip_enabled(chips, chip::TASTE, is_file);
-    ui_kit::set_chip_enabled(chips, chip::DELETE, is_file && !delete_armed);
-    ui_kit::set_chip_enabled(chips, chip::CONFIRM, delete_armed);
-    ui_kit::set_chip_enabled(chips, chip::CANCEL, delete_armed);
-}
-
-/// Fill the (already spawned) list with the view's rows. Rows are
-/// the ONLY part of the screen that rebuilds — header, footer, panel
-/// and scroll state stay alive, which is what stopped every keypress
-/// from re-laying-out the whole screen (the "feels buggy" core).
-#[allow(clippy::too_many_arguments)] // plain helper, one call site
-fn spawn_rows_into(
-    commands: &mut Commands,
-    list: Entity,
-    font: &UiFont,
-    library: &SongLibrary,
-    view: &BrowserView,
-    scores: &ScoreBoard,
-    selected: Difficulty,
-) {
-    commands.entity(list).despawn_children();
-    commands.entity(list).with_children(|panel| {
-        for (position, row) in view.tree.iter().enumerate() {
-            let Some(entry) = library.entries.get(row.entry) else {
-                continue;
-            };
-            // A revision is a row of its own: its number, who made it,
-            // and whether it is the one that plays — no song facts,
-            // those belong to the variant above it.
-            if let crate::song_tree::Kind::Revision(revision) = &row.kind {
-                panel
-                    .spawn((SongRow(position), Button, ui_kit::row()))
-                    .with_children(|line| {
-                        line.spawn((
-                            SongTitle(position),
-                            Text::new(font.safe(&tree_title(row, &entry.title))),
-                            font.text(ui_kit::ROW),
-                            TextColor(palette::TEXT_DIM),
-                            TextLayout::default().with_no_wrap(),
-                            Node {
-                                flex_grow: 1.0,
-                                min_width: px(0.0),
-                                overflow: Overflow::clip(),
-                                ..default()
-                            },
-                        ));
-                        cell(
-                            line,
-                            font,
-                            position,
-                            if revision.active { "PLAYING" } else { "" }.to_owned(),
-                            COL_ARTIST,
-                        );
-                    });
-                continue;
-            }
-            // Facts follow the SELECTED difficulty; a song
-            // that lacks it shows its first one instead.
-            let effective = if entry.difficulties.contains(&selected) {
-                selected
-            } else {
-                entry.difficulties.first().copied().unwrap_or(selected)
-            };
-            let best = scores
-                .best(
-                    entry.song_id.as_deref(),
-                    &entry.title,
-                    &entry.artist,
-                    effective,
-                )
-                .map_or_else(|| "-".to_owned(), |b| b.score.to_string());
-            let tree_row = row;
-            panel
-                .spawn((SongRow(position), Button, ui_kit::row()))
-                .with_children(|row| {
-                    row.spawn((
-                        SongTitle(position),
-                        Text::new(font.safe(&clip_chars(&tree_title(tree_row, &entry.title), 32))),
-                        font.text(ui_kit::ROW),
-                        TextColor(palette::TEXT_DIM),
-                        TextLayout::default().with_no_wrap(),
-                        Node {
-                            flex_grow: 1.0,
-                            min_width: px(0.0),
-                            overflow: Overflow::clip(),
-                            ..default()
-                        },
-                    ));
-                    cell(
-                        row,
-                        font,
-                        position,
-                        font.safe(&clip_chars(&entry.artist, 18)),
-                        COL_ARTIST,
-                    );
-                    cell(
-                        row,
-                        font,
-                        position,
-                        font.safe(&clip_chars(entry.genre.as_deref().unwrap_or("-"), 11)),
-                        COL_GENRE,
-                    );
-                    cell(row, font, position, length_label(entry.duration_s), COL_LEN);
-                    cell(
-                        row,
-                        font,
-                        position,
-                        entry
-                            .note_count(effective)
-                            .map_or_else(|| "-".to_owned(), |n| n.to_string()),
-                        COL_NOTES,
-                    );
-                    cell(
-                        row,
-                        font,
-                        position,
-                        entry
-                            .rating(effective)
-                            .map_or_else(|| "-".to_owned(), |r| "*".repeat(usize::from(r))),
-                        COL_RATING,
-                    );
-                    // The two states of a song, each in its own
-                    // column — BEFORE the best score, because the
-                    // captions are spawned in that order and a header
-                    // over the wrong cells is worse than no header.
-                    // Lit means the AI pass has been through; dim
-                    // means it has not. Two marks, two facts: a song
-                    // can have perfect lyrics and a first-draft chart.
-                    let polish = entry.polish;
-                    spawn_chart_mark(row, polish.chart_mark());
-                    spawn_lyrics_mark(row, polish.lyrics_mark());
-                    // The file's quality, in a word; the detail line
-                    // under the list says why.
-                    cell(
-                        row,
-                        font,
-                        position,
-                        crate::loudness::audio_label(entry.loudness.as_ref()).to_owned(),
-                        COL_AUDIO,
-                    );
-                    cell(row, font, position, best, COL_BEST);
-                });
-        }
-
-        // An empty result must SAY so; a bare empty panel reads as a
-        // broken screen, not as a search with no matches. An empty
-        // LIBRARY is also a Button (opens the add-a-song prompt).
-        if view.order.is_empty() {
-            let hint = empty_hint(library.entries.len(), &view.filter);
-            if library.entries.is_empty() {
-                panel.spawn((
-                    EmptyHint,
-                    Button,
-                    Text::new(font.safe(&hint)),
-                    font.text(ui_kit::ROW),
-                    TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
-                    Node {
-                        margin: UiRect::all(px(12.0)),
-                        padding: UiRect::axes(px(8), px(4)),
-                        border: UiRect::all(px(1)),
-                        border_radius: BorderRadius::all(px(4)),
-                        ..default()
-                    },
-                    BorderColor::all(palette::dimmed(palette::TEXT_DIM, 0.45)),
-                ));
-            } else {
-                panel.spawn((
-                    EmptyHint,
-                    Text::new(font.safe(&hint)),
-                    font.text(ui_kit::ROW),
-                    TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
-                    Node {
-                        margin: UiRect::all(px(12.0)),
-                        ..default()
-                    },
-                ));
-            }
-        }
-    });
 }
 
 /// Build the [`LoadedSong`] for an entry. Built-ins come from cache;
@@ -2542,391 +2065,6 @@ pub fn prepare_song(entry: &SongEntry, builtins: &BuiltinSongs) -> Result<Loaded
     }
 }
 
-/// Width the microphone reserves, so titles line up whether a song
-/// has lyrics or not.
-/// Every mark in a row is this tall, so they sit on one baseline.
-const MARK_H: f32 = 14.0;
-
-/// Draw the lyrics marker at the head of a row: a microphone, built
-/// from nodes.
-///
-/// ⚠️ Not the 🎤 character. Press Start 2P has 656 glyphs and that
-/// is not one of them — rendered, it comes out as the font's
-/// `.notdef` box (verified by rendering it and comparing the bitmap
-/// against a private-use codepoint). A box in every row would say
-/// nothing at all, so the microphone is drawn: a capsule head, a
-/// stem and a base.
-///
-/// A song WITHOUT lyrics keeps the same space empty, so the titles
-/// The microphone, drawn from boxes: the 8-bit face has no symbol
-/// glyphs, so every mark in this list is node art.
-fn spawn_mic_shape(parent: &mut ChildSpawnerCommands, tint: Color) {
-    parent
-        .spawn(Node {
-            width: px(7.0),
-            height: px(MARK_H),
-            flex_direction: FlexDirection::Column,
-            align_items: AlignItems::Center,
-            justify_content: JustifyContent::Center,
-            row_gap: px(1.0),
-            ..default()
-        })
-        .with_children(|mic| {
-            // Head: a capsule.
-            mic.spawn((
-                Node {
-                    width: px(5.0),
-                    height: px(7.0),
-                    border_radius: BorderRadius::all(px(2.5)),
-                    ..default()
-                },
-                BackgroundColor(tint),
-            ));
-            // Stem.
-            mic.spawn((
-                Node {
-                    width: px(1.0),
-                    height: px(2.0),
-                    ..default()
-                },
-                BackgroundColor(tint),
-            ));
-            // Base.
-            mic.spawn((
-                Node {
-                    width: px(7.0),
-                    height: px(1.0),
-                    ..default()
-                },
-                BackgroundColor(tint),
-            ));
-        });
-}
-
-/// The LYRICS mark: an empty slot when there are no words, a dim
-/// microphone when they only have line stamps, and a lit microphone
-/// with two waves once every word has been placed.
-///
-/// The waves matter: colour alone would carry the whole message, and
-/// a mark that is only a colour is unreadable to a player who cannot
-/// tell these two apart.
-fn spawn_lyrics_mark(row: &mut ChildSpawnerCommands, mark: LyricsMark) {
-    let mut slot = row.spawn(Node {
-        width: px(COL_LYRICS),
-        height: px(MARK_H),
-        flex_shrink: 0.0,
-        align_items: AlignItems::Center,
-        column_gap: px(2.0),
-        ..default()
-    });
-    if mark == LyricsMark::None {
-        return;
-    }
-    let lit = mark == LyricsMark::Word;
-    let tint = if lit {
-        palette::BRAND
-    } else {
-        palette::dimmed(palette::TEXT_DIM, 0.5)
-    };
-    slot.with_children(|mark_row| {
-        spawn_mic_shape(mark_row, tint);
-        if !lit {
-            return;
-        }
-        // Two waves leaving the microphone: the word-by-word state.
-        for height in [5.0, 9.0] {
-            mark_row.spawn((
-                Node {
-                    width: px(2.0),
-                    height: px(height),
-                    border_radius: BorderRadius::all(px(1.0)),
-                    ..default()
-                },
-                BackgroundColor(tint),
-            ));
-        }
-    });
-}
-
-/// The CHART mark: a rising graph. One dim bar for the import's own
-/// first draft, one lit bar per generation once a redesign is active
-/// — so the mark says both "has the AI been here" and "how often".
-fn spawn_chart_mark(row: &mut ChildSpawnerCommands, mark: ChartMark) {
-    let lit = mark != ChartMark::Draft;
-    let tint = if lit {
-        palette::BRAND
-    } else {
-        palette::dimmed(palette::TEXT_DIM, 0.5)
-    };
-    row.spawn(Node {
-        width: px(COL_CHART),
-        height: px(MARK_H),
-        flex_shrink: 0.0,
-        align_items: AlignItems::FlexEnd,
-        column_gap: px(2.0),
-        padding: UiRect::bottom(px(3.0)),
-        ..default()
-    })
-    .with_children(|bars| {
-        for step in 0..mark.bars() {
-            bars.spawn((
-                Node {
-                    width: px(3.0),
-                    #[allow(clippy::cast_precision_loss)] // 1..=4 bars
-                    height: px(3.0 + 3.0 * step as f32),
-                    ..default()
-                },
-                BackgroundColor(tint),
-            ));
-        }
-    });
-}
-
-/// Keep rows and the detail block in sync with the cursor.
-#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
-/// Colour queries for the row texts, factored so clippy's type cap
-/// and Bevy's disjointness proofs both hold.
-type TitleColors<'w, 's> = Query<
-    'w,
-    's,
-    (&'static SongTitle, &'static mut TextColor),
-    (
-        Without<SongArtist>,
-        Without<SortHeader>,
-        Without<StatusLine>,
-    ),
->;
-/// See [`TitleColors`].
-type ArtistColors<'w, 's> = Query<
-    'w,
-    's,
-    (&'static SongArtist, &'static mut TextColor),
-    (Without<SongTitle>, Without<SortHeader>, Without<StatusLine>),
->;
-
-#[allow(clippy::too_many_arguments, clippy::type_complexity)] // Bevy system
-fn refresh_browser(
-    mut chart_hashes: Local<std::collections::HashMap<std::path::PathBuf, Option<String>>>,
-    settings: Res<crate::config::Settings>,
-    library: Res<SongLibrary>,
-    view: Res<BrowserView>,
-    cursor: Res<BrowserCursor>,
-    selected: Res<SelectedDifficulty>,
-    scores: Res<ScoreBoard>,
-    font: Res<UiFont>,
-    mut rows: Query<(&SongRow, &mut BackgroundColor, &mut BorderColor)>,
-    mut titles: TitleColors,
-    mut artists: ArtistColors,
-    mut texts: ParamSet<(
-        Query<&'static mut Text, With<DetailText>>,
-        Query<
-            (&'static mut Text, &'static mut TextColor),
-            (With<StatusLine>, Without<SongTitle>, Without<SongArtist>),
-        >,
-        Query<
-            (
-                &'static SortHeader,
-                &'static mut Text,
-                &'static mut TextColor,
-            ),
-            (Without<SongTitle>, Without<SongArtist>, Without<StatusLine>),
-        >,
-    )>,
-) {
-    // Status line and column captions update IN PLACE - text writes
-    // only when the string actually changed, or every frame would
-    // re-shape the glyphs.
-    if let Ok((mut text, mut color)) = texts.p1().single_mut() {
-        let wanted = font.safe(&status_text(&view));
-        if text.0 != wanted {
-            text.0 = wanted;
-        }
-        color.0 = if view.searching {
-            palette::BRAND
-        } else {
-            palette::dimmed(palette::TEXT_DIM, 0.85)
-        };
-    }
-    for (header, mut text, mut color) in &mut texts.p2() {
-        let base = match header.0 {
-            SortMode::Title => "TITLE",
-            SortMode::Artist => "ARTIST",
-            SortMode::Genre => "GENRE",
-            SortMode::Length => "LEN",
-            SortMode::Notes => "NOTES",
-            SortMode::Diff => "DIFF",
-            SortMode::Best => "BEST",
-            SortMode::Lyrics => "LYRICS",
-            SortMode::Chart => "CHART",
-            SortMode::Audio => "AUDIO",
-            SortMode::Standard => "",
-        };
-        let wanted = caption_label(base, header.0, &view);
-        if text.0 != wanted {
-            text.0 = wanted;
-        }
-        color.0 = if view.sort == header.0 {
-            palette::BRAND
-        } else {
-            palette::dimmed(palette::TEXT_DIM, 0.7)
-        };
-    }
-    for (row, mut background, mut border) in &mut rows {
-        let style = ui_kit::styled_row(
-            ui_kit::state_for(row.0 == cursor.0, false),
-            settings.high_contrast,
-        );
-        background.0 = style.background;
-        *border = BorderColor::all(style.accent);
-    }
-    for (title, mut color) in &mut titles {
-        color.0 = ui_kit::styled_row(
-            ui_kit::state_for(title.0 == cursor.0, false),
-            settings.high_contrast,
-        )
-        .label;
-    }
-    for (artist, mut color) in &mut artists {
-        color.0 = ui_kit::styled_row(
-            ui_kit::state_for(artist.0 == cursor.0, false),
-            settings.high_contrast,
-        )
-        .value;
-    }
-    // The details line follows the highlighted song — and goes BLANK
-    // when there is none: with the early return it kept the last
-    // song's line under an empty list ("1/71 … 336 notes" beneath
-    // "no match", seen on screen).
-    let entry = view
-        .order
-        .get(cursor.0)
-        .and_then(|i| library.entries.get(*i));
-    if let Ok(mut text) = texts.p0().single_mut() {
-        // The chart that plays now, for "a best on an older chart":
-        // parsed once per file, only for the highlighted song (a hash
-        // for every row would parse the whole library). Forgotten when
-        // the library is read again — an editor save may rewrite a
-        // file under the same name.
-        if library.is_changed() {
-            chart_hashes.clear();
-        }
-        let current = entry.and_then(|entry| match &entry.source {
-            crate::library::SongSource::File { chart_path, .. } => chart_hashes
-                .entry(chart_path.clone())
-                .or_insert_with(|| {
-                    beatbyte_chart::load_chart_file(chart_path)
-                        .ok()
-                        .map(|chart| beatbyte_chart::chart_hash(&chart))
-                })
-                .clone(),
-            crate::library::SongSource::Builtin(_) => None,
-        });
-        let line = detail_line(cursor.0, view.order.len(), entry, selected.0, |entry| {
-            let older = scores.best_is_from_another_chart(
-                entry.song_id.as_deref(),
-                &entry.title,
-                &entry.artist,
-                selected.0,
-                current.as_deref(),
-            );
-            scores
-                .best(
-                    entry.song_id.as_deref(),
-                    &entry.title,
-                    &entry.artist,
-                    selected.0,
-                )
-                .map(|b| (b.score, b.accuracy, older))
-        });
-        if text.0 != line {
-            text.0 = line;
-        }
-    }
-}
-
-/// Dim INFO where there is nothing behind it.
-///
-/// ⚠️ A built-in song has no folder and therefore no document, so
-/// both the `I` key and this button did nothing at all — a control
-/// that is available and inert teaches the player that the screen is
-/// broken. The EDIT chip has said this for the same songs all along;
-/// INFO is hand-rolled and was left out of the rule.
-///
-/// ⚠️ Its own system on purpose. Folded into `refresh_browser` as one
-/// more parameter it compiled and then PANICKED at startup: that
-/// system already writes `TextColor` and `BorderColor` through four
-/// other queries, and Bevy cannot prove a `With<InfoButton>` query
-/// disjoint from them. The autopilot found it; nothing else would
-/// have.
-#[allow(clippy::needless_pass_by_value)] // Bevy system params
-fn refresh_info_button(
-    library: Res<SongLibrary>,
-    view: Res<BrowserView>,
-    cursor: Res<BrowserCursor>,
-    mut info: Query<(&mut TextColor, &mut BorderColor), With<InfoButton>>,
-) {
-    let has_document = view
-        .order
-        .get(cursor.0)
-        .and_then(|i| library.entries.get(*i))
-        .is_some_and(|entry| matches!(entry.source, crate::library::SongSource::File { .. }));
-    let (fg, line, _) = ui_kit::chip_colours(has_document, false);
-    for (mut colour, mut border) in &mut info {
-        colour.0 = fg;
-        *border = BorderColor::all(line);
-    }
-}
-
-/// The details line under the list: position in the VIEW (under a
-/// filter, "3/7" answers "of the matches"), tempo, length, the
-/// selected difficulty with its rating and note count, and the best
-/// record. Empty when no song is highlighted. Pure — tested.
-fn detail_line(
-    cursor: usize,
-    count: usize,
-    entry: Option<&SongEntry>,
-    difficulty: Difficulty,
-    best: impl Fn(&SongEntry) -> Option<(u64, f64, bool)>,
-) -> String {
-    let Some(entry) = entry else {
-        return String::new();
-    };
-    let duration = entry.duration_s.map_or_else(String::new, |d| {
-        format!("  {}:{:02}", d as u32 / 60, d as u32 % 60)
-    });
-    let best = best(entry).map_or_else(
-        || "no record yet".to_owned(),
-        |(score, accuracy, older)| {
-            // A best set on an earlier version of the chart (before an
-            // edit, a redesign) is said to be one.
-            let older = if older { ", older chart" } else { "" };
-            format!("best {score}  ({:.1}%{older})", accuracy * 100.0)
-        },
-    );
-    let rating = entry
-        .rating(difficulty)
-        .map_or_else(|| "-".to_owned(), |r| "*".repeat(usize::from(r)));
-    let notes = entry
-        .note_count(difficulty)
-        .map_or_else(|| "-".to_owned(), |n| n.to_string());
-    let quality = crate::loudness::quality_marker(entry.loudness.as_ref());
-    let quality = if quality.is_empty() {
-        quality
-    } else {
-        format!("   {quality}")
-    };
-    format!(
-        "{}/{count}   {:.0} BPM{duration}   <{}>   {rating}   {notes} notes   {best}{quality}",
-        cursor + 1,
-        entry.bpm,
-        difficulty.display_name().to_uppercase()
-    )
-}
-
-/// The import hint / status line.
-#[derive(Component)]
-struct ImportNote;
-
 /// A finished import replaces the [`SongLibrary`] resource — rebuild
 /// the list so the new song is visible, and keep the note line
 /// showing the import's progress.
@@ -2963,11 +2101,11 @@ fn sync_view(
     mut cursor: ResMut<BrowserCursor>,
     mut view: ResMut<BrowserView>,
     scores: Res<ScoreBoard>,
+    history: Res<crate::history::PlayHistory>,
     selected: Res<SelectedDifficulty>,
     lists: Query<Entity, With<SongList>>,
     fresh: Query<(), Added<SongList>>,
-    mut cache: ResMut<RevisionCache>,
-    mut rendered: Local<Option<RenderedKey>>,
+    mut rendered: Local<Option<(Vec<usize>, Difficulty, String)>>,
     mut last_filter: Local<String>,
 ) {
     let entered = !fresh.is_empty();
@@ -2979,56 +2117,79 @@ fn sync_view(
         return;
     }
     let difficulty = selected.0;
-    let order = build_order(
+    let best = |entry: &SongEntry| {
+        scores
+            .best(
+                entry.song_id.as_deref(),
+                &entry.title,
+                &entry.artist,
+                difficulty,
+            )
+            .map(|b| b.score)
+    };
+    // The whole library in the sort's order, and what the filter let
+    // through: families gather over the first and show by the second.
+    let full = build_order(
+        &library.entries,
+        view.sort,
+        view.flipped,
+        difficulty,
+        "",
+        best,
+    );
+    let filtered = build_order(
         &library.entries,
         view.sort,
         view.flipped,
         difficulty,
         &view.filter,
-        |entry| {
-            scores
-                .best(
-                    entry.song_id.as_deref(),
-                    &entry.title,
-                    &entry.artist,
-                    difficulty,
-                )
-                .map(|b| b.score)
-        },
+        best,
     );
+    let families = crate::song_family::families(&library.entries, &full, &filtered);
+    // When each title was played last, for the default version.
+    let mut last: std::collections::HashMap<(&str, &str), u64> = std::collections::HashMap::new();
+    for run in &history.0 {
+        let at = last
+            .entry((run.title.as_str(), run.artist.as_str()))
+            .or_insert(0);
+        *at = (*at).max(run.started_ms);
+    }
+    let order: Vec<usize> = families
+        .iter()
+        .map(|family| {
+            let head = entry_folder(&library.entries[family.head]);
+            let chosen = head.as_ref().and_then(|folder| view.chosen.get(folder));
+            crate::song_family::default_member(
+                &library.entries,
+                family,
+                chosen.map(std::path::PathBuf::as_path),
+                |entry| {
+                    last.get(&(entry.title.as_str(), entry.artist.as_str()))
+                        .copied()
+                },
+            )
+        })
+        .collect();
     let filter_changed = *last_filter != view.filter;
     last_filter.clone_from(&view.filter);
-    // A rescan (import, delete, a revision chosen, an editor save)
-    // may have changed any folder's revisions.
-    if library.is_changed() {
-        cache.listed.clear();
-        cache.labels.clear();
-    }
-    let tree = tree_rows(&library.entries, &order, &view.open, &mut cache);
     let raw = view.bypass_change_detection();
-    let old_ids: Vec<crate::song_tree::RowId> =
-        raw.tree.iter().map(crate::song_tree::Row::id).collect();
+    // The cursor stays on its SONG through a re-sort or a version
+    // change: follow the family head, not the row number.
+    let old_heads: Vec<usize> = raw.families.iter().map(|f| f.head).collect();
+    let new_heads: Vec<usize> = families.iter().map(|f| f.head).collect();
     cursor.0 = if filter_changed {
         0
-    } else if raw.tree.is_empty() {
-        cursor_after_change(false, &raw.order, cursor.0, &order)
     } else {
-        crate::song_tree::follow_cursor(&old_ids, cursor.0, &tree)
+        cursor_after_change(false, &old_heads, cursor.0, &new_heads)
     };
-    raw.order = tree.iter().map(|row| row.entry).collect();
-    raw.tree = tree;
-    // Rows rebuild only when their CONTENT changed — the order, the
-    // tree (something opened, another revision active), or the
-    // difficulty the cells follow. A pure status change (opening the
-    // search) touches none of them.
-    let key = (
-        rebuild_key(&raw.order, difficulty, &raw.filter),
-        raw.tree.clone(),
-    );
+    raw.order = order;
+    raw.families = families;
+    raw.tree.clear();
+    let key = rebuild_key(&raw.order, difficulty, &raw.filter);
     if (entered || library.is_changed() || rendered.as_ref() != Some(&key))
         && let Ok(list) = lists.single()
     {
-        spawn_rows_into(
+        look::spawn_rows(
             &mut commands,
             list,
             &font,
@@ -3039,63 +2200,6 @@ fn sync_view(
         );
         *rendered = Some(key);
     }
-}
-
-/// What the list was last drawn from: the order, the difficulty, the
-/// quoted filter — and the tree, which changes when a row opens.
-type RenderedKey = ((Vec<usize>, Difficulty, String), Vec<crate::song_tree::Row>);
-
-/// The browser's rows for a sorted, twin-paired `order`: songs closed
-/// unless opened, their variants, the revisions of what is open.
-fn tree_rows(
-    entries: &[SongEntry],
-    order: &[usize],
-    open: &std::collections::HashSet<(std::path::PathBuf, crate::song_tree::Level)>,
-    cache: &mut RevisionCache,
-) -> Vec<crate::song_tree::Row> {
-    // How many revisions each listed folder holds, up front: the tree
-    // asks for counts and for rows, and both come from the cache.
-    let counts: std::collections::HashMap<usize, usize> = order
-        .iter()
-        .map(|&i| {
-            (
-                i,
-                entry_folder(&entries[i]).map_or(0, |f| cache.listed(&f).len()),
-            )
-        })
-        .collect();
-    crate::song_tree::build(
-        order,
-        crate::song_tree::Facts {
-            parent_of: |i| original_in(entries, order, i),
-            label: |i| crate::song_tree::variant_label(&entries[i].title),
-            revision_count: |i| counts.get(&i).copied().unwrap_or(0),
-            revisions: |i| {
-                let entry = &entries[i];
-                let (Some(folder), SongSource::File { chart_path, .. }) =
-                    (entry_folder(entry), &entry.source)
-                else {
-                    return Vec::new();
-                };
-                let active = chart_path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned());
-                let listed = cache.listed(&folder).to_vec();
-                listed
-                    .into_iter()
-                    .map(|revision| crate::song_tree::RevisionRow {
-                        label: cache.label(&folder.join(&revision.name)).to_owned(),
-                        active: active.as_deref() == Some(revision.name.as_str()),
-                        number: revision.number,
-                        name: revision.name,
-                    })
-                    .collect()
-            },
-            is_open: |i, level| {
-                entry_folder(&entries[i]).is_some_and(|f| open.contains(&(f, level)))
-            },
-        },
-    )
 }
 
 /// Restore the persisted sort. The filter deliberately starts empty.
@@ -3110,35 +2214,6 @@ fn despawn_browser(mut commands: Commands, entities: Query<Entity, With<BrowserS
     for entity in &entities {
         commands.entity(entity).despawn();
     }
-}
-
-/// Keep the selected row inside the viewport.
-///
-/// The row height is MEASURED rather than assumed: it comes from the
-/// font size and the row padding, and hard-coding it here would put
-/// this system and `ui_kit` quietly out of step the first time either
-/// changed.
-fn follow_selection(
-    cursor: Res<BrowserCursor>,
-    view: Res<BrowserView>,
-    rows: Query<(&SongRow, &ComputedNode)>,
-    mut lists: Query<(&mut ScrollPosition, &mut Node), With<SongList>>,
-) {
-    let Ok((mut scroll, mut node)) = lists.single_mut() else {
-        return;
-    };
-    // Every row is the same height, so any of them answers the
-    // question - but a row may not have been laid out yet on the
-    // first frame, and a height of zero would send the offset to
-    // infinity.
-    let Some(row) = rows
-        .iter()
-        .map(|(_, node)| node)
-        .find(|node| node.size().y > 0.0)
-    else {
-        return;
-    };
-    ui_kit::follow_list(cursor.0, view.order.len(), row, &mut scroll, &mut node);
 }
 
 #[cfg(test)]
@@ -3223,16 +2298,7 @@ mod difficulty_pref_tests {
 
 #[cfg(test)]
 mod delete_tests {
-    use super::{DeleteStep, delete_step, wants_open_search};
-
-    #[test]
-    fn the_search_chip_opens_search_without_f() {
-        // Mouse-only: ActionBar Search equals F / typed "/".
-        assert!(wants_open_search(false, true, false));
-        assert!(wants_open_search(true, false, false));
-        assert!(wants_open_search(false, false, true));
-        assert!(!wants_open_search(false, false, false));
-    }
+    use super::{DeleteStep, delete_step};
 
     #[test]
     fn delete_chips_drive_the_same_rule_as_the_keys() {
@@ -3335,65 +2401,6 @@ mod delete_tests {
 }
 
 #[cfg(test)]
-mod column_tests {
-    /// The captions and the cells are two lists written far apart in
-    /// this file, and a header over the wrong values is worse than no
-    /// header at all — it states a fact about the wrong song. So the
-    /// two orders are pinned against each other.
-    ///
-    /// It has been wrong twice: the OPT cell was once spawned after
-    /// the score while its caption came before it, and the two marks
-    /// were swapped in the header alone.
-
-    #[test]
-    fn the_captions_and_the_cells_are_spawned_in_one_order() {
-        let source = include_str!("song_select.rs");
-        let at = |needle: &str| {
-            source
-                .find(needle)
-                .unwrap_or_else(|| panic!("the browser no longer contains `{needle}`"))
-        };
-        // The header, in the order the captions are spawned.
-        let captions = [
-            "\"TITLE\"",
-            "\"ARTIST\"",
-            "\"GENRE\"",
-            "\"LEN\"",
-            "\"NOTES\"",
-            "\"DIFF\"",
-            "\"CHART\"",
-            "\"LYRICS\"",
-            "\"AUDIO\"",
-            "\"BEST\"",
-        ];
-        let heads: Vec<usize> = captions
-            .iter()
-            .map(|c| at(&format!("caption(head, {c}")))
-            .collect();
-        assert!(
-            heads.windows(2).all(|w| w[0] < w[1]),
-            "the captions are not spawned in the documented order: {heads:?}"
-        );
-        // The row, in the order the cells are spawned. The chart mark
-        // comes before the lyrics mark, and both before the score.
-        let chart = at("spawn_chart_mark(row,");
-        let lyrics = at("spawn_lyrics_mark(row,");
-        let audio = at("crate::loudness::audio_label(entry.loudness");
-        let best = at("cell(row, font, position, best, COL_BEST)");
-        assert!(chart < lyrics, "the row must draw CHART before LYRICS");
-        assert!(lyrics < audio, "the AUDIO word comes after the lyrics mark");
-        assert!(audio < best, "all three come before the score");
-        assert!(source.contains("caption(head, \"AUDIO\", SortMode::Audio, Some(COL_AUDIO))"));
-        // And the columns each mark is measured in are the ones its
-        // caption reserves.
-        assert!(source.contains("caption(head, \"CHART\", SortMode::Chart, Some(COL_CHART))"));
-        assert!(source.contains("caption(head, \"LYRICS\", SortMode::Lyrics, Some(COL_LYRICS))"));
-        assert!(source.contains("width: px(COL_CHART)"));
-        assert!(source.contains("width: px(COL_LYRICS)"));
-    }
-}
-
-#[cfg(test)]
 mod view_tests {
     use super::*;
     use crate::library::{SongEntry, SongSource};
@@ -3425,16 +2432,6 @@ mod view_tests {
         ]
     }
 
-    fn chart_json(designer: Option<&str>) -> String {
-        let provenance = designer.map_or_else(String::new, |d| {
-            format!(r#","provenance": {{"parent_hash": "x", "designer": "{d}", "created_ms": 1}}"#)
-        });
-        format!(
-            r#"{{"format_version": 1, "song": {{"title": "T", "audio": "a.ogg", "bpm": 120.0}},
-                "charts": [{{"difficulty": "easy", "lanes": 5, "notes": []}}]{provenance}}}"#
-        )
-    }
-
     fn file_entry(title: &str, chart_path: std::path::PathBuf) -> SongEntry {
         let mut e = entry(title, "Band", None, 200.0);
         e.source = SongSource::File {
@@ -3442,69 +2439,6 @@ mod view_tests {
             chart_path,
         };
         e
-    }
-
-    /// The tree read from real folders: the original has a generated
-    /// revision 1 and a hand-made revision 2 that plays; its study has
-    /// one revision.
-    #[test]
-    fn the_tree_reads_revisions_who_made_them_and_which_plays() {
-        use crate::song_tree::{Kind, Level};
-        let root = std::env::temp_dir().join(format!("bb-tree-{}", std::process::id()));
-        let (song, study) = (root.join("song"), root.join("guitar-study-song"));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&song).expect("song folder");
-        std::fs::create_dir_all(&study).expect("study folder");
-        std::fs::write(song.join("chart.json"), chart_json(None)).expect("fixture");
-        std::fs::write(song.join("chart.v2.json"), chart_json(Some("editor"))).expect("fixture");
-        // A redesign written beside it later, not made active.
-        std::fs::write(
-            song.join("chart.v3.json"),
-            chart_json(Some("design-session")),
-        )
-        .expect("fixture");
-        std::fs::write(study.join("chart.json"), chart_json(Some("lead-study"))).expect("fixture");
-        let entries = vec![
-            file_entry("Song", song.join("chart.v2.json")),
-            file_entry("[GS] Song", study.join("chart.json")),
-        ];
-        let mut cache = RevisionCache::default();
-        let closed = tree_rows(
-            &entries,
-            &[0, 1],
-            &std::collections::HashSet::new(),
-            &mut cache,
-        );
-        assert_eq!(closed.len(), 1, "one row for the family: {closed:?}");
-        let open = std::collections::HashSet::from([
-            (song.clone(), Level::Song),
-            (song.clone(), Level::Variant),
-        ]);
-        let rows = tree_rows(&entries, &[0, 1], &open, &mut cache);
-        let titles: Vec<String> = rows
-            .iter()
-            .map(|r| tree_title(r, &entries[r.entry].title))
-            .collect();
-        assert_eq!(
-            titles,
-            vec![
-                "- Song",
-                "  - NORMAL",
-                "      REV 1  GENERATED",
-                "      REV 2  HAND-MADE",
-                "      REV 3  REDESIGN",
-                "    GS",
-            ]
-        );
-        let active: Vec<bool> = rows
-            .iter()
-            .filter_map(|r| match &r.kind {
-                Kind::Revision(rev) => Some(rev.active),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(active, vec![false, true, false], "revision 2 plays");
-        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -3525,87 +2459,6 @@ mod view_tests {
             std::env::temp_dir().join("bb-other").join("chart.json"),
         );
         assert_ne!(QueuedSong::of(&first), QueuedSong::of(&other));
-    }
-
-    #[test]
-    fn tab_opens_and_closes_only_a_row_that_opens() {
-        use crate::song_tree::{Kind, Level, Row};
-        let folder = std::env::temp_dir().join("bb-tree-toggle");
-        let entries = vec![file_entry("Song", folder.join("chart.json"))];
-        let mut view = BrowserView {
-            tree: vec![Row {
-                entry: 0,
-                depth: 0,
-                kind: Kind::Song {
-                    expandable: true,
-                    open: false,
-                },
-            }],
-            ..BrowserView::default()
-        };
-        // The return value is what Enter and a click decide on:
-        // true = a section, opened or closed; false = an entry, it plays.
-        assert!(toggle_open(&mut view, &entries, 0), "a section opens");
-        assert!(view.open.contains(&(folder.clone(), Level::Song)));
-        assert!(toggle_open(&mut view, &entries, 0), "and closes");
-        assert!(view.open.is_empty(), "a second TAB closes it");
-        view.tree[0].kind = Kind::Song {
-            expandable: false,
-            open: false,
-        };
-        assert!(
-            !toggle_open(&mut view, &entries, 0),
-            "a song with nothing under it plays"
-        );
-        assert!(view.open.is_empty(), "nothing to open");
-        view.tree[0].kind = Kind::Revision(crate::song_tree::RevisionRow {
-            number: 2,
-            name: "chart.v2.json".to_owned(),
-            label: "HAND-MADE".to_owned(),
-            active: false,
-        });
-        assert!(!toggle_open(&mut view, &entries, 0), "a revision plays");
-        // A built-in has no folder: nothing to open, so Enter plays it.
-        view.tree[0].kind = Kind::Song {
-            expandable: true,
-            open: false,
-        };
-        let builtin = vec![SongEntry {
-            source: crate::library::SongSource::Builtin(0),
-            ..entries[0].clone()
-        }];
-        assert!(!toggle_open(&mut view, &builtin, 0), "a built-in plays");
-        assert!(!toggle_open(&mut view, &entries, 7), "no row, nothing");
-    }
-
-    #[test]
-    fn enter_and_a_click_open_a_section_before_anything_plays() {
-        // The rule lives inside `browser_input`, which needs the whole
-        // screen to run: pinned on the source, comments stripped (a
-        // comment naming the rule would satisfy a plain search).
-        let code: String = include_str!("song_select.rs")
-            .lines()
-            .filter(|line| !line.trim_start().starts_with("//"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let opens = code
-            .find("if (start_song || clicked_selected) && toggle_open(")
-            .expect("Enter or a click on a section opens it");
-        let plays = code
-            .find("if start_song || clicked_selected {")
-            .expect("the ordinary start");
-        let revision = code
-            .find("&& let Some((name, number, false)) = &revision_row")
-            .expect("the revision start");
-        assert!(
-            opens < plays && opens < revision,
-            "opening is decided first"
-        );
-        let branch = &code[opens..revision];
-        assert!(
-            branch.contains("return;"),
-            "an opened section does not also play"
-        );
     }
 
     /// BG versions sit under the song when the library has it, and
@@ -4033,31 +2886,6 @@ mod view_tests {
     }
 
     #[test]
-    fn the_details_line_goes_blank_under_an_empty_list() {
-        let songs = lib();
-        let line = detail_line(0, 4, songs.first(), Difficulty::Medium, |_| {
-            Some((1234, 0.987, false))
-        });
-        assert_eq!(
-            line,
-            "1/4   120 BPM  4:08   <MEDIUM>   *   100 notes   best 1234  (98.7%)"
-        );
-        assert_eq!(
-            detail_line(0, 0, None, Difficulty::Medium, |_| None),
-            "",
-            "no song, no line - not the previous song's line"
-        );
-        // A best on an older version of the chart says so.
-        let older = detail_line(0, 4, songs.first(), Difficulty::Medium, |_| {
-            Some((1234, 0.987, true))
-        });
-        assert!(
-            older.ends_with("best 1234  (98.7%, older chart)"),
-            "{older}"
-        );
-    }
-
-    #[test]
     fn a_filter_ranks_the_best_match_first_and_tolerates_a_typo() {
         let songs = vec![
             entry("Lifeline", "Someone", None, 200.0),
@@ -4307,13 +3135,6 @@ mod view_tests {
         assert_eq!(SortMode::from_label("garbage"), None);
         assert_eq!(SortMode::from_label(""), None);
     }
-
-    #[test]
-    fn clipping_marks_the_cut() {
-        assert_eq!(clip_chars("short", 10), "short");
-        assert_eq!(clip_chars("exactlyten", 10), "exactlyten");
-        assert_eq!(clip_chars("elevenchars", 10), "elevencha~");
-    }
 }
 
 /// The rule that keeps a typed space from starting a song.
@@ -4406,7 +3227,12 @@ mod download_prompt_tests {
     }
 
     /// Press the opening key for real, from a closed field.
+    /// CTRL+D: the shortcut that opens the field since the browser
+    /// types every plain letter into its search.
     fn press_d(app: &mut App) {
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::ControlLeft);
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::KeyD);
@@ -4422,6 +3248,9 @@ mod download_prompt_tests {
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .release(KeyCode::KeyD);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release(KeyCode::ControlLeft);
     }
 
     #[test]
@@ -4435,7 +3264,7 @@ mod download_prompt_tests {
         press_d(&mut app);
         assert!(
             app.world().resource::<DownloadPrompt>().open,
-            "D opens the field"
+            "CTRL+D opens the field"
         );
         // A quiet frame, and this is the one that matters: the
         // keystroke was written before the field existed, so an
@@ -4549,8 +3378,10 @@ mod search_input_tests {
             .init_resource::<ButtonInput<KeyCode>>()
             .init_resource::<Time>()
             .init_resource::<BrowserView>()
-            .init_resource::<RevisionCache>()
             .init_resource::<ActionBarClicks>()
+            .init_resource::<ActionMenu>()
+            .init_resource::<DeleteQuestion>()
+            .init_resource::<DownloadPrompt>()
             .insert_resource(crate::config::Settings::default())
             .add_systems(Update, search_sort_input);
         app.world_mut().resource_mut::<BrowserView>().searching = true;
@@ -4604,11 +3435,6 @@ mod search_input_tests {
         (view.searching, view.filter.clone())
     }
 
-    /// The search button, pressed this frame.
-    fn press_button(app: &mut App) {
-        app.world_mut().spawn((SearchButton, Interaction::Pressed));
-    }
-
     #[test]
     fn q_is_a_letter_like_any_other_however_long_it_is_held() {
         // THE original bug: "q" closed the search instead of landing
@@ -4635,44 +3461,38 @@ mod search_input_tests {
         assert_eq!(view(&app).1, "quQ");
     }
 
+    /// Ctrl/Cmd + a letter is a tool, never text: Ctrl+E opens the
+    /// editor and must not leave an "e" in the search.
     #[test]
-    fn escape_closes_the_search_and_keeps_the_filter() {
-        // The filter is what was typed FOR; closing the field must
-        // not throw it away. Clearing is the next Esc's job, in
-        // `browser_input`, and the button's.
+    fn a_command_key_types_nothing() {
         let mut app = app();
-        press(&mut app, KeyCode::KeyU, "u");
-        frame(&mut app, 0.016);
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
-            .press(KeyCode::Escape);
+            .press(KeyCode::ControlLeft);
+        press(&mut app, KeyCode::KeyE, "e");
         frame(&mut app, 0.016);
-        assert_eq!(view(&app), (false, "u".to_owned()));
+        assert_eq!(view(&app).1, "");
     }
 
+    /// While the action menu owns the keys, or the delete question
+    /// waits for its `Y`, nothing lands in the search — the `Y` that
+    /// deletes must not also search for "y".
     #[test]
-    fn the_button_closes_the_search_and_then_clears_the_filter() {
+    fn nothing_types_while_the_menu_or_the_delete_question_has_the_keys() {
         let mut app = app();
-        press(&mut app, KeyCode::KeyU, "u");
+        app.world_mut().resource_mut::<ActionMenu>().open = true;
+        press(&mut app, KeyCode::KeyA, "a");
         frame(&mut app, 0.016);
-        assert_eq!(
-            search_button_label(app.world().resource::<BrowserView>()),
-            Some("CLOSE [ESC]")
-        );
-        press_button(&mut app);
+        assert_eq!(view(&app).1, "", "the menu has the keys");
+        app.world_mut().resource_mut::<ActionMenu>().open = false;
+        app.world_mut().resource_mut::<DeleteQuestion>().armed = Some(3);
+        press(&mut app, KeyCode::KeyY, "y");
         frame(&mut app, 0.016);
-        assert_eq!(view(&app), (false, "u".to_owned()), "closed, filter kept");
-        assert_eq!(
-            search_button_label(app.world().resource::<BrowserView>()),
-            Some("CLEAR [ESC]")
-        );
-        press_button(&mut app);
+        assert_eq!(view(&app).1, "", "the question has the keys");
+        app.world_mut().resource_mut::<DeleteQuestion>().armed = None;
+        press(&mut app, KeyCode::KeyB, "b");
         frame(&mut app, 0.016);
-        assert_eq!(view(&app), (false, String::new()), "cleared");
-        assert_eq!(
-            search_button_label(app.world().resource::<BrowserView>()),
-            None
-        );
+        assert_eq!(view(&app).1, "b", "and then letters are text again");
     }
 
     #[test]
@@ -4722,5 +3542,106 @@ mod redesign_tests {
             audio_path: std::path::PathBuf::from("a.m4a"),
         };
         assert_eq!(chart_folder(&bare), None);
+    }
+}
+
+#[cfg(test)]
+mod rebuild_tests {
+    use super::{TOOLS, chip, next_revision, next_version, tools_for, typing_allowed};
+    use crate::song_family::Family;
+
+    /// The search takes a key only when nothing else owns it: not with
+    /// Ctrl/Cmd held, not while the menu or the delete question has
+    /// the keys, not while the ADD field is open. Every combination.
+    #[test]
+    fn a_key_is_text_only_when_nothing_else_owns_it() {
+        for bits in 0..16u8 {
+            let (command, menu, question, field) =
+                (bits & 1 != 0, bits & 2 != 0, bits & 4 != 0, bits & 8 != 0);
+            assert_eq!(
+                typing_allowed(command, menu, question, field),
+                bits == 0,
+                "command {command}, menu {menu}, question {question}, field {field}"
+            );
+        }
+    }
+
+    /// The menu offers what applies: a built-in has no files to edit,
+    /// inspect, redesign or delete; an empty queue has nothing to play;
+    /// without a song only the library-wide tools remain.
+    #[test]
+    fn the_menu_offers_only_what_applies() {
+        let file = tools_for(true, true, false);
+        for id in [chip::PLAY, chip::EDIT, chip::INFO, chip::DELETE, chip::ADD] {
+            assert!(file.contains(&id), "a file song offers {id}");
+        }
+        assert!(
+            !file.contains(&chip::PLAY_SET),
+            "an empty queue plays nothing"
+        );
+        let builtin = tools_for(false, true, true);
+        for id in [
+            chip::EDIT,
+            chip::INFO,
+            chip::REVISION,
+            chip::REDESIGN,
+            chip::TASTE,
+            chip::DELETE,
+        ] {
+            assert!(!builtin.contains(&id), "a built-in has no files: {id}");
+        }
+        assert!(builtin.contains(&chip::PLAY_SET));
+        let nothing = tools_for(false, false, false);
+        assert_eq!(nothing, vec![chip::ADD, chip::BRIDGE, chip::SORT]);
+        // Every tool has a label, and no id is offered twice.
+        let mut ids: Vec<u8> = TOOLS.iter().map(|t| t.id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), TOOLS.len());
+    }
+
+    /// SHIFT+LEFT/RIGHT walks the versions and stops at the ends, like
+    /// every list here; no step and a lone version change nothing.
+    #[test]
+    fn versions_step_and_stop_at_the_ends() {
+        let family = Family {
+            head: 0,
+            members: vec![0, 4, 7],
+        };
+        assert_eq!(next_version(&family, Some(0), 1), Some(4));
+        assert_eq!(next_version(&family, Some(4), 1), Some(7));
+        assert_eq!(next_version(&family, Some(7), 1), None, "stops at the end");
+        assert_eq!(next_version(&family, Some(4), -1), Some(0));
+        assert_eq!(
+            next_version(&family, Some(0), -1),
+            None,
+            "stops at the start"
+        );
+        assert_eq!(next_version(&family, Some(4), 0), None);
+        let lone = Family {
+            head: 3,
+            members: vec![3],
+        };
+        assert_eq!(next_version(&lone, Some(3), 1), None);
+    }
+
+    /// SWITCH REVISION goes to the next one and wraps; a chart with a
+    /// single revision has nowhere to go.
+    #[test]
+    fn the_next_revision_wraps_and_a_single_one_has_none() {
+        let revisions = beatbyte_chart::versions::list_revisions(&[
+            "chart.json".to_owned(),
+            "chart.v2.json".to_owned(),
+            "chart.v3.json".to_owned(),
+        ]);
+        let next = |current| next_revision(&revisions, current).map(|r| r.name.clone());
+        assert_eq!(next(Some("chart.json")).as_deref(), Some("chart.v2.json"));
+        assert_eq!(
+            next(Some("chart.v3.json")).as_deref(),
+            Some("chart.json"),
+            "wraps"
+        );
+        let single = beatbyte_chart::versions::list_revisions(&["chart.json".to_owned()]);
+        assert!(next_revision(&single, Some("chart.json")).is_none());
     }
 }

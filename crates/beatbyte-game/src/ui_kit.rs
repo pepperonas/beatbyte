@@ -995,9 +995,7 @@ pub fn footer(parent: &mut ChildSpawnerCommands, font: &UiFont, hint: &str) {
 
 #[cfg(test)]
 mod layout_tests {
-    use super::{
-        ACCENT_WIDTH, CELL_GAP, PANEL_BORDER, PANEL_PAD, ROW_PAD_X, column_header_padding,
-    };
+    use super::{ACCENT_WIDTH, PANEL_BORDER, PANEL_PAD, ROW_PAD_X, column_header_padding};
     use bevy::prelude::*;
 
     fn left_right(rect: UiRect) -> (f32, f32) {
@@ -1022,23 +1020,24 @@ mod layout_tests {
         assert_eq!(left - right, ACCENT_WIDTH, "the stripe is left-only");
     }
 
+    /// The song browser draws its list from the kit: the panel's
+    /// frame and clipping, the row's padding and selection cue — not a
+    /// second set of numbers that agree today. (Its old ten-column
+    /// table carried its own header gap of 8 against the row's 16.)
     #[test]
-    fn the_header_and_the_rows_share_one_gap() {
-        // Not a tautology: it fails the moment someone types a second
-        // number for either side. The browser's header carried its
-        // own gap of 8 against the row's 16, and the drift grew one
-        // column at a time — worst at the right edge, where nobody
-        // looks for a layout bug.
-        let row_gap = CELL_GAP;
-        assert!(row_gap > 0.0);
-        let source = include_str!("song_select.rs");
+    fn the_browser_draws_its_list_from_the_kit() {
+        let source = include_str!("song_browser_view.rs");
         assert!(
-            source.contains("column_gap: px(ui_kit::CELL_GAP)"),
-            "the browser header must take the row's gap from the kit"
+            source.contains("ui_kit::scroll_node(width)"),
+            "the list panel must be the kit's scrolling panel"
         );
         assert!(
-            source.contains("padding: ui_kit::column_header_padding()"),
-            "the browser header must take its inset from the kit"
+            source.contains("(SongRow(position), Button, ui_kit::row())"),
+            "a song row must be the kit's row"
+        );
+        assert!(
+            source.contains("ui_kit::styled_row("),
+            "rows must take their states from the kit"
         );
     }
 }

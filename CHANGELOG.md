@@ -14,6 +14,31 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.75] - 2026-10-05
+
+### Changed
+
+- **The song browser is rebuilt** (the user: "das suchen und navigieren
+  in der songauswahl … katastrophal dargestellt"). One row per SONG —
+  title and artist, its best accuracy — instead of a ten-column table
+  with `[BG-01]` in front of nearly every title. Beside the list a panel
+  says everything about the selected song: genre, length, tempo, the
+  difficulty chips with rating, notes and best, the best on every
+  difficulty, the song's versions (NORMAL, GS, CL, BG-01 …) as chips,
+  and lyrics, chart and audio state in words.
+- **Type to search.** Every letter goes straight into the search (no
+  `F` first); `Backspace` erases, `Esc` clears and a second `Esc` leaves.
+  The page no longer moves while a search narrows the list.
+- **Every tool in one action menu** (`Tab` or ACTIONS) — play, edit
+  chart, song info, switch revision, fetch and align lyrics, redesign,
+  taste test, queue, add a song, Bridge import, sort, delete — and each
+  on `Ctrl`/`Cmd` + its old letter. The thirteen chips above the list
+  are gone. Delete is `Ctrl+Backspace` (it asks; `Y` answers).
+- **Versions are chosen in the panel**: `Shift+←/→` or a click; the
+  version played last is preselected, and the choice holds for the
+  session. Older revisions are one step away in the menu (SWITCH
+  REVISION) instead of rows of a tree.
+
 ## [0.18.74] - 2026-10-05
 
 ### Added

@@ -1,6 +1,6 @@
 # Plan: the song browser, rebuilt
 
-Status: **in progress** (2026-10-05). The user: "das suchen und navigieren
+Status: **done** (v0.18.75, 2026-10-05). The user: "das suchen und navigieren
 in der songauswahl vor dem eigentlichen spielen finde ich katastrophal
 dargestellt. die seite kannst du komplett neu erstellen." Decisions taken
 the same day (all four recommendations): **list + detail panel**, the

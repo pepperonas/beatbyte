@@ -366,6 +366,7 @@ fn enter_shot_state(
     // the chance to save it.
     library: Option<Res<crate::library::SongLibrary>>,
     info: Option<Res<crate::song_info::Showing>>,
+    mut menu: ResMut<crate::song_select::ActionMenu>,
     mut commands: Commands,
     mut done: Local<bool>,
 ) {
@@ -407,27 +408,11 @@ fn enter_shot_state(
         view.searching = true;
         view.filter = raw.to_lowercase();
     }
-    // Photograph a song OPEN in the browser's tree — its variants
-    // (NORMAL / GS / CL / BG-01 …) only exist on screen once it is,
-    // and the tree starts closed.
-    if let Ok(raw) = std::env::var("BEATBYTE_SHOT_OPEN")
-        && let Some(library) = library.as_deref()
-    {
-        let folder =
-            title_match(library.entries.iter().map(|e| e.title.as_str()), &raw).and_then(|i| {
-                match &library.entries[i].source {
-                    crate::library::SongSource::File { chart_path, .. } => {
-                        chart_path.parent().map(std::path::Path::to_path_buf)
-                    }
-                    crate::library::SongSource::Builtin(_) => None,
-                }
-            });
-        match folder {
-            Some(folder) => {
-                view.open.insert((folder, crate::song_tree::Level::Song));
-            }
-            None => error!("BEATBYTE_SHOT_OPEN: no song folder matching `{raw}`"),
-        }
+    // Photograph the browser's action menu — it only exists while it
+    // is open, and nothing opens it by itself.
+    if std::env::var_os("BEATBYTE_SHOT_ACTIONS").is_some() {
+        menu.open = true;
+        menu.cursor = 0;
     }
     // The document screen is the one that cannot be entered cold:
     // the browser hands it what to show. For a photograph, hand it
@@ -2321,10 +2306,14 @@ fn autopilot_taste(
             keys.release(KeyCode::ArrowDown);
         }
     } else if step == downs {
+        // CTRL+T: the browser types every plain letter into its
+        // search since the rebuild; the tools sit on Ctrl/Cmd.
         if pressing {
+            keys.press(KeyCode::ControlLeft);
             keys.press(KeyCode::KeyT);
         } else {
             keys.release(KeyCode::KeyT);
+            keys.release(KeyCode::ControlLeft);
         }
     } else if step > downs + 2 {
         let Some(test) = taste else {
@@ -2953,10 +2942,19 @@ fn autopilot_delete(
         None
     };
     if let Some(key) = key {
+        // The question is asked with CTRL+BACKSPACE (Backspace alone
+        // erases the search); `Y` answers without it.
+        let command = key == KeyCode::Backspace;
         if pressing {
+            if command {
+                keys.press(KeyCode::ControlLeft);
+            }
             keys.press(key);
         } else {
             keys.release(key);
+            if command {
+                keys.release(KeyCode::ControlLeft);
+            }
         }
     }
     *frame += 1;
@@ -3015,9 +3013,11 @@ fn autopilot_align(
         }
     } else if step == downs {
         if pressing {
+            keys.press(KeyCode::ControlLeft);
             keys.press(KeyCode::KeyK);
         } else {
             keys.release(KeyCode::KeyK);
+            keys.release(KeyCode::ControlLeft);
         }
     } else if step > downs + 2 && !smart.is_aligning() {
         // K was pressed and nothing runs: either it finished, or it

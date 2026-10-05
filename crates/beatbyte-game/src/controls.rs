@@ -771,6 +771,18 @@ impl MenuNav {
         MenuNav::read_mode(map, keys, pads, false, false)
     }
 
+    /// [`MenuNav::read_typing`] for the song browser, where the search
+    /// takes every printable key AND Tab opens the action menu: letters
+    /// are text, Tab does not move the cursor.
+    #[must_use]
+    pub fn read_typing_without_tab<'a>(
+        map: &InputMap,
+        keys: &ButtonInput<KeyCode>,
+        pads: impl IntoIterator<Item = &'a Gamepad>,
+    ) -> MenuNav {
+        MenuNav::read_mode(map, keys, pads, true, false)
+    }
+
     fn read_mode<'a>(
         map: &InputMap,
         keys: &ButtonInput<KeyCode>,

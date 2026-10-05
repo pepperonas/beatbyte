@@ -49,6 +49,8 @@ pub mod settings_ui;
 pub mod sfx;
 mod shapes;
 pub mod smart_lyrics;
+pub mod song_browser_view;
+pub mod song_family;
 pub mod song_info;
 pub mod song_select;
 pub mod song_tree;
