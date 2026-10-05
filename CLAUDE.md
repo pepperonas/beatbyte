@@ -923,6 +923,18 @@ artifact, smoke-test it (neutral CWD!), then
   and the resting mouse moved the photographed row. With them fixed two
   runs are bit-identical, and `tools/shot-check.sh` compares exactly —
   a tolerance would have passed a removed letter (0.062 %).
+- **"The notes are late all through the song" was the audio route, not
+  the chart** (2026-10-05, The Final Countdown [BG-01]). The chart sat
+  within ±8 ms of its audio in every 30 s window (onset cross-correlation
+  on `beatbyte-cli decode` output), and the player's hits were on time —
+  a player who plays by EYE always looks on time, so telemetry cannot
+  show an audio-visual gap. The cause was inspector-rust's `boom` EQ: it
+  routes all system audio through a virtual driver and a bridge, the
+  bridge's buffering delays the sound, and the virtual device does not
+  report that latency, so the game cannot see it. Through the MacBook
+  speakers the timing was right. When timing is reported, ask for the
+  OUTPUT DEVICE first (virtual drivers, Bluetooth), then measure the
+  chart against its decoded audio before touching an offset.
 - **A query conflict (B0001) passes every wired test and stops the
   game at launch.** Bevy checks system access when a schedule
   initializes, and the wired tests build a system or two, never a whole
