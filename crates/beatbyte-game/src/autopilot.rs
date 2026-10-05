@@ -124,6 +124,10 @@ impl Plugin for AutopilotPlugin {
                             (enter_shot_state, reopen_shot_search, quit_after_shot),
                         )
                         .add_systems(PreUpdate, hold_shot_row);
+                    if let Some(row) = shot_row() {
+                        // Every list on the shared renderer holds it.
+                        app.insert_resource(crate::menu_list::list::HeldRow(row));
+                    }
                     if let Some(dir) = std::env::var_os("BEATBYTE_SHOT_DIR") {
                         let dir = std::path::PathBuf::from(dir);
                         if std::fs::create_dir_all(&dir).is_ok() {
@@ -462,7 +466,6 @@ fn enter_shot_state(
 fn hold_shot_row(
     target: Res<ShotState>,
     state: Res<State<AppState>>,
-    mut settings_cursor: ResMut<crate::settings_ui::SettingsCursor>,
     mut awards: ResMut<crate::achievements_ui::AchievementsView>,
 ) {
     if *state.get() != target.0 {
@@ -471,10 +474,10 @@ fn hold_shot_row(
     let Some(row) = shot_row() else {
         return;
     };
-    match target.0 {
-        AppState::Settings if settings_cursor.0 != row => settings_cursor.0 = row,
-        AppState::Achievements if awards.row != row => awards.row = row,
-        _ => {}
+    // The screens on the shared list renderer hold the row themselves
+    // (`HeldRow`); this covers the ones not on it yet.
+    if target.0 == AppState::Achievements && awards.row != row {
+        awards.row = row;
     }
 }
 

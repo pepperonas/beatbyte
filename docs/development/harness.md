@@ -42,7 +42,7 @@ about them is compiled into a normal build.
 | `BEATBYTE_SHOT_DIR` | directory | Screenshots at named moments of a run. |
 | `BEATBYTE_SHOT_TIMES` | comma-separated song seconds | With `BEATBYTE_SHOT_DIR`, adds one gameplay frame within a second after each listed song time (`gameplay-t17.5.png`) — the lyric lead-in, the gap countdown, a line mid-fill, whatever a change touched. A moment stays claimable for a second so a frame arrives even on a machine that stutters, but an already-photographed one steps aside: `18.8,18.87,19.0` gives three frames, which is what photographing a 300 ms effect needs. |
 | `BEATBYTE_SHOT_STATE` | screen name | Boots straight into one screen, photographs it and quits. `songinfo` is the one screen the browser normally hands its content to, so for a photograph it is given the first song in the library that has a document — an empty panel would be a picture of nothing. |
-| `BEATBYTE_SHOT_ROW` | row index | With `BEATBYTE_SHOT_STATE`, selects that row first — in the song browser, the settings list AND the achievements list (where the fold hides every hidden achievement, so a covered `? ? ?` row could not be photographed at all). A scrolling list is indistinguishable from a short one until the selection moves past the fold. |
+| `BEATBYTE_SHOT_ROW` | row index | With `BEATBYTE_SHOT_STATE`, selects that row and holds it there — in the song browser, the achievements list (where the fold hides every hidden achievement, so a covered `? ? ?` row could not be photographed at all) and every list on the shared list renderer (settings, pause, main menu, …, through `HeldRow`; a shorter list ends on its last row). Held, because a resting mouse under a newly opened window moves the cursor. A scrolling list is indistinguishable from a short one until the selection moves past the fold. |
 | `BEATBYTE_SHOT_VIEW` | view name | With `BEATBYTE_SHOT_STATE=stats`, opens that view (overview/timing/technique/difficulty/songs/versus) before shooting. Without it only the first of the six could ever be photographed. |
 | `BEATBYTE_SHOT_SORT` | column name | With `BEATBYTE_SHOT_STATE=songselect`, activates that sort (title/artist/genre/length/notes/diff/best) so the active-column marker is photographable. |
 | `BEATBYTE_SHOT_OPEN` | title (exact first, else substring) | With `BEATBYTE_SHOT_STATE=songselect`, opens that song's section of the tree, so its variants — NORMAL, GS, CL, BG-01 … — are photographable; the tree starts closed. |
@@ -152,7 +152,7 @@ with the box of the changed pixels around the subtitle. When it fails,
 LOOK at the two pictures: a changed picture can be the point of the
 change.
 
-Identical files took three fixes (0.18.69), each found by comparing
+Identical files took four fixes (0.18.69, 0.18.70), each found by comparing
 two runs of the same build:
 
 - **The shot waits for the tube.** The power-on effect (`crt.rs`) runs
@@ -164,6 +164,10 @@ two runs of the same build:
   wrote when the scale was more than 0.01 off, so it stayed on whatever
   the window passed through on its way to its size: the same screen came
   out up to 8 px taller or shifted from one start to the next.
+- **The window opens on the primary display.** Left to the system it
+  landed on the Retina panel in one run and on the external monitor in
+  the next (2560x1600 against 1280x800); screenshot runs are centred on
+  the primary monitor.
 - **The photographed row is held.** The pointer moves a list's cursor,
   and a window that opens under a resting mouse gets exactly that — one
   shot in five showed the wrong row. `BEATBYTE_SHOT_ROW` is re-applied

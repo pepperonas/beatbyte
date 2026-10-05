@@ -14,6 +14,23 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.70] - 2026-10-05
+
+### Changed
+
+- **The main menu runs on the shared list renderer**, like the settings
+  screen and the pause menu (it looks the same pixel for pixel). The
+  renderer learned label-only rows for it.
+
+### Fixed
+
+- **Screenshot runs open on the primary display.** Left to the system,
+  the window opened on the Retina panel in one run and on the external
+  monitor in the next, and two pictures of one screen could not be
+  compared.
+- **`BEATBYTE_SHOT_ROW` works on every list on the shared renderer**
+  (main menu included), held against a resting mouse.
+
 ## [0.18.69] - 2026-10-05
 
 ### Added

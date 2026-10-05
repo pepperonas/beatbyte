@@ -1,9 +1,8 @@
 //! The main menu: play, settings, calibration, quit.
 
-use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
 
-use crate::controls::MenuNav;
+use crate::menu_list::list::{self, ListInput, ListPaint};
 use crate::palette;
 use crate::states::AppState;
 use crate::ui::UiFont;
@@ -83,30 +82,20 @@ impl Plugin for MenuPlugin {
             .add_systems(
                 Update,
                 (menu_input, highlight_cursor, pulse_title).run_if(in_state(AppState::MainMenu)),
-            )
-            .add_systems(OnExit(AppState::MainMenu), despawn_menu);
+            );
     }
 }
-
-#[derive(Component)]
-struct MenuScreen;
 
 /// Marker for the pulsing title.
 #[derive(Component)]
 struct MenuTitle;
 
-/// A selectable row, carrying its index.
-#[derive(Component)]
-pub(crate) struct MenuRow(usize);
-
-/// A row's label text, carrying the same index. The label is a child
-/// of the row now that a row has chrome of its own.
-#[derive(Component)]
-struct MenuLabel(usize);
+/// The marker of the main menu's rows (the shared list renderer).
+pub(crate) struct MenuRows;
 
 fn spawn_menu(mut commands: Commands, font: Res<UiFont>) {
     commands
-        .spawn((MenuScreen, ui_kit::screen_root()))
+        .spawn((DespawnOnExit(AppState::MainMenu), ui_kit::screen_root()))
         .with_children(|parent| {
             // The title keeps its outsized treatment — it is the
             // game's wordmark, not a screen heading.
@@ -126,18 +115,11 @@ fn spawn_menu(mut commands: Commands, font: Res<UiFont>) {
                 },
             ));
             parent.spawn(ui_kit::panel()).with_children(|panel| {
-                for (index, action) in MenuAction::ALL.iter().enumerate() {
-                    panel
-                        .spawn((MenuRow(index), Button, ui_kit::row()))
-                        .with_children(|row| {
-                            row.spawn((
-                                MenuLabel(index),
-                                Text::new(action.label()),
-                                font.text(ui_kit::ROW),
-                                TextColor(palette::TEXT_DIM),
-                            ));
-                        });
-                }
+                list::spawn_label_rows::<MenuRows>(
+                    panel,
+                    &font,
+                    MenuAction::ALL.iter().map(|action| action.label()),
+                );
             });
             crate::prompts::device_footer(
                 parent,
@@ -151,11 +133,7 @@ fn spawn_menu(mut commands: Commands, font: Res<UiFont>) {
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 pub(crate) fn menu_input(
     keys: Res<ButtonInput<KeyCode>>,
-    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
-    mut moved: MessageReader<bevy::window::CursorMoved>,
-    map: Res<crate::controls::InputMap>,
-    pads: Query<&Gamepad>,
-    rows: Query<(&MenuRow, &Interaction), Changed<Interaction>>,
+    mut list: ListInput<MenuRows>,
     mut cursor: ResMut<MenuCursor>,
     mut roster: ResMut<crate::multiplayer::PlayerRoster>,
     players: Res<crate::players::Players>,
@@ -164,33 +142,9 @@ pub(crate) fn menu_input(
     mut quit: MessageWriter<crate::crt::QuitRequested>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
-    let nav = MenuNav::read(&map, &keys, pads.iter());
-    let count = MenuAction::ALL.len();
-    if nav.up {
-        cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, -1);
-    }
-    if nav.down {
-        cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, 1);
-    }
-    if nav.up || nav.down {
-        sounds.write(crate::sfx::UiSound::Navigate);
-    }
-    // Mouse: hovering selects, clicking activates - and the wheel
-    // scrolls the rows, like the song list.
-    let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
-    let mouse_moved = moved.read().next().is_some();
-    if let Some(index) = ui_kit::hover_moves_cursor(&pointer, mouse_moved) {
-        cursor.0 = index;
-    }
-    for event in wheel.read() {
-        if event.y > 0.0 {
-            cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, -1);
-        } else if event.y < 0.0 {
-            cursor.0 = crate::ui_kit::step_cursor(cursor.0, count, 1);
-        }
-        if event.y != 0.0 {
-            sounds.write(crate::sfx::UiSound::Navigate);
-        }
+    let events = list.read(&mut cursor.0, MenuAction::ALL.len());
+    if let Some(sound) = list::sound_for(None, events.moved) {
+        sounds.write(sound);
     }
     // Escape closes the game from here, since there is no screen
     // above this one to go back to.
@@ -204,8 +158,7 @@ pub(crate) fn menu_input(
         quit.write(crate::crt::QuitRequested);
         return;
     }
-    let clicked = pointer.clicked;
-    if nav.confirm || clicked {
+    if events.nav.confirm || events.clicked {
         sounds.write(crate::sfx::UiSound::Confirm);
         match MenuAction::ALL[cursor.0] {
             MenuAction::Play => {
@@ -240,24 +193,10 @@ pub(crate) fn menu_input(
 fn highlight_cursor(
     settings: Res<crate::config::Settings>,
     cursor: Res<MenuCursor>,
-    mut rows: Query<(&MenuRow, &mut BackgroundColor, &mut BorderColor)>,
-    mut labels: Query<(&MenuLabel, &mut TextColor)>,
+    mut paint: ListPaint<MenuRows>,
 ) {
-    for (row, mut background, mut border) in &mut rows {
-        let style = ui_kit::styled_row(
-            ui_kit::state_for(row.0 == cursor.0, false),
-            settings.high_contrast,
-        );
-        background.0 = style.background;
-        *border = BorderColor::all(style.accent);
-    }
-    for (label, mut color) in &mut labels {
-        color.0 = ui_kit::styled_row(
-            ui_kit::state_for(label.0 == cursor.0, false),
-            settings.high_contrast,
-        )
-        .label;
-    }
+    // Label-only rows: no value is asked for.
+    paint.paint(cursor.0, settings.high_contrast, |_| String::new());
 }
 
 /// The title breathes gently — a static menu reads as a frozen app.
@@ -271,12 +210,6 @@ fn pulse_title(time: Res<Time>, mut title: Query<&mut TextColor, With<MenuTitle>
             blue: base.blue * pulse,
             alpha: 1.0,
         });
-    }
-}
-
-fn despawn_menu(mut commands: Commands, entities: Query<Entity, With<MenuScreen>>) {
-    for entity in &entities {
-        commands.entity(entity).despawn();
     }
 }
 

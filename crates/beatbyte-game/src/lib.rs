@@ -191,6 +191,18 @@ pub fn run() -> AppExit {
                     } else {
                         PresentMode::AutoVsync
                     },
+                    // A screenshot run opens on the PRIMARY display:
+                    // left to the system, the window landed on the
+                    // Retina panel in one run and on the external
+                    // monitor in the next, and two pictures of one
+                    // screen came out at 2560x1600 and 1280x800 — no
+                    // comparison possible. (Centred, not `At`: the
+                    // note above is about `At`.)
+                    position: if std::env::var_os("BEATBYTE_SHOT_DIR").is_some() {
+                        bevy::window::WindowPosition::Centered(MonitorSelection::Primary)
+                    } else {
+                        bevy::window::WindowPosition::Automatic
+                    },
                     ..default()
                 }),
                 // Harness integrity: in autopilot mode the ONLY valid

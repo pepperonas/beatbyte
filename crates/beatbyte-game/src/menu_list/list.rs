@@ -98,6 +98,44 @@ pub fn spawn_rows<'a, L: Send + Sync + 'static>(
     }
 }
 
+/// Spawn one label-only row per label — a list of actions, like the
+/// main menu, has nothing to show on the right. The label takes the
+/// row's natural layout (no label node), exactly as the menu drew it.
+pub fn spawn_label_rows<'a, L: Send + Sync + 'static>(
+    panel: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    labels: impl IntoIterator<Item = &'a str>,
+) {
+    for (index, label) in labels.into_iter().enumerate() {
+        panel
+            .spawn((ListRow::<L>(index, PhantomData), Button, ui_kit::row()))
+            .with_children(|row| {
+                row.spawn((
+                    ListLabel::<L>(index, PhantomData),
+                    Text::new(label.to_owned()),
+                    font.text(ui_kit::ROW),
+                    TextColor(palette::TEXT_DIM),
+                ));
+            });
+    }
+}
+
+/// A row held in place for the screenshot harness
+/// (`BEATBYTE_SHOT_ROW`): while this resource exists, every list on the
+/// renderer keeps its cursor on that row whatever the devices say. The
+/// pointer moves a list's cursor when it moves over a row, and a
+/// window that opens under a resting mouse gets exactly that — one
+/// shot in five came out on the wrong row before the row was held.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeldRow(pub usize);
+
+/// Where a held row puts the cursor in a list of `count` rows: on the
+/// row, or on the last one when the list is shorter. Pure — tested.
+#[must_use]
+pub fn held_row(held: Option<usize>, count: usize) -> Option<usize> {
+    held.map(|row| row.min(count.saturating_sub(1)))
+}
+
 /// What the player did to a list this frame.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct ListEvents {
@@ -185,6 +223,7 @@ pub struct ListInput<'w, 's, L: Send + Sync + 'static> {
     pointer_moved: MessageReader<'w, 's, CursorMoved>,
     rows: Query<'w, 's, (&'static ListRow<L>, &'static Interaction), Changed<Interaction>>,
     positions: Query<'w, 's, (&'static ListRow<L>, &'static RelativeCursorPosition)>,
+    held: Option<Res<'w, HeldRow>>,
 }
 
 impl<L: Send + Sync + 'static> ListInput<'_, '_, L> {
@@ -216,6 +255,9 @@ impl<L: Send + Sync + 'static> ListInput<'_, '_, L> {
         let pointer_moved = self.pointer_moved.read().next().is_some();
         if let Some(index) = ui_kit::hover_moves_cursor(&pointer, pointer_moved) {
             *cursor = index;
+        }
+        if let Some(row) = held_row(self.held.as_deref().map(|held| held.0), count) {
+            *cursor = row;
         }
         let click_x = pointer.clicked.then(|| {
             self.positions
@@ -331,6 +373,18 @@ mod tests {
         assert_eq!(step_of(false, false, false, Some(Some(1.0))), Some(1));
         // No position yet: a plain click steps up, as it always did.
         assert_eq!(step_of(false, false, false, Some(None)), Some(1));
+    }
+
+    #[test]
+    fn a_held_row_stays_inside_the_list() {
+        assert_eq!(held_row(None, 8), None);
+        assert_eq!(held_row(Some(3), 8), Some(3));
+        assert_eq!(
+            held_row(Some(13), 8),
+            Some(7),
+            "a shorter list ends on its last row"
+        );
+        assert_eq!(held_row(Some(2), 0), Some(0));
     }
 
     #[test]
