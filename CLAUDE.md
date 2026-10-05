@@ -943,8 +943,11 @@ artifact, smoke-test it (neutral CWD!), then
   — the build script reruns in seconds and nothing else rebuilds.
   ⚠️ Not always: on 2026-10-05 the build failed the same way right
   after that `rm`, because cargo's fingerprint still called the build
-  script fresh. When it does, fall back to the two `cargo clean -p`
-  lines above (both profiles) — that one has never failed.
+  script fresh. Remove the fingerprint with it —
+  `rm -rf target/<profile>/build/libsqlite3-sys-* target/<profile>/.fingerprint/libsqlite3-sys-*`
+  — which reruns the build script for that profile alone and leaves
+  the other one standing (verified the same day; it struck twice in
+  one evening, neither time after anything that touches `build/`).
   **The one part that IS safe to prune is `incremental/`**, and
   it is the part that grows while you work: cargo collects a superseded
   session only when it rebuilds that same unit, so a configuration that
@@ -1014,6 +1017,13 @@ artifact, smoke-test it (neutral CWD!), then
   function, and existing files that carry the old value need editing
   or migrating; the type's `Default` alone changes nothing for anyone
   who has already played.
+- **A mutation probe that runs the disk full leaves its mutant in the
+  tree.** The restore is a write like any other: with 150 MB left the
+  `cp` back from the scratchpad failed, two source files kept their
+  mutations, and the probe reported BLIND because the test never
+  compiled. A probe helper must fail loudly when the restore fails and
+  `cmp` the file against its backup afterwards, and the probes start
+  only with several GB free — a game test build eats them.
 - **A mutation-probe helper that restores from the wrong path stacks
   mutations silently**, and every reading after the first is
   worthless — a later probe "passed" here only because three earlier

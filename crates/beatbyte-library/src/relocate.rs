@@ -67,16 +67,37 @@ pub struct Manifest {
     pub complete: bool,
 }
 
-/// How far a copy is.
+/// What a move is doing right now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Phase {
+    /// Copying files that are new or changed (a later pass mostly
+    /// confirms that nothing changed).
+    #[default]
+    Copying,
+    /// Re-reading every copied file against its checksum.
+    Verifying,
+    /// Removing the old copy, each file checked in both places first.
+    Deleting,
+}
+
+/// How far a move is. Reported after every file, in every phase —
+/// the verify and the delete read the whole library again, and a
+/// phase that reports nothing for minutes reads as frozen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Progress {
-    /// Which pass (1-based).
+    /// What it is doing.
+    pub phase: Phase,
+    /// Which copy pass (1-based); the verify keeps the last one.
     pub pass: usize,
-    /// Bytes handled in this pass so far.
+    /// Bytes handled in this phase so far.
     pub bytes_done: u64,
-    /// Bytes this pass has to look at.
+    /// Bytes this phase has to handle.
     pub bytes_total: u64,
-    /// Files copied in this pass so far.
+    /// Files handled in this phase so far.
+    pub files_done: usize,
+    /// Files this phase has to handle.
+    pub files_total: usize,
+    /// Files actually copied in this pass so far.
     pub copied: usize,
 }
 
@@ -431,6 +452,7 @@ pub fn copy_library(
         let mut state = Progress {
             pass,
             bytes_total,
+            files_total: files.len(),
             ..Progress::default()
         };
         // A file gone from the source since an earlier pass goes from
@@ -473,11 +495,12 @@ pub fn copy_library(
                 }
             }
             state.bytes_done += entry.size;
+            state.files_done = index + 1;
             progress(state);
         }
         write_manifest(to, &manifest)?;
         if !copied_this_pass {
-            verify_all(to, &manifest)?;
+            verify_all(to, &manifest, pass, progress)?;
             manifest.complete = true;
             write_manifest(to, &manifest)?;
             return Ok(Moved {
@@ -493,7 +516,20 @@ pub fn copy_library(
 }
 
 /// Re-hash every target file against the record.
-fn verify_all(to: &Path, manifest: &Manifest) -> Result<(), String> {
+fn verify_all(
+    to: &Path,
+    manifest: &Manifest,
+    pass: usize,
+    progress: &mut dyn FnMut(Progress),
+) -> Result<(), String> {
+    let mut state = Progress {
+        phase: Phase::Verifying,
+        pass,
+        bytes_total: manifest.files.values().map(|c| c.size).sum(),
+        files_total: manifest.files.len(),
+        ..Progress::default()
+    };
+    progress(state);
     for (rel, copied) in &manifest.files {
         let path = local(to, rel);
         if hash_file(&path)? != copied.sha256 {
@@ -502,6 +538,9 @@ fn verify_all(to: &Path, manifest: &Manifest) -> Result<(), String> {
                 path.display()
             ));
         }
+        state.bytes_done += copied.size;
+        state.files_done += 1;
+        progress(state);
     }
     Ok(())
 }
@@ -525,9 +564,15 @@ pub struct Deleted {
 /// the record, which lives on the target and could name any folder.
 /// The record must name exactly `from`.
 ///
+/// `progress` hears about every file the record names.
+///
 /// # Errors
 /// When there is no complete, valid move from `from` recorded in `to`.
-pub fn delete_source(from: &Path, to: &Path) -> Result<Deleted, String> {
+pub fn delete_source(
+    from: &Path,
+    to: &Path,
+    progress: &mut dyn FnMut(Progress),
+) -> Result<Deleted, String> {
     let manifest = read_manifest(to).ok_or("no finished move is recorded there")?;
     if !manifest.complete {
         return Err("the move did not finish; nothing is deleted".to_owned());
@@ -543,6 +588,13 @@ pub fn delete_source(from: &Path, to: &Path) -> Result<Deleted, String> {
         removed: 0,
         kept: 0,
     };
+    let mut state = Progress {
+        phase: Phase::Deleting,
+        bytes_total: manifest.files.values().map(|c| c.size).sum(),
+        files_total: manifest.files.len(),
+        ..Progress::default()
+    };
+    progress(state);
     for (rel, copied) in &manifest.files {
         let source = local(from, rel);
         let same = std::fs::metadata(&source)
@@ -557,6 +609,9 @@ pub fn delete_source(from: &Path, to: &Path) -> Result<Deleted, String> {
         if verified && std::fs::remove_file(&source).is_ok() {
             deleted.removed += 1;
         }
+        state.bytes_done += copied.size;
+        state.files_done += 1;
+        progress(state);
     }
     // What is left — changed since the copy, or never copied — stays
     // where it is, and is counted.
@@ -648,6 +703,55 @@ mod tests {
         assert!(from.join("song-a/song.m4a").is_file(), "copy, never move");
         assert!(read_manifest(&to).unwrap().complete);
         assert_eq!(reports.last().unwrap().bytes_done, moved.bytes);
+    }
+
+    #[test]
+    fn every_phase_reports_and_ends_at_its_totals() {
+        let dir = Scratch::new("phases");
+        let (from, to) = (dir.0.join("old"), dir.0.join("new"));
+        library(&from);
+        let mut reports = Vec::new();
+        let moved = copy_library(&from, &to, &mut |p| reports.push(p)).unwrap();
+        // Copying first, verifying last; never back to copying after.
+        assert_eq!(reports.first().unwrap().phase, Phase::Copying);
+        let first_verify = reports
+            .iter()
+            .position(|p| p.phase == Phase::Verifying)
+            .expect("the verify reports");
+        assert!(
+            reports[first_verify..]
+                .iter()
+                .all(|p| p.phase == Phase::Verifying)
+        );
+        // The verify starts at nothing (so a slow first file does not
+        // leave the copy's 100 % standing) and ends at everything.
+        assert_eq!(reports[first_verify].bytes_done, 0);
+        let last = *reports.last().unwrap();
+        assert_eq!(
+            (last.bytes_done, last.files_done),
+            (moved.bytes, moved.files)
+        );
+        assert_eq!(
+            (last.bytes_total, last.files_total),
+            (moved.bytes, moved.files)
+        );
+        // Within a phase and pass the count only climbs.
+        for pair in reports.windows(2) {
+            if (pair[0].phase, pair[0].pass) == (pair[1].phase, pair[1].pass) {
+                assert!(pair[1].files_done >= pair[0].files_done);
+                assert!(pair[1].bytes_done >= pair[0].bytes_done);
+            }
+        }
+        let mut deleting = Vec::new();
+        delete_source(&from, &to, &mut |p| deleting.push(p)).unwrap();
+        assert!(deleting.iter().all(|p| p.phase == Phase::Deleting));
+        assert_eq!(deleting.first().unwrap().files_done, 0);
+        let last = *deleting.last().unwrap();
+        assert_eq!(
+            (last.files_done, last.files_total),
+            (moved.files, moved.files)
+        );
+        assert_eq!(last.bytes_done, moved.bytes);
     }
 
     #[test]
@@ -758,7 +862,7 @@ mod tests {
         let (from, to) = (dir.0.join("old"), dir.0.join("new"));
         library(&from);
         assert!(
-            delete_source(&from, &to).is_err(),
+            delete_source(&from, &to, &mut |_| {}).is_err(),
             "no move, nothing deleted"
         );
         copy_library(&from, &to, &mut |_| {}).unwrap();
@@ -766,7 +870,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(20));
         std::fs::write(from.join("song-b/chart.json"), "{\"edited\":true}").unwrap();
         std::fs::write(from.join("song-c.json"), "new").unwrap();
-        let deleted = delete_source(&from, &to).unwrap();
+        let deleted = delete_source(&from, &to, &mut |_| {}).unwrap();
         assert_eq!(deleted.removed, 3);
         assert_eq!(deleted.kept, 2);
         assert!(from.join("song-b/chart.json").is_file());
@@ -795,7 +899,7 @@ mod tests {
         )
         .unwrap();
         assert!(
-            delete_source(&from, &to)
+            delete_source(&from, &to, &mut |_| {})
                 .unwrap_err()
                 .contains("did not finish")
         );
@@ -847,7 +951,7 @@ mod tests {
         forged.files.insert("precious.txt".into(), copied.clone());
         write_manifest(&to, &forged).unwrap();
         assert!(
-            delete_source(&from, &to)
+            delete_source(&from, &to, &mut |_| {})
                 .unwrap_err()
                 .contains("another library")
         );
@@ -861,7 +965,7 @@ mod tests {
             .files
             .insert("../victim/precious.txt".into(), copied);
         write_manifest(&to, &escaping).unwrap();
-        assert!(delete_source(&from, &to).is_err());
+        assert!(delete_source(&from, &to, &mut |_| {}).is_err());
         assert!(
             victim.join("precious.txt").is_file(),
             "nothing outside was touched"
@@ -899,7 +1003,7 @@ mod tests {
             );
         }
         write_manifest(&to, &lying).unwrap();
-        assert_eq!(delete_source(&from, &to).unwrap().removed, 0);
+        assert_eq!(delete_source(&from, &to, &mut |_| {}).unwrap().removed, 0);
         assert_eq!(inventory(&from).unwrap().len(), 4);
     }
 

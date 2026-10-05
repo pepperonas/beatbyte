@@ -14,6 +14,28 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.66] - 2026-10-05
+
+### Added
+
+- **A library move shows how it is going, live, wherever you are.**
+  The progress panel the imports and the song search already use now
+  carries the move on every screen — copying, verifying, deleting the
+  old copy — with the files and the size done, the speed and the time
+  left, and a bar; the SETTINGS > LIBRARY row shows the same line. The
+  verify and the delete read the whole library again and used to say
+  nothing for minutes; they report after every file now. When the copy
+  is done the panel says the old copy is still there and where to
+  delete it.
+
+### Documentation
+
+- README: practical notes on moving the library — pick an empty
+  folder, the folder dialog can open behind the game window, playing
+  on during the copy, and deleting the old copy only after playing
+  from the new place. The import guide says where `$LIB` is after a
+  move.
+
 ## [0.18.65] - 2026-10-05
 
 ### Security

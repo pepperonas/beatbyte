@@ -14,11 +14,37 @@
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task};
 
-use beatbyte_library::relocate::{self, Moved, Progress};
+use beatbyte_library::relocate::{self, Moved, Phase, Progress};
+
+/// How long the progress panel keeps a finished move up.
+pub const LINGER_S: f32 = 8.0;
+
+/// What the worker last reported, and when its phase began — the
+/// rate and the time left are measured per phase, because the verify
+/// and the delete read at a different speed than the copy writes.
+#[derive(Debug, Clone, Copy, Default)]
+struct Live {
+    progress: Progress,
+    since: Option<Instant>,
+}
+
+/// The worker's report callback: store the progress, restart the
+/// clock when the phase or the pass changes.
+fn report(shared: &Mutex<Live>, progress: Progress) {
+    if let Ok(mut live) = shared.lock() {
+        let same = live.since.is_some()
+            && (live.progress.phase, live.progress.pass) == (progress.phase, progress.pass);
+        if !same {
+            live.since = Some(Instant::now());
+        }
+        live.progress = progress;
+    }
+}
 
 /// Where the move stands.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -75,7 +101,9 @@ pub struct LibraryMove {
     /// Where it stands.
     pub step: Step,
     task: Option<Task<Outcome>>,
-    progress: Arc<Mutex<Progress>>,
+    live: Arc<Mutex<Live>>,
+    /// Seconds since the last job finished, while the panel lingers.
+    lingering: Option<f32>,
 }
 
 impl LibraryMove {
@@ -85,15 +113,57 @@ impl LibraryMove {
         self.task.is_some()
     }
 
-    /// The row's value line. Pure over the step — tested.
+    fn live(&self) -> (Progress, f64) {
+        let live = self.live.lock().map(|l| *l).unwrap_or_default();
+        let elapsed = live.since.map_or(0.0, |t| t.elapsed().as_secs_f64());
+        (live.progress, elapsed)
+    }
+
+    /// The row's value line.
     #[must_use]
     pub fn value(&self) -> String {
-        let progress = self.progress.lock().map(|p| *p).unwrap_or_default();
-        value_line(&self.step, progress, current_root().as_ref())
+        let (progress, elapsed) = self.live();
+        value_line(&self.step, progress, elapsed, current_root().as_ref())
+    }
+
+    /// Whether the shared progress panel shows the move: while it
+    /// copies or deletes, and for a moment after.
+    #[must_use]
+    pub fn panel_showing(&self) -> bool {
+        match self.step {
+            Step::Copying { .. } | Step::Deleting => true,
+            Step::Copied { .. } | Step::Done(_) | Step::Failed(_) => {
+                self.lingering.is_some_and(|t| t < LINGER_S)
+            }
+            _ => false,
+        }
+    }
+
+    /// The panel's line — what the row says, plus where to answer.
+    #[must_use]
+    pub fn panel_line(&self) -> String {
+        let (progress, elapsed) = self.live();
+        panel_text(&self.step, progress, elapsed)
+    }
+
+    /// The panel's bar, 0..=1: how far the current phase is.
+    #[must_use]
+    pub fn panel_bar(&self) -> f32 {
+        match self.step {
+            Step::Copying { .. } | Step::Deleting => fraction(self.live().0),
+            _ => 1.0,
+        }
+    }
+
+    /// Whether the last job failed (the panel's bar turns red).
+    #[must_use]
+    pub fn failed(&self) -> bool {
+        matches!(self.step, Step::Failed(_))
     }
 
     /// ENTER on the row: the next step forward.
     pub fn confirm(&mut self) {
+        self.lingering = None;
         match self.step.clone() {
             Step::Idle | Step::Done(_) | Step::Failed(_) => self.choose_folder(),
             Step::Confirm { to, .. } => self.start_copy(to),
@@ -174,10 +244,10 @@ impl LibraryMove {
             self.step = Step::Failed("a move is already running".to_owned());
             return;
         };
-        if let Ok(mut progress) = self.progress.lock() {
-            *progress = Progress::default();
+        if let Ok(mut live) = self.live.lock() {
+            *live = Live::default();
         }
-        let progress = Arc::clone(&self.progress);
+        let live = Arc::clone(&self.live);
         let from = root.path;
         let target = to.clone();
         self.step = Step::Copying {
@@ -186,27 +256,28 @@ impl LibraryMove {
         };
         self.task = Some(AsyncComputeTaskPool::get().spawn(async move {
             let _guard = guard;
-            let result = relocate::copy_library(&from, &target, &mut |p| {
-                if let Ok(mut shared) = progress.lock() {
-                    *shared = p;
-                }
-            })
-            .and_then(|moved| {
-                // The switch: only after every file was verified.
-                beatbyte_library::location::choose(&data_dir(), &target)
-                    .map(|()| moved)
-                    .map_err(|e| format!("copied, but cannot switch over: {e}"))
-            });
+            let result = relocate::copy_library(&from, &target, &mut |p| report(&live, p))
+                .and_then(|moved| {
+                    // The switch: only after every file was verified.
+                    beatbyte_library::location::choose(&data_dir(), &target)
+                        .map(|()| moved)
+                        .map_err(|e| format!("copied, but cannot switch over: {e}"))
+                });
             Outcome::Copied(result)
         }));
     }
 
     fn start_delete(&mut self, from: PathBuf, to: PathBuf) {
         self.step = Step::Deleting;
-        self.task = Some(
-            AsyncComputeTaskPool::get()
-                .spawn(async move { Outcome::Deleted(relocate::delete_source(&from, &to)) }),
-        );
+        if let Ok(mut live) = self.live.lock() {
+            *live = Live::default();
+        }
+        let live = Arc::clone(&self.live);
+        self.task = Some(AsyncComputeTaskPool::get().spawn(async move {
+            Outcome::Deleted(relocate::delete_source(&from, &to, &mut |p| {
+                report(&live, p);
+            }))
+        }));
     }
 }
 
@@ -223,6 +294,7 @@ fn current_root() -> Option<beatbyte_library::location::Root> {
 pub fn value_line(
     step: &Step,
     progress: Progress,
+    elapsed_s: f64,
     root: Option<&beatbyte_library::location::Root>,
 ) -> String {
     let short = |p: &std::path::Path| crate::settings_ui::short_path(&p.display().to_string(), 28);
@@ -238,24 +310,104 @@ pub fn value_line(
             relocate::human(*bytes),
             short(to)
         ),
-        Step::Copying { .. } => {
-            let percent = progress
-                .bytes_done
-                .saturating_mul(100)
-                .checked_div(progress.bytes_total)
-                .map_or(0, |p| p.min(100));
-            if progress.pass <= 1 {
-                format!("COPYING {percent}%")
-            } else {
-                format!("CHECKING FOR CHANGES {percent}% (PASS {})", progress.pass)
-            }
-        }
+        Step::Copying { .. } | Step::Deleting => progress_line(progress, elapsed_s),
         Step::Copied { moved, .. } => format!(
             "MOVED {} - DELETE OLD COPY? ENTER YES / LEFT KEEP",
             relocate::human(moved.bytes)
         ),
-        Step::Deleting => "DELETING THE OLD COPY...".to_owned(),
         Step::Done(line) | Step::Failed(line) => line.to_uppercase(),
+    }
+}
+
+/// The shared panel's line for a step. Pure — tested.
+#[must_use]
+pub fn panel_text(step: &Step, progress: Progress, elapsed_s: f64) -> String {
+    match step {
+        Step::Copying { .. } | Step::Deleting => {
+            format!("LIBRARY: {}", progress_line(progress, elapsed_s))
+        }
+        Step::Copied { moved, .. } => format!(
+            "LIBRARY MOVED ({} FILES, {}) - THE OLD COPY IS STILL THERE: SETTINGS > LIBRARY",
+            moved.files,
+            relocate::human(moved.bytes)
+        ),
+        Step::Done(line) | Step::Failed(line) => format!("LIBRARY: {}", line.to_uppercase()),
+        _ => String::new(),
+    }
+}
+
+/// How far the current phase is, 0..=1 — by bytes, by files when the
+/// phase has no bytes to count.
+#[must_use]
+pub fn fraction(progress: Progress) -> f32 {
+    let (done, total) = if progress.bytes_total > 0 {
+        (progress.bytes_done as f64, progress.bytes_total as f64)
+    } else {
+        (progress.files_done as f64, progress.files_total as f64)
+    };
+    if total <= 0.0 {
+        0.0
+    } else {
+        (done / total).clamp(0.0, 1.0) as f32
+    }
+}
+
+/// Least time in a phase before a rate is believed: the first second
+/// is the file system warming up, and a rate from it promises a time
+/// left that jumps around.
+pub const RATE_AFTER_S: f64 = 3.0;
+
+/// The live line while a job runs: what it does, how far, how fast,
+/// how long still. Pure — tested.
+#[must_use]
+pub fn progress_line(progress: Progress, elapsed_s: f64) -> String {
+    let word = match progress.phase {
+        Phase::Copying if progress.pass > 1 => {
+            format!("CHECKING FOR CHANGES (PASS {})", progress.pass)
+        }
+        Phase::Copying => "COPYING".to_owned(),
+        Phase::Verifying => "VERIFYING".to_owned(),
+        Phase::Deleting => "DELETING THE OLD COPY".to_owned(),
+    };
+    let percent = (fraction(progress) * 100.0).floor() as u32;
+    let mut line = format!(
+        "{word} {percent}% - {}/{} FILES - {} OF {}",
+        progress.files_done,
+        progress.files_total,
+        relocate::human(progress.bytes_done),
+        relocate::human(progress.bytes_total)
+    );
+    // A later copy pass only compares, at a speed that says nothing
+    // about the drive; the other phases read or write every byte.
+    let measured = !(progress.phase == Phase::Copying && progress.pass > 1);
+    if measured
+        && elapsed_s >= RATE_AFTER_S
+        && progress.bytes_done > 0
+        && progress.bytes_done < progress.bytes_total
+    {
+        let rate = progress.bytes_done as f64 / elapsed_s;
+        let left = (progress.bytes_total - progress.bytes_done) as f64 / rate;
+        line.push_str(&format!(
+            " - {}/S - {} LEFT",
+            relocate::human(rate as u64),
+            duration_words(left)
+        ));
+    }
+    line
+}
+
+/// A time left as a player reads it: seconds under a minute, whole
+/// minutes under an hour (rounded up — "1 MIN" must not linger at
+/// zero), then hours and minutes.
+#[must_use]
+pub fn duration_words(seconds: f64) -> String {
+    let s = seconds.max(0.0).ceil() as u64;
+    if s < 60 {
+        format!("{s} S")
+    } else if s < 3600 {
+        format!("{} MIN", s.div_ceil(60))
+    } else {
+        format!("{} H {:02} MIN", s / 3600, (s % 3600) / 60)
     }
 }
 
@@ -295,10 +447,14 @@ impl Plugin for LibraryMovePlugin {
 
 /// Collect a finished job; rescan the library once it moved.
 fn poll_move(
+    time: Res<Time>,
     mut state: ResMut<LibraryMove>,
     builtins: Option<Res<crate::boot::BuiltinSongs>>,
     library: Option<ResMut<crate::library::SongLibrary>>,
 ) {
+    if let Some(t) = state.lingering.as_mut() {
+        *t += time.delta_secs();
+    }
     let Some(task) = state.task.as_mut() else {
         return;
     };
@@ -307,6 +463,9 @@ fn poll_move(
         return;
     };
     state.task = None;
+    if !matches!(outcome, Outcome::Chosen(_)) {
+        state.lingering = Some(0.0);
+    }
     match outcome {
         Outcome::Chosen(Some(to)) => state.chosen(to),
         Outcome::Chosen(None) => state.step = Step::Idle,
@@ -502,49 +661,39 @@ mod tests {
     fn every_step_says_what_it_is_and_what_the_keys_do() {
         let none = Progress::default();
         assert_eq!(
-            value_line(&Step::Idle, none, Some(&root(true))),
+            value_line(&Step::Idle, none, 0.0, Some(&root(true))),
             "/Volumes/Drive/BeatByte"
         );
-        assert!(value_line(&Step::Idle, none, Some(&root(false))).ends_with("NOT REACHABLE"));
+        assert!(value_line(&Step::Idle, none, 0.0, Some(&root(false))).ends_with("NOT REACHABLE"));
         let confirm = Step::Confirm {
             to: PathBuf::from("/Volumes/Drive/BeatByte"),
             bytes: 5 * 1_073_741_824,
             files: 4000,
         };
-        let line = value_line(&confirm, none, None);
+        let line = value_line(&confirm, none, 0.0, None);
         assert!(
             line.contains("5.0 GB") && line.contains("ENTER YES"),
             "{line}"
         );
         let copying = Progress {
+            phase: Phase::Copying,
             pass: 1,
-            bytes_done: 25,
-            bytes_total: 100,
+            bytes_done: 25 * 1_048_576,
+            bytes_total: 100 * 1_048_576,
+            files_done: 3,
+            files_total: 12,
             copied: 3,
         };
+        let moving = Step::Copying {
+            from: PathBuf::new(),
+            to: PathBuf::new(),
+        };
         assert_eq!(
-            value_line(
-                &Step::Copying {
-                    from: PathBuf::new(),
-                    to: PathBuf::new()
-                },
-                copying,
-                None
-            ),
-            "COPYING 25%"
+            value_line(&moving, copying, 0.0, None),
+            "COPYING 25% - 3/12 FILES - 25 MB OF 100 MB"
         );
         let second = Progress { pass: 2, ..copying };
-        assert!(
-            value_line(
-                &Step::Copying {
-                    from: PathBuf::new(),
-                    to: PathBuf::new()
-                },
-                second,
-                None
-            )
-            .contains("PASS 2")
-        );
+        assert!(value_line(&moving, second, 0.0, None).contains("PASS 2"));
         let copied = Step::Copied {
             from: PathBuf::new(),
             to: PathBuf::new(),
@@ -554,7 +703,125 @@ mod tests {
                 passes: 2,
             },
         };
-        assert!(value_line(&copied, none, None).contains("DELETE OLD COPY"));
+        assert!(value_line(&copied, none, 0.0, None).contains("DELETE OLD COPY"));
+    }
+
+    /// The live line: every phase named, the rate and the time left
+    /// only once there is something to measure, and never for a pass
+    /// that only compares.
+    #[test]
+    fn the_live_line_says_how_far_how_fast_and_how_long() {
+        let mb = 1_048_576;
+        let half = Progress {
+            phase: Phase::Copying,
+            pass: 1,
+            bytes_done: 50 * mb,
+            bytes_total: 100 * mb,
+            files_done: 6,
+            files_total: 12,
+            copied: 6,
+        };
+        // Too early to believe a rate: no speed, no time left.
+        assert!(!progress_line(half, RATE_AFTER_S - 0.1).contains("LEFT"));
+        // 50 MB in 10 s: 5 MB/s, the other 50 MB in 10 s.
+        assert_eq!(
+            progress_line(half, 10.0),
+            "COPYING 50% - 6/12 FILES - 50 MB OF 100 MB - 5 MB/S - 10 S LEFT"
+        );
+        // A comparing pass is quick and says nothing about the drive.
+        let comparing = Progress { pass: 2, ..half };
+        assert!(!progress_line(comparing, 10.0).contains("/S"));
+        // Verifying and deleting read every byte: they are measured.
+        let verifying = Progress {
+            phase: Phase::Verifying,
+            ..half
+        };
+        let line = progress_line(verifying, 10.0);
+        assert!(
+            line.starts_with("VERIFYING 50%") && line.contains("LEFT"),
+            "{line}"
+        );
+        let deleting = Progress {
+            phase: Phase::Deleting,
+            ..half
+        };
+        assert!(progress_line(deleting, 10.0).starts_with("DELETING THE OLD COPY 50%"));
+        // Done means no time left to promise.
+        let done = Progress {
+            bytes_done: 100 * mb,
+            files_done: 12,
+            ..half
+        };
+        assert!(!progress_line(done, 10.0).contains("LEFT"));
+        // The bar follows the bytes, the files when there are none.
+        assert!((fraction(half) - 0.5).abs() < 1e-6);
+        let empty = Progress {
+            bytes_total: 0,
+            bytes_done: 0,
+            files_done: 1,
+            files_total: 4,
+            ..half
+        };
+        assert!((fraction(empty) - 0.25).abs() < 1e-6);
+        assert!(fraction(Progress::default()).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn time_left_reads_as_a_player_reads_it() {
+        assert_eq!(duration_words(0.2), "1 S");
+        assert_eq!(duration_words(59.0), "59 S");
+        assert_eq!(
+            duration_words(61.0),
+            "2 MIN",
+            "rounded up, never 1 MIN at 1:01"
+        );
+        assert_eq!(duration_words(3599.0), "60 MIN");
+        assert_eq!(duration_words(3600.0 + 5.0 * 60.0), "1 H 05 MIN");
+        assert_eq!(duration_words(-3.0), "0 S");
+    }
+
+    /// The shared panel shows the move while it works and for a moment
+    /// after, then lets go; a question being asked is not its business.
+    #[test]
+    fn the_panel_shows_the_work_and_lets_go() {
+        let mut state = LibraryMove {
+            step: Step::Copying {
+                from: PathBuf::new(),
+                to: PathBuf::new(),
+            },
+            ..LibraryMove::default()
+        };
+        assert!(state.panel_showing());
+        state.step = Step::Copied {
+            from: PathBuf::new(),
+            to: PathBuf::new(),
+            moved: Moved {
+                files: 3447,
+                bytes: 6 * 1_073_741_824,
+                passes: 2,
+            },
+        };
+        state.lingering = Some(0.0);
+        assert!(state.panel_showing());
+        assert!(
+            state.panel_line().contains("SETTINGS > LIBRARY"),
+            "{}",
+            state.panel_line()
+        );
+        state.lingering = Some(LINGER_S + 0.1);
+        assert!(!state.panel_showing());
+        state.step = Step::Confirm {
+            to: PathBuf::new(),
+            bytes: 1,
+            files: 1,
+        };
+        state.lingering = Some(0.0);
+        assert!(
+            !state.panel_showing(),
+            "a question is asked on the row, not the panel"
+        );
+        state.step = Step::Failed("the target failed".to_owned());
+        assert!(state.panel_showing() && state.failed());
     }
 
     /// LEFT never deletes and never starts anything: it backs out of

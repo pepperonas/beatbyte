@@ -9,7 +9,9 @@ correction pass. Every command below was run exactly as written
 directory: `~/Library/Application Support/beatbyte/songs/imported` on
 macOS, `~/.local/share/beatbyte/songs/imported` on Linux,
 `%APPDATA%\beatbyte\songs\imported` on Windows — one library per
-device, the one the sync keeps identical (ADR-0021). The commands
+device, the one the sync keeps identical (ADR-0021) — unless you
+moved it (SETTINGS > LIBRARY, see the README); then `$LIB` is the
+folder named in `<data>/beatbyte/library-location.json`. The commands
 below write it as `$LIB`:
 
 ```bash
