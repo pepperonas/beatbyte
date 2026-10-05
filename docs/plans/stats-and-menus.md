@@ -1,8 +1,11 @@
 # Plan: statistics that render well, and the next round for the menus
 
-Status: **proposed** (2026-10-05, user: "recherchiere wie man in der app
-am besten die statistiken rendern kann. und prüfe auch ob man das menü
-noch weiter verbessern kann. erstelle plan."). Nothing built yet.
+Status: **approved, not started** (2026-10-05, user: "recherchiere wie
+man in der app am besten die statistiken rendern kann. und prüfe auch
+ob man das menü noch weiter verbessern kann. erstelle plan." — then:
+"vermerke, dass du es so machst wie du es empfiehlst. aber erst heute
+abend."). **Work starts on the evening of 2026-10-05, not before.**
+The decisions below are the recommendations, taken as given.
 
 ## What the statistics screen looks like today
 
@@ -122,11 +125,25 @@ over), or skip `*/build/*/out/*`. Better still, the house rule from
 CLAUDE.md: prune `incremental/` (`tools/prune-incremental.py`) or whole
 profiles, never files by age.
 
-## Decisions for the user
+## Decisions taken (the user's, 2026-10-05: "so wie du es empfiehlst")
 
-1. Part A: go with B + C (shader for lines/areas, gradients, nodes for
-   the rest), amending ADR-0016?
-2. M1: group headers in Settings, or keep the one alphabetical list and
-   add type-to-jump?
-3. The platzwaechter fix: `-ctime`, or switch it to pruning
-   `incremental/` and whole profiles?
+1. **Part A: B + C.** A `UiMaterial` plot shader for lines, areas,
+   bands and histograms; `BackgroundGradient` for shares and fades;
+   nodes for bars, axes and labels. ADR-0016 gets an amendment. S2 keeps
+   its stop point: if the shader fails the HDR/bloom look, the frame
+   time or the 2015 Mac, A stays.
+2. **M1: type-to-jump, the alphabetical list stays.** A letter moves the
+   cursor to the first row starting with it (again: the next one). This
+   keeps the earlier deliberate decision (one list, alphabetical) and is
+   the smaller change; group headers can follow if jumping is not
+   enough.
+3. **platzwaechter: stop deleting by age.** Prune `incremental/`
+   (`tools/prune-incremental.py`) and, if that is not enough, whole
+   profiles of projects not touched today — never single files by
+   `-mtime`. The script lives outside this repository
+   (`~/bin/platzwaechter.sh`); its self-test is updated with it, and
+   the counter-check is a libsqlite3-sys rebuild surviving a forced run
+   (`platzwaechter.sh --jetzt`).
+
+Order as above: S0 → S1 → M2 → M3 → M5 → M4 → S2 → S3 → S4 → M1 → S5,
+with the platzwaechter fix first, so no build loses a file midway.

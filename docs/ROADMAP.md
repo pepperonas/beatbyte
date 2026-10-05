@@ -2250,6 +2250,15 @@ User commission: set the song library's folder in the settings, an external driv
 - [x] L3 **Live progress, and the first real move** *(v0.18.66)* — the user moved their real library to an external SSD with 0.18.65: 3447 files, 5.6 GB, 2 passes, switched over without a hitch. Their one wish: see the copy happen. `relocate::Progress` now carries a `Phase` (Copying / Verifying / Deleting) and file counts, and the verify and the delete — which re-read the whole library and reported nothing for minutes — report after every file. The game measures the rate per phase (`report()` restarts the clock when phase or pass changes), shows the time left only after 3 s and never for a comparing pass, and puts the line on the shared progress panel on every screen (`PanelSource::LibraryMove`, after an import and before a search) as well as on the settings row. *Verified: 2114 tests; four new pins (phases and totals, the live line, time-left wording, the panel's lifetime) plus the panel's priority; four mutation probes all caught; the drill under a scratch `HOME` exits 0 (110 files, 279 MB) and its frame shows `COPYING 32% - 42/110 FILES - 90 MB OF 279 MB - 28 MB/S - 7 S LEFT`.*
 - [ ] L4 **Finish the real move** — rebuild `target/release/beatbyte --features ml` (needs ~10 GB free; 2.9 GB on 2026-10-05, so deferred to the next day by the user), play a few songs from the SSD library, then delete the old copy at `~/Library/Application Support/beatbyte/songs/imported` (5.6 GB) from SETTINGS > LIBRARY with the new build, so the delete's live progress gets its first real run. Backup of the data folder before the move: `local/beatbyte-data-20261005-0213.tar` (+ `.sha256`).
 
+## Statistics rendering and menu round two (APPROVED 2026-10-05, starts that evening; plan `docs/plans/stats-and-menus.md`)
+
+- [ ] P0 **platzwaechter** stops deleting `target/` files by age (the cause of the vanishing `bindgen.rs`); prune `incremental/` and whole profiles instead.
+- [ ] S0 **Data truth** — the 100 % miss contexts, finished runs at 0 %, runs without a player.
+- [ ] S1 **Statistics layout** — header anchored, panel width from `ui_kit`, plots full width.
+- [ ] M2 Page Up/Down, Home/End in `ListInput`. M3 changed-from-default marker + Backspace reset. M5 a line per main-menu item. M4 slider fill bars.
+- [ ] S2 **Plot shader spike** (`UiMaterial`), stop point: HDR/bloom look, frame time, the 2015 Mac.
+- [ ] S3 diagrams that answer their question; S4 a plot cursor instead of hover; M1 type-to-jump in Settings; S5 ADR-0016 amendment, docs, pins.
+
 ## Menus as data (DONE 2026-10-05; plan `docs/plans/menu-system.md`, reference `docs/ui/menu-system.md`)
 
 A list screen as a table of rows, so a new setting is one entry
