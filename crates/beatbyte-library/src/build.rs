@@ -458,6 +458,20 @@ fn apply_tags(doc: &mut SongDoc, facts: &FolderFacts<'_>) {
     let Some(tags) = facts.tags.as_ref() else {
         return;
     };
+    // The genre tag fills an EMPTY genre only: a chart's genre came from
+    // the same tag at import, and the player's own edit is never
+    // touched. Kept here so the browser never has to open the audio for
+    // it — it used to, at every start, for every song whose document
+    // had no genre (295 probes on 2026-10-05, none of which found one).
+    if doc.descriptive.genres.is_empty()
+        && !doc.is_overridden(field::GENRE)
+        && let Some(raw) = tags.genre.as_deref()
+    {
+        doc.descriptive.genres = crate::clean::genres(raw)
+            .into_iter()
+            .map(|g| Sourced::stated(g, MetaSource::Embedded))
+            .collect();
+    }
     if let Some(album) = tags.album.as_deref().and_then(crate::clean::text) {
         let current = doc.identity.album.as_ref().map(|held| held.source);
         if may_replace(
@@ -1084,6 +1098,35 @@ mod tests {
         let again = document_for(&facts(&chart), Some(doc), SongId::from_parts(2, 2), 6_000);
         assert_eq!(again.doc.descriptive.genres[0].value, "Post-Punk");
         assert!(!again.changed, "and the file is not rewritten for nothing");
+    }
+
+    /// The file's genre tag fills a genre the chart does not carry, so
+    /// the browser can list the song from its document without opening
+    /// the audio; a genre the chart does carry is not overruled.
+    #[test]
+    fn the_genre_tag_fills_an_empty_genre_and_never_overrules_the_chart() {
+        let mut bare = chart(vec![note(1.0, 0, 0.0)]);
+        bare.song.genre = None;
+        let tags = beatbyte_audio::Tags {
+            genre: Some("Rock; Pop".to_owned()),
+            ..beatbyte_audio::Tags::default()
+        };
+        let mut f = facts(&bare);
+        f.tags = Some(tags.clone());
+        let doc = document_for(&f, None, SongId::from_parts(1, 1), 5_000).doc;
+        let names: Vec<_> = doc
+            .descriptive
+            .genres
+            .iter()
+            .map(|g| g.value.as_str())
+            .collect();
+        assert_eq!(names, ["Rock", "Pop"]);
+
+        let with_genre = chart(vec![note(1.0, 0, 0.0)]);
+        let mut f = facts(&with_genre);
+        f.tags = Some(tags);
+        let doc = document_for(&f, None, SongId::from_parts(1, 1), 5_000).doc;
+        assert_eq!(doc.descriptive.genres[0].value, "Electronic");
     }
 
     #[test]

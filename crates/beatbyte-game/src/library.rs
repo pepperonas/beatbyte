@@ -947,13 +947,15 @@ fn entry_from_document(
         // The first of the document's genres, not the raw tag the
         // chart carries: `read_genre` hands back whatever the file
         // says, and "Electronic; Deep House" is two genres wearing
-        // one string — it sorts and filters as neither.
+        // one string — it sorts and filters as neither. The document
+        // already took the file's tag when it was written, so the
+        // audio is NOT probed here: that fallback opened 85 audio
+        // files 295 times at every start and found nothing.
         genre: doc
             .descriptive
             .genres
             .first()
-            .map(|genre| genre.value.clone())
-            .or_else(|| beatbyte_audio::read_genre(&audio_path)),
+            .map(|genre| genre.value.clone()),
         has_lyrics,
         preview_start_s: doc.musical.preview_start_s,
         source: SongSource::File {

@@ -375,6 +375,16 @@ fn copy_verified(src: &Path, dst: &Path) -> Result<String, String> {
             .write_all(&buffer[..n])
             .map_err(|e| format!("cannot write {}: {e}", partial.display()))?;
     }
+    // The copy keeps the original's modification time. Song documents
+    // count as current only while they are newer than their chart, and
+    // a move that stamped every file "now" made 175 correct documents
+    // stale at once (2026-10-05) — every one of those songs was then
+    // read the slow way at every start.
+    if let Ok(modified) = reader.metadata().and_then(|m| m.modified()) {
+        writer
+            .set_times(std::fs::FileTimes::new().set_modified(modified))
+            .map_err(|e| format!("cannot write {}: {e}", partial.display()))?;
+    }
     writer
         .sync_all()
         .map_err(|e| format!("cannot write {}: {e}", partial.display()))?;
@@ -703,6 +713,31 @@ mod tests {
         assert!(from.join("song-a/song.m4a").is_file(), "copy, never move");
         assert!(read_manifest(&to).unwrap().complete);
         assert_eq!(reports.last().unwrap().bytes_done, moved.bytes);
+    }
+
+    /// A moved file keeps its modification time: a song document counts
+    /// as current only while it is newer than its chart, and a copy
+    /// stamped "now" would make every document in the library stale.
+    #[test]
+    fn a_moved_file_keeps_its_modification_time() {
+        let dir = Scratch::new("mtime");
+        let (from, to) = (dir.0.join("old"), dir.0.join("new"));
+        library(&from);
+        let chart = from.join("song-a/chart.json");
+        std::fs::write(&chart, "{}").unwrap();
+        let old = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+        std::fs::File::options()
+            .write(true)
+            .open(&chart)
+            .unwrap()
+            .set_times(std::fs::FileTimes::new().set_modified(old))
+            .unwrap();
+        copy_library(&from, &to, &mut |_| {}).unwrap();
+        let moved = std::fs::metadata(to.join("song-a/chart.json"))
+            .unwrap()
+            .modified()
+            .unwrap();
+        assert_eq!(moved, old);
     }
 
     #[test]

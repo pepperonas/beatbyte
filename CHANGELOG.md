@@ -14,6 +14,24 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.73] - 2026-10-05
+
+### Fixed
+
+- **Moving the library no longer makes every song slow to list.** The
+  move copied each file byte for byte but stamped it with the time of
+  the copy, so every song document became "older than its chart" and
+  stopped counting (175 of them after the move to the external SSD).
+  A moved file now keeps its modification time, and
+  `beatbyte-cli library` re-stamps a document that went stale this way
+  instead of reporting it "already current".
+- **The start no longer opens audio files for their genre.** The song
+  list fell back to the file's genre tag whenever a document had none —
+  85 files, 295 times at every start, and none of them has a tag. The
+  document now takes the tag when it is written (a genre in the chart
+  still wins, a player's own never moves), so the list never has to
+  ask. Scan of the 466-song library: 0.3 s warm, 2.9 s cold.
+
 ## [0.18.72] - 2026-10-05
 
 ### Fixed

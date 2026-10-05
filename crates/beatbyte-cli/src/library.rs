@@ -185,6 +185,27 @@ pub fn run(root: &Path, dry_run: bool) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// Whether a document whose content did not change must still be
+/// written again, with a new stamp. Pure — tested.
+///
+/// The browser lists a song from its document only while the document
+/// is newer than the chart. Copying a library (the move to an external
+/// drive, 2026-10-05) gave every chart a new modification time, so 175
+/// documents with exactly the right content stood "older than their
+/// chart" and every one of those songs was read the slow way at every
+/// start — while this command reported them "already current".
+#[must_use]
+pub fn restamp(playable: bool, changed: bool, stale: bool) -> bool {
+    playable && !changed && stale
+}
+
+/// A file's modification time in Unix milliseconds.
+fn modified_ms(path: &Path) -> Option<u64> {
+    let modified = std::fs::metadata(path).ok()?.modified().ok()?;
+    let since = modified.duration_since(std::time::UNIX_EPOCH).ok()?;
+    Some(u64::try_from(since.as_millis()).unwrap_or(u64::MAX))
+}
+
 /// What happened to one folder.
 ///
 /// ⚠️ Created and updated are told apart by whether a document was
@@ -324,7 +345,14 @@ fn migrate_folder(dir: &Path, now: u64, dry_run: bool) -> Option<Outcome> {
     };
 
     let had_document = existing.is_some();
-    let built = document_for(&facts, existing, SongId::new(now), now);
+    let stale = existing.as_ref().is_some_and(|doc| {
+        !beatbyte_library::fresh::describes(doc, &chart_name, modified_ms(&chart_path))
+    });
+    let mut built = document_for(&facts, existing, SongId::new(now), now);
+    if restamp(playable, built.changed, stale) {
+        built.doc.lifecycle.updated_at = now;
+        built.changed = true;
+    }
     if dry_run {
         return Some(outcome(had_document, built.changed));
     }
@@ -565,5 +593,25 @@ mod tests {
         );
         assert_eq!(outcome(true, true), Outcome::Updated);
         assert_eq!(outcome(true, false), Outcome::Unchanged);
+    }
+
+    /// The whole decision, every combination: only a stale document of
+    /// a playable chart whose content did not change is re-stamped —
+    /// a changed one is written anyway, a fresh one needs nothing, and
+    /// an unplayable chart has no document that may stand in for it.
+    #[test]
+    fn only_a_stale_unchanged_document_of_a_playable_chart_is_restamped() {
+        for playable in [false, true] {
+            for changed in [false, true] {
+                for stale in [false, true] {
+                    assert_eq!(
+                        restamp(playable, changed, stale),
+                        playable && !changed && stale,
+                        "playable {playable}, changed {changed}, stale {stale}"
+                    );
+                }
+            }
+        }
+        assert!(restamp(true, false, true));
     }
 }
