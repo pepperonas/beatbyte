@@ -48,7 +48,7 @@
 [![Unsafe](https://img.shields.io/badge/unsafe-1%20audited%20block-yellow)](crates/beatbyte-game/src/lib.rs)
 [![Deterministic](https://img.shields.io/badge/engine-deterministic-blueviolet)](#how-your-music-becomes-a-playable-track)
 [![Autopilot](https://img.shields.io/badge/releases-autopilot%20verified-success)](#testing)
-[![ADRs](https://img.shields.io/badge/decisions-21%20ADRs-lightgrey)](docs/decisions/README.md)
+[![ADRs](https://img.shields.io/badge/decisions-23%20ADRs-lightgrey)](docs/decisions/README.md)
 [![MSRV](https://img.shields.io/badge/MSRV-1.95-orange?logo=rust)](Cargo.toml)
 [![Harnesses](https://img.shields.io/badge/harness%20switches-45-success)](docs/development/harness.md)
 [![Docs](https://img.shields.io/badge/docs-architecture%20%C2%B7%20ADRs%20%C2%B7%20specs-blue)](docs/)
@@ -533,7 +533,10 @@ The repository is a Cargo workspace:
 
 Architecture decisions are documented as ADRs in
 [`docs/decisions/`](docs/decisions/). Start with
-[ADR-0001](docs/decisions/ADR-0001-rust-and-bevy.md).
+[ADR-0001](docs/decisions/ADR-0001-rust-and-bevy.md). Every menu with a
+row cursor runs on one renderer with its rows as a typed table —
+[`docs/ui/menu-system.md`](docs/ui/menu-system.md) has the recipes for a
+new setting and a new list screen.
 
 ## Controls
 

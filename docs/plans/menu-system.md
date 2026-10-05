@@ -1,6 +1,6 @@
 # Plan: declarative settings rows and one list renderer
 
-Status: **phases 1–3 done (v0.18.67–0.18.69)**; stop and report before phase 4 (2026-10-05).
+Status: **done** (v0.18.67–0.18.71, docs 2026-10-05). Phase 4 was widened by the user to every menu with a row cursor ("alle Menüs"), including players, controls and achievements, which point 4 below still lists as special. Outcome: ADR-0023, ADR-0024, `docs/ui/menu-system.md`.
 
 ## The brief (rewritten, slim form)
 

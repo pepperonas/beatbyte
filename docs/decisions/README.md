@@ -29,6 +29,8 @@ contradicted** — if a decision is reversed, the ADR says so.
 | [0020](ADR-0020-classic-rules-in-the-chart.md) | The classic programme: a judgment rule travels in the chart (and its hash), classic levels are derived from the chart's own Expert by deletion only, and chords come only from a polyphonic transcription of the separated stem (`beatbyte-poly`, Basic Pitch) | Accepted |
 | [0021](ADR-0021-two-devices-one-career.md) | Two devices, one career: device-owned snapshots on a hub (the raspi5), pure per-data merge rules in `beatbyte-sync` (never last writer wins), device-independent player ids, one library root in the data directory | Accepted |
 | [0022](ADR-0022-bridge-charts-as-bg-twins.md) | Charts the Bridge downloader fetched become numbered `[BG-NN]` twins: a pure `.chart`/`.mid` converter, the library song matched by letters and digits, one number per download by fingerprint, the audio Bridge's own mixed to AAC by ffmpeg | Accepted |
+| [0023](ADR-0023-menus-as-data.md) | Menus as data: every row-cursor screen on one renderer (`menu_list`) with settings rows as a typed Rust table — not RON files, no wrapper for the special screens, cursors still stop at the ends; each migration proven at 0 changed pixels | Accepted |
+| [0024](ADR-0024-editor-stays-on-bevy-ui.md) | The chart editor stays on Bevy UI and `ui_kit`; `bevy_egui` only for form panels, and only if the editor grows real forms | Accepted |
 
 ## The gap at 0009
 

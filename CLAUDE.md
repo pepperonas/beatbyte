@@ -132,6 +132,23 @@ writes. On macOS both directories below are
   what the analysis said at each of its notes. Generated with the
   chart, or backfilled by `beatbyte-cli context --all <data>/beatbyte/songs/imported`.
 
+### Add a setting / add a list screen
+
+Step by step in [`docs/ui/menu-system.md`](docs/ui/menu-system.md)
+("Recipes"). The duties that are easy to skip:
+
+- A setting: field + `Default` in `config.rs`, `SHARED` or `DEVICE` in
+  `beatbyte-sync/src/settings.rs`, one `Row` constant, its place in
+  `Row::ALL` (alphabetical). Pause menu: `PAUSE_ROWS`.
+- A list screen: a marker type, `ListInput` / `ListPaint` /
+  `follow_cursor` in separate systems, `Without<ListLabel<…>>` +
+  `Without<ListValue<…>>` on every other `&mut Text` query, the plugin
+  added to `access_tests` in `lib.rs`.
+- **Both:** `tools/shot-check.sh record <dir>` before the change,
+  `compare` after it, and LOOK at the pictures — of the new row or
+  screen too (`BEATBYTE_SHOT_STATE` + `BEATBYTE_SHOT_ROW`), not only at
+  the "same" verdict for the old ones.
+
 ### Where to look before deriving something twice
 
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — the work itself, in order
@@ -204,6 +221,11 @@ tech writer, release manager. Operate accordingly:
   the row states; every menu draws its header, panel, rows and footer
   from it. A screen may not invent a font size, a panel frame or a
   selection cue of its own — a test forbids near-duplicate sizes.
+  **And every list with a row cursor runs on `menu_list`** (ADR-0023):
+  rows as a typed table (`menu_list::spec`), input, painting and
+  scrolling from one renderer (`menu_list::list`). A new list screen
+  does not copy input code; a new setting is one `Settings` field, one
+  sync classification and one `Row` constant.
 - **Editor ops are invertible** (`EditOp::apply` returns the inverse) —
   undo/redo correctness depends on it. Every new op ships with an
   inverse round-trip test.
