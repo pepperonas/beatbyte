@@ -5,7 +5,9 @@
 use bevy::prelude::*;
 
 use crate::config::{FlashSync, Settings, TelemetryLevel, save_settings};
-use crate::menu_list::list::{self, ListInput, ListPaint, ListPanel, ListRow, ListValue};
+use crate::menu_list::list::{
+    self, ListInput, ListLabel, ListPaint, ListPanel, ListRow, ListValue,
+};
 use crate::menu_list::spec::{self, Ends, Feel, Kind, RowSpec, Subtitle, Unit};
 use crate::states::AppState;
 use crate::ui::UiFont;
@@ -529,8 +531,16 @@ struct SettingSubtitle;
 
 /// The subtitle's query: it must exclude the value texts to satisfy
 /// Bevy's aliasing rules.
-type SubtitleText<'w, 's> =
-    Query<'w, 's, &'static mut Text, (With<SettingSubtitle>, Without<ListValue<SettingsRows>>)>;
+type SubtitleText<'w, 's> = Query<
+    'w,
+    's,
+    &'static mut Text,
+    (
+        With<SettingSubtitle>,
+        Without<ListValue<SettingsRows>>,
+        Without<ListLabel<SettingsRows>>,
+    ),
+>;
 
 fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
     commands

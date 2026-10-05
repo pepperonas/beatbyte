@@ -8,7 +8,8 @@ use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
 
 use crate::config::Settings;
-use crate::controls::{Binding, GameAction, InputMap, MenuNav, UiAction};
+use crate::controls::{Binding, GameAction, InputMap, UiAction};
+use crate::menu_list::list::{self, ListInput, ListPaint, ListPanel, ListRow, ListValue};
 use crate::palette;
 use crate::states::AppState;
 use crate::ui::UiFont;
@@ -23,6 +24,10 @@ struct ControlsState {
     /// until the player presses it again to confirm the move. The
     /// string is the current owner's label, for the hint line.
     pending: Option<(Binding, String)>,
+    /// A capture ended this frame (bound or cancelled). The key that
+    /// ended it — Escape, a right click — must not ALSO leave the
+    /// screen through the navigation that runs after it.
+    capture_ended: bool,
 }
 
 /// What a row on this screen rebinds: a game action or a menu one.
@@ -105,17 +110,14 @@ impl Plugin for ControlsUiPlugin {
             .add_systems(
                 Update,
                 (
-                    paint_action_bar.before(controls_input),
-                    (
-                        controls_input,
-                        refresh_controls,
-                        refresh_pad_tester,
-                        follow_bindings_cursor,
-                    ),
+                    paint_action_bar.before(controls_edit),
+                    (controls_edit, controls_input).chain(),
+                    (refresh_controls, refresh_pad_tester, follow_bindings_cursor),
                 )
                     .run_if(in_state(AppState::Controls)),
             )
-            .add_systems(OnExit(AppState::Controls), (persist_map, despawn_controls));
+            // The screen goes with the state (`DespawnOnExit`).
+            .add_systems(OnExit(AppState::Controls), persist_map);
     }
 }
 
@@ -141,21 +143,8 @@ fn paint_action_bar(
     clicks.0 = ui_kit::read_chips(&mut chips, &mut labels);
 }
 
-#[derive(Component)]
-struct ControlsScreen;
-
-/// One action row (index into [`GameAction::ALL`]). Carries `Button`,
-/// so this screen finally answers the mouse like every other one.
-#[derive(Component)]
-struct ActionRow(usize);
-
-/// A row's action name.
-#[derive(Component)]
-struct ActionLabel(usize);
-
-/// A row's current bindings.
-#[derive(Component)]
-struct ActionBindings(usize);
+/// The marker of the binding rows (the shared list renderer).
+struct BindingRows;
 
 /// The status/hint line.
 #[derive(Component)]
@@ -164,8 +153,9 @@ struct HintLine;
 fn spawn_controls(mut commands: Commands, font: Res<UiFont>, mut state: ResMut<ControlsState>) {
     state.capturing = false;
     state.pending = None;
+    state.capture_ended = false;
     commands
-        .spawn((ControlsScreen, ui_kit::screen_root()))
+        .spawn((DespawnOnExit(AppState::Controls), ui_kit::screen_root()))
         .with_children(|parent| {
             ui_kit::header(parent, &font, "CONTROLS", "every action, on any device");
             ui_kit::action_bar(
@@ -184,28 +174,20 @@ fn spawn_controls(mut commands: Commands, font: Res<UiFont>, mut state: ResMut<C
             // prefix - a mid-list caption would break the uniform row
             // pitch the scroll math relies on.
             parent
-                .spawn((BindingsList, ui_kit::scroll_panel(ui_kit::PANEL_WIDTH)))
+                .spawn((
+                    ListPanel::<BindingRows>::new(),
+                    ui_kit::scroll_panel(ui_kit::PANEL_WIDTH),
+                ))
                 .with_children(|panel| {
-                    for (index, action) in row_actions().into_iter().enumerate() {
-                        panel
-                            .spawn((ActionRow(index), Button, ui_kit::row()))
-                            .with_children(|row| {
-                                row.spawn((
-                                    ActionLabel(index),
-                                    Text::new(action.label()),
-                                    font.text(ui_kit::ROW),
-                                    TextColor(palette::TEXT_DIM),
-                                    ui_kit::label_node(),
-                                ));
-                                row.spawn((
-                                    ActionBindings(index),
-                                    Text::new(""),
-                                    font.text(ui_kit::ROW),
-                                    TextColor(palette::TEXT_DIM),
-                                    ui_kit::value_node(),
-                                ));
-                            });
-                    }
+                    let labels: Vec<String> = row_actions()
+                        .iter()
+                        .map(|action| action.label().to_owned())
+                        .collect();
+                    list::spawn_rows::<BindingRows>(
+                        panel,
+                        &font,
+                        labels.iter().map(String::as_str),
+                    );
                 });
             // Device diagnostics: which pads are connected, and five
             // live fret lamps — press a fret on your controller and
@@ -257,34 +239,14 @@ fn spawn_controls(mut commands: Commands, font: Res<UiFont>, mut state: ResMut<C
         });
 }
 
-/// The scrolling list of binding rows.
-#[derive(Component)]
-struct BindingsList;
-
 /// Keep the cursor row in view, exactly the way the song browser
 /// does: measured row height, whole-row window, minimal travel.
 fn follow_bindings_cursor(
     state: Res<ControlsState>,
-    rows: Query<(&ActionRow, &ComputedNode)>,
-    mut lists: Query<(&mut ScrollPosition, &mut Node), With<BindingsList>>,
+    rows: Query<(&ListRow<BindingRows>, &ComputedNode)>,
+    mut lists: Query<(&mut ScrollPosition, &mut Node), With<ListPanel<BindingRows>>>,
 ) {
-    let Ok((mut scroll, mut node)) = lists.single_mut() else {
-        return;
-    };
-    let Some(row) = rows
-        .iter()
-        .map(|(_, node)| node)
-        .find(|node| node.size().y > 0.0)
-    else {
-        return;
-    };
-    ui_kit::follow_list(
-        state.cursor,
-        row_actions().len(),
-        row,
-        &mut scroll,
-        &mut node,
-    );
+    list::follow_cursor(state.cursor, row_actions().len(), &rows, &mut lists);
 }
 
 /// The connected-devices line.
@@ -329,16 +291,77 @@ fn refresh_pad_tester(
     }
 }
 
+/// What edits the map: capturing a new binding, and resetting a row.
+/// Separate from the navigation because it writes the `InputMap` the
+/// list renderer reads.
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI
-fn controls_input(
+fn controls_edit(
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<&Gamepad>,
     mouse: Res<ButtonInput<MouseButton>>,
-    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
-    rows: Query<(&ActionRow, &Interaction), Changed<Interaction>>,
     clicks: Res<ActionBarClicks>,
     mut state: ResMut<ControlsState>,
     mut map: ResMut<InputMap>,
+    mut sounds: MessageWriter<crate::sfx::UiSound>,
+) {
+    let actions = row_actions();
+    if !state.capturing {
+        if keys.just_pressed(KeyCode::Backspace) || ui_kit::chip_hit(&clicks.0, chip::RESET) {
+            actions[state.cursor].reset(&mut map);
+            sounds.write(crate::sfx::UiSound::Toggle);
+        }
+        return;
+    }
+    // Escape (or right-click) cancels the capture; anything else
+    // binds. Mouse buttons are not bindable, so a click can never BE
+    // the captured input.
+    if keys.just_pressed(KeyCode::Escape) || mouse.just_pressed(MouseButton::Right) {
+        state.capturing = false;
+        state.pending = None;
+        state.capture_ended = true;
+        sounds.write(crate::sfx::UiSound::Back);
+        return;
+    }
+    let captured = keys
+        .get_just_pressed()
+        .next()
+        .map(|key| Binding::Key(*key))
+        .or_else(|| {
+            pads.iter()
+                .flat_map(|pad| pad.get_just_pressed())
+                .next()
+                .map(|button| Binding::Pad(*button))
+        });
+    if let Some(binding) = captured {
+        let action = actions[state.cursor];
+        // A binding that already serves another action is not stolen
+        // silently: the row names the owner and waits for the SAME
+        // press again as confirmation. Any other press starts the
+        // check over on the new binding.
+        let confirmed = state.pending.as_ref().is_some_and(|(b, _)| *b == binding);
+        match action.conflict_with(&map, binding) {
+            Some(owner) if !confirmed => {
+                state.pending = Some((binding, owner));
+                sounds.write(crate::sfx::UiSound::Error);
+            }
+            _ => {
+                action.rebind(&mut map, binding);
+                state.capturing = false;
+                state.pending = None;
+                state.capture_ended = true;
+                sounds.write(crate::sfx::UiSound::Toggle);
+            }
+        }
+    }
+}
+
+/// Navigation through the shared list renderer — `MenuNav` like every
+/// other screen: reading the arrow keys directly, as this screen once
+/// did, meant a player holding a guitar could not reach the screen
+/// that rebinds it.
+fn controls_input(
+    mut list: ListInput<BindingRows>,
+    mut state: ResMut<ControlsState>,
     mut next_state: ResMut<NextState<AppState>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
     mut back_button: Query<
@@ -346,139 +369,62 @@ fn controls_input(
         With<ui_kit::BackButton>,
     >,
 ) {
-    let actions = row_actions();
-    let count = actions.len();
-    if state.capturing {
-        // Escape (or right-click) cancels the capture; anything
-        // else binds. Mouse buttons are not bindable, so a click can
-        // never BE the captured input.
-        if keys.just_pressed(KeyCode::Escape) || mouse.just_pressed(MouseButton::Right) {
-            state.capturing = false;
-            state.pending = None;
-            sounds.write(crate::sfx::UiSound::Back);
-            return;
-        }
-        let captured = keys
-            .get_just_pressed()
-            .next()
-            .map(|key| Binding::Key(*key))
-            .or_else(|| {
-                pads.iter()
-                    .flat_map(|pad| pad.get_just_pressed())
-                    .next()
-                    .map(|button| Binding::Pad(*button))
-            });
-        if let Some(binding) = captured {
-            let action = actions[state.cursor];
-            // A binding that already serves another action is not
-            // stolen silently: the row names the owner and waits for
-            // the SAME press again as confirmation. Any other press
-            // starts the check over on the new binding.
-            let confirmed = state.pending.as_ref().is_some_and(|(b, _)| *b == binding);
-            match action.conflict_with(&map, binding) {
-                Some(owner) if !confirmed => {
-                    state.pending = Some((binding, owner));
-                    sounds.write(crate::sfx::UiSound::Error);
-                }
-                _ => {
-                    action.rebind(&mut map, binding);
-                    state.capturing = false;
-                    state.pending = None;
-                    sounds.write(crate::sfx::UiSound::Toggle);
-                }
-            }
-        }
+    if std::mem::take(&mut state.capture_ended) || state.capturing {
         return;
     }
-
-    // Navigation goes through MenuNav like every other screen. Reading
-    // the arrow keys directly, as this screen used to, meant a player
-    // holding a guitar could not reach the screen that rebinds it.
-    let nav = MenuNav::read(&map, &keys, pads.iter());
-    if nav.up {
-        state.cursor = crate::ui_kit::step_cursor(state.cursor, count, -1);
+    let mut cursor = state.cursor;
+    let events = list.read(&mut cursor, row_actions().len());
+    state.cursor = cursor;
+    if let Some(sound) = list::sound_for(None, events.moved) {
+        sounds.write(sound);
     }
-    if nav.down {
-        state.cursor = crate::ui_kit::step_cursor(state.cursor, count, 1);
-    }
-    if nav.up || nav.down {
-        sounds.write(crate::sfx::UiSound::Navigate);
-    }
-    let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
-    if let Some(index) = pointer.hovered {
-        state.cursor = index;
-    }
-    // The wheel scrolls the rows, like the song list.
-    for event in wheel.read() {
-        if event.y > 0.0 {
-            state.cursor = crate::ui_kit::step_cursor(state.cursor, count, -1);
-        } else if event.y < 0.0 {
-            state.cursor = crate::ui_kit::step_cursor(state.cursor, count, 1);
-        }
-        if event.y != 0.0 {
-            sounds.write(crate::sfx::UiSound::Navigate);
-        }
-    }
-    let clicked = pointer.clicked;
-    if nav.confirm || clicked {
+    if events.nav.confirm || events.clicked {
         state.capturing = true;
         state.pending = None;
         sounds.write(crate::sfx::UiSound::Confirm);
     }
-    if keys.just_pressed(KeyCode::Backspace) || ui_kit::chip_hit(&clicks.0, chip::RESET) {
-        actions[state.cursor].reset(&mut map);
-        sounds.write(crate::sfx::UiSound::Toggle);
-    }
     if ui_kit::wants_leave(
-        nav.back,
+        events.nav.back,
         ui_kit::back_pressed(&mut back_button),
-        mouse.just_pressed(MouseButton::Right),
+        events.right_click,
     ) {
         sounds.write(crate::sfx::UiSound::Back);
         next_state.set(AppState::Settings);
     }
 }
 
+/// The hint line, kept apart from the list's own texts.
+type HintOnly = (
+    With<HintLine>,
+    Without<ListValue<BindingRows>>,
+    Without<list::ListLabel<BindingRows>>,
+);
+
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI
 fn refresh_controls(
     map: Res<InputMap>,
     settings: Res<Settings>,
     state: Res<ControlsState>,
-    mut rows: Query<(&ActionRow, &mut BackgroundColor, &mut BorderColor)>,
-    mut labels: Query<(&ActionLabel, &mut TextColor), Without<ActionBindings>>,
-    mut bindings: Query<(&ActionBindings, &mut Text, &mut TextColor), Without<ActionLabel>>,
-    mut hint: Query<&mut Text, (With<HintLine>, Without<ActionBindings>)>,
+    mut paint: ListPaint<BindingRows>,
+    mut hint: Query<&mut Text, HintOnly>,
     active: Res<crate::prompts::ActiveDevice>,
 ) {
-    let style_of = |index: usize| {
-        ui_kit::styled_row(
-            ui_kit::state_for(
-                index == state.cursor,
-                state.capturing && index == state.cursor,
-            ),
-            settings.high_contrast,
-        )
-    };
-    for (row, mut background, mut border) in &mut rows {
-        let style = style_of(row.0);
-        background.0 = style.background;
-        *border = BorderColor::all(style.accent);
-    }
-    for (label, mut color) in &mut labels {
-        color.0 = style_of(label.0).label;
-    }
     let actions = row_actions();
-    for (row, mut text, mut color) in &mut bindings {
-        let wanted = if state.capturing && row.0 == state.cursor {
-            "press a key or button...".to_owned()
-        } else {
-            actions[row.0].bindings(&map)
-        };
-        if text.0 != wanted {
-            text.0 = wanted;
-        }
-        color.0 = style_of(row.0).value;
-    }
+    let armed = state.capturing.then_some(state.cursor);
+    paint.paint_armed(
+        state.cursor,
+        armed,
+        settings.high_contrast,
+        usize::MAX,
+        |index| {
+            let value = if armed == Some(index) {
+                "press a key or button...".to_owned()
+            } else {
+                actions[index].bindings(&map)
+            };
+            (None, value)
+        },
+    );
     if let Ok(mut text) = hint.single_mut() {
         let idle = match *active {
             crate::prompts::ActiveDevice::Keyboard => {
@@ -503,12 +449,6 @@ fn refresh_controls(
 fn persist_map(map: Res<InputMap>, mut settings: ResMut<Settings>) {
     settings.input_map = map.clone();
     crate::config::save_settings(&settings);
-}
-
-fn despawn_controls(mut commands: Commands, entities: Query<Entity, With<ControlsScreen>>) {
-    for entity in &entities {
-        commands.entity(entity).despawn();
-    }
 }
 
 #[cfg(test)]
@@ -558,5 +498,63 @@ mod tests {
         for action in UiAction::ALL {
             assert!(rows.contains(&RowAction::Ui(action)));
         }
+    }
+
+    /// The two input systems, wired as the plugin wires them.
+    fn wired(capturing: bool) -> App {
+        let mut app = App::new();
+        app.add_plugins(bevy::MinimalPlugins)
+            .init_resource::<ButtonInput<KeyCode>>()
+            .init_resource::<ButtonInput<MouseButton>>()
+            .init_resource::<InputMap>()
+            .init_resource::<ActionBarClicks>()
+            .init_resource::<NextState<AppState>>()
+            .add_message::<bevy::input::mouse::MouseWheel>()
+            .add_message::<bevy::window::CursorMoved>()
+            .add_message::<crate::sfx::UiSound>()
+            .insert_resource(ControlsState {
+                capturing,
+                ..Default::default()
+            })
+            .add_systems(Update, (controls_edit, controls_input).chain());
+        app
+    }
+
+    fn press(app: &mut App, key: KeyCode) {
+        let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+        keys.clear();
+        keys.press(key);
+        app.update();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release(key);
+    }
+
+    fn leaving(app: &App) -> bool {
+        matches!(
+            app.world().resource::<NextState<AppState>>(),
+            NextState::Pending(_)
+        )
+    }
+
+    #[test]
+    fn the_escape_that_cancels_a_capture_does_not_also_leave() {
+        let mut app = wired(true);
+        press(&mut app, KeyCode::Escape);
+        assert!(!app.world().resource::<ControlsState>().capturing);
+        assert!(!leaving(&app), "one Escape left the screen as well");
+        // The next Escape is an ordinary one again.
+        press(&mut app, KeyCode::Escape);
+        assert!(leaving(&app));
+    }
+
+    #[test]
+    fn a_captured_key_is_bound_and_does_not_navigate() {
+        let mut app = wired(true);
+        press(&mut app, KeyCode::KeyJ);
+        let state = app.world().resource::<ControlsState>();
+        assert!(!state.capturing);
+        assert_eq!(state.cursor, 0);
+        assert!(!leaving(&app));
     }
 }

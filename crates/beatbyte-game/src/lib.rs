@@ -455,26 +455,32 @@ fn smoke_test_exit(
     state: Res<State<AppState>>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut app_exit: MessageWriter<AppExit>,
+    mut first_press: Local<Option<f32>>,
 ) {
     let reached_menu = *state.get() != AppState::Boot;
-    if time.elapsed_secs() > 3.0 && reached_menu {
+    let now = time.elapsed_secs();
+    if now > 3.0 && reached_menu {
         // Leave by pressing Escape rather than by writing the exit
         // directly. The smoke test then proves the way a PLAYER
         // leaves actually works, instead of proving only that the
         // process can be told to stop - and it costs nothing, because
         // this run had to end somehow regardless.
-        info!(
-            "smoke test: pressing ESC after {:.1}s in {:?}",
-            time.elapsed_secs(),
-            state.get()
-        );
+        if first_press.is_none() {
+            info!(
+                "smoke test: pressing ESC after {now:.1}s in {:?}",
+                state.get()
+            );
+            *first_press = Some(now);
+        }
         keys.release(KeyCode::Escape);
         keys.press(KeyCode::Escape);
     }
     // If Escape did not close the game, say so and fail. Without this
     // the run would simply hang, which reads as a stuck machine rather
-    // than as a broken key.
-    if time.elapsed_secs() > 6.0 && reached_menu {
+    // than as a broken key. Timed from the FIRST press, not from the
+    // start: a boot slower than the grace (a library on an external
+    // disk took 11 s) used to press and fail in the same frame.
+    if first_press.is_some_and(|pressed| now - pressed > 3.0) {
         error!("smoke test: ESC did not close the game from the main menu");
         app_exit.write(AppExit::error());
     }
@@ -561,5 +567,43 @@ mod scale_tests {
         // Files are input too: absurd values clamp, never break the UI.
         assert!((ui_scale_target(720.0, 40.0) - 1.5).abs() < 1e-6);
         assert!(ui_scale_target(4320.0, 1.5) <= 3.0);
+    }
+}
+
+#[cfg(test)]
+mod access_tests {
+    use crate::states::{AppState, GamePhase};
+    use bevy::prelude::*;
+
+    /// The list screens' systems may not ask for the same component
+    /// mutably twice. Bevy checks that when a schedule initializes its
+    /// systems — at the game's start, for every screen at once — and
+    /// no wired test registers a whole plugin, so a conflict passed
+    /// every test and stopped the game on launch (players, 0.18.70
+    /// work: `ListPaint` writes list texts, the status line's query
+    /// did not exclude them). Initializing the schedules here panics
+    /// the same way.
+    #[test]
+    fn the_list_screens_systems_do_not_conflict() {
+        let mut app = App::new();
+        app.add_plugins((bevy::MinimalPlugins, bevy::state::app::StatesPlugin))
+            .init_state::<AppState>()
+            .add_sub_state::<GamePhase>()
+            .add_plugins((
+                crate::menu::MenuPlugin,
+                crate::about::AboutPlugin,
+                crate::settings_ui::SettingsUiPlugin,
+                crate::controls_ui::ControlsUiPlugin,
+                crate::players_ui::PlayersUiPlugin,
+                crate::achievements_ui::AchievementsUiPlugin,
+            ));
+        let world = app.world_mut();
+        let mut schedules = world
+            .remove_resource::<Schedules>()
+            .expect("the app has schedules");
+        for (_, schedule) in schedules.iter_mut() {
+            schedule.initialize(world).expect("every schedule builds");
+        }
+        world.insert_resource(schedules);
     }
 }

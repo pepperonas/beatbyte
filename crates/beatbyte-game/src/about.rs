@@ -9,10 +9,11 @@
 //! section there), so the next release appears here without anyone
 //! touching this screen.
 
-use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
 
-use crate::controls::MenuNav;
+use crate::menu_list::list::{
+    self, ListInput, ListLabel, ListPaint, ListPanel, ListRow, ListValue,
+};
 use crate::palette;
 use crate::states::AppState;
 use crate::ui::UiFont;
@@ -322,29 +323,12 @@ impl Plugin for AboutPlugin {
             .add_systems(
                 Update,
                 (about_input, refresh_about, follow_about_cursor).run_if(in_state(AppState::About)),
-            )
-            .add_systems(OnExit(AppState::About), despawn_about);
+            );
     }
 }
 
-#[derive(Component)]
-struct AboutScreen;
-
-/// The scrolling list of rows.
-#[derive(Component)]
-struct AboutList;
-
-/// A row by flat index.
-#[derive(Component)]
-struct AboutRow(usize);
-
-/// A row's label.
-#[derive(Component)]
-struct AboutLabel(usize);
-
-/// A row's value.
-#[derive(Component)]
-struct AboutValue(usize);
+/// The marker of the about screen's rows (the shared list renderer).
+struct AboutRows;
 
 /// A text of the detail block under the panel: the version heading,
 /// one bullet's text, or the "+ N more" note. One marker for all
@@ -367,7 +351,7 @@ type DetailTexts<'w, 's> = Query<
     'w,
     's,
     (&'static DetailPart, &'static mut Text),
-    (Without<AboutLabel>, Without<AboutValue>),
+    (Without<ListLabel<AboutRows>>, Without<ListValue<AboutRows>>),
 >;
 
 fn spawn_about(mut commands: Commands, font: Res<UiFont>, mut state: ResMut<AboutState>) {
@@ -379,7 +363,7 @@ fn spawn_about(mut commands: Commands, font: Res<UiFont>, mut state: ResMut<Abou
     state.entries = parse_changelog(CHANGELOG);
 
     commands
-        .spawn((AboutScreen, ui_kit::screen_root()))
+        .spawn((DespawnOnExit(AppState::About), ui_kit::screen_root()))
         .with_children(|parent| {
             ui_kit::header(
                 parent,
@@ -388,32 +372,17 @@ fn spawn_about(mut commands: Commands, font: Res<UiFont>, mut state: ResMut<Abou
                 &format!("BeatByte v{VERSION} - MIT license, (c) 2026 Martin Pfeffer"),
             );
             parent
-                .spawn((AboutList, ui_kit::scroll_panel(ABOUT_WIDTH)))
+                .spawn((
+                    ListPanel::<AboutRows>::new(),
+                    ui_kit::scroll_panel(ABOUT_WIDTH),
+                ))
                 .with_children(|panel| {
                     // The maximum row count (all info rows + every
                     // changelog entry) is spawned once; refresh hides
-                    // the changelog rows while the section is closed.
+                    // the changelog rows while the section is closed
+                    // and writes every label.
                     let total = InfoRow::ALL.len() + state.entries.len();
-                    for index in 0..total {
-                        panel
-                            .spawn((AboutRow(index), Button, ui_kit::row()))
-                            .with_children(|row| {
-                                row.spawn((
-                                    AboutLabel(index),
-                                    Text::new(""),
-                                    font.text(ui_kit::ROW),
-                                    TextColor(palette::TEXT_DIM),
-                                    ui_kit::label_node(),
-                                ));
-                                row.spawn((
-                                    AboutValue(index),
-                                    Text::new(""),
-                                    font.text(ui_kit::ROW),
-                                    TextColor(palette::TEXT_DIM),
-                                    ui_kit::value_node(),
-                                ));
-                            });
-                    }
+                    list::spawn_rows::<AboutRows>(panel, &font, std::iter::repeat_n("", total));
                 });
             // The detail block: the highlighted changelog entry (or,
             // anywhere else, this build's) as a version heading and
@@ -495,15 +464,8 @@ fn activation(index: usize) -> Activate {
     }
 }
 
-#[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn about_input(
-    keys: Res<ButtonInput<KeyCode>>,
-    map: Res<crate::controls::InputMap>,
-    pads: Query<&Gamepad>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
-    mut moved: MessageReader<bevy::window::CursorMoved>,
-    rows: Query<(&AboutRow, &Interaction), Changed<Interaction>>,
+    mut list: ListInput<AboutRows>,
     mut state: ResMut<AboutState>,
     mut next_state: ResMut<NextState<AppState>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
@@ -512,36 +474,14 @@ fn about_input(
         With<ui_kit::BackButton>,
     >,
 ) {
-    let nav = MenuNav::read(&map, &keys, pads.iter());
     let count = state.row_count();
-    if nav.up {
-        state.cursor = crate::ui_kit::step_cursor(state.cursor, count, -1);
+    let mut cursor = state.cursor;
+    let events = list.read(&mut cursor, count);
+    state.cursor = cursor;
+    if let Some(sound) = list::sound_for(None, events.moved) {
+        sounds.write(sound);
     }
-    if nav.down {
-        state.cursor = crate::ui_kit::step_cursor(state.cursor, count, 1);
-    }
-    if nav.up || nav.down {
-        sounds.write(crate::sfx::UiSound::Navigate);
-    }
-    let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
-    let mouse_moved = moved.read().next().is_some();
-    if let Some(index) = ui_kit::hover_moves_cursor(&pointer, mouse_moved)
-        && index < count
-    {
-        state.cursor = index;
-    }
-    // The wheel scrolls the rows, like the song list.
-    for event in wheel.read() {
-        if event.y > 0.0 {
-            state.cursor = crate::ui_kit::step_cursor(state.cursor, count, -1);
-        } else if event.y < 0.0 {
-            state.cursor = crate::ui_kit::step_cursor(state.cursor, count, 1);
-        }
-        if event.y != 0.0 {
-            sounds.write(crate::sfx::UiSound::Navigate);
-        }
-    }
-    if nav.confirm || pointer.clicked {
+    if events.nav.confirm || events.clicked {
         match activation(state.cursor) {
             Activate::Open(url) => {
                 sounds.write(crate::sfx::UiSound::Confirm);
@@ -555,9 +495,9 @@ fn about_input(
         }
     }
     if ui_kit::wants_leave(
-        nav.back,
+        events.nav.back,
         ui_kit::back_pressed(&mut back),
-        mouse.just_pressed(MouseButton::Right),
+        events.right_click,
     ) {
         sounds.write(crate::sfx::UiSound::Back);
         next_state.set(AppState::MainMenu);
@@ -570,22 +510,11 @@ fn about_input(
 fn refresh_about(
     state: Res<AboutState>,
     settings: Res<crate::config::Settings>,
-    mut rows: Query<
-        (&AboutRow, &mut Node, &mut BackgroundColor, &mut BorderColor),
-        Without<DetailBulletRow>,
-    >,
-    mut labels: Query<(&AboutLabel, &mut Text, &mut TextColor), Without<AboutValue>>,
-    mut values: Query<(&AboutValue, &mut Text, &mut TextColor), Without<AboutLabel>>,
+    mut paint: ListPaint<AboutRows>,
     mut details: DetailTexts,
-    mut bullet_rows: Query<(&DetailBulletRow, &mut Node), Without<AboutRow>>,
+    mut bullet_rows: Query<(&DetailBulletRow, &mut Node), Without<ListRow<AboutRows>>>,
 ) {
     let count = state.row_count();
-    let style_of = |index: usize| {
-        ui_kit::styled_row(
-            ui_kit::state_for(index == state.cursor, false),
-            settings.high_contrast,
-        )
-    };
     let info = InfoRow::ALL.len();
     let text_for = |index: usize| -> (String, String) {
         if let Some(row) = InfoRow::ALL.get(index) {
@@ -610,33 +539,10 @@ fn refresh_about(
             (String::new(), String::new())
         }
     };
-    for (row, mut node, mut background, mut border) in &mut rows {
-        let shown = row.0 < count;
-        let wanted = if shown { Display::Flex } else { Display::None };
-        if node.display != wanted {
-            node.display = wanted;
-        }
-        if !shown {
-            continue;
-        }
-        let style = style_of(row.0);
-        background.0 = style.background;
-        *border = BorderColor::all(style.accent);
-    }
-    for (label, mut text, mut color) in &mut labels {
-        let (wanted, _) = text_for(label.0);
-        if text.0 != wanted {
-            text.0 = wanted;
-        }
-        color.0 = style_of(label.0).label;
-    }
-    for (value, mut text, mut color) in &mut values {
-        let (_, wanted) = text_for(value.0);
-        if text.0 != wanted {
-            text.0 = wanted;
-        }
-        color.0 = style_of(value.0).value;
-    }
+    paint.paint_full(state.cursor, settings.high_contrast, count, |index| {
+        let (label, value) = text_for(index);
+        (Some(label), value)
+    });
     // The detail block: highlighted entry, or the newest one.
     let shown_index = detail_entry(state.cursor, info, state.entries.len());
     let entry = state.entries.get(shown_index);
@@ -686,26 +592,10 @@ fn refresh_about(
 /// scrolling screen uses.
 fn follow_about_cursor(
     state: Res<AboutState>,
-    rows: Query<(&AboutRow, &ComputedNode)>,
-    mut lists: Query<(&mut ScrollPosition, &mut Node), With<AboutList>>,
+    rows: Query<(&ListRow<AboutRows>, &ComputedNode)>,
+    mut lists: Query<(&mut ScrollPosition, &mut Node), With<ListPanel<AboutRows>>>,
 ) {
-    let Ok((mut scroll, mut node)) = lists.single_mut() else {
-        return;
-    };
-    let Some(row) = rows
-        .iter()
-        .map(|(_, node)| node)
-        .find(|node| node.size().y > 0.0)
-    else {
-        return;
-    };
-    ui_kit::follow_list(state.cursor, state.row_count(), row, &mut scroll, &mut node);
-}
-
-fn despawn_about(mut commands: Commands, entities: Query<Entity, With<AboutScreen>>) {
-    for entity in &entities {
-        commands.entity(entity).despawn();
-    }
+    list::follow_cursor(state.cursor, state.row_count(), &rows, &mut lists);
 }
 
 #[cfg(test)]

@@ -118,12 +118,10 @@ impl Plugin for AutopilotPlugin {
         if let Ok(raw) = std::env::var("BEATBYTE_SHOT_STATE") {
             match shot_state(&raw) {
                 Some(target) => {
-                    app.insert_resource(ShotState(target))
-                        .add_systems(
-                            Update,
-                            (enter_shot_state, reopen_shot_search, quit_after_shot),
-                        )
-                        .add_systems(PreUpdate, hold_shot_row);
+                    app.insert_resource(ShotState(target)).add_systems(
+                        Update,
+                        (enter_shot_state, reopen_shot_search, quit_after_shot),
+                    );
                     if let Some(row) = shot_row() {
                         // Every list on the shared renderer holds it.
                         app.insert_resource(crate::menu_list::list::HeldRow(row));
@@ -453,32 +451,6 @@ fn enter_shot_state(
         }
     }
     next.set(target.0);
-}
-
-/// The row `BEATBYTE_SHOT_ROW` asks for, held there every frame of
-/// the photographed screen. The pointer moves a list's cursor when it
-/// moves over a row, and a window that opens under a resting mouse
-/// gets exactly that: one of five shots of the settings screen came
-/// out on LYRICS instead of LIBRARY, with the subtitle the other row
-/// does not have — the screen photographed, but not the one asked
-/// for. Held in `PreUpdate`, so a stray move is undone a frame later
-/// and long before the shot (which waits 0.6 s into the screen).
-fn hold_shot_row(
-    target: Res<ShotState>,
-    state: Res<State<AppState>>,
-    mut awards: ResMut<crate::achievements_ui::AchievementsView>,
-) {
-    if *state.get() != target.0 {
-        return;
-    }
-    let Some(row) = shot_row() else {
-        return;
-    };
-    // The screens on the shared list renderer hold the row themselves
-    // (`HeldRow`); this covers the ones not on it yet.
-    if target.0 == AppState::Achievements && awards.row != row {
-        awards.row = row;
-    }
 }
 
 /// `BEATBYTE_SHOT_ROW`, if it is a number.

@@ -17,7 +17,7 @@ use beatbyte_core::stats::{self, Filter};
 use bevy::prelude::*;
 use bevy::ui::Val::Px as px;
 
-use crate::controls::{InputMap, MenuNav};
+use crate::menu_list::list::{self, ListInput, ListPaint};
 use crate::palette;
 use crate::players::{Players, adopt_orphan_runs, now_ms, save_roster};
 use crate::states::AppState;
@@ -25,12 +25,9 @@ use crate::ui::UiFont;
 use crate::ui_kit;
 
 /// Everything this screen spawns.
-#[derive(Component)]
-struct PlayersScreen;
-
 /// A row standing for one player, by its position on screen.
-#[derive(Component)]
-struct PlayerRow(usize);
+/// The marker of the roster rows (the shared list renderer).
+struct RosterRows;
 
 /// The panel node the rows live in — what a rebuild empties.
 #[derive(Component)]
@@ -276,8 +273,8 @@ impl Plugin for PlayersUiPlugin {
                     (roster_keys, roster_nav, rebuild_list, refresh_rows).chain(),
                 )
                     .run_if(in_state(AppState::Players)),
-            )
-            .add_systems(OnExit(AppState::Players), despawn_roster);
+            );
+        // The screen goes with the state (`DespawnOnExit`).
     }
 }
 
@@ -293,7 +290,7 @@ fn spawn_roster(
     cursor.field = None;
     view.order = display_order(&players.0.players, players.0.selected);
     commands
-        .spawn((ui_kit::screen_root(), PlayersScreen))
+        .spawn((ui_kit::screen_root(), DespawnOnExit(AppState::Players)))
         .with_children(|root| {
             ui_kit::header(
                 root,
@@ -434,7 +431,7 @@ fn spawn_row(
     line: &str,
 ) {
     parent
-        .spawn((ui_kit::row(), PlayerRow(index), Button))
+        .spawn(list::row_frame::<RosterRows>(index))
         .with_children(|row| {
             // The accent the player wears on the highway, so the two
             // places agree about who is who.
@@ -641,15 +638,9 @@ fn commit_field(
 }
 
 /// Cursor movement, choosing a player, leaving the screen.
-#[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)] // Bevy system params
+#[allow(clippy::too_many_arguments)] // Bevy system params
 fn roster_nav(
-    map: Res<InputMap>,
-    keys: Res<ButtonInput<KeyCode>>,
-    pads: Query<&bevy::input::gamepad::Gamepad>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
-    mut moved: MessageReader<bevy::window::CursorMoved>,
-    rows: Query<(&PlayerRow, &Interaction), Changed<Interaction>>,
+    mut list: ListInput<RosterRows>,
     mut back: Query<
         (&Interaction, &mut BackgroundColor, &mut BorderColor),
         With<ui_kit::BackButton>,
@@ -661,56 +652,45 @@ fn roster_nav(
     mut next: ResMut<NextState<AppState>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
-    let nav = MenuNav::read(&map, &keys, pads.iter());
     // A field open means the arrows and Enter belong to it.
     if cursor.field.is_some() {
         return;
     }
     let count = players.0.len();
-    if count > 0 {
-        if nav.up {
-            cursor.row = ui_kit::step_cursor(cursor.row, count, -1);
+    let mut row = cursor.row;
+    let events = list.read(&mut row, count);
+    cursor.row = row;
+    if count > 0
+        && (events.nav.confirm || events.clicked)
+        && let Some(player) = view.player(&players, cursor.row)
+    {
+        let id = player.id;
+        let name = player.name.clone();
+        players.0.select(id);
+        save_roster(&players);
+        if let Some(pref) = players.0.current_preferred_difficulty() {
+            selected.0 = pref;
+        } else {
+            selected.0 = beatbyte_core::Difficulty::Medium;
         }
-        if nav.down {
-            cursor.row = ui_kit::step_cursor(cursor.row, count, 1);
-        }
-        for event in wheel.read() {
-            if event.y > 0.0 {
-                cursor.row = ui_kit::step_cursor(cursor.row, count, -1);
-            } else if event.y < 0.0 {
-                cursor.row = ui_kit::step_cursor(cursor.row, count, 1);
-            }
-        }
-        let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
-        let mouse_moved = moved.read().next().is_some();
-        if let Some(index) = ui_kit::hover_moves_cursor(&pointer, mouse_moved) {
-            cursor.row = index;
-        }
-        if (nav.confirm || pointer.clicked)
-            && let Some(player) = view.player(&players, cursor.row)
-        {
-            let id = player.id;
-            let name = player.name.clone();
-            players.0.select(id);
-            save_roster(&players);
-            if let Some(pref) = players.0.current_preferred_difficulty() {
-                selected.0 = pref;
-            } else {
-                selected.0 = beatbyte_core::Difficulty::Medium;
-            }
-            cursor.status = format!("{name} IS PLAYING");
-            sounds.write(crate::sfx::UiSound::Confirm);
-        }
+        cursor.status = format!("{name} IS PLAYING");
+        sounds.write(crate::sfx::UiSound::Confirm);
     }
     if ui_kit::wants_leave(
-        nav.back,
+        events.nav.back,
         ui_kit::back_pressed(&mut back),
-        mouse.just_pressed(MouseButton::Right),
+        events.right_click,
     ) {
         sounds.write(crate::sfx::UiSound::Back);
         next.set(AppState::MainMenu);
     }
 }
+
+/// Not a text of the roster list (which `ListPaint` writes).
+type NotListText = (
+    Without<list::ListLabel<RosterRows>>,
+    Without<list::ListValue<RosterRows>>,
+);
 
 /// Keep the rows, the field, the status line and chip enables in step.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)] // Bevy queries
@@ -718,21 +698,17 @@ fn refresh_rows(
     cursor: Res<RosterCursor>,
     players: Res<Players>,
     settings: Res<crate::config::Settings>,
-    mut rows: Query<(&PlayerRow, &mut BackgroundColor, &mut BorderColor)>,
-    mut field: Query<&mut Text, (With<FieldLine>, Without<RosterStatus>)>,
-    mut status: Query<&mut Text, (With<RosterStatus>, Without<FieldLine>)>,
+    mut paint: ListPaint<RosterRows>,
+    mut field: Query<&mut Text, (With<FieldLine>, Without<RosterStatus>, NotListText)>,
+    mut status: Query<&mut Text, (With<RosterStatus>, Without<FieldLine>, NotListText)>,
     mut chips: Query<(&ui_kit::ActionChip, &mut ui_kit::ChipEnabled)>,
 ) {
     let has_players = !players.0.is_empty();
     ui_kit::set_chip_enabled(&mut chips, chip::RENAME, has_players);
     ui_kit::set_chip_enabled(&mut chips, chip::STATS, has_players);
     ui_kit::set_chip_enabled(&mut chips, chip::AWARDS, has_players);
-    for (row, mut background, mut border) in &mut rows {
-        let state = ui_kit::state_for(row.0 == cursor.row, false);
-        let style = ui_kit::styled_row(state, settings.high_contrast);
-        *background = BackgroundColor(style.background);
-        *border = BorderColor::all(style.accent);
-    }
+    // The rows carry their own texts; the renderer dresses the frames.
+    paint.paint(cursor.row, settings.high_contrast, |_| String::new());
     if let Ok(mut text) = field.single_mut() {
         **text = cursor.field.as_ref().map_or_else(String::new, |open| {
             let what = if open.renaming.is_some() {
@@ -745,12 +721,6 @@ fn refresh_rows(
     }
     if let Ok(mut text) = status.single_mut() {
         **text = cursor.status.clone();
-    }
-}
-
-fn despawn_roster(mut commands: Commands, entities: Query<Entity, With<PlayersScreen>>) {
-    for entity in &entities {
-        commands.entity(entity).despawn();
     }
 }
 
@@ -893,7 +863,7 @@ mod tests {
     fn names_on_screen(app: &mut App) -> Vec<String> {
         let mut rows: Vec<(usize, Entity)> = app
             .world_mut()
-            .query::<(Entity, &PlayerRow)>()
+            .query::<(Entity, &list::ListRow<RosterRows>)>()
             .iter(app.world())
             .map(|(e, row)| (row.0, e))
             .collect();

@@ -21,7 +21,7 @@ use bevy::prelude::*;
 use bevy::ui::Val::{Percent as percent, Px as px};
 
 use crate::achievements::Unlocked;
-use crate::controls::{InputMap, MenuNav};
+use crate::menu_list::list::{self, ListInput, ListPaint, ListPanel, ListRow};
 use crate::palette;
 use crate::states::AppState;
 use crate::ui::UiFont;
@@ -436,17 +436,13 @@ impl DrawnFrom {
     }
 }
 
-/// A row, by its position in the visible list.
-#[derive(Component)]
-struct AchievementRow(usize);
+/// The marker of the achievement rows (the shared list renderer); a
+/// row is identified by its position in the visible list.
+struct AwardRows;
 
 /// A category tab the mouse can pick — `None` is EVERYTHING.
 #[derive(Component)]
 struct CategoryTab(Option<Category>);
-
-/// The scrolling list itself.
-#[derive(Component)]
-struct AchievementList;
 
 /// Screens and systems of the achievements overview.
 pub struct AchievementsUiPlugin;
@@ -475,6 +471,7 @@ impl Plugin for AchievementsUiPlugin {
                         screen_keys,
                         screen_nav,
                         redraw_when_the_list_changes,
+                        paint_rows,
                         follow_selection,
                     )
                         .chain(),
@@ -570,15 +567,18 @@ fn spawn_screen(
             );
             ui_kit::action_bar(root, &font, &achievements_chips());
             spawn_tabs(root, &font, view.group, &unlocks);
-            root.spawn((ui_kit::scroll_panel(ui_kit::PANEL_WIDE), AchievementList))
-                .with_children(|panel| {
-                    if rows.is_empty() {
-                        crate::plot::empty_note(panel, &font, "NOTHING HERE UNDER THIS FILTER");
-                    }
-                    for (index, row) in rows.iter().enumerate() {
-                        spawn_row(panel, &font, index, row);
-                    }
-                });
+            root.spawn((
+                ui_kit::scroll_panel(ui_kit::PANEL_WIDE),
+                ListPanel::<AwardRows>::new(),
+            ))
+            .with_children(|panel| {
+                if rows.is_empty() {
+                    crate::plot::empty_note(panel, &font, "NOTHING HERE UNDER THIS FILTER");
+                }
+                for (index, row) in rows.iter().enumerate() {
+                    spawn_row(panel, &font, index, row);
+                }
+            });
             let back_label = if chosen.0.is_some() {
                 "PLAYERS"
             } else {
@@ -654,7 +654,7 @@ fn spawn_row(parent: &mut ChildSpawnerCommands, font: &UiFont, index: usize, row
     let earned = row.earned();
     let colour = tier_colour(row.entry().tier);
     parent
-        .spawn((ui_kit::row(), AchievementRow(index), Button))
+        .spawn(list::row_frame::<AwardRows>(index))
         .with_children(|node| {
             // No-wrap and clipped, both of them. `ui_kit::list_view`
             // measures ONE row and scrolls as though every row were
@@ -760,14 +760,8 @@ fn screen_keys(
 /// Cursor, category, leaving.
 #[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)] // Bevy system params
 fn screen_nav(
-    map: Res<InputMap>,
-    keys: Res<ButtonInput<KeyCode>>,
-    pads: Query<&bevy::input::gamepad::Gamepad>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
-    mut moved: MessageReader<bevy::window::CursorMoved>,
-    all_rows: Query<&AchievementRow>,
-    rows: Query<(&AchievementRow, &Interaction), Changed<Interaction>>,
+    mut list: ListInput<AwardRows>,
+    all_rows: Query<&ListRow<AwardRows>>,
     tabs: Query<(&CategoryTab, &Interaction), Changed<Interaction>>,
     mut back: Query<
         (&Interaction, &mut BackgroundColor, &mut BorderColor),
@@ -778,41 +772,25 @@ fn screen_nav(
     mut sounds: MessageWriter<crate::sfx::UiSound>,
     chosen: Res<AchievementsFor>,
 ) {
-    let nav = MenuNav::read(&map, &keys, pads.iter());
     let count = all_rows.iter().count();
-    if count > 0 {
-        if nav.up {
-            view.row = ui_kit::step_cursor(view.row, count, -1);
-            sounds.write(crate::sfx::UiSound::Navigate);
-        }
-        if nav.down {
-            view.row = ui_kit::step_cursor(view.row, count, 1);
-            sounds.write(crate::sfx::UiSound::Navigate);
-        }
-        // Wheel moves the cursor; `follow_selection` then keeps the
-        // row in view — the same path as up/down, so a long list
-        // scrolls under the mouse without a separate free-scroll path.
-        for event in wheel.read() {
-            if event.y > 0.0 {
-                view.row = ui_kit::step_cursor(view.row, count, -1);
-            } else if event.y < 0.0 {
-                view.row = ui_kit::step_cursor(view.row, count, 1);
-            }
-            if event.y != 0.0 {
-                sounds.write(crate::sfx::UiSound::Navigate);
-            }
-        }
-        let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
-        let mouse_moved = moved.read().next().is_some();
-        if let Some(index) = ui_kit::hover_moves_cursor(&pointer, mouse_moved) {
-            view.row = index;
-        }
+    let mut row = view.row;
+    let events = list.read(&mut row, count);
+    if row != view.row {
+        view.row = row;
     }
-    if nav.left {
+    // The wheel moves the cursor too; `follow_selection` then keeps
+    // the row in view — one path for keys and wheel. An empty list
+    // has nothing to move over, and so nothing to sound.
+    if count > 0
+        && let Some(sound) = list::sound_for(None, events.moved)
+    {
+        sounds.write(sound);
+    }
+    if events.nav.left {
         view.step_group(-1);
         sounds.write(crate::sfx::UiSound::Navigate);
     }
-    if nav.right {
+    if events.nav.right {
         view.step_group(1);
         sounds.write(crate::sfx::UiSound::Navigate);
     }
@@ -825,53 +803,34 @@ fn screen_nav(
         }
     }
     if ui_kit::wants_leave(
-        nav.back,
+        events.nav.back,
         ui_kit::back_pressed(&mut back),
-        mouse.just_pressed(MouseButton::Right),
+        events.right_click,
     ) {
         sounds.write(crate::sfx::UiSound::Back);
         next.set(back_to(chosen.0.is_some()));
     }
 }
 
-/// Paint the cursor row and keep it in view.
-#[allow(clippy::type_complexity, clippy::needless_pass_by_value)] // Bevy queries
-fn follow_selection(
+/// Dress the rows for the cursor. The rows carry their own texts —
+/// title, blurb, bar, tier — so the renderer paints only the frames.
+#[allow(clippy::needless_pass_by_value)] // Bevy system params
+fn paint_rows(
     view: Res<AchievementsView>,
     settings: Res<crate::config::Settings>,
-    mut rows: Query<(
-        &AchievementRow,
-        &ComputedNode,
-        &mut BackgroundColor,
-        &mut BorderColor,
-    )>,
-    mut lists: Query<(&mut ScrollPosition, &mut Node), With<AchievementList>>,
+    mut paint: ListPaint<AwardRows>,
 ) {
-    let mut count = 0;
-    let mut row_height = None;
-    for (row, computed, mut background, mut border) in &mut rows {
-        count += 1;
-        if computed.size().y > 0.0 && row_height.is_none() {
-            row_height = Some((computed.size().y, computed.inverse_scale_factor()));
-        }
-        let state = ui_kit::state_for(row.0 == view.row, false);
-        let style = ui_kit::styled_row(state, settings.high_contrast);
-        *background = BackgroundColor(style.background);
-        *border = BorderColor::all(style.accent);
-    }
-    let (Ok((mut scroll, mut node)), Some((height, inverse))) = (lists.single_mut(), row_height)
-    else {
-        return;
-    };
-    if let Some(window) = ui_kit::list_view(view.row, count, height, inverse, scroll.0.y) {
-        let wanted = px(window.max_height);
-        if node.max_height != wanted {
-            node.max_height = wanted;
-        }
-        if (window.scroll - scroll.0.y).abs() > 0.5 {
-            scroll.0.y = window.scroll;
-        }
-    }
+    paint.paint(view.row, settings.high_contrast, |_| String::new());
+}
+
+/// Keep the cursor row in view.
+#[allow(clippy::needless_pass_by_value)] // Bevy system params
+fn follow_selection(
+    view: Res<AchievementsView>,
+    rows: Query<(&ListRow<AwardRows>, &ComputedNode)>,
+    mut lists: Query<(&mut ScrollPosition, &mut Node), With<ListPanel<AwardRows>>>,
+) {
+    list::follow_cursor(view.row, rows.iter().count(), &rows, &mut lists);
 }
 
 /// Rebuild the list when the category, the filter or the sort has
@@ -1139,7 +1098,7 @@ mod tests {
 
         let rows = |app: &mut App| {
             app.world_mut()
-                .query::<&AchievementRow>()
+                .query::<&ListRow<AwardRows>>()
                 .iter(app.world())
                 .count()
         };

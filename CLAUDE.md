@@ -901,6 +901,16 @@ artifact, smoke-test it (neutral CWD!), then
   and the resting mouse moved the photographed row. With them fixed two
   runs are bit-identical, and `tools/shot-check.sh` compares exactly —
   a tolerance would have passed a removed letter (0.062 %).
+- **A query conflict (B0001) passes every wired test and stops the
+  game at launch.** Bevy checks system access when a schedule
+  initializes, and the wired tests build a system or two, never a whole
+  plugin — moving the roster onto `ListPaint` (which writes list texts)
+  beside a status-line query that did not exclude them made every
+  start panic while 875 tests stayed green. `access_tests` in
+  `lib.rs` initializes every schedule of the list screens; a new
+  screen plugin belongs in it, and a `SystemParam` that takes `&mut`
+  of a common component (`Text`, `Node`, `BackgroundColor`) needs the
+  `Without<…>` of its markers on every neighbouring query.
 - **`BEATBYTE_SHOT_TIMES` frames are named `beatbyte-gameplay-t<time>.png`**
   — a capture loop that stops on "two PNGs exist" stops on the menu
   shot and the fixed `gameplay-phrase` frame, before the timed ones.

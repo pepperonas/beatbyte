@@ -59,6 +59,18 @@ impl<L: Send + Sync + 'static> Default for ListPanel<L> {
     }
 }
 
+/// A row's frame — the marker, `Button` and the pointer position a
+/// click steps by — for a list whose rows carry their own content (the
+/// roster: a colour stripe, a name, a summary line).
+pub fn row_frame<L: Send + Sync + 'static>(index: usize) -> impl Bundle {
+    (
+        ListRow::<L>(index, PhantomData),
+        Button,
+        RelativeCursorPosition::default(),
+        ui_kit::row(),
+    )
+}
+
 /// Spawn one row per label into `panel`. Every row carries `Button`
 /// and a `RelativeCursorPosition`, so a click on its left half can
 /// step down and on its right half up.
@@ -68,33 +80,26 @@ pub fn spawn_rows<'a, L: Send + Sync + 'static>(
     labels: impl IntoIterator<Item = &'a str>,
 ) {
     for (index, label) in labels.into_iter().enumerate() {
-        panel
-            .spawn((
-                ListRow::<L>(index, PhantomData),
-                Button,
-                RelativeCursorPosition::default(),
-                ui_kit::row(),
-            ))
-            .with_children(|row| {
-                // Label and value are separate texts in a space-between
-                // line. A single padded string overflowed on the
-                // longest label ("TAP MODE (NO STRUM)") and hung its
-                // value out of the column.
-                row.spawn((
-                    ListLabel::<L>(index, PhantomData),
-                    Text::new(label.to_owned()),
-                    font.text(ui_kit::ROW),
-                    TextColor(palette::TEXT_DIM),
-                    ui_kit::label_node(),
-                ));
-                row.spawn((
-                    ListValue::<L>(index, PhantomData),
-                    Text::new(""),
-                    font.text(ui_kit::ROW),
-                    TextColor(palette::TEXT_DIM),
-                    ui_kit::value_node(),
-                ));
-            });
+        panel.spawn(row_frame::<L>(index)).with_children(|row| {
+            // Label and value are separate texts in a space-between
+            // line. A single padded string overflowed on the
+            // longest label ("TAP MODE (NO STRUM)") and hung its
+            // value out of the column.
+            row.spawn((
+                ListLabel::<L>(index, PhantomData),
+                Text::new(label.to_owned()),
+                font.text(ui_kit::ROW),
+                TextColor(palette::TEXT_DIM),
+                ui_kit::label_node(),
+            ));
+            row.spawn((
+                ListValue::<L>(index, PhantomData),
+                Text::new(""),
+                font.text(ui_kit::ROW),
+                TextColor(palette::TEXT_DIM),
+                ui_kit::value_node(),
+            ));
+        });
     }
 }
 
@@ -287,15 +292,23 @@ impl<L: Send + Sync + 'static> ListInput<'_, '_, L> {
 #[derive(SystemParam)]
 pub struct ListPaint<'w, 's, L: Send + Sync + 'static> {
     rows: Query<'w, 's, RowDress<L>>,
-    labels: Query<'w, 's, (&'static ListLabel<L>, &'static mut TextColor), Without<ListValue<L>>>,
+    labels: Query<'w, 's, LabelText<L>, Without<ListValue<L>>>,
     values: Query<'w, 's, ValueText<L>, Without<ListLabel<L>>>,
 }
 
-/// A row's frame: its fill and its border.
+/// A row's frame: its fill, its border and whether it is shown.
 type RowDress<L> = (
     &'static ListRow<L>,
+    &'static mut Node,
     &'static mut BackgroundColor,
     &'static mut BorderColor,
+);
+
+/// A label's text and colour.
+type LabelText<L> = (
+    &'static ListLabel<L>,
+    &'static mut Text,
+    &'static mut TextColor,
 );
 
 /// A value's text and colour.
@@ -309,21 +322,72 @@ impl<L: Send + Sync + 'static> ListPaint<'_, '_, L> {
     /// Dress every row for `cursor` and write each value `value(index)`
     /// gives — a text is only rewritten when it changed.
     pub fn paint(&mut self, cursor: usize, high_contrast: bool, value: impl Fn(usize) -> String) {
+        self.paint_full(cursor, high_contrast, usize::MAX, |index| {
+            (None, value(index))
+        });
+    }
+
+    /// [`Self::paint`] for a list whose length changes (the about
+    /// screen's changelog opens and closes): only the first `shown`
+    /// rows are displayed, and `text(index)` gives the value and, where
+    /// it is not the one spawned, the label.
+    pub fn paint_full(
+        &mut self,
+        cursor: usize,
+        high_contrast: bool,
+        shown: usize,
+        text: impl Fn(usize) -> (Option<String>, String),
+    ) {
+        self.paint_armed(cursor, None, high_contrast, shown, text);
+    }
+
+    /// [`Self::paint_full`] with one row drawn ARMED — waiting for the
+    /// player (the controls screen while it captures a binding).
+    pub fn paint_armed(
+        &mut self,
+        cursor: usize,
+        armed: Option<usize>,
+        high_contrast: bool,
+        shown: usize,
+        text: impl Fn(usize) -> (Option<String>, String),
+    ) {
         let style = |index: usize| {
-            ui_kit::styled_row(ui_kit::state_for(index == cursor, false), high_contrast)
+            ui_kit::styled_row(
+                ui_kit::state_for(index == cursor, armed == Some(index)),
+                high_contrast,
+            )
         };
-        for (row, mut background, mut border) in &mut self.rows {
+        for (row, mut node, mut background, mut border) in &mut self.rows {
+            let display = if row.0 < shown {
+                Display::Flex
+            } else {
+                Display::None
+            };
+            if node.display != display {
+                node.display = display;
+            }
+            if row.0 >= shown {
+                continue;
+            }
             let style = style(row.0);
             background.0 = style.background;
             *border = BorderColor::all(style.accent);
         }
-        for (label, mut color) in &mut self.labels {
+        for (label, mut words, mut color) in &mut self.labels {
+            if label.0 < shown
+                && let (Some(wanted), _) = text(label.0)
+                && words.0 != wanted
+            {
+                words.0 = wanted;
+            }
             color.0 = style(label.0).label;
         }
-        for (slot, mut text, mut color) in &mut self.values {
-            let wanted = value(slot.0);
-            if text.0 != wanted {
-                text.0 = wanted;
+        for (slot, mut words, mut color) in &mut self.values {
+            if slot.0 < shown {
+                let (_, wanted) = text(slot.0);
+                if words.0 != wanted {
+                    words.0 = wanted;
+                }
             }
             color.0 = style(slot.0).value;
         }

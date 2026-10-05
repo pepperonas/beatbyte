@@ -14,6 +14,31 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.71] - 2026-10-05
+
+### Changed
+
+- **About, controls, players and achievements run on the shared list
+  renderer** — every menu with a row cursor now reads its input and
+  dresses its rows the same way. They look the same pixel for pixel.
+  The controls screen's binding row is drawn "armed" while it waits for
+  a key; the roster and the achievements keep their own row contents
+  (colour stripe, summary, progress bar) inside the shared row frame.
+- **Controls follow the pointer only when it moves**, like every other
+  list: a window that opened under a resting mouse no longer took the
+  cursor.
+
+### Fixed
+
+- **The Escape that cancels a key capture on the controls screen does
+  not also leave the screen** — pinned by a test now that capturing and
+  navigating are two systems.
+- **The smoke test no longer fails a slow boot.** It pressed Escape at
+  3 s and declared failure at 6 s, both counted from the start; a boot
+  that reached the menu after 6 s (11.4 s, library on an external disk)
+  pressed and failed in the same frame. The failure is now timed from
+  the first press.
+
 ## [0.18.70] - 2026-10-05
 
 ### Changed
