@@ -53,7 +53,8 @@ pub struct RowTitle(pub usize);
 /// A row's artist line.
 #[derive(Component)]
 pub struct RowArtist(pub usize);
-/// A row's best accuracy, right-aligned.
+/// A row's right-hand column: the sorted-by value, else the best
+/// ([`row_detail`]).
 #[derive(Component)]
 pub struct RowBest(pub usize);
 /// The search line.
@@ -203,6 +204,54 @@ pub fn status_line(entry: &SongEntry) -> String {
         label => format!("AUDIO {label}"),
     };
     format!("{lyrics}  ·  {chart}  ·  {audio}")
+}
+
+/// The right-hand column of a row: the value the list is sorted by, so
+/// a list sorted by genre SHOWS the genres (it read as a jumble before,
+/// user 2026-10-06). Where the sort is the row's own text (title,
+/// artist), the library's order or the best itself, it is the best.
+/// A missing value says so with a dash. Pure — tested.
+#[must_use]
+pub fn row_detail(
+    entry: &SongEntry,
+    sort: SortMode,
+    difficulty: Difficulty,
+    best: Option<f64>,
+) -> String {
+    const NONE: &str = "—";
+    match sort {
+        SortMode::Genre => entry
+            .genre
+            .as_deref()
+            .map_or_else(|| NONE.to_owned(), str::to_uppercase),
+        SortMode::Length => entry.duration_s.map_or_else(
+            || NONE.to_owned(),
+            |d| format!("{}:{:02}", d as u32 / 60, d as u32 % 60),
+        ),
+        SortMode::Notes => entry
+            .note_count(difficulty)
+            .map_or_else(|| NONE.to_owned(), |n| n.to_string()),
+        SortMode::Diff => entry
+            .rating(difficulty)
+            .map_or_else(|| NONE.to_owned(), |r| format!("{r}/5")),
+        SortMode::Lyrics => match entry.polish.lyrics_mark() {
+            crate::library::LyricsMark::None => "NO LYRICS",
+            crate::library::LyricsMark::Line => "BY LINE",
+            crate::library::LyricsMark::Word => "WORD BY WORD",
+        }
+        .to_owned(),
+        SortMode::Chart => match entry.polish.chart_mark() {
+            crate::library::ChartMark::Draft => "FIRST".to_owned(),
+            crate::library::ChartMark::Redesigned(v) => format!("REV {v}"),
+        },
+        SortMode::Audio => match crate::loudness::audio_label(entry.loudness.as_ref()) {
+            "-" => NONE.to_owned(),
+            label => label.to_owned(),
+        },
+        SortMode::Standard | SortMode::Title | SortMode::Artist | SortMode::Best => {
+            best.map_or_else(String::new, |a| format!("{:.0}%", a * 100.0))
+        }
+    }
 }
 
 /// The label of a version chip: NORMAL, GS, CL, BG-01 … Pure.
@@ -487,13 +536,18 @@ pub fn spawn_rows(
                     &entry.artist,
                     difficulty,
                 )
-                .map_or_else(String::new, |b| format!("{:.0}%", b.accuracy * 100.0));
+                .map(|b| b.accuracy);
+            let detail = row_detail(entry, view.sort, difficulty, best);
             let versions = family.members.len();
+            // ONE line per song — title, then the artist quieter beside
+            // it. Two lines showed seven songs of 4 700 at a time.
             panel
                 .spawn((SongRow(position), Button, ui_kit::row()))
                 .with_children(|row| {
                     row.spawn(Node {
-                        flex_direction: FlexDirection::Column,
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Baseline,
+                        column_gap: px(10),
                         flex_grow: 1.0,
                         min_width: px(0.0),
                         overflow: Overflow::clip(),
@@ -508,6 +562,10 @@ pub fn spawn_rows(
                             font.text(ui_kit::ROW),
                             TextColor(palette::TEXT_DIM),
                             TextLayout::default().with_no_wrap(),
+                            Node {
+                                flex_shrink: 0.0,
+                                ..default()
+                            },
                         ));
                         let artist = if versions > 1 {
                             format!("{}   ·   {versions} VERSIONS", entry.artist)
@@ -520,13 +578,19 @@ pub fn spawn_rows(
                             font.text(ui_kit::SMALL),
                             TextColor(ui_kit::dimmed_subtitle()),
                             TextLayout::default().with_no_wrap(),
+                            Node {
+                                min_width: px(0.0),
+                                overflow: Overflow::clip(),
+                                ..default()
+                            },
                         ));
                     });
                     row.spawn((
                         RowBest(position),
-                        Text::new(best),
-                        font.text(ui_kit::ROW),
+                        Text::new(font.safe(&detail)),
+                        font.text(ui_kit::SMALL),
                         TextColor(palette::TEXT_DIM),
+                        TextLayout::default().with_no_wrap(),
                         Node {
                             flex_shrink: 0.0,
                             margin: UiRect::left(px(12)),
@@ -1025,6 +1089,62 @@ mod tests {
             "HARD   85%  ·  5"
         );
         assert_eq!(best_line(&e, Difficulty::Easy, None), "EASY   —");
+    }
+
+    #[test]
+    fn the_right_column_shows_what_the_list_is_sorted_by() {
+        // Sorted by genre, the list was a jumble of genres nobody could
+        // see (user, 2026-10-06): the column names the sorted-by value.
+        let e = entry();
+        let best = Some(0.854);
+        let at = |sort| row_detail(&e, sort, Difficulty::Hard, best);
+        assert_eq!(at(SortMode::Genre), "ROCK");
+        assert_eq!(at(SortMode::Length), "3:02");
+        assert_eq!(at(SortMode::Notes), "386");
+        assert_eq!(
+            at(SortMode::Diff),
+            format!(
+                "{}/5",
+                e.rating(Difficulty::Hard).expect("a chart and a length")
+            )
+        );
+        assert_eq!(at(SortMode::Lyrics), "NO LYRICS");
+        assert_eq!(at(SortMode::Chart), "FIRST");
+        assert_eq!(at(SortMode::Audio), "—");
+        // Where the sort is the row's own text, or the best itself,
+        // the column keeps the best.
+        for sort in [
+            SortMode::Standard,
+            SortMode::Title,
+            SortMode::Artist,
+            SortMode::Best,
+        ] {
+            assert_eq!(at(sort), "85%", "{sort:?}");
+        }
+        // A value that is missing says so instead of leaving a gap.
+        let mut bare = entry();
+        bare.genre = None;
+        bare.duration_s = None;
+        assert_eq!(
+            row_detail(&bare, SortMode::Genre, Difficulty::Hard, None),
+            "—"
+        );
+        assert_eq!(
+            row_detail(&bare, SortMode::Length, Difficulty::Hard, None),
+            "—"
+        );
+        assert_eq!(
+            row_detail(&bare, SortMode::Diff, Difficulty::Hard, None),
+            "—"
+        );
+        assert_eq!(
+            row_detail(&bare, SortMode::Notes, Difficulty::Easy, None),
+            "—"
+        );
+        assert_eq!(
+            row_detail(&bare, SortMode::Best, Difficulty::Hard, None),
+            ""
+        );
     }
 
     #[test]

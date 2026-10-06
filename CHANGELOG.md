@@ -14,6 +14,21 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.76] - 2026-10-06
+
+### Changed
+
+- **The song list shows ten songs instead of seven.** Each song is one
+  line now — the title, the artist quieter beside it — instead of two
+  (user: "die liste übersichtlicher gestalten"; with 4 700 songs in the
+  library, seven at a time was a keyhole).
+- **The right-hand column shows what the list is sorted by.** Sorted by
+  genre, the list read as a jumble because the genre was nowhere on
+  screen; the column now says ROCK, ACOUSTIC, … — and the length, note
+  count, rating, lyrics, chart or audio state for those sorts. Standard,
+  title, artist and best keep the best accuracy there. A missing value
+  shows a dash.
+
 ## [0.18.75] - 2026-10-05
 
 ### Changed

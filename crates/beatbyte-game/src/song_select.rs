@@ -551,17 +551,24 @@ fn cursor_after_change(
 /// hint and it quotes the filter. Without that third part the hint
 /// showed the first letter that emptied the list ("q") for the rest
 /// of the word ("queen"): an empty order equals an empty order.
+/// What decides whether the rows are rebuilt ([`rebuild_key`]).
+type RebuildKey = (Vec<usize>, Difficulty, String, SortMode);
+
 fn rebuild_key(
     order: &[usize],
     difficulty: Difficulty,
     filter: &str,
-) -> (Vec<usize>, Difficulty, String) {
+    sort: SortMode,
+) -> RebuildKey {
     let quoted = if order.is_empty() {
         filter.to_owned()
     } else {
         String::new()
     };
-    (order.to_vec(), difficulty, quoted)
+    // The sort is in the key because a row's right-hand column shows
+    // the sorted-by value: a sort that happens to leave the order as
+    // it was must still redraw the column.
+    (order.to_vec(), difficulty, quoted, sort)
 }
 
 /// The line that stands in for the list when it has no rows. Two
@@ -2105,7 +2112,7 @@ fn sync_view(
     selected: Res<SelectedDifficulty>,
     lists: Query<Entity, With<SongList>>,
     fresh: Query<(), Added<SongList>>,
-    mut rendered: Local<Option<(Vec<usize>, Difficulty, String)>>,
+    mut rendered: Local<Option<RebuildKey>>,
     mut last_filter: Local<String>,
 ) {
     let entered = !fresh.is_empty();
@@ -2185,7 +2192,7 @@ fn sync_view(
     raw.order = order;
     raw.families = families;
     raw.tree.clear();
-    let key = rebuild_key(&raw.order, difficulty, &raw.filter);
+    let key = rebuild_key(&raw.order, difficulty, &raw.filter, raw.sort);
     if (entered || library.is_changed() || rendered.as_ref() != Some(&key))
         && let Ok(list) = lists.single()
     {
@@ -2877,12 +2884,19 @@ mod view_tests {
     #[test]
     fn an_empty_list_rebuilds_when_the_filter_changes_a_full_one_does_not() {
         // The hint row quotes the filter; the song rows do not.
-        let empty_q = rebuild_key(&[], Difficulty::Medium, "q");
-        let empty_queen = rebuild_key(&[], Difficulty::Medium, "queen");
+        let empty_q = rebuild_key(&[], Difficulty::Medium, "q", SortMode::Standard);
+        let empty_queen = rebuild_key(&[], Difficulty::Medium, "queen", SortMode::Standard);
         assert_ne!(empty_q, empty_queen, "the hint must follow the word");
-        let full_a = rebuild_key(&[0, 1], Difficulty::Medium, "a");
-        let full_ab = rebuild_key(&[0, 1], Difficulty::Medium, "ab");
+        let full_a = rebuild_key(&[0, 1], Difficulty::Medium, "a", SortMode::Standard);
+        let full_ab = rebuild_key(&[0, 1], Difficulty::Medium, "ab", SortMode::Standard);
         assert_eq!(full_a, full_ab, "same rows, no rebuild per keystroke");
+        // The right-hand column shows the sorted-by value, so a new sort
+        // redraws the rows even when it leaves their order as it was.
+        assert_ne!(
+            rebuild_key(&[0, 1], Difficulty::Medium, "a", SortMode::Genre),
+            full_a,
+            "a sort that keeps the order must still redraw the column"
+        );
     }
 
     #[test]
