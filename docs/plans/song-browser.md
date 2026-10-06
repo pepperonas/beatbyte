@@ -22,7 +22,7 @@ chosen in the detail panel), **type to search** (no F).
 
 Every behaviour of `song_select.rs` (4 726 lines, 55 tests) is kept; only
 the presentation and the key layout change:
-- the model: `build_order` (fuzzy filter, eleven sorts, flip, persisted
+- the model: `build_order` (fuzzy filter, four sorts since 0.18.77 — track, artist, length, favorite — flip, persisted
   sort), `pair_twins` / `original_in`, `song_tree`, `prepare_song`,
   `may_start`, `delete_step`, `DownloadPrompt`, the per-player preferred
   difficulty, the MC queue, the preview (rest 0.55 s, fade), the import
@@ -60,7 +60,7 @@ the presentation and the key layout change:
   too); Backspace erases; Esc clears, a second Esc leaves; the count
   "4 / 1 466" beside it. Enter plays from a filtered list.
 - **Sort:** one line "SORT TITLE ▾" — a click or Ctrl+S cycles, a second
-  click on the same flips (all eleven sorts kept, persisted as today).
+  click on the same flips (eleven sorts then; four since 0.18.77, the user's choice).
 - **Actions (TAB, or the ⋯ button):** a list in the house style — Play,
   Edit chart, Info, Lyrics, Align, Redesign, Taste test, Queue / Play set,
   Add a song, Bridge import, Delete (asks; `Y` answers). Every tool keeps a

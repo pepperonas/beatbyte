@@ -129,7 +129,18 @@ fn telemetry(data: &Path, uid: &str, events: u32) {
 }
 
 /// The shared state two devices must agree on after a sync.
-fn shared_state(data: &Path) -> (String, String, String, String, Value, Vec<(String, String)>) {
+/// What two devices must hold identically after a sync.
+type Shared = (
+    String,
+    String,
+    String,
+    String,
+    String,
+    Value,
+    Vec<(String, String)>,
+);
+
+fn shared_state(data: &Path) -> Shared {
     let settings = read_json(&data.join("settings.json")).unwrap_or(Value::Null);
     let mut files = Vec::new();
     walk(&library_root(data), "", &mut files);
@@ -146,6 +157,7 @@ fn shared_state(data: &Path) -> (String, String, String, String, Value, Vec<(Str
         read(data, "history.jsonl"),
         read(data, "scores.json"),
         read(data, "achievements.json"),
+        read(data, "ratings.json"),
         beatbyte_sync::settings::shared_part(&settings),
         library,
     )
@@ -216,6 +228,25 @@ fn two_devices_end_with_one_career() {
         &json!({"theme": "ember", "latency_offset_ms": 120, "anthropic_api_key": "sk-b-secret",
         "changed_ms": {"theme": 500}}),
     );
+
+    // Favourites and stars: A favourites Heroes, B takes the favourite
+    // back LATER and stars a chart A never rated.
+    let mut ra = beatbyte_sync::ratings::Ratings::default();
+    ra.set(&martin_a.to_string(), "song:a|heroes", "favorite", 1, 100);
+    ra.set(&martin_a.to_string(), "song:a|heroes", "song", 4, 100);
+    write_json(
+        &a.join("ratings.json"),
+        &serde_json::to_value(&ra).expect("v"),
+    )
+    .expect("w");
+    let mut rb = beatbyte_sync::ratings::Ratings::default();
+    rb.set(&martin_b.to_string(), "song:a|heroes", "favorite", 0, 200);
+    rb.set(&martin_b.to_string(), "chart:id:s1", "chart", 3, 150);
+    write_json(
+        &b.join("ratings.json"),
+        &serde_json::to_value(&rb).expect("v"),
+    )
+    .expect("w");
 
     telemetry(&a, "u-a", 5);
     telemetry(&b, "u-b", 7);
@@ -302,6 +333,17 @@ fn two_devices_end_with_one_career() {
         by_song,
         BTreeMap::from([("s1".to_owned(), 950), ("s2".to_owned(), 50)])
     );
+
+    // Favourites and stars on the one person: the later un-favourite,
+    // the stars only A gave, the chart stars only B gave.
+    let ratings: beatbyte_sync::ratings::Ratings =
+        serde_json::from_value(read_json(&a.join("ratings.json")).expect("ratings"))
+            .expect("parse");
+    let m = martin.to_string();
+    assert_eq!(ratings.players.len(), 1, "{ratings:?}");
+    assert_eq!(ratings.get(&m, "song:a|heroes", "favorite"), 0);
+    assert_eq!(ratings.get(&m, "song:a|heroes", "song"), 4);
+    assert_eq!(ratings.get(&m, "chart:id:s1", "chart"), 3);
 
     // The earliest date an achievement was earned.
     let achievements = read_json(&a.join("achievements.json")).expect("achievements");

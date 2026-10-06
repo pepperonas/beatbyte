@@ -37,6 +37,12 @@ const GAP: f32 = 20.0;
 pub const BODY_H: f32 = 430.0;
 /// One rating pip.
 const PIP: f32 = 7.0;
+/// The favourite star beside the panel's title.
+const FAV_STAR: f32 = 24.0;
+/// One star of a rating line.
+const RATING_STAR: f32 = 14.0;
+/// The width of a rating line's label, so the stars line up.
+const RATING_LABEL_W: f32 = 96.0;
 
 /// The browser's root.
 #[derive(Component)]
@@ -96,9 +102,69 @@ pub struct PanelStatus;
 /// The panel beside the list (its height follows the list's).
 #[derive(Component)]
 pub struct DetailPanel;
-/// One line of the per-difficulty bests.
+/// The line of bests on every difficulty.
 #[derive(Component)]
-pub struct BestLine(pub Difficulty);
+pub struct BestLine;
+/// The star button that makes the selected song a favourite.
+#[derive(Component)]
+pub struct FavoriteButton;
+/// The label of one rating line, by its index in [`RATING_FIELDS`].
+#[derive(Component)]
+pub struct RatingLabel(pub usize);
+/// One star of a rating line: the line, and how many stars a click
+/// on it gives (1–5).
+#[derive(Component)]
+pub struct RatingStar(pub usize, pub u8);
+/// A row's favourite mark, by slot.
+#[derive(Component)]
+pub struct RowStar(pub usize);
+
+/// The three ratings, in their order on screen: the field in
+/// `ratings.json` and the label.
+pub const RATING_FIELDS: [(&str, &str); 3] = [
+    (beatbyte_sync::ratings::SONG, "SONG"),
+    (beatbyte_sync::ratings::CHART, "CHART"),
+    (beatbyte_sync::ratings::LYRICS, "LYRICS"),
+];
+
+/// Which rating line `Ctrl/Cmd+0`–`5` sets (`Ctrl/Cmd+Up/Down` moves
+/// it).
+#[derive(Resource, Default)]
+pub struct RatingFocus(pub usize);
+
+/// How many row entities the list owns. The list draws a WINDOW of the
+/// songs onto these: 4 700 songs used to be 4 700 rows of five
+/// entities each, all rebuilt on every keystroke of a search. More
+/// than the body ever shows (about twelve), so a resize never runs
+/// short.
+pub const POOL: usize = 18;
+
+/// Which song the first pooled row shows, and how many rows fit.
+#[derive(Resource, Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ListWindow {
+    /// Position (in the browser's order) of the first visible row.
+    pub top: usize,
+    /// Rows that fit in the body.
+    pub visible: usize,
+}
+
+/// The first row to show so the cursor is in view, moving as little as
+/// it can: unchanged while the cursor is visible, the cursor at the
+/// top edge when it went above, at the bottom edge when it went below,
+/// and never past the end. Pure — tested.
+#[must_use]
+pub fn window_top(cursor: usize, top: usize, visible: usize, len: usize) -> usize {
+    if visible == 0 || len == 0 {
+        return 0;
+    }
+    let mut top = top;
+    if cursor < top {
+        top = cursor;
+    } else if cursor >= top + visible {
+        top = cursor + 1 - visible;
+    }
+    top.min(len.saturating_sub(visible))
+}
 /// The line that reports imports and tools.
 #[derive(Component)]
 pub struct ImportNote;
@@ -132,11 +198,7 @@ pub fn search_line(filter: &str, shown: usize, total: usize, typing: bool) -> St
 /// The sort line. Pure — tested.
 #[must_use]
 pub fn sort_line(sort: SortMode, flipped: bool) -> String {
-    let order = match (sort, flipped) {
-        (SortMode::Standard, _) => "",
-        (_, false) => "",
-        (_, true) => "  REVERSED",
-    };
+    let order = if flipped { "  REVERSED" } else { "" };
     format!("SORT  {}{order}", sort.label())
 }
 
@@ -187,6 +249,24 @@ pub fn best_line(entry: &SongEntry, difficulty: Difficulty, best: Option<(u64, f
     )
 }
 
+/// The bests on every difficulty the song has, on one line: `—` for
+/// one not played yet. Pure — tested.
+#[must_use]
+pub fn bests_line(entry: &SongEntry, best: impl Fn(Difficulty) -> Option<f64>) -> String {
+    DIFFICULTIES
+        .iter()
+        .filter(|d| entry.note_count(**d).is_some())
+        .map(|d| {
+            let name = d.display_name().to_uppercase();
+            best(*d).map_or_else(
+                || format!("{name} —"),
+                |a| format!("{name} {:.0}%", a * 100.0),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("   ")
+}
+
 /// The state line: lyrics, chart and audio, in words. Pure — tested.
 #[must_use]
 pub fn status_line(entry: &SongEntry) -> String {
@@ -206,49 +286,20 @@ pub fn status_line(entry: &SongEntry) -> String {
     format!("{lyrics}  ·  {chart}  ·  {audio}")
 }
 
-/// The right-hand column of a row: the value the list is sorted by, so
-/// a list sorted by genre SHOWS the genres (it read as a jumble before,
-/// user 2026-10-06). Where the sort is the row's own text (title,
-/// artist), the library's order or the best itself, it is the best.
-/// A missing value says so with a dash. Pure — tested.
+/// A row's favourite mark.
+const ROW_STAR: f32 = 11.0;
+
+/// The right-hand column of a row: the length when the list is sorted
+/// by length (the one sort whose value is not on the row already),
+/// else the best of the selected difficulty. Pure — tested.
 #[must_use]
-pub fn row_detail(
-    entry: &SongEntry,
-    sort: SortMode,
-    difficulty: Difficulty,
-    best: Option<f64>,
-) -> String {
-    const NONE: &str = "—";
+pub fn row_detail(entry: &SongEntry, sort: SortMode, best: Option<f64>) -> String {
     match sort {
-        SortMode::Genre => entry
-            .genre
-            .as_deref()
-            .map_or_else(|| NONE.to_owned(), str::to_uppercase),
         SortMode::Length => entry.duration_s.map_or_else(
-            || NONE.to_owned(),
+            || "—".to_owned(),
             |d| format!("{}:{:02}", d as u32 / 60, d as u32 % 60),
         ),
-        SortMode::Notes => entry
-            .note_count(difficulty)
-            .map_or_else(|| NONE.to_owned(), |n| n.to_string()),
-        SortMode::Diff => entry
-            .rating(difficulty)
-            .map_or_else(|| NONE.to_owned(), |r| format!("{r}/5")),
-        SortMode::Lyrics => match entry.polish.lyrics_mark() {
-            crate::library::LyricsMark::None => "NO LYRICS",
-            crate::library::LyricsMark::Line => "BY LINE",
-            crate::library::LyricsMark::Word => "WORD BY WORD",
-        }
-        .to_owned(),
-        SortMode::Chart => match entry.polish.chart_mark() {
-            crate::library::ChartMark::Draft => "FIRST".to_owned(),
-            crate::library::ChartMark::Redesigned(v) => format!("REV {v}"),
-        },
-        SortMode::Audio => match crate::loudness::audio_label(entry.loudness.as_ref()) {
-            "-" => NONE.to_owned(),
-            label => label.to_owned(),
-        },
-        SortMode::Standard | SortMode::Title | SortMode::Artist | SortMode::Best => {
+        SortMode::Title | SortMode::Artist | SortMode::Favorite => {
             best.map_or_else(String::new, |a| format!("{:.0}%", a * 100.0))
         }
     }
@@ -291,7 +342,13 @@ fn body_panel(width: f32, scroll: bool) -> impl Bundle {
 }
 
 /// The whole screen. Rows and version chips are filled in later.
-pub fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView, total: usize) {
+pub fn spawn_shell(
+    commands: &mut Commands,
+    font: &UiFont,
+    star: &Handle<Image>,
+    view: &BrowserView,
+    total: usize,
+) {
     commands
         .spawn((BrowserScreen, ui_kit::screen_root()))
         .with_children(|root| {
@@ -350,9 +407,10 @@ pub fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView, t
                 ..default()
             })
             .with_children(|body| {
-                body.spawn((SongList, body_panel(LIST_W, true)));
+                body.spawn((SongList, body_panel(LIST_W, true)))
+                    .with_children(|list| spawn_pool(list, font, star));
                 body.spawn((DetailPanel, body_panel(PANEL_W, false))).with_children(|panel| {
-                    spawn_panel(panel, font);
+                    spawn_panel(panel, font, star);
                 });
             });
             root.spawn((
@@ -375,7 +433,7 @@ pub fn spawn_shell(commands: &mut Commands, font: &UiFont, view: &BrowserView, t
         });
 }
 
-fn spawn_panel(panel: &mut ChildSpawnerCommands, font: &UiFont) {
+fn spawn_panel(panel: &mut ChildSpawnerCommands, font: &UiFont, star: &Handle<Image>) {
     let small = |panel: &mut ChildSpawnerCommands, text: &str| {
         panel.spawn((
             Text::new(text.to_owned()),
@@ -387,12 +445,41 @@ fn spawn_panel(panel: &mut ChildSpawnerCommands, font: &UiFont) {
             },
         ));
     };
-    panel.spawn((
-        PanelTitle,
-        Text::new(""),
-        font.text(ui_kit::TITLE),
-        TextColor(palette::BRAND),
-    ));
+    // The title, and beside it the star that makes the song a
+    // favourite (a click toggles it; so does Ctrl/Cmd+F).
+    panel
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: px(10),
+            ..default()
+        })
+        .with_children(|top| {
+            top.spawn((
+                PanelTitle,
+                Text::new(""),
+                font.text(ui_kit::TITLE),
+                TextColor(palette::BRAND),
+                TextLayout::default().with_no_wrap(),
+                Node {
+                    flex_grow: 1.0,
+                    min_width: px(0.0),
+                    overflow: Overflow::clip(),
+                    ..default()
+                },
+            ));
+            top.spawn((
+                FavoriteButton,
+                Button,
+                ImageNode::new(star.clone()).with_color(palette::dimmed(palette::TEXT_DIM, 0.35)),
+                Node {
+                    width: px(FAV_STAR),
+                    height: px(FAV_STAR),
+                    flex_shrink: 0.0,
+                    ..default()
+                },
+            ));
+        });
     panel.spawn((
         PanelArtist,
         Text::new(""),
@@ -473,14 +560,53 @@ fn spawn_panel(panel: &mut ChildSpawnerCommands, font: &UiFont) {
             ..default()
         },
     ));
-    small(panel, "BEST");
-    for difficulty in DIFFICULTIES {
-        panel.spawn((
-            BestLine(difficulty),
-            Text::new(""),
-            font.text(ui_kit::SMALL),
-            TextColor(palette::TEXT_DIM),
-        ));
+    panel.spawn((
+        BestLine,
+        Text::new(""),
+        font.text(ui_kit::SMALL),
+        TextColor(palette::TEXT_DIM),
+        Node {
+            margin: UiRect::vertical(px(4)),
+            ..default()
+        },
+    ));
+    // Your own stars for the song, this version's chart and the
+    // lyrics: a click on a star sets it (on the one already set,
+    // clears it); Ctrl/Cmd+Up/Down picks a line, Ctrl/Cmd+0-5 sets it.
+    for (line, (_, label)) in RATING_FIELDS.iter().enumerate() {
+        panel
+            .spawn(Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: px(4),
+                ..default()
+            })
+            .with_children(|row| {
+                row.spawn((
+                    RatingLabel(line),
+                    Text::new(*label),
+                    font.text(ui_kit::SMALL),
+                    TextColor(palette::TEXT_DIM),
+                    TextLayout::default().with_no_wrap(),
+                    Node {
+                        width: px(RATING_LABEL_W),
+                        ..default()
+                    },
+                ));
+                for n in 1..=beatbyte_sync::ratings::MAX_STARS {
+                    row.spawn((
+                        RatingStar(line, n),
+                        Button,
+                        ImageNode::new(star.clone())
+                            .with_color(palette::dimmed(palette::TEXT_DIM, 0.25)),
+                        Node {
+                            width: px(RATING_STAR),
+                            height: px(RATING_STAR),
+                            ..default()
+                        },
+                    ));
+                }
+            });
     }
     panel.spawn((
         PanelStatus,
@@ -488,118 +614,218 @@ fn spawn_panel(panel: &mut ChildSpawnerCommands, font: &UiFont) {
         font.text(ui_kit::SMALL),
         TextColor(palette::dimmed(palette::TEXT_DIM, 0.85)),
         Node {
-            margin: UiRect::top(px(10)),
+            margin: UiRect::top(px(4)),
             ..default()
         },
     ));
 }
 
-/// One row per family, two lines each: the song and its artist on the
-/// left, the best accuracy of the selected difficulty on the right.
-#[allow(clippy::too_many_arguments)] // the row needs all of it
-pub fn spawn_rows(
-    commands: &mut Commands,
-    list: Entity,
-    font: &UiFont,
-    library: &SongLibrary,
-    view: &BrowserView,
-    scores: &ScoreBoard,
-    selected: Difficulty,
-) {
-    commands.entity(list).despawn_children();
-    commands.entity(list).with_children(|panel| {
-        if view.families.is_empty() {
-            panel.spawn((
-                EmptyHint,
-                Button,
-                Text::new(crate::song_select::empty_hint(
-                    library.entries.len(),
-                    &view.filter,
-                )),
-                font.text(ui_kit::ROW),
-                TextColor(palette::dimmed(palette::TEXT_DIM, 0.8)),
-            ));
-            return;
-        }
-        for (position, family) in view.families.iter().enumerate() {
-            let Some(&member) = view.order.get(position) else {
-                continue;
-            };
-            let Some(entry) = library.entries.get(member) else {
-                continue;
-            };
-            let difficulty = effective(entry, selected);
-            let best = scores
-                .best(
-                    entry.song_id.as_deref(),
-                    &entry.title,
-                    &entry.artist,
-                    difficulty,
-                )
-                .map(|b| b.accuracy);
-            let detail = row_detail(entry, view.sort, difficulty, best);
-            let versions = family.members.len();
-            // ONE line per song — title, then the artist quieter beside
-            // it. Two lines showed seven songs of 4 700 at a time.
-            panel
-                .spawn((SongRow(position), Button, ui_kit::row()))
-                .with_children(|row| {
-                    row.spawn(Node {
-                        flex_direction: FlexDirection::Row,
-                        align_items: AlignItems::Baseline,
-                        column_gap: px(10),
-                        flex_grow: 1.0,
-                        min_width: px(0.0),
-                        overflow: Overflow::clip(),
-                        ..default()
-                    })
-                    .with_children(|text| {
-                        text.spawn((
-                            RowTitle(position),
-                            Text::new(
-                                font.safe(&crate::song_family::row_title(&library.entries, family)),
-                            ),
-                            font.text(ui_kit::ROW),
-                            TextColor(palette::TEXT_DIM),
-                            TextLayout::default().with_no_wrap(),
-                            Node {
-                                flex_shrink: 0.0,
-                                ..default()
-                            },
-                        ));
-                        let artist = if versions > 1 {
-                            format!("{}   ·   {versions} VERSIONS", entry.artist)
-                        } else {
-                            entry.artist.clone()
-                        };
-                        text.spawn((
-                            RowArtist(position),
-                            Text::new(font.safe(&artist)),
-                            font.text(ui_kit::SMALL),
-                            TextColor(ui_kit::dimmed_subtitle()),
-                            TextLayout::default().with_no_wrap(),
-                            Node {
-                                min_width: px(0.0),
-                                overflow: Overflow::clip(),
-                                ..default()
-                            },
-                        ));
-                    });
-                    row.spawn((
-                        RowBest(position),
-                        Text::new(font.safe(&detail)),
-                        font.text(ui_kit::SMALL),
+/// The list's rows, made once: [`POOL`] of them, plus the note that
+/// stands in for an empty list. [`paint_window`] fills them.
+fn spawn_pool(list: &mut ChildSpawnerCommands, font: &UiFont, star: &Handle<Image>) {
+    list.spawn((
+        EmptyHint,
+        Button,
+        Text::new(""),
+        font.text(ui_kit::ROW),
+        TextColor(palette::dimmed(palette::TEXT_DIM, 0.8)),
+        Node {
+            display: Display::None,
+            ..default()
+        },
+    ));
+    for slot in 0..POOL {
+        // ONE line per song — the title, the artist quieter beside it.
+        // Two lines showed seven songs of 4 700 at a time.
+        list.spawn((SongRow(slot), Button, ui_kit::row()))
+            .with_children(|row| {
+                row.spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    column_gap: px(10),
+                    flex_grow: 1.0,
+                    min_width: px(0.0),
+                    overflow: Overflow::clip(),
+                    ..default()
+                })
+                .with_children(|text| {
+                    text.spawn((
+                        RowStar(slot),
+                        ImageNode::new(star.clone()).with_color(palette::BRAND),
+                        Node {
+                            width: px(ROW_STAR),
+                            height: px(ROW_STAR),
+                            flex_shrink: 0.0,
+                            display: Display::None,
+                            ..default()
+                        },
+                    ));
+                    text.spawn((
+                        RowTitle(slot),
+                        Text::new(""),
+                        font.text(ui_kit::ROW),
                         TextColor(palette::TEXT_DIM),
                         TextLayout::default().with_no_wrap(),
                         Node {
                             flex_shrink: 0.0,
-                            margin: UiRect::left(px(12)),
+                            ..default()
+                        },
+                    ));
+                    text.spawn((
+                        RowArtist(slot),
+                        Text::new(""),
+                        font.text(ui_kit::SMALL),
+                        TextColor(ui_kit::dimmed_subtitle()),
+                        TextLayout::default().with_no_wrap(),
+                        Node {
+                            min_width: px(0.0),
+                            overflow: Overflow::clip(),
                             ..default()
                         },
                     ));
                 });
+                row.spawn((
+                    RowBest(slot),
+                    Text::new(""),
+                    font.text(ui_kit::SMALL),
+                    TextColor(palette::TEXT_DIM),
+                    TextLayout::default().with_no_wrap(),
+                    Node {
+                        flex_shrink: 0.0,
+                        margin: UiRect::left(px(12)),
+                        ..default()
+                    },
+                ));
+            });
+    }
+}
+
+/// What one pooled row shows: title, artist line, right-hand column
+/// and whether the song is a favourite.
+type RowContent = (String, String, String, bool);
+
+/// What every row's content is read from.
+struct RowSource<'a> {
+    library: &'a SongLibrary,
+    view: &'a BrowserView,
+    scores: &'a ScoreBoard,
+    ratings: &'a crate::ratings::SongRatings,
+    player: &'a str,
+    font: &'a UiFont,
+    selected: Difficulty,
+}
+
+impl RowSource<'_> {
+    /// The content of the row at `position`, or `None` past the end.
+    fn row(&self, position: usize) -> Option<RowContent> {
+        let family = self.view.families.get(position)?;
+        let entry = self.library.entries.get(*self.view.order.get(position)?)?;
+        let difficulty = effective(entry, self.selected);
+        let best = self
+            .scores
+            .best(
+                entry.song_id.as_deref(),
+                &entry.title,
+                &entry.artist,
+                difficulty,
+            )
+            .map(|b| b.accuracy);
+        let versions = family.members.len();
+        let artist = if versions > 1 {
+            format!("{}   ·   {versions} VERSIONS", entry.artist)
+        } else {
+            entry.artist.clone()
+        };
+        Some((
+            self.font.safe(&crate::song_family::row_title(
+                &self.library.entries,
+                family,
+            )),
+            self.font.safe(&artist),
+            self.font.safe(&row_detail(entry, self.view.sort, best)),
+            self.ratings.favorite(self.player, entry),
+        ))
+    }
+}
+
+/// Fill the pooled rows with the songs of the current window. Every
+/// write is guarded: a `Text` that is assigned — even the same string —
+/// is laid out again, and this runs every frame.
+#[allow(
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+    clippy::needless_pass_by_value
+)] // Bevy system
+pub fn paint_window(
+    library: Res<SongLibrary>,
+    view: Res<BrowserView>,
+    window: Res<ListWindow>,
+    scores: Res<ScoreBoard>,
+    ratings: Res<crate::ratings::SongRatings>,
+    players: Res<crate::players::Players>,
+    selected: Res<SelectedDifficulty>,
+    font: Res<UiFont>,
+    mut rows: Query<(&SongRow, &mut Node), (Without<RowStar>, Without<EmptyHint>)>,
+    mut stars: Query<(&RowStar, &mut Node), (Without<SongRow>, Without<EmptyHint>)>,
+    mut texts: ParamSet<(
+        Query<(&RowTitle, &mut Text)>,
+        Query<(&RowArtist, &mut Text)>,
+        Query<(&RowBest, &mut Text)>,
+        Query<(&mut Text, &mut Node), With<EmptyHint>>,
+    )>,
+) {
+    let player = crate::ratings::player_key(&players);
+    let source = RowSource {
+        library: &library,
+        view: &view,
+        scores: &scores,
+        ratings: &ratings,
+        player: &player,
+        font: &font,
+        selected: selected.0,
+    };
+    let content: Vec<Option<RowContent>> = (0..POOL)
+        .map(|slot| source.row(window.top + slot))
+        .collect();
+    let shown = |slot: usize| slot < window.visible.max(1) && content[slot].is_some();
+    let display = |on: bool| if on { Display::Flex } else { Display::None };
+    for (row, mut node) in &mut rows {
+        let wanted = display(shown(row.0));
+        if node.display != wanted {
+            node.display = wanted;
         }
-    });
+    }
+    for (star, mut node) in &mut stars {
+        let wanted = display(content[star.0].as_ref().is_some_and(|c| c.3));
+        if node.display != wanted {
+            node.display = wanted;
+        }
+    }
+    let set = |text: &mut Text, wanted: &str| {
+        if text.0 != wanted {
+            wanted.clone_into(&mut text.0);
+        }
+    };
+    for (title, mut text) in &mut texts.p0() {
+        set(&mut text, content[title.0].as_ref().map_or("", |c| &c.0));
+    }
+    for (artist, mut text) in &mut texts.p1() {
+        set(&mut text, content[artist.0].as_ref().map_or("", |c| &c.1));
+    }
+    for (best, mut text) in &mut texts.p2() {
+        set(&mut text, content[best.0].as_ref().map_or("", |c| &c.2));
+    }
+    if let Ok((mut text, mut node)) = texts.p3().single_mut() {
+        let empty = view.families.is_empty();
+        let wanted = display(empty);
+        if node.display != wanted {
+            node.display = wanted;
+        }
+        if empty {
+            let hint = crate::song_select::empty_hint(library.entries.len(), &view.filter);
+            set(&mut text, &hint);
+        }
+    }
 }
 
 /// The version chips of the selected family, rebuilt when the family
@@ -729,14 +955,16 @@ fn selected_entry<'a>(
 pub fn paint_rows(
     settings: Res<crate::config::Settings>,
     cursor: Res<BrowserCursor>,
+    window: Res<ListWindow>,
     mut rows: Query<(&SongRow, &mut BackgroundColor, &mut BorderColor)>,
     mut titles: Query<(&RowTitle, &mut TextColor), (Without<RowArtist>, Without<RowBest>)>,
     mut artists: Query<(&RowArtist, &mut TextColor), (Without<RowTitle>, Without<RowBest>)>,
     mut bests: Query<(&RowBest, &mut TextColor), (Without<RowTitle>, Without<RowArtist>)>,
 ) {
-    let style = |position: usize| {
+    // The components carry the SLOT; the song in it is `top + slot`.
+    let style = |slot: usize| {
         ui_kit::styled_row(
-            ui_kit::state_for(position == cursor.0, false),
+            ui_kit::state_for(window.top + slot == cursor.0, false),
             settings.high_contrast,
         )
     };
@@ -876,8 +1104,9 @@ pub fn paint_panel(
     pips: Query<&Children, With<PanelPips>>,
     mut fills: Query<&mut BackgroundColor, PipOnly>,
     mut bests: Query<
-        (&BestLine, &mut Text),
+        &mut Text,
         (
+            With<BestLine>,
             Without<PanelTitle>,
             Without<PanelArtist>,
             Without<PanelFacts>,
@@ -943,18 +1172,103 @@ pub fn paint_panel(
             Some(&mut colour),
         );
     }
-    for (line, mut text) in &mut bests {
+    if let Ok(mut text) = bests.single_mut() {
         let wanted = entry.map_or_else(String::new, |e| {
-            let best = scores
-                .best(e.song_id.as_deref(), &e.title, &e.artist, line.0)
-                .map(|b| (b.score, b.accuracy));
-            best_line(e, line.0, best)
+            let line = bests_line(e, |d| {
+                scores
+                    .best(e.song_id.as_deref(), &e.title, &e.artist, d)
+                    .map(|b| b.accuracy)
+            });
+            format!("BEST   {line}")
         });
         set(&mut text, wanted);
     }
     let rating = entry.and_then(|e| e.rating(difficulty)).unwrap_or(0);
     for children in &pips {
         paint_pips(children, &mut fills, rating);
+    }
+}
+
+/// The favourite star and the three rating lines of the selected song:
+/// set stars bright, the rest dim; the line `Ctrl/Cmd+0`–`5` would set
+/// in the brand colour; a hovered star brightens up to itself, so the
+/// click is announced before it happens.
+#[allow(
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+    clippy::needless_pass_by_value
+)] // Bevy system
+pub fn paint_ratings(
+    library: Res<SongLibrary>,
+    view: Res<BrowserView>,
+    cursor: Res<BrowserCursor>,
+    ratings: Res<crate::ratings::SongRatings>,
+    players: Res<crate::players::Players>,
+    focus: Res<RatingFocus>,
+    mut favorite: Query<
+        (&Interaction, &mut ImageNode),
+        (With<FavoriteButton>, Without<RatingStar>),
+    >,
+    mut stars: Query<(&RatingStar, &Interaction, &mut ImageNode), Without<FavoriteButton>>,
+    mut labels: Query<(&RatingLabel, &mut TextColor, &mut Text)>,
+) {
+    let entry = selected_entry(&library, &view, &cursor);
+    let player = crate::ratings::player_key(&players);
+    let on = palette::BRAND;
+    let off = palette::dimmed(palette::TEXT_DIM, 0.25);
+    for (interaction, mut image) in &mut favorite {
+        let fav = entry.is_some_and(|e| ratings.favorite(&player, e));
+        let wanted = match (fav, *interaction) {
+            (true, _) => on,
+            (false, Interaction::None) => palette::dimmed(palette::TEXT_DIM, 0.35),
+            (false, _) => palette::dimmed(palette::BRAND, 0.6),
+        };
+        if image.color != wanted {
+            image.color = wanted;
+        }
+    }
+    // A hovered star previews its value on its own line.
+    let mut hover: Option<(usize, u8)> = None;
+    for (star, interaction, _) in &stars {
+        if *interaction != Interaction::None {
+            hover = Some((star.0, star.1));
+        }
+    }
+    for (star, _, mut image) in &mut stars {
+        let value = entry.map_or(0, |e| ratings.value(&player, e, RATING_FIELDS[star.0].0));
+        let wanted = match hover {
+            Some((line, n)) if line == star.0 => {
+                if star.1 <= n {
+                    palette::dimmed(palette::BRAND, 0.7)
+                } else {
+                    off
+                }
+            }
+            _ if star.1 <= value => on,
+            _ => off,
+        };
+        if image.color != wanted {
+            image.color = wanted;
+        }
+    }
+    for (label, mut colour, mut text) in &mut labels {
+        let wanted = if label.0 == focus.0 {
+            palette::BRAND
+        } else {
+            palette::TEXT_DIM
+        };
+        if colour.0 != wanted {
+            colour.0 = wanted;
+        }
+        let name = RATING_FIELDS[label.0].1;
+        // The chart line names the version it is about.
+        let line = match (label.0, entry) {
+            (1, Some(e)) => format!("{name}  {}", version_label(e)),
+            _ => name.to_owned(),
+        };
+        if text.0 != line {
+            text.0 = line;
+        }
     }
 }
 
@@ -985,37 +1299,46 @@ pub fn sync_versions(
 /// a row cut through its letters at the bottom read as a broken list.
 /// The height depends only on the row's measured height, never on how
 /// many songs a search left, so the page does not move while typing.
+/// The list does not scroll: it moves its WINDOW ([`window_top`]).
 #[allow(clippy::needless_pass_by_value, clippy::type_complexity)] // Bevy system
 pub fn follow_selection(
     cursor: Res<BrowserCursor>,
     view: Res<BrowserView>,
+    mut window: ResMut<ListWindow>,
     rows: Query<&ComputedNode, With<SongRow>>,
-    mut lists: Query<(&mut ScrollPosition, &mut Node), (With<SongList>, Without<DetailPanel>)>,
+    mut lists: Query<&mut Node, (With<SongList>, Without<DetailPanel>)>,
     mut panels: Query<&mut Node, (With<DetailPanel>, Without<SongList>)>,
 ) {
-    let Ok((mut scroll, mut node)) = lists.single_mut() else {
-        return;
-    };
-    let Some(row) = rows.iter().find(|node| node.size().y > 0.0) else {
-        return;
-    };
-    let row_h = row.size().y * row.inverse_scale_factor();
-    let height =
-        ui_kit::whole_rows_height(row_h, ui_kit::ROW_GAP, usize::MAX, BODY_H).unwrap_or(BODY_H);
-    for target in std::iter::once(&mut *node).chain(panels.iter_mut().map(|n| n.into_inner())) {
-        if target.height != px(height) {
-            target.height = px(height);
-            target.max_height = px(height);
+    let len = view.order.len();
+    if let Some(row) = rows.iter().find(|node| node.size().y > 0.0) {
+        let row_h = row.size().y * row.inverse_scale_factor();
+        let height =
+            ui_kit::whole_rows_height(row_h, ui_kit::ROW_GAP, usize::MAX, BODY_H).unwrap_or(BODY_H);
+        for target in lists
+            .iter_mut()
+            .chain(panels.iter_mut())
+            .map(bevy::prelude::Mut::into_inner)
+        {
+            if target.height != px(height) {
+                target.height = px(height);
+                target.max_height = px(height);
+            }
         }
+        let viewport_h = height - 2.0 * (ui_kit::PANEL_PAD + ui_kit::PANEL_BORDER);
+        let fits = ((viewport_h + ui_kit::ROW_GAP) / (row_h + ui_kit::ROW_GAP)).floor();
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // a small count
+        let fits = (fits.max(1.0) as usize).min(POOL);
+        if window.visible != fits {
+            window.visible = fits;
+        }
+    } else if window.visible == 0 {
+        // Nothing measured yet: show what the pool holds, and let the
+        // next frame measure.
+        window.visible = POOL;
     }
-    let count = view.order.len() as f32;
-    let content_h = count.mul_add(row_h, (count - 1.0).max(0.0) * ui_kit::ROW_GAP);
-    let viewport_h = height - 2.0 * (ui_kit::PANEL_PAD + ui_kit::PANEL_BORDER);
-    #[allow(clippy::cast_precision_loss)] // a row index
-    let row_top = cursor.0 as f32 * (row_h + ui_kit::ROW_GAP);
-    let wanted = ui_kit::scroll_to_show(row_top, row_h, viewport_h, content_h, scroll.0.y);
-    if (wanted - scroll.0.y).abs() > 0.5 {
-        scroll.0.y = wanted;
+    let top = window_top(cursor.0, window.top, window.visible, len);
+    if window.top != top {
+        window.top = top;
     }
 }
 
@@ -1057,9 +1380,9 @@ mod tests {
 
     #[test]
     fn the_sort_line_names_the_sort_and_says_when_it_is_reversed() {
-        assert_eq!(sort_line(SortMode::Title, false), "SORT  TITLE");
-        assert_eq!(sort_line(SortMode::Title, true), "SORT  TITLE  REVERSED");
-        assert_eq!(sort_line(SortMode::Standard, true), "SORT  STANDARD");
+        assert_eq!(sort_line(SortMode::Title, false), "SORT  TRACK");
+        assert_eq!(sort_line(SortMode::Title, true), "SORT  TRACK  REVERSED");
+        assert_eq!(sort_line(SortMode::Favorite, false), "SORT  FAVORITE");
     }
 
     #[test]
@@ -1092,59 +1415,46 @@ mod tests {
     }
 
     #[test]
-    fn the_right_column_shows_what_the_list_is_sorted_by() {
-        // Sorted by genre, the list was a jumble of genres nobody could
-        // see (user, 2026-10-06): the column names the sorted-by value.
+    fn the_right_column_shows_the_length_sorted_by_length_else_the_best() {
+        // Sorted by length the column says the length — the one sort
+        // whose value is not on the row already; else the best.
         let e = entry();
-        let best = Some(0.854);
-        let at = |sort| row_detail(&e, sort, Difficulty::Hard, best);
-        assert_eq!(at(SortMode::Genre), "ROCK");
-        assert_eq!(at(SortMode::Length), "3:02");
-        assert_eq!(at(SortMode::Notes), "386");
-        assert_eq!(
-            at(SortMode::Diff),
-            format!(
-                "{}/5",
-                e.rating(Difficulty::Hard).expect("a chart and a length")
-            )
-        );
-        assert_eq!(at(SortMode::Lyrics), "NO LYRICS");
-        assert_eq!(at(SortMode::Chart), "FIRST");
-        assert_eq!(at(SortMode::Audio), "—");
-        // Where the sort is the row's own text, or the best itself,
-        // the column keeps the best.
-        for sort in [
-            SortMode::Standard,
-            SortMode::Title,
-            SortMode::Artist,
-            SortMode::Best,
-        ] {
-            assert_eq!(at(sort), "85%", "{sort:?}");
+        assert_eq!(row_detail(&e, SortMode::Length, Some(0.854)), "3:02");
+        for sort in [SortMode::Title, SortMode::Artist, SortMode::Favorite] {
+            assert_eq!(row_detail(&e, sort, Some(0.854)), "85%", "{sort:?}");
+            assert_eq!(row_detail(&e, sort, None), "", "{sort:?}");
         }
-        // A value that is missing says so instead of leaving a gap.
         let mut bare = entry();
-        bare.genre = None;
         bare.duration_s = None;
+        assert_eq!(row_detail(&bare, SortMode::Length, None), "—");
+    }
+
+    #[test]
+    fn the_bests_line_names_every_difficulty_the_song_has() {
+        let e = entry(); // Medium and Hard
+        let line = bests_line(&e, |d| (d == Difficulty::Hard).then_some(0.854));
+        assert_eq!(line, "MEDIUM —   HARD 85%");
+        assert_eq!(bests_line(&e, |_| None), "MEDIUM —   HARD —");
+    }
+
+    #[test]
+    fn the_window_moves_only_as_far_as_the_cursor_needs() {
+        // Inside the window: nothing moves.
+        assert_eq!(window_top(5, 3, 10, 100), 3);
+        // Above it: the cursor becomes the top row.
+        assert_eq!(window_top(2, 3, 10, 100), 2);
+        // Below it: the cursor becomes the bottom row.
+        assert_eq!(window_top(13, 3, 10, 100), 4);
+        // Never past the end, even from a stale top.
+        assert_eq!(window_top(99, 95, 10, 100), 90);
         assert_eq!(
-            row_detail(&bare, SortMode::Genre, Difficulty::Hard, None),
-            "—"
+            window_top(0, 50, 10, 5),
+            0,
+            "a list shorter than the window starts at 0"
         );
-        assert_eq!(
-            row_detail(&bare, SortMode::Length, Difficulty::Hard, None),
-            "—"
-        );
-        assert_eq!(
-            row_detail(&bare, SortMode::Diff, Difficulty::Hard, None),
-            "—"
-        );
-        assert_eq!(
-            row_detail(&bare, SortMode::Notes, Difficulty::Easy, None),
-            "—"
-        );
-        assert_eq!(
-            row_detail(&bare, SortMode::Best, Difficulty::Hard, None),
-            ""
-        );
+        // Nothing to show, or no room: the top is 0.
+        assert_eq!(window_top(3, 7, 0, 100), 0);
+        assert_eq!(window_top(0, 7, 10, 0), 0);
     }
 
     #[test]

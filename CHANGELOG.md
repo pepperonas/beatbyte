@@ -14,6 +14,42 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.77] - 2026-10-07
+
+### Added
+
+- **Favourites.** A star beside the song's title in the browser's panel
+  (or `Ctrl`/`Cmd+F`) makes the song a favourite; favourites carry a
+  small star in the list. A favourite belongs to the song, whichever of
+  its GS / CL / BG versions is selected.
+- **Your own stars, 0 to 5, for the song, the chart and the lyrics.**
+  Three lines in the panel: click a star to set it (the one already set
+  clears it), or `Ctrl`/`Cmd+↑/↓` picks a line and `Ctrl`/`Cmd+0`–`5`
+  sets it. Song and lyrics stars are the song's; chart stars belong to
+  the version (GS, CL and every BG number are different charts).
+- **They are kept per player and travel between devices.** A new file,
+  `ratings.json`, beside the scores; `beatbyte-cli sync` merges it per
+  field with the newest change winning — taking a favourite back on one
+  Mac takes it back on the other.
+
+### Changed
+
+- **Four sorts instead of eleven** (the user: "reduziere die
+  möglichkeiten … auf artist, track, länge, favorit"): TRACK (the
+  default), ARTIST, LENGTH and FAVORITE — favourites first, then by
+  title. A sort saved by an older build that no longer exists falls back
+  to TRACK. The right-hand column shows the length when the list is
+  sorted by length, else your best.
+- **The panel is tighter:** the bests on every difficulty are one line.
+- **The song list draws a window, not the whole library.** It owns 18
+  rows and shows the songs in view on them, where it used to build a
+  row (five entities) for every one of the library's songs — 4 700
+  songs, about 23 500 entities, rebuilt on every keystroke of a search.
+- **The search's ranking is a lookup, not a scan.** Ranking the matches
+  searched the list of matches on every comparison: 12.3 ms of a
+  one-letter search over 4 706 songs on an M1 Pro; the whole order now
+  takes 7.8 ms, and it is built once when no search is typed.
+
 ## [0.18.76] - 2026-10-06
 
 ### Changed

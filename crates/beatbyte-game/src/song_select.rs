@@ -8,7 +8,6 @@ use crate::controls::MenuNav;
 
 use crate::boot::{BuiltinSongs, LoadedSong, SongAudio};
 use crate::library::{SongEntry, SongLibrary, SongSource};
-use crate::scores::ScoreBoard;
 use crate::song_browser_view::{
     self as look, ActionsButton, BrowserScreen, DiffChip, EmptyHint, ImportNote, SongList, SongRow,
     SortButton, VersionChip,
@@ -39,36 +38,22 @@ impl Default for SelectedDifficulty {
 pub struct BrowserCursor(pub usize);
 
 /// How the list is ordered.
+///
+/// Four orders since 2026-10-06 (the user: "reduziere die möglichkeiten
+/// … auf artist, track, länge, favorit"). The eleven before — genre,
+/// notes, rating, best, lyrics, chart and audio state among them —
+/// made the SORT button a long cycle to the one wanted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SortMode {
-    /// The library's own order: built-ins first, then by title — the
-    /// order the browser has always shown, and the default.
+    /// Alphabetical by title — the default.
     #[default]
-    Standard,
-    /// Alphabetical by title.
     Title,
     /// Alphabetical by artist.
     Artist,
-    /// Alphabetical by genre (untagged songs last).
-    Genre,
     /// Shortest first.
     Length,
-    /// Highest personal best first (no record last).
-    Best,
-    /// Most notes first (of the selected difficulty).
-    Notes,
-    /// Highest challenge rating first.
-    Diff,
-    /// The LYRICS column: songs whose words are still untimed first,
-    /// then the word-timed ones, then the ones with no lyrics.
-    Lyrics,
-    /// The CHART column: the import's own draft first, then by
-    /// generation.
-    Chart,
-    /// The AUDIO column: the files the loudness pass judged poor
-    /// first, then fair, then good, the unmeasured last — a list of
-    /// what still wants a better file.
-    Audio,
+    /// The current player's favourites first, then by title.
+    Favorite,
 }
 
 impl SortMode {
@@ -76,17 +61,10 @@ impl SortMode {
     #[must_use]
     pub fn next(self) -> SortMode {
         match self {
-            SortMode::Standard => SortMode::Title,
             SortMode::Title => SortMode::Artist,
-            SortMode::Artist => SortMode::Genre,
-            SortMode::Genre => SortMode::Length,
-            SortMode::Length => SortMode::Notes,
-            SortMode::Notes => SortMode::Diff,
-            SortMode::Diff => SortMode::Best,
-            SortMode::Best => SortMode::Lyrics,
-            SortMode::Lyrics => SortMode::Chart,
-            SortMode::Chart => SortMode::Audio,
-            SortMode::Audio => SortMode::Standard,
+            SortMode::Artist => SortMode::Length,
+            SortMode::Length => SortMode::Favorite,
+            SortMode::Favorite => SortMode::Title,
         }
     }
 
@@ -94,39 +72,25 @@ impl SortMode {
     #[must_use]
     pub fn label(self) -> &'static str {
         match self {
-            SortMode::Standard => "STANDARD",
-            SortMode::Title => "TITLE",
+            SortMode::Title => "TRACK",
             SortMode::Artist => "ARTIST",
-            SortMode::Genre => "GENRE",
             SortMode::Length => "LENGTH",
-            SortMode::Best => "BEST",
-            SortMode::Notes => "NOTES",
-            SortMode::Diff => "DIFF",
-            SortMode::Lyrics => "LYRICS",
-            SortMode::Chart => "CHART",
-            SortMode::Audio => "AUDIO",
+            SortMode::Favorite => "FAVORITE",
         }
     }
-}
 
-impl SortMode {
     /// Parse a persisted label (the inverse of [`SortMode::label`],
-    /// case-insensitive). `None` for anything unknown, so a mangled
-    /// settings file falls back instead of panicking.
+    /// case-insensitive; `title` is the label before 0.18.77). `None`
+    /// for anything else — including the sorts that were removed — so
+    /// a settings file from an older build falls back to the default
+    /// instead of failing.
     #[must_use]
     pub fn from_label(label: &str) -> Option<SortMode> {
         match label.to_lowercase().as_str() {
-            "standard" => Some(SortMode::Standard),
-            "title" => Some(SortMode::Title),
+            "track" | "title" => Some(SortMode::Title),
             "artist" => Some(SortMode::Artist),
-            "genre" => Some(SortMode::Genre),
             "length" => Some(SortMode::Length),
-            "best" => Some(SortMode::Best),
-            "notes" => Some(SortMode::Notes),
-            "diff" => Some(SortMode::Diff),
-            "lyrics" | "lyr" => Some(SortMode::Lyrics),
-            "chart" => Some(SortMode::Chart),
-            "audio" => Some(SortMode::Audio),
+            "favorite" | "favourite" => Some(SortMode::Favorite),
             _ => None,
         }
     }
@@ -134,12 +98,10 @@ impl SortMode {
 
 /// What a click on a column header does: a new column sorts by it in
 /// its default direction, the ACTIVE column flips the direction —
-/// the convention of every library UI. Standard has no direction to
-/// flip; clicking its concept (there is no Standard header) cannot
-/// happen, but the function stays total.
+/// the convention of every library UI.
 #[must_use]
 pub fn sort_click(current: SortMode, flipped: bool, clicked: SortMode) -> (SortMode, bool) {
-    if clicked == current && clicked != SortMode::Standard {
+    if clicked == current {
         (current, !flipped)
     } else {
         (clicked, false)
@@ -245,120 +207,54 @@ fn build_order(
     entries: &[SongEntry],
     sort: SortMode,
     flipped: bool,
-    difficulty: Difficulty,
     filter: &str,
-    best: impl Fn(&SongEntry) -> Option<u64>,
+    favorite: impl Fn(&SongEntry) -> bool,
 ) -> Vec<usize> {
     // The filter, fuzzily: every entry gets a score or is out, and
     // the survivors are RANKED by it below, after the sort — so the
     // song the player meant sits first and the chosen sort only
     // breaks ties. See `crate::search` for the rules.
     let query = crate::search::words(filter);
-    let scored: Vec<(usize, u32)> = entries
-        .iter()
-        .enumerate()
-        .filter_map(|(i, entry)| {
+    let mut score = vec![0_u32; entries.len()];
+    let mut order: Vec<usize> = Vec::with_capacity(entries.len());
+    for (i, entry) in entries.iter().enumerate() {
+        if let Some(s) =
             crate::search::Haystack::new(&entry.title, &entry.artist, entry.genre.as_deref())
                 .score(&query)
-                .map(|score| (i, score))
-        })
-        .collect();
-    let mut order: Vec<usize> = scored.iter().map(|(i, _)| *i).collect();
-    let tie = |i: &usize| (fold(&entries[*i].title), *i);
-    match sort {
-        SortMode::Standard => {}
-        SortMode::Title => order.sort_by_key(tie),
-        SortMode::Artist => order.sort_by_key(|i| (fold(&entries[*i].artist), tie(i))),
-        SortMode::Genre => {
-            // Untagged songs sort last, not first: an absent genre is
-            // an absence, not the alphabet's beginning.
-            order.sort_by_key(|i| {
-                (
-                    entries[*i].genre.is_none(),
-                    entries[*i].genre.as_deref().map(fold).unwrap_or_default(),
-                    tie(i),
-                )
-            });
-        }
-        SortMode::Length => {
-            order.sort_by_key(|i| {
-                (
-                    entries[*i].duration_s.is_none(),
-                    entries[*i].duration_s.map_or(0, |d| (d * 1000.0) as u64),
-                    tie(i),
-                )
-            });
-        }
-        SortMode::Best => {
-            order.sort_by_key(|i| {
-                let score = best(&entries[*i]);
-                (
-                    score.is_none(),
-                    std::cmp::Reverse(score.unwrap_or(0)),
-                    tie(i),
-                )
-            });
-        }
-        SortMode::Lyrics => {
-            // Untimed words first: a browser sorted by this column is
-            // a list of what still wants aligning.
-            order.sort_by_key(|i| {
-                let polish = entries[*i].polish;
-                let rank = match (polish.has_lyrics, polish.aligned) {
-                    (true, false) => 0,
-                    (true, true) => 1,
-                    (false, _) => 2,
-                };
-                (rank, tie(i))
-            });
-        }
-        SortMode::Chart => {
-            // The import's own draft first, then by generation.
-            order.sort_by_key(|i| (entries[*i].polish.chart_version.unwrap_or(0), tie(i)));
-        }
-        SortMode::Audio => {
-            // The poor files first: a browser sorted by this column
-            // is a list of what still wants a better file.
-            order.sort_by_key(|i| {
-                (
-                    crate::loudness::audio_rank(entries[*i].loudness.as_ref()),
-                    tie(i),
-                )
-            });
-        }
-        SortMode::Notes => {
-            order.sort_by_key(|i| {
-                let notes = entries[*i].note_count(difficulty);
-                (
-                    notes.is_none(),
-                    std::cmp::Reverse(notes.unwrap_or(0)),
-                    tie(i),
-                )
-            });
-        }
-        SortMode::Diff => {
-            order.sort_by_key(|i| {
-                let rating = entries[*i].rating(difficulty);
-                (
-                    rating.is_none(),
-                    std::cmp::Reverse(rating.unwrap_or(0)),
-                    // Same rating: the denser chart is the harder one.
-                    std::cmp::Reverse(entries[*i].note_count(difficulty).unwrap_or(0)),
-                    tie(i),
-                )
-            });
+        {
+            score[i] = s;
+            order.push(i);
         }
     }
-    // Against the grain: the flip reverses every mode's default
-    // direction. Standard is the library's own order and keeps it -
-    // there is no "reverse standard" a player would ask for by name.
-    if flipped && sort != SortMode::Standard {
+    // Keys computed ONCE per entry (`sort_by_cached_key`), not once per
+    // comparison: folding a title allocates, and a sort compares each
+    // entry about log2(n) = 12 times in a library of 4 700.
+    let tie = |i: usize| (fold(&entries[i].title), i);
+    match sort {
+        SortMode::Title => order.sort_by_cached_key(|i| tie(*i)),
+        SortMode::Artist => order.sort_by_cached_key(|i| (fold(&entries[*i].artist), tie(*i))),
+        SortMode::Length => order.sort_by_cached_key(|i| {
+            (
+                entries[*i].duration_s.is_none(),
+                entries[*i].duration_s.map_or(0, |d| (d * 1000.0) as u64),
+                tie(*i),
+            )
+        }),
+        SortMode::Favorite => {
+            order.sort_by_cached_key(|i| (!favorite(&entries[*i]), tie(*i)));
+        }
+    }
+    // Against the grain: the flip reverses the mode's default direction.
+    if flipped {
         order.reverse();
     }
     if !query.is_empty() {
-        // Stable: equal scores keep the sort's order.
-        let score_of = |i: &usize| scored.iter().find(|(j, _)| j == i).map_or(0, |(_, s)| *s);
-        order.sort_by_key(|i| std::cmp::Reverse(score_of(i)));
+        // Stable: equal scores keep the sort's order. The score is
+        // looked up by index — it was a linear search through every
+        // match on every comparison: 12.3 ms of a one-letter search over
+        // 4 706 songs on an M1 Pro, the whole order is 7.5 ms now
+        // (`order_bench`).
+        order.sort_by_key(|i| std::cmp::Reverse(score[*i]));
     }
     pair_twins(entries, order)
 }
@@ -551,26 +447,6 @@ fn cursor_after_change(
 /// hint and it quotes the filter. Without that third part the hint
 /// showed the first letter that emptied the list ("q") for the rest
 /// of the word ("queen"): an empty order equals an empty order.
-/// What decides whether the rows are rebuilt ([`rebuild_key`]).
-type RebuildKey = (Vec<usize>, Difficulty, String, SortMode);
-
-fn rebuild_key(
-    order: &[usize],
-    difficulty: Difficulty,
-    filter: &str,
-    sort: SortMode,
-) -> RebuildKey {
-    let quoted = if order.is_empty() {
-        filter.to_owned()
-    } else {
-        String::new()
-    };
-    // The sort is in the key because a row's right-hand column shows
-    // the sorted-by value: a sort that happens to leave the order as
-    // it was must still redraw the column.
-    (order.to_vec(), difficulty, quoted, sort)
-}
-
 /// The line that stands in for the list when it has no rows. Two
 /// different silences, two different sentences: a library with songs
 /// in it whose filter matched nothing can be cleared with ESC, while
@@ -601,6 +477,8 @@ impl Plugin for SongSelectPlugin {
             .init_resource::<ActionBarClicks>()
             .init_resource::<ActionMenu>()
             .init_resource::<DeleteQuestion>()
+            .init_resource::<look::ListWindow>()
+            .init_resource::<look::RatingFocus>()
             .add_systems(Startup, load_browser_prefs)
             .add_systems(
                 OnEnter(AppState::SongSelect),
@@ -624,12 +502,16 @@ impl Plugin for SongSelectPlugin {
                     // settled for this frame, so a filter that moves
                     // the selection is heard as a move, not a start.
                     crate::preview::drive_preview,
+                    rating_input,
                     look::sync_versions,
+                    rebuild_after_import,
+                    // The window first, then everything drawn into it.
+                    look::follow_selection,
+                    look::paint_window,
                     look::paint_rows,
                     look::paint_bar,
                     look::paint_panel,
-                    rebuild_after_import,
-                    look::follow_selection,
+                    look::paint_ratings,
                 )
                     .chain()
                     .run_if(in_state(AppState::SongSelect)),
@@ -918,7 +800,9 @@ fn step_offered_difficulty(
 fn spawn_browser(
     mut commands: Commands,
     font: Res<UiFont>,
+    shapes: Res<crate::shapes::LaneShapes>,
     mut view: ResMut<BrowserView>,
+    mut window: ResMut<look::ListWindow>,
     library: Res<SongLibrary>,
 ) {
     // The search is not open when the screen is entered: coming back
@@ -931,7 +815,8 @@ fn spawn_browser(
     // the action menu.
     view.searching = true;
     let total = library.entries.len();
-    look::spawn_shell(&mut commands, &font, &view, total);
+    *window = look::ListWindow::default();
+    look::spawn_shell(&mut commands, &font, &shapes.star(), &view, total);
 }
 
 /// Open song select on the current player's last difficulty.
@@ -1008,7 +893,7 @@ fn search_sort_input(
         view.flipped = false;
         sorted = true;
     }
-    if command && keys.just_pressed(KeyCode::KeyR) && view.sort != SortMode::Standard {
+    if command && keys.just_pressed(KeyCode::KeyR) {
         view.flipped = !view.flipped;
         sorted = true;
     }
@@ -1075,6 +960,9 @@ pub struct DeleteQuestion {
 /// Bevy's parameter cap, and these three always travel together.
 #[derive(bevy::ecs::system::SystemParam)]
 struct PointerInput<'w, 's> {
+    /// Which song the first pooled row shows: a row component names
+    /// its SLOT, the song is `top + slot`.
+    window: Res<'w, look::ListWindow>,
     mouse: Res<'w, ButtonInput<MouseButton>>,
     wheel: MessageReader<'w, 's, bevy::input::mouse::MouseWheel>,
     moved: MessageReader<'w, 's, bevy::window::CursorMoved>,
@@ -1439,6 +1327,13 @@ fn browser_input(
         // action menu — neither may move the cursor.
         MenuNav::read_typing_without_tab(&map, &keys, pads.iter())
     };
+    // With Ctrl/Cmd held, Up/Down pick a rating line (`rating_input`)
+    // and must not also move the song cursor.
+    let mut nav = nav;
+    if crate::editor_ui::command_held(&keys) {
+        nav.up = false;
+        nav.down = false;
+    }
     // The ADD field owns the keys while it is open: nothing here may
     // run from a keystroke meant for a song name.
     let searching = start.prompt.open;
@@ -1512,7 +1407,8 @@ fn browser_input(
     // Hover selects, click starts — the same rule as every other
     // menu. This list used to need two clicks (one to select, one to
     // start) and ignored hover entirely.
-    let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (row.0, i)));
+    let top = pointer_in.window.top;
+    let pointer = ui_kit::read_rows(rows.iter().map(|(row, i)| (top + row.0, i)));
     let mouse_moved = pointer_in.moved.read().next().is_some();
     if let Some(index) = ui_kit::hover_moves_cursor(&pointer, mouse_moved) {
         cursor.0 = index;
@@ -2072,6 +1968,122 @@ pub fn prepare_song(entry: &SongEntry, builtins: &BuiltinSongs) -> Result<Loaded
     }
 }
 
+/// What a rating key asks for. Pure — tested.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RatingKey {
+    /// Toggle the favourite (Ctrl/Cmd+F).
+    Favorite,
+    /// Move the focused rating line by this much (Ctrl/Cmd+Up/Down).
+    Focus(i32),
+    /// Set the focused line to this many stars (Ctrl/Cmd+0-5).
+    Stars(u8),
+}
+
+/// The rating key pressed this frame, if any. `command` is whether
+/// Ctrl/Cmd is held; without it every one of these keys is typing.
+#[must_use]
+pub fn rating_key(command: bool, keys: &ButtonInput<KeyCode>) -> Option<RatingKey> {
+    if !command {
+        return None;
+    }
+    if keys.just_pressed(KeyCode::KeyF) {
+        return Some(RatingKey::Favorite);
+    }
+    if keys.just_pressed(KeyCode::ArrowUp) {
+        return Some(RatingKey::Focus(-1));
+    }
+    if keys.just_pressed(KeyCode::ArrowDown) {
+        return Some(RatingKey::Focus(1));
+    }
+    [
+        KeyCode::Digit0,
+        KeyCode::Digit1,
+        KeyCode::Digit2,
+        KeyCode::Digit3,
+        KeyCode::Digit4,
+        KeyCode::Digit5,
+    ]
+    .iter()
+    .position(|k| keys.just_pressed(*k))
+    .and_then(|n| u8::try_from(n).ok())
+    .map(RatingKey::Stars)
+}
+
+/// What a click on star `n` of a line sets: `n`, or 0 when the line
+/// already holds exactly `n` — clicking the set star takes it back.
+/// Pure — tested.
+#[must_use]
+pub const fn star_click(current: u8, n: u8) -> u8 {
+    if current == n { 0 } else { n }
+}
+
+/// Favourite and stars for the selected song: the keys
+/// ([`rating_key`]) and the clicks on the panel's stars. Each change is
+/// written to `ratings.json` at once.
+#[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)] // Bevy system
+fn rating_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    menu: Res<ActionMenu>,
+    question: Res<DeleteQuestion>,
+    prompt: Res<DownloadPrompt>,
+    library: Res<SongLibrary>,
+    view: Res<BrowserView>,
+    cursor: Res<BrowserCursor>,
+    players: Res<crate::players::Players>,
+    mut ratings: ResMut<crate::ratings::SongRatings>,
+    mut focus: ResMut<look::RatingFocus>,
+    favorite: Query<&Interaction, (Changed<Interaction>, With<look::FavoriteButton>)>,
+    stars: Query<(&look::RatingStar, &Interaction), Changed<Interaction>>,
+    mut sounds: MessageWriter<crate::sfx::UiSound>,
+) {
+    if menu.open || question.armed.is_some() || prompt.open {
+        return;
+    }
+    let Some(entry) = view
+        .order
+        .get(cursor.0)
+        .and_then(|i| library.entries.get(*i))
+    else {
+        return;
+    };
+    let player = crate::ratings::player_key(&players);
+    let field = |line: usize| look::RATING_FIELDS[line.min(look::RATING_FIELDS.len() - 1)].0;
+    let toggle_favorite = |ratings: &mut crate::ratings::SongRatings| {
+        let now = u8::from(!ratings.favorite(&player, entry));
+        ratings.set(&player, entry, beatbyte_sync::ratings::FAVORITE, now);
+    };
+    match rating_key(crate::editor_ui::command_held(&keys), &keys) {
+        Some(RatingKey::Favorite) => {
+            toggle_favorite(&mut ratings);
+            sounds.write(crate::sfx::UiSound::Toggle);
+        }
+        Some(RatingKey::Focus(step)) => {
+            let lines = look::RATING_FIELDS.len() as i32;
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // 0..3
+            let next = (focus.0 as i32 + step).rem_euclid(lines) as usize;
+            focus.0 = next;
+            sounds.write(crate::sfx::UiSound::Navigate);
+        }
+        Some(RatingKey::Stars(n)) => {
+            ratings.set(&player, entry, field(focus.0), n);
+            sounds.write(crate::sfx::UiSound::Slider);
+        }
+        None => {}
+    }
+    if favorite.iter().any(|i| *i == Interaction::Pressed) {
+        toggle_favorite(&mut ratings);
+        sounds.write(crate::sfx::UiSound::Toggle);
+    }
+    for (star, interaction) in &stars {
+        if *interaction == Interaction::Pressed {
+            let current = ratings.value(&player, entry, field(star.0));
+            ratings.set(&player, entry, field(star.0), star_click(current, star.1));
+            focus.0 = star.0;
+            sounds.write(crate::sfx::UiSound::Slider);
+        }
+    }
+}
+
 /// A finished import replaces the [`SongLibrary`] resource — rebuild
 /// the list so the new song is visible, and keep the note line
 /// showing the import's progress.
@@ -2102,56 +2114,43 @@ fn rebuild_after_import(
 /// re-layout the world.
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn sync_view(
-    mut commands: Commands,
-    font: Res<UiFont>,
     library: Res<SongLibrary>,
     mut cursor: ResMut<BrowserCursor>,
     mut view: ResMut<BrowserView>,
-    scores: Res<ScoreBoard>,
     history: Res<crate::history::PlayHistory>,
     selected: Res<SelectedDifficulty>,
-    lists: Query<Entity, With<SongList>>,
+    ratings: Res<crate::ratings::SongRatings>,
+    players: Res<crate::players::Players>,
     fresh: Query<(), Added<SongList>>,
-    mut rendered: Local<Option<RebuildKey>>,
     mut last_filter: Local<String>,
 ) {
     let entered = !fresh.is_empty();
     let dirty = entered
         || (view.is_changed() && !view.is_added())
         || (library.is_changed() && !library.is_added())
-        || (selected.is_changed() && !selected.is_added());
+        || (selected.is_changed() && !selected.is_added())
+        || (ratings.is_changed() && !ratings.is_added())
+        || (players.is_changed() && !players.is_added());
     if !dirty {
         return;
     }
-    let difficulty = selected.0;
-    let best = |entry: &SongEntry| {
-        scores
-            .best(
-                entry.song_id.as_deref(),
-                &entry.title,
-                &entry.artist,
-                difficulty,
-            )
-            .map(|b| b.score)
-    };
+    let player = crate::ratings::player_key(&players);
+    let favorite = |entry: &SongEntry| ratings.favorite(&player, entry);
     // The whole library in the sort's order, and what the filter let
     // through: families gather over the first and show by the second.
-    let full = build_order(
-        &library.entries,
-        view.sort,
-        view.flipped,
-        difficulty,
-        "",
-        best,
-    );
-    let filtered = build_order(
-        &library.entries,
-        view.sort,
-        view.flipped,
-        difficulty,
-        &view.filter,
-        best,
-    );
+    // Without a filter the two are the same list — built once.
+    let full = build_order(&library.entries, view.sort, view.flipped, "", favorite);
+    let filtered = if view.filter.trim().is_empty() {
+        full.clone()
+    } else {
+        build_order(
+            &library.entries,
+            view.sort,
+            view.flipped,
+            &view.filter,
+            favorite,
+        )
+    };
     let families = crate::song_family::families(&library.entries, &full, &filtered);
     // When each title was played last, for the default version.
     let mut last: std::collections::HashMap<(&str, &str), u64> = std::collections::HashMap::new();
@@ -2192,28 +2191,15 @@ fn sync_view(
     raw.order = order;
     raw.families = families;
     raw.tree.clear();
-    let key = rebuild_key(&raw.order, difficulty, &raw.filter, raw.sort);
-    if (entered || library.is_changed() || rendered.as_ref() != Some(&key))
-        && let Ok(list) = lists.single()
-    {
-        look::spawn_rows(
-            &mut commands,
-            list,
-            &font,
-            &library,
-            raw,
-            &scores,
-            difficulty,
-        );
-        *rendered = Some(key);
-    }
+    // Nothing is spawned here: the list's pooled rows read the new
+    // order on their own (`look::paint_window`).
 }
 
 /// Restore the persisted sort. The filter deliberately starts empty.
 fn load_browser_prefs(settings: Res<crate::config::Settings>, mut view: ResMut<BrowserView>) {
     if let Some(sort) = SortMode::from_label(&settings.browser_sort) {
         view.sort = sort;
-        view.flipped = settings.browser_sort_reversed && sort != SortMode::Standard;
+        view.flipped = settings.browser_sort_reversed;
     }
 }
 
@@ -2504,9 +2490,7 @@ mod view_tests {
             None,
             "another artist's song is another song"
         );
-        let order = build_order(&lib, SortMode::Title, false, Difficulty::Medium, "", |_| {
-            None
-        });
+        let order = build_order(&lib, SortMode::Title, false, "", |_| false);
         let titles: Vec<&str> = order.iter().map(|i| lib[*i].title.as_str()).collect();
         let life = titles.iter().position(|t| *t == "Life").expect("listed");
         assert_eq!(
@@ -2533,14 +2517,14 @@ mod view_tests {
             order.iter().map(|i| lib[*i].title.as_str()).collect()
         };
         for sort in [
-            SortMode::Standard,
+            SortMode::Title,
             SortMode::Title,
             SortMode::Artist,
             SortMode::Length,
-            SortMode::Notes,
+            SortMode::Length,
         ] {
             for flipped in [false, true] {
-                let order = build_order(&lib, sort, flipped, Difficulty::Medium, "", |_| None);
+                let order = build_order(&lib, sort, flipped, "", |_| false);
                 let t = titles(&order);
                 let life = t
                     .iter()
@@ -2555,14 +2539,7 @@ mod view_tests {
             }
         }
         // A search filter too: the twin never outranks its original.
-        let order = build_order(
-            &lib,
-            SortMode::Title,
-            false,
-            Difficulty::Medium,
-            "life",
-            |_| None,
-        );
+        let order = build_order(&lib, SortMode::Title, false, "life", |_| false);
         assert_eq!(titles(&order), vec!["Life", "[GS] Life"]);
     }
 
@@ -2582,14 +2559,14 @@ mod view_tests {
         lib.insert(0, entry("[CL] Life", "Des'ree", Some("Pop"), 200.0));
         lib.push(entry("[GS] Life", "Des'ree", Some("Pop"), 200.0));
         for sort in [
-            SortMode::Standard,
+            SortMode::Title,
             SortMode::Title,
             SortMode::Artist,
             SortMode::Length,
-            SortMode::Notes,
+            SortMode::Length,
         ] {
             for flipped in [false, true] {
-                let order = build_order(&lib, sort, flipped, Difficulty::Medium, "", |_| None);
+                let order = build_order(&lib, sort, flipped, "", |_| false);
                 let t: Vec<&str> = order.iter().map(|i| lib[*i].title.as_str()).collect();
                 assert_eq!(t.len(), lib.len(), "{sort:?} flipped={flipped}: {t:?}");
                 let mut sorted = order.clone();
@@ -2629,22 +2606,13 @@ mod view_tests {
         // G's, which is honest about what it is.
         let mut lib = lib();
         lib.push(entry("[GS] Maria", "Blondie", None, 248.0));
-        let order = build_order(&lib, SortMode::Title, false, Difficulty::Medium, "", |_| {
-            None
-        });
+        let order = build_order(&lib, SortMode::Title, false, "", |_| false);
         let t: Vec<&str> = order.iter().map(|i| lib[*i].title.as_str()).collect();
         assert_eq!(
             t,
             vec!["Africa", "Ella, elle l'a", "Life", "Maria", "[GS] Maria"]
         );
-        let order = build_order(
-            &lib,
-            SortMode::Title,
-            false,
-            Difficulty::Medium,
-            "gs",
-            |_| None,
-        );
+        let order = build_order(&lib, SortMode::Title, false, "gs", |_| false);
         let t: Vec<&str> = order.iter().map(|i| lib[*i].title.as_str()).collect();
         assert_eq!(
             t,
@@ -2654,188 +2622,39 @@ mod view_tests {
     }
 
     #[test]
-    fn standard_order_is_the_library_order() {
-        // The order the browser has always shown - and what the
-        // delete harness navigates by real keypresses. Changing the
-        // default would silently retarget its arrows.
-        let order = build_order(
-            &lib(),
-            SortMode::Standard,
-            false,
-            Difficulty::Medium,
-            "",
-            |_| None,
-        );
-        assert_eq!(order, vec![0, 1, 2, 3]);
-    }
-
-    #[test]
     fn title_and_artist_sort_alphabetically() {
-        let order = build_order(
-            &lib(),
-            SortMode::Title,
-            false,
-            Difficulty::Medium,
-            "",
-            |_| None,
-        );
+        let order = build_order(&lib(), SortMode::Title, false, "", |_| false);
         assert_eq!(order, vec![1, 2, 3, 0], "Africa, Ella, Life, Maria");
-        let order = build_order(
-            &lib(),
-            SortMode::Artist,
-            false,
-            Difficulty::Medium,
-            "",
-            |_| None,
-        );
+        let order = build_order(&lib(), SortMode::Artist, false, "", |_| false);
         assert_eq!(order, vec![0, 3, 2, 1], "Blondie, Des'ree, France, Toto");
-    }
-
-    #[test]
-    fn missing_genres_sort_last_not_first() {
-        // An absent genre is an absence, not the alphabet's start.
-        let order = build_order(
-            &lib(),
-            SortMode::Genre,
-            false,
-            Difficulty::Medium,
-            "",
-            |_| None,
-        );
-        assert_eq!(
-            *order.last().expect("non-empty"),
-            2,
-            "the untagged song is last"
-        );
-    }
-
-    #[test]
-    fn audio_sorts_the_poor_files_first_and_the_unmeasured_last() {
-        use crate::loudness::LoudnessMark;
-        use beatbyte_audio::quality::Verdict;
-        let mark = |verdict: Verdict| {
-            Some(LoudnessMark {
-                gain_db: 0.0,
-                peak_limited: false,
-                verdict,
-                issue: None,
-            })
-        };
-        let mut good = entry("Good", "a", None, 100.0);
-        good.loudness = mark(Verdict::Good);
-        let mut poor = entry("Poor", "b", None, 100.0);
-        poor.loudness = mark(Verdict::Poor);
-        let mut fair = entry("Fair", "c", None, 100.0);
-        fair.loudness = mark(Verdict::Fair);
-        let unmeasured = entry("Unknown", "d", None, 100.0);
-        let entries = vec![good, unmeasured, fair, poor];
-        let order = build_order(
-            &entries,
-            SortMode::Audio,
-            false,
-            Difficulty::Medium,
-            "",
-            |_| None,
-        );
-        let titles: Vec<&str> = order.iter().map(|i| entries[*i].title.as_str()).collect();
-        assert_eq!(titles, vec!["Poor", "Fair", "Good", "Unknown"]);
-        assert_eq!(SortMode::from_label("AUDIO"), Some(SortMode::Audio));
-    }
-
-    #[test]
-    fn best_sorts_highest_first_and_unplayed_last() {
-        let order = build_order(
-            &lib(),
-            SortMode::Best,
-            false,
-            Difficulty::Medium,
-            "",
-            |entry| match entry.title.as_str() {
-                "Maria" => Some(139_968),
-                "Africa" => Some(87_000),
-                _ => None,
-            },
-        );
-        assert_eq!(order[0], 0, "highest score first");
-        assert_eq!(order[1], 1);
-        assert!(
-            order[2..].contains(&2) && order[2..].contains(&3),
-            "no record sorts last"
-        );
     }
 
     #[test]
     fn the_filter_folds_case_and_diacritics() {
         // "ella" must find "Ella, elle l'a" - and so must "élla" the
         // other way round: the fold applies to BOTH sides.
-        let order = build_order(
-            &lib(),
-            SortMode::Standard,
-            false,
-            Difficulty::Medium,
-            "ELLA",
-            |_| None,
-        );
+        let order = build_order(&lib(), SortMode::Title, false, "ELLA", |_| false);
         assert_eq!(order, vec![2]);
-        let order = build_order(
-            &lib(),
-            SortMode::Standard,
-            false,
-            Difficulty::Medium,
-            "élla",
-            |_| None,
-        );
+        let order = build_order(&lib(), SortMode::Title, false, "élla", |_| false);
         assert_eq!(order, vec![2]);
         // And it searches the artist and genre columns too.
-        let order = build_order(
-            &lib(),
-            SortMode::Standard,
-            false,
-            Difficulty::Medium,
-            "toto",
-            |_| None,
-        );
+        let order = build_order(&lib(), SortMode::Title, false, "toto", |_| false);
         assert_eq!(order, vec![1]);
-        let order = build_order(
-            &lib(),
-            SortMode::Standard,
-            false,
-            Difficulty::Medium,
-            "new wave",
-            |_| None,
-        );
+        let order = build_order(&lib(), SortMode::Title, false, "new wave", |_| false);
         assert_eq!(order, vec![0]);
     }
 
     #[test]
     fn an_empty_filter_shows_everything() {
         assert_eq!(
-            build_order(
-                &lib(),
-                SortMode::Standard,
-                false,
-                Difficulty::Medium,
-                "",
-                |_| None
-            )
-            .len(),
+            build_order(&lib(), SortMode::Title, false, "", |_| false).len(),
             4
         );
     }
 
     #[test]
     fn a_hopeless_filter_yields_an_empty_view_not_a_panic() {
-        assert!(
-            build_order(
-                &lib(),
-                SortMode::Standard,
-                false,
-                Difficulty::Medium,
-                "zzzz",
-                |_| None
-            )
-            .is_empty()
-        );
+        assert!(build_order(&lib(), SortMode::Title, false, "zzzz", |_| false).is_empty());
     }
 
     #[test]
@@ -2859,44 +2678,21 @@ mod view_tests {
         // "toto rock" names the artist and the genre; "blondie maria"
         // the artist and the title. The whole-phrase test found
         // neither.
-        let find = |filter: &str| {
-            build_order(
-                &lib(),
-                SortMode::Standard,
-                false,
-                Difficulty::Medium,
-                filter,
-                |_| None,
-            )
-        };
+        let find = |filter: &str| build_order(&lib(), SortMode::Title, false, filter, |_| false);
         assert_eq!(find("toto rock"), vec![1]);
         assert_eq!(find("blondie maria"), vec![0]);
         assert_eq!(find("toto maria"), Vec::<usize>::new(), "AND, not OR");
         // Whitespace around and between words is not part of a word.
         assert_eq!(find("  toto  "), vec![1]);
-        assert_eq!(find("   "), vec![0, 1, 2, 3]);
+        assert_eq!(
+            find("   "),
+            vec![1, 2, 3, 0],
+            "blank is no filter: the title order"
+        );
         // A phrase inside one column still matches, as before.
         assert_eq!(find("elle l'a"), vec![2]);
         // The column join is not a place a word can live.
         assert_eq!(find("mariablondie"), Vec::<usize>::new());
-    }
-
-    #[test]
-    fn an_empty_list_rebuilds_when_the_filter_changes_a_full_one_does_not() {
-        // The hint row quotes the filter; the song rows do not.
-        let empty_q = rebuild_key(&[], Difficulty::Medium, "q", SortMode::Standard);
-        let empty_queen = rebuild_key(&[], Difficulty::Medium, "queen", SortMode::Standard);
-        assert_ne!(empty_q, empty_queen, "the hint must follow the word");
-        let full_a = rebuild_key(&[0, 1], Difficulty::Medium, "a", SortMode::Standard);
-        let full_ab = rebuild_key(&[0, 1], Difficulty::Medium, "ab", SortMode::Standard);
-        assert_eq!(full_a, full_ab, "same rows, no rebuild per keystroke");
-        // The right-hand column shows the sorted-by value, so a new sort
-        // redraws the rows even when it leaves their order as it was.
-        assert_ne!(
-            rebuild_key(&[0, 1], Difficulty::Medium, "a", SortMode::Genre),
-            full_a,
-            "a sort that keeps the order must still redraw the column"
-        );
     }
 
     #[test]
@@ -2907,16 +2703,7 @@ mod view_tests {
             entry("Livin' On A Prayer", "Bon Jovi", Some("Rock"), 250.0),
             entry("Smells Like Teen Spirit", "Nirvana", Some("Grunge"), 300.0),
         ];
-        let find = |filter: &str| {
-            build_order(
-                &songs,
-                SortMode::Standard,
-                false,
-                Difficulty::Medium,
-                filter,
-                |_| None,
-            )
-        };
+        let find = |filter: &str| build_order(&songs, SortMode::Title, false, filter, |_| false);
         // Standard order would put "Lifeline" first; the exact hit
         // outranks the prefix hit, and the typo-distance hit ("like")
         // comes last.
@@ -2936,60 +2723,26 @@ mod view_tests {
         // A sort still orders EQUAL scores: both "Life…" titles are
         // prefix hits for "lif", and by title Life sorts before
         // Lifeline.
-        let by_title = build_order(
-            &songs,
-            SortMode::Title,
-            false,
-            Difficulty::Medium,
-            "lif",
-            |_| None,
-        );
+        let by_title = build_order(&songs, SortMode::Title, false, "lif", |_| false);
         assert_eq!(by_title, vec![1, 0]);
     }
 
     #[test]
     fn the_cursor_follows_its_song_through_a_sort_change() {
-        // Standard order, cursor on "Ella" (position 2). After
+        // Length order, cursor on "Ella" (position 2). After
         // sorting by title, Ella sits at position 1 - and that is
         // where the cursor must be, not still at raw position 2
         // (which would now be "Life").
-        let old = build_order(
-            &lib(),
-            SortMode::Standard,
-            false,
-            Difficulty::Medium,
-            "",
-            |_| None,
-        );
-        let new = build_order(
-            &lib(),
-            SortMode::Title,
-            false,
-            Difficulty::Medium,
-            "",
-            |_| None,
-        );
+        let old = build_order(&lib(), SortMode::Length, false, "", |_| false);
+        assert_eq!(old, vec![3, 0, 2, 1]);
+        let new = build_order(&lib(), SortMode::Title, false, "", |_| false);
         assert_eq!(stable_cursor(&old, 2, &new), 1);
     }
 
     #[test]
     fn a_cursor_whose_song_was_filtered_away_clamps() {
-        let old = build_order(
-            &lib(),
-            SortMode::Standard,
-            false,
-            Difficulty::Medium,
-            "",
-            |_| None,
-        );
-        let new = build_order(
-            &lib(),
-            SortMode::Standard,
-            false,
-            Difficulty::Medium,
-            "maria",
-            |_| None,
-        );
+        let old = build_order(&lib(), SortMode::Title, false, "", |_| false);
+        let new = build_order(&lib(), SortMode::Title, false, "maria", |_| false);
         // Cursor was on "Life" (3); Maria-only view has one row.
         assert_eq!(stable_cursor(&old, 3, &new), 0);
         // And an empty view clamps to zero without panicking.
@@ -2998,57 +2751,127 @@ mod view_tests {
 
     #[test]
     fn the_sort_cycle_visits_every_mode_and_returns() {
-        let mut mode = SortMode::Standard;
+        let mut mode = SortMode::Title;
         let mut seen = vec![mode];
-        for _ in 0..10 {
+        for _ in 0..3 {
             mode = mode.next();
             seen.push(mode);
         }
-        assert_eq!(mode.next(), SortMode::Standard, "the cycle closes");
+        assert_eq!(mode.next(), SortMode::Title, "the cycle closes");
         seen.sort_by_key(|m| m.label());
         seen.dedup();
-        assert_eq!(seen.len(), 11, "every mode is reachable");
+        // The user's four (2026-10-06): artist, track, length, favourite.
+        assert_eq!(
+            seen,
+            vec![
+                SortMode::Artist,
+                SortMode::Favorite,
+                SortMode::Length,
+                SortMode::Title
+            ],
+            "exactly the four orders"
+        );
     }
 
     #[test]
-    fn the_flip_reverses_every_mode_but_standard() {
-        let forward = build_order(
-            &lib(),
-            SortMode::Title,
-            false,
-            Difficulty::Medium,
-            "",
-            |_| None,
+    fn the_flip_reverses_every_mode() {
+        for sort in [SortMode::Title, SortMode::Artist, SortMode::Length] {
+            let forward = build_order(&lib(), sort, false, "", |_| false);
+            let mut expected = forward.clone();
+            expected.reverse();
+            assert_eq!(
+                build_order(&lib(), sort, true, "", |_| false),
+                expected,
+                "{sort:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn favourites_come_first_then_by_title() {
+        let favorite = |e: &SongEntry| e.title == "Life" || e.title == "Africa";
+        assert_eq!(
+            build_order(&lib(), SortMode::Favorite, false, "", favorite),
+            vec![1, 3, 2, 0],
+            "Africa and Life (the favourites), then Ella and Maria"
         );
-        let reversed = build_order(
-            &lib(),
-            SortMode::Title,
-            true,
-            Difficulty::Medium,
-            "",
-            |_| None,
+        // Without a single favourite it is the title order.
+        assert_eq!(
+            build_order(&lib(), SortMode::Favorite, false, "", |_| false),
+            build_order(&lib(), SortMode::Title, false, "", |_| false)
         );
-        let mut expected = forward.clone();
-        expected.reverse();
-        assert_eq!(reversed, expected, "flipped title = reversed title");
-        // Standard is the library's own order and has no reverse a
-        // player would ask for by name.
-        let standard = build_order(
-            &lib(),
-            SortMode::Standard,
-            true,
-            Difficulty::Medium,
-            "",
-            |_| None,
+        // A search still ranks by how well a song matches.
+        assert_eq!(
+            build_order(&lib(), SortMode::Favorite, false, "maria", favorite),
+            vec![0]
         );
-        assert_eq!(standard, vec![0, 1, 2, 3], "standard ignores the flip");
+    }
+
+    #[test]
+    fn a_removed_sort_in_old_settings_falls_back_and_title_still_reads() {
+        assert_eq!(
+            SortMode::from_label("title"),
+            Some(SortMode::Title),
+            "the old label"
+        );
+        assert_eq!(SortMode::from_label("TRACK"), Some(SortMode::Title));
+        assert_eq!(SortMode::from_label("favourite"), Some(SortMode::Favorite));
+        for gone in [
+            "standard", "genre", "notes", "diff", "best", "lyrics", "chart", "audio",
+        ] {
+            assert_eq!(SortMode::from_label(gone), None, "{gone}");
+        }
+    }
+
+    #[test]
+    fn rating_keys_need_the_command_key_and_say_what_they_do() {
+        let press = |key: KeyCode| {
+            let mut keys = ButtonInput::<KeyCode>::default();
+            keys.press(key);
+            keys
+        };
+        assert_eq!(
+            rating_key(true, &press(KeyCode::KeyF)),
+            Some(RatingKey::Favorite)
+        );
+        assert_eq!(
+            rating_key(true, &press(KeyCode::ArrowUp)),
+            Some(RatingKey::Focus(-1))
+        );
+        assert_eq!(
+            rating_key(true, &press(KeyCode::ArrowDown)),
+            Some(RatingKey::Focus(1))
+        );
+        assert_eq!(
+            rating_key(true, &press(KeyCode::Digit0)),
+            Some(RatingKey::Stars(0))
+        );
+        assert_eq!(
+            rating_key(true, &press(KeyCode::Digit5)),
+            Some(RatingKey::Stars(5))
+        );
+        assert_eq!(
+            rating_key(true, &press(KeyCode::Digit6)),
+            None,
+            "five stars at most"
+        );
+        // Without Ctrl/Cmd every one of them is typing.
+        assert_eq!(rating_key(false, &press(KeyCode::KeyF)), None);
+        assert_eq!(rating_key(false, &press(KeyCode::Digit3)), None);
+    }
+
+    #[test]
+    fn clicking_the_star_already_set_takes_it_back() {
+        assert_eq!(star_click(0, 3), 3);
+        assert_eq!(star_click(4, 3), 3);
+        assert_eq!(star_click(3, 3), 0);
     }
 
     #[test]
     fn a_header_click_sorts_then_flips_then_a_new_column_resets() {
         // The convention of every library UI, as one pure function.
         assert_eq!(
-            sort_click(SortMode::Standard, false, SortMode::Artist),
+            sort_click(SortMode::Title, false, SortMode::Artist),
             (SortMode::Artist, false),
             "a new column sorts in its default direction"
         );
@@ -3063,41 +2886,10 @@ mod view_tests {
             "and flips back"
         );
         assert_eq!(
-            sort_click(SortMode::Artist, true, SortMode::Best),
-            (SortMode::Best, false),
+            sort_click(SortMode::Artist, true, SortMode::Length),
+            (SortMode::Length, false),
             "a new column drops the old direction"
         );
-    }
-
-    #[test]
-    fn notes_and_diff_sort_densest_first() {
-        let mut entries = lib();
-        entries[0].note_counts = vec![500];
-        entries[1].note_counts = vec![100];
-        entries[2].note_counts = vec![300];
-        entries[3].note_counts = vec![900];
-        let order = build_order(
-            &entries,
-            SortMode::Notes,
-            false,
-            Difficulty::Medium,
-            "",
-            |_| None,
-        );
-        assert_eq!(order, vec![3, 0, 2, 1], "most notes first");
-        // A song without the selected difficulty sorts last, not
-        // first with a phantom zero.
-        entries[3].difficulties = vec![];
-        entries[3].note_counts = vec![];
-        let order = build_order(
-            &entries,
-            SortMode::Notes,
-            false,
-            Difficulty::Medium,
-            "",
-            |_| None,
-        );
-        assert_eq!(*order.last().expect("non-empty"), 3);
     }
 
     #[test]
@@ -3132,7 +2924,7 @@ mod view_tests {
         // The label is what settings.json stores; a mode whose label
         // does not parse back would silently reset the sort on the
         // next launch.
-        let mut mode = SortMode::Standard;
+        let mut mode = SortMode::Title;
         loop {
             assert_eq!(
                 SortMode::from_label(mode.label()),
@@ -3141,7 +2933,7 @@ mod view_tests {
                 mode.label()
             );
             mode = mode.next();
-            if mode == SortMode::Standard {
+            if mode == SortMode::Title {
                 break;
             }
         }
@@ -3657,5 +3449,240 @@ mod rebuild_tests {
         );
         let single = beatbyte_chart::versions::list_revisions(&["chart.json".to_owned()]);
         assert!(next_revision(&single, Some("chart.json")).is_none());
+    }
+}
+
+/// The rating keys and clicks against a real schedule: what the player
+/// presses, what lands in the ratings.
+#[cfg(test)]
+mod rating_input_tests {
+    use super::*;
+    use crate::library::{Polish, SongSource};
+    use beatbyte_sync::ratings::{CHART, FAVORITE, LYRICS, SONG};
+
+    fn song(title: &str, id: &str) -> SongEntry {
+        SongEntry {
+            title: title.to_owned(),
+            artist: "The Null Pointers".to_owned(),
+            bpm: 128.0,
+            duration_s: Some(65.0),
+            difficulties: vec![Difficulty::Medium],
+            note_counts: vec![98],
+            genre: None,
+            has_lyrics: false,
+            preview_start_s: None,
+            loudness: None,
+            song_id: Some(id.to_owned()),
+            polish: Polish::default(),
+            source: SongSource::File {
+                chart_path: std::path::PathBuf::from(format!("/lib/{id}/chart.json")),
+                audio_path: std::path::PathBuf::from(format!("/lib/{id}/song.m4a")),
+            },
+        }
+    }
+
+    /// A browser on two versions of one song, the cursor on the second
+    /// (its BG version).
+    fn app() -> App {
+        let mut app = App::new();
+        app.add_message::<crate::sfx::UiSound>()
+            .init_resource::<ActionMenu>()
+            .init_resource::<DeleteQuestion>()
+            .init_resource::<DownloadPrompt>()
+            .init_resource::<crate::players::Players>()
+            .init_resource::<crate::ratings::SongRatings>()
+            .init_resource::<look::RatingFocus>()
+            .insert_resource(SongLibrary {
+                entries: vec![song("Circuit", "bb_a"), song("[BG-01] Circuit", "bb_b")],
+            })
+            .insert_resource(BrowserView {
+                order: vec![0, 1],
+                ..BrowserView::default()
+            })
+            .insert_resource(BrowserCursor(1))
+            // Without the keyboard resource the system would be skipped
+            // silently — the click test found that.
+            .init_resource::<ButtonInput<KeyCode>>()
+            .add_systems(Update, rating_input);
+        app
+    }
+
+    /// One frame with these keys freshly pressed.
+    fn press(app: &mut App, keys: &[KeyCode]) {
+        let mut input = ButtonInput::<KeyCode>::default();
+        for key in keys {
+            input.press(*key);
+        }
+        app.insert_resource(input);
+        app.update();
+    }
+
+    fn value(app: &App, entry: usize, field: &str) -> u8 {
+        let library = app.world().resource::<SongLibrary>();
+        app.world().resource::<crate::ratings::SongRatings>().value(
+            "0",
+            &library.entries[entry],
+            field,
+        )
+    }
+
+    #[test]
+    fn command_f_toggles_the_favourite_of_the_whole_song() {
+        let mut app = app();
+        press(&mut app, &[KeyCode::SuperLeft, KeyCode::KeyF]);
+        assert_eq!(value(&app, 1, FAVORITE), 1);
+        assert_eq!(
+            value(&app, 0, FAVORITE),
+            1,
+            "the favourite is the song's, every version"
+        );
+        press(&mut app, &[KeyCode::ControlLeft, KeyCode::KeyF]);
+        assert_eq!(value(&app, 1, FAVORITE), 0, "a second press takes it back");
+        // A plain F is typing.
+        press(&mut app, &[KeyCode::KeyF]);
+        assert_eq!(value(&app, 1, FAVORITE), 0);
+    }
+
+    #[test]
+    fn command_digits_set_the_focused_line_and_arrows_move_the_focus() {
+        let mut app = app();
+        press(&mut app, &[KeyCode::SuperLeft, KeyCode::Digit4]);
+        assert_eq!(value(&app, 1, SONG), 4, "the song line has the focus first");
+        press(&mut app, &[KeyCode::SuperLeft, KeyCode::ArrowDown]);
+        press(&mut app, &[KeyCode::SuperLeft, KeyCode::Digit3]);
+        assert_eq!(value(&app, 1, CHART), 3, "the chart of THIS version");
+        assert_eq!(value(&app, 0, CHART), 0, "not the other version's chart");
+        press(&mut app, &[KeyCode::SuperLeft, KeyCode::ArrowUp]);
+        press(&mut app, &[KeyCode::SuperLeft, KeyCode::ArrowUp]);
+        assert_eq!(
+            app.world().resource::<look::RatingFocus>().0,
+            2,
+            "up from the top wraps to LYRICS"
+        );
+        press(&mut app, &[KeyCode::SuperLeft, KeyCode::Digit5]);
+        assert_eq!(value(&app, 1, LYRICS), 5);
+        press(&mut app, &[KeyCode::SuperLeft, KeyCode::Digit0]);
+        assert_eq!(value(&app, 1, LYRICS), 0, "Cmd+0 clears");
+    }
+
+    #[test]
+    fn a_click_sets_the_stars_and_a_click_on_the_set_star_clears_them() {
+        let mut app = app();
+        app.world_mut()
+            .spawn((look::RatingStar(2, 3), Interaction::Pressed));
+        app.update();
+        assert_eq!(value(&app, 1, LYRICS), 3);
+        assert_eq!(
+            app.world().resource::<look::RatingFocus>().0,
+            2,
+            "the clicked line takes the focus"
+        );
+        app.world_mut()
+            .spawn((look::RatingStar(2, 3), Interaction::Pressed));
+        app.update();
+        assert_eq!(value(&app, 1, LYRICS), 0);
+        app.world_mut()
+            .spawn((look::FavoriteButton, Interaction::Pressed));
+        app.update();
+        assert_eq!(
+            value(&app, 1, FAVORITE),
+            1,
+            "the star button toggles the favourite"
+        );
+    }
+
+    #[test]
+    fn nothing_is_rated_while_a_field_or_the_menu_owns_the_keys() {
+        let mut app = app();
+        app.world_mut().resource_mut::<ActionMenu>().open = true;
+        press(&mut app, &[KeyCode::SuperLeft, KeyCode::KeyF]);
+        assert_eq!(value(&app, 1, FAVORITE), 0, "the menu is open");
+        app.world_mut().resource_mut::<ActionMenu>().open = false;
+        app.world_mut().resource_mut::<DownloadPrompt>().open = true;
+        press(&mut app, &[KeyCode::SuperLeft, KeyCode::Digit3]);
+        assert_eq!(value(&app, 1, SONG), 0, "the ADD field is open");
+    }
+}
+
+/// What the browser's order costs on a library of the size the user's
+/// has (4 706 songs, 2026-10-06). Ignored by default — a measurement,
+/// not an assertion: `cargo test --release -p beatbyte-game --lib
+/// order_bench -- --ignored --nocapture`.
+#[cfg(test)]
+mod order_bench {
+    use super::*;
+    use crate::library::{Polish, SongSource};
+
+    fn library(n: usize) -> Vec<SongEntry> {
+        (0..n)
+            .map(|i| SongEntry {
+                title: format!("Song {i:05} of the night"),
+                artist: format!("Artist {}", i % 997),
+                bpm: 120.0,
+                duration_s: Some(120.0 + (i % 180) as f64),
+                difficulties: vec![Difficulty::Medium],
+                note_counts: vec![300],
+                genre: None,
+                has_lyrics: false,
+                preview_start_s: None,
+                loudness: None,
+                song_id: None,
+                polish: Polish::default(),
+                source: SongSource::File {
+                    chart_path: std::path::PathBuf::from(format!("/lib/{i}/chart.json")),
+                    audio_path: std::path::PathBuf::from(format!("/lib/{i}/song.m4a")),
+                },
+            })
+            .collect()
+    }
+
+    #[test]
+    #[ignore = "a measurement"]
+    fn order_bench() {
+        let lib = library(4_706);
+        let time = |label: &str, f: &dyn Fn() -> usize| {
+            let runs = 5;
+            let start = std::time::Instant::now();
+            let mut n = 0;
+            for _ in 0..runs {
+                n = f();
+            }
+            println!(
+                "{label}: {:.2} ms ({n} rows)",
+                start.elapsed().as_secs_f64() * 1000.0 / f64::from(runs)
+            );
+        };
+        time("no filter, by title", &|| {
+            build_order(&lib, SortMode::Title, false, "", |_| false).len()
+        });
+        time("filter \"o\", by title", &|| {
+            build_order(&lib, SortMode::Title, false, "o", |_| false).len()
+        });
+        let full = build_order(&lib, SortMode::Title, false, "", |_| false);
+        time("families over the whole library", &|| {
+            crate::song_family::families(&lib, &full, &full).len()
+        });
+        let filtered = build_order(&lib, SortMode::Title, false, "song 01", |_| false);
+        time("families, filter \"song 01\"", &|| {
+            crate::song_family::families(&lib, &full, &filtered).len()
+        });
+        // The old ranking step: the score looked up by a linear search
+        // through every match, on every comparison of the sort.
+        time("old score lookup, filter \"o\"", &|| {
+            let query = crate::search::words("o");
+            let scored: Vec<(usize, u32)> = lib
+                .iter()
+                .enumerate()
+                .filter_map(|(i, e)| {
+                    crate::search::Haystack::new(&e.title, &e.artist, None)
+                        .score(&query)
+                        .map(|s| (i, s))
+                })
+                .collect();
+            let mut order: Vec<usize> = scored.iter().map(|(i, _)| *i).collect();
+            let score_of = |i: &usize| scored.iter().find(|(j, _)| j == i).map_or(0, |(_, s)| *s);
+            order.sort_by_key(|i| std::cmp::Reverse(score_of(i)));
+            order.len()
+        });
     }
 }

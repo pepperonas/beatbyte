@@ -1032,7 +1032,7 @@ mod layout_tests {
             "the list panel must be the kit's scrolling panel"
         );
         assert!(
-            source.contains("(SongRow(position), Button, ui_kit::row())"),
+            source.contains("(SongRow(slot), Button, ui_kit::row())"),
             "a song row must be the kit's row"
         );
         assert!(

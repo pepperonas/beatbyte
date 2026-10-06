@@ -15,6 +15,7 @@
 //!   richer copy of a run both have;
 //! - [`scores`] — the better result per song and difficulty;
 //! - [`achievements`] — the union, the earliest date;
+//! - [`ratings`] — favourites and stars, the newest change per field;
 //! - [`settings`] — shared keys by newest change, device keys never;
 //! - [`telemetry`] — which sessions to insert or replace, by `uid`;
 //! - [`library`] — song folders file by file, by content, with
@@ -29,6 +30,7 @@ pub mod achievements;
 pub mod history;
 pub mod library;
 pub mod players;
+pub mod ratings;
 pub mod scores;
 pub mod settings;
 pub mod telemetry;

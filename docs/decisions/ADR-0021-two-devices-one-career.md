@@ -17,6 +17,7 @@ written with a second machine in mind. Measured on this Mac today:
 | `history.jsonl` | `<data>` | 389 lines | none — 201 lines predate the `player` field |
 | `scores.json` | `<data>` | 85 records, v3 | song (`song_id`, else title+artist) × difficulty — **no player** |
 | `achievements.json` | `<data>` | 1 player | player id → achievement → first-earned ms |
+| `ratings.json` | `<data>` | 1 player | player id → song or chart key → field → value + when set (since 0.18.77) |
 | `players.json` | `<data>` | 1 player | `id` from a per-device `next_id` counter |
 | `telemetry.db` | `<data>` | 599 sessions, 295 381 events, schema v3 | `gameplay_session.uid` (start ms + a scramble, 32 hex) |
 | `settings.json` | `<config>` = `<data>` on macOS | 45 keys | none; rewritten by the game on exit |
@@ -56,7 +57,7 @@ that only that device writes:
 ```
 hub/
   devices/<device-id>/
-    snapshot.json      # history, scores, achievements, players, shared settings
+    snapshot.json      # history, scores, achievements, ratings, players, shared settings
     telemetry.db       # a consistent copy made with VACUUM INTO, never the live file
     library.json       # every library file: relative path → SHA-256, size; tombstones
   blobs/<sha256>       # library file contents, written once, never changed
@@ -76,6 +77,7 @@ wins" as a blanket):
 | history | Union by natural key (start ms, title, artist, difficulty, player slot). A key present on both sides keeps the richer line (more fields set — the roster adoption added `player` to old lines on one device only). No new id field: the key is already unique, and a collision needs two devices to start the same song in the same millisecond. |
 | scores | Per (song, difficulty): the better result by the game's own rule (higher score; equal scores → higher accuracy → longer streak → the local one). A name-keyed record and an id-keyed record for the same song collapse onto the id, as `ScoreBoard::record` already does. |
 | achievements | Union per (player, achievement); the earliest date wins. They are re-derived from the merged history anyway (ADR-0017); the date is the only stored fact. |
+| ratings | Favourites and 0–5 stars per (player, item, field): the NEWEST change wins, a tie to the larger value; a cleared value (0) is a change and travels. Song fields are keyed by artist + title without twin prefixes, chart stars by the version's song id through the library's song remap. Unknown fields, key kinds and out-of-range values from another device are dropped (`beatbyte_sync::ratings`, added 0.18.77). |
 | players | Identity is the id. **New ids become device-independent** (see 4). A remote player whose id matches a local one with a different `created_ms` is a collision from the old counter: the remote one is re-numbered and every reference in the remote snapshot is rewritten before merging. Same name, different id → the rule is an open decision. |
 | telemetry | Rows, never files: attach the remote copy, insert every session whose `uid` is not here (new `session_id`, its events and notes carried along), `note_context` by its primary key. A `uid` on both sides keeps the more complete row (ended over open, more events). |
 | shared settings | Per key, the most recent CHANGE wins — each shared key carries the time it last changed (the game stamps it when it saves). A preference is the one place where "the newer choice" is the honest rule; it is per key, not per file. |

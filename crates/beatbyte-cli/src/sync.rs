@@ -30,6 +30,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use beatbyte_core::player::Roster;
 use beatbyte_sync::library::{Action, Entry, Manifest, POINTER, version_of};
+use beatbyte_sync::ratings::Ratings;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -508,6 +509,7 @@ fn local_snapshot(data: &Path, settings: &Path, device: &str) -> Value {
         "history": std::fs::read_to_string(data.join("history.jsonl")).unwrap_or_default(),
         "scores": read_json(&data.join("scores.json")).unwrap_or(Value::Null),
         "achievements": read_json(&data.join("achievements.json")).unwrap_or(Value::Null),
+        "ratings": read_json(&data.join("ratings.json")).unwrap_or(Value::Null),
         "settings": beatbyte_sync::settings::shared_part(&settings),
         "import_index": read_json(&library_root(data).join("imported-hashes.json"))
             .unwrap_or(Value::Null),
@@ -695,6 +697,25 @@ fn merge_device(
         &snapshot["achievements"],
         &players.remote,
     );
+    // Favourites and stars. A device on an older build sends none, so
+    // a missing part is an empty file; one that does not parse is
+    // refused like any other untrusted input.
+    let ratings_of = |value: Option<Value>, from: &str| -> Result<Ratings, String> {
+        match value {
+            None | Some(Value::Null) => Ok(Ratings::default()),
+            Some(v) => serde_json::from_value(v).map_err(|e| format!("{from}: ratings: {e}")),
+        }
+    };
+    let ratings = beatbyte_sync::ratings::merge(
+        &ratings_of(read_json(&data.join("ratings.json")), "this device")?,
+        &players.local,
+        &ratings_of(
+            Some(snapshot["ratings"].clone()),
+            &remote_dir.display().to_string(),
+        )?,
+        &players.remote,
+        &plan.song_remap,
+    );
     let settings = beatbyte_sync::settings::merge(
         &read_json(settings_path).unwrap_or(json!({})),
         &snapshot["settings"],
@@ -713,10 +734,12 @@ fn merge_device(
     }
 
     merged.notes.push(format!(
-        "history +{} (enriched {}), scores improved {}, settings taken {:?}, library: {} to fetch",
+        "history +{} (enriched {}), scores improved {}, favourites {} / stars {}, settings taken {:?}, library: {} to fetch",
         history.added,
         history.enriched,
         scores.improved,
+        beatbyte_sync::ratings::count(&ratings).0,
+        beatbyte_sync::ratings::count(&ratings).1,
         settings.taken,
         plan.actions
             .iter()
@@ -790,6 +813,10 @@ fn merge_device(
     write_atomic(&data.join("history.jsonl"), history.text.as_bytes())?;
     write_json(&data.join("scores.json"), &scores.board)?;
     write_json(&data.join("achievements.json"), &achievements)?;
+    write_json(
+        &data.join("ratings.json"),
+        &serde_json::to_value(&ratings).map_err(|e| e.to_string())?,
+    )?;
     write_json(settings_path, &settings.settings)?;
     if !index.is_empty() {
         write_json(

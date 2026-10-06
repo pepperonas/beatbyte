@@ -41,6 +41,7 @@ pub mod players_ui;
 pub mod plot;
 pub mod preview;
 pub mod prompts;
+pub mod ratings;
 pub mod results;
 pub mod room_stage;
 pub mod scores;
@@ -278,6 +279,7 @@ pub fn run() -> AppExit {
         song_info::SongInfoPlugin,
         study_twin::StudyTwinPlugin,
         players::PlayersPlugin,
+        ratings::RatingsPlugin,
         players_ui::PlayersUiPlugin,
         stats_ui::StatsUiPlugin,
         achievements::AchievementsPlugin,
@@ -383,8 +385,11 @@ fn report_frame_times(time: Res<Time>, mut log: Option<ResMut<FrameLog>>) {
     sorted.sort_by(f32::total_cmp);
     let median = sorted[sorted.len() / 2];
     let worst = sorted[sorted.len() * 99 / 100];
+    // The longest frame too: a stall that happens once in five seconds
+    // (a list rebuilt on a keystroke) is under the 99th percentile.
+    let longest = sorted[sorted.len() - 1];
     info!(
-        "frames: median {median:.2} ms ({:.0} fps), 99th percentile {worst:.2} ms, samples {}",
+        "frames: median {median:.2} ms ({:.0} fps), 99th percentile {worst:.2} ms, longest {longest:.2} ms, samples {}",
         1000.0 / median.max(0.001),
         sorted.len()
     );

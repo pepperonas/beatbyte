@@ -1248,3 +1248,25 @@ artifact, smoke-test it (neutral CWD!), then
   and per overstrum (`o`, `near` = the last judged note) — before
   reasoning about the chart: all notes hit plus overstrums is the
   room, not the music.
+- **A wired test without a resource the system reads runs NOTHING.**
+  Bevy validates a system's parameters and skips the system when a
+  `Res<…>` is missing — no panic, no warning, the test simply observes
+  no effect. The click test of the rating input failed only because
+  `ButtonInput<KeyCode>` was inserted by the key helper and never in
+  the click test. A wired test inserts every resource the system names,
+  and a test that expects "nothing happens" proves only half until the
+  same setup has been seen to make something happen.
+- **AppleScript reaches the game only under the process name
+  `beatbyte`.** A copy of the binary under another name
+  (`beatbyte-old`) got not one key in a before/after comparison, and a
+  run whose window was not frontmost logged vsync-paced 16.7 ms frames
+  that read like a measurement. Check the log for a sign the keys
+  arrived (the browser preview line changes with the selection) before
+  reading any number from such a run.
+- **A disk that fills during a release link leaves a 2 KB binary that
+  cargo calls fresh.** The strip step failed with "No space left on
+  device", `target/release/beatbyte` was 2 464 bytes, and the next build
+  "finished" in 0.7 s by copying the broken file over a restored one.
+  `cargo clean --release -p beatbyte` (the app crate only, 236 MB) then
+  relinks. Check the binary's size after every release build, and keep
+  a copy of the player's working binary before building over it.
