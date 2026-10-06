@@ -184,6 +184,14 @@ Nothing should enter the library twice, and three checks see to that.
    *Somebody That I Used To Know*, *Hurt* (the Nine Inch Nails original
    of the Johnny Cash recording in the library), *Wicked Game*, *Maniac*,
    *Thunderstruck* and *Enjoy the Silence*.
+   In the next 1 000, 73 were listed and 12 excluded. Two kinds are easy
+   to miss: the **original of a cover the library has** is the same song
+   (Thin Lizzy's *Whiskey in the Jar* beside Metallica's, The Cars' *You
+   Might Think* beside Weezer's). And **when unsure, exclude**: a song
+   wrongly excluded only costs a replacement from further down, while a
+   duplicate stays in the library (Sum 41 *Paint It Black*, Avenged
+   Sevenfold *Wish You Were Here* and Pennywise *Revolution* went out on
+   that rule).
 
 The converter adds a fourth check of its own. A download is
 fingerprinted (FNV-1a over the chart file and `song.ini`, stored as
@@ -229,9 +237,9 @@ catalogue only says *whether* a chart has opens, not *how many*, so the
 pick can prefer charts without them but cannot reject a chart for having
 too many. The count appears only after conversion, in the report.
 
-Measured on the 1 000-song run of 2026-10-06: **507** of the 1 000
-charts lost at least one open note, and **219** lost more than 5 % of
-their notes. The worst were all metal and hard rock, where the open
+Measured on the two 1 000-song runs of 2026-10-06: **507** and **488**
+of the 1 000 charts lost at least one open note, and **219** and
+**222** lost more than 5 % of their notes. The worst were all metal and hard rock, where the open
 string carries the riff: The Warning *Ritual* 56 %, Bring Me The
 Horizon *Antivist* 55 % and *Empire* 52 %, Metallica *Fight Fire with
 Fire* and *Whiplash* 51 %, Black Sabbath *Children of the Grave* 46 %.
@@ -283,11 +291,12 @@ and `rank` asks Deezer only about songs it has not ranked before.
 | 2026-10-06 | `fetch3.log`, `fetch4.log` | 200 + 20 | |
 | 2026-10-06 | `fetch5.log` … `fetch8.log` | 20 + 3 + 3 + 3 | each picked against the library as it stood after the previous one |
 | 2026-10-06 | `fetch9.log` | **1 000 of 1 000, 0 failed** | ranks 552 410 … 492 326; 62 same-title cases reviewed, 6 covers excluded; 10.2 GB downloaded in 1 h 42 min; 268 charts with all four levels by hand, the rest Expert with the lower levels derived; every one a song of its own (the library had none of them) |
+| 2026-10-06 | `fetch10.log` | **1 000 of 1 000, 0 failed** | ranks 492 293 … 448 266, the first run with the scripts from this repository; 73 same-title cases reviewed, 12 excluded (9 covers or the same song as a cover in the library, 3 uncertain and excluded to be safe); 11.0 GB in 1 h 46 min; 263 with all four levels by hand; every one a song of its own |
 
-After the last run the library holds **3 713** song folders, **3 368**
-of them BG twins, in 30 GB. A duplicate audit over the whole library
+After the last run the library holds **4 713** song folders, **4 368**
+of them BG twins, in 37 GB. A duplicate audit over the whole library
 afterwards (same title and a shared artist between any two folders)
-found no pair involving the last run. The pairs it did find are either
+found no pair involving either of the two 1 000-song runs. The pairs it did find are either
 the intended twin families (a BG, GS or CL version beside the import of
 the same song) or two older imports of the user's own that no bulk run
 touched: Nena *99 Luftballons* twice, and Cyndi Lauper *Girls Just Want

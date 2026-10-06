@@ -1,16 +1,94 @@
 {
   "_doc": "Charts pick.py must never choose. 'covers': another artist's recording of a song the library already has (the duplicate check matches title AND artist, so a cover slips past it). 'broken': charts that failed to convert. Add to these lists; see docs/bridge-bulk-import.md.",
   "covers": [
-    ["Tenacious D", "Wicked Game"],
-    ["Tenacious D", "...Baby One More Time"],
-    ["Pastel Ghost", "Iris"],
-    ["Electric Callboy", "Pump It"],
-    ["Three Days Grace", "Somebody That I Used To Know"],
-    ["Nine Inch Nails", "Hurt"],
-    ["HIM", "Wicked Game"],
-    ["Carpenter Brut", "Maniac"],
-    ["Steve 'n' Seagulls", "Thunderstruck"],
-    ["Lacuna Coil", "Enjoy the Silence"]
+    [
+      "Tenacious D",
+      "Wicked Game"
+    ],
+    [
+      "Tenacious D",
+      "...Baby One More Time"
+    ],
+    [
+      "Pastel Ghost",
+      "Iris"
+    ],
+    [
+      "Electric Callboy",
+      "Pump It"
+    ],
+    [
+      "Three Days Grace",
+      "Somebody That I Used To Know"
+    ],
+    [
+      "Nine Inch Nails",
+      "Hurt"
+    ],
+    [
+      "HIM",
+      "Wicked Game"
+    ],
+    [
+      "Carpenter Brut",
+      "Maniac"
+    ],
+    [
+      "Steve 'n' Seagulls",
+      "Thunderstruck"
+    ],
+    [
+      "Lacuna Coil",
+      "Enjoy the Silence"
+    ],
+    [
+      "2CELLOS",
+      "Thunderstruck"
+    ],
+    [
+      "Reel Big Fish",
+      "Take On Me"
+    ],
+    [
+      "Thin Lizzy",
+      "Whiskey in the Jar"
+    ],
+    [
+      "Killswitch Engage",
+      "Holy Diver"
+    ],
+    [
+      "Sum 41",
+      "Paint It Black"
+    ],
+    [
+      "Avenged Sevenfold",
+      "Wish You Were Here"
+    ],
+    [
+      "A Day To Remember",
+      "Since U Been Gone"
+    ],
+    [
+      "Ronnie James Dio",
+      "Dream On (ft. Yngwie Malmsteen)"
+    ],
+    [
+      "Feuerschwanz",
+      "Dragostea Din Tei"
+    ],
+    [
+      "The Cars",
+      "You Might Think"
+    ],
+    [
+      "Mana",
+      "Si no te hubieras ido"
+    ],
+    [
+      "Pennywise",
+      "Revolution"
+    ]
   ],
   "broken": {
     "b73833a24ce87b5a2d57c7229d76975a": "Nickelback - Far Away: no resolution in [Song]"
