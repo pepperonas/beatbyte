@@ -9,6 +9,8 @@
 
 <a href="https://beatbyte.celox.io"><img src="https://img.shields.io/badge/website-beatbyte.celox.io-8fe3ff?style=for-the-badge&logo=googlechrome&logoColor=black" alt="Product website: beatbyte.celox.io"/></a>
 <a href="https://beatbyte.celox.io/download"><img src="https://img.shields.io/badge/download-for%20your%20platform-e040fb?style=for-the-badge&logo=github&logoColor=white" alt="Download the newest build for your platform"/></a>
+<br/>
+<a href="docs/bridge-bulk-import.md"><img src="https://img.shields.io/badge/bridge%20import-community%20charts%20via%20the%20Encore%20API-ff6b1a?style=for-the-badge&logo=musicbrainz&logoColor=white" alt="Bridge import: community guitar charts in bulk through the Encore API"/></a>
 
 <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fpepperonas%2Fbeatbyte%2Fmain%2FCargo.toml&query=%24.workspace.package.version&prefix=v&label=version&color=ffd940&style=for-the-badge&logo=rust&logoColor=black" alt="Current version, read live from Cargo.toml"/></a>
 <a href="#development"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fpepperonas%2Fbeatbyte%2Fmain%2Fdocs%2Fbadges%2Floc.json&style=for-the-badge&logo=github&logoColor=white" alt="Lines of code, recounted by CI on every push"/></a>
@@ -582,6 +584,28 @@ designed for a `generated chart → human correction → final chart` workflow.
 flow (every command in it verified end-to-end); see
 [`docs/audio/`](docs/audio/) for analysis quality notes.
 
+### Community charts from Bridge
+
+Songs don't have to be charted by the generator. The charts that the
+[Bridge](https://github.com/Geomitron/Bridge) downloader fetches
+(`notes.chart` / `notes.mid` + `song.ini` + audio stems) convert into
+numbered **BG twins**, `[BG-01] <title>`, `[BG-02] …`. They bring their
+own audio and play beside the song's GS and CL versions (ADR-0022):
+
+```bash
+beatbyte-cli bridge <folder-of-downloads>   # or B in the song browser
+```
+
+**In bulk:** [`tools/bridge-bulk/`](tools/bridge-bulk/) crawls the whole
+community guitar library through the Encore API (the backend Bridge
+uses), ranks the songs by popularity, picks the best community chart of
+each, skips everything the library already has, and downloads and
+converts hundreds of them unattended.
+**[docs/bridge-bulk-import.md](docs/bridge-bulk-import.md)** covers the
+API, the `.sng` container, the filters, the duplicate checks and the
+known limits. The game itself never contacts the API; the tools do, and
+only when you run them.
+
 ## CLI
 
 The tooling binary is `beatbyte-cli` (the game itself owns the `beatbyte`
@@ -598,6 +622,7 @@ beatbyte-cli review chart.json     # what the recorded sessions say about a char
 beatbyte-cli context --all songs/  # what the analysis says at each note
 beatbyte-cli telemetry status      # what is in the gameplay store
 beatbyte-cli sync --hub raspi5:beatbyte-hub  # one career on several devices
+beatbyte-cli bridge ~/Downloads/charts  # Bridge downloads → BG twins
 ```
 
 `beatbyte-cli telemetry` also has `import`, `list`, `show`, `export`,
@@ -827,6 +852,11 @@ library (`docs/audio/loudness.md`).
 
 Nothing else ever goes out. There is no telemetry, no update check
 and no crash reporting.
+
+The **Bridge bulk tools** in `tools/bridge-bulk/` are not part of the
+game. When you run them, they ask `api.enchor.us` and `files.enchor.us`
+for charts and `api.deezer.com` for how well known a song is, sending
+artists and titles and nothing about you. The game never runs them.
 
 ## License
 

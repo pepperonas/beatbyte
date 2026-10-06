@@ -321,3 +321,19 @@ that happens to share a file name is not. A song you delete in the
 browser stays deleted — its fingerprint is remembered, so the watcher
 does not resurrect it from the folder. The SONG FOLDER row in the
 settings shows the watched folder; confirming the row clears it.
+
+## Community charts from Bridge
+
+Charts made by people instead of the generator: a folder the
+[Bridge](https://github.com/Geomitron/Bridge) downloader fetched
+converts into a numbered BG twin with its own audio (ADR-0022). This
+needs `ffmpeg`:
+
+```bash
+beatbyte-cli bridge ~/Downloads/charts --library "$LIB"   # or B in the song browser
+```
+
+To import hundreds at once (the best-known songs of the whole community
+library, one good chart each, nothing the library already has), use
+the bulk tools: **[bridge-bulk-import.md](bridge-bulk-import.md)**.
+

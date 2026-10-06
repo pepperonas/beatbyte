@@ -103,3 +103,46 @@ and Symphonia 0.5 has no Opus decoder.
   does not have.
 - **An Opus decoder in the game** — a codec dependency for one import
   path, where a one-off transcode costs nothing at play time.
+
+## Amendment 2026-10-06 — bulk import through the API, as a tool
+
+On 2026-10-05 and 2026-10-06 the user asked for songs in bulk: first
+the top 1 000, then batches of 20, 3 and another 1 000, each with "make
+sure there are no duplicates". That cannot be done through Bridge's
+interface, one search at a time, so the downloads went to the Encore
+API directly. The scripts that did it are now versioned as
+[`tools/bridge-bulk/`](../../tools/bridge-bulk/) and documented in
+[`docs/bridge-bulk-import.md`](../bridge-bulk-import.md).
+
+**Unchanged:** the game has no search over the API and never contacts
+it, and "downloading stays in Bridge" still holds for everything the
+game does. The converter is the only way into the library: a bulk
+download is unpacked into exactly the folder layout Bridge writes and
+goes through `beatbyte-cli bridge`, so every rule above (one download
+= one number, the fingerprint, opens left out, audio decoded before
+the chart is written) applies unchanged.
+
+**New:**
+- The tools rank songs by an outside popularity number (Deezer's
+  public search, exact artist-and-title matches only).
+- They pick one community chart per song: game rips are filtered out
+  by charter, pack and path, as are live versions, remixes, covers and
+  parodies.
+- Before downloading, they refuse anything the library already has,
+  matching title and any credited artist across every chart version
+  and song document.
+- Covers, which have the same title under another artist and which no
+  string rule can tell from unrelated songs that share a name, are
+  listed for a person to decide on and excluded in
+  `tools/bridge-bulk/exclusions.json`.
+
+**Cost:** the API is unofficial and unstable. Its order shifts while
+paging, so the crawl makes two passes, and it answers 500 at random,
+so every call retries. A change on Encore's side breaks the tools, not
+the game. Open notes can only be counted after conversion, so a pick
+cannot keep out charts that lose many of them. See "Known limitation"
+in the bulk-import document.
+
+**Not taken:** a search screen in the game over the same API. The
+user's decision of 2026-10-04 stands, and a bulk tool that runs while
+nobody plays needs none of the game's machinery.
