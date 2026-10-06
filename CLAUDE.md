@@ -998,7 +998,13 @@ artifact, smoke-test it (neutral CWD!), then
   `rm -rf target/<profile>/build/libsqlite3-sys-* target/<profile>/.fingerprint/libsqlite3-sys-*`
   — which reruns the build script for that profile alone and leaves
   the other one standing (verified the same day; it struck four times
-  that day). Ruled out by direct test on 2026-10-05, each step followed
+  that day).
+  **Cause found 2026-10-06: `~/bin/platzwaechter.sh`** (an hourly
+  LaunchAgent outside this repository) deleted single files in every
+  `target/` by age — a build script's `bindgen.rs` is old, its
+  fingerprint is not. It now deletes only whole `incremental/` folders
+  and whole non-release profiles; if the error comes back, the cause is
+  somewhere else. Ruled out by direct test on 2026-10-05, each step followed
   by a check that the file is still there: `cargo check`, `cargo doc`
   with and without `--all-features`, `clippy --all-features`, debug
   builds with and without `--features ml`, `cargo test --no-run`.
