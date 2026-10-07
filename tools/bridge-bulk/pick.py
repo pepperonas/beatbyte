@@ -22,7 +22,9 @@ DONE = f"{E.WORK}/done.txt"
 _ex = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "exclusions.json")))
 COVERS = {tuple(pair) for pair in _ex["covers"]}
 BROKEN = set(_ex["broken"])
-PREFIX = re.compile(r"^(\s*\[(?:GS|CL|BG-\d+)\]\s*)+")  # the twins' title tags
+# The twins' title tags. GR (game rips, 0.18.79) was missing at first,
+# and every duplicate check was blind to songs that exist only as a rip.
+PREFIX = re.compile(r"^(\s*\[(?:GS|CL|BG-\d+|GR-\d+|Guitar Study)\]\s*)+")
 
 
 def tkey(title):

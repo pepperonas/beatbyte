@@ -37,7 +37,7 @@ import pick as P  # noqa: E402
 OUT = os.environ.get("OUT", "selection-own.json")
 INCLUDE_RIPS = E.INCLUDE_RIPS
 # Every twin prefix this build and older ones wrote.
-PREFIX = re.compile(r"^(\s*\[(?:GS|CL|BG-\d+|Guitar Study|Classic)\]\s*)+", re.I)
+PREFIX = re.compile(r"^(\s*\[(?:GS|CL|BG-\d+|GR-\d+|Guitar Study|Classic)\]\s*)+", re.I)
 
 
 def own_songs():
@@ -53,7 +53,7 @@ def own_songs():
         title = PREFIX.sub("", s.get("title", ""))
         artist = s.get("artist", "")
         k = (P.tkey(title), re.sub(r"[^a-z0-9]", "", E.norm(artist)))
-        if folder.startswith("bridge-"):
+        if folder.startswith(("bridge-", "gamerip-")):
             bridged.add(k)
         else:
             songs.setdefault(k, {"artist": artist, "title": title})
