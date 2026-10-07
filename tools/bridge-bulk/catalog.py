@@ -110,9 +110,28 @@ def norm(s):
     return re.sub(r"^the ", "", s).strip()
 
 
+# Who made the commercial games' charts.
+STUDIOS = re.compile(r"\b(harmonix|neversoft|vicarious visions|redoctane|budcat|"
+                     r"freestylegames|wavegroup|activision|beenox|ubisoft)\b", re.I)
+# The packs that ARE a commercial game or its DLC. Anchored at the start
+# and closed at the end or before " DLC"/":"/"(": "J-Rock Band Project"
+# (a community project) and "Guitar Hero X-II" (a fan game) are not games.
+GAME_PACK = re.compile(
+    r"^(the beatles:? |green day:? |lego |ac/dc |)"
+    r"(rock band( [1-4]| 2| 3| 4| network| blitz| unplugged| rivals| vr)?|"
+    r"guitar hero( ii| iii| 2| 3| 5| world tour| smash hits| metallica| aerosmith| van halen|"
+    r" warriors of rock| on tour| encore| 80s| live| greatest hits)?|"
+    r"band hero|dj hero( 2)?|rocksmith( 2014)?)"
+    r"(\s*dlc\b|\s*[:(-].*|\s*$)", re.I)
+
+
 def is_rip(c):
-    """A chart of a commercial game, by its charter, pack or path."""
-    return bool(RIP.search(" ".join((c["charter"], c["pack"], c["path"]))))
+    """A chart of a commercial game: made by one of its studios, or in a
+    pack that IS one of the games. The broad RIP pattern above only ever
+    served to leave things out; to MARK a chart as a rip (`GR-NN`) a
+    community pack with "Rock Band" in its name must not count
+    (2026-10-07: "J-Rock Band Project", "Guitar Hero X-II" did)."""
+    return bool(STUDIOS.search(c["charter"] or "")) or bool(GAME_PACK.match((c["pack"] or "").strip()))
 
 
 def usable(c):

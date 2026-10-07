@@ -140,6 +140,26 @@ community chart of the same song is always preferred** — the rip is
 taken only for a song that has nothing else. The switch added 4 772
 songs to the 54 768 the filters let through before.
 
+**What counts as a game rip** (`catalog.is_rip`, since 2026-10-07): a
+chart made by one of the games' studios (Harmonix, Neversoft, Vicarious
+Visions, RedOctane, Budcat, FreeStyleGames, WaveGroup, Activision,
+Beenox, Ubisoft — also when a community charter is credited beside
+them), or a chart in a pack that IS a game or its DLC (Rock Band 1–4,
+the Rock Band Network, Guitar Hero and its editions, Band Hero, DJ Hero,
+Rocksmith, the Beatles and Green Day editions). The broader pattern the
+filters use (`RIP`, any "rock band", "guitar hero" or "dlc" in charter,
+pack or path) is too broad to MARK a chart: it took the community
+"J-Rock Band Project", the fan game "Guitar Hero X-II" and charters
+named "…GuitarHero" for rips. With the precise rule, 6 025 of the
+87 354 charts are rips.
+
+**A rip becomes `[GR-NN]`, not `[BG-NN]`** (0.18.79): `fetch.py` adds
+`beatbyte_game_rip = <game>` to the download's `song.ini` — the game is
+the pack when the pack is a game, else the studio among the charters —
+and the converter files it as a game rip, numbered in a series of its
+own, with the game in `bridge-source.json`. The browser's VERSION
+heading names it ("GR-01 FROM ROCK BAND 3 DLC (HARMONIX)").
+
 `catalog.usable()` drops a chart before it is ranked if it is:
 - **not the original recording, or not a song**: live, remix, cover,
   karaoke, instrumental, acoustic, demo, medley, mashup, full album,

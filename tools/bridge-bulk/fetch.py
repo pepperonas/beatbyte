@@ -32,10 +32,15 @@ def log(*a):
     print(time.strftime("%H:%M:%S"), *a, flush=True)
 
 def game_of(c):
-    """The game a rip comes from: its pack, else the top of its drive
-    path, else its charter ("Rock Band 3 DLC", "Harmonix")."""
-    path_top = (c.get("path") or "").split("/")[0]
-    return (c.get("pack") or path_top or c.get("charter") or "a game").strip()
+    """The game a rip comes from: its pack when the pack IS a game
+    ("Rock Band 3 DLC"), else the studio named among its charters
+    ("FreeStyleGames" for "ataeaf, FreeStyleGames") — never the whole
+    charter list, which the panel shows beside it anyway."""
+    pack = (c.get("pack") or "").strip()
+    if catalog.GAME_PACK.match(pack):
+        return pack
+    studio = catalog.STUDIOS.search(c.get("charter") or "")
+    return studio.group(0) if studio else (pack or "a game")
 
 
 def mark_game_rip(folder, c):
