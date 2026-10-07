@@ -854,7 +854,15 @@ fn search_sort_input(
     prompt: Res<DownloadPrompt>,
     mut settings: ResMut<crate::config::Settings>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
+    entered: Query<(), Added<BrowserScreen>>,
 ) {
+    // Keyboard messages live for two frames, and this reader's first
+    // read is in the frame the browser appears: without this, the `q`
+    // that quit a song from the pause screen was typed into the search.
+    // What was pressed before the browser existed is not for it.
+    if !entered.is_empty() {
+        typed.clear();
+    }
     let command = crate::editor_ui::command_held(&keys);
     if typing_allowed(
         command,
@@ -3265,6 +3273,29 @@ mod search_input_tests {
         press(&mut app, KeyCode::KeyQ, "Q");
         frame(&mut app, 0.016);
         assert_eq!(view(&app).1, "quQ");
+    }
+
+    /// The user (2026-10-07): "wenn ich ein lied beende mittels q, dann
+    /// soll dieses q nicht als suchparameter in der songliste übernommen
+    /// werden". Bevy keeps keyboard messages for two frames, and the
+    /// search reads for the first time in the frame the browser appears
+    /// — so the `q` that quit the song from the pause screen was still
+    /// there to be typed. What was pressed before the browser existed
+    /// belongs to the screen it was pressed on.
+    #[test]
+    fn a_key_that_left_the_previous_screen_is_not_typed_into_the_search() {
+        let mut app = app();
+        // The `q` that quit the song, pressed on the pause screen…
+        press(&mut app, KeyCode::KeyQ, "q");
+        // …and the browser appearing in the frame the search first reads.
+        app.world_mut().spawn(BrowserScreen);
+        frame(&mut app, 0.016);
+        assert_eq!(view(&app).1, "", "the q from the pause screen was typed");
+        // The next letter is the player's, and lands.
+        release(&mut app, KeyCode::KeyQ);
+        press(&mut app, KeyCode::KeyA, "a");
+        frame(&mut app, 0.016);
+        assert_eq!(view(&app).1, "a");
     }
 
     /// Ctrl/Cmd + a letter is a tool, never text: Ctrl+E opens the

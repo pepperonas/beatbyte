@@ -265,6 +265,44 @@ Two ways out, neither taken yet: delete those twins and pick the next
 songs instead, or give BeatByte a way to play opens (ADR-0022 rejected
 mapping them to a fret lane, because that teaches a wrong shape).
 
+## Bridge versions of your own songs: `own.py`
+
+`pick.py` ranks the whole community library. For the songs you imported
+yourself (and their GS and CL twins) there is `own.py`, which asks the
+**live** search API once per song instead of reading the crawled
+catalogue, because the catalogue was missing charts the API has:
+
+```bash
+python3 tools/bridge-bulk/own.py                       # writes selection-own.json
+SELECTION=selection-own.json python3 tools/bridge-bulk/fetch.py
+```
+
+Two properties of the API it relies on, both found the hard way
+(2026-10-07):
+
+- **The search looks at the song name only.** "Toto Africa" returns
+  nothing; "Africa" returns sixteen charts, Toto's among them. The query
+  is therefore the title (and the artist as well, for imports whose
+  artist and title are swapped, like "Numb – Linkin Park"), and the
+  artist is matched on the results. Common titles need paging: "Stan"
+  has 301 hits, so up to six pages of 100 are read.
+- **A community chart may have no Expert.** Toto's *Africa* is charted
+  on Hard only; any guitar level with 100 notes or more is accepted, and
+  the converter derives the levels below the highest one.
+
+Titles from video imports carry junk ("- Remastered - 1080p",
+"- OFFICIAL VIDEO"). A title counts as a match when one contains the
+other and the shorter is at least 60 % of the longer, so "Nothing Else
+Matters" finds "Metallica- Nothing Else Matters" but "Danke" does not
+pass for "Danke für nichts". Game rips stay out and are listed.
+
+The first run (2026-10-07): 86 own songs, 20 already with a BG version;
+of the 66 others, 7 had a community chart (5 new, 2 fetched earlier
+under another spelling), 7 exist only as game rips (*Livin' On A
+Prayer*, *Born to Run*, *Don't Stop Believin'*, *Crazy Train*, *In the
+Shadows*, *Seven Nation Army*, *Ain't Talkin' 'Bout Love*), and 52 are
+not on Bridge at all.
+
 ## The work folder
 
 | file | what it is |

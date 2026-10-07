@@ -14,6 +14,23 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.78] - 2026-10-07
+
+### Fixed
+
+- **The `q` that quits a song no longer lands in the browser's search.**
+  Quitting from the pause screen with `q` returned to the song list with
+  "q" typed into the search: keyboard messages live for two frames, and
+  the search read for the first time in the frame the browser appeared.
+  The browser now drops whatever was pressed before it existed — on any
+  way into it, not only from the pause screen.
+
+### Added
+
+- `tools/bridge-bulk/own.py`: finds Bridge charts for the library's own
+  songs (the imports and their GS/CL twins) through the live API and
+  writes a pick for `fetch.py`.
+
 ## [0.18.77] - 2026-10-07
 
 ### Added
