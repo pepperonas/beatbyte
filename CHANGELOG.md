@@ -28,6 +28,10 @@ the manifest ever carries a version this file does not describe.
   settings and telemetry still merge as before. A library manifest an
   older build published is ignored, and this device's own is removed
   from the hub.
+- The track list never starts a field with `=`, `+`, `-` or `@`: artist
+  and title come from community charts, and such a field would run as
+  a formula when the list is opened in a spreadsheet. It gets a leading
+  `'` instead.
 
 ## [0.18.79] - 2026-10-07
 

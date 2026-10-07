@@ -614,11 +614,20 @@ fn merge_device(
 const TRACKLIST: &str = "tracklist.csv";
 
 /// One CSV field, quoted when it has to be.
+/// One CSV field. Artist and title come from community charts — a
+/// stranger's text — and a field starting with `=`, `+`, `-`, `@`, a
+/// tab or a carriage return runs as a formula when the list is opened
+/// in a spreadsheet; such a field gets a leading `'`.
 fn csv_field(text: &str) -> String {
+    let text = if text.starts_with(['=', '+', '-', '@', '\t', '\r']) {
+        format!("'{text}")
+    } else {
+        text.to_owned()
+    };
     if text.contains([',', '"', '\n', '\r']) {
         format!("\"{}\"", text.replace('"', "\"\""))
     } else {
-        text.to_owned()
+        text
     }
 }
 
@@ -745,7 +754,7 @@ impl Drop for Lock<'_> {
 fn take_lock<'a>(hub: &'a Hub, device: &str) -> Result<Lock<'a>, String> {
     let now = now_ms();
     let script = format!(
-        "mkdir -p devices blobs && if mkdir lock 2>/dev/null; then echo {} > lock/owner; echo TAKEN; \
+        "mkdir -p devices && if mkdir lock 2>/dev/null; then echo {} > lock/owner; echo TAKEN; \
          else cat lock/owner 2>/dev/null; fi",
         quote(&format!("{device} {now}"))
     );

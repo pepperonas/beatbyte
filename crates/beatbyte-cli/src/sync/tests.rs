@@ -372,6 +372,10 @@ fn two_devices_end_with_one_career() {
         "a song travelled to A"
     );
     assert!(!read(&b, "songs/imported/both/chart.v2.json").contains("\"a\""));
+    assert!(
+        !hub.join("blobs").exists(),
+        "the hub has a blobs folder again"
+    );
     for rel in &on_hub {
         assert!(
             !rel.starts_with("blobs/"),
@@ -627,4 +631,22 @@ fn the_track_list_says_what_every_folder_is() {
     );
     assert_eq!(lines[3], "guitar-study-maria,GS,Blondie,Maria,,,,");
     assert_eq!(lines[4], "maria,NORMAL,Blondie,Maria,,,,");
+}
+
+/// A field a spreadsheet would run as a formula is defused; ordinary
+/// text, and a dash inside a title, are left alone.
+#[test]
+fn a_track_list_field_never_starts_a_formula() {
+    for (raw, want) in [
+        ("=HYPERLINK(\"x\")", "\"'=HYPERLINK(\"\"x\"\")\""),
+        ("+1", "'+1"),
+        ("-ism", "'-ism"),
+        ("@SUM(A1)", "'@SUM(A1)"),
+        ("\tx", "'\tx"),
+        ("Hello - World", "Hello - World"),
+        ("AC/DC", "AC/DC"),
+        ("", ""),
+    ] {
+        assert_eq!(csv_field(raw), want, "{raw:?}");
+    }
 }
