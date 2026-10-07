@@ -14,6 +14,25 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.79] - 2026-10-07
+
+### Added
+
+- **Game rips are marked as such: `GR-01`, `GR-02` …** (the user:
+  "kennzeichne rips"). A chart that comes from a commercial game (Rock
+  Band, Guitar Hero, …) is a version of its own kind, numbered in a
+  series of its own beside the community charts' `BG-NN` — a song can
+  hold `BG-01` and `GR-01` side by side. In a song without an original
+  in the library, community charts lead the family, then the rips.
+- **The panel's VERSION heading says where the selected version comes
+  from:** the game for a rip ("GR-01 FROM ROCK BAND 3 DLC (HARMONIX)"),
+  the charter for a community chart ("BG-01 CHARTED BY STARGAZER").
+- The Bridge converter files a download as a game rip when its
+  `song.ini` carries `beatbyte_game_rip` (written by the bulk download
+  tool, which knows the game from the API), and records the game in
+  `bridge-source.json`. The same download is recognised whichever
+  series it went into.
+
 ## [0.18.78] - 2026-10-07
 
 ### Fixed

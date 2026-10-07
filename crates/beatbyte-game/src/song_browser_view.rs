@@ -105,6 +105,27 @@ pub struct DetailPanel;
 /// The line of bests on every difficulty.
 #[derive(Component)]
 pub struct BestLine;
+/// The "VERSION" heading, which also names the selected version's
+/// source.
+#[derive(Component)]
+pub struct VersionLabel;
+
+/// The "VERSION" heading for a version whose `bridge-source.json` says
+/// `game` / `charter`: the game for a rip, the charter for a community
+/// chart, nothing more for the rest. Pure — tested.
+#[must_use]
+pub fn version_heading(label: &str, game: Option<&str>, charter: Option<&str>) -> String {
+    match (game, charter) {
+        (Some(game), Some(charter)) => {
+            format!("VERSION   ·   {label} FROM {game} ({charter})").to_uppercase()
+        }
+        (Some(game), None) => format!("VERSION   ·   {label} FROM {game}").to_uppercase(),
+        (None, Some(charter)) => {
+            format!("VERSION   ·   {label} CHARTED BY {charter}").to_uppercase()
+        }
+        (None, None) => "VERSION".to_owned(),
+    }
+}
 /// The star button that makes the selected song a favourite.
 #[derive(Component)]
 pub struct FavoriteButton;
@@ -549,7 +570,19 @@ fn spawn_panel(panel: &mut ChildSpawnerCommands, font: &UiFont, star: &Handle<Im
                 TextColor(palette::TEXT),
             ));
         });
-    small(panel, "VERSION");
+    // The heading also says where the selected version comes from: the
+    // game for a rip, the charter for a community chart.
+    panel.spawn((
+        VersionLabel,
+        Text::new("VERSION"),
+        font.text(ui_kit::SMALL),
+        TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
+        TextLayout::default().with_no_wrap(),
+        Node {
+            margin: UiRect::top(px(6)),
+            ..default()
+        },
+    ));
     panel.spawn((
         VersionRow,
         Node {
@@ -1272,6 +1305,57 @@ pub fn paint_ratings(
     }
 }
 
+/// Name the selected version's source in the "VERSION" heading. The
+/// record is read from disk only when the selection moves to another
+/// folder, never per frame.
+#[allow(clippy::needless_pass_by_value, clippy::type_complexity)] // Bevy system
+pub fn paint_version_source(
+    library: Res<SongLibrary>,
+    view: Res<BrowserView>,
+    cursor: Res<BrowserCursor>,
+    font: Res<UiFont>,
+    mut heading: Query<&mut Text, With<VersionLabel>>,
+    fresh: Query<(), Added<VersionLabel>>,
+    mut shown: Local<Option<std::path::PathBuf>>,
+) {
+    let entry = selected_entry(&library, &view, &cursor);
+    let folder = entry.and_then(|e| match &e.source {
+        SongSource::File { chart_path, .. } => {
+            chart_path.parent().map(std::path::Path::to_path_buf)
+        }
+        SongSource::Builtin(_) => None,
+    });
+    // A heading spawned anew (the screen was entered again) is painted
+    // even when the selection is the one shown last time.
+    if *shown == folder && fresh.is_empty() {
+        return;
+    }
+    let record: Option<serde_json::Value> = folder.as_ref().and_then(|f| {
+        std::fs::read_to_string(f.join("bridge-source.json"))
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+    });
+    let field = |k: &str| {
+        record
+            .as_ref()
+            .and_then(|r| r.get(k))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+    };
+    let label = entry.map_or_else(String::new, version_label);
+    let wanted = font.safe(&version_heading(
+        &label,
+        field("game").as_deref(),
+        field("charter").as_deref(),
+    ));
+    for mut text in &mut heading {
+        if text.0 != wanted {
+            text.0.clone_from(&wanted);
+        }
+    }
+    *shown = folder;
+}
+
 /// Rebuild the version chips when the selected family changes.
 #[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)] // Bevy system
 pub fn sync_versions(
@@ -1435,6 +1519,23 @@ mod tests {
         let line = bests_line(&e, |d| (d == Difficulty::Hard).then_some(0.854));
         assert_eq!(line, "MEDIUM —   HARD 85%");
         assert_eq!(bests_line(&e, |_| None), "MEDIUM —   HARD —");
+    }
+
+    #[test]
+    fn the_version_heading_names_the_game_of_a_rip_and_the_charter_of_a_chart() {
+        assert_eq!(
+            version_heading("GR-01", Some("Rock Band 3 DLC"), Some("Harmonix")),
+            "VERSION   ·   GR-01 FROM ROCK BAND 3 DLC (HARMONIX)"
+        );
+        assert_eq!(
+            version_heading("BG-01", None, Some("Stargazer")),
+            "VERSION   ·   BG-01 CHARTED BY STARGAZER"
+        );
+        assert_eq!(
+            version_heading("GR-02", Some("Guitar Hero"), None),
+            "VERSION   ·   GR-02 FROM GUITAR HERO"
+        );
+        assert_eq!(version_heading("NORMAL", None, None), "VERSION");
     }
 
     #[test]

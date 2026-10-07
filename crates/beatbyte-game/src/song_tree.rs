@@ -242,8 +242,11 @@ pub fn variant_label(title: &str) -> String {
     let mut tags: Vec<String> = Vec::new();
     let mut rest = title;
     loop {
-        if let Some((number, after)) = beatbyte_chart::twin::split_bridge_title(rest) {
-            tags.push(format!("BG-{number:02}"));
+        if let Some((kind, number, after)) = beatbyte_chart::twin::split_numbered_title(rest) {
+            tags.push(format!(
+                "{}-{number:02}",
+                beatbyte_chart::twin::numbered_tag(kind)
+            ));
             rest = after;
         } else if let Some(after) = rest.strip_prefix("[GS] ") {
             tags.push("GS".to_owned());
@@ -488,6 +491,11 @@ mod tests {
         assert_eq!(variant_label("[BG-01] Maria"), "BG-01");
         assert_eq!(variant_label("[BG-12] Maria"), "BG-12");
         assert_eq!(variant_label("[BG-1] Maria"), "NORMAL");
+        assert_eq!(
+            variant_label("[GR-01] Maria"),
+            "GR-01",
+            "a game rip shows as GR"
+        );
         assert_eq!(designer_label(None), "GENERATED");
         assert_eq!(designer_label(Some("editor")), "HAND-MADE");
         assert_eq!(designer_label(Some("design-session")), "REDESIGN");

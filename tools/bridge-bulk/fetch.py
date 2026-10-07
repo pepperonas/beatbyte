@@ -9,6 +9,9 @@ downloads would pass CAP bytes. Waits while the game runs (the import
 refuses then). See docs/bridge-bulk-import.md."""
 import json, os, shutil, struct, subprocess, sys, time
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import catalog  # noqa: E402  (is_rip: one rule for every tool)
+
 try:  # live progress above the Claude Code prompt (taskline); optional
     from taskline import Progress
 except ImportError:
@@ -27,6 +30,23 @@ SKIP_EXT = {".mp4", ".webm", ".avi", ".mkv", ".mov", ".ogv"}
 
 def log(*a):
     print(time.strftime("%H:%M:%S"), *a, flush=True)
+
+def game_of(c):
+    """The game a rip comes from: its pack, else the top of its drive
+    path, else its charter ("Rock Band 3 DLC", "Harmonix")."""
+    path_top = (c.get("path") or "").split("/")[0]
+    return (c.get("pack") or path_top or c.get("charter") or "a game").strip()
+
+
+def mark_game_rip(folder, c):
+    """Tell the converter this download is a game rip: it then files it
+    as `[GR-NN]` and records the game (`beatbyte_game_rip` in song.ini;
+    the download itself does not say, the API does)."""
+    if not catalog.is_rip(c):
+        return
+    with open(os.path.join(folder, "song.ini"), "a") as ini:
+        ini.write(f"beatbyte_game_rip = {game_of(c)}\n")
+
 
 def unpack(sng_path, out_dir):
     data = open(sng_path, "rb").read()
@@ -103,6 +123,7 @@ def run(todo, total, p):
             safe = "".join(ch if ch.isalnum() or ch in " -_()" else "_" for ch in f"{c['artist']} - {c['name']} ({c['charter']})")[:120]
             try:
                 unpack(sng, f"{batch_dir}/{safe}")
+                mark_game_rip(f"{batch_dir}/{safe}", c)
             except Exception as e:
                 log("unpack failed:", safe, e); shutil.rmtree(f"{batch_dir}/{safe}", ignore_errors=True)
             os.remove(sng)

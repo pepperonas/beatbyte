@@ -19,7 +19,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.18.78"
+version = "0.18.79"
 edition = "2024"
 license = "MIT"
 authors = ["Martin Pfeffer"]
@@ -31,20 +31,20 @@ categories = ["games"]
 
 [workspace.dependencies]
 # Internal crates
-beatbyte-core = { path = "crates/beatbyte-core", version = "0.18.78" }
-beatbyte-catalogue = { path = "crates/beatbyte-catalogue", version = "0.18.78" }
-beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.18.78" }
-beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.18.78" }
-beatbyte-game = { path = "crates/beatbyte-game", version = "0.18.78" }
-beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.18.78" }
-beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.18.78" }
-beatbyte-ml = { path = "crates/beatbyte-ml", version = "0.18.78" }
-beatbyte-lyrics = { path = "crates/beatbyte-lyrics", version = "0.18.78" }
-beatbyte-meter = { path = "crates/beatbyte-meter", version = "0.18.78" }
-beatbyte-poly = { path = "crates/beatbyte-poly", version = "0.18.78" }
-beatbyte-telemetry = { path = "crates/beatbyte-telemetry", version = "0.18.78" }
-beatbyte-library = { path = "crates/beatbyte-library", version = "0.18.78" }
-beatbyte-sync = { path = "crates/beatbyte-sync", version = "0.18.78" }
+beatbyte-core = { path = "crates/beatbyte-core", version = "0.18.79" }
+beatbyte-catalogue = { path = "crates/beatbyte-catalogue", version = "0.18.79" }
+beatbyte-chart = { path = "crates/beatbyte-chart", version = "0.18.79" }
+beatbyte-audio = { path = "crates/beatbyte-audio", version = "0.18.79" }
+beatbyte-game = { path = "crates/beatbyte-game", version = "0.18.79" }
+beatbyte-cli = { path = "crates/beatbyte-cli", version = "0.18.79" }
+beatbyte-editor = { path = "crates/beatbyte-editor", version = "0.18.79" }
+beatbyte-ml = { path = "crates/beatbyte-ml", version = "0.18.79" }
+beatbyte-lyrics = { path = "crates/beatbyte-lyrics", version = "0.18.79" }
+beatbyte-meter = { path = "crates/beatbyte-meter", version = "0.18.79" }
+beatbyte-poly = { path = "crates/beatbyte-poly", version = "0.18.79" }
+beatbyte-telemetry = { path = "crates/beatbyte-telemetry", version = "0.18.79" }
+beatbyte-library = { path = "crates/beatbyte-library", version = "0.18.79" }
+beatbyte-sync = { path = "crates/beatbyte-sync", version = "0.18.79" }
 
 # Engine ("wav" lets bevy_audio play our procedurally generated SFX;
 # "serialize" gives input types serde for the persisted bindings table)

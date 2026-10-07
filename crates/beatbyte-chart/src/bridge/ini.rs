@@ -34,7 +34,16 @@ pub struct SongIni {
     /// `sustain_cutoff_threshold`: sustains up to this many ticks
     /// are plain notes.
     pub sustain_cutoff: Option<u32>,
+    /// `beatbyte_game_rip`: the commercial game this chart comes from
+    /// ("Rock Band 3 DLC"). Not a key of the format: BeatByte's own
+    /// download tool writes it (the Bridge API knows the game, the
+    /// download does not), and its presence makes the import a game
+    /// rip (`[GR-NN]`). At most [`MAX_GAME_CHARS`] characters.
+    pub game_rip: Option<String>,
 }
+
+/// The longest game name kept from `beatbyte_game_rip`.
+pub const MAX_GAME_CHARS: usize = 120;
 
 /// Parse a `song.ini`. Lines outside `[song]` are ignored; so is
 /// anything malformed. Pure — tested.
@@ -81,6 +90,9 @@ pub fn parse_ini(text: &str) -> SongIni {
                 ini.eighthnote_hopo = matches!(value.to_ascii_lowercase().as_str(), "1" | "true");
             }
             "sustain_cutoff_threshold" => ini.sustain_cutoff = ticks(),
+            "beatbyte_game_rip" => {
+                ini.game_rip = text().map(|g| g.chars().take(MAX_GAME_CHARS).collect());
+            }
             _ => {}
         }
     }

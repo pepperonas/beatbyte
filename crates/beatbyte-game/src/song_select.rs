@@ -173,13 +173,20 @@ pub(crate) fn original_in(entries: &[SongEntry], order: &[usize], twin: usize) -
     {
         return Some(original);
     }
-    let (number, _) = beatbyte_chart::twin::split_bridge_title(&entries[twin].title)?;
+    // A family of numbered versions without an original gathers under
+    // its first one: community charts (BG) before game rips (GR), then
+    // by number.
+    let rank =
+        |kind: beatbyte_chart::twin::Kind, n: u8| (kind == beatbyte_chart::twin::Kind::GameRip, n);
+    let (kind, number, _) = beatbyte_chart::twin::split_numbered_title(&entries[twin].title)?;
+    let mine = rank(kind, number);
     order
         .iter()
         .copied()
         .filter_map(|j| {
-            let (n, rest) = beatbyte_chart::twin::split_bridge_title(&entries[j].title)?;
-            (rest == base && entries[j].artist == *artist && n < number).then_some((n, j))
+            let (k, n, rest) = beatbyte_chart::twin::split_numbered_title(&entries[j].title)?;
+            (rest == base && entries[j].artist == *artist && rank(k, n) < mine)
+                .then_some((rank(k, n), j))
         })
         .min()
         .map(|(_, j)| j)
@@ -512,6 +519,7 @@ impl Plugin for SongSelectPlugin {
                     look::paint_bar,
                     look::paint_panel,
                     look::paint_ratings,
+                    look::paint_version_source,
                 )
                     .chain()
                     .run_if(in_state(AppState::SongSelect)),
@@ -2473,6 +2481,9 @@ mod view_tests {
         lib.push(entry("[BG-03] Only Here", "Band", None, 200.0));
         lib.push(entry("[BG-01] Only Here", "Band", None, 200.0));
         lib.push(entry("[BG-02] Only Here", "Other Band", None, 200.0));
+        lib.push(entry("[GR-01] Only Here", "Band", None, 200.0));
+        lib.push(entry("[GR-01] Rip Only", "Band", None, 200.0));
+        lib.push(entry("[GR-02] Rip Only", "Band", None, 200.0));
         let at = |title: &str| {
             lib.iter()
                 .position(|e| e.title == title)
@@ -2493,6 +2504,18 @@ mod view_tests {
             "without the song, the lowest BG version stands in for it"
         );
         assert_eq!(original_in(&lib, &order, at("[BG-01] Only Here")), None);
+        // A game rip of the same song files under the community chart…
+        assert_eq!(
+            original_in(&lib, &order, at("[GR-01] Only Here")),
+            Some(at("[BG-01] Only Here")),
+            "community charts before game rips"
+        );
+        // …and rips alone gather under their first.
+        assert_eq!(
+            original_in(&lib, &order, at("[GR-02] Rip Only")),
+            Some(at("[GR-01] Rip Only"))
+        );
+        assert_eq!(original_in(&lib, &order, at("[GR-01] Rip Only")), None);
         assert_eq!(
             original_in(&lib, &order, at("[BG-02] Only Here")),
             None,

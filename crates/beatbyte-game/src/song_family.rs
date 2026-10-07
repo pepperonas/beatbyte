@@ -117,8 +117,8 @@ pub fn row_title(entries: &[SongEntry], family: &Family) -> String {
         .and_then(|base| {
             // A family whose head is itself a BG download (no original
             // in the library) still reads as the song.
-            beatbyte_chart::twin::split_bridge_title(title)
-                .map(|(_, rest)| rest.to_owned())
+            beatbyte_chart::twin::split_numbered_title(title)
+                .map(|(_, _, rest)| rest.to_owned())
                 .or_else(|| Some(base.to_owned()))
         })
         .unwrap_or_else(|| title.clone())

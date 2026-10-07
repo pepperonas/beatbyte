@@ -125,6 +125,10 @@ pub struct SourceRecord {
     /// Who charted it, when `song.ini` says.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub charter: Option<String>,
+    /// The commercial game a game rip comes from (`[GR-NN]`); absent
+    /// for a community chart.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub game: Option<String>,
     /// When it was converted, Unix milliseconds.
     pub imported_ms: u64,
 }
@@ -132,10 +136,12 @@ pub struct SourceRecord {
 /// What an import did.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outcome {
-    /// A new BG version was written.
+    /// A new BG or GR version was written.
     Imported {
         /// Its folder.
         folder: PathBuf,
+        /// Bridge (`BG`) or game rip (`GR`).
+        kind: twin::Kind,
         /// Its number.
         number: u8,
         /// The library song it sits under, by folder name, if any.
@@ -143,10 +149,12 @@ pub enum Outcome {
         /// What the conversion changed or left out.
         report: Report,
     },
-    /// This download is already BG version `number` in `folder`.
+    /// This download is already version `number` in `folder`.
     AlreadyThere {
         /// The existing folder.
         folder: PathBuf,
+        /// Bridge (`BG`) or game rip (`GR`).
+        kind: twin::Kind,
         /// Its number.
         number: u8,
     },
@@ -366,26 +374,34 @@ pub fn standalone_base(artist: &str, title: &str) -> String {
     }
 }
 
-/// Every BG version of the song whose folder name is `base`, as
-/// `(number, folder, its source record if readable)`, by number.
-fn versions_of(library_root: &Path, base: &str) -> Vec<(u8, PathBuf, Option<SourceRecord>)> {
+/// One numbered version on disk: its kind, number, folder and source
+/// record (if readable).
+type Version = (twin::Kind, u8, PathBuf, Option<SourceRecord>);
+
+/// Every BG and GR version of the song whose folder name is `base`,
+/// by kind and number. Both kinds, because a download is the same
+/// download whichever series it went into: the fingerprint check
+/// looks at all of them.
+fn versions_of(library_root: &Path, base: &str) -> Vec<Version> {
     let Ok(entries) = std::fs::read_dir(library_root) else {
         return Vec::new();
     };
-    let mut out: Vec<(u8, PathBuf, Option<SourceRecord>)> = entries
+    let mut out: Vec<Version> = entries
         .filter_map(Result::ok)
         .filter_map(|entry| {
             let name = entry.file_name().to_string_lossy().into_owned();
-            let number = twin::bridge_number_of_folder(&name)?;
-            (twin::bridge_folder_name(base, number) == name).then(|| {
-                let record = std::fs::read_to_string(entry.path().join(SOURCE_FILE))
-                    .ok()
-                    .and_then(|t| serde_json::from_str(&t).ok());
-                (number, entry.path(), record)
+            twin::Kind::NUMBERED.into_iter().find_map(|kind| {
+                let number = twin::numbered_number_of_folder(kind, &name)?;
+                (twin::numbered_folder_name(kind, base, number) == name).then(|| {
+                    let record = std::fs::read_to_string(entry.path().join(SOURCE_FILE))
+                        .ok()
+                        .and_then(|t| serde_json::from_str(&t).ok());
+                    (kind, number, entry.path(), record)
+                })
             })
         })
         .collect();
-    out.sort_by_key(|v| v.0);
+    out.sort_by_key(|v| (v.0 == twin::Kind::GameRip, v.1));
     out
 }
 
@@ -432,7 +448,7 @@ pub fn import(
 
     // Which number — or nothing to do.
     let existing = versions_of(library_root, &base);
-    if let Some((number, folder, _)) = existing.iter().find(|(_, folder, record)| {
+    if let Some((kind, number, folder, _)) = existing.iter().find(|(_, _, folder, record)| {
         twin::is_finished(folder)
             && record
                 .as_ref()
@@ -440,18 +456,30 @@ pub fn import(
     }) {
         return Ok(Outcome::AlreadyThere {
             folder: folder.clone(),
+            kind: *kind,
             number: *number,
         });
     }
+    // A game rip is numbered in a series of its own (`GR-NN`).
+    let kind = if ini.game_rip.is_some() {
+        twin::Kind::GameRip
+    } else {
+        twin::Kind::Bridge
+    };
     let taken: Vec<u8> = existing
         .iter()
-        .filter(|(_, folder, _)| twin::is_finished(folder))
-        .map(|v| v.0)
+        .filter(|(k, _, folder, _)| *k == kind && twin::is_finished(folder))
+        .map(|v| v.1)
         .collect();
-    let number = twin::next_bridge_number(&taken)
-        .ok_or_else(|| format!("{base} already has {} BG versions", twin::MAX_BRIDGE_NUMBER))?;
-    chart.song.title = twin::bridge_title(&chart.song.title, number);
-    let folder = library_root.join(twin::bridge_folder_name(&base, number));
+    let number = twin::next_bridge_number(&taken).ok_or_else(|| {
+        format!(
+            "{base} already has {} {} versions",
+            twin::MAX_BRIDGE_NUMBER,
+            twin::numbered_tag(kind)
+        )
+    })?;
+    chart.song.title = twin::numbered_title(kind, &chart.song.title, number);
+    let folder = library_root.join(twin::numbered_folder_name(kind, &base, number));
 
     // An unfinished folder of that name is a failed earlier run: it
     // is ours to replace.
@@ -466,6 +494,7 @@ pub fn import(
         fingerprint,
         format: download.format,
         charter: ini.charter.clone(),
+        game: ini.game_rip.clone(),
         imported_ms: now_ms,
     };
     let result = write_twin(&download, &folder, &mut chart, transcode, &record);
@@ -475,6 +504,7 @@ pub fn import(
     }
     Ok(Outcome::Imported {
         folder,
+        kind,
         number,
         original: original.map(|o| o.folder),
         report,
@@ -840,6 +870,7 @@ mod tests {
             number,
             original,
             report,
+            ..
         } = outcome
         else {
             panic!("expected an import");
@@ -948,6 +979,64 @@ mod tests {
             outcome(&third),
             Outcome::Imported { number: 1, .. }
         ));
+    }
+
+    #[test]
+    fn a_game_rip_becomes_gr_01_with_its_game_and_numbers_apart_from_bg() {
+        let dir = Scratch::new("rips");
+        let library = dir.0.join("imported");
+        std::fs::create_dir_all(&library).unwrap();
+        let community = download(&dir.0, "Band", "Song", "Somebody");
+        let rip = download(&dir.0, "Band", "Song", "Harmonix");
+        // What the download tool adds to a rip's song.ini.
+        let ini = rip.join("song.ini");
+        let mut text = std::fs::read_to_string(&ini).unwrap();
+        text.push_str("beatbyte_game_rip = Rock Band 3 DLC\n");
+        std::fs::write(&ini, text).unwrap();
+        let outcome = |source: &Path| import(source, &library, &fake_transcoder, 0).unwrap();
+        assert!(matches!(
+            outcome(&community),
+            Outcome::Imported {
+                kind: twin::Kind::Bridge,
+                number: 1,
+                ..
+            }
+        ));
+        // The rip is GR-01, not BG-02: a series of its own.
+        assert!(matches!(
+            outcome(&rip),
+            Outcome::Imported {
+                kind: twin::Kind::GameRip,
+                number: 1,
+                ..
+            }
+        ));
+        let folder = library.join("gamerip-01-band---song");
+        let chart: beatbyte_chart::ChartFile =
+            serde_json::from_str(&std::fs::read_to_string(folder.join("chart.json")).unwrap())
+                .unwrap();
+        assert_eq!(chart.song.title, "[GR-01] Song");
+        let record: SourceRecord =
+            serde_json::from_str(&std::fs::read_to_string(folder.join(SOURCE_FILE)).unwrap())
+                .unwrap();
+        assert_eq!(record.game.as_deref(), Some("Rock Band 3 DLC"));
+        assert_eq!(record.charter.as_deref(), Some("Harmonix"));
+        // The same rip again is recognised, whichever series it is in.
+        assert!(matches!(
+            outcome(&rip),
+            Outcome::AlreadyThere {
+                kind: twin::Kind::GameRip,
+                number: 1,
+                ..
+            }
+        ));
+        // A community chart's record carries no game.
+        let bg: SourceRecord = serde_json::from_str(
+            &std::fs::read_to_string(library.join("bridge-01-band---song").join(SOURCE_FILE))
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(bg.game, None);
     }
 
     #[test]

@@ -10,6 +10,7 @@
 //! under a live browser is harmless, but a half-written one is not
 //! worth the risk; quit the game, or use its own Bridge import.
 
+use beatbyte_chart::twin::numbered_tag;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -54,6 +55,7 @@ pub fn run(source: Option<PathBuf>, library: Option<PathBuf>) -> ExitCode {
         match bridge::import(download, &library, &transcode, now_ms()) {
             Ok(Outcome::Imported {
                 folder,
+                kind,
                 number,
                 original,
                 report,
@@ -61,12 +63,12 @@ pub fn run(source: Option<PathBuf>, library: Option<PathBuf>) -> ExitCode {
                 written += 1;
                 println!(
                     "{}",
-                    describe(&name, number, original.as_deref(), &folder, &report)
+                    describe(&name, kind, number, original.as_deref(), &folder, &report)
                 );
             }
-            Ok(Outcome::AlreadyThere { number, .. }) => {
+            Ok(Outcome::AlreadyThere { kind, number, .. }) => {
                 known += 1;
-                println!("{name}: already BG-{number:02}");
+                println!("{name}: already {}-{number:02}", numbered_tag(kind));
             }
             Err(error) => {
                 failed += 1;
@@ -85,6 +87,7 @@ pub fn run(source: Option<PathBuf>, library: Option<PathBuf>) -> ExitCode {
 /// One line per converted download. Pure — tested.
 fn describe(
     name: &str,
+    kind: beatbyte_chart::twin::Kind,
     number: u8,
     original: Option<&str>,
     folder: &Path,
@@ -97,7 +100,8 @@ fn describe(
         .map(|(difficulty, count)| format!("{} {count}", difficulty.id()))
         .collect();
     let mut line = format!(
-        "{name}: BG-{number:02} {under} → {} ({})",
+        "{name}: {}-{number:02} {under} → {} ({})",
+        numbered_tag(kind),
         folder.display(),
         notes.join(", ")
     );
@@ -175,6 +179,7 @@ mod tests {
         };
         let line = describe(
             "TTFAF (Stargazer)",
+            beatbyte_chart::twin::Kind::Bridge,
             2,
             Some("dragonforce"),
             Path::new("/l/x"),
@@ -185,6 +190,28 @@ mod tests {
             "TTFAF (Stargazer): BG-02 under dragonforce → /l/x (hard 900, expert 1200); \
              3 open notes left out; medium, easy derived from the level above"
         );
-        assert!(describe("S", 1, None, Path::new("/l/y"), &report).contains("a song of its own"));
+        assert!(
+            describe(
+                "S",
+                beatbyte_chart::twin::Kind::Bridge,
+                1,
+                None,
+                Path::new("/l/y"),
+                &report
+            )
+            .contains("a song of its own")
+        );
+        assert!(
+            describe(
+                "R",
+                beatbyte_chart::twin::Kind::GameRip,
+                3,
+                None,
+                Path::new("/l/z"),
+                &report
+            )
+            .starts_with("R: GR-03 "),
+            "a game rip is reported as GR"
+        );
     }
 }

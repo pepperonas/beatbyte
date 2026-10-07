@@ -6,8 +6,9 @@
 //! against each other. The original — its versions, its pointer, its
 //! telemetry — is never written to.
 //!
-//! There are two kinds now ([`Kind`]), and the things that must know
-//! about twins must know about BOTH: a redesign has to refuse them
+//! There are four kinds now ([`Kind`]) — two of them numbered, the
+//! Bridge downloads `[BG-NN]` and the game rips `[GR-NN]` — and the
+//! things that must know about twins must know about ALL of them: a redesign has to refuse them
 //! all (it would read the mix and bury the twin's chart under a new
 //! active version), the catalogue must skip them all (same recording,
 //! same question, somebody's rate limit), and the browser has to file
@@ -33,11 +34,21 @@ pub enum Kind {
     /// ([`bridge_folder_name`], [`bridge_title`]). Unlike the other
     /// kinds it brings its own audio.
     Bridge,
+    /// `[GR-01]` — a chart and recording from a commercial game, as the
+    /// Bridge library carries it (Rock Band, Guitar Hero, …): the user,
+    /// 2026-10-07, "kennzeichne rips". Converted exactly like a
+    /// [`Kind::Bridge`] download and numbered the same way, in a series
+    /// of its own, so a song can hold `BG-01` and `GR-01` side by side.
+    GameRip,
 }
 
 impl Kind {
     /// Every kind, in the order they were introduced.
-    pub const ALL: [Kind; 3] = [Kind::Study, Kind::Classic, Kind::Bridge];
+    pub const ALL: [Kind; 4] = [Kind::Study, Kind::Classic, Kind::Bridge, Kind::GameRip];
+
+    /// The kinds that NUMBER their twins, in the order a family lists
+    /// them: community charts before game rips.
+    pub const NUMBERED: [Kind; 2] = [Kind::Bridge, Kind::GameRip];
 
     /// The title prefix the browser shows this kind under. For
     /// [`Kind::Bridge`] it is only the START of the prefix — the
@@ -48,6 +59,7 @@ impl Kind {
             Kind::Study => "[GS] ",
             Kind::Classic => "[CL] ",
             Kind::Bridge => "[BG-",
+            Kind::GameRip => "[GR-",
         }
     }
 
@@ -60,26 +72,38 @@ impl Kind {
             Kind::Study => "guitar-study-",
             Kind::Classic => "classic-",
             Kind::Bridge => "bridge-",
+            Kind::GameRip => "gamerip-",
         }
     }
 }
 
-/// Most Bridge versions one song can have (`BG-01` … `BG-99`).
+/// Most versions of one numbered kind a song can have (`BG-01` …
+/// `BG-99`, `GR-01` … `GR-99`).
 pub const MAX_BRIDGE_NUMBER: u8 = 99;
+
+/// The two letters a numbered kind shows: `BG`, `GR`.
+#[must_use]
+pub fn numbered_tag(kind: Kind) -> &'static str {
+    match kind {
+        Kind::GameRip => "GR",
+        _ => "BG",
+    }
+}
+
+/// `[BG-07] ` / `[GR-07] ` for 7. Pure — tested.
+#[must_use]
+pub fn numbered_prefix(kind: Kind, number: u8) -> String {
+    format!("[{}-{number:02}] ", numbered_tag(kind))
+}
 
 /// `[BG-07] ` for 7. Pure — tested.
 #[must_use]
 pub fn bridge_prefix(number: u8) -> String {
-    format!("[BG-{number:02}] ")
+    numbered_prefix(Kind::Bridge, number)
 }
 
-/// The number and the rest of a title that starts with a Bridge
-/// prefix (`[BG-07] Maria` → `(7, "Maria")`). Exactly two digits, 01
-/// to 99 — anything else is a song that happens to start with a
-/// bracket. Pure — tested.
-#[must_use]
-pub fn split_bridge_title(title: &str) -> Option<(u8, &str)> {
-    let rest = title.strip_prefix(Kind::Bridge.title_prefix())?;
+fn split_with(title: &str, kind: Kind) -> Option<(u8, &str)> {
+    let rest = title.strip_prefix(kind.title_prefix())?;
     let digits = rest.get(..2)?;
     let after = rest.get(2..)?.strip_prefix("] ")?;
     if !digits.bytes().all(|b| b.is_ascii_digit()) {
@@ -91,11 +115,30 @@ pub fn split_bridge_title(title: &str) -> Option<(u8, &str)> {
         .then_some((number, after))
 }
 
-/// The number in a Bridge twin's folder name (`bridge-07-…` → 7).
-/// Pure — tested.
+/// The kind, number and rest of a title that starts with a numbered
+/// prefix (`[GR-07] Maria` → `(GameRip, 7, "Maria")`). Exactly two
+/// digits, 01 to 99 — anything else is a song that happens to start
+/// with a bracket. Pure — tested.
 #[must_use]
-pub fn bridge_number_of_folder(name: &str) -> Option<u8> {
-    let rest = name.strip_prefix(Kind::Bridge.folder_prefix())?;
+pub fn split_numbered_title(title: &str) -> Option<(Kind, u8, &str)> {
+    Kind::NUMBERED
+        .into_iter()
+        .find_map(|kind| split_with(title, kind).map(|(n, rest)| (kind, n, rest)))
+}
+
+/// The number and the rest of a title that starts with a BRIDGE
+/// prefix (`[BG-07] Maria` → `(7, "Maria")`); a game rip's `[GR-07]`
+/// is not one. Pure — tested.
+#[must_use]
+pub fn split_bridge_title(title: &str) -> Option<(u8, &str)> {
+    split_with(title, Kind::Bridge)
+}
+
+/// The number in a numbered twin's folder name of `kind`
+/// (`bridge-07-…` → 7 for [`Kind::Bridge`]). Pure — tested.
+#[must_use]
+pub fn numbered_number_of_folder(kind: Kind, name: &str) -> Option<u8> {
+    let rest = name.strip_prefix(kind.folder_prefix())?;
     let digits = rest.get(..2)?;
     rest.get(2..)?.strip_prefix('-')?;
     if !digits.bytes().all(|b| b.is_ascii_digit()) {
@@ -107,19 +150,41 @@ pub fn bridge_number_of_folder(name: &str) -> Option<u8> {
         .filter(|n| (1..=MAX_BRIDGE_NUMBER).contains(n))
 }
 
-/// The folder name of Bridge version `number` of the song whose folder
-/// is (or would be) `base`: `bridge-07-<base>`. Pure — tested.
+/// The number in a Bridge twin's folder name (`bridge-07-…` → 7).
+/// Pure — tested.
 #[must_use]
-pub fn bridge_folder_name(base: &str, number: u8) -> String {
-    format!("{}{number:02}-{base}", Kind::Bridge.folder_prefix())
+pub fn bridge_number_of_folder(name: &str) -> Option<u8> {
+    numbered_number_of_folder(Kind::Bridge, name)
 }
 
-/// `title` as Bridge version `number`: any Bridge prefix it already
-/// carries is replaced, never stacked. Pure — tested.
+/// The folder of version `number` of `kind` of the song whose folder
+/// is (or would be) `base`: `bridge-07-<base>`, `gamerip-07-<base>`.
+/// Pure — tested.
+#[must_use]
+pub fn numbered_folder_name(kind: Kind, base: &str, number: u8) -> String {
+    format!("{}{number:02}-{base}", kind.folder_prefix())
+}
+
+/// The folder name of Bridge version `number`: `bridge-07-<base>`.
+/// Pure — tested.
+#[must_use]
+pub fn bridge_folder_name(base: &str, number: u8) -> String {
+    numbered_folder_name(Kind::Bridge, base, number)
+}
+
+/// `title` as version `number` of `kind`: any numbered prefix it
+/// already carries (of either kind) is replaced, never stacked.
+/// Pure — tested.
+#[must_use]
+pub fn numbered_title(kind: Kind, title: &str, number: u8) -> String {
+    let base = split_numbered_title(title).map_or(title, |(_, _, rest)| rest);
+    format!("{}{base}", numbered_prefix(kind, number))
+}
+
+/// `title` as Bridge version `number`. Pure — tested.
 #[must_use]
 pub fn bridge_title(title: &str, number: u8) -> String {
-    let base = split_bridge_title(title).map_or(title, |(_, rest)| rest);
-    format!("{}{base}", bridge_prefix(number))
+    numbered_title(Kind::Bridge, title, number)
 }
 
 /// The lowest number from 1 not in `taken`, or `None` when all 99 are.
@@ -166,7 +231,7 @@ pub fn folder_for(song_folder: &Path, kind: Kind) -> Option<PathBuf> {
 /// chart it was made from. Pure — tested.
 #[must_use]
 pub fn base_title(title: &str) -> Option<&str> {
-    if let Some((_, rest)) = split_bridge_title(title) {
+    if let Some((_, _, rest)) = split_numbered_title(title) {
         return Some(rest);
     }
     [Kind::Study, Kind::Classic]
@@ -189,8 +254,8 @@ pub fn display_title(title: &str) -> String {
     if let Some(rest) = title.strip_prefix(LEGACY_STUDY_PREFIX) {
         return format!("{}{}", Kind::Study.title_prefix(), display_title(rest));
     }
-    if let Some((number, rest)) = split_bridge_title(title) {
-        return format!("{}{}", bridge_prefix(number), display_title(rest));
+    if let Some((kind, number, rest)) = split_numbered_title(title) {
+        return format!("{}{}", numbered_prefix(kind, number), display_title(rest));
     }
     match [Kind::Study, Kind::Classic]
         .into_iter()
@@ -206,12 +271,11 @@ pub fn display_title(title: &str) -> String {
 }
 
 /// `title` with this kind's prefix, added once and never twice.
-/// For [`Kind::Bridge`], which numbers its twins, use
-/// [`bridge_title`]; given it here the title comes back unchanged.
-/// Pure — tested.
+/// For the numbered kinds use [`numbered_title`]; given one here the
+/// title comes back unchanged. Pure — tested.
 #[must_use]
 pub fn titled(title: &str, kind: Kind) -> String {
-    if kind == Kind::Bridge {
+    if Kind::NUMBERED.contains(&kind) {
         return title.to_owned();
     }
     // Through `display_title` first: a twin written on top of a
@@ -499,6 +563,56 @@ mod tests {
         assert_eq!(bridge_number_of_folder("classic-x"), None);
         assert_eq!(kind_of_folder("bridge-07-x"), Some(Kind::Bridge));
         assert_eq!(titled("Maria", Kind::Bridge), "Maria");
+    }
+
+    #[test]
+    fn game_rips_are_a_numbered_series_of_their_own() {
+        assert_eq!(numbered_prefix(Kind::GameRip, 1), "[GR-01] ");
+        assert_eq!(
+            numbered_title(Kind::GameRip, "Crazy Train", 2),
+            "[GR-02] Crazy Train"
+        );
+        // Either numbered prefix is replaced, never stacked.
+        assert_eq!(
+            numbered_title(Kind::GameRip, "[BG-01] Crazy Train", 1),
+            "[GR-01] Crazy Train"
+        );
+        assert_eq!(
+            numbered_title(Kind::Bridge, "[GR-01] Crazy Train", 3),
+            "[BG-03] Crazy Train"
+        );
+        assert_eq!(
+            split_numbered_title("[GR-12] Crazy Train"),
+            Some((Kind::GameRip, 12, "Crazy Train"))
+        );
+        assert_eq!(
+            split_numbered_title("[BG-12] Crazy Train"),
+            Some((Kind::Bridge, 12, "Crazy Train"))
+        );
+        assert_eq!(
+            split_bridge_title("[GR-12] Crazy Train"),
+            None,
+            "a rip is not a BG version"
+        );
+        for not_one in ["[GR-1] X", "[GR-00] X", "[GR-12]X", "[GX-12] X"] {
+            assert_eq!(split_numbered_title(not_one), None, "{not_one}");
+        }
+        assert_eq!(base_title("[GR-02] Crazy Train"), Some("Crazy Train"));
+        assert_eq!(display_title("[GR-02] Crazy Train"), "[GR-02] Crazy Train");
+        assert_eq!(
+            numbered_folder_name(Kind::GameRip, "ozzy---crazy-train-m4a", 7),
+            "gamerip-07-ozzy---crazy-train-m4a"
+        );
+        assert_eq!(
+            numbered_number_of_folder(Kind::GameRip, "gamerip-07-ozzy---crazy-train-m4a"),
+            Some(7)
+        );
+        assert_eq!(
+            numbered_number_of_folder(Kind::Bridge, "gamerip-07-x"),
+            None
+        );
+        assert_eq!(kind_of_folder("gamerip-07-x"), Some(Kind::GameRip));
+        assert_eq!(titled("Crazy Train", Kind::GameRip), "Crazy Train");
     }
 
     #[test]

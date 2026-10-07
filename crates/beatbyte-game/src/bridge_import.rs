@@ -38,8 +38,17 @@ pub fn import_all() -> Result<String, String> {
     let mut tally = Tally::default();
     for download in &downloads {
         match bridge::import(download, &library, &transcode, now_ms) {
-            Ok(Outcome::Imported { folder, number, .. }) => {
-                bevy::log::info!("bridge: BG-{number:02} → {}", folder.display());
+            Ok(Outcome::Imported {
+                folder,
+                kind,
+                number,
+                ..
+            }) => {
+                bevy::log::info!(
+                    "bridge: {}-{number:02} → {}",
+                    beatbyte_chart::twin::numbered_tag(kind),
+                    folder.display()
+                );
                 tally.written.push(number);
             }
             Ok(Outcome::AlreadyThere { .. }) => tally.known += 1,
