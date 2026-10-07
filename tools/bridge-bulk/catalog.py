@@ -17,6 +17,10 @@ import json, os, re, subprocess, time, unicodedata, urllib.parse
 
 WORK = os.environ.get("BRIDGE_WORK", "/Volumes/Samsung SSD/beatbyte-bridge-work")
 CATALOG = f"{WORK}/catalog.jsonl"
+# Game rips are taken since 2026-10-07 (the user: "Nimm die Spiel rips
+# mit hinzu" — then yes to the bulk runs too). INCLUDE_RIPS=0 leaves
+# them out; a community chart of the same song is preferred either way.
+INCLUDE_RIPS = os.environ.get("INCLUDE_RIPS", "1") != "0"
 RANKS = f"{WORK}/ranks.json"
 
 
@@ -106,12 +110,17 @@ def norm(s):
     return re.sub(r"^the ", "", s).strip()
 
 
+def is_rip(c):
+    """A chart of a commercial game, by its charter, pack or path."""
+    return bool(RIP.search(" ".join((c["charter"], c["pack"], c["path"]))))
+
+
 def usable(c):
     if c["modchart"] or not c["counts"].get("expert"):
         return False
     if c["counts"]["expert"] < 100 or not (60_000 <= c["length"] <= 600_000):
         return False
-    if RIP.search(" ".join((c["charter"], c["pack"], c["path"]))):
+    if not INCLUDE_RIPS and is_rip(c):
         return False
     if JUNK.search(c["name"]) or JUNK.search(c["artist"]):
         return False
@@ -129,9 +138,10 @@ def songs():
 
 
 def best_chart(charts):
-    """One chart per song: no video, no open notes, fewest reported
-    issues, most levels charted by hand, most Expert notes."""
-    return min(charts, key=lambda c: (c["video"], c["opens"], c["issues"],
+    """One chart per song: a community chart before a game rip, then no
+    video, no open notes, fewest reported issues, most levels charted by
+    hand, most Expert notes."""
+    return min(charts, key=lambda c: (is_rip(c), c["video"], c["opens"], c["issues"],
                                       -len(c["counts"]), -c["counts"]["expert"]))
 
 

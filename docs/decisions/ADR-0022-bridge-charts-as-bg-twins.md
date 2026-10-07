@@ -146,3 +146,12 @@ in the bulk-import document.
 **Not taken:** a search screen in the game over the same API. The
 user's decision of 2026-10-04 stands, and a bulk tool that runs while
 nobody plays needs none of the game's machinery.
+
+**Further amendment 2026-10-07 — game rips are taken.** The user asked
+for the songs that exist on Bridge only as commercial game rips ("Nimm
+die Spiel rips mit hinzu"), then for the bulk runs too. The tools take
+them by default (`INCLUDE_RIPS=0` restores the old filter) and always
+prefer a community chart of the same song. Nothing changes for this
+repository: no chart or recording of any kind is ever committed; a rip,
+like every download, lands only in the player's own library.
+

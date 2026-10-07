@@ -19,10 +19,10 @@ about the API this depends on (measured 2026-10-07):
   converter derives the levels below the highest one, so any guitar
   level with 100 notes or more is accepted.
 
-Game rips stay out by default (the library takes community charts);
-the report counts them. With INCLUDE_RIPS=1 they are candidates too,
-but a community chart of the same song still wins (the user, 2026-10-07:
-"Nimm die Spiel rips mit hinzu"). See docs/bridge-bulk-import.md.
+Game rips are candidates (the user, 2026-10-07: "Nimm die Spiel rips
+mit hinzu"), but a community chart of the same song still wins;
+INCLUDE_RIPS=0 leaves them out (the switch lives in catalog.py, one
+rule for every tool). See docs/bridge-bulk-import.md.
 """
 import json
 import os
@@ -35,7 +35,7 @@ import catalog as E  # noqa: E402
 import pick as P  # noqa: E402
 
 OUT = os.environ.get("OUT", "selection-own.json")
-INCLUDE_RIPS = os.environ.get("INCLUDE_RIPS") == "1"
+INCLUDE_RIPS = E.INCLUDE_RIPS
 # Every twin prefix this build and older ones wrote.
 PREFIX = re.compile(r"^(\s*\[(?:GS|CL|BG-\d+|Guitar Study|Classic)\]\s*)+", re.I)
 
@@ -117,7 +117,7 @@ def main():
                 c = chart_of(h)
                 if not matches(song, c):
                     continue
-                c["rip"] = bool(E.RIP.search(" ".join((c["charter"], c["pack"], c["path"]))))
+                c["rip"] = E.is_rip(c)
                 if c["rip"]:
                     rips += 1
                     if not INCLUDE_RIPS:

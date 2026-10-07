@@ -126,15 +126,21 @@ skews toward what Deezer's audience listens to, and songs that are
 missing from Deezer or spelled differently there sink to the bottom.
 Treat it as "well known first", not as a chart position.
 
-## Filters: one chart per song, community charts only
+## Filters: one chart per song
+
+**Game rips are taken since 2026-10-07** (the user, after the own-songs
+run: rips for the bulk runs too). A game rip is the commercial games'
+own chart and recording, found by charter, pack or drive path
+(Harmonix, Neversoft, Rock Band, Guitar Hero, `WaveGroup` = the cover
+recordings of GH1/2, Rocksmith, DLC, …). They stay out of this
+repository like every other song (no copyrighted assets here); what
+the tools fetch lands only in your own library. `INCLUDE_RIPS=0` leaves
+them out of `pick.py` and `catalog.py rank` as before, and **a
+community chart of the same song is always preferred** — the rip is
+taken only for a song that has nothing else. The switch added 4 772
+songs to the 54 768 the filters let through before.
 
 `catalog.usable()` drops a chart before it is ranked if it is:
-
-- a **game rip**: the commercial games' own charts or recordings, found
-  by charter, pack or drive path (Harmonix, Neversoft, Rock Band, Guitar
-  Hero, `WaveGroup` = the cover recordings of GH1/2, Rocksmith, DLC, …).
-  The library takes community charts only (ADR-0022, and the project's
-  rule of no trademarks or game assets);
 - **not the original recording, or not a song**: live, remix, cover,
   karaoke, instrumental, acoustic, demo, medley, mashup, full album,
   parody, "but …", "sung by …", 8-bit, nightcore, sped up / slowed, joke,
@@ -145,8 +151,9 @@ Treat it as "well known first", not as a chart position.
   than 100 notes**, or a song shorter than **1 minute** or longer than
   **10 minutes**.
 
-Songs often have several community charts. `catalog.best_chart()` keeps
-one per song, preferring in this order: **no video**, **no open notes**,
+Songs often have several charts. `catalog.best_chart()` keeps one per
+song, preferring in this order: **a community chart over a game rip**,
+**no video**, **no open notes**,
 **fewest API-reported issues**, **most levels charted by hand**, **most
 Expert notes**. A chart that is Expert only is fine, because the
 converter derives Hard, Medium and Easy down the classic ladder.
