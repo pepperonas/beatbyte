@@ -14,6 +14,21 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.80] - 2026-10-08
+
+### Changed
+
+- **The sync no longer carries song files** (the user: "die musik
+  bibliothek soll nicht gesichert werden!! nur die trackliste!"). Each
+  device keeps its own songs; `beatbyte-cli sync` publishes a track
+  list instead — `tracklist.csv` on the hub, one line per song folder
+  with its version (NORMAL, GS, CL, BG-NN, GR-NN), artist, title,
+  charter, the game of a rip and the Bridge download it came from.
+  Players, history, scores, achievements, favourites and stars,
+  settings and telemetry still merge as before. A library manifest an
+  older build published is ignored, and this device's own is removed
+  from the hub.
+
 ## [0.18.79] - 2026-10-07
 
 ### Added

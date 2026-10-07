@@ -148,3 +148,27 @@ syncs, starts the game, and syncs again when it exits.
 4. **Same name on two devices is one person**: the players merge onto
    the one created first, and every reference to the other id is
    rewritten.
+
+## Amendment 2026-10-08 — song files do not travel
+
+The user: "die musik bibliothek soll nicht gesichert werden!! nur die
+trackliste!" — and, asked, that the library sync stop carrying songs.
+Since 0.18.80 `beatbyte-cli sync` publishes no blobs and no
+`library.json`, fetches nothing, and plans no library actions; it
+publishes `devices/<id>/tracklist.csv` instead — one line per song
+folder: folder, version (NORMAL, GS, CL, BG-NN, GR-NN), artist, title,
+charter, game, Bridge download, song id. The raspi5's nightly backup
+carries those lists and nothing else of the hub (homestack, pinned).
+Everything else still merges exactly as above: players, history,
+scores, achievements, ratings, settings, telemetry, the import index.
+
+Consequences: each device keeps its own songs — a song imported on one
+Mac does not appear on the other; the song-id remap the library plan
+produced is empty, so two devices that imported the same song keep two
+ids for it. A `library.json` an older build publishes is ignored, and a
+device's own old one is removed on its next publish (`--delete`). The
+blobs already on the hub were deleted by hand the same day. ⚠️ An older
+build still publishes and uploads; every device needs this build before
+its next sync. `beatbyte_sync::library` stays as a pure module and is
+unused by the tool.
+

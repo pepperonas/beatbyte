@@ -5,6 +5,7 @@ use super::*;
 use beatbyte_telemetry::{
     Completion, Detail, Event, EventType, InputDevice, Outcome, Provenance, SessionRow,
 };
+use std::collections::BTreeMap;
 
 fn scratch(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
@@ -128,30 +129,12 @@ fn telemetry(data: &Path, uid: &str, events: u32) {
         .expect("finishes");
 }
 
-/// The shared state two devices must agree on after a sync.
-/// What two devices must hold identically after a sync.
-type Shared = (
-    String,
-    String,
-    String,
-    String,
-    String,
-    Value,
-    Vec<(String, String)>,
-);
+/// What two devices must hold identically after a sync. The library
+/// is NOT part of it: song files do not travel (2026-10-08).
+type Shared = (String, String, String, String, String, Value);
 
 fn shared_state(data: &Path) -> Shared {
     let settings = read_json(&data.join("settings.json")).unwrap_or(Value::Null);
-    let mut files = Vec::new();
-    walk(&library_root(data), "", &mut files);
-    files.sort();
-    let library = files
-        .into_iter()
-        .map(|rel| {
-            let hash = sha256_file(&library_root(data).join(&rel)).expect("hash");
-            (rel, hash)
-        })
-        .collect();
     (
         read(data, "players.json"),
         read(data, "history.jsonl"),
@@ -159,7 +142,6 @@ fn shared_state(data: &Path) -> Shared {
         read(data, "achievements.json"),
         read(data, "ratings.json"),
         beatbyte_sync::settings::shared_part(&settings),
-        library,
     )
 }
 
@@ -378,29 +360,43 @@ fn two_devices_end_with_one_career() {
     assert_eq!((sessions, events), (3, 15));
     assert_eq!(telemetry_counts(&b.join("telemetry.db")), (3, 15));
 
-    // The library: both songs everywhere, and BOTH versions of the
-    // chart — the earlier keeps its name, the later is v3, each with
-    // its own analysis.
-    let lib = library_root(&b);
-    assert_eq!(
-        std::fs::read_to_string(lib.join("only-a/chart-active.json")).expect("pointer"),
-        "{\"active\": \"chart.json\"}"
+    // ⚠️ The user's rule (2026-10-08): the music library is never
+    // copied — not to the hub, not to the other device. Each device
+    // keeps its own songs and publishes only their list.
+    assert!(
+        !library_root(&b).join("only-a").exists(),
+        "a song travelled to B"
     );
-    assert_eq!(
-        std::fs::read_to_string(lib.join("only-a/song.m4a")).expect("fetched"),
-        "audio-a"
+    assert!(
+        !library_root(&a).join("only-b").exists(),
+        "a song travelled to A"
     );
-    assert!(lib.join("only-b/chart.json").exists());
-    assert!(read(&b, "songs/imported/both/chart.v2.json").contains("\"a\""));
-    assert!(read(&b, "songs/imported/both/chart.v3.json").contains("\"b\""));
-    assert_eq!(
-        read(&b, "songs/imported/both/chart.v3.context.json"),
-        "ctx-b"
+    assert!(!read(&b, "songs/imported/both/chart.v2.json").contains("\"a\""));
+    for rel in &on_hub {
+        assert!(
+            !rel.starts_with("blobs/"),
+            "a song file is on the hub: {rel}"
+        );
+        assert!(
+            !rel.ends_with("library.json"),
+            "a library manifest is on the hub: {rel}"
+        );
+        assert!(
+            !rel.ends_with(".m4a") && !rel.ends_with("chart.json"),
+            "a song file is on the hub: {rel}"
+        );
+    }
+    // The track lists are, one per device.
+    let list_a =
+        std::fs::read_to_string(hub.join("devices/mac-a").join(TRACKLIST)).expect("A's list");
+    let list_b =
+        std::fs::read_to_string(hub.join("devices/mac-b").join(TRACKLIST)).expect("B's list");
+    assert!(list_a.lines().any(|l| l.starts_with("only-a,")), "{list_a}");
+    assert!(
+        !list_a.lines().any(|l| l.starts_with("only-b,")),
+        "{list_a}"
     );
-    assert_eq!(
-        read(&b, "songs/imported/both/chart.v2.context.json"),
-        "ctx-a"
-    );
+    assert!(list_b.lines().any(|l| l.starts_with("only-b,")), "{list_b}");
 
     // A third sync on either side changes nothing.
     let before = shared_state(&a);
@@ -409,60 +405,6 @@ fn two_devices_end_with_one_career() {
     sync_now(&b, &hub);
     assert_eq!(shared_state(&a), before);
     assert_eq!(telemetry_counts(&a.join("telemetry.db")), (sa, ea));
-}
-
-/// A song deleted on one device is deleted on the other — it does not
-/// come straight back from the other copy.
-#[test]
-fn a_deletion_travels_instead_of_being_undone() {
-    let root = scratch("delete");
-    let hub = root.join("hub");
-    let (a, b) = (device(&root, "mac-a"), device(&root, "mac-b"));
-    song(&a, "gone", "chart.json", "c");
-    song(&a, "gone", "song.m4a", "x");
-    song(&a, "kept", "chart.json", "k");
-    sync_now(&a, &hub);
-    sync_now(&b, &hub);
-    assert!(library_root(&b).join("gone/song.m4a").exists());
-
-    std::fs::remove_dir_all(library_root(&b).join("gone")).expect("deletes");
-    sync_now(&b, &hub);
-    sync_now(&a, &hub);
-    sync_now(&b, &hub);
-    assert!(
-        !library_root(&a).join("gone").exists(),
-        "the deletion did not travel"
-    );
-    assert!(
-        !library_root(&b).join("gone").exists(),
-        "the song came back"
-    );
-    assert!(library_root(&a).join("kept/chart.json").exists());
-}
-
-/// A corrupted blob is refused, and nothing is written.
-#[test]
-fn a_blob_that_does_not_verify_changes_nothing() {
-    let root = scratch("verify");
-    let hub = root.join("hub");
-    let (a, b) = (device(&root, "mac-a"), device(&root, "mac-b"));
-    song(&a, "s", "song.m4a", "the real audio");
-    sync_now(&a, &hub);
-    let hash = sha256_file(&library_root(&a).join("s/song.m4a")).expect("hash");
-    std::fs::write(hub.join("blobs").join(&hash), "tampered").expect("tamper");
-    let err = sync(&Options {
-        settings: b.join("settings.json"),
-        data: b.clone(),
-        hub: Some(hub.to_string_lossy().into_owned()),
-        dry_run: false,
-        models: false,
-        check_game: false,
-    })
-    .expect_err("must refuse");
-    assert!(err.contains("arrived as"), "{err}");
-    assert!(!library_root(&b).join("s/song.m4a").exists());
-    // And the refused sync released the lock.
-    assert!(!hub.join("lock").exists(), "the lock was left behind");
 }
 
 /// A dry run writes nothing — not here, not on the hub.
@@ -571,34 +513,6 @@ fn settings_are_read_where_the_game_keeps_them() {
     );
 }
 
-/// ⚠️ The hub is shared: a manifest whose path climbs out of the
-/// library is refused whole, and nothing lands outside it.
-#[test]
-fn a_manifest_that_climbs_out_of_the_library_is_refused() {
-    let root = scratch("traverse");
-    let hub = root.join("hub");
-    let (a, b) = (device(&root, "mac-a"), device(&root, "mac-b"));
-    song(&a, "s", "song.m4a", "evil");
-    sync_now(&a, &hub);
-    let path = hub.join("devices/mac-a/library.json");
-    let mut manifest = read_json(&path).expect("manifest");
-    let entry = manifest["files"]["s/song.m4a"].clone();
-    manifest["files"] = json!({ "../../escaped": entry });
-    write_json(&path, &manifest).expect("tamper");
-    let err = sync(&Options {
-        settings: b.join("settings.json"),
-        data: b.clone(),
-        hub: Some(hub.to_string_lossy().into_owned()),
-        dry_run: false,
-        models: false,
-        check_game: false,
-    })
-    .expect_err("must refuse");
-    assert!(err.contains("refused"), "{err}");
-    assert!(!b.join("escaped").exists() && !root.join("escaped").exists());
-    assert!(!hub.join("lock").exists());
-}
-
 /// A device folder with a name this tool never makes is refused.
 #[test]
 fn a_device_name_this_tool_never_makes_is_refused() {
@@ -618,4 +532,99 @@ fn a_device_name_this_tool_never_makes_is_refused() {
     assert!(err.contains("refusing"), "{err}");
     assert!(is_device_id("macbookpro-1a0d7b86052"));
     assert!(!is_device_id("../x") && !is_device_id("A") && !is_device_id(""));
+}
+
+/// An older build still publishes a library manifest and blobs. This
+/// build ignores them, fetches nothing, and removes its OWN old
+/// manifest from the hub on its next publish.
+#[test]
+fn a_library_an_older_build_published_is_ignored_and_its_own_is_removed() {
+    let root = scratch("old-library");
+    let hub = root.join("hub");
+    let (a, b) = (device(&root, "mac-a"), device(&root, "mac-b"));
+    song(
+        &a,
+        "mine",
+        "chart.json",
+        r#"{"song":{"title":"Mine","artist":"A"}}"#,
+    );
+    // What an older B left on the hub: a manifest naming a song and its blob.
+    put(&hub, "blobs/0000", "not a song any more");
+    put(
+        &hub,
+        "devices/mac-b/library.json",
+        r#"{"files":{"theirs/chart.json":{"hash":"0000","size":3,"mtime":1}}}"#,
+    );
+    put(&hub, "devices/mac-a/library.json", "{}");
+    roster(&b, "Martin", 1_000);
+    sync_now(&b, &hub);
+    // B's new build published its list and removed its manifest.
+    assert!(!hub.join("devices/mac-b/library.json").exists());
+    sync_now(&a, &hub);
+    assert!(
+        !library_root(&a).join("theirs").exists(),
+        "a song was fetched"
+    );
+    assert!(
+        !hub.join("devices/mac-a/library.json").exists(),
+        "the old manifest stayed"
+    );
+    assert!(hub.join("devices/mac-a").join(TRACKLIST).exists());
+}
+
+/// The track list names every song folder with its version and source,
+/// quoted where a field needs it, sorted by folder.
+#[test]
+fn the_track_list_says_what_every_folder_is() {
+    let root = scratch("tracklist");
+    let data = device(&root, "mac-a");
+    song(
+        &data,
+        "maria",
+        "chart.json",
+        r#"{"song":{"title":"Maria","artist":"Blondie"}}"#,
+    );
+    song(
+        &data,
+        "guitar-study-maria",
+        "chart.json",
+        r#"{"song":{"title":"[GS] Maria","artist":"Blondie"}}"#,
+    );
+    song(
+        &data,
+        "gamerip-01-crazy",
+        "chart.json",
+        r#"{"song":{"title":"[GR-01] Crazy Train","artist":"Ozzy Osbourne"}}"#,
+    );
+    song(
+        &data,
+        "gamerip-01-crazy",
+        "bridge-source.json",
+        r#"{"source":"/x/batch/Ozzy Osbourne - Crazy Train (Harmonix)","fingerprint":"f","format":"mid","charter":"Harmonix","game":"Rock Band 3","imported_ms":1}"#,
+    );
+    song(
+        &data,
+        "bridge-02-x",
+        "chart.json",
+        r#"{"song":{"title":"[BG-02] Hello, \"World\"","artist":"A"}}"#,
+    );
+    song(&data, "no-chart", "song.m4a", "audio only");
+    let list = tracklist(&library_root(&data));
+    let lines: Vec<&str> = list.lines().collect();
+    assert_eq!(
+        lines[0],
+        "folder,version,artist,title,charter,game,bridge_download,song_id"
+    );
+    assert_eq!(
+        lines.len(),
+        5,
+        "four songs; a folder without a chart is not one:\n{list}"
+    );
+    assert_eq!(lines[1], r#"bridge-02-x,BG-02,A,"Hello, ""World""",,,,"#);
+    assert_eq!(
+        lines[2],
+        "gamerip-01-crazy,GR-01,Ozzy Osbourne,Crazy Train,Harmonix,Rock Band 3,Ozzy Osbourne - Crazy Train (Harmonix),"
+    );
+    assert_eq!(lines[3], "guitar-study-maria,GS,Blondie,Maria,,,,");
+    assert_eq!(lines[4], "maria,NORMAL,Blondie,Maria,,,,");
 }

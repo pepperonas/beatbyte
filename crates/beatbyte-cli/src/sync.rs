@@ -2,17 +2,21 @@
 //!
 //! The hub is a directory any device can reach with rsync (the raspi5
 //! over SSH, or a plain path): each device owns `devices/<id>/` and
-//! publishes its WHOLE merged state there; song files travel as
-//! content-addressed blobs under `blobs/<sha256>`. A sync is:
+//! publishes its WHOLE merged state there. **Song files do not travel**
+//! (the user, 2026-10-08: "die musik bibliothek soll nicht gesichert
+//! werden!! nur die trackliste!"): each device publishes the LIST of its
+//! songs as `tracklist.csv` ([`tracklist`]), and the raspi5's nightly
+//! backup carries those lists, nothing else of the library. Until
+//! 0.18.79 the library travelled as content-addressed blobs; a
+//! `library.json` an older build still publishes is ignored. A sync is:
 //!
 //! 1. take the hub's lock (`mkdir lock` — atomic, on any filesystem);
 //! 2. pull every other device's folder into `<data>/sync/remote/`;
 //! 3. merge each of them into the local data, one rule per kind of
 //!    data (`beatbyte-sync` decides, this module only carries out);
-//! 4. publish: the blobs the hub lacks, the telemetry copy, the
-//!    library manifest, and the snapshot LAST — a device reading the
-//!    hub between two of these steps still sees the previous
-//!    snapshot, which names only blobs that are there;
+//! 4. publish: the telemetry copy, the track list, and the snapshot
+//!    LAST — a device reading the hub between two of these steps
+//!    still sees the previous snapshot;
 //! 5. release the lock.
 //!
 //! It refuses while the game runs: the game rewrites its files on
@@ -22,18 +26,15 @@
 //! ⚠️ The API key never travels: the snapshot carries the SHARED
 //! settings only (`beatbyte_sync::settings::shared_part`).
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::io::Read;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use beatbyte_core::player::Roster;
-use beatbyte_sync::library::{Action, Entry, Manifest, POINTER, version_of};
 use beatbyte_sync::ratings::Ratings;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 
 /// The snapshot format this build writes and reads.
 const FORMAT: u64 = 1;
@@ -390,112 +391,6 @@ fn walk(root: &Path, prefix: &str, out: &mut Vec<String>) {
     }
 }
 
-/// The per-file facts, cached by (size, mtime): hashing gigabytes on
-/// every sync would make it the slowest part of starting the game.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct Cached {
-    size: u64,
-    mtime_ms: u64,
-    entry: Entry,
-}
-
-fn sha256_file(path: &Path) -> Result<String, String> {
-    let mut file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let mut hasher = Sha256::new();
-    let mut buffer = vec![0u8; 1 << 16];
-    loop {
-        let read = file
-            .read(&mut buffer)
-            .map_err(|e| format!("{}: {e}", path.display()))?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
-    }
-    Ok(hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect())
-}
-
-/// The facts a conflict needs, read from the file itself.
-fn describe(path: &Path, name: &str, entry: &mut Entry) {
-    let facts = || read_json(path);
-    if version_of(name).is_some() {
-        entry.created_ms = facts().and_then(|v| v.pointer("/provenance/created_ms")?.as_u64());
-    } else if name == "song.json" {
-        if let Some(doc) = facts() {
-            entry.song_id = doc
-                .pointer("/identity/song_id")
-                .and_then(Value::as_str)
-                .map(str::to_owned);
-            entry.imported_at = doc
-                .pointer("/lifecycle/imported_at")
-                .and_then(Value::as_u64);
-            entry.updated_at = doc.pointer("/lifecycle/updated_at").and_then(Value::as_u64);
-        }
-    } else if name == POINTER {
-        entry.points_to = facts().and_then(|v| v.get("active")?.as_str().map(str::to_owned));
-    }
-}
-
-/// The library as a manifest (no tombstones yet).
-fn scan(data: &Path, write_cache: bool) -> Result<Manifest, String> {
-    let root = library_root(data);
-    let cache_path = sync_dir(data).join("state").join("hashes.json");
-    let cache: BTreeMap<String, Cached> = read_json(&cache_path)
-        .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_default();
-    let mut files = Vec::new();
-    walk(&root, "", &mut files);
-    let mut manifest = Manifest::default();
-    let mut fresh = BTreeMap::new();
-    for rel in files {
-        let path = root.join(&rel);
-        let meta = std::fs::metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let mtime_ms = meta
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-            .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(0));
-        let entry = match cache.get(&rel) {
-            Some(c) if c.size == meta.len() && c.mtime_ms == mtime_ms => c.entry.clone(),
-            _ => {
-                let mut entry = Entry {
-                    hash: sha256_file(&path)?,
-                    size: meta.len(),
-                    mtime_ms,
-                    created_ms: None,
-                    song_id: None,
-                    imported_at: None,
-                    updated_at: None,
-                    points_to: None,
-                };
-                let name = rel.rsplit('/').next().unwrap_or(&rel);
-                describe(&path, name, &mut entry);
-                entry
-            }
-        };
-        fresh.insert(
-            rel.clone(),
-            Cached {
-                size: meta.len(),
-                mtime_ms,
-                entry: entry.clone(),
-            },
-        );
-        manifest.files.insert(rel, entry);
-    }
-    if write_cache {
-        write_json(
-            &cache_path,
-            &serde_json::to_value(&fresh).unwrap_or_default(),
-        )?;
-    }
-    Ok(manifest)
-}
-
 // ---------------------------------------------------------------- snapshot
 
 /// The local state as one document — what a device publishes.
@@ -518,14 +413,6 @@ fn local_snapshot(data: &Path, settings: &Path, device: &str) -> Value {
 
 // ---------------------------------------------------------------- merge
 
-/// The manifest this device published last — the reference its
-/// deletions are measured against.
-fn last_manifest(data: &Path) -> Manifest {
-    read_json(&sync_dir(data).join("state").join("last-manifest.json"))
-        .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_default()
-}
-
 /// A database file and its write-ahead companions.
 fn remove_db(path: &Path) {
     for suffix in ["", "-wal", "-shm"] {
@@ -537,9 +424,6 @@ fn remove_db(path: &Path) {
 #[derive(Debug, Default)]
 struct Merged {
     notes: Vec<String>,
-    fetched: usize,
-    moved: usize,
-    deleted: usize,
 }
 
 fn is_game_running() -> bool {
@@ -549,94 +433,11 @@ fn is_game_running() -> bool {
         .is_ok_and(|o| o.status.success())
 }
 
-/// Fetch the blobs `hashes` from the hub into `inbox`, each verified.
-fn fetch_blobs(hub: &Hub, hashes: &BTreeSet<String>, inbox: &Path) -> Result<(), String> {
-    std::fs::create_dir_all(inbox).map_err(|e| format!("{}: {e}", inbox.display()))?;
-    let wanted: Vec<&String> = hashes.iter().filter(|h| !inbox.join(h).exists()).collect();
-    if !wanted.is_empty() {
-        let list = inbox.join(".wanted");
-        let body: String = wanted.iter().map(|h| format!("{h}\n")).collect();
-        std::fs::write(&list, body).map_err(|e| e.to_string())?;
-        let from = format!("{}/", hub.rsync_path("blobs"));
-        let files_from = format!("--files-from={}", list.display());
-        let partial = "--partial-dir=.rsync-partial";
-        rsync(&[&files_from, partial, &from, &inbox.to_string_lossy()])?;
-        let _ = std::fs::remove_file(&list);
-    }
-    for hash in hashes {
-        let path = inbox.join(hash);
-        let got = sha256_file(&path)?;
-        if got != *hash {
-            let _ = std::fs::remove_file(&path);
-            return Err(format!("blob {hash} arrived as {got}; nothing was changed"));
-        }
-    }
-    Ok(())
-}
-
-/// Carry out a library plan on this device.
-fn apply_library(
-    data: &Path,
-    hub: &Hub,
-    actions: &[Action],
-    merged: &mut Merged,
-) -> Result<(), String> {
-    let root = library_root(data);
-    let inbox = sync_dir(data).join("inbox");
-    let hashes: BTreeSet<String> = actions
-        .iter()
-        .filter_map(|a| match a {
-            Action::Fetch { hash, .. } => Some(hash.clone()),
-            _ => None,
-        })
-        .collect();
-    fetch_blobs(hub, &hashes, &inbox)?;
-    // Moves first: a version renamed out of the way frees its name for
-    // the other device's content.
-    for action in actions {
-        if let Action::Move { from, to } = action {
-            let (from, to) = (root.join(from), root.join(to));
-            if to.exists() {
-                return Err(format!("{} is in the way of a rename", to.display()));
-            }
-            std::fs::rename(&from, &to).map_err(|e| format!("{}: {e}", from.display()))?;
-            merged.moved += 1;
-        }
-    }
-    for action in actions {
-        match action {
-            Action::Fetch { path, hash } => {
-                let bytes = std::fs::read(inbox.join(hash)).map_err(|e| e.to_string())?;
-                write_atomic(&root.join(path), &bytes)?;
-                merged.fetched += 1;
-            }
-            Action::Delete { path } => {
-                let file = root.join(path);
-                std::fs::remove_file(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-                if let Some(dir) = file.parent() {
-                    let _ = std::fs::remove_dir(dir); // only if empty
-                }
-                merged.deleted += 1;
-            }
-            Action::Point { path, active } => {
-                write_atomic(
-                    &root.join(path),
-                    json!({ "active": active }).to_string().as_bytes(),
-                )?;
-            }
-            Action::Move { .. } => {}
-        }
-    }
-    let _ = std::fs::remove_dir_all(&inbox);
-    Ok(())
-}
-
 /// Merge one other device's published state into this one.
 #[allow(clippy::too_many_lines)] // one pass over the kinds of data, in order
 fn merge_device(
     data: &Path,
     settings_path: &Path,
-    hub: &Hub,
     remote_dir: &Path,
     dry_run: bool,
 ) -> Result<Merged, String> {
@@ -660,22 +461,10 @@ fn merge_device(
     let players = beatbyte_sync::players::merge(&local_roster, &remote_roster);
     merged.notes.extend(players.notes.iter().cloned());
 
-    // The library: its song-id remap feeds the scores and telemetry.
-    // With the deletions since the last publish as tombstones — a song
-    // deleted here must not come straight back from the other copy.
-    let local_manifest = scan(data, !dry_run)?.with_deletions_since(&last_manifest(data), now_ms());
-    // Another device's manifest is untrusted input: a path that climbs
-    // out of the library, or a blob name that is not a hash, refuses it
-    // whole — nothing is planned from a device that writes one.
-    let remote_manifest: Manifest = match read_json(&remote_dir.join("library.json")) {
-        Some(value) => serde_json::from_value(value)
-            .map_err(|e| format!("{}: library.json: {e}", remote_dir.display()))?,
-        None => Manifest::default(),
-    };
-    beatbyte_sync::library::validate(&remote_manifest)
-        .map_err(|e| format!("{}: {e} — refused", remote_dir.display()))?;
-    let plan = beatbyte_sync::library::plan(&local_manifest, &remote_manifest);
-    merged.notes.extend(plan.notes.iter().cloned());
+    // No library plan: song files do not travel any more, so there is
+    // no remap of one folder's two ids either — each device's songs are
+    // its own, and their ids stay as they are.
+    let song_remap = beatbyte_sync::scores::SongRemap::new();
 
     let history = beatbyte_sync::history::merge(
         &std::fs::read_to_string(data.join("history.jsonl")).unwrap_or_default(),
@@ -690,7 +479,7 @@ fn merge_device(
     } else {
         snapshot["scores"].clone()
     };
-    let scores = beatbyte_sync::scores::merge(&local_scores, &remote_scores, &plan.song_remap)?;
+    let scores = beatbyte_sync::scores::merge(&local_scores, &remote_scores, &song_remap)?;
     let achievements = beatbyte_sync::achievements::merge(
         &read_json(&data.join("achievements.json")).unwrap_or(json!({})),
         &players.local,
@@ -714,7 +503,7 @@ fn merge_device(
             &remote_dir.display().to_string(),
         )?,
         &players.remote,
-        &plan.song_remap,
+        &song_remap,
     );
     let settings = beatbyte_sync::settings::merge(
         &read_json(settings_path).unwrap_or(json!({})),
@@ -734,25 +523,17 @@ fn merge_device(
     }
 
     merged.notes.push(format!(
-        "history +{} (enriched {}), scores improved {}, favourites {} / stars {}, settings taken {:?}, library: {} to fetch",
+        "history +{} (enriched {}), scores improved {}, favourites {} / stars {}, settings taken {:?}",
         history.added,
         history.enriched,
         scores.improved,
         beatbyte_sync::ratings::count(&ratings).0,
         beatbyte_sync::ratings::count(&ratings).1,
         settings.taken,
-        plan.actions
-            .iter()
-            .filter(|a| matches!(a, Action::Fetch { .. }))
-            .count()
     ));
     if dry_run {
         return Ok(merged);
     }
-
-    // Files first (the part that can fail on the network), then the
-    // documents that describe them.
-    apply_library(data, hub, &plan.actions, &mut merged)?;
 
     // Telemetry: rows, never the file.
     let remote_db = remote_dir.join("telemetry.db");
@@ -794,7 +575,7 @@ fn merge_device(
         let remaps = beatbyte_telemetry::merge::Remaps {
             local_players: players.local.clone(),
             remote_players: players.remote.clone(),
-            songs: plan.song_remap.clone(),
+            songs: song_remap.clone(),
         };
         let report = beatbyte_telemetry::merge::apply(&mut store, &work, &takes, &remaps)
             .map_err(|e| e.to_string())?;
@@ -825,6 +606,125 @@ fn merge_device(
         )?;
     }
     Ok(merged)
+}
+
+// ---------------------------------------------------------------- track list
+
+/// The file a device publishes instead of its songs.
+const TRACKLIST: &str = "tracklist.csv";
+
+/// One CSV field, quoted when it has to be.
+fn csv_field(text: &str) -> String {
+    if text.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", text.replace('"', "\"\""))
+    } else {
+        text.to_owned()
+    }
+}
+
+/// The library as a list: one line per song folder with what it is —
+/// the version (NORMAL, GS, CL, BG-NN, GR-NN), artist, title, who
+/// charted it, the game of a rip, the Bridge download it came from and
+/// its song id. Enough to find every song again; none of its files.
+/// Sorted by folder, so two lists of one library are byte-identical.
+/// Pure over the files it reads — tested.
+fn tracklist(root: &Path) -> String {
+    let mut rows: Vec<[String; 8]> = Vec::new();
+    let mut folders: Vec<PathBuf> = std::fs::read_dir(root)
+        .map(|d| {
+            d.filter_map(Result::ok)
+                .map(|e| e.path())
+                .filter(|p| p.is_dir())
+                .collect()
+        })
+        .unwrap_or_default();
+    folders.sort();
+    for folder in folders {
+        let Some(chart) = read_json(&folder.join("chart.json")).or_else(|| {
+            // A folder whose chart has another name (an older import).
+            std::fs::read_dir(&folder)
+                .ok()?
+                .filter_map(Result::ok)
+                .find_map(|e| {
+                    let name = e.file_name().to_string_lossy().into_owned();
+                    (name.ends_with(".json")
+                        && !name.ends_with(".context.json")
+                        && name.contains("chart"))
+                    .then(|| read_json(&e.path()))
+                    .flatten()
+                })
+        }) else {
+            continue;
+        };
+        let song = &chart["song"];
+        let title = song["title"].as_str().unwrap_or_default();
+        let (version, bare) = match beatbyte_chart::twin::split_numbered_title(title) {
+            Some((kind, n, rest)) => (
+                format!("{}-{n:02}", beatbyte_chart::twin::numbered_tag(kind)),
+                rest,
+            ),
+            None => match beatbyte_chart::twin::kind_of_folder(
+                &folder.file_name().unwrap_or_default().to_string_lossy(),
+            ) {
+                Some(beatbyte_chart::twin::Kind::Study) => (
+                    "GS".to_owned(),
+                    beatbyte_chart::twin::base_title(title).unwrap_or(title),
+                ),
+                Some(beatbyte_chart::twin::Kind::Classic) => (
+                    "CL".to_owned(),
+                    beatbyte_chart::twin::base_title(title).unwrap_or(title),
+                ),
+                _ => ("NORMAL".to_owned(), title),
+            },
+        };
+        let source = read_json(&folder.join(beatbyte_library::bridge::SOURCE_FILE));
+        let field = |v: &Option<Value>, k: &str| {
+            v.as_ref()
+                .and_then(|v| v.get(k))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned()
+        };
+        let download = source
+            .as_ref()
+            .and_then(|v| v.get("source"))
+            .and_then(Value::as_str)
+            .map(|s| {
+                Path::new(s)
+                    .file_name()
+                    .map_or_else(String::new, |n| n.to_string_lossy().into_owned())
+            })
+            .unwrap_or_default();
+        let id = read_json(&folder.join("song.json"))
+            .and_then(|d| d["identity"]["song_id"].as_str().map(str::to_owned))
+            .unwrap_or_default();
+        rows.push([
+            folder
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+            version,
+            song["artist"].as_str().unwrap_or_default().to_owned(),
+            bare.to_owned(),
+            field(&source, "charter"),
+            field(&source, "game"),
+            download,
+            id,
+        ]);
+    }
+    let mut out =
+        String::from("folder,version,artist,title,charter,game,bridge_download,song_id\n");
+    for row in rows {
+        out.push_str(
+            &row.iter()
+                .map(|f| csv_field(f))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        out.push('\n');
+    }
+    out
 }
 
 // ---------------------------------------------------------------- the run
@@ -932,11 +832,8 @@ pub fn sync(options: &Options) -> Result<String, String> {
             out.push(format!("{device}: nothing published yet"));
             continue;
         }
-        let merged = merge_device(data, &options.settings, &hub, &local, options.dry_run)?;
-        out.push(format!(
-            "from {device}: {} fetched, {} moved, {} deleted",
-            merged.fetched, merged.moved, merged.deleted
-        ));
+        let merged = merge_device(data, &options.settings, &local, options.dry_run)?;
+        out.push(format!("from {device}:"));
         out.extend(merged.notes.into_iter().map(|n| format!("  {n}")));
     }
     if others.is_empty() {
@@ -947,41 +844,8 @@ pub fn sync(options: &Options) -> Result<String, String> {
         return Ok(out.join("\n"));
     }
 
-    // Publish. Blobs first, the snapshot last.
-    let state = sync_dir(data).join("state");
-    let manifest = scan(data, true)?.with_deletions_since(&last_manifest(data), now_ms());
-    let on_hub: BTreeSet<String> = hub
-        .shell("ls -1 blobs")?
-        .lines()
-        .map(str::to_owned)
-        .collect();
-    let outbox = sync_dir(data).join("outbox");
-    let _ = std::fs::remove_dir_all(&outbox);
-    std::fs::create_dir_all(&outbox).map_err(|e| e.to_string())?;
-    let mut uploads = 0usize;
-    for (rel, entry) in &manifest.files {
-        let target = outbox.join(&entry.hash);
-        if on_hub.contains(&entry.hash) || target.exists() {
-            continue;
-        }
-        let source = library_root(data).join(rel);
-        // A hard link costs nothing on the same volume; a copy is the
-        // fallback.
-        if std::fs::hard_link(&source, &target).is_err() {
-            std::fs::copy(&source, &target).map_err(|e| e.to_string())?;
-        }
-        uploads += 1;
-    }
-    if uploads > 0 {
-        let to = format!("{}/", hub.rsync_path("blobs"));
-        rsync(&[
-            "--partial-dir=.rsync-partial",
-            &format!("{}/", outbox.display()),
-            &to,
-        ])?;
-    }
-    let _ = std::fs::remove_dir_all(&outbox);
-
+    // Publish: the telemetry copy and the track list, the snapshot
+    // last. No song file leaves this device.
     let staging = sync_dir(data).join("publish");
     let _ = std::fs::remove_dir_all(&staging);
     std::fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
@@ -990,26 +854,27 @@ pub fn sync(options: &Options) -> Result<String, String> {
         beatbyte_telemetry::merge::snapshot(&live_db, &staging.join("telemetry.db"))
             .map_err(|e| e.to_string())?;
     }
-    write_json(
-        &staging.join("library.json"),
-        &serde_json::to_value(&manifest).map_err(|e| e.to_string())?,
-    )?;
+    let list = tracklist(&library_root(data));
+    let songs = list.lines().count().saturating_sub(1);
+    write_atomic(&staging.join(TRACKLIST), list.as_bytes())?;
     let dest = format!("{}/", hub.rsync_path(&format!("devices/{}", config.device)));
     hub.shell(&format!(
         "mkdir -p {}",
         quote(&format!("devices/{}", config.device))
     ))?;
-    rsync(&[&format!("{}/", staging.display()), &dest])?;
+    // --delete: a library.json an older build published is gone now.
+    rsync(&[
+        "--delete",
+        "--exclude=snapshot.json",
+        &format!("{}/", staging.display()),
+        &dest,
+    ])?;
     write_json(
         &staging.join("snapshot.json"),
         &local_snapshot(data, &options.settings, &config.device),
     )?;
     rsync(&[&staging.join("snapshot.json").to_string_lossy(), &dest])?;
     let _ = std::fs::remove_dir_all(&staging);
-    write_json(
-        &state.join("last-manifest.json"),
-        &serde_json::to_value(&manifest).map_err(|e| e.to_string())?,
-    )?;
 
     if options.models {
         let models = data.join("models");
@@ -1034,7 +899,9 @@ pub fn sync(options: &Options) -> Result<String, String> {
         &sync_dir(data).join("device.json"),
         &serde_json::to_value(&config).map_err(|e| e.to_string())?,
     )?;
-    out.push(format!("published: {uploads} new blob(s)"));
+    out.push(format!(
+        "published: the track list ({songs} songs), no song files"
+    ));
     out.push(format!("after:  {}", counts(data)));
     Ok(out.join("\n"))
 }
