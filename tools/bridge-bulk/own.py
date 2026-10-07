@@ -19,8 +19,10 @@ about the API this depends on (measured 2026-10-07):
   converter derives the levels below the highest one, so any guitar
   level with 100 notes or more is accepted.
 
-Game rips stay out (the library takes community charts only); the
-report counts them. See docs/bridge-bulk-import.md.
+Game rips stay out by default (the library takes community charts);
+the report counts them. With INCLUDE_RIPS=1 they are candidates too,
+but a community chart of the same song still wins (the user, 2026-10-07:
+"Nimm die Spiel rips mit hinzu"). See docs/bridge-bulk-import.md.
 """
 import json
 import os
@@ -33,6 +35,7 @@ import catalog as E  # noqa: E402
 import pick as P  # noqa: E402
 
 OUT = os.environ.get("OUT", "selection-own.json")
+INCLUDE_RIPS = os.environ.get("INCLUDE_RIPS") == "1"
 # Every twin prefix this build and older ones wrote.
 PREFIX = re.compile(r"^(\s*\[(?:GS|CL|BG-\d+|Guitar Study|Classic)\]\s*)+", re.I)
 
@@ -114,9 +117,11 @@ def main():
                 c = chart_of(h)
                 if not matches(song, c):
                     continue
-                if E.RIP.search(" ".join((c["charter"], c["pack"], c["path"]))):
+                c["rip"] = bool(E.RIP.search(" ".join((c["charter"], c["pack"], c["path"]))))
+                if c["rip"]:
                     rips += 1
-                    continue
+                    if not INCLUDE_RIPS:
+                        continue
                 if c["modchart"] or max(c["counts"].values(), default=0) < 100:
                     continue
                 if E.JUNK.search(c["name"]) and not E.JUNK.search(song["title"]):
@@ -124,10 +129,11 @@ def main():
                 good.append(c)
         label = f"{song['artist']} - {song['title']}"
         if good:
-            best = min(good, key=lambda c: (c["video"], c["opens"], c["issues"], -len(c["counts"]),
+            best = min(good, key=lambda c: (c["rip"], c["video"], c["opens"], c["issues"], -len(c["counts"]),
                                              -max(c["counts"].values())))
             note = " (already fetched)" if best["md5"] in done else ""
-            print(f"FOUND  {label}  ->  {best['artist']} - {best['name']} ({best['charter']}) {best['counts']}{note}")
+            kind = f" [game rip: {best['pack'] or best['path'] or best['charter']}]" if best["rip"] else ""
+            print(f"FOUND  {label}  ->  {best['artist']} - {best['name']} ({best['charter']}) {best['counts']}{kind}{note}")
             if best["md5"] not in done:
                 picked.append({"rank": 0, **best})
         elif rips:

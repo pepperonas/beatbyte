@@ -303,6 +303,16 @@ Prayer*, *Born to Run*, *Don't Stop Believin'*, *Crazy Train*, *In the
 Shadows*, *Seven Nation Army*, *Ain't Talkin' 'Bout Love*), and 52 are
 not on Bridge at all.
 
+**Game rips on request: `INCLUDE_RIPS=1`.** The user asked for the
+rip-only songs too ("Nimm die Spiel rips mit hinzu", 2026-10-07). With
+the switch set, a game rip is a candidate, and a community chart of the
+same song still wins. The seven songs above came in that way, all with
+four levels charted by hand (Harmonix, Neversoft, Vicarious Visions).
+For scale, by the catalogue's filter: 7 649 of the 87 354 charts are
+game rips, 5 017 songs exist only as a rip, and 1 605 have both. The
+filter matches by charter, pack and path, so it also counts charts from
+the Rock Band Network and from packs of re-hosted game charts.
+
 ## The work folder
 
 | file | what it is |
