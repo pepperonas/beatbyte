@@ -41,6 +41,7 @@ Paths come from the environment. The defaults are this machine's paths:
 | `CAP_GB` | `200` | `fetch.py` stops before the total download would pass this |
 | `TOP_N`, `OUT` | `20`, `selection-next.json` | `pick.py`: how many, and where to write them |
 | `SELECTION` | `selection-next.json` | `fetch.py`: which pick to download |
+| `BATCH_DIR` | `$BRIDGE_WORK/batch` | `fetch.py`: where a batch is downloaded and unpacked; put it on another disk and the library's disk takes only the converted songs (2026-10-07: a failing external SSD dropped out under the triple write) |
 
 Copy the CLI into the work folder before a long run (`cargo build
 --release -p beatbyte-cli && cp target/release/beatbyte-cli

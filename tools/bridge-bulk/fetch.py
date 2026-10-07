@@ -106,7 +106,12 @@ def main():
 
 def run(todo, total, p):
     for start in range(0, len(todo), BATCH):
-        batch_dir = f"{WORK}/batch"
+        # BATCH_DIR: where downloads are unpacked before conversion. On
+        # the library's disk by default; elsewhere, the library disk
+        # takes only the converted song (2026-10-07: a failing external
+        # SSD dropped out under the triple write of archive, unpack and
+        # conversion).
+        batch_dir = os.environ.get("BATCH_DIR", f"{WORK}/batch")
         shutil.rmtree(batch_dir, ignore_errors=True)
         os.makedirs(batch_dir)
         handled = []
