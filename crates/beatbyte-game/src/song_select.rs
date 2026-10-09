@@ -163,6 +163,7 @@ pub(crate) fn entry_folder(entry: &SongEntry) -> Option<std::path::PathBuf> {
 /// prefix, same artist) then gather under the lowest-numbered one, so
 /// two downloads of one song are one family rather than two songs.
 /// Pure — tested.
+#[cfg(any(test, doc))] // Reference search for the indexed-parent parity test.
 pub(crate) fn original_in(entries: &[SongEntry], order: &[usize], twin: usize) -> Option<usize> {
     let base = beatbyte_chart::twin::base_title(&entries[twin].title)?;
     let artist = &entries[twin].artist;
@@ -207,9 +208,97 @@ fn fold(text: &str) -> String {
         .to_lowercase()
 }
 
+struct SearchEntry {
+    title_key: String,
+    artist_key: String,
+    haystack: crate::search::Haystack,
+}
+
+#[derive(Default)]
+struct BrowserOrderCache {
+    prepared: Vec<SearchEntry>,
+    base: Vec<usize>,
+    full: Vec<usize>,
+    sort: Option<SortMode>,
+    flipped: bool,
+}
+
+impl BrowserOrderCache {
+    fn prepare(&mut self, entries: &[SongEntry]) {
+        self.prepared = entries
+            .iter()
+            .map(|entry| SearchEntry {
+                title_key: fold(&entry.title),
+                artist_key: fold(&entry.artist),
+                haystack: crate::search::Haystack::new(
+                    &entry.title,
+                    &entry.artist,
+                    entry.genre.as_deref(),
+                ),
+            })
+            .collect();
+        self.sort = None;
+    }
+
+    fn sort(
+        &mut self,
+        entries: &[SongEntry],
+        sort: SortMode,
+        flipped: bool,
+        favorite: impl Fn(&SongEntry) -> bool,
+    ) {
+        self.base = (0..entries.len()).collect();
+        let tie = |i: usize| (&self.prepared[i].title_key, i);
+        match sort {
+            SortMode::Title => self.base.sort_by_key(|&i| tie(i)),
+            SortMode::Artist => self
+                .base
+                .sort_by_key(|&i| (&self.prepared[i].artist_key, tie(i))),
+            SortMode::Length => self.base.sort_by_key(|&i| {
+                (
+                    entries[i].duration_s.is_none(),
+                    entries[i].duration_s.map_or(0, |d| (d * 1000.0) as u64),
+                    tie(i),
+                )
+            }),
+            SortMode::Favorite => self.base.sort_by_key(|&i| (!favorite(&entries[i]), tie(i))),
+        }
+        if flipped {
+            self.base.reverse();
+        }
+        self.full = pair_twins(entries, self.base.clone());
+        self.sort = Some(sort);
+        self.flipped = flipped;
+    }
+
+    fn filtered(&self, entries: &[SongEntry], filter: &str) -> Vec<usize> {
+        let query = crate::search::words(filter);
+        if query.is_empty() {
+            return self.full.clone();
+        }
+        let mut scores = vec![0_u32; entries.len()];
+        let mut order: Vec<usize> = self
+            .base
+            .iter()
+            .copied()
+            .filter(|&i| {
+                if let Some(score) = self.prepared[i].haystack.score(&query) {
+                    scores[i] = score;
+                    true
+                } else {
+                    false
+                }
+            })
+            .collect();
+        order.sort_by_key(|&i| std::cmp::Reverse(scores[i]));
+        pair_twins(entries, order)
+    }
+}
+
 /// The display order for the current sort and filter. Pure: same
 /// inputs, same order — ties always break by title, then by library
 /// index, so the list never shuffles between frames.
+#[cfg(any(test, doc))] // Reference order for the parity test and benchmark.
 fn build_order(
     entries: &[SongEntry],
     sort: SortMode,
@@ -266,6 +355,54 @@ fn build_order(
     pair_twins(entries, order)
 }
 
+type NumberedMembers<'a> = std::collections::HashMap<(&'a str, &'a str), Vec<((bool, u8), usize)>>;
+
+/// Direct parent of each visible version, indexed once for the whole order.
+/// An absent parent means the entry starts its own family.
+pub(crate) fn original_map(entries: &[SongEntry], order: &[usize]) -> Vec<Option<usize>> {
+    let mut originals = vec![None; entries.len()];
+    let mut by_name = std::collections::HashMap::with_capacity(order.len());
+    let mut numbered = NumberedMembers::new();
+    for &i in order {
+        let entry = &entries[i];
+        by_name
+            .entry((entry.title.as_str(), entry.artist.as_str()))
+            .or_insert(i);
+        if let Some((kind, number, base)) = beatbyte_chart::twin::split_numbered_title(&entry.title)
+        {
+            numbered
+                .entry((base, entry.artist.as_str()))
+                .or_default()
+                .push(((kind == beatbyte_chart::twin::Kind::GameRip, number), i));
+        }
+    }
+    for &i in order {
+        let entry = &entries[i];
+        let Some(base) = beatbyte_chart::twin::base_title(&entry.title) else {
+            continue;
+        };
+        if let Some(&original) = by_name.get(&(base, entry.artist.as_str())) {
+            originals[i] = Some(original);
+            continue;
+        }
+        let Some((kind, number, _)) = beatbyte_chart::twin::split_numbered_title(&entry.title)
+        else {
+            continue;
+        };
+        let mine = (kind == beatbyte_chart::twin::Kind::GameRip, number);
+        originals[i] = numbered
+            .get(&(base, entry.artist.as_str()))
+            .and_then(|members| {
+                members
+                    .iter()
+                    .filter(|(rank, _)| *rank < mine)
+                    .min()
+                    .map(|(_, original)| *original)
+            });
+    }
+    originals
+}
+
 /// Put every `[GS]` twin directly under its original —
 /// whatever the sort, whichever way it runs, search or no search.
 ///
@@ -286,14 +423,16 @@ pub fn pair_twins(entries: &[SongEntry], order: Vec<usize>) -> Vec<usize> {
     // re-insertion loop — which walks originals only — and was
     // DROPPED from the list. A song vanishing from the browser is a
     // worse outcome than any ordering.
-    let original_of = |twin: usize| original_in(entries, &order, twin);
+    // A search used to scan the whole order for every twin. Index the
+    // visible members once, including the rank of numbered downloads.
+    let originals = original_map(entries, &order);
     // Twins with an original in the list step out; everyone else
     // keeps their order, and each twin is re-inserted right after
     // its original.
     let mut paired: Vec<(usize, usize)> = Vec::new(); // (twin, original)
     let mut rest: Vec<usize> = Vec::with_capacity(order.len());
     for &i in &order {
-        match original_of(i) {
+        match originals[i] {
             Some(original) => paired.push((i, original)),
             None => rest.push(i),
         }
@@ -305,6 +444,10 @@ pub fn pair_twins(entries: &[SongEntry], order: Vec<usize>) -> Vec<usize> {
     // emitted twice and the tail sweep catches anything missed.
     let mut out: Vec<usize> = Vec::with_capacity(order.len());
     let mut seen = vec![false; entries.len()];
+    let mut children = vec![Vec::new(); entries.len()];
+    for &(twin, original) in &paired {
+        children[original].push(twin);
+    }
     for i in rest {
         let mut stack = vec![i];
         while let Some(current) = stack.pop() {
@@ -312,13 +455,7 @@ pub fn pair_twins(entries: &[SongEntry], order: Vec<usize>) -> Vec<usize> {
                 continue;
             }
             out.push(current);
-            let mut children: Vec<usize> = paired
-                .iter()
-                .filter(|(_, original)| *original == current)
-                .map(|(twin, _)| *twin)
-                .collect();
-            children.reverse();
-            stack.extend(children);
+            stack.extend(children[current].iter().rev().copied());
         }
     }
     for &(twin, _) in &paired {
@@ -1991,8 +2128,10 @@ pub enum RatingKey {
     Favorite,
     /// Move the focused rating line by this much (Ctrl/Cmd+Up/Down).
     Focus(i32),
-    /// Set the focused line to this many stars (Ctrl/Cmd+0-5).
+    /// Set or toggle the focused line to this many stars (Ctrl/Cmd+0-5).
     Stars(u8),
+    /// Clear the focused line (Ctrl/Cmd+Backspace or Delete).
+    Clear,
 }
 
 /// The rating key pressed this frame, if any. `command` is whether
@@ -2011,18 +2150,31 @@ pub fn rating_key(command: bool, keys: &ButtonInput<KeyCode>) -> Option<RatingKe
     if keys.just_pressed(KeyCode::ArrowDown) {
         return Some(RatingKey::Focus(1));
     }
-    [
+    if keys.just_pressed(KeyCode::Backspace) || keys.just_pressed(KeyCode::Delete) {
+        return Some(RatingKey::Clear);
+    }
+    const DIGITS: [KeyCode; 12] = [
         KeyCode::Digit0,
         KeyCode::Digit1,
         KeyCode::Digit2,
         KeyCode::Digit3,
         KeyCode::Digit4,
         KeyCode::Digit5,
-    ]
-    .iter()
-    .position(|k| keys.just_pressed(*k))
-    .and_then(|n| u8::try_from(n).ok())
-    .map(RatingKey::Stars)
+        KeyCode::Numpad0,
+        KeyCode::Numpad1,
+        KeyCode::Numpad2,
+        KeyCode::Numpad3,
+        KeyCode::Numpad4,
+        KeyCode::Numpad5,
+    ];
+    DIGITS
+        .iter()
+        .position(|k| keys.just_pressed(*k))
+        .and_then(|idx| {
+            let n = if idx >= 6 { idx - 6 } else { idx };
+            u8::try_from(n).ok()
+        })
+        .map(RatingKey::Stars)
 }
 
 /// What a click on star `n` of a line sets: `n`, or 0 when the line
@@ -2050,6 +2202,7 @@ fn rating_input(
     mut focus: ResMut<look::RatingFocus>,
     favorite: Query<&Interaction, (Changed<Interaction>, With<look::FavoriteButton>)>,
     stars: Query<(&look::RatingStar, &Interaction), Changed<Interaction>>,
+    labels: Query<(&look::RatingLabel, &Interaction), Changed<Interaction>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
     if menu.open || question.armed.is_some() || prompt.open {
@@ -2081,7 +2234,12 @@ fn rating_input(
             sounds.write(crate::sfx::UiSound::Navigate);
         }
         Some(RatingKey::Stars(n)) => {
-            ratings.set(&player, entry, field(focus.0), n);
+            let current = ratings.value(&player, entry, field(focus.0));
+            ratings.set(&player, entry, field(focus.0), star_click(current, n));
+            sounds.write(crate::sfx::UiSound::Slider);
+        }
+        Some(RatingKey::Clear) => {
+            ratings.set(&player, entry, field(focus.0), 0);
             sounds.write(crate::sfx::UiSound::Slider);
         }
         None => {}
@@ -2096,6 +2254,16 @@ fn rating_input(
             ratings.set(&player, entry, field(star.0), star_click(current, star.1));
             focus.0 = star.0;
             sounds.write(crate::sfx::UiSound::Slider);
+        }
+    }
+    for (label, interaction) in &labels {
+        if *interaction == Interaction::Pressed {
+            focus.0 = label.0;
+            let current = ratings.value(&player, entry, field(label.0));
+            if current > 0 {
+                ratings.set(&player, entry, field(label.0), 0);
+                sounds.write(crate::sfx::UiSound::Slider);
+            }
         }
     }
 }
@@ -2134,40 +2302,47 @@ fn sync_view(
     mut cursor: ResMut<BrowserCursor>,
     mut view: ResMut<BrowserView>,
     history: Res<crate::history::PlayHistory>,
-    selected: Res<SelectedDifficulty>,
     ratings: Res<crate::ratings::SongRatings>,
     players: Res<crate::players::Players>,
     fresh: Query<(), Added<SongList>>,
     mut last_filter: Local<String>,
+    mut order_cache: Local<BrowserOrderCache>,
 ) {
     let entered = !fresh.is_empty();
     let dirty = entered
         || (view.is_changed() && !view.is_added())
         || (library.is_changed() && !library.is_added())
-        || (selected.is_changed() && !selected.is_added())
         || (ratings.is_changed() && !ratings.is_added())
         || (players.is_changed() && !players.is_added());
     if !dirty {
         return;
     }
+    let profile = std::env::var_os("BEATBYTE_BROWSER_PROFILE").is_some();
+    let started = std::time::Instant::now();
     let player = crate::ratings::player_key(&players);
     let favorite = |entry: &SongEntry| ratings.favorite(&player, entry);
+    if library.is_changed() || order_cache.prepared.len() != library.entries.len() {
+        order_cache.prepare(&library.entries);
+    }
+    if order_cache.sort != Some(view.sort)
+        || order_cache.flipped != view.flipped
+        || ratings.is_changed()
+        || players.is_changed()
+    {
+        order_cache.sort(&library.entries, view.sort, view.flipped, favorite);
+    }
     // The whole library in the sort's order, and what the filter let
     // through: families gather over the first and show by the second.
     // Without a filter the two are the same list — built once.
-    let full = build_order(&library.entries, view.sort, view.flipped, "", favorite);
+    let full = &order_cache.full;
     let filtered = if view.filter.trim().is_empty() {
         full.clone()
     } else {
-        build_order(
-            &library.entries,
-            view.sort,
-            view.flipped,
-            &view.filter,
-            favorite,
-        )
+        order_cache.filtered(&library.entries, &view.filter)
     };
-    let families = crate::song_family::families(&library.entries, &full, &filtered);
+    let ordered_ms = started.elapsed().as_secs_f64() * 1000.0;
+    let families = crate::song_family::families(&library.entries, full, &filtered);
+    let families_ms = started.elapsed().as_secs_f64() * 1000.0 - ordered_ms;
     // When each title was played last, for the default version.
     let mut last: std::collections::HashMap<(&str, &str), u64> = std::collections::HashMap::new();
     for run in &history.0 {
@@ -2207,6 +2382,14 @@ fn sync_view(
     raw.order = order;
     raw.families = families;
     raw.tree.clear();
+    if profile {
+        info!(
+            "browser profile: order {ordered_ms:.2} ms, families {families_ms:.2} ms, rest {:.2} ms, query {:?}, {} entries",
+            started.elapsed().as_secs_f64() * 1000.0 - ordered_ms - families_ms,
+            raw.filter,
+            library.entries.len(),
+        );
+    }
     // Nothing is spawned here: the list's pooled rows read the new
     // order on their own (`look::paint_window`).
 }
@@ -2490,6 +2673,12 @@ mod view_tests {
                 .expect("in the fixture")
         };
         let order: Vec<usize> = (0..lib.len()).collect();
+        for visible in [order.clone(), vec![6, 7, 9, 10]] {
+            let indexed = original_map(&lib, &visible);
+            for &i in &visible {
+                assert_eq!(indexed[i], original_in(&lib, &visible, i));
+            }
+        }
         assert_eq!(
             original_in(&lib, &order, at("[BG-02] Life")),
             Some(at("Life"))
@@ -3694,6 +3883,9 @@ mod order_bench {
     #[ignore = "a measurement"]
     fn order_bench() {
         let lib = library(4_706);
+        let mut cache = BrowserOrderCache::default();
+        cache.prepare(&lib);
+        cache.sort(&lib, SortMode::Title, false, |_| false);
         let time = |label: &str, f: &dyn Fn() -> usize| {
             let runs = 5;
             let start = std::time::Instant::now();
@@ -3711,6 +3903,9 @@ mod order_bench {
         });
         time("filter \"o\", by title", &|| {
             build_order(&lib, SortMode::Title, false, "o", |_| false).len()
+        });
+        time("cached filter \"o\", by title", &|| {
+            cache.filtered(&lib, "o").len()
         });
         let full = build_order(&lib, SortMode::Title, false, "", |_| false);
         time("families over the whole library", &|| {
@@ -3738,5 +3933,35 @@ mod order_bench {
             order.sort_by_key(|i| std::cmp::Reverse(score_of(i)));
             order.len()
         });
+    }
+
+    #[test]
+    fn cached_order_matches_original_search_and_sort() {
+        let mut lib = library(300);
+        lib[20].title = "[BG-01] Song 00010 of the night".to_owned();
+        let artist = lib[10].artist.clone();
+        lib[20].artist = artist;
+        let mut cache = BrowserOrderCache::default();
+        cache.prepare(&lib);
+        for sort in [
+            SortMode::Title,
+            SortMode::Artist,
+            SortMode::Length,
+            SortMode::Favorite,
+        ] {
+            for flipped in [false, true] {
+                cache.sort(&lib, sort, flipped, |e| e.title.ends_with('5'));
+                assert_eq!(
+                    cache.full,
+                    build_order(&lib, sort, flipped, "", |e| e.title.ends_with('5'))
+                );
+                for filter in ["o", "song 01", "artist 3", "BG", "missing"] {
+                    assert_eq!(
+                        cache.filtered(&lib, filter),
+                        build_order(&lib, sort, flipped, filter, |e| e.title.ends_with('5'))
+                    );
+                }
+            }
+        }
     }
 }

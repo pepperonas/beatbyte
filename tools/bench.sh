@@ -53,6 +53,7 @@ fi
 echo "bench $scenario: $song ($diff), $runs run(s), binary $bin, load $load on $cores cores"
 for i in $(seq 1 "$runs"); do
   env BEATBYTE_AUTOPILOT=1 BEATBYTE_AUTOPILOT_MUTE=1 BEATBYTE_UNCAPPED=1 \
+      BEATBYTE_BENCH_FULLSCREEN=1 \
       BEATBYTE_AUTOPILOT_SONG="$song" BEATBYTE_AUTOPILOT_DIFFICULTY="$diff" \
       BEATBYTE_BENCH="$scenario" BEATBYTE_BENCH_OUT="$work/run-$i.json" \
       caffeinate -disu "$bin" > "$work/run-$i.log" 2>&1 &
@@ -65,6 +66,18 @@ for i in $(seq 1 "$runs"); do
   sysctl -n vm.loadavg | awk '{print $2}' | tr , . > "$work/load-$i.txt"
   if [ $rc -ne 0 ] || [ ! -f "$work/run-$i.json" ]; then
     echo "  run $i: FAILED (exit $rc) — not counted; log kept at $work/run-$i.log"
+    rm -f "$work/run-$i.json"
+    continue
+  fi
+  if ! python3 - "$work/run-$i.json" "$work/run-$i.log" "$song" <<'PY'
+import json, sys
+run = json.load(open(sys.argv[1]))
+before_result = open(sys.argv[2]).read().split('bench: wrote', 1)[0]
+complete = 'gameplay ended: song finished' in before_result
+sys.exit(0 if complete and run.get('song') == sys.argv[3] and run['frame_ms']['n'] >= 1000 else 1)
+PY
+  then
+    echo "  run $i: wrong song or incomplete sample — not counted; log kept at $work/run-$i.log"
     rm -f "$work/run-$i.json"
     continue
   fi

@@ -307,12 +307,11 @@ pub fn tend_monitors(
     let Some(listener) = ears.0.as_ref() else {
         return;
     };
-    // A line every five seconds, so a run's log shows what the
-    // monitors read (an ECS-level probe: a locked screen renders
-    // black, a log line does not).
+    // A debug line every five seconds, so a run's debug trace shows
+    // what the monitors read without stalling the main render thread.
     if time.elapsed_secs() - *reported_at >= 5.0 {
         *reported_at = time.elapsed_secs();
-        info!(
+        debug!(
             "monitors: level {:.1} dBFS (shown {}), tempo {}",
             listener.db(),
             (listener.db() + DB_SHOWN_OFFSET).round().clamp(0.0, 100.0),

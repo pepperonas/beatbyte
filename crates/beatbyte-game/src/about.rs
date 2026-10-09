@@ -322,7 +322,9 @@ impl Plugin for AboutPlugin {
             .add_systems(OnEnter(AppState::About), spawn_about)
             .add_systems(
                 Update,
-                (about_input, refresh_about, follow_about_cursor).run_if(in_state(AppState::About)),
+                (about_input, refresh_about, follow_about_cursor)
+                    .chain()
+                    .run_if(in_state(AppState::About)),
             );
     }
 }
@@ -513,7 +515,11 @@ fn refresh_about(
     mut paint: ListPaint<AboutRows>,
     mut details: DetailTexts,
     mut bullet_rows: Query<(&DetailBulletRow, &mut Node), Without<ListRow<AboutRows>>>,
+    fresh: Query<(), Added<ListRow<AboutRows>>>,
 ) {
+    if fresh.is_empty() && !state.is_changed() && !settings.is_changed() {
+        return;
+    }
     let count = state.row_count();
     let info = InfoRow::ALL.len();
     let text_for = |index: usize| -> (String, String) {
@@ -595,6 +601,9 @@ fn follow_about_cursor(
     rows: Query<(&ListRow<AboutRows>, &ComputedNode)>,
     mut lists: Query<(&mut ScrollPosition, &mut Node), With<ListPanel<AboutRows>>>,
 ) {
+    if !state.is_changed() {
+        return;
+    }
     list::follow_cursor(state.cursor, state.row_count(), &rows, &mut lists);
 }
 

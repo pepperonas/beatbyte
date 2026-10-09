@@ -23,7 +23,25 @@ whose autopilot verdict fails is not counted.
 with the change in percent; `--fail-over 10` exits 1 when p99 got more
 than 10 % worse.
 
+For browser searches, run the release game with
+`BEATBYTE_BROWSER_PROFILE=1 BEATBYTE_FPS=1`, then type the same queries
+in the song list. The profile separates order, family grouping and
+visible-row painting; `BEATBYTE_FPS` reports complete frames. Turn the
+profile off for final frame-time comparisons, since logging itself
+adds work.
+
 ## Rules
+
+The settings screen has **PERFORMANCE MODE**, enabled by default (also
+for older settings files). It disables MSAA, bloom, the directional
+shadow map and extra point/spot lights. Turn it off to compare the
+original stage look. For comparison runs, set
+`BEATBYTE_BENCH_QUALITY=full` or `performance`; this overrides the
+setting for that benchmark process only. Benchmark JSON records the
+choice. Keep window
+size, display, quality mode and load comparable between runs; the
+60 fps budget is 16.7 ms per frame, with single frames above 33.4 ms
+reported separately.
 
 - **Uncapped.** Under vsync a frame time is the display's pacing, not
   the frame's cost.

@@ -62,6 +62,21 @@ pub struct SfxLib {
     /// same kind of unwanted noise, and telling them apart should be
     /// possible without being distracting.
     pub overstrum: Handle<AudioSource>,
+    /// Additional miss sound choices:
+    /// Arcade/system error buzz.
+    pub miss_error_buzz: Handle<AudioSource>,
+    /// Descending melodic error note.
+    pub miss_descend: Handle<AudioSource>,
+    /// Punchy denied buzz.
+    pub miss_denied: Handle<AudioSource>,
+    /// Subtle key error click.
+    pub miss_key_error: Handle<AudioSource>,
+    /// Vinyl needle click.
+    pub miss_vinyl_click: Handle<AudioSource>,
+    /// DJ scratch chop.
+    pub miss_scratch_chop: Handle<AudioSource>,
+    /// Muted bass pluck.
+    pub miss_bass_mute: Handle<AudioSource>,
     /// Hype activation: a rising sweep.
     pub hype: Handle<AudioSource>,
     /// A star-power phrase banked whole: a short rising charge. The
@@ -72,6 +87,30 @@ pub struct SfxLib {
     pub banked: Handle<AudioSource>,
     /// Metronome tick (editor audition overlay).
     pub click: Handle<AudioSource>,
+}
+
+impl SfxLib {
+    /// Return the sound handle for a missed note or stray strum based on the player's choice.
+    #[must_use]
+    pub fn sound_for_miss(&self, sound: crate::config::MissSound, is_stray: bool) -> &Handle<AudioSource> {
+        match sound {
+            crate::config::MissSound::SynthDull => {
+                if is_stray {
+                    &self.overstrum
+                } else {
+                    &self.miss
+                }
+            }
+            crate::config::MissSound::SynthBuzz => &self.overstrum,
+            crate::config::MissSound::ErrorBuzz => &self.miss_error_buzz,
+            crate::config::MissSound::Descend => &self.miss_descend,
+            crate::config::MissSound::Denied => &self.miss_denied,
+            crate::config::MissSound::KeyError => &self.miss_key_error,
+            crate::config::MissSound::VinylClick => &self.miss_vinyl_click,
+            crate::config::MissSound::ScratchChop => &self.miss_scratch_chop,
+            crate::config::MissSound::BassMute => &self.miss_bass_mute,
+        }
+    }
 }
 
 /// The sound-effects plugin.
@@ -93,23 +132,35 @@ impl Plugin for SfxPlugin {
 
 /// Synthesize every effect once at startup.
 fn build_sfx(mut commands: Commands, mut assets: ResMut<Assets<AudioSource>>) {
-    let mut register = |audio: AudioData| -> Handle<AudioSource> {
+    fn register(audio: AudioData, assets: &mut Assets<AudioSource>) -> Handle<AudioSource> {
         assets.add(AudioSource {
             bytes: wav_bytes_mono16(&audio).into(),
         })
-    };
+    }
+    fn register_bytes(bytes: &'static [u8], assets: &mut Assets<AudioSource>) -> Handle<AudioSource> {
+        assets.add(AudioSource {
+            bytes: bytes.into(),
+        })
+    }
     commands.insert_resource(SfxLib {
-        ui_move: register(blip(880.0, 0.045, 0.5)),
-        ui_confirm: register(confirm()),
-        ui_back: register(back()),
-        ui_error: register(error()),
-        ui_toggle: register(blip(1320.0, 0.03, 0.5)),
-        ui_slider: register(blip(660.0, 0.025, 0.35)),
-        miss: register(MISS_VOICE.render(44_100)),
-        overstrum: register(OVERSTRUM_VOICE.render(44_100)),
-        hype: register(riser()),
-        banked: register(charge()),
-        click: register(blip(1760.0, 0.03, 0.6)),
+        ui_move: register(blip(880.0, 0.045, 0.5), &mut assets),
+        ui_confirm: register(confirm(), &mut assets),
+        ui_back: register(back(), &mut assets),
+        ui_error: register(error(), &mut assets),
+        ui_toggle: register(blip(1320.0, 0.03, 0.5), &mut assets),
+        ui_slider: register(blip(660.0, 0.025, 0.35), &mut assets),
+        miss: register(MISS_VOICE.render(44_100), &mut assets),
+        overstrum: register(OVERSTRUM_VOICE.render(44_100), &mut assets),
+        miss_error_buzz: register_bytes(include_bytes!("../../../assets/audio/miss_sfx/error_buzz.wav"), &mut assets),
+        miss_descend: register_bytes(include_bytes!("../../../assets/audio/miss_sfx/error_descend.wav"), &mut assets),
+        miss_denied: register_bytes(include_bytes!("../../../assets/audio/miss_sfx/denied.wav"), &mut assets),
+        miss_key_error: register_bytes(include_bytes!("../../../assets/audio/miss_sfx/key_error.wav"), &mut assets),
+        miss_vinyl_click: register_bytes(include_bytes!("../../../assets/audio/miss_sfx/vinyl_click.wav"), &mut assets),
+        miss_scratch_chop: register_bytes(include_bytes!("../../../assets/audio/miss_sfx/scratch_chop.wav"), &mut assets),
+        miss_bass_mute: register_bytes(include_bytes!("../../../assets/audio/miss_sfx/bass_mute.wav"), &mut assets),
+        hype: register(riser(), &mut assets),
+        banked: register(charge(), &mut assets),
+        click: register(blip(1760.0, 0.03, 0.6), &mut assets),
     });
 }
 
@@ -286,12 +337,11 @@ fn gameplay_sounds(
                 let now = time.elapsed_secs();
                 if now - *last_miss > 0.12 {
                     *last_miss = now;
-                    let sound = if is_stray_strum(&message.event) {
-                        &sfx.overstrum
-                    } else {
-                        &sfx.miss
-                    };
-                    play(&mut commands, sound, settings.sfx_volume);
+                    let vol = settings.sfx_volume * settings.miss_volume;
+                    if vol > 0.001 {
+                        let sound = sfx.sound_for_miss(settings.miss_sound, is_stray_strum(&message.event));
+                        play(&mut commands, sound, vol);
+                    }
                 }
             }
             SessionEvent::HypeActivated => {

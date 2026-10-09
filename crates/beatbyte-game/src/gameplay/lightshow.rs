@@ -1212,7 +1212,7 @@ pub fn run_strips(
     for mut strip in &mut strips {
         if strip.running.is_none() && now >= strip.next_at {
             let (effect, _) = pick(strip.index, strip.count);
-            info!("strip {} ({:?}): {effect:?}", strip.index, strip.place);
+            debug!("strip {} ({:?}): {effect:?}", strip.index, strip.place);
             strip.running = Some((effect, now));
         }
         let Some((effect, started)) = strip.running else {

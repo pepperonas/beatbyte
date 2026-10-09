@@ -16,8 +16,24 @@ the manifest ever carries a version this file does not describe.
 
 ## [0.18.80] - 2026-10-08
 
+### Added
+
+- **Miss effect and sound configuration:** Players can now configure miss
+  effects (`MISS EFFECT`: Red Overlay, White Flash, Border Flash, Highway Flash,
+  Ceiling Strobe) and intensity (with 0% disabling the overlay), as well as miss
+  sound tone (selection of 9 curated sound effects) and volume.
+- **Rating toggle in song browser:** Clicking an already set rating star or its
+  label now clears the rating, allowing players to revoke/reset ratings directly.
+
 ### Changed
 
+- **UI menu performance optimization:** The settings screen, controls screen,
+  about screen, and main menu now use change-detection guards (`is_changed()`)
+  and guarded UI mutations to prevent per-frame string allocations and entity
+  re-layouts, making them just as fluid and smooth as the song browser.
+- **Gameplay periodic hitch fix:** Replaced synchronous periodic `info!` logs in
+  `monitors.rs` and `lightshow.rs` with `debug!` logs to eliminate recurring frame
+  stutters during songs.
 - **The sync no longer carries song files** (the user: "die musik
   bibliothek soll nicht gesichert werden!! nur die trackliste!"). Each
   device keeps its own songs; `beatbyte-cli sync` publishes a track

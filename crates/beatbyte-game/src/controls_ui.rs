@@ -111,8 +111,14 @@ impl Plugin for ControlsUiPlugin {
                 Update,
                 (
                     paint_action_bar.before(controls_edit),
-                    (controls_edit, controls_input).chain(),
-                    (refresh_controls, refresh_pad_tester, follow_bindings_cursor),
+                    (
+                        controls_edit,
+                        controls_input,
+                        refresh_controls,
+                        refresh_pad_tester,
+                        follow_bindings_cursor,
+                    )
+                        .chain(),
                 )
                     .run_if(in_state(AppState::Controls)),
             )
@@ -246,6 +252,9 @@ fn follow_bindings_cursor(
     rows: Query<(&ListRow<BindingRows>, &ComputedNode)>,
     mut lists: Query<(&mut ScrollPosition, &mut Node), With<ListPanel<BindingRows>>>,
 ) {
+    if !state.is_changed() {
+        return;
+    }
     list::follow_cursor(state.cursor, row_actions().len(), &rows, &mut lists);
 }
 
@@ -408,23 +417,26 @@ fn refresh_controls(
     mut paint: ListPaint<BindingRows>,
     mut hint: Query<&mut Text, HintOnly>,
     active: Res<crate::prompts::ActiveDevice>,
+    fresh: Query<(), Added<ListRow<BindingRows>>>,
 ) {
     let actions = row_actions();
     let armed = state.capturing.then_some(state.cursor);
-    paint.paint_armed(
-        state.cursor,
-        armed,
-        settings.high_contrast,
-        usize::MAX,
-        |index| {
-            let value = if armed == Some(index) {
-                "press a key or button...".to_owned()
-            } else {
-                actions[index].bindings(&map)
-            };
-            (None, value)
-        },
-    );
+    if !fresh.is_empty() || map.is_changed() || settings.is_changed() || state.is_changed() {
+        paint.paint_armed(
+            state.cursor,
+            armed,
+            settings.high_contrast,
+            usize::MAX,
+            |index| {
+                let value = if armed == Some(index) {
+                    "press a key or button...".to_owned()
+                } else {
+                    actions[index].bindings(&map)
+                };
+                (None, value)
+            },
+        );
+    }
     if let Ok(mut text) = hint.single_mut() {
         let idle = match *active {
             crate::prompts::ActiveDevice::Keyboard => {

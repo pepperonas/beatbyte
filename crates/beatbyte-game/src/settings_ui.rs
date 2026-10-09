@@ -4,7 +4,7 @@
 
 use bevy::prelude::*;
 
-use crate::config::{FlashSync, Settings, TelemetryLevel, save_settings};
+use crate::config::{FlashSync, MissEffect, MissSound, Settings, TelemetryLevel, save_settings};
 use crate::menu_list::list::{
     self, ListInput, ListLabel, ListPaint, ListPanel, ListRow, ListValue,
 };
@@ -214,6 +214,88 @@ impl Row {
         slider!(mic_offset_ms, -250.0, 500.0, 5.0, SignedMs),
         Subtitle::Text("how late the microphone hears the song")
     );
+    pub(crate) const MISS_EFFECT: Row = row!(
+        "MISS EFFECT",
+        Kind::Choice {
+            labels: || vec![
+                "RED OVERLAY".to_owned(),
+                "WHITE FLASH".to_owned(),
+                "BORDER FLASH".to_owned(),
+                "HIGHWAY FLASH".to_owned(),
+                "CEILING STROBE".to_owned(),
+            ],
+            get: |s: &Settings| match s.miss_effect {
+                MissEffect::RedOverlay => 0,
+                MissEffect::WhiteFlash => 1,
+                MissEffect::BorderFlash => 2,
+                MissEffect::HighwayFlash => 3,
+                MissEffect::CeilingStrobe => 4,
+            },
+            set: |s: &mut Settings, i| {
+                s.miss_effect = match i {
+                    1 => MissEffect::WhiteFlash,
+                    2 => MissEffect::BorderFlash,
+                    3 => MissEffect::HighwayFlash,
+                    4 => MissEffect::CeilingStrobe,
+                    _ => MissEffect::RedOverlay,
+                };
+            },
+            ends: Ends::Wrap,
+        },
+        Subtitle::Text("visual effect on missed notes and overstrums")
+    );
+    pub(crate) const MISS_INTENSITY: Row = row!(
+        "MISS INTENSITY",
+        slider!(miss_intensity, 0.0, 1.0, 0.1, Percent),
+        Subtitle::Text("visual miss overlay intensity; 0% disables")
+    );
+    pub(crate) const MISS_SOUND: Row = row!(
+        "MISS SOUND",
+        Kind::Choice {
+            labels: || vec![
+                "SYNTH DULL".to_owned(),
+                "SYNTH BUZZ".to_owned(),
+                "ERROR BUZZ".to_owned(),
+                "DESCEND".to_owned(),
+                "DENIED".to_owned(),
+                "KEY ERROR".to_owned(),
+                "VINYL CLICK".to_owned(),
+                "SCRATCH CHOP".to_owned(),
+                "BASS MUTE".to_owned(),
+            ],
+            get: |s: &Settings| match s.miss_sound {
+                MissSound::SynthDull => 0,
+                MissSound::SynthBuzz => 1,
+                MissSound::ErrorBuzz => 2,
+                MissSound::Descend => 3,
+                MissSound::Denied => 4,
+                MissSound::KeyError => 5,
+                MissSound::VinylClick => 6,
+                MissSound::ScratchChop => 7,
+                MissSound::BassMute => 8,
+            },
+            set: |s: &mut Settings, i| {
+                s.miss_sound = match i {
+                    1 => MissSound::SynthBuzz,
+                    2 => MissSound::ErrorBuzz,
+                    3 => MissSound::Descend,
+                    4 => MissSound::Denied,
+                    5 => MissSound::KeyError,
+                    6 => MissSound::VinylClick,
+                    7 => MissSound::ScratchChop,
+                    8 => MissSound::BassMute,
+                    _ => MissSound::SynthDull,
+                };
+            },
+            ends: Ends::Wrap,
+        },
+        Subtitle::Text("sound tone played on missed notes")
+    );
+    pub(crate) const MISS_VOLUME: Row = row!(
+        "MISS VOLUME",
+        slider!(miss_volume, 0.0, 1.0, 0.1, Percent),
+        Subtitle::Text("miss sound effect volume; 0% disables")
+    );
     pub(crate) const MUSIC_VOLUME: Row = row!(
         "MUSIC VOLUME",
         slider!(music_volume, 0.0, 1.0, 0.1, Percent)
@@ -225,6 +307,11 @@ impl Row {
         Subtitle::Text("above zero marks a vocal run assisted")
     );
     pub(crate) const PARTICLES: Row = row!("PARTICLES", toggle!(particles));
+    pub(crate) const PERFORMANCE_MODE: Row = row!(
+        "PERFORMANCE MODE",
+        toggle!(performance_mode),
+        Subtitle::Text("simpler lighting and effects for smoother play")
+    );
     pub(crate) const REDUCED_FLASHING: Row = row!("REDUCED FLASHING", toggle!(reduced_flashing));
     pub(crate) const ROOM_LIGHTS: Row = row!("ROOM LIGHTS", toggle!(room_lights));
     pub(crate) const SCREEN_SHAKE: Row = row!("SCREEN SHAKE", toggle!(screen_shake));
@@ -310,7 +397,7 @@ impl Row {
     /// Every row, in the order the screen shows them: **alphabetical
     /// by label**, and kept that way by a test — a new row goes where
     /// its name falls, not at the end of the list.
-    pub(crate) const ALL: [Row; 40] = [
+    pub(crate) const ALL: [Row; 45] = [
         Row::AI_SEARCH,
         Row::BEAT_PULSE,
         Row::CALIBRATION,
@@ -332,10 +419,15 @@ impl Row {
         Row::LYRICS_OFFSET,
         Row::LYRICS_SIZE,
         Row::MIC_OFFSET,
+        Row::MISS_EFFECT,
+        Row::MISS_INTENSITY,
+        Row::MISS_SOUND,
+        Row::MISS_VOLUME,
         Row::MUSIC_VOLUME,
         Row::NO_FAIL,
         Row::ORIGINAL_VOCALS,
         Row::PARTICLES,
+        Row::PERFORMANCE_MODE,
         Row::REDUCED_FLASHING,
         Row::ROOM_LIGHTS,
         Row::SCREEN_SHAKE,
@@ -503,6 +595,7 @@ impl Plugin for SettingsUiPlugin {
             .add_systems(
                 Update,
                 (settings_input, refresh_settings, follow_settings_cursor)
+                    .chain()
                     .run_if(in_state(AppState::Settings)),
             )
             // The screen's entities go with the state (`DespawnOnExit`);
@@ -522,6 +615,9 @@ fn follow_settings_cursor(
     rows: Query<(&ListRow<SettingsRows>, &ComputedNode)>,
     mut lists: Query<(&mut ScrollPosition, &mut Node), With<ListPanel<SettingsRows>>>,
 ) {
+    if !cursor.is_changed() {
+        return;
+    }
     list::follow_cursor(cursor.0, Row::ALL.len(), &rows, &mut lists);
 }
 
@@ -574,7 +670,9 @@ fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
                 ui_kit::data_subtitle_text(&font),
                 Node {
                     max_width: px(ui_kit::PANEL_WIDTH),
+                    min_height: px(36.0),
                     margin: UiRect::top(px(10)),
+                    justify_content: JustifyContent::Center,
                     ..default()
                 },
             ));
@@ -687,6 +785,7 @@ fn refresh_settings(
     mut subtitles: SubtitleText,
     mut smart: ResMut<crate::smart_lyrics::SmartLyrics>,
     library_move: Res<crate::library_move::LibraryMove>,
+    fresh: Query<(), Added<ListRow<SettingsRows>>>,
 ) {
     // The model's standing is looked up the first time the screen
     // asks (a hash of the file, off the main thread); idempotent.
@@ -701,6 +800,15 @@ fn refresh_settings(
         if text.0 != wanted {
             text.0 = wanted;
         }
+    }
+    if fresh.is_empty()
+        && !settings.is_changed()
+        && !cursor.is_changed()
+        && !export_note.is_changed()
+        && !smart.is_changed()
+        && !library_move.is_changed()
+    {
+        return;
     }
     let defaults = Settings::default();
     paint.paint(cursor.0, settings.high_contrast, |index| {
@@ -955,6 +1063,7 @@ mod tests {
         let mut settings = Settings::default();
         for row in [
             Row::PARTICLES,
+            Row::PERFORMANCE_MODE,
             Row::SCREEN_SHAKE,
             Row::BEAT_PULSE,
             Row::LOUDNESS_MATCH,

@@ -13,6 +13,7 @@ use super::{
     GameplayScreen, HighwayLayout, PlayerIndex, PlayerSession, RECEPTOR_Y, SessionFeedback,
 };
 use crate::audio_sys::GameClock;
+use crate::config::MissEffect;
 use crate::palette;
 use crate::states::{AppState, GamePhase};
 
@@ -155,9 +156,13 @@ pub struct FlashProfile {
 impl FlashProfile {
     /// A missed note: red, faint, and over in a quarter of a second.
     #[must_use]
-    pub fn miss(reduced_flashing: bool, intensity: f32) -> FlashProfile {
+    pub fn miss(reduced_flashing: bool, intensity: f32, miss_effect: MissEffect) -> FlashProfile {
+        let color = match miss_effect {
+            MissEffect::WhiteFlash | MissEffect::HighwayFlash => Color::WHITE,
+            _ => palette::MISS,
+        };
         FlashProfile {
-            color: palette::MISS,
+            color,
             peak: flash_alpha(reduced_flashing, intensity),
             attack: 0.0,
             life: 0.25,
@@ -389,6 +394,7 @@ fn react_to_feedback(
     mut feedback: MessageReader<SessionFeedback>,
     players: Query<(&PlayerIndex, &PlayerSession)>,
     settings: Res<EffectSettings>,
+    game_settings: Res<crate::config::Settings>,
     shapes: Res<crate::shapes::LaneShapes>,
     mut shake: ResMut<Shake>,
     mut flash: ResMut<ScreenFlash>,
@@ -452,10 +458,13 @@ fn react_to_feedback(
                 if settings.screen_shake {
                     shake.add(0.30 * settings.intensity);
                 }
-                flash.request(FlashProfile::miss(
-                    settings.reduced_flashing,
-                    settings.intensity,
-                ));
+                if game_settings.miss_intensity > 0.001 {
+                    flash.request(FlashProfile::miss(
+                        settings.reduced_flashing,
+                        settings.intensity * game_settings.miss_intensity,
+                        game_settings.miss_effect,
+                    ));
+                }
             }
             SessionEvent::Overstrum if settings.screen_shake => {
                 shake.add(0.20 * settings.intensity);
@@ -847,6 +856,7 @@ fn reset_camera(mut camera: Query<&mut Transform, With<Camera2d>>) {
 
 #[cfg(test)]
 mod tests {
+    use crate::config::MissEffect;
     use super::{EffectSettings, throws_flat_sparks};
 
     #[test]
@@ -922,7 +932,7 @@ mod tests {
 
     #[test]
     fn the_two_profiles_read_as_opposite_things() {
-        let miss = FlashProfile::miss(false, 1.0);
+        let miss = FlashProfile::miss(false, 1.0, MissEffect::RedOverlay);
         let star = FlashProfile::star(false, 1.0);
         assert_eq!(miss.color, crate::palette::MISS, "a miss is red");
         assert_eq!(star.color, Color::WHITE, "a landed phrase is white");
@@ -942,7 +952,7 @@ mod tests {
         // soften an existing promise — the neck's glow carries the
         // moment in that mode instead.
         assert_eq!(FlashProfile::star(true, 1.0).peak, 0.0);
-        assert_eq!(FlashProfile::miss(true, 1.0).peak, 0.0);
+        assert_eq!(FlashProfile::miss(true, 1.0, MissEffect::RedOverlay).peak, 0.0);
         assert!(FlashProfile::star(false, 0.5).peak < FlashProfile::star(false, 1.0).peak);
         assert_eq!(FlashProfile::star(false, 0.0).peak, 0.0);
     }
@@ -961,9 +971,9 @@ mod tests {
         // the effect. What has to hold is that the star flash really
         // IS the brighter of the two, or the rest of this proves
         // nothing.
-        let miss_peak = FlashProfile::miss(false, 1.0).peak;
+        let miss_peak = FlashProfile::miss(false, 1.0, MissEffect::RedOverlay).peak;
         assert!(bright > miss_peak, "star {bright} vs miss {miss_peak}");
-        flash.request(FlashProfile::miss(false, 1.0));
+        flash.request(FlashProfile::miss(false, 1.0, MissEffect::RedOverlay));
         assert_eq!(
             flash.alpha(),
             bright,
@@ -974,8 +984,8 @@ mod tests {
 
         // …but once it has faded past the miss's own peak, it may.
         flash.advance(0.18);
-        assert!(flash.alpha() < FlashProfile::miss(false, 1.0).peak);
-        flash.request(FlashProfile::miss(false, 1.0));
+        assert!(flash.alpha() < FlashProfile::miss(false, 1.0, MissEffect::RedOverlay).peak);
+        flash.request(FlashProfile::miss(false, 1.0, MissEffect::RedOverlay));
         assert_eq!(flash.color(), crate::palette::MISS);
     }
 
@@ -985,7 +995,7 @@ mod tests {
         let star = FlashProfile::star(false, 1.0);
         for _ in 0..50 {
             flash.request(star);
-            flash.request(FlashProfile::miss(false, 1.0));
+            flash.request(FlashProfile::miss(false, 1.0, MissEffect::RedOverlay));
             flash.advance(0.001);
             assert!(
                 flash.alpha() <= star.peak + 1e-6,

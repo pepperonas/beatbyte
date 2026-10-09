@@ -218,6 +218,9 @@ pub struct Settings {
     /// of the 2D projection. Presentation only — judgment is
     /// input-stamp driven and identical across all three views.
     pub stage_3d: bool,
+    /// Reduce expensive rendering effects to keep input and notes smooth.
+    #[serde(default = "default_true")]
+    pub performance_mode: bool,
     /// Fullscreen window mode.
     pub fullscreen: bool,
     /// A folder watched for new audio tracks (set by dropping a
@@ -253,6 +256,60 @@ pub struct Settings {
     /// Whether that sort runs reversed.
     #[serde(default)]
     pub browser_sort_reversed: bool,
+    /// Visual effect style on a missed note / overstrum.
+    #[serde(default)]
+    pub miss_effect: MissEffect,
+    /// Visual effect intensity on a missed note (0.0 = OFF, 1.0 = full).
+    #[serde(default = "default_fx_intensity")]
+    pub miss_intensity: f32,
+    /// Sound effect played on a missed note / overstrum.
+    #[serde(default)]
+    pub miss_sound: MissSound,
+    /// Miss sound volume multiplier (0.0 = OFF, 1.0 = full relative to SFX volume).
+    #[serde(default = "default_fx_intensity")]
+    pub miss_volume: f32,
+}
+
+/// Visual feedback when a note is missed or an overstrum happens.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MissEffect {
+    /// Classic red screen overlay.
+    #[default]
+    RedOverlay,
+    /// Subtle white screen flash.
+    WhiteFlash,
+    /// Screen border/frame flash.
+    BorderFlash,
+    /// Highway bed lights up.
+    HighwayFlash,
+    /// 3D stage ceiling lights strobe/flash.
+    CeilingStrobe,
+}
+
+/// Sound effect played when a note is missed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MissSound {
+    /// Classic dull sagging synthesized note.
+    #[default]
+    SynthDull,
+    /// Synthesized overstrum buzzing chord.
+    SynthBuzz,
+    /// Arcade/system error buzzer.
+    ErrorBuzz,
+    /// Melodic descending error tone.
+    Descend,
+    /// Punchy denied tone.
+    Denied,
+    /// Subtle keyboard error click.
+    KeyError,
+    /// Vinyl needle click/glitch.
+    VinylClick,
+    /// DJ scratch chop cut.
+    ScratchChop,
+    /// Electric bass muted pluck.
+    BassMute,
 }
 
 /// What the ceiling's white flashes are timed by.
@@ -334,6 +391,7 @@ impl Default for Settings {
             tap_mode: true,
             perspective: true,
             stage_3d: true,
+            performance_mode: true,
             fullscreen: false,
             watch_folder: None,
             telemetry: TelemetryLevel::default(),
@@ -341,6 +399,10 @@ impl Default for Settings {
             theme: "auto".to_owned(),
             browser_sort: default_browser_sort(),
             browser_sort_reversed: false,
+            miss_effect: MissEffect::default(),
+            miss_intensity: 1.0,
+            miss_sound: MissSound::default(),
+            miss_volume: 1.0,
         }
     }
 }
@@ -371,6 +433,8 @@ impl Settings {
         self.stage_3d = true;
         self.music_volume = clean(self.music_volume, 0.0, 1.0, 0.8);
         self.sfx_volume = clean(self.sfx_volume, 0.0, 1.0, 0.45);
+        self.miss_intensity = clean(self.miss_intensity, 0.0, 1.0, 1.0);
+        self.miss_volume = clean(self.miss_volume, 0.0, 1.0, 1.0);
         self.latency_offset_ms = clean(self.latency_offset_ms, -250.0, 250.0, 0.0);
         self.video_offset_ms = clean(self.video_offset_ms, -100.0, 100.0, 0.0);
         self.scroll_speed = clean(self.scroll_speed, 240.0, 900.0, 420.0);
@@ -573,7 +637,14 @@ pub struct ConfigPlugin;
 
 impl Plugin for ConfigPlugin {
     fn build(&self, app: &mut App) {
-        let settings = load_settings();
+        let mut settings = load_settings();
+        if crate::bench::active() {
+            match std::env::var("BEATBYTE_BENCH_QUALITY").as_deref() {
+                Ok("performance") => settings.performance_mode = true,
+                Ok("full") => settings.performance_mode = false,
+                _ => {}
+            }
+        }
         info!(
             "settings: music {:.0}%, sfx {:.0}%, offset {} ms, scroll {}",
             settings.music_volume * 100.0,
@@ -585,7 +656,56 @@ impl Plugin for ConfigPlugin {
         // controls screen edits the resource and writes it back.
         app.insert_resource(settings.input_map.clone())
             .insert_resource(settings)
-            .add_systems(Update, apply_settings);
+            .add_systems(Update, apply_settings)
+            .add_systems(PostUpdate, apply_render_quality);
+    }
+}
+
+/// Apply the quality choice to both cameras and newly spawned stage lights.
+/// The setting is changed in the menu, so gameplay lights are built again
+/// when the next song starts.
+#[allow(clippy::type_complexity)] // Bevy system queries describe separate components.
+pub(crate) fn apply_render_quality(
+    mut commands: Commands,
+    settings: Res<Settings>,
+    cameras: Query<(Entity, Option<&Camera2d>), With<Camera>>,
+    added_cameras: Query<Entity, Added<Camera>>,
+    mut directional: Query<&mut DirectionalLight>,
+    lights: Query<Entity, Or<(Added<PointLight>, Added<SpotLight>)>>,
+) {
+    for (entity, camera_2d) in &cameras {
+        if !settings.is_changed() && !added_cameras.contains(entity) {
+            continue;
+        }
+        if settings.performance_mode {
+            commands
+                .entity(entity)
+                .insert(Msaa::Off)
+                .remove::<bevy::post_process::bloom::Bloom>();
+        } else {
+            let intensity = if camera_2d.is_some() { 0.22 } else { 0.18 };
+            commands.entity(entity).insert((
+                Msaa::Sample4,
+                bevy::post_process::bloom::Bloom {
+                    intensity,
+                    ..bevy::post_process::bloom::Bloom::NATURAL
+                },
+            ));
+        }
+    }
+    for mut light in &mut directional {
+        let wanted = !settings.performance_mode;
+        if light.shadow_maps_enabled != wanted {
+            light.shadow_maps_enabled = wanted;
+        }
+    }
+    if settings.performance_mode {
+        for entity in &lights {
+            commands
+                .entity(entity)
+                .remove::<PointLight>()
+                .remove::<SpotLight>();
+        }
     }
 }
 
@@ -677,6 +797,70 @@ mod tests {
         assert_eq!(back.tap_mode, settings.tap_mode);
         assert_eq!(back.perspective, settings.perspective);
         assert!((back.latency_offset_ms - 23.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn older_settings_adopt_performance_mode() {
+        let settings: Settings = serde_json::from_str("{}").unwrap();
+        assert!(settings.performance_mode);
+        let full = Settings {
+            performance_mode: false,
+            ..Settings::default()
+        };
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&full).unwrap()).unwrap();
+        assert!(!back.performance_mode);
+    }
+
+    #[test]
+    fn performance_mode_changes_cameras_and_new_lights() {
+        use bevy::prelude::*;
+
+        let mut app = App::new();
+        app.insert_resource(Settings::default())
+            .add_systems(PostUpdate, super::apply_render_quality);
+        let camera = app
+            .world_mut()
+            .spawn((
+                Camera2d,
+                Msaa::Sample4,
+                bevy::post_process::bloom::Bloom::NATURAL,
+            ))
+            .id();
+        let point = app.world_mut().spawn(PointLight::default()).id();
+        let sun = app.world_mut().spawn(DirectionalLight::default()).id();
+        app.update();
+        let world = app.world();
+        assert_eq!(world.get::<Msaa>(camera), Some(&Msaa::Off));
+        assert!(
+            world
+                .get::<bevy::post_process::bloom::Bloom>(camera)
+                .is_none()
+        );
+        assert!(world.get::<PointLight>(point).is_none());
+        assert!(
+            !world
+                .get::<DirectionalLight>(sun)
+                .unwrap()
+                .shadow_maps_enabled
+        );
+
+        app.world_mut().resource_mut::<Settings>().performance_mode = false;
+        let new_point = app.world_mut().spawn(PointLight::default()).id();
+        app.update();
+        let world = app.world();
+        assert_eq!(world.get::<Msaa>(camera), Some(&Msaa::Sample4));
+        assert!(
+            world
+                .get::<bevy::post_process::bloom::Bloom>(camera)
+                .is_some()
+        );
+        assert!(world.get::<PointLight>(new_point).is_some());
+        assert!(
+            world
+                .get::<DirectionalLight>(sun)
+                .unwrap()
+                .shadow_maps_enabled
+        );
     }
 
     #[test]

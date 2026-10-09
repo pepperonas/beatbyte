@@ -31,10 +31,10 @@ pub struct Family {
 /// and so on. Guarded against a loop, which titles cannot form (each
 /// link's title is shorter than the one naming it) but a library of
 /// strangely named folders should not be able to hang the browser.
-fn root_of(entries: &[SongEntry], full: &[usize], member: usize) -> usize {
+fn root_of(originals: &[Option<usize>], member: usize) -> usize {
     let mut current = member;
-    for _ in 0..entries.len() {
-        match crate::song_select::original_in(entries, full, current) {
+    for _ in 0..originals.len() {
+        match originals[current] {
             Some(original) if original != current => current = original,
             _ => return current,
         }
@@ -49,19 +49,17 @@ fn root_of(entries: &[SongEntry], full: &[usize], member: usize) -> usize {
 /// `filtered` — so the song the search ranked first is the first row.
 #[must_use]
 pub fn families(entries: &[SongEntry], full: &[usize], filtered: &[usize]) -> Vec<Family> {
+    let originals = crate::song_select::original_map(entries, full);
     let paired = crate::song_select::pair_twins(entries, full.to_vec());
     let mut members: std::collections::HashMap<usize, Vec<usize>> =
         std::collections::HashMap::new();
     for &i in &paired {
-        members
-            .entry(root_of(entries, full, i))
-            .or_default()
-            .push(i);
+        members.entry(root_of(&originals, i)).or_default().push(i);
     }
     let mut shown = vec![false; entries.len()];
     let mut out = Vec::new();
     for &i in filtered {
-        let head = root_of(entries, full, i);
+        let head = root_of(&originals, i);
         if std::mem::replace(&mut shown[head], true) {
             continue;
         }

@@ -617,6 +617,7 @@ fn spawn_panel(panel: &mut ChildSpawnerCommands, font: &UiFont, star: &Handle<Im
             .with_children(|row| {
                 row.spawn((
                     RatingLabel(line),
+                    Button,
                     Text::new(*label),
                     font.text(ui_kit::SMALL),
                     TextColor(palette::TEXT_DIM),
@@ -798,6 +799,7 @@ pub fn paint_window(
     players: Res<crate::players::Players>,
     selected: Res<SelectedDifficulty>,
     font: Res<UiFont>,
+    fresh: Query<(), Added<SongRow>>,
     mut rows: Query<(&SongRow, &mut Node), (Without<RowStar>, Without<EmptyHint>)>,
     mut stars: Query<(&RowStar, &mut Node), (Without<SongRow>, Without<EmptyHint>)>,
     mut texts: ParamSet<(
@@ -807,6 +809,19 @@ pub fn paint_window(
         Query<(&mut Text, &mut Node), With<EmptyHint>>,
     )>,
 ) {
+    if fresh.is_empty()
+        && !library.is_changed()
+        && !view.is_changed()
+        && !window.is_changed()
+        && !scores.is_changed()
+        && !ratings.is_changed()
+        && !players.is_changed()
+        && !selected.is_changed()
+        && !font.is_changed()
+    {
+        return;
+    }
+    let started = std::time::Instant::now();
     let player = crate::ratings::player_key(&players);
     let source = RowSource {
         library: &library,
@@ -858,6 +873,12 @@ pub fn paint_window(
             let hint = crate::song_select::empty_hint(library.entries.len(), &view.filter);
             set(&mut text, &hint);
         }
+    }
+    if std::env::var_os("BEATBYTE_BROWSER_PROFILE").is_some() {
+        info!(
+            "browser profile: paint window {:.2} ms",
+            started.elapsed().as_secs_f64() * 1000.0
+        );
     }
 }
 
@@ -984,16 +1005,24 @@ fn selected_entry<'a>(
 }
 
 /// Row fills, borders and text colours for the cursor.
-#[allow(clippy::type_complexity, clippy::needless_pass_by_value)] // Bevy system
+#[allow(
+    clippy::type_complexity,
+    clippy::needless_pass_by_value,
+    clippy::too_many_arguments
+)] // Bevy system
 pub fn paint_rows(
     settings: Res<crate::config::Settings>,
     cursor: Res<BrowserCursor>,
     window: Res<ListWindow>,
+    fresh: Query<(), Added<SongRow>>,
     mut rows: Query<(&SongRow, &mut BackgroundColor, &mut BorderColor)>,
     mut titles: Query<(&RowTitle, &mut TextColor), (Without<RowArtist>, Without<RowBest>)>,
     mut artists: Query<(&RowArtist, &mut TextColor), (Without<RowTitle>, Without<RowBest>)>,
     mut bests: Query<(&RowBest, &mut TextColor), (Without<RowTitle>, Without<RowArtist>)>,
 ) {
+    if fresh.is_empty() && !settings.is_changed() && !cursor.is_changed() && !window.is_changed() {
+        return;
+    }
     // The components carry the SLOT; the song in it is `top + slot`.
     let style = |slot: usize| {
         ui_kit::styled_row(
@@ -1243,7 +1272,7 @@ pub fn paint_ratings(
         (With<FavoriteButton>, Without<RatingStar>),
     >,
     mut stars: Query<(&RatingStar, &Interaction, &mut ImageNode), Without<FavoriteButton>>,
-    mut labels: Query<(&RatingLabel, &mut TextColor, &mut Text)>,
+    mut labels: Query<(&RatingLabel, Option<&Interaction>, &mut TextColor, &mut Text)>,
 ) {
     let entry = selected_entry(&library, &view, &cursor);
     let player = crate::ratings::player_key(&players);
@@ -1284,8 +1313,11 @@ pub fn paint_ratings(
             image.color = wanted;
         }
     }
-    for (label, mut colour, mut text) in &mut labels {
-        let wanted = if label.0 == focus.0 {
+    for (label, interaction, mut colour, mut text) in &mut labels {
+        let is_hovered = interaction.is_some_and(|i| *i != Interaction::None);
+        let wanted = if is_hovered {
+            palette::dimmed(palette::BRAND, 0.7)
+        } else if label.0 == focus.0 {
             palette::BRAND
         } else {
             palette::TEXT_DIM

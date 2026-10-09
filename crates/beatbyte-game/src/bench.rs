@@ -309,6 +309,7 @@ fn write_result(
         "uncapped": std::env::var_os("BEATBYTE_UNCAPPED").is_some(),
         "settings": {
             "stage_3d": settings.stage_3d,
+            "performance_mode": settings.performance_mode,
             "fx_intensity": settings.fx_intensity,
             "particles": settings.particles,
             "reduced_flashing": settings.reduced_flashing,
@@ -452,7 +453,13 @@ impl Plugin for BenchPlugin {
         app.insert_resource(Bench::new(scenario))
             .add_systems(First, mark_frame_start)
             .add_systems(Last, record_frame)
-            .add_systems(PostUpdate, (apply_probes, despawn_probes))
+            .add_systems(
+                PostUpdate,
+                (
+                    apply_probes.after(crate::config::apply_render_quality),
+                    despawn_probes,
+                ),
+            )
             .add_systems(OnEnter(AppState::Gameplay), mark_gameplay_entered)
             .add_systems(OnExit(GamePhase::Playing), write_result);
     }

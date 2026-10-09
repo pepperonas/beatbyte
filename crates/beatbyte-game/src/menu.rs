@@ -81,7 +81,9 @@ impl Plugin for MenuPlugin {
             .add_systems(OnEnter(AppState::MainMenu), spawn_menu)
             .add_systems(
                 Update,
-                (menu_input, highlight_cursor, pulse_title).run_if(in_state(AppState::MainMenu)),
+                (menu_input, highlight_cursor, pulse_title)
+                    .chain()
+                    .run_if(in_state(AppState::MainMenu)),
             );
     }
 }
@@ -194,7 +196,11 @@ fn highlight_cursor(
     settings: Res<crate::config::Settings>,
     cursor: Res<MenuCursor>,
     mut paint: ListPaint<MenuRows>,
+    fresh: Query<(), Added<list::ListRow<MenuRows>>>,
 ) {
+    if fresh.is_empty() && !settings.is_changed() && !cursor.is_changed() {
+        return;
+    }
     // Label-only rows: no value is asked for.
     paint.paint(cursor.0, settings.high_contrast, |_| String::new());
 }

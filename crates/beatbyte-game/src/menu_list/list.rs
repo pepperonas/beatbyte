@@ -412,26 +412,37 @@ impl<L: Send + Sync + 'static> ListPaint<'_, '_, L> {
                 continue;
             }
             let style = style(row.0);
-            background.0 = style.background;
-            *border = BorderColor::all(style.accent);
+            if background.0 != style.background {
+                background.0 = style.background;
+            }
+            let accent_border = BorderColor::all(style.accent);
+            if *border != accent_border {
+                *border = accent_border;
+            }
         }
         for (label, mut words, mut color) in &mut self.labels {
             if label.0 < shown
                 && let (Some(wanted), _) = text(label.0)
                 && words.0 != wanted
             {
-                words.0 = wanted;
+                wanted.clone_into(&mut words.0);
             }
-            color.0 = style(label.0).label;
+            let wanted_color = style(label.0).label;
+            if color.0 != wanted_color {
+                color.0 = wanted_color;
+            }
         }
         for (slot, mut words, mut color) in &mut self.values {
             if slot.0 < shown {
                 let (_, wanted) = text(slot.0);
                 if words.0 != wanted {
-                    words.0 = wanted;
+                    wanted.clone_into(&mut words.0);
                 }
             }
-            color.0 = style(slot.0).value;
+            let wanted_color = style(slot.0).value;
+            if color.0 != wanted_color {
+                color.0 = wanted_color;
+            }
         }
     }
 }

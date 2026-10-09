@@ -58,6 +58,10 @@ pub const SHARED: &[&str] = &[
     "browser_sort",
     "browser_sort_reversed",
     "telemetry",
+    "miss_effect",
+    "miss_intensity",
+    "miss_sound",
+    "miss_volume",
 ];
 
 /// Keys that describe the MACHINE — its audio path, its screen, its
@@ -75,6 +79,7 @@ pub const DEVICE: &[&str] = &[
     "fullscreen",
     "ui_scale",
     "stage_3d",
+    "performance_mode",
     "particles",
     "fx_intensity",
     "input_map",

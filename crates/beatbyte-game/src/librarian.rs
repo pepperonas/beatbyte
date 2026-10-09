@@ -4,7 +4,8 @@
 //! reads every byte — 2.4 GB on this library — and the feature
 //! measurement decodes the song on top of that. Neither can happen
 //! during a scan, and neither may happen at start-up: the player
-//! opened the game to play.
+//! opened the game to play. The backlog is read on a worker and new
+//! visits begin only while the main menu is idle.
 //!
 //! So it happens later, slowly, one song at a time, and never while
 //! anything the player asked for is running. A song is visited once
@@ -38,6 +39,8 @@ pub const GAP_S: f32 = 3.0;
 pub struct Librarian {
     /// Folders left to visit.
     queue: Vec<PathBuf>,
+    /// Reading thousands of song documents belongs off the main thread.
+    queue_task: Option<Task<Vec<PathBuf>>>,
     /// The song being visited.
     task: Option<Task<Option<String>>>,
     /// Seconds since the session began.
@@ -61,12 +64,12 @@ impl Librarian {
 /// Whether the quiet pass may run right now.
 ///
 /// Pure so the rule can be pinned rather than read out of a system.
-/// Every condition is a reason to stay out of the way: the player is
-/// playing, they asked for something else, or the session is too
-/// young for housekeeping.
+/// Every condition is a reason to stay out of the way: the player has
+/// left the main menu, they asked for something else, or the session
+/// is too young for housekeeping.
 #[must_use]
-pub fn may_run(age_s: f32, idle_s: f32, playing: bool, busy: bool) -> bool {
-    !playing && !busy && age_s >= GRACE_S && idle_s >= GAP_S
+pub fn may_run(age_s: f32, idle_s: f32, away_from_menu: bool, busy: bool) -> bool {
+    !away_from_menu && !busy && age_s >= GRACE_S && idle_s >= GAP_S
 }
 
 /// Which folders still owe a fingerprint.
@@ -153,11 +156,11 @@ impl Plugin for LibrarianPlugin {
     }
 }
 
-/// One step per frame: fill the queue once, then visit songs.
+/// One step per frame: fill the queue on a worker once, then visit songs.
 ///
 /// Registered globally rather than on a screen — the pass outlives
 /// every screen, and a poll that stops when the player leaves the
-/// browser strands a task in the pool.
+/// main menu strands a task in the pool.
 fn tick(
     mut librarian: ResMut<Librarian>,
     library: Option<Res<crate::library::SongLibrary>>,
@@ -168,6 +171,21 @@ fn tick(
 ) {
     let delta = time.delta_secs();
     librarian.age_s += delta;
+    if let Some(task) = librarian.queue_task.as_mut() {
+        if let Some(queue) = block_on(future::poll_once(task)) {
+            librarian.queue_task = None;
+            librarian.queue = queue;
+            librarian.filled = true;
+            if !librarian.queue.is_empty() {
+                info!(
+                    "librarian: {} song(s) to fingerprint",
+                    librarian.queue.len()
+                );
+            }
+        } else {
+            return;
+        }
+    }
     if let Some(task) = librarian.task.as_mut() {
         if let Some(written) = block_on(future::poll_once(task)) {
             librarian.task = None;
@@ -181,11 +199,11 @@ fn tick(
     }
     librarian.idle_s += delta;
 
-    let playing =
-        state.is_some_and(|state| matches!(state.get(), crate::states::AppState::Gameplay));
+    let away_from_menu =
+        !state.is_some_and(|state| matches!(state.get(), crate::states::AppState::MainMenu));
     let busy =
         chore.is_some_and(|chore| chore.running()) || imports.is_some_and(|queue| queue.active());
-    if !may_run(librarian.age_s, librarian.idle_s, playing, busy) {
+    if !may_run(librarian.age_s, librarian.idle_s, away_from_menu, busy) {
         return;
     }
 
@@ -201,14 +219,8 @@ fn tick(
                 crate::library::SongSource::Builtin(_) => None,
             })
             .collect();
-        librarian.queue = work_list(folders);
-        librarian.filled = true;
-        if !librarian.queue.is_empty() {
-            info!(
-                "librarian: {} song(s) to fingerprint",
-                librarian.queue.len()
-            );
-        }
+        librarian.queue_task =
+            Some(AsyncComputeTaskPool::get().spawn(async move { work_list(folders) }));
         return;
     }
 
@@ -225,7 +237,10 @@ mod tests {
     #[test]
     fn housekeeping_waits_for_the_player_to_be_doing_nothing_else() {
         assert!(may_run(GRACE_S, GAP_S, false, false));
-        assert!(!may_run(GRACE_S, GAP_S, true, false), "they are playing");
+        assert!(
+            !may_run(GRACE_S, GAP_S, true, false),
+            "they left the main menu"
+        );
         assert!(
             !may_run(GRACE_S, GAP_S, false, true),
             "they asked for something else"
