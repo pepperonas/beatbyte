@@ -27,6 +27,7 @@ pub mod hud;
 pub mod input;
 pub mod lightshow;
 pub mod lyrics;
+pub mod miss_feedback;
 pub mod monitors;
 pub mod notes;
 pub mod pa;
@@ -36,6 +37,7 @@ pub mod stage3d;
 pub mod starpower;
 pub mod strike;
 pub mod vocal;
+mod whammy;
 
 use beatbyte_core::{
     Lane, PlayerPerformance, ScoreConfig, SessionEvent, TimingWindows, TrackSession,
@@ -407,6 +409,13 @@ impl Plugin for GameplayPlugin {
         // ceiling and the screen. Registered here because it belongs
         // to gameplay, not to any one of the three.
         starpower::register(app);
+        miss_feedback::register(app);
+        app.init_resource::<whammy::WhammyLevel>().add_systems(
+            Update,
+            whammy::update_whammy
+                .after(advance_sessions)
+                .after(pause_input),
+        );
         // The strike on the fret that replaces the screen flash on
         // the 3D stage: its own clock, armed off the same bus.
         strike::register(app);
@@ -510,8 +519,9 @@ impl Plugin for GameplayPlugin {
                 (
                     paint_pause_bar.before(pause_input),
                     (
-                        pause_menu_input,
+                        pause_menu_input.in_set(crate::sfx::MissPreviewInput),
                         refresh_pause_menu,
+                        follow_pause_cursor,
                         hotplug::refresh_pad_note,
                     )
                         .chain(),
@@ -1440,7 +1450,7 @@ pub(crate) fn sfx_row_position() -> usize {
 }
 
 /// The pause menu's rows, in display order.
-const PAUSE_ROWS: [PauseItem; 7] = [
+const PAUSE_ROWS: [PauseItem; 13] = [
     PauseItem::Speed,
     PauseItem::LoopFrom,
     PauseItem::LoopTo,
@@ -1448,6 +1458,12 @@ const PAUSE_ROWS: [PauseItem; 7] = [
     PauseItem::Setting(crate::settings_ui::Row::MUSIC_VOLUME),
     PauseItem::Setting(crate::settings_ui::Row::SFX_VOLUME),
     PauseItem::Setting(crate::settings_ui::Row::SCROLL_SPEED),
+    PauseItem::Setting(crate::settings_ui::Row::MISS_COLOR),
+    PauseItem::Setting(crate::settings_ui::Row::MISS_EFFECT),
+    PauseItem::Setting(crate::settings_ui::Row::MISS_INTENSITY),
+    PauseItem::Setting(crate::settings_ui::Row::MISS_SOUND),
+    PauseItem::Setting(crate::settings_ui::Row::MISS_PREVIEW),
+    PauseItem::Setting(crate::settings_ui::Row::MISS_VOLUME),
 ];
 
 /// One step of the song's lyric offset, in milliseconds.
@@ -1466,12 +1482,9 @@ pub fn step_lyric_offset(current: i32, direction: f32) -> i32 {
     (current + step).clamp(-max, max)
 }
 
-/// Whether adjusting this row previews the MISS sound. The SFX
-/// volume IS the volume of the error sounds, and while the music is
-/// paused there is nothing else to hear — setting it blind would be
-/// guesswork, so every step plays the sound being set.
+/// Audition the selected error tone when its choice or volume changes.
 fn previews_the_miss_sound(item: PauseItem) -> bool {
-    item == PauseItem::Setting(crate::settings_ui::Row::SFX_VOLUME)
+    matches!(item, PauseItem::Setting(row) if row.previews_miss())
 }
 
 /// Which pause row the cursor sits on.
@@ -1518,13 +1531,18 @@ fn spawn_pause_overlay(
                 font.text(crate::ui_kit::ROW),
                 TextColor(palette::MISS),
             ));
-            parent.spawn(crate::ui_kit::panel()).with_children(|panel| {
-                crate::menu_list::list::spawn_rows::<PauseRows>(
-                    panel,
-                    &font,
-                    PAUSE_ROWS.iter().map(|item| item.label()),
-                );
-            });
+            parent
+                .spawn((
+                    crate::menu_list::list::ListPanel::<PauseRows>::new(),
+                    crate::ui_kit::scroll_panel(crate::ui_kit::PANEL_WIDTH),
+                ))
+                .with_children(|panel| {
+                    crate::menu_list::list::spawn_rows::<PauseRows>(
+                        panel,
+                        &font,
+                        PAUSE_ROWS.iter().map(|item| item.label()),
+                    );
+                });
             crate::ui_kit::action_bar(
                 parent,
                 &font,
@@ -1543,9 +1561,9 @@ fn spawn_pause_overlay(
             );
             parent.spawn((
                 crate::prompts::DeviceHint {
-                    keyboard: "UP/DOWN choose  LEFT/RIGHT adjust  chips Resume/Quit  ESC resume"
+                    keyboard: "UP/DOWN choose  LEFT/RIGHT adjust  ENTER preview tone  ESC resume"
                         .to_owned(),
-                    pad: "D-PAD choose and adjust  START resume".to_owned(),
+                    pad: "D-PAD choose and adjust  SOUTH preview tone  START resume".to_owned(),
                 },
                 Text::new(String::new()),
                 font.text(crate::ui_kit::ROW),
@@ -1583,7 +1601,6 @@ fn paint_pause_bar(
 /// can never reach the session from here.
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI, not an API
 fn pause_menu_input(
-    mut commands: Commands,
     mut list: crate::menu_list::list::ListInput<PauseRows>,
     mut cursor: ResMut<PauseCursor>,
     mut settings: ResMut<crate::config::Settings>,
@@ -1592,11 +1609,18 @@ fn pause_menu_input(
     music: Res<Music>,
     mut game_clock: ResMut<GameClock>,
     time: Res<Time>,
-    sfx: Res<crate::sfx::SfxLib>,
+    mut previews: MessageWriter<crate::sfx::PreviewMiss>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
     let events = list.read(&mut cursor.0, PAUSE_ROWS.len());
     let item = PAUSE_ROWS[cursor.0];
+    if (events.nav.confirm && previews_the_miss_sound(item))
+        || ((events.nav.confirm || events.clicked)
+            && item == PauseItem::Setting(crate::settings_ui::Row::MISS_PREVIEW))
+    {
+        previews.write(crate::sfx::PreviewMiss);
+        return;
+    }
     let stepped = events.step.map(|direction| {
         let direction = direction as f32;
         match item {
@@ -1651,10 +1675,7 @@ fn pause_menu_input(
         }
     });
     if stepped.is_some() && previews_the_miss_sound(item) {
-        // The SFX volume IS the volume of the error sounds, and with
-        // the music paused there is nothing else to hear: every step
-        // plays the sound being set, at the level just set.
-        crate::sfx::play(&mut commands, &sfx.miss, settings.sfx_volume);
+        previews.write(crate::sfx::PreviewMiss);
     } else if let Some(sound) = crate::menu_list::list::sound_for(stepped, events.moved) {
         sounds.write(sound);
     }
@@ -1672,6 +1693,18 @@ fn refresh_pause_menu(
     paint.paint(cursor.0, settings.high_contrast, |index| {
         PAUSE_ROWS[index].value(&settings, &practice, &song)
     });
+}
+
+/// Keep all error settings reachable when the expanded pause list scrolls.
+fn follow_pause_cursor(
+    cursor: Res<PauseCursor>,
+    rows: Query<(&crate::menu_list::list::ListRow<PauseRows>, &ComputedNode)>,
+    mut lists: Query<
+        (&mut ScrollPosition, &mut Node),
+        With<crate::menu_list::list::ListPanel<PauseRows>>,
+    >,
+) {
+    crate::menu_list::list::follow_cursor(cursor.0, PAUSE_ROWS.len(), &rows, &mut lists);
 }
 
 /// Changes made in the pause menu persist like the settings screen's:
@@ -1843,14 +1876,14 @@ mod pause_menu_tests {
     }
 
     #[test]
-    fn adjusting_the_sfx_row_previews_the_error_sound() {
-        // The row sets the volume OF the miss sound; with the music
-        // paused there is nothing else to hear, so every step plays
-        // the sound being set — and only that row does.
+    fn adjusting_sound_rows_previews_the_selected_error_sound() {
+        assert!(PAUSE_ROWS.contains(&PauseItem::Setting(Row::MISS_SOUND)));
+        assert!(PAUSE_ROWS.contains(&PauseItem::Setting(Row::MISS_VOLUME)));
+        assert!(PAUSE_ROWS.contains(&PauseItem::Setting(Row::MISS_PREVIEW)));
         for item in PAUSE_ROWS {
             assert_eq!(
                 previews_the_miss_sound(item),
-                item == PauseItem::Setting(Row::SFX_VOLUME)
+                matches!(item, PauseItem::Setting(row) if row.previews_miss())
             );
         }
     }

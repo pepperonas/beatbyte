@@ -400,8 +400,6 @@ fn despawn_probes(
         Entity,
         Or<(
             Added<crate::gameplay::arc::BoltSegment>,
-            Added<crate::gameplay::arc::BoltFork>,
-            Added<crate::gameplay::arc::AuraSlab>,
             Added<crate::gameplay::strike::StrikeSegment>,
         )>,
     >,

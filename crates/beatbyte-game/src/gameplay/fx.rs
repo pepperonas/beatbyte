@@ -134,7 +134,7 @@ struct HypeOverlay(usize);
 /// at the trigger — and with a single quad the alpha CANNOT
 /// accumulate, whatever lands on top of whatever.
 #[derive(Component)]
-struct ScreenFlashQuad;
+pub(super) struct ScreenFlashQuad;
 
 /// What one kind of full-screen flash looks like.
 ///
@@ -161,11 +161,12 @@ impl FlashProfile {
             MissEffect::WhiteFlash | MissEffect::HighwayFlash => Color::WHITE,
             _ => palette::MISS,
         };
+        let brief = miss_effect == MissEffect::WhiteFlash;
         FlashProfile {
             color,
-            peak: flash_alpha(reduced_flashing, intensity),
-            attack: 0.0,
-            life: 0.25,
+            peak: flash_alpha(reduced_flashing, intensity) * if brief { 1.4 } else { 1.0 },
+            attack: if brief { 0.015 } else { 0.0 },
+            life: if brief { 0.14 } else { 0.25 },
         }
     }
 
@@ -394,10 +395,8 @@ fn react_to_feedback(
     mut feedback: MessageReader<SessionFeedback>,
     players: Query<(&PlayerIndex, &PlayerSession)>,
     settings: Res<EffectSettings>,
-    game_settings: Res<crate::config::Settings>,
     shapes: Res<crate::shapes::LaneShapes>,
     mut shake: ResMut<Shake>,
-    mut flash: ResMut<ScreenFlash>,
     particles: Query<(), With<Particle>>,
 ) {
     let mut live_particles = particles.iter().count();
@@ -453,21 +452,6 @@ fn react_to_feedback(
                         );
                     }
                 }
-            }
-            SessionEvent::NoteMissed { .. } => {
-                if settings.screen_shake {
-                    shake.add(0.30 * settings.intensity);
-                }
-                if game_settings.miss_intensity > 0.001 {
-                    flash.request(FlashProfile::miss(
-                        settings.reduced_flashing,
-                        settings.intensity * game_settings.miss_intensity,
-                        game_settings.miss_effect,
-                    ));
-                }
-            }
-            SessionEvent::Overstrum if settings.screen_shake => {
-                shake.add(0.20 * settings.intensity);
             }
             SessionEvent::HypeActivated => {
                 if settings.screen_shake {
@@ -792,7 +776,7 @@ fn flash_on_star_power(
 /// Drive the one flash quad: age the effect and put its colour on the
 /// sprite. Hidden the instant it is over, so nothing can be left
 /// tinting the screen.
-fn drive_screen_flash(
+pub(super) fn drive_screen_flash(
     time: Res<Time>,
     mut flash: ResMut<ScreenFlash>,
     mut quad: Query<(&mut Sprite, &mut Visibility), With<ScreenFlashQuad>>,
@@ -856,8 +840,8 @@ fn reset_camera(mut camera: Query<&mut Transform, With<Camera2d>>) {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::MissEffect;
     use super::{EffectSettings, throws_flat_sparks};
+    use crate::config::MissEffect;
 
     #[test]
     fn the_flat_bursts_belong_to_the_flat_view() {
@@ -952,7 +936,10 @@ mod tests {
         // soften an existing promise — the neck's glow carries the
         // moment in that mode instead.
         assert_eq!(FlashProfile::star(true, 1.0).peak, 0.0);
-        assert_eq!(FlashProfile::miss(true, 1.0, MissEffect::RedOverlay).peak, 0.0);
+        assert_eq!(
+            FlashProfile::miss(true, 1.0, MissEffect::RedOverlay).peak,
+            0.0
+        );
         assert!(FlashProfile::star(false, 0.5).peak < FlashProfile::star(false, 1.0).peak);
         assert_eq!(FlashProfile::star(false, 0.0).peak, 0.0);
     }

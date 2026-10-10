@@ -79,26 +79,63 @@ pub fn spawn_rows<'a, L: Send + Sync + 'static>(
     font: &UiFont,
     labels: impl IntoIterator<Item = &'a str>,
 ) {
+    spawn_rows_inner::<L>(panel, font, labels, false);
+}
+
+/// Single-line rows that never shrink, for a fixed whole-row viewport.
+pub fn spawn_fixed_rows<'a, L: Send + Sync + 'static>(
+    panel: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    labels: impl IntoIterator<Item = &'a str>,
+) {
+    spawn_rows_inner::<L>(panel, font, labels, true);
+}
+
+fn spawn_rows_inner<'a, L: Send + Sync + 'static>(
+    panel: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    labels: impl IntoIterator<Item = &'a str>,
+    fixed: bool,
+) {
     for (index, label) in labels.into_iter().enumerate() {
-        panel.spawn(row_frame::<L>(index)).with_children(|row| {
+        let mut entity = panel.spawn(row_frame::<L>(index));
+        if fixed {
+            let mut node = ui_kit::row_node();
+            node.flex_shrink = 0.0;
+            entity.insert(node);
+        }
+        entity.with_children(|row| {
             // Label and value are separate texts in a space-between
             // line. A single padded string overflowed on the
             // longest label ("TAP MODE (NO STRUM)") and hung its
             // value out of the column.
-            row.spawn((
+            let mut label_text = row.spawn((
                 ListLabel::<L>(index, PhantomData),
                 Text::new(label.to_owned()),
                 font.text(ui_kit::ROW),
                 TextColor(palette::TEXT_DIM),
                 ui_kit::label_node(),
             ));
-            row.spawn((
+            if fixed {
+                label_text.insert(TextLayout::default().with_no_wrap());
+            }
+            let mut value_text = row.spawn((
                 ListValue::<L>(index, PhantomData),
                 Text::new(""),
                 font.text(ui_kit::ROW),
                 TextColor(palette::TEXT_DIM),
                 ui_kit::value_node(),
             ));
+            if fixed {
+                value_text.insert((
+                    TextLayout::default().with_no_wrap(),
+                    Node {
+                        max_width: percent(55),
+                        overflow: Overflow::clip(),
+                        ..default()
+                    },
+                ));
+            }
         });
     }
 }
@@ -265,7 +302,20 @@ impl<L: Send + Sync + 'static> ListInput<'_, '_, L> {
     /// scrolls rather than stepping a value (user report 2026-09-01),
     /// and the pointer selects only when it actually moved.
     pub fn read(&mut self, cursor: &mut usize, count: usize) -> ListEvents {
-        let nav = MenuNav::read(&self.map, &self.keys, self.pads.iter());
+        self.read_inner(cursor, count, true)
+    }
+
+    /// A reordered screen resolves the screenshot's global held row itself.
+    pub fn read_unheld(&mut self, cursor: &mut usize, count: usize) -> ListEvents {
+        self.read_inner(cursor, count, false)
+    }
+
+    fn read_inner(&mut self, cursor: &mut usize, count: usize, hold: bool) -> ListEvents {
+        let nav = if hold {
+            MenuNav::read(&self.map, &self.keys, self.pads.iter())
+        } else {
+            MenuNav::read_without_tab(&self.map, &self.keys, self.pads.iter())
+        };
         let mut moved = false;
         let mut step_cursor = |delta: i32, cursor: &mut usize| {
             *cursor = ui_kit::step_cursor(*cursor, count, delta);
@@ -303,7 +353,7 @@ impl<L: Send + Sync + 'static> ListInput<'_, '_, L> {
         if let Some(index) = ui_kit::hover_moves_cursor(&pointer, pointer_moved) {
             *cursor = index;
         }
-        if let Some(row) = held_row(self.held.as_deref().map(|held| held.0), count) {
+        if hold && let Some(row) = held_row(self.held.as_deref().map(|held| held.0), count) {
             *cursor = row;
         }
         let click_x = pointer.clicked.then(|| {
@@ -393,6 +443,41 @@ impl<L: Send + Sync + 'static> ListPaint<'_, '_, L> {
         shown: usize,
         text: impl Fn(usize) -> (Option<String>, String),
     ) {
+        self.paint_range(cursor, armed, high_contrast, 0..shown, text);
+    }
+
+    /// Paint only a fixed window of rows; hidden rows occupy no layout space.
+    pub fn paint_window(
+        &mut self,
+        cursor: usize,
+        high_contrast: bool,
+        visible: std::ops::Range<usize>,
+        value: impl Fn(usize) -> String,
+    ) {
+        self.paint_range(cursor, None, high_contrast, visible, |index| {
+            (None, value(index))
+        });
+    }
+
+    /// A reordered window supplies labels and values for its visible slots.
+    pub fn paint_window_full(
+        &mut self,
+        cursor: usize,
+        high_contrast: bool,
+        visible: std::ops::Range<usize>,
+        text: impl Fn(usize) -> (Option<String>, String),
+    ) {
+        self.paint_range(cursor, None, high_contrast, visible, text);
+    }
+
+    fn paint_range(
+        &mut self,
+        cursor: usize,
+        armed: Option<usize>,
+        high_contrast: bool,
+        shown: std::ops::Range<usize>,
+        text: impl Fn(usize) -> (Option<String>, String),
+    ) {
         let style = |index: usize| {
             ui_kit::styled_row(
                 ui_kit::state_for(index == cursor, armed == Some(index)),
@@ -400,7 +485,7 @@ impl<L: Send + Sync + 'static> ListPaint<'_, '_, L> {
             )
         };
         for (row, mut node, mut background, mut border) in &mut self.rows {
-            let display = if row.0 < shown {
+            let display = if shown.contains(&row.0) {
                 Display::Flex
             } else {
                 Display::None
@@ -408,7 +493,7 @@ impl<L: Send + Sync + 'static> ListPaint<'_, '_, L> {
             if node.display != display {
                 node.display = display;
             }
-            if row.0 >= shown {
+            if !shown.contains(&row.0) {
                 continue;
             }
             let style = style(row.0);
@@ -421,7 +506,7 @@ impl<L: Send + Sync + 'static> ListPaint<'_, '_, L> {
             }
         }
         for (label, mut words, mut color) in &mut self.labels {
-            if label.0 < shown
+            if shown.contains(&label.0)
                 && let (Some(wanted), _) = text(label.0)
                 && words.0 != wanted
             {
@@ -433,7 +518,7 @@ impl<L: Send + Sync + 'static> ListPaint<'_, '_, L> {
             }
         }
         for (slot, mut words, mut color) in &mut self.values {
-            if slot.0 < shown {
+            if shown.contains(&slot.0) {
                 let (_, wanted) = text(slot.0);
                 if words.0 != wanted {
                     wanted.clone_into(&mut words.0);
@@ -471,6 +556,67 @@ pub fn follow_cursor<L: Send + Sync + 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_window_paints_global_row_indices_and_hides_every_row_outside_it() {
+        use bevy::ecs::system::RunSystemOnce;
+        struct TestRows;
+        let mut app = App::new();
+        for index in 0..20 {
+            app.world_mut().spawn((
+                ListRow::<TestRows>(index, PhantomData),
+                Node::default(),
+                BackgroundColor(Color::NONE),
+                BorderColor::all(Color::NONE),
+            ));
+            app.world_mut().spawn((
+                ListValue::<TestRows>(index, PhantomData),
+                Text::new("old"),
+                TextColor(Color::WHITE),
+            ));
+        }
+        app.world_mut()
+            .run_system_once(|mut paint: ListPaint<TestRows>| {
+                paint.paint_window(14, false, 8..15, |index| format!("value {index}"));
+            })
+            .expect("paint a window");
+        for (row, node, background) in app
+            .world_mut()
+            .query::<(&ListRow<TestRows>, &Node, &BackgroundColor)>()
+            .iter(app.world())
+        {
+            assert_eq!(node.display == Display::Flex, (8..15).contains(&row.0));
+            if row.0 == 14 {
+                assert_ne!(background.0, Color::NONE);
+            }
+        }
+        for (row, text) in app
+            .world_mut()
+            .query::<(&ListValue<TestRows>, &Text)>()
+            .iter(app.world())
+        {
+            assert_eq!(
+                text.0,
+                if (8..15).contains(&row.0) {
+                    format!("value {}", row.0)
+                } else {
+                    "old".to_owned()
+                }
+            );
+        }
+        app.world_mut()
+            .run_system_once(|mut paint: ListPaint<TestRows>| {
+                paint.paint_window(0, false, 0..7, |index| index.to_string());
+            })
+            .expect("return to the first window");
+        for (row, node) in app
+            .world_mut()
+            .query::<(&ListRow<TestRows>, &Node)>()
+            .iter(app.world())
+        {
+            assert_eq!(node.display == Display::Flex, row.0 < 7);
+        }
+    }
 
     /// Home and End reach the ends; a page moves eight rows and stops
     /// at an end rather than wrapping, like every list here.

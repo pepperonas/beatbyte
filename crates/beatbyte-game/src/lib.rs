@@ -603,6 +603,8 @@ mod access_tests {
                 crate::controls_ui::ControlsUiPlugin,
                 crate::players_ui::PlayersUiPlugin,
                 crate::achievements_ui::AchievementsUiPlugin,
+                crate::gameplay::GameplayPlugin,
+                crate::sfx::SfxPlugin,
             ));
         let world = app.world_mut();
         let mut schedules = world

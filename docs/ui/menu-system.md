@@ -158,3 +158,67 @@ calibration, the input test, results, join, song info and the chart
 editor. They are not row-cursor lists; they use `ui_kit` and `MenuNav`
 directly. The editor's case is recorded in
 [ADR-0024](../decisions/ADR-0024-editor-stays-on-bevy-ui.md).
+
+### Miss feedback
+
+`MISS SOUND` selects one of nine short tones. Changing it, `MISS VOLUME`,
+or `SFX VOLUME` auditions the selected tone. Enter/controller confirm on
+these rows replays it without changing the value; `MISS SOUND PREVIEW` is
+also a clickable replay action. The same rows are available while paused.
+A new audition replaces the previous one. Playback uses
+`SFX VOLUME × MISS VOLUME`; 0% on either makes the preview silent.
+
+`MISS EFFECT`, `MISS COLOR` and `MISS INTENSITY` control the visual error
+signal independently of the sound. Effects target the screen overlay,
+screen flash, frame, player's highway or virtual ceiling. The ceiling
+uses the frame in 2D. `STANDARD` colour keeps each effect's default;
+eight explicit colours override it. At 0%, the selected visual signal
+and error-induced camera shake are disabled. Global FX intensity still
+scales the signal. Reduced flashing suppresses full-screen flashes and
+changes local effects to a slower, weaker swell.
+
+`MissVisual` owns one decaying impulse per player. The 3D material and
+light owners compose it with Hype/Starpower before writing their surfaces;
+miss feedback never changes scoring or controls external room lamps.
+
+### Settings viewport
+
+Settings use the song browser's two-column dimensions: a fixed list on
+the left and the selected setting's value and explanation on the right.
+The shared body height is snapped to complete, measured rows at the
+current display scale. Both panels retain that height while navigating. Their width narrows with
+the window, leaving side margins instead of touching its edges.
+`SettingsWindow` follows the cursor with the browser's `window_top` rule;
+`spawn_fixed_rows` prevents row shrinking and wrapping, and
+`ListPaint::paint_window_full` maps visible slots to stable setting identities. There is
+no pixel scroll offset or partially visible row. Keyboard, wheel,
+controller, clicks, Home/End and Page Up/Down keep the existing input
+handling. A position line reports the selection and total.
+
+### Categories and search
+
+Seven task-based categories contain every setting exactly once: Play &
+Input, Audio, Miss Feedback, Stage, Lyrics & Vocals, Library, System &
+Data. All retains the alphabetical table; Changed contains only values
+that differ from defaults. Miss Feedback groups Sound, Volume, Preview,
+then Effect, Color, Intensity. Category and selection are remembered
+while navigating between screens. Tab/Shift+Tab or controller shoulder
+buttons switch categories; clicking a chip selects it.
+
+Ctrl/Cmd+F, `/`, or a click focuses the search. Words match names and
+explanations across all categories (Changed still restricts matches to
+changed values). Enter returns focus to the list; Escape clears the
+search before leaving. Backspace edits search text while focused and
+resets the selected setting only when the list owns focus. Typing `m`
+never toggles mute while the search owns focus. Empty results cannot
+edit a setting.
+
+The detail panel provides a sound replay button and a small, isolated
+visual audition for the selected miss effect. The latter illustrates
+overlay, flash, border, highway and ceiling targets without affecting
+gameplay or room lamps, uses the selected colour and combined global/
+miss intensity, and fades more gently under reduced flashing. The panel
+shows both volume/intensity factors and explains 0%. The stable global
+row identity is also used by library drop routing and screenshot holds.
+`BEATBYTE_SHOT_VIEW` selects a settings category; `BEATBYTE_SHOT_SEARCH`
+sets its query.

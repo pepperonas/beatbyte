@@ -4,7 +4,9 @@
 
 use bevy::prelude::*;
 
-use crate::config::{FlashSync, MissEffect, MissSound, Settings, TelemetryLevel, save_settings};
+use crate::config::{
+    FlashSync, MissColor, MissEffect, MissSound, Settings, TelemetryLevel, save_settings,
+};
 use crate::menu_list::list::{
     self, ListInput, ListLabel, ListPaint, ListPanel, ListRow, ListValue,
 };
@@ -19,6 +21,8 @@ use beatbyte_core::vocal::PitchMode;
 pub(crate) enum Act {
     /// Opens another screen.
     Open(AppState),
+    /// Replay the configured miss sound.
+    PreviewMiss,
     /// The song folder that is watched for new tracks (a step clears it).
     WatchFolder,
     /// Where the library lives, and moving it there.
@@ -214,15 +218,38 @@ impl Row {
         slider!(mic_offset_ms, -250.0, 500.0, 5.0, SignedMs),
         Subtitle::Text("how late the microphone hears the song")
     );
+    pub(crate) const MISS_COLOR: Row = row!(
+        "MISS COLOR",
+        Kind::Choice {
+            labels: || [
+                "STANDARD", "RED", "WHITE", "ORANGE", "YELLOW", "GREEN", "CYAN", "BLUE", "VIOLET"
+            ]
+            .iter()
+            .map(|label| (*label).to_owned())
+            .collect(),
+            get: |s: &Settings| MissColor::ALL
+                .iter()
+                .position(|color| *color == s.miss_color)
+                .unwrap_or(0),
+            set: |s: &mut Settings, i| s.miss_color = MissColor::ALL[i],
+            ends: Ends::Wrap,
+        },
+        Subtitle::Text("colour of the selected visual miss effect")
+    );
+    pub(crate) const MISS_PREVIEW: Row = row!(
+        "MISS SOUND PREVIEW",
+        Kind::Door(Act::PreviewMiss),
+        Subtitle::Text("replay selected miss sound at its current volume; 0% is silent")
+    );
     pub(crate) const MISS_EFFECT: Row = row!(
         "MISS EFFECT",
         Kind::Choice {
             labels: || vec![
-                "RED OVERLAY".to_owned(),
-                "WHITE FLASH".to_owned(),
+                "SCREEN OVERLAY".to_owned(),
+                "SCREEN FLASH".to_owned(),
                 "BORDER FLASH".to_owned(),
                 "HIGHWAY FLASH".to_owned(),
-                "CEILING STROBE".to_owned(),
+                "CEILING PULSE".to_owned(),
             ],
             get: |s: &Settings| match s.miss_effect {
                 MissEffect::RedOverlay => 0,
@@ -242,12 +269,12 @@ impl Row {
             },
             ends: Ends::Wrap,
         },
-        Subtitle::Text("visual effect on missed notes and overstrums")
+        Subtitle::Text("visual miss target; ceiling needs 3D, otherwise uses the screen border")
     );
     pub(crate) const MISS_INTENSITY: Row = row!(
         "MISS INTENSITY",
         slider!(miss_intensity, 0.0, 1.0, 0.1, Percent),
-        Subtitle::Text("visual miss overlay intensity; 0% disables")
+        Subtitle::Text("visual miss effect strength; 0% disables the effect and miss shake")
     );
     pub(crate) const MISS_SOUND: Row = row!(
         "MISS SOUND",
@@ -289,12 +316,12 @@ impl Row {
             },
             ends: Ends::Wrap,
         },
-        Subtitle::Text("sound tone played on missed notes")
+        Subtitle::Text("LEFT/RIGHT select; ENTER or controller confirm replays the selected tone")
     );
     pub(crate) const MISS_VOLUME: Row = row!(
         "MISS VOLUME",
         slider!(miss_volume, 0.0, 1.0, 0.1, Percent),
-        Subtitle::Text("miss sound effect volume; 0% disables")
+        Subtitle::Text("miss sound volume, also scaled by SFX VOLUME; 0% disables; ENTER previews")
     );
     pub(crate) const MUSIC_VOLUME: Row = row!(
         "MUSIC VOLUME",
@@ -397,7 +424,7 @@ impl Row {
     /// Every row, in the order the screen shows them: **alphabetical
     /// by label**, and kept that way by a test — a new row goes where
     /// its name falls, not at the end of the list.
-    pub(crate) const ALL: [Row; 45] = [
+    pub(crate) const ALL: [Row; 47] = [
         Row::AI_SEARCH,
         Row::BEAT_PULSE,
         Row::CALIBRATION,
@@ -419,9 +446,11 @@ impl Row {
         Row::LYRICS_OFFSET,
         Row::LYRICS_SIZE,
         Row::MIC_OFFSET,
+        Row::MISS_COLOR,
         Row::MISS_EFFECT,
         Row::MISS_INTENSITY,
         Row::MISS_SOUND,
+        Row::MISS_PREVIEW,
         Row::MISS_VOLUME,
         Row::MUSIC_VOLUME,
         Row::NO_FAIL,
@@ -445,6 +474,11 @@ impl Row {
         Row::VOCAL_PITCH,
     ];
 
+    /// These adjustments should audition the selected miss tone.
+    pub(crate) fn previews_miss(self) -> bool {
+        self == Self::MISS_SOUND || self == Self::MISS_VOLUME || self == Self::SFX_VOLUME
+    }
+
     /// The row's spec.
     #[must_use]
     pub(crate) const fn spec(self) -> &'static Spec {
@@ -465,6 +499,9 @@ impl Row {
 
     /// The value as the row shows it.
     pub(crate) fn value(self, settings: &Settings) -> String {
+        if self == Self::MISS_PREVIEW {
+            return "PLAY".to_owned();
+        }
         self.0.value(settings)
     }
 
@@ -578,6 +615,221 @@ pub(crate) fn library_row_selected(cursor: &SettingsCursor) -> bool {
     Row::ALL.get(cursor.0) == Some(&Row::LIBRARY)
 }
 
+/// The tabs are tasks; ALL retains the stable alphabetical row identities.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Category {
+    Play,
+    Audio,
+    Feedback,
+    Stage,
+    Vocals,
+    Library,
+    System,
+    All,
+    Changed,
+}
+
+impl Category {
+    const ALL: [Self; 9] = [
+        Self::Play,
+        Self::Audio,
+        Self::Feedback,
+        Self::Stage,
+        Self::Vocals,
+        Self::Library,
+        Self::System,
+        Self::All,
+        Self::Changed,
+    ];
+    fn label(self) -> &'static str {
+        match self {
+            Self::Play => "PLAY & INPUT",
+            Self::Audio => "AUDIO",
+            Self::Feedback => "MISS FEEDBACK",
+            Self::Stage => "STAGE",
+            Self::Vocals => "LYRICS & VOCALS",
+            Self::Library => "LIBRARY",
+            Self::System => "SYSTEM & DATA",
+            Self::All => "ALL",
+            Self::Changed => "CHANGED",
+        }
+    }
+    fn rows(self) -> &'static [Row] {
+        match self {
+            Self::Play => &[
+                Row::SCROLL_SPEED,
+                Row::TAP_MODE,
+                Row::NO_FAIL,
+                Row::HIT_LABELS,
+                Row::CONTROLS,
+                Row::INPUT_TEST,
+                Row::CALIBRATION,
+                Row::LATENCY_OFFSET,
+                Row::VIDEO_OFFSET,
+            ],
+            Self::Audio => &[
+                Row::MUSIC_VOLUME,
+                Row::SFX_VOLUME,
+                Row::LOUDNESS_MATCH,
+                Row::SONG_PREVIEW,
+            ],
+            Self::Feedback => &[
+                Row::MISS_SOUND,
+                Row::MISS_VOLUME,
+                Row::MISS_PREVIEW,
+                Row::MISS_EFFECT,
+                Row::MISS_COLOR,
+                Row::MISS_INTENSITY,
+            ],
+            Self::Stage => &[
+                Row::THEME,
+                Row::BACKDROP_MOTION,
+                Row::BEAT_PULSE,
+                Row::FX_INTENSITY,
+                Row::PARTICLES,
+                Row::SCREEN_SHAKE,
+                Row::ROOM_LIGHTS,
+                Row::FLASH_SYNC,
+            ],
+            Self::Vocals => &[
+                Row::LYRICS,
+                Row::LYRICS_SIZE,
+                Row::LYRICS_LEAD_IN,
+                Row::LYRICS_OFFSET,
+                Row::LYRICS_MODEL,
+                Row::VOCAL_CHARTS,
+                Row::VOCAL_PITCH,
+                Row::ORIGINAL_VOCALS,
+                Row::MIC_OFFSET,
+            ],
+            Self::Library => &[
+                Row::LIBRARY,
+                Row::WATCH_FOLDER,
+                Row::AI_SEARCH,
+                Row::GUITAR_STUDY_TWINS,
+            ],
+            Self::System => &[
+                Row::FULLSCREEN,
+                Row::TEXT_SCALE,
+                Row::HIGH_CONTRAST,
+                Row::REDUCED_FLASHING,
+                Row::PERFORMANCE_MODE,
+                Row::TELEMETRY,
+                Row::EXPORT_HISTORY,
+            ],
+            Self::All | Self::Changed => &Row::ALL,
+        }
+    }
+    fn index(self) -> usize {
+        Self::ALL
+            .iter()
+            .position(|category| *category == self)
+            .unwrap_or(0)
+    }
+    fn from_label(label: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|category| {
+            category.label().eq_ignore_ascii_case(label)
+                || format!("{category:?}").eq_ignore_ascii_case(label)
+        })
+    }
+}
+
+/// Search focus is exposed to the global mute shortcut.
+#[derive(Resource)]
+pub(crate) struct SettingsView {
+    category: Category,
+    query: String,
+    pub(crate) editing: bool,
+    order: Vec<usize>,
+    remembered: [usize; 9],
+}
+
+impl Default for SettingsView {
+    fn default() -> Self {
+        let remembered = Category::ALL.map(|category| category.rows()[0].index());
+        Self {
+            category: Category::Play,
+            query: String::new(),
+            editing: false,
+            order: Vec::new(),
+            remembered,
+        }
+    }
+}
+
+impl SettingsView {
+    fn position(&self, cursor: usize) -> usize {
+        self.order
+            .iter()
+            .position(|index| *index == cursor)
+            .unwrap_or(0)
+    }
+    fn rebuild(&mut self, settings: &Settings, cursor: &mut usize) {
+        let defaults = Settings::default();
+        let tokens: Vec<String> = self
+            .query
+            .split_whitespace()
+            .map(str::to_lowercase)
+            .collect();
+        let source = if tokens.is_empty() {
+            self.category.rows()
+        } else {
+            &Row::ALL
+        };
+        let wanted: Vec<usize> = source
+            .iter()
+            .filter(|row| {
+                if self.category == Category::Changed && !row.spec().differs(settings, &defaults) {
+                    return false;
+                }
+                if tokens.is_empty() {
+                    return true;
+                }
+                let haystack = format!("{} {}", row.label(), row.subtitle()).to_lowercase();
+                tokens.iter().all(|token| haystack.contains(token))
+            })
+            .map(|row| row.index())
+            .collect();
+        if wanted != self.order {
+            self.order = wanted;
+        }
+        if !self.order.contains(cursor)
+            && let Some(first) = self.order.first()
+        {
+            *cursor = *first;
+        }
+    }
+    fn switch(&mut self, category: Category, settings: &Settings, cursor: &mut usize) {
+        self.remembered[self.category.index()] = *cursor;
+        self.category = category;
+        self.query.clear();
+        self.editing = false;
+        *cursor = self.remembered[category.index()];
+        self.rebuild(settings, cursor);
+    }
+}
+
+#[derive(Component)]
+struct CategoryChip(Category);
+#[derive(Component)]
+struct SettingsSearch;
+#[derive(Component)]
+enum PreviewButton {
+    Sound,
+    Visual,
+}
+
+#[derive(Resource, Default)]
+struct VisualAudition {
+    age: f32,
+}
+
+#[derive(Component)]
+struct SampleFlash;
+
+#[derive(Component)]
+struct SampleFrame;
+
 /// Where the last in-app export landed (or why it did not). Shown
 /// on the export row itself, so the answer sits where the question
 /// was asked.
@@ -589,12 +841,22 @@ pub struct SettingsUiPlugin;
 
 impl Plugin for SettingsUiPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<SettingsCursor>()
+        app.add_message::<crate::sfx::PreviewMiss>()
+            .init_resource::<SettingsCursor>()
+            .init_resource::<SettingsView>()
+            .init_resource::<VisualAudition>()
+            .init_resource::<SettingsWindow>()
             .init_resource::<ExportNote>()
             .add_systems(OnEnter(AppState::Settings), spawn_settings)
             .add_systems(
                 Update,
-                (settings_input, refresh_settings, follow_settings_cursor)
+                (
+                    settings_input.in_set(crate::sfx::MissPreviewInput),
+                    follow_settings_cursor,
+                    refresh_settings,
+                    paint_settings_chrome,
+                    animate_visual_audition,
+                )
                     .chain()
                     .run_if(in_state(AppState::Settings)),
             )
@@ -607,72 +869,278 @@ impl Plugin for SettingsUiPlugin {
 /// The marker of the settings list's rows.
 pub(crate) struct SettingsRows;
 
-/// Keep the cursor row in view — the same measured whole-row window
-/// the browser and the controls screen use. Seventeen rows outgrew
-/// the safe area exactly the way fifteen did on the controls screen.
-fn follow_settings_cursor(
-    cursor: Res<SettingsCursor>,
-    rows: Query<(&ListRow<SettingsRows>, &ComputedNode)>,
-    mut lists: Query<(&mut ScrollPosition, &mut Node), With<ListPanel<SettingsRows>>>,
-) {
-    if !cursor.is_changed() {
-        return;
-    }
-    list::follow_cursor(cursor.0, Row::ALL.len(), &rows, &mut lists);
+/// A fixed whole-row window, independent of the number of settings.
+#[derive(Resource, Clone, Copy, PartialEq)]
+struct SettingsWindow {
+    top: usize,
+    visible: usize,
+    height: f32,
 }
 
-/// The line under the panel: the selected row's explanation.
-#[derive(Component)]
-struct SettingSubtitle;
+impl Default for SettingsWindow {
+    fn default() -> Self {
+        Self {
+            top: 0,
+            visible: 12,
+            height: crate::song_browser_view::BODY_H,
+        }
+    }
+}
 
-/// The subtitle's query: it must exclude the value texts to satisfy
-/// Bevy's aliasing rules.
-type SubtitleText<'w, 's> = Query<
+impl SettingsWindow {
+    fn follow(&mut self, cursor: usize, row_h: f32, inverse_scale: f32) {
+        let row_h = row_h * inverse_scale;
+        if row_h > 0.0 {
+            self.height = ui_kit::whole_rows_height(
+                row_h,
+                ui_kit::ROW_GAP,
+                usize::MAX,
+                crate::song_browser_view::BODY_H,
+            )
+            .unwrap_or(crate::song_browser_view::BODY_H);
+            let inner = self.height - 2.0 * (ui_kit::PANEL_PAD + ui_kit::PANEL_BORDER);
+            self.visible = ((inner + ui_kit::ROW_GAP) / (row_h + ui_kit::ROW_GAP))
+                .floor()
+                .max(1.0) as usize;
+        }
+        self.top =
+            crate::song_browser_view::window_top(cursor, self.top, self.visible, Row::ALL.len());
+    }
+
+    #[cfg(test)]
+    fn range(self) -> std::ops::Range<usize> {
+        self.top..(self.top + self.visible).min(Row::ALL.len())
+    }
+}
+
+#[derive(Component)]
+struct SettingsBodyPanel;
+
+fn follow_settings_cursor(
+    cursor: Res<SettingsCursor>,
+    mut window: ResMut<SettingsWindow>,
+    view: Res<SettingsView>,
+    rows: Query<&ComputedNode, With<ListRow<SettingsRows>>>,
+    mut panels: Query<&mut Node, With<SettingsBodyPanel>>,
+) {
+    let mut wanted = *window;
+    let measured = rows.iter().find(|node| node.size().y > 0.0);
+    wanted.follow(
+        view.position(cursor.0),
+        measured.map_or(0.0, |row| row.size().y),
+        measured.map_or(1.0, ComputedNode::inverse_scale_factor),
+    );
+    wanted.top = crate::song_browser_view::window_top(
+        view.position(cursor.0),
+        window.top,
+        wanted.visible,
+        view.order.len(),
+    );
+    if wanted != *window {
+        *window = wanted;
+    }
+    for mut panel in &mut panels {
+        if panel.height != px(wanted.height) {
+            panel.height = px(wanted.height);
+            panel.min_height = px(wanted.height);
+            panel.max_height = px(wanted.height);
+        }
+    }
+}
+
+#[derive(Component)]
+enum SettingDetail {
+    Label,
+    Value,
+    Explanation,
+    Position,
+    Dependencies,
+}
+
+type DetailText<'w, 's> = Query<
     'w,
     's,
-    &'static mut Text,
+    (&'static SettingDetail, &'static mut Text),
     (
-        With<SettingSubtitle>,
         Without<ListValue<SettingsRows>>,
         Without<ListLabel<SettingsRows>>,
     ),
 >;
 
-fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
+fn settings_body_node(width: f32) -> Node {
+    let mut node = ui_kit::scroll_node(width);
+    node.height = px(crate::song_browser_view::BODY_H);
+    node.min_height = node.height;
+    node.max_height = node.height;
+    // The row parent may narrow both columns; their fixed min/max height stays intact.
+    node.flex_shrink = 1.0;
+    node.overflow = Overflow::clip();
+    node
+}
+
+fn spawn_settings(
+    mut commands: Commands,
+    font: Res<UiFont>,
+    mut view: ResMut<SettingsView>,
+    mut cursor: ResMut<SettingsCursor>,
+    settings: Res<Settings>,
+) {
+    if std::env::var_os("BEATBYTE_AUTOPILOT_MODEL").is_some()
+        || std::env::var_os("BEATBYTE_SHOT_ROW").is_some()
+    {
+        view.category = Category::All;
+    }
+    if let Ok(label) = std::env::var("BEATBYTE_SHOT_VIEW")
+        && let Some(category) = Category::from_label(&label)
+    {
+        view.category = category;
+    }
+    if let Ok(query) = std::env::var("BEATBYTE_SHOT_SEARCH") {
+        view.query = query;
+    }
+    view.rebuild(&settings, &mut cursor.0);
+    commands.insert_resource(SettingsWindow::default());
     commands
         .spawn((DespawnOnExit(AppState::Settings), ui_kit::screen_root()))
         .with_children(|parent| {
             ui_kit::header(parent, &font, "SETTINGS", "sound, feel and looks");
             parent
-                .spawn((
-                    ListPanel::<SettingsRows>::new(),
-                    ui_kit::scroll_panel(ui_kit::PANEL_WIDTH),
-                ))
-                .with_children(|panel| {
-                    list::spawn_rows::<SettingsRows>(
-                        panel,
-                        &font,
-                        Row::ALL.iter().map(|row| row.label()),
-                    );
+                .spawn(Node {
+                    width: percent(95),
+                    max_width: px(ui_kit::PANEL_WIDE),
+                    flex_direction: FlexDirection::Row,
+                    flex_wrap: FlexWrap::Wrap,
+                    column_gap: px(6),
+                    row_gap: px(4),
+                    margin: UiRect::bottom(px(8)),
+                    ..default()
+                })
+                .with_children(|tabs| {
+                    for category in Category::ALL {
+                        let (fg, border, fill) =
+                            ui_kit::selection_chip_colours(category == view.category, false);
+                        tabs.spawn((
+                            CategoryChip(category),
+                            Button,
+                            Text::new(category.label()),
+                            font.text(ui_kit::SMALL),
+                            TextColor(fg),
+                            ui_kit::selection_chip_node(),
+                            BorderColor::all(border),
+                            BackgroundColor(fill),
+                        ));
+                    }
                 });
-            // The selected row's explanation, under the panel — the
-            // pattern the song browser already uses for the same
-            // job. ⚠️ NOT a second line inside the row: the panel's
-            // scroll window is built from ONE measured row height
-            // (`ui_kit::follow_list`), so a taller row is clipped by
-            // the frame. The first attempt did exactly that and the
-            // path came out cut in half.
             parent.spawn((
-                SettingSubtitle,
+                SettingsSearch,
+                Button,
                 Text::new(""),
-                // Data text: the watch folder is a path, and a path
-                // in the display face's all-caps would be a lie.
-                ui_kit::data_subtitle_text(&font),
+                font.text(ui_kit::SMALL),
+                TextColor(crate::palette::TEXT_DIM),
                 Node {
-                    max_width: px(ui_kit::PANEL_WIDTH),
-                    min_height: px(36.0),
+                    width: percent(95),
+                    max_width: px(ui_kit::PANEL_WIDE),
+                    margin: UiRect::bottom(px(10)),
+                    ..default()
+                },
+            ));
+            parent
+                .spawn(Node {
+                    width: percent(95),
+                    max_width: px(ui_kit::PANEL_WIDE),
+                    flex_shrink: 0.0,
+                    flex_direction: FlexDirection::Row,
+                    column_gap: px(20),
+                    ..default()
+                })
+                .with_children(|body| {
+                    let frame = || {
+                        (
+                            BackgroundColor(crate::palette::SURFACE.with_alpha(0.55)),
+                            BorderColor::all(crate::palette::dimmed(crate::palette::TEXT_DIM, 0.3)),
+                        )
+                    };
+                    body.spawn((
+                        SettingsBodyPanel,
+                        ListPanel::<SettingsRows>::new(),
+                        settings_body_node(crate::song_browser_view::LIST_W),
+                        frame(),
+                    ))
+                    .with_children(|panel| {
+                        list::spawn_fixed_rows::<SettingsRows>(
+                            panel,
+                            &font,
+                            Row::ALL.iter().map(|row| row.label()),
+                        );
+                    });
+                    body.spawn((
+                        SettingsBodyPanel,
+                        settings_body_node(crate::song_browser_view::PANEL_W),
+                        frame(),
+                    ))
+                    .with_children(|panel| {
+                        panel.spawn((
+                            Text::new("SELECTED SETTING"),
+                            font.text(ui_kit::SMALL),
+                            TextColor(crate::palette::TEXT_DIM),
+                        ));
+                        panel.spawn((
+                            SettingDetail::Label,
+                            Text::new(""),
+                            font.text(ui_kit::ROW),
+                            TextColor(crate::palette::BRAND),
+                            Node {
+                                margin: UiRect::top(px(12)),
+                                ..default()
+                            },
+                        ));
+                        panel.spawn((
+                            SettingDetail::Value,
+                            Text::new(""),
+                            font.text(ui_kit::ROW),
+                            TextColor(crate::palette::TEXT),
+                            Node {
+                                margin: UiRect::top(px(8)),
+                                ..default()
+                            },
+                        ));
+                        panel.spawn((
+                            SettingDetail::Explanation,
+                            Text::new(""),
+                            font.mono_text(ui_kit::SMALL),
+                            TextColor(ui_kit::dimmed_subtitle()),
+                            Node {
+                                margin: UiRect::top(px(20)),
+                                ..default()
+                            },
+                        ));
+                        let (fg, border, fill) = ui_kit::selection_chip_colours(false, false);
+                        panel.spawn((
+                            PreviewButton::Sound,
+                            Button,
+                            Text::new("PLAY SOUND  ENTER"),
+                            font.text(ui_kit::SMALL),
+                            TextColor(fg),
+                            ui_kit::selection_chip_node(),
+                            BorderColor::all(border),
+                            BackgroundColor(fill),
+                        ));
+                        panel.spawn((
+                            SettingDetail::Dependencies,
+                            Text::new(""),
+                            font.mono_text(ui_kit::SMALL),
+                            TextColor(ui_kit::dimmed_subtitle()),
+                        ));
+                        spawn_visual_sample(panel, &font);
+                    });
+                });
+            parent.spawn((
+                SettingDetail::Position,
+                Text::new(""),
+                font.text(ui_kit::SMALL),
+                TextColor(crate::palette::TEXT_DIM),
+                Node {
                     margin: UiRect::top(px(10)),
-                    justify_content: JustifyContent::Center,
                     ..default()
                 },
             ));
@@ -686,16 +1154,31 @@ fn spawn_settings(mut commands: Commands, font: Res<UiFont>) {
         });
 }
 
+#[derive(bevy::ecs::system::SystemParam)]
+struct SettingsBrowserInput<'w, 's> {
+    view: ResMut<'w, SettingsView>,
+    typed: MessageReader<'w, 's, bevy::input::keyboard::KeyboardInput>,
+    tabs: Query<'w, 's, (&'static CategoryChip, &'static Interaction), Changed<Interaction>>,
+    search: Query<'w, 's, &'static Interaction, (With<SettingsSearch>, Changed<Interaction>)>,
+    preview: Query<'w, 's, (&'static PreviewButton, &'static Interaction), Changed<Interaction>>,
+    audition: ResMut<'w, VisualAudition>,
+    held: Option<Res<'w, list::HeldRow>>,
+    entered: Query<'w, 's, (), Added<ListRow<SettingsRows>>>,
+    pads: Query<'w, 's, &'static bevy::input::gamepad::Gamepad>,
+}
+
 /// What a key or click does on the selected row. The list renderer
 /// reads the devices and moves the cursor; this decides what the row
 /// does: a custom row's own Enter, a door, or a step of its value.
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI
 fn settings_input(
     mut list: ListInput<SettingsRows>,
+    browser: SettingsBrowserInput,
     mut cursor: ResMut<SettingsCursor>,
     mut settings: ResMut<Settings>,
     mut next_state: ResMut<NextState<AppState>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
+    mut previews: MessageWriter<crate::sfx::PreviewMiss>,
     mut export_note: ResMut<ExportNote>,
     mut back: Query<
         (&Interaction, &mut BackgroundColor, &mut BorderColor),
@@ -705,13 +1188,142 @@ fn settings_input(
     mut library_move: ResMut<crate::library_move::LibraryMove>,
     keys: Res<ButtonInput<KeyCode>>,
 ) {
-    let events = list.read(&mut cursor.0, Row::ALL.len());
-    let row = Row::ALL[cursor.0];
+    let SettingsBrowserInput {
+        mut view,
+        mut typed,
+        tabs,
+        search,
+        preview,
+        mut audition,
+        held,
+        entered,
+        pads,
+    } = browser;
+
+    if !entered.is_empty() {
+        typed.clear();
+    }
+    if let Some((chip, _)) = tabs
+        .iter()
+        .find(|(_, interaction)| **interaction == Interaction::Pressed)
+    {
+        view.switch(chip.0, &settings, &mut cursor.0);
+        typed.clear();
+    }
+    let command = crate::editor_ui::command_held(&keys);
+    let open_search = (command && keys.just_pressed(KeyCode::KeyF))
+        || keys.just_pressed(KeyCode::Slash)
+        || search
+            .iter()
+            .any(|interaction| *interaction == Interaction::Pressed);
+    if open_search {
+        view.editing = true;
+        typed.clear();
+    }
+    if view.editing {
+        if keys.just_pressed(KeyCode::Escape) {
+            view.query.clear();
+            view.editing = false;
+        } else if keys.just_pressed(KeyCode::Enter) {
+            view.editing = false;
+        } else if !command {
+            for event in typed.read().filter(|event| event.state.is_pressed()) {
+                match &event.logical_key {
+                    bevy::input::keyboard::Key::Character(text) => {
+                        view.query.extend(text.chars().filter(|c| !c.is_control()))
+                    }
+                    bevy::input::keyboard::Key::Space => view.query.push(' '),
+                    bevy::input::keyboard::Key::Backspace => {
+                        view.query.pop();
+                    }
+                    _ => {}
+                }
+            }
+        } else {
+            typed.clear();
+        }
+        view.rebuild(&settings, &mut cursor.0);
+        let mut position = view.position(cursor.0);
+        let _ = list.read_unheld(&mut position, view.order.len());
+        return;
+    }
+    typed.clear();
+    let previous = pads
+        .iter()
+        .any(|pad| pad.just_pressed(GamepadButton::LeftTrigger));
+    let next = pads
+        .iter()
+        .any(|pad| pad.just_pressed(GamepadButton::RightTrigger));
+    if keys.just_pressed(KeyCode::Tab) || previous || next {
+        let direction =
+            if previous || keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight) {
+                -1
+            } else {
+                1
+            };
+        let index = (view.category.index() as i32 + direction)
+            .rem_euclid(Category::ALL.len() as i32) as usize;
+        view.switch(Category::ALL[index], &settings, &mut cursor.0);
+        let mut position = view.position(cursor.0);
+        let _ = list.read_unheld(&mut position, view.order.len());
+        return;
+    }
+    view.rebuild(&settings, &mut cursor.0);
+    let mut position = view.position(cursor.0);
+    let events = list.read_unheld(&mut position, view.order.len());
+    if let Some(held) = held
+        && let Some(index) = view.order.iter().position(|index| *index == held.0)
+    {
+        position = index;
+    }
+    if ui_kit::wants_leave(
+        events.nav.back,
+        ui_kit::back_pressed(&mut back),
+        events.right_click,
+    ) {
+        if !view.query.is_empty() {
+            view.query.clear();
+            view.rebuild(&settings, &mut cursor.0);
+        } else {
+            sounds.write(crate::sfx::UiSound::Back);
+            next_state.set(AppState::MainMenu);
+        }
+        return;
+    }
+    let Some(global) = view.order.get(position).copied() else {
+        return;
+    };
+    cursor.0 = global;
+    let category_index = view.category.index();
+    view.remembered[category_index] = global;
+    let row = Row::ALL[global];
+    if let Some((button, _)) = preview
+        .iter()
+        .find(|(_, interaction)| **interaction == Interaction::Pressed)
+    {
+        match button {
+            PreviewButton::Sound => {
+                previews.write(crate::sfx::PreviewMiss);
+            }
+            PreviewButton::Visual => {
+                audition.age = 0.0;
+            }
+        }
+        return;
+    }
     let activated = events.nav.confirm || events.clicked;
     let mut say = |sound| {
         sounds.write(sound);
     };
+    if events.nav.confirm && row.previews_miss() {
+        previews.write(crate::sfx::PreviewMiss);
+        return;
+    }
     match row.spec().action() {
+        Some(Act::PreviewMiss) if activated => {
+            previews.write(crate::sfx::PreviewMiss);
+            return;
+        }
         Some(Act::ExportHistory) if activated => {
             match crate::history::export_csv() {
                 Ok(path) => {
@@ -756,7 +1368,11 @@ fn settings_input(
     // (a door, a custom row) ignores it.
     if keys.just_pressed(KeyCode::Backspace) {
         if row.spec().reset(&mut settings, &Settings::default()) {
-            say(crate::sfx::UiSound::Toggle);
+            if row.previews_miss() {
+                previews.write(crate::sfx::PreviewMiss);
+            } else {
+                say(crate::sfx::UiSound::Toggle);
+            }
         }
         return;
     }
@@ -764,7 +1380,9 @@ fn settings_input(
         .step
         .filter(|direction| row.spec().step(&mut settings, *direction))
         .map(|_| row.spec().feel());
-    if let Some(sound) = list::sound_for(stepped, events.moved) {
+    if stepped.is_some() && row.previews_miss() {
+        previews.write(crate::sfx::PreviewMiss);
+    } else if let Some(sound) = list::sound_for(stepped, events.moved) {
         say(sound);
     }
     if ui_kit::wants_leave(
@@ -777,12 +1395,15 @@ fn settings_input(
     }
 }
 
+#[allow(clippy::too_many_arguments)] // Bevy system: parameters are world handles
 fn refresh_settings(
     settings: Res<Settings>,
     cursor: Res<SettingsCursor>,
     mut paint: ListPaint<SettingsRows>,
     export_note: Res<ExportNote>,
-    mut subtitles: SubtitleText,
+    mut details: DetailText,
+    window: Res<SettingsWindow>,
+    view: Res<SettingsView>,
     mut smart: ResMut<crate::smart_lyrics::SmartLyrics>,
     library_move: Res<crate::library_move::LibraryMove>,
     fresh: Query<(), Added<ListRow<SettingsRows>>>,
@@ -790,20 +1411,11 @@ fn refresh_settings(
     // The model's standing is looked up the first time the screen
     // asks (a hash of the file, off the main thread); idempotent.
     smart.probe_model();
-    if let Ok(mut text) = subtitles.single_mut() {
-        let row = Row::ALL[cursor.0.min(Row::ALL.len() - 1)];
-        let wanted = if row == Row::LYRICS_MODEL {
-            smart.model_subtitle()
-        } else {
-            row.subtitle()
-        };
-        if text.0 != wanted {
-            text.0 = wanted;
-        }
-    }
     if fresh.is_empty()
         && !settings.is_changed()
         && !cursor.is_changed()
+        && !window.is_changed()
+        && !view.is_changed()
         && !export_note.is_changed()
         && !smart.is_changed()
         && !library_move.is_changed()
@@ -811,12 +1423,13 @@ fn refresh_settings(
         return;
     }
     let defaults = Settings::default();
-    paint.paint(cursor.0, settings.high_contrast, |index| {
+    let value = |index: usize| {
         let row = Row::ALL[index];
         match row.spec().action() {
             // The export row reports where the file went, once it has
             // written one - the answer belongs where the question was
             // asked, not in a log nobody reads.
+            Some(Act::PreviewMiss) => "PLAY".to_owned(),
             Some(Act::ExportHistory) if !export_note.0.is_empty() => export_note.0.clone(),
             Some(Act::LyricsModel) => smart.model_text(),
             Some(Act::Library) => library_move.value(),
@@ -825,7 +1438,281 @@ fn refresh_settings(
                 row.spec().differs(&settings, &defaults),
             ),
         }
+    };
+    let selected = view.position(cursor.0);
+    let range = window.top..(window.top + window.visible).min(view.order.len());
+    paint.paint_window_full(selected, settings.high_contrast, range, |slot| {
+        let global = view.order[slot];
+        (Some(Row::ALL[global].label().to_owned()), value(global))
     });
+    let row = Row::ALL[cursor.0.min(Row::ALL.len() - 1)];
+    let explanation = if row == Row::LYRICS_MODEL {
+        smart.model_subtitle()
+    } else {
+        row.subtitle()
+    };
+    for (detail, mut text) in &mut details {
+        let wanted = match detail {
+            SettingDetail::Label if view.order.is_empty() => "NO MATCHING SETTINGS".to_owned(),
+            SettingDetail::Value if view.order.is_empty() => String::new(),
+            SettingDetail::Explanation if view.order.is_empty() => {
+                if view.category == Category::Changed && view.query.is_empty() {
+                    "All settings are at their defaults.".to_owned()
+                } else {
+                    "Try another search, or press ESC to clear it.".to_owned()
+                }
+            }
+            SettingDetail::Dependencies if view.order.is_empty() => String::new(),
+            SettingDetail::Dependencies if row.previews_miss() || row == Row::MISS_PREVIEW => {
+                format!(
+                    "SFX {}% x MISS {}% = {}%
+0% on either volume is silent.",
+                    (settings.sfx_volume * 100.0).round(),
+                    (settings.miss_volume * 100.0).round(),
+                    (settings.sfx_volume * settings.miss_volume * 100.0).round()
+                )
+            }
+            SettingDetail::Dependencies if visual_row(row) => format!(
+                "FX {}% x MISS {}% = {}%
+0% disables visual feedback.",
+                (settings.fx_intensity * 100.0).round(),
+                (settings.miss_intensity * 100.0).round(),
+                (settings.fx_intensity * settings.miss_intensity * 100.0).round()
+            ),
+            SettingDetail::Dependencies => String::new(),
+            SettingDetail::Label => row.label().to_owned(),
+            SettingDetail::Value => value(cursor.0),
+            SettingDetail::Explanation if !explanation.is_empty() => explanation.clone(),
+            SettingDetail::Explanation if row.spec().is_door() => {
+                "ENTER opens this screen.".to_owned()
+            }
+            SettingDetail::Explanation => "LEFT/RIGHT adjusts the value.
+BACKSPACE restores the default.
+Changes apply immediately."
+                .to_owned(),
+            SettingDetail::Position => format!(
+                "{} / {}  ·  TAB categories  ·  CTRL/CMD+F search  ·  HOME/END",
+                if view.order.is_empty() {
+                    0
+                } else {
+                    selected + 1
+                },
+                view.order.len()
+            ),
+        };
+        if text.0 != wanted {
+            text.0 = wanted;
+        }
+    }
+}
+
+fn visual_row(row: Row) -> bool {
+    row == Row::MISS_EFFECT || row == Row::MISS_COLOR || row == Row::MISS_INTENSITY
+}
+
+fn spawn_visual_sample(panel: &mut ChildSpawnerCommands, font: &UiFont) {
+    let (fg, border, fill) = ui_kit::selection_chip_colours(false, false);
+    panel.spawn((
+        PreviewButton::Visual,
+        Button,
+        Text::new("FLASH PREVIEW"),
+        font.text(ui_kit::SMALL),
+        TextColor(fg),
+        ui_kit::selection_chip_node(),
+        BorderColor::all(border),
+        BackgroundColor(fill),
+    ));
+    panel
+        .spawn((
+            SampleFrame,
+            Node {
+                width: percent(100),
+                height: px(90),
+                flex_shrink: 0.0,
+                margin: UiRect::top(px(8)),
+                border: UiRect::all(px(1)),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            BackgroundColor(crate::palette::BACKGROUND),
+            BorderColor::all(crate::palette::TEXT_DIM),
+        ))
+        .with_children(|sample| {
+            sample
+                .spawn(Node {
+                    position_type: PositionType::Absolute,
+                    left: percent(20),
+                    width: percent(60),
+                    height: percent(100),
+                    flex_direction: FlexDirection::Row,
+                    ..default()
+                })
+                .with_children(|highway| {
+                    for _ in 0..5 {
+                        highway.spawn((
+                            Node {
+                                flex_grow: 1.0,
+                                height: percent(100),
+                                border: UiRect::right(px(1)),
+                                ..default()
+                            },
+                            BackgroundColor(crate::palette::SURFACE),
+                            BorderColor::all(crate::palette::TEXT_DIM),
+                        ));
+                    }
+                });
+            sample.spawn((
+                SampleFlash,
+                Node {
+                    position_type: PositionType::Absolute,
+                    width: percent(100),
+                    height: percent(100),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                BorderColor::all(Color::NONE),
+            ));
+        });
+}
+
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)] // Disjoint Bevy component queries
+fn paint_settings_chrome(
+    view: Res<SettingsView>,
+    cursor: Res<SettingsCursor>,
+    mut tabs: Query<
+        (
+            &CategoryChip,
+            &Interaction,
+            &mut BackgroundColor,
+            &mut BorderColor,
+            &mut TextColor,
+        ),
+        Without<PreviewButton>,
+    >,
+    mut search: Query<&mut Text, With<SettingsSearch>>,
+    mut buttons: Query<
+        (
+            &PreviewButton,
+            &Interaction,
+            &mut Node,
+            &mut BackgroundColor,
+            &mut BorderColor,
+            &mut TextColor,
+        ),
+        Without<CategoryChip>,
+    >,
+    mut samples: Query<&mut Node, (With<SampleFrame>, Without<PreviewButton>)>,
+) {
+    for (chip, interaction, mut background, mut border, mut color) in &mut tabs {
+        ui_kit::paint_selection_chip(
+            *interaction,
+            chip.0 == view.category && view.query.is_empty(),
+            &mut background,
+            &mut border,
+            Some(&mut color),
+        );
+    }
+    if let Ok(mut text) = search.single_mut() {
+        let wanted = if view.query.is_empty() {
+            "SEARCH ALL SETTINGS  ·  CTRL/CMD+F or /".to_owned()
+        } else {
+            format!(
+                "SEARCH: {}{}  ·  ENTER selects  ·  ESC clears",
+                view.query,
+                if view.editing { "_" } else { "" }
+            )
+        };
+        if text.0 != wanted {
+            text.0 = wanted;
+        }
+    }
+    let row = Row::ALL[cursor.0.min(Row::ALL.len() - 1)];
+    let visual = !view.order.is_empty() && visual_row(row);
+    for (button, interaction, mut node, mut background, mut border, mut color) in &mut buttons {
+        let show = !view.order.is_empty()
+            && match button {
+                PreviewButton::Sound => row.previews_miss() || row == Row::MISS_PREVIEW,
+                PreviewButton::Visual => visual,
+            };
+        node.display = if show { Display::Flex } else { Display::None };
+        ui_kit::paint_selection_chip(
+            *interaction,
+            false,
+            &mut background,
+            &mut border,
+            Some(&mut color),
+        );
+    }
+    for mut node in &mut samples {
+        node.display = if visual { Display::Flex } else { Display::None };
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+struct VisualSampleSettings {
+    row: usize,
+    effect: MissEffect,
+    color: MissColor,
+    intensity: f32,
+    fx: f32,
+    calm: bool,
+}
+
+fn animate_visual_audition(
+    time: Res<Time>,
+    settings: Res<Settings>,
+    cursor: Res<SettingsCursor>,
+    mut audition: ResMut<VisualAudition>,
+    mut previous: Local<Option<VisualSampleSettings>>,
+    mut flash: Query<(&mut Node, &mut BackgroundColor, &mut BorderColor), With<SampleFlash>>,
+) {
+    let snapshot = VisualSampleSettings {
+        row: cursor.0,
+        effect: settings.miss_effect,
+        color: settings.miss_color,
+        intensity: settings.miss_intensity,
+        fx: settings.fx_intensity,
+        calm: settings.reduced_flashing,
+    };
+    if *previous != Some(snapshot) && visual_row(Row::ALL[cursor.0.min(Row::ALL.len() - 1)]) {
+        audition.age = 0.0;
+    }
+    *previous = Some(snapshot);
+    audition.age += time.delta_secs();
+    let duration = if settings.reduced_flashing { 0.9 } else { 0.45 };
+    let fade = (1.0 - audition.age / duration).clamp(0.0, 1.0).powi(2);
+    let strength = settings.fx_intensity
+        * settings.miss_intensity
+        * if settings.reduced_flashing { 0.35 } else { 1.0 };
+    let color = settings
+        .miss_color
+        .color(settings.miss_effect)
+        .with_alpha(fade * strength * 0.8);
+    for (mut node, mut background, mut border) in &mut flash {
+        node.left = px(0);
+        node.top = px(0);
+        node.width = percent(100);
+        node.height = percent(100);
+        node.border = UiRect::all(px(0));
+        background.0 = color;
+        *border = BorderColor::all(Color::NONE);
+        match settings.miss_effect {
+            MissEffect::BorderFlash => {
+                node.border = UiRect::all(px(4));
+                background.0 = Color::NONE;
+                *border = BorderColor::all(color);
+            }
+            MissEffect::HighwayFlash => {
+                node.left = percent(20);
+                node.width = percent(60);
+            }
+            MissEffect::CeilingStrobe => {
+                node.height = px(12);
+            }
+            _ => {}
+        }
+    }
 }
 
 /// A value that differs from the shipped default carries a dot, so a
@@ -846,6 +1733,328 @@ fn persist_settings(settings: Res<Settings>) {
 #[cfg(test)]
 mod tests {
     use super::{SUBTITLE_CHARS, changed_mark, short_path};
+
+    #[test]
+    fn seven_categories_cover_every_setting_once_and_keep_feedback_together() {
+        use super::{Category, Row};
+        let indices: Vec<_> = Category::ALL[..7]
+            .iter()
+            .flat_map(|category| category.rows())
+            .map(|row| row.index())
+            .collect();
+        let unique: std::collections::HashSet<_> = indices.iter().copied().collect();
+        assert_eq!(indices.len(), Row::ALL.len());
+        assert_eq!(unique.len(), Row::ALL.len());
+        assert_eq!(
+            Category::Feedback.rows(),
+            &[
+                Row::MISS_SOUND,
+                Row::MISS_VOLUME,
+                Row::MISS_PREVIEW,
+                Row::MISS_EFFECT,
+                Row::MISS_COLOR,
+                Row::MISS_INTENSITY
+            ]
+        );
+    }
+
+    #[test]
+    fn search_crosses_categories_and_changed_filter_reacts_to_a_reset() {
+        use super::{Category, Row, Settings, SettingsView};
+        let mut settings = Settings::default();
+        let mut view = SettingsView::default();
+        let mut cursor = 0;
+        view.switch(Category::Audio, &settings, &mut cursor);
+        view.query = "HOW late microphone".to_owned();
+        view.rebuild(&settings, &mut cursor);
+        assert_eq!(view.order, vec![Row::MIC_OFFSET.index()]);
+        assert_eq!(cursor, Row::MIC_OFFSET.index());
+        view.switch(Category::Changed, &settings, &mut cursor);
+        assert!(view.order.is_empty());
+        settings.mic_offset_ms = 20.0;
+        view.rebuild(&settings, &mut cursor);
+        assert_eq!(view.order, vec![Row::MIC_OFFSET.index()]);
+        assert!(
+            Row::MIC_OFFSET
+                .spec()
+                .reset(&mut settings, &Settings::default())
+        );
+        view.rebuild(&settings, &mut cursor);
+        assert!(view.order.is_empty());
+    }
+
+    fn category_input_app() -> bevy::prelude::App {
+        use super::*;
+        use bevy::input::{keyboard::KeyboardInput, mouse::MouseWheel};
+        use bevy::window::CursorMoved;
+        let mut app = App::new();
+        let settings = Settings::default();
+        let mut view = SettingsView::default();
+        let mut cursor = 0;
+        view.switch(Category::Feedback, &settings, &mut cursor);
+        app.insert_resource(settings)
+            .insert_resource(view)
+            .insert_resource(SettingsCursor(cursor))
+            .init_resource::<crate::controls::InputMap>()
+            .init_resource::<ButtonInput<KeyCode>>()
+            .init_resource::<ButtonInput<MouseButton>>()
+            .init_resource::<VisualAudition>()
+            .init_resource::<NextState<AppState>>()
+            .init_resource::<ExportNote>()
+            .init_resource::<crate::smart_lyrics::SmartLyrics>()
+            .init_resource::<crate::library_move::LibraryMove>()
+            .add_message::<KeyboardInput>()
+            .add_message::<MouseWheel>()
+            .add_message::<CursorMoved>()
+            .add_message::<crate::sfx::UiSound>()
+            .add_message::<crate::sfx::PreviewMiss>()
+            .add_systems(Update, settings_input);
+        app
+    }
+
+    #[test]
+    fn category_navigation_edits_the_mapped_setting_and_remembers_selection() {
+        use super::*;
+        let mut app = category_input_app();
+        let music = app.world().resource::<Settings>().music_volume;
+        let miss = app.world().resource::<Settings>().miss_volume;
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::ArrowDown);
+        app.update();
+        assert_eq!(
+            app.world().resource::<SettingsCursor>().0,
+            Row::MISS_VOLUME.index()
+        );
+        {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.reset_all();
+            keys.press(KeyCode::ArrowLeft);
+        }
+        app.update();
+        assert!(app.world().resource::<Settings>().miss_volume < miss);
+        assert_eq!(app.world().resource::<Settings>().music_volume, music);
+        {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.reset_all();
+            keys.press(KeyCode::Tab);
+        }
+        app.update();
+        assert_eq!(
+            app.world().resource::<SettingsView>().category,
+            Category::Stage
+        );
+        assert_eq!(
+            app.world().resource::<SettingsCursor>().0,
+            Row::THEME.index(),
+            "Tab must not also move down a row"
+        );
+        {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.reset_all();
+            keys.press(KeyCode::ShiftLeft);
+            keys.press(KeyCode::Tab);
+        }
+        app.update();
+        assert_eq!(
+            app.world().resource::<SettingsView>().category,
+            Category::Feedback
+        );
+        assert_eq!(
+            app.world().resource::<SettingsCursor>().0,
+            Row::MISS_VOLUME.index()
+        );
+    }
+
+    #[test]
+    fn focused_search_cannot_reset_a_value_and_empty_results_cannot_adjust_one() {
+        use super::*;
+        use bevy::input::{
+            ButtonState,
+            keyboard::{Key, KeyboardInput},
+        };
+        let mut app = category_input_app();
+        app.world_mut().resource_mut::<Settings>().mic_offset_ms = 20.0;
+        {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.press(KeyCode::ControlLeft);
+            keys.press(KeyCode::KeyF);
+        }
+        app.update();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.world_mut().write_message(KeyboardInput {
+            key_code: KeyCode::KeyM,
+            logical_key: Key::Character("how late microphone".into()),
+            state: ButtonState::Pressed,
+            text: Some("how late microphone".into()),
+            repeat: false,
+            window: Entity::PLACEHOLDER,
+        });
+        app.update();
+        assert_eq!(
+            app.world().resource::<SettingsCursor>().0,
+            Row::MIC_OFFSET.index()
+        );
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Backspace);
+        app.world_mut().write_message(KeyboardInput {
+            key_code: KeyCode::Backspace,
+            logical_key: Key::Backspace,
+            state: ButtonState::Pressed,
+            text: None,
+            repeat: false,
+            window: Entity::PLACEHOLDER,
+        });
+        app.update();
+        assert_eq!(app.world().resource::<Settings>().mic_offset_ms, 20.0);
+        assert_eq!(
+            app.world().resource::<SettingsView>().query,
+            "how late microphon"
+        );
+        app.world_mut().resource_mut::<SettingsView>().query = "no-such-setting".to_owned();
+        app.world_mut().resource_mut::<SettingsView>().editing = false;
+        let before = app.world().resource::<Settings>().clone();
+        {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.reset_all();
+            keys.press(KeyCode::ArrowRight);
+        }
+        app.update();
+        assert!(app.world().resource::<SettingsView>().order.is_empty());
+        assert_eq!(
+            app.world().resource::<Settings>().mic_offset_ms,
+            before.mic_offset_ms
+        );
+        assert_eq!(
+            app.world().resource::<Settings>().miss_volume,
+            before.miss_volume
+        );
+    }
+
+    #[test]
+    fn visual_audition_fades_even_when_cursor_is_marked_changed_and_zero_is_off() {
+        use super::*;
+        let mut app = App::new();
+        app.insert_resource(Settings {
+            miss_intensity: 1.0,
+            fx_intensity: 1.0,
+            ..default()
+        })
+        .insert_resource(SettingsCursor(Row::MISS_INTENSITY.index()))
+        .init_resource::<Time>()
+        .init_resource::<VisualAudition>()
+        .add_systems(Update, animate_visual_audition);
+        let sample = app
+            .world_mut()
+            .spawn((
+                SampleFlash,
+                Node::default(),
+                BackgroundColor(Color::NONE),
+                BorderColor::all(Color::NONE),
+            ))
+            .id();
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_secs_f32(0.016));
+        app.update();
+        assert!(
+            app.world()
+                .get::<BackgroundColor>(sample)
+                .expect("sample")
+                .0
+                .to_srgba()
+                .alpha
+                > 0.0
+        );
+        let _ = app.world_mut().resource_mut::<SettingsCursor>();
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_secs_f32(0.6));
+        app.update();
+        assert_eq!(
+            app.world()
+                .get::<BackgroundColor>(sample)
+                .expect("sample")
+                .0
+                .to_srgba()
+                .alpha,
+            0.0
+        );
+        app.world_mut().resource_mut::<Settings>().miss_intensity = 0.0;
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_secs_f32(0.016));
+        app.update();
+        assert_eq!(
+            app.world()
+                .get::<BackgroundColor>(sample)
+                .expect("sample")
+                .0
+                .to_srgba()
+                .alpha,
+            0.0
+        );
+    }
+
+    #[test]
+    fn settings_window_keeps_every_selection_visible_at_both_display_scales() {
+        use super::{Row, SettingsWindow};
+        for row_h in [27.0, 34.0, 41.0] {
+            let mut one = SettingsWindow::default();
+            let mut retina = SettingsWindow::default();
+            let cursors = (0..Row::ALL.len()).chain((0..Row::ALL.len()).rev()).chain([
+                0,
+                Row::ALL.len() - 1,
+                8,
+                30,
+                0,
+            ]);
+            let mut fixed_height = None;
+            for cursor in cursors {
+                one.follow(cursor, row_h, 1.0);
+                retina.follow(cursor, row_h * 2.0, 0.5);
+                assert!(
+                    one.range().contains(&cursor),
+                    "selection {cursor} outside the visible list"
+                );
+                assert_eq!(one.top, retina.top);
+                assert_eq!(one.visible, retina.visible);
+                assert_eq!(one.height, retina.height);
+                assert_eq!(*fixed_height.get_or_insert(one.height), one.height);
+                let inner =
+                    one.height - 2.0 * (crate::ui_kit::PANEL_PAD + crate::ui_kit::PANEL_BORDER);
+                let content =
+                    one.visible as f32 * (row_h + crate::ui_kit::ROW_GAP) - crate::ui_kit::ROW_GAP;
+                assert!(
+                    (inner - content).abs() < 0.001,
+                    "no partial row at the frame edge"
+                );
+                assert!(one.range().end <= Row::ALL.len());
+            }
+        }
+    }
+
+    #[test]
+    fn settings_panels_have_a_fixed_clipped_height_before_layout() {
+        let node = super::settings_body_node(crate::song_browser_view::LIST_W);
+        assert_eq!(
+            node.height,
+            bevy::prelude::px(crate::song_browser_view::BODY_H)
+        );
+        assert_eq!(node.height, node.min_height);
+        assert_eq!(node.height, node.max_height);
+        assert_eq!(node.flex_shrink, 1.0);
+        assert_eq!(node.overflow, bevy::prelude::Overflow::clip());
+        let mut window = super::SettingsWindow::default();
+        window.follow(super::Row::ALL.len() - 1, 0.0, 1.0);
+        assert!(
+            window.range().contains(&(super::Row::ALL.len() - 1)),
+            "reopening at the end works before the first measurement"
+        );
+    }
 
     /// The shipped settings show no dot at all; a changed value shows
     /// one, and resetting the row takes it away again.

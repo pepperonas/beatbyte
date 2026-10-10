@@ -1272,7 +1272,12 @@ pub fn paint_ratings(
         (With<FavoriteButton>, Without<RatingStar>),
     >,
     mut stars: Query<(&RatingStar, &Interaction, &mut ImageNode), Without<FavoriteButton>>,
-    mut labels: Query<(&RatingLabel, Option<&Interaction>, &mut TextColor, &mut Text)>,
+    mut labels: Query<(
+        &RatingLabel,
+        Option<&Interaction>,
+        &mut TextColor,
+        &mut Text,
+    )>,
 ) {
     let entry = selected_entry(&library, &view, &cursor);
     let player = crate::ratings::player_key(&players);

@@ -41,6 +41,8 @@ pub mod separate;
 pub mod singing;
 pub mod stems;
 pub mod synth;
+/// Time-preserving whammy-bar pitch modulation.
+pub mod whammy;
 
 pub use analysis::{Analyzer, AnalyzerConfig, SpectralAnalyzer};
 pub use clock::SongClock;

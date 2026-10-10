@@ -60,6 +60,7 @@ enum GuitarMessage {
     Buttons(u16),
     /// Tilt crossed a hysteresis boundary.
     Tilt(bool),
+    Whammy(f32),
 }
 
 /// Channel + entity bookkeeping on the Bevy side.
@@ -71,6 +72,9 @@ struct GuitarBridge {
     last_buttons: u16,
 }
 
+#[derive(Resource, Default)]
+pub(crate) struct GuitarWhammy(pub HashMap<Entity, f32>);
+
 /// The X-plorer plugin: spawns the reader thread and the feed system.
 pub struct XplorerPlugin;
 
@@ -81,19 +85,20 @@ impl Plugin for XplorerPlugin {
             .name("beatbyte-xplorer".into())
             .spawn(move || reader_thread(&sender))
             .ok();
-        app.insert_resource(GuitarBridge {
-            receiver: std::sync::Mutex::new(receiver),
-            entity: None,
-            last_buttons: 0,
-        })
-        .add_systems(
-            PreUpdate,
-            feed_guitar_events.before(bevy::input::InputSystems),
-        )
-        // Windows/Linux drivers expose the same XInput RY value as the
-        // right-stick Y axis. Restrict this bridge to the verified VID/PID;
-        // an ordinary pad's right stick must never activate Hype.
-        .add_systems(PreUpdate, feed_driver_tilt.after(bevy::input::InputSystems));
+        app.init_resource::<GuitarWhammy>()
+            .insert_resource(GuitarBridge {
+                receiver: std::sync::Mutex::new(receiver),
+                entity: None,
+                last_buttons: 0,
+            })
+            .add_systems(
+                PreUpdate,
+                feed_guitar_events.before(bevy::input::InputSystems),
+            )
+            // Windows/Linux drivers expose the same XInput RY value as the
+            // right-stick Y axis. Restrict this bridge to the verified VID/PID;
+            // an ordinary pad's right stick must never activate Hype.
+            .add_systems(PreUpdate, feed_driver_tilt.after(bevy::input::InputSystems));
     }
 }
 
@@ -125,6 +130,7 @@ pub fn decode_report(byte2: u8, byte3: u8) -> u16 {
 fn feed_guitar_events(
     mut commands: Commands,
     mut bridge: ResMut<GuitarBridge>,
+    mut whammy: ResMut<GuitarWhammy>,
     mut connections: MessageWriter<GamepadConnectionEvent>,
     mut buttons: MessageWriter<RawGamepadButtonChangedEvent>,
     mut raw: MessageWriter<RawGamepadEvent>,
@@ -154,6 +160,7 @@ fn feed_guitar_events(
             }
             GuitarMessage::Disconnected => {
                 if let Some(entity) = bridge.entity.take() {
+                    whammy.0.remove(&entity);
                     info!("x-plorer: guitar disconnected");
                     let event = GamepadConnectionEvent {
                         gamepad: entity,
@@ -180,6 +187,11 @@ fn feed_guitar_events(
                         buttons.write(event);
                         raw.write(RawGamepadEvent::Button(event));
                     }
+                }
+            }
+            GuitarMessage::Whammy(value) => {
+                if let Some(entity) = bridge.entity {
+                    whammy.0.insert(entity, value);
                 }
             }
             GuitarMessage::Tilt(pressed) => {
@@ -245,6 +257,27 @@ pub fn decode_tilt(report: &[u8]) -> Option<f32> {
     Some((f32::from(raw) / f32::from(i16::MAX)).clamp(0.0, 1.0))
 }
 
+/// Whammy RX occupies bytes 10/11: -32768 at rest, +32767 fully pressed.
+pub(crate) fn decode_whammy(report: &[u8]) -> Option<f32> {
+    if report.len() < 14 || report[0] != 0x00 {
+        return None;
+    }
+    let raw = i16::from_le_bytes([report[10], report[11]]);
+    Some((f32::from(raw) + 32768.0) / 65535.0)
+}
+
+pub(crate) fn whammy_depth(entity: Entity, pad: &Gamepad, native: &GuitarWhammy) -> f32 {
+    if pad.vendor_id() != Some(VENDOR) || pad.product_id() != Some(PRODUCT) {
+        return 0.0;
+    }
+    let value = native.0.get(&entity).copied().unwrap_or_else(|| {
+        pad.get(GamepadAxis::RightStickX)
+            .map_or(0.0, |x| (x + 1.0) * 0.5)
+    });
+    // Small rest deadzone removes potentiometer jitter, retaining full travel.
+    ((value - 0.04) / 0.96).clamp(0.0, 1.0)
+}
+
 /// Poll for the guitar forever; when present, stream its reports.
 fn reader_thread(sender: &Sender<GuitarMessage>) {
     loop {
@@ -287,11 +320,20 @@ fn stream_reports(
     let mut buffer = [0u8; 32];
     let mut last = 0u16;
     let mut tilt = TiltGate::default();
+    let mut last_whammy = None;
     let mut consecutive_errors = 0u32;
     loop {
         match handle.read_interrupt(0x81, &mut buffer, std::time::Duration::from_millis(100)) {
             Ok(n) if n >= 14 && buffer[0] == 0x00 => {
                 consecutive_errors = 0;
+                if let Some(value) = decode_whammy(&buffer[..n])
+                    && last_whammy != Some(value)
+                {
+                    last_whammy = Some(value);
+                    if sender.send(GuitarMessage::Whammy(value)).is_err() {
+                        return;
+                    }
+                }
                 let state = decode_report(buffer[2], buffer[3]);
                 if state != last {
                     last = state;
@@ -322,6 +364,22 @@ fn stream_reports(
 mod tests {
     use super::{BUTTON_BITS, TILT_OFF, TILT_ON, TiltGate, decode_report, decode_tilt};
     use bevy::prelude::GamepadButton;
+
+    #[test]
+    fn whammy_rx_is_analog_and_independent_of_tilt_and_buttons() {
+        let mut report = [0u8; 20];
+        for (raw, expected) in [(i16::MIN, 0.0), (0, 0.5), (i16::MAX, 1.0)] {
+            report[10..12].copy_from_slice(&raw.to_le_bytes());
+            assert!(
+                (super::decode_whammy(&report).expect("valid report") - expected).abs() < 0.00002
+            );
+            assert_eq!(decode_tilt(&report), Some(0.0));
+            assert_eq!(decode_report(report[2], report[3]), 0);
+        }
+        assert_eq!(super::decode_whammy(&report[..10]), None);
+        report[0] = 1;
+        assert_eq!(super::decode_whammy(&report), None);
+    }
 
     #[test]
     fn report_bytes_map_to_the_documented_layout() {

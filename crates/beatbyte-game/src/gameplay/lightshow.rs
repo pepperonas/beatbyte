@@ -635,6 +635,7 @@ pub fn drive_highlight(
     time: Res<Time>,
     mut highlight: ResMut<Highlight>,
     star: Res<super::starpower::StarPower>,
+    miss: Option<Res<super::miss_feedback::MissVisual>>,
     mut lamps: Query<(
         Entity,
         &mut SpotLight,
@@ -643,6 +644,7 @@ pub fn drive_highlight(
     )>,
     mut wash: Query<(Entity, &mut PointLight, Option<&LampBase>), With<VenueWash>>,
     mut beams: Query<(&mut rig::RigBeam, &mut MeshMaterial3d<StandardMaterial>)>,
+    mut materials: Option<ResMut<Assets<StandardMaterial>>>,
     game_clock: Res<GameClock>,
     players: Query<&PlayerSession>,
     mut last_reported: Local<f32>,
@@ -725,7 +727,11 @@ pub fn drive_highlight(
     let star_hit = star.ceiling(settings.reduced_flashing) * settings.fx_intensity.clamp(0.0, 1.0);
     // Nothing to say and nothing said last frame: every lamp already
     // sits at its own colour and intensity.
-    let active = highlight.punch > 0.0 || strobe.is_some() || star_hit > 0.0;
+    let miss_hit = miss
+        .as_ref()
+        .map_or(0.0, |miss| miss.ceiling(now, &settings));
+    let miss_color = settings.miss_color.color(settings.miss_effect);
+    let active = highlight.punch > 0.0 || strobe.is_some() || star_hit > 0.0 || miss_hit > 0.0;
     if !active && !highlight.was_active {
         return;
     }
@@ -774,13 +780,18 @@ pub fn drive_highlight(
         // add: two reasons for the same lamp to be bright are not a
         // reason to pick one.
         let star = if rig_lamp.is_some() { star_hit } else { 0.0 };
-        if hit > 0.0 || star > 0.0 {
+        let miss = if rig_lamp.is_some() { miss_hit } else { 0.0 };
+        if hit > 0.0 || star > 0.0 || miss > 0.0 {
             // White for the whole flash: a xenon tube does not tint.
             // The brightness carries the shape.
-            light.color = STROBE_WHITE;
+            light.color = if hit > 0.0 || star > 0.0 {
+                STROBE_WHITE
+            } else {
+                miss_color
+            };
             light.intensity = base
                 .intensity
-                .mul_add(gain, STAR_FLASH.mul_add(star, STROBE_FLASH * hit));
+                .mul_add(gain, STAR_FLASH.mul_add(star + miss, STROBE_FLASH * hit));
         } else {
             light.color = base.color;
             light.intensity = base.intensity * gain * dip;
@@ -791,18 +802,43 @@ pub fn drive_highlight(
     let mut beams_seen = 0usize;
     let mut beams_lit = 0usize;
     for (mut beam, mut material) in &mut beams {
-        let lit = hits_by_lamp.get(beam.lamp).is_some_and(|hit| *hit > 0.0);
+        let white = star_hit > 0.0 || hits_by_lamp.get(beam.lamp).is_some_and(|hit| *hit > 0.0);
+        let lit = white || miss_hit > 0.0;
         beams_seen += 1;
         if lit {
             beams_lit += 1;
         }
-        if lit != beam.lit {
-            beam.lit = lit;
-            material.0 = if lit {
-                beam.flash.clone()
-            } else {
-                beam.base.clone()
-            };
+        let desired = if white {
+            beam.flash.clone()
+        } else if miss_hit > 0.0 {
+            if let Some(materials) = materials.as_mut()
+                && let (Some(base), Some(flash)) = (
+                    materials.get(&beam.base).cloned(),
+                    materials.get(&beam.flash).cloned(),
+                )
+            {
+                let mut paint = base;
+                paint.base_color = paint
+                    .base_color
+                    .mix(&miss_color.with_alpha(flash.base_color.alpha()), miss_hit);
+                let glow = flash
+                    .emissive
+                    .red
+                    .max(flash.emissive.green)
+                    .max(flash.emissive.blue);
+                paint.emissive =
+                    paint.emissive * (1.0 - miss_hit) + miss_color.to_linear() * (glow * miss_hit);
+                if let Some(mut material) = materials.get_mut(&beam.miss) {
+                    *material = paint;
+                }
+            }
+            beam.miss.clone()
+        } else {
+            beam.base.clone()
+        };
+        beam.lit = lit;
+        if material.0 != desired {
+            material.0 = desired;
         }
     }
     for (entity, mut light, base) in &mut wash {
@@ -1875,6 +1911,7 @@ mod tests {
                     lamp,
                     base: base_material.clone(),
                     flash: flash_material.clone(),
+                    miss: flash_material.clone(),
                     lit: false,
                 },
                 MeshMaterial3d(base_material.clone()),
@@ -1982,6 +2019,113 @@ mod tests {
             assert!((intensity - 1000.0).abs() < 1e-3, "and its own intensity");
         }
         assert!(!app.world().resource::<Highlight>().was_active);
+    }
+
+    #[test]
+    fn miss_ceiling_uses_selected_colour_in_lamps_and_beams_then_restores_them() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut app = App::new();
+        app.init_resource::<Time>()
+            .init_resource::<Assets<StandardMaterial>>()
+            .init_resource::<Highlight>()
+            .init_resource::<super::super::starpower::StarPower>()
+            .init_resource::<super::super::miss_feedback::MissVisual>()
+            .init_resource::<GameClock>()
+            .insert_resource(Ears(None))
+            .insert_resource(Settings {
+                stage_3d: true,
+                miss_effect: crate::config::MissEffect::CeilingStrobe,
+                miss_color: crate::config::MissColor::Cyan,
+                ..default()
+            });
+        let rest = Color::srgb(1.0, 0.2, 0.1);
+        let (base, flash, miss) = {
+            let mut materials = app.world_mut().resource_mut::<Assets<StandardMaterial>>();
+            (
+                materials.add(StandardMaterial {
+                    base_color: rest,
+                    ..default()
+                }),
+                materials.add(StandardMaterial {
+                    base_color: Color::WHITE,
+                    emissive: LinearRgba::WHITE * 9.0,
+                    ..default()
+                }),
+                materials.add(StandardMaterial::default()),
+            )
+        };
+        let lamp = app
+            .world_mut()
+            .spawn((
+                rig::RigLamp(0),
+                SpotLight {
+                    color: rest,
+                    intensity: 1000.0,
+                    ..default()
+                },
+            ))
+            .id();
+        let beam = app
+            .world_mut()
+            .spawn((
+                rig::RigBeam {
+                    lamp: 0,
+                    base: base.clone(),
+                    flash,
+                    miss: miss.clone(),
+                    lit: false,
+                },
+                MeshMaterial3d(base.clone()),
+            ))
+            .id();
+        app.world_mut()
+            .resource_mut::<super::super::miss_feedback::MissVisual>()
+            .trigger(0, 0.0, 1.0);
+        app.world_mut()
+            .run_system_once(drive_highlight)
+            .expect("ceiling pulse");
+        let cyan = crate::config::MissColor::Cyan.color(crate::config::MissEffect::CeilingStrobe);
+        assert_eq!(
+            app.world().get::<SpotLight>(lamp).expect("lamp").color,
+            cyan
+        );
+        assert!(app.world().get::<SpotLight>(lamp).expect("lamp").intensity > 1000.0);
+        assert_eq!(
+            app.world()
+                .get::<MeshMaterial3d<StandardMaterial>>(beam)
+                .expect("beam")
+                .0,
+            miss
+        );
+        assert_eq!(
+            app.world()
+                .resource::<Assets<StandardMaterial>>()
+                .get(&miss)
+                .expect("pulse material")
+                .base_color,
+            cyan
+        );
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_secs(1));
+        app.world_mut()
+            .run_system_once(drive_highlight)
+            .expect("ceiling restoration");
+        assert_eq!(
+            app.world().get::<SpotLight>(lamp).expect("lamp").color,
+            rest
+        );
+        assert_eq!(
+            app.world().get::<SpotLight>(lamp).expect("lamp").intensity,
+            1000.0
+        );
+        assert_eq!(
+            app.world()
+                .get::<MeshMaterial3d<StandardMaterial>>(beam)
+                .expect("beam")
+                .0,
+            base
+        );
     }
 
     #[test]

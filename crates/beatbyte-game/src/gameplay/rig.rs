@@ -271,6 +271,8 @@ pub struct RigBeam {
     pub base: Handle<StandardMaterial>,
     /// The material it wears under a flash.
     pub flash: Handle<StandardMaterial>,
+    /// Reusable coloured miss pulse, owned by this fixture part.
+    pub miss: Handle<StandardMaterial>,
     /// Whether it is currently flashing, so the swap happens once
     /// per change instead of once per frame.
     pub lit: bool,
@@ -389,6 +391,7 @@ pub fn spawn_rig(
                 lamp: i,
                 base: rim_lens_material.clone(),
                 flash: flash_lens.clone(),
+                miss: materials.add(StandardMaterial::default()),
                 lit: false,
             },
             Mesh3d(lens.clone()),
@@ -404,6 +407,7 @@ pub fn spawn_rig(
                 lamp: i,
                 base: rim_material.clone(),
                 flash: flash_beam.clone(),
+                miss: materials.add(StandardMaterial::default()),
                 lit: false,
             },
             Mesh3d(mantle.clone()),
@@ -459,6 +463,7 @@ pub fn spawn_rig(
                 lamp: RIMS + index,
                 base: lens_materials[head.tone].clone(),
                 flash: flash_lens.clone(),
+                miss: materials.add(StandardMaterial::default()),
                 lit: false,
             },
             Mesh3d(lens.clone()),
@@ -481,6 +486,7 @@ pub fn spawn_rig(
                     lamp: RIMS + index,
                     base: beam_materials[head.tone].clone(),
                     flash: flash_beam.clone(),
+                    miss: materials.add(StandardMaterial::default()),
                     lit: false,
                 },
                 Mesh3d(mantle.clone()),

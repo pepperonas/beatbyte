@@ -4,6 +4,21 @@
 Rules of engagement live in [`CLAUDE.md`](../CLAUDE.md); this file
 holds the work itself.
 
+## Feedback, settings and X-plorer whammy (2026-10-10)
+
+*Verified: 2189 tests in the source inventory, including documentation examples;
+ML release build and Song 2 autopilot passed (251 perfect, 0 misses).*
+
+- [x] Group settings into seven task-based categories, with All/Changed,
+  cross-category search, fixed whole-row viewport and a stable detail panel.
+- [x] Preview selected miss tones at their effective volume; configure miss
+  effect, colour and intensity independently, including 0% off.
+- [x] Match Star Power rail bolts to the thin descending combo strike.
+- [x] Read X-plorer whammy travel and apply time-preserving pitch bends only
+  while the assigned player holds a successfully hit sustain.
+- [ ] Process an isolated guitar stem when playback supports separated stems;
+  whammy currently bends the complete mix.
+
 ## Song metadata and the library index (2026-09-21, ADR-0019)
 
 Every song should carry a structured, migratable record — the ground

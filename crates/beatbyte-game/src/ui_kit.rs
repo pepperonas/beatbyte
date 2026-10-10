@@ -608,19 +608,25 @@ pub fn panel_centered() -> impl Bundle {
 #[must_use]
 pub fn row() -> impl Bundle {
     (
-        Node {
-            width: percent(100),
-            justify_content: JustifyContent::SpaceBetween,
-            align_items: AlignItems::Center,
-            column_gap: px(CELL_GAP),
-            padding: UiRect::axes(px(ROW_PAD_X), px(ROW_PAD_Y)),
-            border: UiRect::left(px(ACCENT_WIDTH)),
-            border_radius: BorderRadius::all(px(3)),
-            ..default()
-        },
+        row_node(),
         BackgroundColor(Color::NONE),
         BorderColor::all(Color::NONE),
     )
+}
+
+/// The shared row layout, also used by fixed single-line lists.
+#[must_use]
+pub fn row_node() -> Node {
+    Node {
+        width: percent(100),
+        justify_content: JustifyContent::SpaceBetween,
+        align_items: AlignItems::Center,
+        column_gap: px(CELL_GAP),
+        padding: UiRect::axes(px(ROW_PAD_X), px(ROW_PAD_Y)),
+        border: UiRect::left(px(ACCENT_WIDTH)),
+        border_radius: BorderRadius::all(px(3)),
+        ..default()
+    }
 }
 
 /// A row's subtitle: quieter and smaller than the row itself, for

@@ -259,6 +259,9 @@ pub struct Settings {
     /// Visual effect style on a missed note / overstrum.
     #[serde(default)]
     pub miss_effect: MissEffect,
+    /// Independent miss colour; Standard preserves each effect's original colour.
+    #[serde(default)]
+    pub miss_color: MissColor,
     /// Visual effect intensity on a missed note (0.0 = OFF, 1.0 = full).
     #[serde(default = "default_fx_intensity")]
     pub miss_intensity: f32,
@@ -285,6 +288,63 @@ pub enum MissEffect {
     HighwayFlash,
     /// 3D stage ceiling lights strobe/flash.
     CeilingStrobe,
+}
+
+/// Colour of visual miss feedback, independently of its target.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MissColor {
+    /// Preserve the selected effect's original colour.
+    #[default]
+    Standard,
+    /// Red feedback.
+    Red,
+    /// White feedback.
+    White,
+    /// Orange feedback.
+    Orange,
+    /// Yellow feedback.
+    Yellow,
+    /// Green feedback.
+    Green,
+    /// Cyan feedback.
+    Cyan,
+    /// Blue feedback.
+    Blue,
+    /// Violet feedback.
+    Violet,
+}
+
+impl MissColor {
+    pub(crate) const ALL: [Self; 9] = [
+        Self::Standard,
+        Self::Red,
+        Self::White,
+        Self::Orange,
+        Self::Yellow,
+        Self::Green,
+        Self::Cyan,
+        Self::Blue,
+        Self::Violet,
+    ];
+
+    pub(crate) fn color(self, effect: MissEffect) -> bevy::prelude::Color {
+        use bevy::prelude::Color;
+        match self {
+            Self::Standard => match effect {
+                MissEffect::RedOverlay | MissEffect::BorderFlash => crate::palette::MISS,
+                _ => Color::WHITE,
+            },
+            Self::Red => crate::palette::MISS,
+            Self::White => Color::WHITE,
+            Self::Orange => Color::srgb(1.0, 0.45, 0.05),
+            Self::Yellow => Color::srgb(1.0, 0.9, 0.1),
+            Self::Green => Color::srgb(0.15, 1.0, 0.3),
+            Self::Cyan => Color::srgb(0.1, 0.9, 1.0),
+            Self::Blue => Color::srgb(0.2, 0.4, 1.0),
+            Self::Violet => Color::srgb(0.75, 0.25, 1.0),
+        }
+    }
 }
 
 /// Sound effect played when a note is missed.
@@ -400,6 +460,7 @@ impl Default for Settings {
             browser_sort: default_browser_sort(),
             browser_sort_reversed: false,
             miss_effect: MissEffect::default(),
+            miss_color: MissColor::default(),
             miss_intensity: 1.0,
             miss_sound: MissSound::default(),
             miss_volume: 1.0,
@@ -747,6 +808,40 @@ fn apply_settings(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+    #[test]
+    fn miss_preferences_round_trip_and_legacy_settings_keep_defaults() {
+        let old = serde_json::to_value(Settings::default()).expect("settings serialize");
+        let mut legacy = old.clone();
+        for key in [
+            "miss_color",
+            "miss_effect",
+            "miss_intensity",
+            "miss_sound",
+            "miss_volume",
+        ] {
+            legacy.as_object_mut().expect("settings object").remove(key);
+        }
+        let legacy: Settings = serde_json::from_value(legacy).expect("legacy settings load");
+        assert_eq!(legacy.miss_color, super::MissColor::Standard);
+        assert_eq!(legacy.miss_effect, super::MissEffect::RedOverlay);
+        assert_eq!(legacy.miss_volume, 1.0);
+        let settings = Settings {
+            miss_color: super::MissColor::Cyan,
+            miss_effect: super::MissEffect::HighwayFlash,
+            miss_sound: super::MissSound::VinylClick,
+            miss_intensity: 0.3,
+            miss_volume: 0.0,
+            ..Settings::default()
+        };
+        let saved = serde_json::to_value(&settings).expect("settings serialize");
+        let loaded: Settings = serde_json::from_value(saved).expect("settings load");
+        assert_eq!(loaded.miss_color, settings.miss_color);
+        assert_eq!(loaded.miss_effect, settings.miss_effect);
+        assert_eq!(loaded.miss_sound, settings.miss_sound);
+        assert_eq!(loaded.miss_intensity, 0.3);
+        assert_eq!(loaded.miss_volume, 0.0);
+    }
+
     /// ⚠️ ADR-0021: every key the game writes is classified — shared
     /// between devices, or kept on this one. A new setting that is in
     /// neither list would silently stay local forever (the safe

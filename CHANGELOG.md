@@ -14,6 +14,28 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.81] - 2026-10-10
+
+### Added
+
+- X-plorer whammy support: analog bar pressure bends held sustain notes down
+  by up to two semitones, without changing playback speed or scoring. The
+  effect currently processes the song mix; releasing the sustain, pausing,
+  leaving gameplay or disconnecting the guitar ends it.
+- Miss sound audition with the selected tone and combined SFX/miss volume,
+  replay actions in settings and pause, selectable feedback colours, and an
+  isolated visual preview. Sound volume and visual intensity can be disabled
+  independently at 0%.
+- Settings categories, search across names and descriptions, All/Changed
+  views, and remembered selection per category.
+
+### Changed
+
+- Settings use the song browser's fixed-height two-column layout, with
+  complete visible rows and details beside the list.
+- Star Power rail lightning uses the same thin geometry and animation as
+  the descending combo strike.
+
 ## [0.18.80] - 2026-10-08
 
 ### Added

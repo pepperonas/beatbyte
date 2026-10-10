@@ -59,6 +59,7 @@ pub const SHARED: &[&str] = &[
     "browser_sort_reversed",
     "telemetry",
     "miss_effect",
+    "miss_color",
     "miss_intensity",
     "miss_sound",
     "miss_volume",
@@ -321,6 +322,17 @@ mod tests {
         let remote = json!({"latency_offset_ms": 120, "fullscreen": false,
             "changed_ms": {"latency_offset_ms": 99, "fullscreen": 99}});
         assert_eq!(merge(&local, &remote).settings, local);
+    }
+
+    #[test]
+    fn miss_colour_follows_newest_preference_without_copying_device_volume() {
+        let local = json!({"miss_color": "standard", "sfx_volume": 0.4,
+            "changed_ms": {"miss_color": 100}});
+        let remote = json!({"miss_color": "cyan", "sfx_volume": 0.9,
+            "changed_ms": {"miss_color": 500}});
+        let merged = merge(&local, &remote);
+        assert_eq!(merged.settings["miss_color"], "cyan");
+        assert_eq!(merged.settings["sfx_volume"], 0.4);
     }
 
     /// Per key, the newer change — so a change on each device to

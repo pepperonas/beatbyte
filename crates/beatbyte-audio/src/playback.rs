@@ -148,6 +148,7 @@ pub struct MusicPlayer {
     /// Keeps the output device alive; dropping it stops all audio.
     _device: MixerDeviceSink,
     player: Player,
+    whammy: Arc<std::sync::atomic::AtomicU32>,
     /// The OUTGOING song during a DJ crossfade: it keeps playing on
     /// its own player while its volume ramps to silence. `None`
     /// outside a transition.
@@ -249,6 +250,7 @@ impl MusicPlayer {
         Ok(MusicPlayer {
             _device: device,
             player,
+            whammy: Arc::new(std::sync::atomic::AtomicU32::new(0.0_f32.to_bits())),
             tail: None,
             base_volume: 1.0,
             song_gain: 1.0,
@@ -264,7 +266,8 @@ impl MusicPlayer {
     pub fn play_file(&mut self, path: &Path) -> Result<Option<Duration>, PlaybackError> {
         let decoder = open_trimmed(path)?;
         let duration = decoder.total_duration();
-        self.replace_player(|fresh| fresh.append(decoder));
+        let source = crate::whammy::WhammySource::new(decoder, self.whammy.clone());
+        self.replace_player(|fresh| fresh.append(source));
         Ok(duration)
     }
 
@@ -275,6 +278,7 @@ impl MusicPlayer {
             return;
         };
         let source = rodio::buffer::SamplesBuffer::new(channels, rate, audio.samples().to_vec());
+        let source = crate::whammy::WhammySource::new(source, self.whammy.clone());
         self.replace_player(|fresh| fresh.append(source));
     }
 
@@ -291,6 +295,7 @@ impl MusicPlayer {
     /// into a song that just began. A fresh player's position is
     /// zero from its first sample.
     fn replace_player(&mut self, load: impl FnOnce(&Player)) {
+        self.whammy.store(0.0_f32.to_bits(), Ordering::Relaxed);
         if let Some(tail) = self.tail.take() {
             tail.player.stop();
         }
@@ -426,7 +431,8 @@ impl MusicPlayer {
     /// speed reporting swap to the NEW song immediately.
     pub fn crossfade_to_file(&mut self, path: &Path, fade_s: f32) -> Result<(), PlaybackError> {
         let decoder = open_trimmed(path)?;
-        self.begin_crossfade(fade_s, |incoming| incoming.append(decoder));
+        let source = crate::whammy::WhammySource::new(decoder, self.whammy.clone());
+        self.begin_crossfade(fade_s, |incoming| incoming.append(source));
         Ok(())
     }
 
@@ -437,12 +443,14 @@ impl MusicPlayer {
             return;
         };
         let source = rodio::buffer::SamplesBuffer::new(channels, rate, audio.samples().to_vec());
+        let source = crate::whammy::WhammySource::new(source, self.whammy.clone());
         self.begin_crossfade(fade_s, |incoming| incoming.append(source));
     }
 
     /// The shared half of both crossfades: a fresh player becomes
     /// the current one, the old one becomes the fading tail.
     fn begin_crossfade(&mut self, fade_s: f32, load: impl FnOnce(&Player)) {
+        self.whammy.store(0.0_f32.to_bits(), Ordering::Relaxed);
         // A fade already running: the old tail has had its moment.
         if let Some(tail) = self.tail.take() {
             tail.player.stop();
@@ -540,6 +548,7 @@ enum MusicCommand {
     SongGain(f32),
     Mute(bool),
     Speed(f64),
+    Whammy(f32),
     Shutdown,
 }
 
@@ -605,6 +614,10 @@ pub struct MusicHandle {
 }
 
 impl MusicHandle {
+    /// Bend pitch during a held guitar note; does not change playback speed.
+    pub fn set_whammy(&self, depth: f32) {
+        let _ = self.commands.send(MusicCommand::Whammy(depth));
+    }
     /// Play a song from disk (streamed).
     pub fn play_file(&self, path: std::path::PathBuf) {
         let _ = self.commands.send(MusicCommand::PlayFile(path));
@@ -868,6 +881,9 @@ fn handle_command(
         MusicCommand::SongGain(gain) => player.set_song_gain(gain),
         MusicCommand::Mute(muted) => player.set_muted(muted),
         MusicCommand::Speed(speed) => player.set_speed(speed),
+        MusicCommand::Whammy(depth) => {
+            player.whammy.store(depth.to_bits(), Ordering::Relaxed);
+        }
         MusicCommand::Shutdown => return true,
     }
     false

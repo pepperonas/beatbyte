@@ -96,3 +96,28 @@ SongAnalysis { bpm, beats[], downbeats[], repeats[], onsets[], melody[{time, end
   Automatic charts are *playable, not transcriptions*.
 - The intended workflow remains: `automatic chart → human correction →
   final chart`.
+
+### X-plorer whammy playback
+
+During a successfully hit and still-held sustain, the player's X-plorer
+whammy bar bends playback down continuously, up to two semitones. Native
+USB reads signed RX at report bytes 10/11 (-32768 at rest, +32767 at full
+travel); driver-backed X-plorers use RightStickX. A 4% rest deadzone rejects
+potentiometer noise. Input is routed to the guitar assigned to that player;
+unassigned devices and ordinary gamepads cannot drive the effect.
+
+`WhammySource` uses two crossfaded, interpolated delay heads with 10 ms
+pressure smoothing and a 40 ms window. It consumes exactly one input
+sample for each output sample, preserves channel separation, duration and
+seeking, and bypasses bit-exactly at rest. Playback speed, chart timing and
+scoring remain unchanged. Bar release, sustain release/end, pause, screen
+exit and disconnect remove the effect. The autopilot ignores physical bar
+input, just as it ignores physical strums. New songs start with no bend.
+
+The effect currently processes the complete song mix, since playback uses
+a single mixed source rather than an isolated guitar stem. It does not add
+Star Power or score bonuses.
+
+The USB layout and travel endpoints are also documented in
+[Xplorer Remap](https://github.com/mynamebrody/xplorer-input/blob/main/Sources/XplorerKit/ControllerState.swift);
+the connected guitar's idle RX was verified directly as -32768.

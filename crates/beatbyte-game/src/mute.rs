@@ -325,7 +325,9 @@ struct SituationWord;
 /// `M` (outside the editor — its metronome owns the key) or a badge
 /// click flips the state OF THE SITUATION THE GAME IS IN.
 #[allow(clippy::needless_pass_by_value)] // Bevy system params
+#[allow(clippy::too_many_arguments)] // global shortcut plus text-focus guard
 fn toggle_mute(
+    settings_view: Option<Res<crate::settings_ui::SettingsView>>,
     keys: Res<ButtonInput<KeyCode>>,
     state: Res<State<AppState>>,
     autopilot: Option<Res<crate::autopilot::Autopilot>>,
@@ -334,7 +336,9 @@ fn toggle_mute(
     mut env: ResMut<EnvMute>,
     mut saying: ResMut<Saying>,
 ) {
-    let key = keys.just_pressed(KeyCode::KeyM) && *state.get() != AppState::Editor;
+    let key = keys.just_pressed(KeyCode::KeyM)
+        && *state.get() != AppState::Editor
+        && !(*state.get() == AppState::Settings && settings_view.is_some_and(|view| view.editing));
     let clicked = badges.iter().any(|i| *i == Interaction::Pressed);
     if !key && !clicked {
         return;

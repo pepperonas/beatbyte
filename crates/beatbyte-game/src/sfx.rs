@@ -1,10 +1,9 @@
-//! Procedurally generated sound effects.
+//! Synthesized and embedded sound effects.
 //!
-//! BeatByte ships no audio binaries; every SFX is synthesized at
-//! startup with `beatbyte-audio`'s synthesis tools, WAV-encoded in
-//! memory and registered as an engine audio asset. Menu sounds and
-//! judgment feedback go through `bevy_audio` (fire-and-forget); the
-//! *music* keeps its own thread and clock (ADR-0005).
+//! Menu and classic gameplay SFX are synthesized once at startup with
+//! `beatbyte-audio`; selectable miss samples are embedded WAV assets from
+//! sound-effects. Menu sounds and judgment feedback use `bevy_audio`;
+//! music keeps its own thread and clock (ADR-0005).
 
 use beatbyte_audio::decode::AudioData;
 use beatbyte_audio::synth::{MISS_VOICE, OVERSTRUM_VOICE};
@@ -38,7 +37,50 @@ pub enum UiSound {
     Slider,
 }
 
-/// Handles to the synthesized effects.
+/// Input systems run before audition requests are consumed.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct MissPreviewInput;
+
+/// Request the currently selected miss sound, at its configured volume.
+#[derive(Message, Default)]
+pub(crate) struct PreviewMiss;
+
+#[derive(Component)]
+struct MissPreviewPlayer;
+
+/// Effective volume, shared by gameplay and settings previews.
+pub(crate) fn miss_volume(settings: &Settings) -> f32 {
+    settings.sfx_volume * settings.miss_volume
+}
+
+fn preview_miss(
+    mut commands: Commands,
+    mut requests: MessageReader<PreviewMiss>,
+    previous: Query<Entity, With<MissPreviewPlayer>>,
+    sfx: Res<SfxLib>,
+    settings: Res<Settings>,
+    state: Res<State<AppState>>,
+    phase: Option<Res<State<crate::states::GamePhase>>>,
+) {
+    let requested = requests.read().count() > 0;
+    let allowed = *state.get() == AppState::Settings
+        || (*state.get() == AppState::Gameplay
+            && phase.is_some_and(|phase| *phase.get() == crate::states::GamePhase::Paused));
+    if requested || !allowed || miss_volume(&settings) <= 0.0 {
+        for entity in &previous {
+            commands.entity(entity).despawn();
+        }
+    }
+    if requested && allowed && miss_volume(&settings) > 0.0 {
+        commands.spawn((
+            MissPreviewPlayer,
+            AudioPlayer::new(sfx.sound_for_miss(settings.miss_sound).clone()),
+            PlaybackSettings::DESPAWN.with_volume(Volume::Linear(miss_volume(&settings))),
+        ));
+    }
+}
+
+/// Handles to the synthesized and embedded effects.
 #[derive(Resource)]
 pub struct SfxLib {
     /// Menu cursor movement.
@@ -92,15 +134,9 @@ pub struct SfxLib {
 impl SfxLib {
     /// Return the sound handle for a missed note or stray strum based on the player's choice.
     #[must_use]
-    pub fn sound_for_miss(&self, sound: crate::config::MissSound, is_stray: bool) -> &Handle<AudioSource> {
+    pub fn sound_for_miss(&self, sound: crate::config::MissSound) -> &Handle<AudioSource> {
         match sound {
-            crate::config::MissSound::SynthDull => {
-                if is_stray {
-                    &self.overstrum
-                } else {
-                    &self.miss
-                }
-            }
+            crate::config::MissSound::SynthDull => &self.miss,
             crate::config::MissSound::SynthBuzz => &self.overstrum,
             crate::config::MissSound::ErrorBuzz => &self.miss_error_buzz,
             crate::config::MissSound::Descend => &self.miss_descend,
@@ -119,11 +155,13 @@ pub struct SfxPlugin;
 impl Plugin for SfxPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<UiSound>()
+            .add_message::<PreviewMiss>()
             .add_systems(Startup, build_sfx)
             .add_systems(
                 Update,
                 (
                     play_ui_sounds,
+                    preview_miss.after(MissPreviewInput),
                     gameplay_sounds.run_if(in_state(AppState::Gameplay)),
                 ),
             );
@@ -137,7 +175,10 @@ fn build_sfx(mut commands: Commands, mut assets: ResMut<Assets<AudioSource>>) {
             bytes: wav_bytes_mono16(&audio).into(),
         })
     }
-    fn register_bytes(bytes: &'static [u8], assets: &mut Assets<AudioSource>) -> Handle<AudioSource> {
+    fn register_bytes(
+        bytes: &'static [u8],
+        assets: &mut Assets<AudioSource>,
+    ) -> Handle<AudioSource> {
         assets.add(AudioSource {
             bytes: bytes.into(),
         })
@@ -151,13 +192,34 @@ fn build_sfx(mut commands: Commands, mut assets: ResMut<Assets<AudioSource>>) {
         ui_slider: register(blip(660.0, 0.025, 0.35), &mut assets),
         miss: register(MISS_VOICE.render(44_100), &mut assets),
         overstrum: register(OVERSTRUM_VOICE.render(44_100), &mut assets),
-        miss_error_buzz: register_bytes(include_bytes!("../../../assets/audio/miss_sfx/error_buzz.wav"), &mut assets),
-        miss_descend: register_bytes(include_bytes!("../../../assets/audio/miss_sfx/error_descend.wav"), &mut assets),
-        miss_denied: register_bytes(include_bytes!("../../../assets/audio/miss_sfx/denied.wav"), &mut assets),
-        miss_key_error: register_bytes(include_bytes!("../../../assets/audio/miss_sfx/key_error.wav"), &mut assets),
-        miss_vinyl_click: register_bytes(include_bytes!("../../../assets/audio/miss_sfx/vinyl_click.wav"), &mut assets),
-        miss_scratch_chop: register_bytes(include_bytes!("../../../assets/audio/miss_sfx/scratch_chop.wav"), &mut assets),
-        miss_bass_mute: register_bytes(include_bytes!("../../../assets/audio/miss_sfx/bass_mute.wav"), &mut assets),
+        miss_error_buzz: register_bytes(
+            include_bytes!("../../../assets/audio/miss_sfx/error_buzz.wav"),
+            &mut assets,
+        ),
+        miss_descend: register_bytes(
+            include_bytes!("../../../assets/audio/miss_sfx/error_descend.wav"),
+            &mut assets,
+        ),
+        miss_denied: register_bytes(
+            include_bytes!("../../../assets/audio/miss_sfx/denied.wav"),
+            &mut assets,
+        ),
+        miss_key_error: register_bytes(
+            include_bytes!("../../../assets/audio/miss_sfx/key_error.wav"),
+            &mut assets,
+        ),
+        miss_vinyl_click: register_bytes(
+            include_bytes!("../../../assets/audio/miss_sfx/vinyl_click.wav"),
+            &mut assets,
+        ),
+        miss_scratch_chop: register_bytes(
+            include_bytes!("../../../assets/audio/miss_sfx/scratch_chop.wav"),
+            &mut assets,
+        ),
+        miss_bass_mute: register_bytes(
+            include_bytes!("../../../assets/audio/miss_sfx/bass_mute.wav"),
+            &mut assets,
+        ),
         hype: register(riser(), &mut assets),
         banked: register(charge(), &mut assets),
         click: register(blip(1760.0, 0.03, 0.6), &mut assets),
@@ -249,15 +311,6 @@ fn mix(target: &mut [f32], source: &AudioData, offset: usize) {
     }
 }
 
-/// Whether this event is a stray strum rather than a missed note.
-///
-/// The two get different sounds, so which one plays comes down to this
-/// single question — worth naming, and worth pinning, because getting
-/// it backwards would be inaudible in review and obvious in play.
-fn is_stray_strum(event: &SessionEvent) -> bool {
-    matches!(event, SessionEvent::Overstrum)
-}
-
 /// Play a one-shot effect at the configured volume.
 pub(crate) fn play(commands: &mut Commands, handle: &Handle<AudioSource>, volume: f32) {
     commands.spawn((
@@ -337,9 +390,9 @@ fn gameplay_sounds(
                 let now = time.elapsed_secs();
                 if now - *last_miss > 0.12 {
                     *last_miss = now;
-                    let vol = settings.sfx_volume * settings.miss_volume;
-                    if vol > 0.001 {
-                        let sound = sfx.sound_for_miss(settings.miss_sound, is_stray_strum(&message.event));
+                    let vol = miss_volume(&settings);
+                    if vol > 0.0 {
+                        let sound = sfx.sound_for_miss(settings.miss_sound);
                         play(&mut commands, sound, vol);
                     }
                 }
@@ -361,15 +414,61 @@ fn gameplay_sounds(
 
 #[cfg(test)]
 mod tests {
-    use super::{back, banked_sound_due, blip, charge, confirm, error, is_stray_strum, riser};
-    use beatbyte_core::SessionEvent;
+    use super::*;
 
     #[test]
-    fn a_stray_strum_is_told_from_a_missed_note() {
-        assert!(is_stray_strum(&SessionEvent::Overstrum));
-        assert!(!is_stray_strum(&SessionEvent::NoteMissed {
-            event_index: 0
-        }));
+    fn preview_uses_selected_sound_and_volume_and_replaces_previous_player() {
+        use bevy::state::app::StatesPlugin;
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, StatesPlugin))
+            .init_state::<AppState>()
+            .add_sub_state::<crate::states::GamePhase>()
+            .init_resource::<Assets<AudioSource>>()
+            .insert_resource(Settings {
+                sfx_volume: 0.5,
+                miss_volume: 0.4,
+                miss_sound: crate::config::MissSound::ScratchChop,
+                ..default()
+            })
+            .add_message::<PreviewMiss>()
+            .add_systems(Startup, build_sfx)
+            .add_systems(Update, preview_miss);
+        app.world_mut()
+            .resource_mut::<NextState<AppState>>()
+            .set(AppState::Settings);
+        app.update();
+        app.world_mut().write_message(PreviewMiss);
+        app.world_mut().write_message(PreviewMiss);
+        app.update();
+        let selected = app.world().resource::<SfxLib>().miss_scratch_chop.clone();
+        let mut players = app
+            .world_mut()
+            .query_filtered::<(Entity, &AudioPlayer, &PlaybackSettings), With<MissPreviewPlayer>>();
+        let (first, player, playback) = players.single(app.world()).expect("one preview");
+        assert_eq!(player.0, selected);
+        assert_eq!(playback.volume, Volume::Linear(0.2));
+        app.world_mut().resource_mut::<Settings>().miss_sound = crate::config::MissSound::KeyError;
+        app.world_mut().write_message(PreviewMiss);
+        app.update();
+        let (second, player, _) = players.single(app.world()).expect("one replacement");
+        assert_ne!(first, second);
+        assert_eq!(player.0, app.world().resource::<SfxLib>().miss_key_error);
+        app.world_mut().resource_mut::<Settings>().miss_volume = 0.0;
+        app.world_mut().write_message(PreviewMiss);
+        app.update();
+        assert_eq!(players.iter(app.world()).count(), 0);
+        app.world_mut().resource_mut::<Settings>().miss_volume = 1.0;
+        app.world_mut().write_message(PreviewMiss);
+        app.update();
+        app.world_mut()
+            .resource_mut::<NextState<AppState>>()
+            .set(AppState::MainMenu);
+        app.update();
+        assert_eq!(
+            players.iter(app.world()).count(),
+            0,
+            "leaving stops preview"
+        );
     }
 
     /// Roughly how high a stretch of samples sounds: sign changes

@@ -1001,12 +1001,14 @@ pub fn tint_stage_for_hype(
     time: Res<Time>,
     theme: Res<crate::theme::ActiveTheme>,
     star: Res<super::starpower::StarPower>,
+    miss: Option<Res<super::miss_feedback::MissVisual>>,
+    mut last_miss_color: Local<Option<Color>>,
     players: Query<(&PlayerIndex, &PlayerSession)>,
     surfaces: Query<(&HypeTinted, &MeshMaterial3d<StandardMaterial>)>,
     assets: Option<Res<NoteAssets>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut blend: Local<Vec<f32>>,
-    mut written: Local<Vec<(f32, f32)>>,
+    mut written: Local<Vec<(f32, f32, f32)>>,
 ) {
     if !active(&settings) {
         return;
@@ -1035,13 +1037,15 @@ pub fn tint_stage_for_hype(
     // the wash is perfectly still, so comparing it alone would hold
     // every surface at its last painted value and the flash would
     // never be drawn at all.
-    let moved = |written: &mut Vec<(f32, f32)>, slot: usize, value: (f32, f32)| {
+    let moved = |written: &mut Vec<(f32, f32, f32)>, slot: usize, value: (f32, f32, f32)| {
         if written.len() <= slot {
-            written.resize(slot + 1, (f32::NAN, f32::NAN));
+            written.resize(slot + 1, (f32::NAN, f32::NAN, f32::NAN));
         }
         let (was, now) = (written[slot], value);
         let changed = (was.0 - now.0).abs() > 0.0005
             || (was.1 - now.1).abs() > 0.0005
+            || (was.2 - now.2).abs() > 0.0005
+            || was.2.is_nan()
             || was.0.is_nan()
             || was.1.is_nan();
         if changed {
@@ -1051,15 +1055,38 @@ pub fn tint_stage_for_hype(
     };
     // The impulse is an effect like any other: the intensity slider
     // scales it, and at zero the player asked for none.
+    let miss_color = settings.miss_color.color(settings.miss_effect);
+    if *last_miss_color != Some(miss_color) {
+        written.clear();
+        *last_miss_color = Some(miss_color);
+    }
     let star_scale = settings.fx_intensity.clamp(0.0, 1.0);
+    let lifts: [(f32, f32); crate::multiplayer::MAX_PLAYERS] = core::array::from_fn(|player| {
+        (
+            star.neck(player) * star_scale,
+            miss.as_ref().map_or(0.0, |miss| {
+                miss.neck(player, time.elapsed_secs(), &settings)
+            }),
+        )
+    });
+    // Decide once per player, then paint EVERY surface of that neck.
+    // Updating the cache inside the surface loop only painted its first surface.
+    let changed: [bool; crate::multiplayer::MAX_PLAYERS] = core::array::from_fn(|player| {
+        let eased = blend.get(player).copied().unwrap_or(0.0);
+        moved(
+            &mut written,
+            player,
+            (eased, lifts[player].0, lifts[player].1),
+        )
+    });
     for (surface, material) in &surfaces {
         let Some(&eased) = blend.get(surface.player) else {
             continue;
         };
-        let lift = star.neck(surface.player) * star_scale;
-        if !moved(&mut written, surface.player, (eased, lift)) {
+        if !changed.get(surface.player).copied().unwrap_or(false) {
             continue;
         }
+        let (lift, miss_lift) = lifts[surface.player];
         let amount = eased * surface.reach;
         if let Some(mut paint) = materials.get_mut(&material.0) {
             // Toward the energy colour while hype runs, and toward
@@ -1067,9 +1094,12 @@ pub fn tint_stage_for_hype(
             // direction on purpose, so the two states never read as
             // more of the same thing.
             let washed = surface.base.mix(&palette::HYPE, amount);
-            paint.base_color = washed.mix(&Color::WHITE, star_white(surface.glow_lift, lift));
+            paint.base_color = washed
+                .mix(&Color::WHITE, star_white(surface.glow_lift, lift))
+                .mix(&miss_color, star_white(surface.glow_lift, miss_lift));
             let glow = surface.glow_lift.mul_add(amount, surface.base_glow)
-                + star_glow(surface.glow_lift, lift);
+                + star_glow(surface.glow_lift, lift)
+                + star_glow(surface.glow_lift, miss_lift);
             paint.emissive = paint.base_color.to_linear() * glow;
         }
     }
@@ -1087,7 +1117,7 @@ pub fn tint_stage_for_hype(
         if moved(
             &mut written,
             crate::multiplayer::MAX_PLAYERS + index.0,
-            (eased, 0.0),
+            (eased, 0.0, 0.0),
         ) {
             for (lane, handle) in Lane::ALL.iter().zip(&assets.lane_material) {
                 if let Some(mut paint) = materials.get_mut(handle) {
@@ -4815,5 +4845,98 @@ mod shadow_tests {
             "haze, mantles, halos, lenses and cloth: {ghosts}"
         );
         assert!(solids >= 100, "the venue is mostly solid: {solids}");
+    }
+}
+
+#[cfg(test)]
+mod miss_feedback_tests {
+    use super::*;
+
+    #[test]
+    fn miss_paints_all_own_neck_surfaces_and_restores_them_without_touching_a_rival() {
+        let mut app = App::new();
+        app.init_resource::<Time>()
+            .init_resource::<Assets<StandardMaterial>>()
+            .init_resource::<crate::theme::ActiveTheme>()
+            .init_resource::<super::super::starpower::StarPower>()
+            .init_resource::<super::super::miss_feedback::MissVisual>()
+            .insert_resource(Settings {
+                miss_effect: crate::config::MissEffect::HighwayFlash,
+                miss_color: crate::config::MissColor::Cyan,
+                stage_3d: true,
+                ..default()
+            })
+            .add_systems(Update, tint_stage_for_hype);
+        let mut handles = Vec::new();
+        for player in 0..2 {
+            app.world_mut().spawn((
+                PlayerIndex(player),
+                PlayerSession {
+                    session: tests::phrase_session(),
+                    frame_events: Vec::new(),
+                    spawn_cursor: 0,
+                },
+            ));
+            for _ in 0..2 {
+                let handle = app
+                    .world_mut()
+                    .resource_mut::<Assets<StandardMaterial>>()
+                    .add(StandardMaterial::default());
+                app.world_mut().spawn((
+                    HypeTinted {
+                        player,
+                        base: Color::srgb(0.15, 0.2, 0.25),
+                        base_glow: 0.1,
+                        glow_lift: 2.0,
+                        reach: 0.8,
+                    },
+                    MeshMaterial3d(handle.clone()),
+                ));
+                handles.push(handle);
+            }
+        }
+        app.update();
+        let before: Vec<_> = handles
+            .iter()
+            .map(|handle| {
+                app.world()
+                    .resource::<Assets<StandardMaterial>>()
+                    .get(handle)
+                    .expect("material")
+                    .base_color
+            })
+            .collect();
+        app.world_mut()
+            .resource_mut::<super::super::miss_feedback::MissVisual>()
+            .trigger(0, 0.0, 1.0);
+        app.update();
+        for (index, handle) in handles.iter().enumerate() {
+            let color = app
+                .world()
+                .resource::<Assets<StandardMaterial>>()
+                .get(handle)
+                .expect("material")
+                .base_color;
+            assert_eq!(
+                color != before[index],
+                index < 2,
+                "every surface of only the owning neck changes"
+            );
+        }
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_secs(1));
+        app.update();
+        for (index, handle) in handles.iter().enumerate() {
+            assert_eq!(
+                app.world()
+                    .resource::<Assets<StandardMaterial>>()
+                    .get(handle)
+                    .expect("material")
+                    .base_color,
+                before[index],
+                "every surface returns to its original colour"
+            );
+        }
     }
 }

@@ -5,9 +5,9 @@
 //! and hits the last note of the phrase on the hit line — one arm per
 //! fret when that note is a chord. Core near white, a broad blue
 //! hull, jagged and re-rolled every crackle step, the same colour and
-//! the same bolt vocabulary as the edge arc in [`super::arc`], whose
-//! pure pieces (`point`, `segment_pose`, `flash`, the core + hull
-//! materials) this module reuses rather than copies.
+//! the same bolt vocabulary as the edge arc in [`super::arc`]. Both
+//! effects share their meshes, jagged chain, capped thickness animation
+//! and core + hull materials.
 //!
 //! # Where the trigger comes from
 //!
@@ -50,8 +50,8 @@ use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
 
 use super::arc::{
-    CALM_HZ, CORE, CORE_GLOW, CRACKLE_HZ, HULL, HULL_GLOW, bolt_material, flash, point,
-    segment_pose, step,
+    CALM_HZ, CORE, CORE_GLOW, CRACKLE_HZ, HULL, HULL_GLOW, bolt_material, bolt_meshes,
+    segment_pose, step, stroke,
 };
 use super::stage3d::{STAGE_LAYER, Stage3d, lane_x, rail_x};
 use super::{GameplayScreen, HighwayLayout, PlayerIndex, PlayerSession, SessionFeedback};
@@ -80,16 +80,6 @@ const ORIGIN_WANDER: f32 = 0.9;
 const ORIGIN_MARGIN: f32 = 0.15;
 /// Where on the fret the bolt lands.
 const FRET_Y: f32 = 0.05;
-/// Sideways jitter of a chain point, world units, at the chain's
-/// middle (the ends are pinned).
-const JITTER: f32 = 0.55;
-/// The core segment's thickness at glow 1.
-const THICKNESS: f32 = 0.028;
-/// The strike's hull, thinner than the edge arc's: a bolt this long
-/// reads as a ribbon past that.
-const STRIKE_HULL_FACTOR: f32 = 2.4;
-/// The crackle factor is capped: the flare is the phase's job.
-const CRACKLE_CAP: f32 = 1.3;
 /// The fret light at full impact, in Bevy's point-light lumens.
 const LIGHT_LUMENS: f32 = 900_000.0;
 /// The age a slot that is not striking carries.
@@ -179,25 +169,12 @@ pub fn strike_target(layout: &HighwayLayout, player: usize, lane: Lane) -> Vec3 
 
 /// Chain point `index` (0 = origin, [`STRIKE_SEGMENTS`] = the fret)
 /// at crackle `step`: the straight line, jagged sideways by the
-/// arc's own [`point`] hash, the jitter widest in the middle and
+/// arc's own `point` hash, the jitter widest in the middle and
 /// exactly zero at both ends — the bolt ends ON the fret. Pure —
 /// tested.
 #[must_use]
 pub fn chain_point(origin: Vec3, target: Vec3, index: usize, seed: usize, step: u32) -> Vec3 {
-    let along = index as f32 / STRIKE_SEGMENTS as f32;
-    let base = origin.lerp(target, along);
-    // A bump that is 0 at both ends and 1 in the middle.
-    let bump = 4.0 * along * (1.0 - along);
-    let (dx, dy) = point(seed, index, step);
-    // `point` gives dx in ±JITTER_X and dy in the arc's height range;
-    // centre dy so it jitters both ways too.
-    let sideways = dx / super::arc::JITTER_X * JITTER;
-    let across = (dy - 0.19) / 0.15 * JITTER * 0.6;
-    // Sideways in x; "across" perpendicular to the bolt in the y–z
-    // plane it descends through.
-    let direction = (target - origin).normalize_or_zero();
-    let perpendicular = Vec3::new(0.0, direction.z, -direction.y).normalize_or_zero();
-    base + Vec3::X * (sideways * bump) + perpendicular * (across * bump)
+    super::arc::chain_point(origin, target, index, STRIKE_SEGMENTS, seed, step)
 }
 
 /// The strikes running right now: an age per player per lane.
@@ -331,12 +308,7 @@ pub fn spawn_strikes(
         return;
     }
     let layer = RenderLayers::layer(STAGE_LAYER);
-    let segment = meshes.add(Cuboid::new(1.0, THICKNESS, THICKNESS));
-    let hull_mesh = meshes.add(Cuboid::new(
-        1.0,
-        THICKNESS * STRIKE_HULL_FACTOR,
-        THICKNESS * STRIKE_HULL_FACTOR,
-    ));
+    let (segment, hull_mesh) = bolt_meshes(&mut meshes);
     let core = bolt_material(&mut materials, CORE, CORE_GLOW);
     let hull = bolt_material(&mut materials, HULL, HULL_GLOW);
     for index in &players {
@@ -429,7 +401,7 @@ pub fn drive_strikes(
         let a = chain_point(origin, target, seg.segment, seed, step);
         let b = chain_point(origin, target, seg.segment + 1, seed, step);
         let (mid, rot, len) = segment_pose(a, b);
-        let thick = phase.glow * flash(seed, step, calm).min(CRACKLE_CAP) * intensity;
+        let thick = stroke(phase.glow, seed, step, calm, intensity);
         transform.translation = mid;
         transform.rotation = rot;
         transform.scale = Vec3::new(len, thick, thick);
@@ -469,6 +441,7 @@ pub fn register(app: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gameplay::arc::JITTER;
     use beatbyte_core::NoteEvent;
 
     fn phrase(start_s: f64, end_s: f64) -> Phrase {
