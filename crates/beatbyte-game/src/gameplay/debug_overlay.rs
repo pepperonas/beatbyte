@@ -363,12 +363,13 @@ pub fn toggle_debug_overlay(
 /// Refresh the figure and the table every frame while shown. Reads
 /// only.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)] // Bevy system: params are DI
-pub fn update_debug_overlay(
+pub(super) fn update_debug_overlay(
     time: Res<Time>,
     mut overlay: ResMut<DebugOverlay>,
     settings: Res<Settings>,
     game_clock: Res<GameClock>,
     music: Res<Music>,
+    whammy: Option<Res<super::whammy::WhammyLevel>>,
     autopilot: Option<Res<crate::autopilot::Autopilot>>,
     heat: Option<Res<FretHeat>>,
     vocal: Option<Res<super::vocal::VocalRun>>,
@@ -444,6 +445,16 @@ pub fn update_debug_overlay(
                 ("state", "stopped".to_owned()),
             ],
         )),
+    }
+    if let Some(whammy) = whammy {
+        lines.push(row(
+            "WHAMMY",
+            &[
+                ("input", format!("{:.0}%", whammy.input * 100.0)),
+                ("active", format!("{:.0}%", whammy.depth * 100.0)),
+                ("audio", format!("{:.0}%", music.0.whammy_depth() * 100.0)),
+            ],
+        ));
     }
     for line in telemetry_rows(
         telemetry

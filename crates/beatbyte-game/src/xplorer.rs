@@ -266,16 +266,30 @@ pub(crate) fn decode_whammy(report: &[u8]) -> Option<f32> {
     Some((f32::from(raw) + 32768.0) / 65535.0)
 }
 
-pub(crate) fn whammy_depth(entity: Entity, pad: &Gamepad, native: &GuitarWhammy) -> f32 {
-    if pad.vendor_id() != Some(VENDOR) || pad.product_id() != Some(PRODUCT) {
-        return 0.0;
+pub(crate) fn normalize_whammy(value: f32) -> f32 {
+    if value.is_finite() {
+        ((value - 0.04) / 0.96).clamp(0.0, 1.0)
+    } else {
+        0.0
     }
-    let value = native.0.get(&entity).copied().unwrap_or_else(|| {
+}
+
+pub(crate) fn whammy_connected(entity: Entity, pad: &Gamepad, native: &GuitarWhammy) -> bool {
+    native.0.contains_key(&entity)
+        || (pad.vendor_id() == Some(VENDOR) && pad.product_id() == Some(PRODUCT))
+}
+
+pub(crate) fn whammy_depth(entity: Entity, pad: &Gamepad, native: &GuitarWhammy) -> f32 {
+    let value = if let Some(&val) = native.0.get(&entity) {
+        val
+    } else if pad.vendor_id() == Some(VENDOR) && pad.product_id() == Some(PRODUCT) {
         pad.get(GamepadAxis::RightStickX)
             .map_or(0.0, |x| (x + 1.0) * 0.5)
-    });
+    } else {
+        return 0.0;
+    };
     // Small rest deadzone removes potentiometer jitter, retaining full travel.
-    ((value - 0.04) / 0.96).clamp(0.0, 1.0)
+    normalize_whammy(value)
 }
 
 /// Poll for the guitar forever; when present, stream its reports.
@@ -507,5 +521,26 @@ mod tests {
                 assert_ne!(a, b);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod whammy_input_tests {
+    use super::*;
+    #[test]
+    fn native_whammy_does_not_depend_on_driver_metadata_and_rest_is_quiet() {
+        let mut native = GuitarWhammy::default();
+        let entity = Entity::from_bits(7);
+        let pad = Gamepad::default();
+        assert!(!whammy_connected(entity, &pad, &native));
+        native.0.insert(entity, 0.52);
+        assert!(whammy_connected(entity, &pad, &native));
+        assert!((whammy_depth(entity, &pad, &native) - 0.5).abs() < 0.00001);
+        for raw in [-1.0, 0.0, 0.03, 0.04, f32::NAN] {
+            assert_eq!(normalize_whammy(raw), 0.0);
+        }
+        assert_eq!(normalize_whammy(1.0), 1.0);
+        native.0.remove(&entity);
+        assert_eq!(whammy_depth(entity, &pad, &native), 0.0);
     }
 }

@@ -14,6 +14,27 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.82] - 2026-10-10
+
+### Fixed
+
+- Route X-plorer whammy pressure through the default single-player input
+  path as well as assigned multiplayer guitars, without depending on native
+  device vendor metadata. Reapply pressure after a new music generation.
+- Put the live whammy meter in INPUT TEST, rather than key binding setup.
+
+### Added
+
+- Optional INPUT TEST whammy tone (P or the action chip): 440 Hz at rest,
+  approximately 330 Hz at full pressure; ends when the test screen closes.
+- Pressure-driven waves and stronger light on held sustain tails in all
+  views, plus separate input/active/audio values in the gameplay debug overlay.
+
+### Changed
+
+- Full whammy travel now bends down five semitones; timing and scoring stay
+  unchanged. The effect still processes the complete song mix.
+
 ## [0.18.81] - 2026-10-10
 
 ### Added

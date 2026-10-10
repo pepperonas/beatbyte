@@ -282,6 +282,14 @@ impl MusicPlayer {
         self.replace_player(|fresh| fresh.append(source));
     }
 
+    fn play_whammy_preview(&mut self) {
+        let source = rodio::source::SineWave::new(440.0).amplify(0.12);
+        let source = crate::whammy::WhammySource::new(source, self.whammy.clone());
+        self.song_gain = 1.0;
+        self.speed = 1.0;
+        self.replace_player(|fresh| fresh.append(source));
+    }
+
     /// A new song gets a NEW output player; the old one is stopped
     /// and dropped, along with any crossfade tail.
     ///
@@ -345,6 +353,7 @@ impl MusicPlayer {
 
     /// Stop and clear the current song.
     pub fn stop(&self) {
+        self.whammy.store(0, Ordering::Relaxed);
         self.player.stop();
     }
 
@@ -549,6 +558,7 @@ enum MusicCommand {
     Mute(bool),
     Speed(f64),
     Whammy(f32),
+    WhammyPreview,
     Shutdown,
 }
 
@@ -564,6 +574,7 @@ struct MusicShared {
     generation: AtomicU64,
     /// Whether the audio output could be opened at all.
     healthy: AtomicBool,
+    whammy_depth: std::sync::atomic::AtomicU32,
 }
 
 impl MusicShared {
@@ -618,6 +629,18 @@ impl MusicHandle {
     pub fn set_whammy(&self, depth: f32) {
         let _ = self.commands.send(MusicCommand::Whammy(depth));
     }
+    /// Start a quiet continuous 440 Hz diagnostic tone through the song's bend path.
+    /// Uses the current music volume and mute state; call `stop` to end it.
+    pub fn play_whammy_preview(&self) {
+        let _ = self.commands.send(MusicCommand::WhammyPreview);
+    }
+
+    /// Pressure most recently accepted by the audio thread (0..1).
+    #[must_use]
+    pub fn whammy_depth(&self) -> f32 {
+        f32::from_bits(self.shared.whammy_depth.load(Ordering::Relaxed))
+    }
+
     /// Play a song from disk (streamed).
     pub fn play_file(&self, path: std::path::PathBuf) {
         let _ = self.commands.send(MusicCommand::PlayFile(path));
@@ -777,6 +800,7 @@ pub fn spawn_music_thread() -> MusicHandle {
         paused: AtomicBool::new(false),
         generation: AtomicU64::new(0),
         healthy: AtomicBool::new(true),
+        whammy_depth: std::sync::atomic::AtomicU32::new(0),
     });
     let thread_shared = Arc::clone(&shared);
     std::thread::Builder::new()
@@ -881,12 +905,33 @@ fn handle_command(
         MusicCommand::SongGain(gain) => player.set_song_gain(gain),
         MusicCommand::Mute(muted) => player.set_muted(muted),
         MusicCommand::Speed(speed) => player.set_speed(speed),
+        MusicCommand::WhammyPreview => {
+            player.play_whammy_preview();
+            shared.begin_song();
+        }
         MusicCommand::Whammy(depth) => {
-            player.whammy.store(depth.to_bits(), Ordering::Relaxed);
+            apply_whammy(&player.whammy, &shared.whammy_depth, depth);
         }
         MusicCommand::Shutdown => return true,
     }
+    shared
+        .whammy_depth
+        .store(player.whammy.load(Ordering::Relaxed), Ordering::Relaxed);
     false
+}
+
+fn apply_whammy(
+    control: &std::sync::atomic::AtomicU32,
+    accepted: &std::sync::atomic::AtomicU32,
+    depth: f32,
+) {
+    let depth = if depth.is_finite() {
+        depth.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    control.store(depth.to_bits(), Ordering::Relaxed);
+    accepted.store(depth.to_bits(), Ordering::Relaxed);
 }
 
 #[cfg(test)]
@@ -1082,6 +1127,7 @@ mod new_song_tests {
             paused: AtomicBool::new(false),
             generation: AtomicU64::new(7),
             healthy: AtomicBool::new(true),
+            whammy_depth: std::sync::atomic::AtomicU32::new(0),
         };
         shared.begin_song();
         assert_eq!(shared.generation.load(Ordering::Acquire), 8);
@@ -1104,6 +1150,7 @@ mod new_song_tests {
             paused: AtomicBool::new(false),
             generation: AtomicU64::new(3),
             healthy: AtomicBool::new(true),
+            whammy_depth: std::sync::atomic::AtomicU32::new(0),
         };
         shared.begin_song_at(172.1);
         assert_eq!(shared.generation.load(Ordering::Acquire), 4);
@@ -1183,5 +1230,60 @@ mod new_song_tests {
             code().contains(concat!("generation", ".load(Ordering::Acquire)")),
             "the generation is loaded without Acquire"
         );
+    }
+}
+
+#[cfg(test)]
+mod whammy_command_tests {
+    use super::*;
+    #[test]
+    fn whammy_handle_command_reaches_the_source_control_and_changes_pitch() {
+        let (tx, rx) = channel();
+        let shared = Arc::new(MusicShared {
+            position_us: AtomicU64::new(0),
+            active: AtomicBool::new(false),
+            paused: AtomicBool::new(false),
+            generation: AtomicU64::new(0),
+            healthy: AtomicBool::new(true),
+            whammy_depth: std::sync::atomic::AtomicU32::new(0),
+        });
+        let handle = MusicHandle {
+            commands: tx,
+            shared: shared.clone(),
+        };
+        let control = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        handle.play_whammy_preview();
+        assert!(matches!(
+            rx.recv().expect("valid test fixture"),
+            MusicCommand::WhammyPreview
+        ));
+        handle.set_whammy(1.0);
+        let MusicCommand::Whammy(depth) = rx.recv().expect("valid test fixture") else {
+            panic!("missing bend command")
+        };
+        apply_whammy(&control, &shared.whammy_depth, depth);
+        assert_eq!(handle.whammy_depth(), 1.0);
+        let sine = rodio::source::SineWave::new(440.0);
+        let rate = sine.sample_rate().get() as usize;
+        let samples: Vec<_> = crate::whammy::WhammySource::new(sine, control.clone())
+            .skip(rate)
+            .take(rate)
+            .collect();
+        let crossings = samples
+            .windows(2)
+            .filter(|p| p[0] <= 0.0 && p[1] > 0.0)
+            .count();
+        assert!(
+            (320..340).contains(&crossings),
+            "audio command left pitch at {crossings} Hz"
+        );
+        handle.set_whammy(0.0);
+        let MusicCommand::Whammy(depth) = rx.recv().expect("valid test fixture") else {
+            panic!("missing release command")
+        };
+        apply_whammy(&control, &shared.whammy_depth, depth);
+        assert_eq!(handle.whammy_depth(), 0.0);
+        apply_whammy(&control, &shared.whammy_depth, f32::NAN);
+        assert_eq!(handle.whammy_depth(), 0.0);
     }
 }

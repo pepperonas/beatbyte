@@ -4,6 +4,23 @@
 Rules of engagement live in [`CLAUDE.md`](../CLAUDE.md); this file
 holds the work itself.
 
+## Whammy diagnostics and sustain feedback (2026-10-10)
+
+*Verified: 2195 tests in the source inventory, including documentation examples;
+all local gates, ML release startup, and Song 2 autoplay/pause passed
+(251 perfect, 0 misses, 0 overstrums). Fault probes caught missing input,
+missing waves and the old two-semitone bend.*
+
+- [x] Move the live bar to INPUT TEST and add an opt-in 440 → 330 Hz test tone.
+- [x] Match default solo and assigned multiplayer guitar routing; normalize native
+  pressure independently of driver metadata and resend on music generation changes.
+- [x] Five-semitone bend and pressure-driven, pinned sustain waves/glow in all views.
+- [x] Separate input, active sustain pressure and audio-thread acceptance in the debug overlay.
+- [x] Verify gates, ML release startup and the full Song 2 pause/resume drill.
+- [ ] Inspect the rendered test screen and animated sustain views: capture blocked
+  by macOS screen lock (black image; `CGSSessionScreenIsLocked=Yes`).
+- [ ] Confirm audible bend and sustain feedback with the user's physical bar after restart.
+
 ## Feedback, settings and X-plorer whammy (2026-10-10)
 
 *Verified: 2189 tests in the source inventory, including documentation examples;

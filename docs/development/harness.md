@@ -237,3 +237,14 @@ These all cost real time at least once.
 - [Development workflow](workflow.md)
 - [Gameplay rules and judgment windows](../gameplay/rules.md)
 - [ADR-0004 — deterministic timing](../decisions/ADR-0004-gameplay-timing.md)
+
+### Whammy input and audio diagnostics
+
+Open INPUT TEST from SETTINGS. The WHAMMY percentage and highlighted bar
+respond without a song or held fret. P or the Whammy tone chip toggles a
+quiet continuous test tone (440 Hz at rest, about 330 Hz fully pressed),
+using music volume and the browsing mute badge. Leaving the screen stops it.
+During gameplay, open the debug overlay with L: WHAMMY input is the measured
+bar, active is the sustain-gated pressure, and audio is the last value accepted
+by the music thread. Hold a successfully hit sustain to see its wave and glow;
+release the fret or bar, pause, or disconnect to clear the bend.

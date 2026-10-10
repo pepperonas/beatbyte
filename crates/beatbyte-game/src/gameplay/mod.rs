@@ -414,7 +414,23 @@ impl Plugin for GameplayPlugin {
             Update,
             whammy::update_whammy
                 .after(advance_sessions)
-                .after(pause_input),
+                .after(pause_input)
+                .before(notes::animate_sustains)
+                .before(stage3d::consume_sustains),
+        );
+        app.add_systems(
+            Update,
+            (
+                notes::animate_sustains,
+                notes::animate_whammy_segments,
+                stage3d::consume_sustains,
+            )
+                .chain()
+                .after(whammy::update_whammy)
+                .after(notes::move_notes)
+                .after(stage3d::move_notes)
+                .run_if(in_state(AppState::Gameplay))
+                .run_if(in_state(GamePhase::Playing).or_else(in_state(GamePhase::Paused))),
         );
         // The strike on the fret that replaces the screen flash on
         // the 3D stage: its own clock, armed off the same bus.
@@ -455,7 +471,6 @@ impl Plugin for GameplayPlugin {
                     notes::spawn_due_notes,
                     notes::move_notes,
                     notes::move_fret_lines,
-                    notes::animate_sustains,
                     notes::update_receptors,
                     notes::star_lift_guides,
                     notes::apply_note_events,

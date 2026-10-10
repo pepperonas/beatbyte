@@ -100,11 +100,13 @@ SongAnalysis { bpm, beats[], downbeats[], repeats[], onsets[], melody[{time, end
 ### X-plorer whammy playback
 
 During a successfully hit and still-held sustain, the player's X-plorer
-whammy bar bends playback down continuously, up to two semitones. Native
+whammy bar bends playback down continuously, up to five semitones. Native
 USB reads signed RX at report bytes 10/11 (-32768 at rest, +32767 at full
 travel); driver-backed X-plorers use RightStickX. A 4% rest deadzone rejects
-potentiometer noise. Input is routed to the guitar assigned to that player;
-unassigned devices and ordinary gamepads cannot drive the effect.
+potentiometer noise. Input follows gameplay routing: the solo default Keyboard player also accepts
+the connected guitar, while multiplayer uses each player's assigned guitar.
+Native pressure takes priority over driver metadata; ordinary gamepads cannot
+drive the effect.
 
 `WhammySource` uses two crossfaded, interpolated delay heads with 10 ms
 pressure smoothing and a 40 ms window. It consumes exactly one input
@@ -121,3 +123,16 @@ Star Power or score bonuses.
 The USB layout and travel endpoints are also documented in
 [Xplorer Remap](https://github.com/mynamebrody/xplorer-input/blob/main/Sources/XplorerKit/ControllerState.swift);
 the connected guitar's idle RX was verified directly as -32768.
+
+INPUT TEST displays pressure even without a note. Its optional P/chip tone
+runs the same `WhammySource` on a quiet 440 Hz sine wave, bending to about
+330 Hz at full travel. It uses music volume and the browsing mute state and
+stops on exit. Gameplay leaves audio ownership to this test while it is open.
+The debug overlay separates raw normalized input, sustain-gated effect and
+the pressure accepted by the audio thread. A new playback generation resends
+the current effect, avoiding a stale cached value after a source reset.
+
+While a sustain is held, pressure strengthens its glow and drives a 6 Hz wave
+pinned at the hit line, with up to 15% of one lane's width of sideways travel.
+Geometry/materials are owned by the affected sustain; adjacent lanes and
+other players are unchanged. Both sprite views and the solid stage respond.

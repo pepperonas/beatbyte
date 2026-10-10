@@ -1328,6 +1328,42 @@ pub fn sync_phrase_rims(
 #[derive(Component)]
 pub struct SustainTail3d;
 
+#[derive(Component)]
+pub(super) struct WhammyMesh {
+    rest: Vec<[f32; 3]>,
+    bent: bool,
+}
+
+fn whammy_mesh(meshes: &mut Assets<Mesh>, template: &Handle<Mesh>) -> (Mesh3d, WhammyMesh) {
+    let mesh = meshes
+        .get(template)
+        .expect("sustain template exists")
+        .clone();
+    let rest = match mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
+        Some(bevy::mesh::VertexAttributeValues::Float32x3(positions)) => positions.clone(),
+        _ => Vec::new(),
+    };
+    (Mesh3d(meshes.add(mesh)), WhammyMesh { rest, bent: false })
+}
+
+fn deform_sustain_mesh(
+    mesh: &mut Mesh,
+    wave: &mut WhammyMesh,
+    seconds: f32,
+    depth: f32,
+    lane_step: f32,
+) {
+    if let Some(bevy::mesh::VertexAttributeValues::Float32x3(positions)) =
+        mesh.attribute_mut(Mesh::ATTRIBUTE_POSITION)
+    {
+        for (position, rest) in positions.iter_mut().zip(&wave.rest) {
+            *position = *rest;
+            position[0] += super::whammy::wave_offset(0.5 - rest[1], seconds, depth, lane_step);
+        }
+    }
+    wave.bent = depth > 0.0;
+}
+
 /// The pale core strip inside a sustain tail (instrument neck). Also
 /// a tail — it scrolls, shrinks and greys with the tail — but the
 /// held-tail throb must light it pale, not lane-coloured.
@@ -2906,8 +2942,24 @@ pub fn setup_note_assets(
         // the 2D views distinguish it.
         hopo: meshes.add(Cylinder::new(gem, 0.05)),
         hopo_rim: meshes.add(Cylinder::new(gem * 1.12, 0.04)),
-        sustain: meshes.add(Cylinder::new(0.036 * neck_spread(&layout), 1.0)),
-        sustain_core: { Some(meshes.add(Cylinder::new(0.013 * neck_spread(&layout), 1.0))) },
+        sustain: meshes.add(
+            Cylinder::new(0.036 * neck_spread(&layout), 1.0)
+                .mesh()
+                .resolution(12)
+                .segments(24)
+                .build(),
+        ),
+        sustain_core: {
+            Some(
+                meshes.add(
+                    Cylinder::new(0.013 * neck_spread(&layout), 1.0)
+                        .mesh()
+                        .resolution(12)
+                        .segments(24)
+                        .build(),
+                ),
+            )
+        },
         star_rim: meshes.add(star_mesh(gem * 1.62, gem * 0.82)),
         // ONE grey material that missed notes switch TO. Repainting
         // the lane's own material instead turned every note in that
@@ -2976,6 +3028,7 @@ pub fn spawn_due_notes(
     assets: Option<Res<NoteAssets>>,
     theme: Res<crate::theme::ActiveTheme>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
 ) {
     if !active(&settings) {
         return;
@@ -3128,7 +3181,8 @@ pub fn spawn_due_notes(
                         },
                         SustainTail3d,
                         on_the_neck(),
-                        Mesh3d(assets.sustain.clone()),
+                        whammy_mesh(&mut meshes, &assets.sustain),
+                        bevy::camera::visibility::NoFrustumCulling,
                         MeshMaterial3d(tail_material),
                         // The cylinder is built along Y, so it is
                         // rotated onto the neck's Z axis and pushed
@@ -3155,7 +3209,8 @@ pub fn spawn_due_notes(
                             SustainTail3d,
                             SustainCore,
                             on_the_neck(),
-                            Mesh3d(core_mesh.clone()),
+                            whammy_mesh(&mut meshes, core_mesh),
+                            bevy::camera::visibility::NoFrustumCulling,
                             MeshMaterial3d(materials.add(StandardMaterial {
                                 base_color: pale,
                                 emissive: pale.to_linear() * 1.6,
@@ -3180,7 +3235,7 @@ pub fn spawn_due_notes(
 
 /// Whether this entity is a sustain tail the player is HOLDING right
 /// now — in which case [`move_notes`] must not touch it at all:
-/// [`consume_sustains`] pins a held tail to the hit line and eats it
+/// `consume_sustains` pins a held tail to the hit line and eats it
 /// from the front. The head-anchored march below would carry it past
 /// the camera while the hold ran, and the past-the-camera cleanup
 /// then despawned the very beam the player was playing (a 2 s
@@ -3256,13 +3311,16 @@ pub fn move_notes(
 /// other half of the same feedback — the tail visibly shortens into
 /// the fret for exactly as long as the key is down.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)] // Bevy system: params are DI, not an API
-pub fn consume_sustains(
+pub(super) fn consume_sustains(
     mut commands: Commands,
     settings: Res<Settings>,
     time: Res<Time>,
     game_clock: Res<GameClock>,
     assets: Option<Res<NoteAssets>>,
     players: Query<(&PlayerIndex, &PlayerSession)>,
+    layout: Res<HighwayLayout>,
+    whammy: Res<super::whammy::WhammyLevel>,
+    mut meshes: ResMut<Assets<Mesh>>,
     mut tails: Query<
         (
             Entity,
@@ -3270,6 +3328,8 @@ pub fn consume_sustains(
             &mut Transform,
             &MeshMaterial3d<StandardMaterial>,
             Has<SustainCore>,
+            &Mesh3d,
+            &mut WhammyMesh,
         ),
         With<SustainTail3d>,
     >,
@@ -3283,14 +3343,31 @@ pub fn consume_sustains(
     let (Some(now), Some(assets)) = (game_clock.visual_time(&time, &settings), assets) else {
         return;
     };
-    for (entity, note, mut transform, material, is_core) in &mut tails {
+    for (entity, note, mut transform, material, is_core, mesh, mut wave) in &mut tails {
         let Some((_, player)) = players.iter().find(|(index, _)| index.0 == note.player) else {
             continue;
         };
         // Only the sustain the engine says is running. Asking the
         // session rather than tracking a local flag keeps the picture
         // honest: if judgment dropped the hold, so does the tail.
-        if player.session.active_sustain() != Some(note.event_index) {
+        let held = player.session.active_sustain() == Some(note.event_index);
+        let bend = if held {
+            whammy.players.get(&note.player).copied().unwrap_or(0.0)
+        } else {
+            0.0
+        };
+        if (bend > 0.0 || wave.bent)
+            && let Some(mut mesh) = meshes.get_mut(&mesh.0)
+        {
+            deform_sustain_mesh(
+                &mut mesh,
+                &mut wave,
+                now as f32,
+                bend,
+                layout.lane_step * WORLD_PER_PIXEL,
+            );
+        }
+        if !held {
             continue;
         }
         let Some(event) = player.session.track().events().get(note.event_index) else {
@@ -3304,7 +3381,7 @@ pub fn consume_sustains(
                 // clock, so the throb keeps time with the music
                 // rather than with the frame rate.
                 if let Some(mut surface) = materials.get_mut(&material.0) {
-                    let glow = sustain_pulse(now);
+                    let glow = sustain_pulse(now) * (1.0 + 2.0 * bend);
                     surface.emissive = if is_core {
                         core_color(&note.lane, stage).to_linear() * (1.6 * glow)
                     } else {
@@ -3320,7 +3397,7 @@ pub fn consume_sustains(
     // A tail whose hold has ended but which still has length left was
     // DROPPED — it greys out and slides away, so letting go looks
     // different from playing it out.
-    for (entity, note, transform, _, _) in &tails {
+    for (entity, note, transform, _, _, _, _) in &tails {
         let held = players
             .iter()
             .find(|(index, _)| index.0 == note.player)
@@ -3379,7 +3456,6 @@ impl Plugin for Stage3dPlugin {
             (
                 spawn_due_notes,
                 move_notes,
-                consume_sustains,
                 move_fret_bars,
                 move_phrase_bands,
                 tint_stage_for_hype,
@@ -4791,10 +4867,10 @@ mod shadow_tests {
         app.init_asset::<Image>();
         app.world_mut()
             .run_system_once(crate::shapes::build_shapes)
-            .unwrap();
+            .expect("valid test fixture");
         app.world_mut()
             .run_system_once(crate::surfaces::build_surfaces)
-            .unwrap();
+            .expect("valid test fixture");
         app.world_mut()
             .run_system_once(
                 |mut commands: Commands,
@@ -4815,7 +4891,7 @@ mod shadow_tests {
                     );
                 },
             )
-            .unwrap();
+            .expect("valid test fixture");
         let world = app.world_mut();
         let mut ghosts = 0;
         let mut solids = 0;
@@ -4938,5 +5014,68 @@ mod miss_feedback_tests {
                 "every surface returns to its original colour"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod whammy_mesh_tests {
+    use super::*;
+    #[test]
+    fn held_wave_keeps_hit_line_pinned_restores_and_does_not_bend_neighbor_meshes() {
+        let mut meshes = Assets::<Mesh>::default();
+        let template = meshes.add(
+            Cylinder::new(0.036, 1.0)
+                .mesh()
+                .resolution(12)
+                .segments(24)
+                .build(),
+        );
+        let (owned, mut wave) = whammy_mesh(&mut meshes, &template);
+        let original = wave.rest.clone();
+        deform_sustain_mesh(
+            &mut meshes.get_mut(&owned.0).expect("valid test fixture"),
+            &mut wave,
+            0.031,
+            1.0,
+            0.4,
+        );
+        let Some(bevy::mesh::VertexAttributeValues::Float32x3(bent)) = meshes
+            .get(&owned.0)
+            .expect("valid test fixture")
+            .attribute(Mesh::ATTRIBUTE_POSITION)
+        else {
+            panic!("positions")
+        };
+        assert!(
+            bent.iter()
+                .zip(&original)
+                .any(|(p, r)| (p[0] - r[0]).abs() > 0.01)
+        );
+        for (p, r) in bent.iter().zip(&original).filter(|(_, r)| r[1] > 0.4999) {
+            assert!((p[0] - r[0]).abs() < 0.00001);
+        }
+        let Some(bevy::mesh::VertexAttributeValues::Float32x3(neighbor)) = meshes
+            .get(&template)
+            .expect("valid test fixture")
+            .attribute(Mesh::ATTRIBUTE_POSITION)
+        else {
+            panic!("template")
+        };
+        assert_eq!(neighbor, &original);
+        deform_sustain_mesh(
+            &mut meshes.get_mut(&owned.0).expect("valid test fixture"),
+            &mut wave,
+            0.5,
+            0.0,
+            0.4,
+        );
+        let Some(bevy::mesh::VertexAttributeValues::Float32x3(restored)) = meshes
+            .get(&owned.0)
+            .expect("valid test fixture")
+            .attribute(Mesh::ATTRIBUTE_POSITION)
+        else {
+            panic!("positions")
+        };
+        assert_eq!(restored, &original);
     }
 }

@@ -348,6 +348,21 @@ fn spawn_event_sprites(
                     },
                     Transform::from_xyz(0.0, tail_height / 2.0, -1.0),
                 ));
+                for segment in 0..24 {
+                    parent.spawn((
+                        WhammySegment {
+                            player,
+                            event_index,
+                            lane,
+                            flat_x: layout.lane_x(player, lane),
+                            segment,
+                            width: tail_width,
+                        },
+                        Sprite::from_color(color, Vec2::ONE),
+                        Transform::from_xyz(0.0, 0.0, -0.8),
+                        Visibility::Hidden,
+                    ));
+                }
             });
         }
         // HOPO marker: a small bright core.
@@ -536,13 +551,14 @@ pub fn move_fret_lines(
 /// everything falls back to the plain scrolling look. Runs after
 /// [`move_notes`], which positions everything by chart time first.
 #[allow(clippy::too_many_arguments)] // Bevy system: params are DI
-pub fn animate_sustains(
+pub(super) fn animate_sustains(
     players: Query<(&PlayerIndex, &PlayerSession)>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
     settings: Res<Settings>,
     layout: Res<HighwayLayout>,
     theme: Res<crate::theme::ActiveTheme>,
+    whammy: Res<super::whammy::WhammyLevel>,
     mut notes: Query<(&NoteSprite, &mut Transform, &mut Sprite, &Children)>,
     mut tails: Query<(&SustainTail, &mut Transform, &mut Sprite), Without<NoteSprite>>,
 ) {
@@ -569,6 +585,7 @@ pub fn animate_sustains(
         let lane = event.lanes.highest().unwrap_or(beatbyte_core::Lane::Three);
         let color = theme.0.lane_color(lane);
         let held = active.contains(&(note.player, note.event_index));
+        let bend = whammy.players.get(&note.player).copied().unwrap_or(0.0);
         let center = layout.origin(note.player);
         if held {
             // Pin the gem to the hit line; pulse it toward white.
@@ -576,7 +593,7 @@ pub fn animate_sustains(
             transform.translation.x = note.flat_x;
             transform.scale = Vec3::ONE;
             let pulse = 0.5 + 0.5 * (time.elapsed_secs() * 9.0).sin();
-            sprite.color = color.mix(&Color::WHITE, 0.25 + 0.35 * pulse);
+            sprite.color = color.mix(&Color::WHITE, (0.25 + 0.35 * pulse + bend * 0.3).min(0.95));
             let remaining =
                 (((event.time_s + event.sustain_s - now).max(0.0)) as f32).min(f32::MAX);
             for child in children {
@@ -602,7 +619,8 @@ pub fn animate_sustains(
                         tail_sprite.custom_size = Some(Vec2::new(tail.width, flat_height));
                         tail_transform.translation.y = flat_height / 2.0;
                     }
-                    tail_sprite.color = color.with_alpha(0.55 + 0.3 * pulse);
+                    tail_sprite.color =
+                        color.with_alpha(if bend > 0.0 { 0.0 } else { 0.55 + 0.3 * pulse });
                 }
             }
         } else {
@@ -1242,5 +1260,74 @@ mod guide_tests {
             guide_color(theme.lane_color(Lane::One), 0.0),
             "the strip must come back down, not merely stop rising"
         );
+    }
+}
+
+#[derive(Component)]
+pub(super) struct WhammySegment {
+    player: usize,
+    event_index: usize,
+    lane: Lane,
+    flat_x: f32,
+    segment: usize,
+    width: f32,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn animate_whammy_segments(
+    players: Query<(&PlayerIndex, &PlayerSession)>,
+    game_clock: Res<GameClock>,
+    time: Res<Time>,
+    settings: Res<Settings>,
+    layout: Res<HighwayLayout>,
+    theme: Res<crate::theme::ActiveTheme>,
+    whammy: Res<super::whammy::WhammyLevel>,
+    mut segments: Query<(&WhammySegment, &mut Transform, &mut Sprite, &mut Visibility)>,
+) {
+    let Some(now) = game_clock.visual_time(&time, &settings) else {
+        return;
+    };
+    for (segment, mut transform, mut sprite, mut visibility) in &mut segments {
+        let bend = whammy.players.get(&segment.player).copied().unwrap_or(0.0);
+        let player = players
+            .iter()
+            .find(|(i, _)| i.0 == segment.player)
+            .map(|(_, p)| p);
+        let event = player
+            .filter(|p| p.session.active_sustain() == Some(segment.event_index))
+            .and_then(|p| p.session.track().events().get(segment.event_index));
+        let Some(event) = event.filter(|_| bend > 0.0) else {
+            *visibility = Visibility::Hidden;
+            continue;
+        };
+        *visibility = Visibility::Inherited;
+        let length =
+            ((event.time_s + event.sustain_s - now).max(0.0) as f32) * settings.scroll_speed;
+        let point = |i: usize| {
+            let u = i as f32 / 24.0;
+            let height = length * u;
+            let x =
+                segment.flat_x + super::whammy::wave_offset(u, now as f32, bend, layout.lane_step);
+            if settings.perspective {
+                let (x, y) = depth::point(layout.origin(segment.player), x, height);
+                Vec2::new(x - segment.flat_x, y - RECEPTOR_Y)
+            } else {
+                Vec2::new(x - segment.flat_x, height)
+            }
+        };
+        let a = point(segment.segment);
+        let b = point(segment.segment + 1);
+        let delta = b - a;
+        transform.translation = ((a + b) * 0.5).extend(-0.8);
+        transform.rotation = Quat::from_rotation_z(-delta.x.atan2(delta.y));
+        sprite.custom_size = Some(Vec2::new(
+            segment.width * (1.0 + 0.25 * bend),
+            delta.length() + 1.0,
+        ));
+        sprite.color = theme
+            .0
+            .lane_color(segment.lane)
+            .mix(&Color::WHITE, bend * 0.55)
+            .with_alpha(0.85);
     }
 }

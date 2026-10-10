@@ -60,11 +60,13 @@ pub struct InputTestPlugin;
 impl Plugin for InputTestPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<FlashTimers>()
+            .init_resource::<WhammyPreview>()
             .init_resource::<ActionBarClicks>()
             .add_systems(OnEnter(AppState::InputTest), spawn_screen)
             .add_systems(
                 Update,
-                (paint_action_bar.before(run_tester), run_tester)
+                (paint_action_bar, run_tester, run_whammy_test)
+                    .chain()
                     .run_if(in_state(AppState::InputTest)),
             )
             .add_systems(OnExit(AppState::InputTest), despawn_screen);
@@ -73,6 +75,7 @@ impl Plugin for InputTestPlugin {
 
 mod chip {
     pub const TAP_MODE: u8 = 0;
+    pub const WHAMMY_PREVIEW: u8 = 1;
 }
 
 #[derive(Resource, Default)]
@@ -159,6 +162,39 @@ fn spawn_screen(mut commands: Commands, font: Res<UiFont>, mut timers: ResMut<Fl
                                 ));
                             }
                         });
+                    panel.spawn((
+                        WhammyText,
+                        Text::new("WHAMMY — no whammy guitar"),
+                        font.text(ui_kit::ROW),
+                        TextColor(palette::TEXT_DIM),
+                    ));
+                    panel
+                        .spawn((
+                            Node {
+                                width: px(260),
+                                height: px(18),
+                                padding: UiRect::all(px(2)),
+                                ..default()
+                            },
+                            BackgroundColor(palette::SURFACE),
+                        ))
+                        .with_children(|bar| {
+                            bar.spawn((
+                                WhammyFill,
+                                Node {
+                                    width: percent(0),
+                                    height: percent(100),
+                                    ..default()
+                                },
+                                BackgroundColor(palette::BRAND),
+                            ));
+                        });
+                    panel.spawn((
+                        PreviewText,
+                        Text::new("TONE OFF · P to listen · 440 → 330 Hz"),
+                        font.text(ui_kit::SMALL),
+                        TextColor(palette::TEXT_DIM),
+                    ));
                     // Strum + Hype row.
                     panel
                         .spawn(Node {
@@ -189,16 +225,23 @@ fn spawn_screen(mut commands: Commands, font: Res<UiFont>, mut timers: ResMut<Fl
             ui_kit::action_bar(
                 parent,
                 &font,
-                &[ui_kit::ChipSpec {
-                    id: chip::TAP_MODE,
-                    label: "Tap mode",
-                    enabled: true,
-                }],
+                &[
+                    ui_kit::ChipSpec {
+                        id: chip::TAP_MODE,
+                        label: "Tap mode",
+                        enabled: true,
+                    },
+                    ui_kit::ChipSpec {
+                        id: chip::WHAMMY_PREVIEW,
+                        label: "Whammy tone (P)",
+                        enabled: true,
+                    },
+                ],
             );
             crate::prompts::device_footer(
                 parent,
                 &font,
-                "Tap mode chip or T  ESC back",
+                "T tap mode  P whammy tone  ESC back",
                 "START back",
             );
             ui_kit::back_button(parent, &font, "MAIN MENU");
@@ -337,8 +380,185 @@ fn run_tester(
     }
 }
 
-fn despawn_screen(mut commands: Commands, entities: Query<Entity, With<TestScreen>>) {
+fn despawn_screen(
+    mut commands: Commands,
+    entities: Query<Entity, With<TestScreen>>,
+    mut preview: ResMut<WhammyPreview>,
+    music: Option<Res<crate::audio_sys::Music>>,
+) {
+    if let Some(music) = music {
+        music.0.set_whammy(0.0);
+        if preview.0 {
+            music.0.stop();
+        }
+    }
+    preview.0 = false;
     for entity in &entities {
         commands.entity(entity).despawn();
+    }
+}
+
+#[derive(Resource, Default)]
+struct WhammyPreview(bool);
+#[derive(Component)]
+struct WhammyFill;
+#[derive(Component)]
+struct WhammyText;
+#[derive(Component)]
+struct PreviewText;
+
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn run_whammy_test(
+    pads: Query<(Entity, &Gamepad)>,
+    native: Option<Res<crate::xplorer::GuitarWhammy>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    clicks: Res<ActionBarClicks>,
+    music: Option<Res<crate::audio_sys::Music>>,
+    mut preview: ResMut<WhammyPreview>,
+    mut bars: Query<&mut Node, With<WhammyFill>>,
+    mut texts: Query<(&mut Text, &mut TextColor), (With<WhammyText>, Without<PreviewText>)>,
+    mut tone: Query<&mut Text, (With<PreviewText>, Without<WhammyText>)>,
+) {
+    let connected = native.as_ref().is_some_and(|n| {
+        !n.0.is_empty()
+            || pads
+                .iter()
+                .any(|(e, p)| crate::xplorer::whammy_connected(e, p, n))
+    });
+    let depth = native.as_ref().map_or(0.0, |n| {
+        pads.iter()
+            .map(|(e, p)| crate::xplorer::whammy_depth(e, p, n))
+            .chain(n.0.values().map(|v| crate::xplorer::normalize_whammy(*v)))
+            .fold(0.0_f32, f32::max)
+    });
+    if keys.just_pressed(KeyCode::KeyP) || ui_kit::chip_hit(&clicks.0, chip::WHAMMY_PREVIEW) {
+        preview.0 = !preview.0;
+        if let Some(music) = &music {
+            if preview.0 {
+                music.0.play_whammy_preview();
+            } else {
+                music.0.set_whammy(0.0);
+                music.0.stop();
+            }
+        }
+    }
+    if preview.0
+        && let Some(music) = &music
+    {
+        music.0.set_whammy(depth);
+    }
+    for mut node in &mut bars {
+        node.width = percent(depth * 100.0);
+    }
+    for (mut text, mut color) in &mut texts {
+        text.0 = if connected {
+            format!("WHAMMY {:3.0}%", depth * 100.0)
+        } else {
+            "WHAMMY — no whammy guitar".into()
+        };
+        color.0 = if depth > 0.0 {
+            palette::BRAND
+        } else {
+            palette::TEXT_DIM
+        };
+    }
+    for mut text in &mut tone {
+        text.0 = if preview.0 {
+            if music.as_ref().is_some_and(|m| !m.0.is_healthy()) {
+                "TONE ON · no audio output".into()
+            } else {
+                format!(
+                    "TONE ON · {:.0} Hz · P to stop · music volume / M mute",
+                    440.0 * 2.0_f32.powf(-5.0 * depth / 12.0)
+                )
+            }
+        } else {
+            "TONE OFF · P to listen · 440 → 330 Hz".into()
+        };
+    }
+}
+
+#[cfg(test)]
+mod whammy_tests {
+    use super::*;
+    #[test]
+    fn input_test_reads_native_bar_and_highlights_without_a_song() {
+        let mut app = App::new();
+        app.init_resource::<crate::xplorer::GuitarWhammy>()
+            .init_resource::<ButtonInput<KeyCode>>()
+            .init_resource::<ActionBarClicks>()
+            .init_resource::<WhammyPreview>()
+            .add_systems(Update, run_whammy_test);
+        let bar = app.world_mut().spawn((WhammyFill, Node::default())).id();
+        let label = app
+            .world_mut()
+            .spawn((WhammyText, Text::default(), TextColor(palette::TEXT_DIM)))
+            .id();
+        app.update();
+        assert!(
+            app.world()
+                .get::<Text>(label)
+                .expect("valid test fixture")
+                .0
+                .contains("no whammy guitar")
+        );
+        let guitar = app.world_mut().spawn_empty().id();
+        app.world_mut()
+            .resource_mut::<crate::xplorer::GuitarWhammy>()
+            .0
+            .insert(guitar, 1.0);
+        app.update();
+        assert_eq!(
+            app.world()
+                .get::<Node>(bar)
+                .expect("valid test fixture")
+                .width,
+            percent(100.0)
+        );
+        assert!(
+            app.world()
+                .get::<Text>(label)
+                .expect("valid test fixture")
+                .0
+                .contains("100%")
+        );
+        assert_eq!(
+            app.world()
+                .get::<TextColor>(label)
+                .expect("valid test fixture")
+                .0,
+            palette::BRAND
+        );
+        app.world_mut()
+            .resource_mut::<crate::xplorer::GuitarWhammy>()
+            .0
+            .insert(guitar, 0.52);
+        app.update();
+        let Val::Percent(value) = app
+            .world()
+            .get::<Node>(bar)
+            .expect("valid test fixture")
+            .width
+        else {
+            panic!("percentage bar")
+        };
+        assert!((value - 50.0).abs() < 0.001);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyP);
+        app.update();
+        assert!(app.world().resource::<WhammyPreview>().0);
+        app.world_mut()
+            .resource_mut::<crate::xplorer::GuitarWhammy>()
+            .0
+            .clear();
+        app.update();
+        assert_eq!(
+            app.world()
+                .get::<Node>(bar)
+                .expect("valid test fixture")
+                .width,
+            percent(0.0)
+        );
     }
 }
