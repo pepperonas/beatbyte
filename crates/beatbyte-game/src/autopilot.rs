@@ -367,6 +367,7 @@ fn enter_shot_state(
     library: Option<Res<crate::library::SongLibrary>>,
     info: Option<Res<crate::song_info::Showing>>,
     mut menu: ResMut<crate::song_select::ActionMenu>,
+    mut question: ResMut<crate::song_select::DeleteQuestion>,
     mut commands: Commands,
     mut done: Local<bool>,
 ) {
@@ -417,6 +418,11 @@ fn enter_shot_state(
     // ... and the ALL KEYS page, which only F1 or the menu opens.
     if std::env::var_os("BEATBYTE_SHOT_HELP").is_some() {
         menu.help = true;
+    }
+    // ... and the delete dialog, asking about the library's first song
+    // (a picture only: nothing answers it, so nothing is deleted).
+    if std::env::var_os("BEATBYTE_SHOT_DELETE").is_some() {
+        question.armed = Some(0);
     }
     // The document screen is the one that cannot be entered cold:
     // the browser hands it what to show. For a photograph, hand it

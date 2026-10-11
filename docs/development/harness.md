@@ -47,6 +47,7 @@ about them is compiled into a normal build.
 | `BEATBYTE_SHOT_SORT` | column name | With `BEATBYTE_SHOT_STATE=songselect`, activates that sort (track/artist/length/favorite; `title` still reads as track) so the active-column marker is photographable. |
 | `BEATBYTE_SHOT_ACTIONS` | any value | With `BEATBYTE_SHOT_STATE=songselect`, opens the browser's action menu (every tool for the selected song), which nothing opens by itself. |
 | `BEATBYTE_SHOT_HELP` | any value | With `BEATBYTE_SHOT_STATE=songselect`, opens the browser's ALL KEYS page (F1), every key for keyboard and pad. |
+| `BEATBYTE_SHOT_DELETE` | any value | With `BEATBYTE_SHOT_STATE=songselect`, opens the delete dialog for the library's first song (a picture only — nothing answers it). |
 | `BEATBYTE_SHOT_SEARCH` | filter text | With `BEATBYTE_SHOT_STATE=songselect` or `settings`, types that filter into the search, so the count, the first-match selection and the empty-result hint are photographable. |
 | `BEATBYTE_ABOUT_EXPANDED` | set | With `BEATBYTE_SHOT_STATE=about`, pre-expands the changelog section (default collapsed), so the expanded state is photographable. |
 | `BEATBYTE_AUTOPILOT_MC` | comma-separated title needles | Queues the named songs as an MC set and plays it as one continuous performance — the only automated path through the DJ crossfade between songs. Combines with `BEATBYTE_AUTOPILOT_PLAYERS`. |

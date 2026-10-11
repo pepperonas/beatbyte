@@ -258,7 +258,9 @@ fn calibration_input(
         save_settings(&settings);
         info!("calibration saved: {:+.0} ms", settings.latency_offset_ms);
         sounds.write(crate::sfx::UiSound::Confirm);
-        next_state.set(AppState::MainMenu);
+        // Back where it was opened from: the CALIBRATION row in
+        // Settings, the only door to this screen.
+        next_state.set(AppState::Settings);
         return;
     }
     // Esc / Select / visible back / right-click leave — never MenuNav
@@ -269,7 +271,7 @@ fn calibration_input(
         || mouse.just_pressed(MouseButton::Right)
     {
         sounds.write(crate::sfx::UiSound::Back);
-        next_state.set(AppState::MainMenu);
+        next_state.set(AppState::Settings);
     }
 }
 

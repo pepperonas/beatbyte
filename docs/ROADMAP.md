@@ -6,7 +6,7 @@ holds the work itself.
 
 ## Menu guidance, GS/CL out of sight, community-first import (2026-10-11)
 
-*Verified: 2200 tests in the source inventory, including documentation examples;
+*Verified: 2202 tests in the source inventory, including documentation examples;
 all local gates; the action menu and the ALL KEYS page photographed on the real
 library (8 571 folders).*
 
@@ -22,8 +22,11 @@ Phase 1 — menu defects and orientation:
   REDESIGN only for own imports.
 - [x] ALL KEYS page (`F1`), generated from the menu's table.
 - [x] The empty-library hint names the real chord.
-- [ ] Delete asks in a dialog (KEEP preselected) instead of an 8 s status line.
-- [ ] Calibration / Input Test / Statistics return where they were opened from.
+- [x] Delete asks in a dialog (KEEP preselected) instead of an 8 s status line.
+- [x] Calibration / Input Test / Statistics return where they were opened from.
+- [ ] Follow-up found on the way: `remove_song_files` removes a whole folder only
+  under an `imported/` parent; in the moved library (song folders directly under
+  `songs/`) a delete removes `chart.json` and leaves the audio behind.
 - [ ] One version list: revisions join the versions on `Shift+←/→`; SWITCH
   REVISION goes; the dead tree code in `song_tree.rs` goes.
 

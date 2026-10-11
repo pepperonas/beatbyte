@@ -54,6 +54,18 @@ const HEAT_H: f32 = 18.0;
 #[derive(Resource, Debug, Clone, Copy, Default)]
 pub struct StatsFor(pub Option<PlayerId>);
 
+/// Where leaving the statistics goes: the screen that opened them.
+/// The roster leaves it at its default; the main menu sets it, so a
+/// player who came from the menu is not dropped into the roster.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StatsReturn(pub AppState);
+
+impl Default for StatsReturn {
+    fn default() -> Self {
+        StatsReturn(AppState::Players)
+    }
+}
+
 /// The view `BEATBYTE_SHOT_VIEW` asks for, for the harness.
 ///
 /// Without it only the first of eight views could ever be
@@ -421,6 +433,7 @@ pub struct StatsUiPlugin;
 impl Plugin for StatsUiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<StatsFor>()
+            .init_resource::<StatsReturn>()
             .init_resource::<StatsView>()
             .init_resource::<StatsFilters>()
             .init_resource::<TelemetryProbe>()
@@ -1742,6 +1755,7 @@ fn stats_nav(
     mut probe: ResMut<TelemetryProbe>,
     viewer: Viewer,
     mut next: ResMut<NextState<AppState>>,
+    mut came_from: ResMut<StatsReturn>,
     mut commands: Commands,
     screen: Query<Entity, With<StatsScreen>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
@@ -1809,7 +1823,9 @@ fn stats_nav(
         mouse.just_pressed(MouseButton::Right),
     ) {
         sounds.write(crate::sfx::UiSound::Back);
-        next.set(AppState::Players);
+        next.set(came_from.0);
+        // The next visit decides afresh where it came from.
+        *came_from = StatsReturn::default();
     }
 }
 
@@ -1835,6 +1851,14 @@ fn despawn_stats(mut commands: Commands, entities: Query<Entity, With<StatsScree
 
 #[cfg(test)]
 mod tests {
+
+    /// Leaving the statistics goes to the roster unless the main menu
+    /// opened them — the roster leaves the default alone.
+    #[test]
+    fn the_statistics_go_back_where_they_were_opened() {
+        assert_eq!(StatsReturn::default().0, AppState::Players);
+    }
+
     use super::*;
     use beatbyte_core::player::Roster;
 

@@ -1049,6 +1049,58 @@ pub fn spawn_action_menu(commands: &mut Commands, font: &UiFont, items: &[u8], s
         });
 }
 
+/// The delete dialog: what is about to go, and two rows — KEEP IT
+/// (where the cursor starts) and DELETE. One way in for every device:
+/// arrows or D-pad, ENTER or the green fret, a click; `Y` still answers
+/// from the keyboard.
+pub fn spawn_delete_dialog(commands: &mut Commands, font: &UiFont, title: &str) {
+    commands
+        .spawn((
+            crate::song_select::DeleteOverlay,
+            DespawnOnExit(crate::states::AppState::SongSelect),
+            Node {
+                position_type: PositionType::Absolute,
+                width: percent(100),
+                height: percent(100),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            // Opaque, like the action menu: Bevy blends this alpha in
+            // linear space, and at 0.92 the list read through clearly.
+            BackgroundColor(palette::BACKGROUND),
+            GlobalZIndex(15),
+        ))
+        .with_children(|overlay| {
+            ui_kit::header(
+                overlay,
+                font,
+                "DELETE?",
+                &font.safe(&format!("\"{title}\"  ·  the version shown")),
+            );
+            overlay
+                .spawn((
+                    crate::menu_list::list::ListPanel::<crate::song_select::DeleteRows>::new(),
+                    ui_kit::panel(),
+                ))
+                .insert(BackgroundColor(palette::BACKGROUND))
+                .with_children(|panel| {
+                    crate::menu_list::list::spawn_rows::<crate::song_select::DeleteRows>(
+                        panel,
+                        font,
+                        crate::song_select::DELETE_ROWS,
+                    );
+                });
+            crate::prompts::device_footer(
+                overlay,
+                font,
+                "UP/DOWN choose  ENTER answer  Y delete  ESC keep",
+                "D-PAD choose  GREEN answer  RED keep",
+            );
+        });
+}
+
 /// The ALL KEYS page: every key the browser answers to, keyboard on the
 /// left and pad/guitar on the right, so nothing has to be guessed.
 pub fn spawn_help_overlay(

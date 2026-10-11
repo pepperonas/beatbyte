@@ -14,6 +14,23 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.84] - 2026-10-11
+
+### Changed
+
+- Deleting a song asks in a dialog instead of an 8-second line in the
+  status bar: KEEP IT is preselected, DELETE THIS VERSION answers, and it
+  works with arrows, a pad, a guitar or the mouse (`Y` still deletes from
+  the keyboard). The question no longer lapses by itself.
+- Calibration and Input Test return to Settings, where they are opened;
+  Statistics opened from the main menu return to the main menu.
+
+### Removed
+
+- `Ctrl/Cmd+Backspace` as "clear the rating line": that chord always
+  asked to delete the song first, so it never cleared anything.
+  `Ctrl/Cmd+0` clears a line.
+
 ## [0.18.83] - 2026-10-11
 
 ### Fixed

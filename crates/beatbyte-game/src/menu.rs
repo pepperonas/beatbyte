@@ -140,6 +140,7 @@ pub(crate) fn menu_input(
     mut roster: ResMut<crate::multiplayer::PlayerRoster>,
     players: Res<crate::players::Players>,
     mut chosen: ResMut<crate::stats_ui::StatsFor>,
+    mut stats_return: ResMut<crate::stats_ui::StatsReturn>,
     mut next_state: ResMut<NextState<AppState>>,
     mut quit: MessageWriter<crate::crt::QuitRequested>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
@@ -176,6 +177,7 @@ pub(crate) fn menu_input(
             MenuAction::Statistics => {
                 if players.0.selected.is_some() {
                     chosen.0 = players.0.selected;
+                    stats_return.0 = AppState::MainMenu;
                     next_state.set(AppState::Stats);
                 } else {
                     next_state.set(AppState::Players);

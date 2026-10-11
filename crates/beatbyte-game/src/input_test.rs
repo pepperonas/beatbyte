@@ -376,7 +376,8 @@ fn run_tester(
     {
         sounds.write(crate::sfx::UiSound::Back);
         crate::config::save_settings(&settings);
-        next_state.set(AppState::MainMenu);
+        // Back to Settings: its INPUT TEST row is the only door here.
+        next_state.set(AppState::Settings);
     }
 }
 

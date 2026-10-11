@@ -646,7 +646,8 @@ impl Plugin for SongSelectPlugin {
             )
             .add_systems(
                 Update,
-                action_menu
+                (action_menu, delete_dialog)
+                    .chain()
                     .before(browser_input)
                     .run_if(in_state(AppState::SongSelect)),
             )
@@ -1327,13 +1328,99 @@ pub fn next_revision<'a>(
 
 /// The delete question: which song it is about (by LIBRARY index —
 /// a re-sort between the question and the answer moves rows, and
-/// the question was about a song) and how long it still waits.
+/// the question was about a song). While it is armed a dialog asks
+/// and holds every key until it is answered; it no longer lapses on
+/// a timer, because a question that vanishes by itself is a question
+/// a pad player never got to answer.
 #[derive(Resource, Debug, Default)]
 pub struct DeleteQuestion {
     /// The song asked about.
     pub armed: Option<usize>,
-    /// Seconds left before the question lapses.
-    pub left_s: f32,
+}
+
+/// The delete dialog's rows (the shared list renderer).
+pub struct DeleteRows;
+
+/// The delete dialog's overlay.
+#[derive(Component)]
+pub struct DeleteOverlay;
+
+/// The dialog's rows, in order. KEEP comes first and is where the
+/// cursor starts: the stray key that asked must not also be the key
+/// that answers, and ENTER on the preselected row keeps the song.
+pub const DELETE_ROWS: [&str; 2] = ["KEEP IT", "DELETE THIS VERSION"];
+
+/// What the dialog's input answers, as the chip id the browser runs:
+/// `Y`, or ENTER/a click on the DELETE row, deletes; ENTER/a click on
+/// KEEP, Back or the right button keeps. `None` while undecided.
+/// Pure — tested.
+#[must_use]
+pub fn delete_answer(row: usize, choose: bool, back: bool, yes_key: bool) -> Option<u8> {
+    if yes_key || (choose && row == 1) {
+        Some(chip::CONFIRM)
+    } else if choose || back {
+        Some(chip::CANCEL)
+    } else {
+        None
+    }
+}
+
+/// Show, drive and close the delete dialog. Runs after the action menu
+/// and before the browser's input: an answer becomes this frame's chip
+/// id, and the browser carries it out through the rule it always had.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI
+pub(crate) fn delete_dialog(
+    mut commands: Commands,
+    font: Res<UiFont>,
+    settings: Res<crate::config::Settings>,
+    library: Res<SongLibrary>,
+    keys: Res<ButtonInput<KeyCode>>,
+    question: Res<DeleteQuestion>,
+    mut menu: ResMut<ActionMenu>,
+    mut clicks: ResMut<ActionBarClicks>,
+    mut list: crate::menu_list::list::ListInput<DeleteRows>,
+    mut paint: crate::menu_list::list::ListPaint<DeleteRows>,
+    overlays: Query<Entity, With<DeleteOverlay>>,
+    mut row: Local<usize>,
+    mut sounds: MessageWriter<crate::sfx::UiSound>,
+) {
+    let Some(index) = question.armed else {
+        for overlay in &overlays {
+            commands.entity(overlay).despawn();
+        }
+        return;
+    };
+    if overlays.is_empty() {
+        // The frame that asked spends its keys on asking.
+        *row = 0;
+        let title = library
+            .entries
+            .get(index)
+            .map_or_else(String::new, |entry| {
+                beatbyte_chart::twin::base_title(&entry.title)
+                    .unwrap_or(&entry.title)
+                    .to_owned()
+            });
+        look::spawn_delete_dialog(&mut commands, &font, &title);
+        return;
+    }
+    let mut at = *row;
+    let events = list.read(&mut at, DELETE_ROWS.len());
+    *row = at;
+    if let Some(sound) = crate::menu_list::list::sound_for(None, events.moved) {
+        sounds.write(sound);
+    }
+    let answer = delete_answer(
+        *row,
+        events.nav.confirm || events.clicked,
+        events.nav.back || events.right_click,
+        keys.just_pressed(KeyCode::KeyY),
+    );
+    if let Some(id) = answer {
+        clicks.0 = vec![id];
+        menu.spent = true;
+    }
+    paint.paint(*row, settings.high_contrast, |_| String::new());
 }
 
 /// The browser's pointer inputs, bundled: `browser_input` sits at
@@ -1689,7 +1776,6 @@ fn browser_input(
     mut next_state: ResMut<NextState<AppState>>,
     mut pointer_in: PointerInput,
     rows: Query<(&SongRow, &Interaction), Changed<Interaction>>,
-    time: Res<Time>,
     mut status: ResMut<crate::import::ImportStatus>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
@@ -1697,6 +1783,14 @@ fn browser_input(
     // closed it is spent there too, but a tool it chose still runs
     // below (through its chip id).
     if start.menu.open || start.menu.help {
+        return;
+    }
+    // The delete dialog holds every key until it is answered; its
+    // answer arrives as a chip id and is carried out below.
+    if start.question.armed.is_some()
+        && !ui_kit::chip_hit(&start.clicks.0, chip::CONFIRM)
+        && !ui_kit::chip_hit(&start.clicks.0, chip::CANCEL)
+    {
         return;
     }
     let spent = std::mem::take(&mut start.menu.spent);
@@ -1882,28 +1976,14 @@ fn browser_input(
     // remove the highlighted song from disk; only `Y` answers, and it
     // answers the QUESTION rather than starting the song. Backspace
     // alone is text: it erases the search. Built-ins cannot be removed.
-    start.question.left_s = (start.question.left_s - time.delta_secs()).max(0.0);
-    if start.question.left_s <= 0.0 {
-        start.question.armed = None;
-    }
     let armed = start.question.armed.is_some();
-    let yes =
-        (armed && keys.just_pressed(KeyCode::KeyY)) || ui_kit::chip_hit(clicks, chip::CONFIRM);
+    // The dialog answers (`delete_dialog`): `Y` or the DELETE row is
+    // CONFIRM, everything else that answers is CANCEL.
+    let yes = ui_kit::chip_hit(clicks, chip::CONFIRM);
     let remove = shortcut(KeyCode::Backspace)
         || shortcut(KeyCode::Delete)
         || ui_kit::chip_hit(clicks, chip::DELETE);
-    let other = keys.get_just_pressed().any(|key| {
-        !matches!(
-            key,
-            KeyCode::Backspace
-                | KeyCode::Delete
-                | KeyCode::KeyY
-                | KeyCode::ControlLeft
-                | KeyCode::ControlRight
-                | KeyCode::SuperLeft
-                | KeyCode::SuperRight
-        )
-    }) || ui_kit::chip_hit(clicks, chip::CANCEL);
+    let other = ui_kit::chip_hit(clicks, chip::CANCEL);
     let step = if searching {
         // A field is taking keys: Backspace is text there, and a
         // question asked from a keystroke meant for a name is the
@@ -1930,9 +2010,6 @@ fn browser_input(
                 // question and the answer moves positions, and the
                 // question was about a song, not a row number.
                 start.question.armed = here;
-                start.question.left_s = 8.0;
-                status.0 =
-                    format!("delete \"{title}\" and its files? Y deletes, any other key keeps it");
             }
         }
         DeleteStep::Confirm => {
@@ -2368,8 +2445,6 @@ pub enum RatingKey {
     Focus(i32),
     /// Set or toggle the focused line to this many stars (Ctrl/Cmd+0-5).
     Stars(u8),
-    /// Clear the focused line (Ctrl/Cmd+Backspace or Delete).
-    Clear,
 }
 
 /// The rating key pressed this frame, if any. `command` is whether
@@ -2387,9 +2462,6 @@ pub fn rating_key(command: bool, keys: &ButtonInput<KeyCode>) -> Option<RatingKe
     }
     if keys.just_pressed(KeyCode::ArrowDown) {
         return Some(RatingKey::Focus(1));
-    }
-    if keys.just_pressed(KeyCode::Backspace) || keys.just_pressed(KeyCode::Delete) {
-        return Some(RatingKey::Clear);
     }
     const DIGITS: [KeyCode; 12] = [
         KeyCode::Digit0,
@@ -2480,10 +2552,6 @@ fn rating_input(
         Some(RatingKey::Stars(n)) => {
             let current = ratings.value(&player, entry, field(focus.0));
             ratings.set(&player, entry, field(focus.0), star_click(current, n));
-            sounds.write(crate::sfx::UiSound::Slider);
-        }
-        Some(RatingKey::Clear) => {
-            ratings.set(&player, entry, field(focus.0), 0);
             sounds.write(crate::sfx::UiSound::Slider);
         }
         None => {}
@@ -3974,6 +4042,33 @@ mod rebuild_tests {
             chip::DELETE,
             "DELETE stands last, alone"
         );
+    }
+
+    /// The delete dialog: KEEP is the preselected row, so ENTER as it
+    /// opens keeps the song; only the DELETE row or `Y` deletes; Back
+    /// keeps; no input leaves the question standing.
+    #[test]
+    fn the_delete_dialog_deletes_only_on_purpose() {
+        use super::delete_answer;
+        assert_eq!(
+            super::DELETE_ROWS[0],
+            "KEEP IT",
+            "KEEP is where the cursor starts"
+        );
+        assert_eq!(delete_answer(0, true, false, false), Some(chip::CANCEL));
+        assert_eq!(delete_answer(1, true, false, false), Some(chip::CONFIRM));
+        assert_eq!(
+            delete_answer(0, false, false, true),
+            Some(chip::CONFIRM),
+            "Y"
+        );
+        assert_eq!(
+            delete_answer(1, false, true, false),
+            Some(chip::CANCEL),
+            "back"
+        );
+        assert_eq!(delete_answer(1, false, false, false), None, "undecided");
+        assert_eq!(delete_answer(0, false, false, false), None);
     }
 
     /// A chord names the machine's modifier; a plain key stays plain.
