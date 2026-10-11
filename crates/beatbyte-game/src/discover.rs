@@ -1394,11 +1394,11 @@ pub fn poll_discovery(
     if found && let (Some(builtins), Some(mut library)) = (builtins, library) {
         *library = crate::boot::scan_with_builtins(&builtins.0);
     }
-    // And its `[GS]` twin. The import queue is the only
-    // other caller of this, and the search never went through it —
-    // it calls `import_fetched` straight from its own task — so a
-    // downloaded song arrived without the twin every song is meant
-    // to carry. Same omission as the rescan above, one line later.
+    // And its background work (a vocal chart, when that setting asks
+    // for one). The import queue is the only other caller of this,
+    // and the search never went through it — it calls
+    // `import_fetched` straight from its own task — so a downloaded
+    // song once arrived without the work a dropped file got.
     if let (Some(folder), Some(settings), Some(mut twins)) = (folder, settings, twins) {
         crate::study_twin::queue_twin(&mut twins, &settings, folder);
     }
@@ -1439,23 +1439,37 @@ mod twin_tests {
     }
 
     #[test]
-    fn a_song_found_by_the_search_gets_its_study_twin() {
-        // A dropped file has always got one: the import queue is the
-        // only caller of `queue_twin`, and the search never went
-        // through it — it calls `import_fetched` straight from its
-        // own task. So every song the player downloaded arrived
-        // without the twin they had asked every song to carry.
+    fn a_song_found_by_the_search_gets_the_work_its_settings_ask_for() {
+        // The search calls `import_fetched` straight from its own
+        // task, so it must queue the background work itself — once it
+        // forgot, and every downloaded song went without. No twin is
+        // made any more; a vocal chart is, when its setting asks.
         let folder = std::path::PathBuf::from("/songs/imported/Toto - Africa");
-        let mut app = wired();
-        finished(
-            &mut app,
+        let found = || {
             Ok(Found {
                 line: "added \"Africa\"".to_owned(),
-                folder: Some(folder.clone()),
-            }),
-        );
+                folder: Some(std::path::PathBuf::from("/songs/imported/Toto - Africa")),
+            })
+        };
+        let mut app = wired();
+        finished(&mut app, found());
         app.update();
-        assert_eq!(queued(&mut app), vec![folder], "no twin was queued");
+        assert!(
+            queued(&mut app).is_empty(),
+            "nothing asked for, nothing queued"
+        );
+
+        let mut app = wired();
+        app.world_mut()
+            .resource_mut::<crate::config::Settings>()
+            .vocal_charts = true;
+        finished(&mut app, found());
+        app.update();
+        assert_eq!(
+            queued(&mut app),
+            vec![folder],
+            "the vocal chart was not queued"
+        );
     }
 
     #[test]

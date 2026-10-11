@@ -6,7 +6,7 @@ holds the work itself.
 
 ## Menu guidance, GS/CL out of sight, community-first import (2026-10-11)
 
-*Verified: 2202 tests in the source inventory, including documentation examples;
+*Verified: 2198 tests in the source inventory, including documentation examples;
 all local gates; the action menu and the ALL KEYS page photographed on the real
 library (8 571 folders).*
 
@@ -27,14 +27,30 @@ Phase 1 — menu defects and orientation:
 - [ ] Follow-up found on the way: `remove_song_files` removes a whole folder only
   under an `imported/` parent; in the moved library (song folders directly under
   `songs/`) a delete removes `chart.json` and leaves the audio behind.
-- [ ] One version list: revisions join the versions on `Shift+←/→`; SWITCH
-  REVISION goes; the dead tree code in `song_tree.rs` goes.
 
-Phase 2 — origin filter (ALL / COMMUNITY / RIPS / IMPORTS) and plain version names.
-Phase 3 — no automatic GS twins, GUITAR STUDY TWINS row removed (field still read).
+Phase 2 — origin filter and plain version names:
+- [x] SHOW chip (ALL / COMMUNITY / RIPS / IMPORTS), `Cmd/Ctrl O`, action menu;
+  narrows families to their matching versions; never persisted (a stale
+  filter hides songs silently — the search text's rule).
+- [x] Version chips in words (COMMUNITY n, RIP n, YOUR IMPORT, EXTRA CHART).
+- [x] The dead tree code (`song_tree.rs`) removed.
+- [x] Revisions stay behind SWITCH REVISION (merging them into the version
+  list would activate files on disk at every arrow press; the Bridge library
+  barely has revisions). Instead: offer it only when a folder has more than one.
+  → still open, folded into Phase 4's menu work.
+
+Phase 3 — GS/CL out of the interface:
+- [x] No automatic `[GS]` twins (only the harness's own switch makes one);
+  GUITAR STUDY TWINS row removed, its field kept so old files load and sync.
 Phase 4 — `beatbyte-encore` (search, choose, `.sng` decode), Encore before
 YouTube, the best generation as one chart upgraded in place, a zero-match row
 that adds the typed song, an import queue. ADR-0025.
+Phase 5 (after 1–4, the user's call 2026-10-11) — documentation and a README
+"perfectly staged": the old screenshots replaced by device mockups (real frames
+in a MacBook/monitor bezel on a gold/navy gradient, a hero collage of three
+staggered screens, feature cards; rendered from HTML with Playwright by a
+script, reproducible), more badges (live GitHub status, tech-stack logos,
+facts from the code checked by `docs_stay_true`, a few in a lighter tone).
 
 ## Whammy diagnostics and sustain feedback (2026-10-10)
 

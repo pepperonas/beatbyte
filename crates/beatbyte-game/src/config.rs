@@ -148,14 +148,10 @@ pub struct Settings {
     /// are.
     #[serde(default = "default_true")]
     pub normalize_loudness: bool,
-    /// Give every imported song a `[GS]` twin: a second
-    /// browser entry charted from the separated instrument stem, in a
-    /// folder of its own beside the original (which is never touched).
-    /// Runs in the background after the import, needs `demucs` on the
-    /// machine; without it the row says so and the import is what it
-    /// always was. On by default (user, 2026-09-15: "das soll so
-    /// sein") — `default = "default_true"` reaches files written
-    /// before the field existed.
+    /// **No longer read** (2026-10-11): imports no longer get a `[GS]`
+    /// twin and the settings row is gone. The field stays so a settings
+    /// file — every one written before carries it — keeps loading and
+    /// syncing unchanged; nothing decides from its value.
     #[serde(default = "default_true")]
     pub guitar_study_twins: bool,
     /// Make a vocal chart for every imported song: separate the

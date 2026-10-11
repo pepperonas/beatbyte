@@ -79,25 +79,15 @@ pub fn demucs_available() -> bool {
         .is_ok_and(|out| out.status.success())
 }
 
-/// The SETTINGS row's second line: what the twin is, and — when the
-/// tool is missing — how to get it.
+/// Whether an import should queue a `[GS]` twin: only the harness's
+/// own switch asks for one now. A player's import no longer gets a
+/// second, stem-charted entry beside it (2026-10-11, the user: GS and
+/// CL leave the interface); the library is one entry per version, and
+/// what the stem pipeline knows goes into the import itself. Pure —
+/// tested.
 #[must_use]
-pub fn row_subtitle() -> String {
-    if demucs_available() {
-        "a second, stem-charted entry per imported song".to_owned()
-    } else {
-        format!("needs {DEMUCS} - `pipx install {DEMUCS}`")
-    }
-}
-
-/// Whether an import should queue its twin. The setting decides; under
-/// the autopilot the job runs only when asked for by its own switch,
-/// because a separation saturates the machine for two minutes and the
-/// autopilot's clock-teleport rule false-fails under exactly that load
-/// (recorded in CLAUDE.md). Pure — tested.
-#[must_use]
-pub fn twin_wanted(setting_on: bool, autopilot: bool, autopilot_twins: bool) -> bool {
-    setting_on && (!autopilot || autopilot_twins)
+pub fn twin_wanted(autopilot: bool, autopilot_twins: bool) -> bool {
+    autopilot && autopilot_twins
 }
 
 /// The VOCAL CHARTS row's second line.
@@ -155,7 +145,7 @@ pub fn queue_twin(queue: &mut StudyQueue, settings: &Settings, folder: PathBuf) 
     let twins = std::env::var_os("BEATBYTE_AUTOPILOT_TWINS").is_some();
     let vocals_switch = std::env::var_os("BEATBYTE_AUTOPILOT_VOCALS").is_some();
     let work = SongWork {
-        twin: twin_wanted(settings.guitar_study_twins, autopilot, twins),
+        twin: twin_wanted(autopilot, twins),
         vocals: vocals_wanted(settings.vocal_charts, autopilot, vocals_switch),
         folder,
     };
@@ -544,21 +534,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_setting_decides_and_the_autopilot_needs_its_own_switch() {
+    fn a_players_import_gets_no_twin_and_only_the_harness_asks_for_one() {
+        assert!(!twin_wanted(false, false), "a player's import: no twin");
+        assert!(!twin_wanted(false, true), "the switch alone is not a run");
         assert!(
-            twin_wanted(true, false, false),
-            "a player's import gets its twin"
-        );
-        assert!(!twin_wanted(false, false, false), "off means off");
-        assert!(
-            !twin_wanted(true, true, false),
+            !twin_wanted(true, false),
             "the harness does not separate stems uninvited"
         );
-        assert!(twin_wanted(true, true, true), "unless its switch says so");
-        assert!(
-            !twin_wanted(false, true, true),
-            "and never against the setting"
-        );
+        assert!(twin_wanted(true, true), "unless its switch says so");
     }
 
     fn entry(audio: &Path) -> crate::library::SongEntry {
@@ -679,23 +662,18 @@ mod tests {
             vocal_charts: false,
             ..Settings::default()
         };
+        // Even a settings file that still says yes to twins (every file
+        // written before 2026-10-11 does) queues nothing: a job with no
+        // work in it never starts a chore.
         queue_twin(&mut queue, &settings, PathBuf::from("/songs/a"));
-        assert_eq!(queue.pending.len(), 1);
-        let work = queue.pending.front().expect("queued");
-        assert!(work.twin && !work.vocals);
-        assert_eq!(work.folder, PathBuf::from("/songs/a"));
-
-        // Both off: nothing is queued at all, so a chore never starts
-        // for a song with no work in it.
-        settings.guitar_study_twins = false;
-        queue_twin(&mut queue, &settings, PathBuf::from("/songs/b"));
-        assert_eq!(queue.pending.len(), 1, "an empty job was queued");
+        assert!(queue.pending.is_empty(), "an empty job was queued");
 
         // Vocals alone are enough to queue.
         settings.vocal_charts = true;
         queue_twin(&mut queue, &settings, PathBuf::from("/songs/c"));
         let work = queue.pending.back().expect("queued");
         assert!(!work.twin && work.vocals);
+        assert_eq!(queue.pending.len(), 1);
     }
 
     #[test]

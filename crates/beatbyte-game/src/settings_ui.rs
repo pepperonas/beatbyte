@@ -155,11 +155,6 @@ impl Row {
         Subtitle::Text("ROOM LEVEL hears the room; SONG BEAT needs no mic")
     );
     pub(crate) const FULLSCREEN: Row = row!("FULLSCREEN", toggle!(fullscreen));
-    pub(crate) const GUITAR_STUDY_TWINS: Row = row!(
-        "GUITAR STUDY TWINS",
-        toggle!(guitar_study_twins),
-        Subtitle::Live(crate::study_twin::row_subtitle)
-    );
     pub(crate) const HIGH_CONTRAST: Row = row!("HIGH CONTRAST", toggle!(high_contrast));
     pub(crate) const HIT_LABELS: Row = row!("HIT LABELS", toggle!(hit_labels));
     pub(crate) const INPUT_TEST: Row =
@@ -424,7 +419,7 @@ impl Row {
     /// Every row, in the order the screen shows them: **alphabetical
     /// by label**, and kept that way by a test — a new row goes where
     /// its name falls, not at the end of the list.
-    pub(crate) const ALL: [Row; 47] = [
+    pub(crate) const ALL: [Row; 46] = [
         Row::AI_SEARCH,
         Row::BEAT_PULSE,
         Row::CALIBRATION,
@@ -433,7 +428,6 @@ impl Row {
         Row::EXPORT_HISTORY,
         Row::FLASH_SYNC,
         Row::FULLSCREEN,
-        Row::GUITAR_STUDY_TWINS,
         Row::HIGH_CONTRAST,
         Row::HIT_LABELS,
         Row::INPUT_TEST,
@@ -702,12 +696,7 @@ impl Category {
                 Row::ORIGINAL_VOCALS,
                 Row::MIC_OFFSET,
             ],
-            Self::Library => &[
-                Row::LIBRARY,
-                Row::WATCH_FOLDER,
-                Row::AI_SEARCH,
-                Row::GUITAR_STUDY_TWINS,
-            ],
+            Self::Library => &[Row::LIBRARY, Row::WATCH_FOLDER, Row::AI_SEARCH],
             Self::System => &[
                 Row::FULLSCREEN,
                 Row::TEXT_SCALE,
@@ -2276,7 +2265,6 @@ mod tests {
             Row::SCREEN_SHAKE,
             Row::BEAT_PULSE,
             Row::LOUDNESS_MATCH,
-            Row::GUITAR_STUDY_TWINS,
             Row::BACKDROP_MOTION,
             Row::HIT_LABELS,
             Row::NO_FAIL,

@@ -56,6 +56,88 @@ pub enum SortMode {
     Favorite,
 }
 
+/// Where a song's chart came from, as the origin filter sees it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Origin {
+    /// A community chart fetched through Bridge / Encore (`[BG-NN]`).
+    Community,
+    /// A game rip: a commercial game's own chart and audio (`[GR-NN]`).
+    Rip,
+    /// Everything else: the player's own imports, older twins, built-ins.
+    #[default]
+    Import,
+}
+
+/// A song's origin, from its folder's name — the same rule
+/// `beatbyte_chart::twin` files every version by. Pure — tested.
+#[must_use]
+pub fn origin_of(entry: &SongEntry) -> Origin {
+    let name = entry_folder(entry).and_then(|folder| {
+        folder
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+    });
+    match name
+        .as_deref()
+        .and_then(beatbyte_chart::twin::kind_of_folder)
+    {
+        Some(beatbyte_chart::twin::Kind::Bridge) => Origin::Community,
+        Some(beatbyte_chart::twin::Kind::GameRip) => Origin::Rip,
+        _ => Origin::Import,
+    }
+}
+
+/// Which origins the browser shows. Always ALL when the game starts:
+/// a narrowed list left over from last time hides songs without a
+/// word, the same reason the search text is never kept.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OriginFilter {
+    /// Every song.
+    #[default]
+    All,
+    /// Community charts only.
+    Community,
+    /// Game rips only.
+    Rips,
+    /// The player's own imports only.
+    Imports,
+}
+
+impl OriginFilter {
+    /// The next filter in the chip's cycle.
+    #[must_use]
+    pub const fn next(self) -> OriginFilter {
+        match self {
+            OriginFilter::All => OriginFilter::Community,
+            OriginFilter::Community => OriginFilter::Rips,
+            OriginFilter::Rips => OriginFilter::Imports,
+            OriginFilter::Imports => OriginFilter::All,
+        }
+    }
+
+    /// The chip's word.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            OriginFilter::All => "ALL",
+            OriginFilter::Community => "COMMUNITY",
+            OriginFilter::Rips => "RIPS",
+            OriginFilter::Imports => "IMPORTS",
+        }
+    }
+
+    /// Whether a song of this origin passes. Pure — tested.
+    #[must_use]
+    pub const fn admits(self, origin: Origin) -> bool {
+        match self {
+            OriginFilter::All => true,
+            OriginFilter::Community => matches!(origin, Origin::Community),
+            OriginFilter::Rips => matches!(origin, Origin::Rip),
+            OriginFilter::Imports => matches!(origin, Origin::Import),
+        }
+    }
+}
+
 impl SortMode {
     /// The next mode in the `S` cycle.
     #[must_use]
@@ -116,6 +198,8 @@ pub struct BrowserView {
     pub order: Vec<usize>,
     /// Active sort.
     pub sort: SortMode,
+    /// Which origins are shown (never persisted).
+    pub origin: OriginFilter,
     /// Active search text, as typed. Case and diacritics are folded
     /// when the filter is APPLIED (`build_order`), never on the way
     /// in: the field shows what the player wrote, and Backspace
@@ -127,13 +211,6 @@ pub struct BrowserView {
     pub searching: bool,
     /// Whether the sort runs against its default direction.
     pub flipped: bool,
-    /// The rows as a tree (song, variants, revisions), parallel to
-    /// `order`: `order[i]` is `tree[i].entry`.
-    pub tree: Vec<crate::song_tree::Row>,
-    /// What the player opened this session, by song folder and level.
-    /// Kept by FOLDER, not by library index: a rescan renumbers the
-    /// entries, and an open song must stay open through an import.
-    pub open: std::collections::HashSet<(std::path::PathBuf, crate::song_tree::Level)>,
     /// The rows: one per song, its versions as members
     /// (`crate::song_family`). Parallel to `order`: `order[i]` is the
     /// member of `families[i]` that plays.
@@ -217,6 +294,7 @@ struct SearchEntry {
 #[derive(Default)]
 struct BrowserOrderCache {
     prepared: Vec<SearchEntry>,
+    origins: Vec<Origin>,
     base: Vec<usize>,
     full: Vec<usize>,
     sort: Option<SortMode>,
@@ -237,6 +315,7 @@ impl BrowserOrderCache {
                 ),
             })
             .collect();
+        self.origins = entries.iter().map(origin_of).collect();
         self.sort = None;
     }
 
@@ -831,7 +910,7 @@ impl Tool {
 }
 
 /// Every tool, in menu order: grouped, the common ones first.
-pub const TOOLS: [Tool; 17] = [
+pub const TOOLS: [Tool; 18] = [
     Tool {
         label: "PLAY",
         shortcut: Shortcut::Key("ENTER"),
@@ -896,6 +975,12 @@ pub const TOOLS: [Tool; 17] = [
         label: "SORT",
         shortcut: Shortcut::Chord("S"),
         id: chip::SORT,
+        section: Section::Library,
+    },
+    Tool {
+        label: "SHOW: ALL / COMMUNITY / RIPS / IMPORTS",
+        shortcut: Shortcut::Chord("O"),
+        id: chip::ORIGIN,
         section: Section::Library,
     },
     Tool {
@@ -1128,6 +1213,7 @@ mod chip {
     pub const FAVORITE: u8 = 18;
     pub const REVERSE: u8 = 19;
     pub const HELP: u8 = 20;
+    pub const ORIGIN: u8 = 21;
 }
 
 /// The tool chosen in the action menu this frame, as a chip id (the
@@ -1221,6 +1307,7 @@ fn search_sort_input(
     mut typed: MessageReader<bevy::input::keyboard::KeyboardInput>,
     mut view: ResMut<BrowserView>,
     sort_button: Query<&Interaction, (With<SortButton>, Changed<Interaction>)>,
+    origin_button: Query<&Interaction, (With<look::OriginButton>, Changed<Interaction>)>,
     clicks: Res<ActionBarClicks>,
     menu: Res<ActionMenu>,
     question: Res<DeleteQuestion>,
@@ -1277,6 +1364,13 @@ fn search_sort_input(
     if (command && keys.just_pressed(KeyCode::KeyR)) || ui_kit::chip_hit(&clicks.0, chip::REVERSE) {
         view.flipped = !view.flipped;
         sorted = true;
+    }
+    if (command && keys.just_pressed(KeyCode::KeyO))
+        || origin_button.iter().any(|i| *i == Interaction::Pressed)
+        || ui_kit::chip_hit(&clicks.0, chip::ORIGIN)
+    {
+        view.origin = view.origin.next();
+        sounds.write(crate::sfx::UiSound::Toggle);
     }
     // A sort ACTION blips like every other menu key and persists.
     if sorted {
@@ -2646,12 +2740,26 @@ fn sync_view(
     // The whole library in the sort's order, and what the filter let
     // through: families gather over the first and show by the second.
     // Without a filter the two are the same list — built once.
-    let full = &order_cache.full;
     let filtered = if view.filter.trim().is_empty() {
-        full.clone()
+        order_cache.full.clone()
     } else {
         order_cache.filtered(&library.entries, &view.filter)
     };
+    // The origin filter narrows BOTH lists: a family is shown when one
+    // of its versions passes, and only the versions that pass are
+    // offered on SHIFT+LEFT/RIGHT.
+    let (full, filtered) = if view.origin == OriginFilter::All {
+        (std::borrow::Cow::Borrowed(&order_cache.full), filtered)
+    } else {
+        let pass = |i: &usize| {
+            view.origin
+                .admits(order_cache.origins.get(*i).copied().unwrap_or_default())
+        };
+        let full: Vec<usize> = order_cache.full.iter().copied().filter(pass).collect();
+        let filtered: Vec<usize> = filtered.into_iter().filter(pass).collect();
+        (std::borrow::Cow::Owned(full), filtered)
+    };
+    let full = full.as_ref();
     let ordered_ms = started.elapsed().as_secs_f64() * 1000.0;
     let families = crate::song_family::families(&library.entries, full, &filtered);
     let families_ms = started.elapsed().as_secs_f64() * 1000.0 - ordered_ms;
@@ -2679,8 +2787,9 @@ fn sync_view(
             )
         })
         .collect();
-    let filter_changed = *last_filter != view.filter;
-    last_filter.clone_from(&view.filter);
+    let filter_key = format!("{}\u{1f}{}", view.filter, view.origin.label());
+    let filter_changed = *last_filter != filter_key;
+    *last_filter = filter_key;
     let raw = view.bypass_change_detection();
     // The cursor stays on its SONG through a re-sort or a version
     // change: follow the family head, not the row number.
@@ -2693,7 +2802,6 @@ fn sync_view(
     };
     raw.order = order;
     raw.families = families;
-    raw.tree.clear();
     if profile {
         info!(
             "browser profile: order {ordered_ms:.2} ms, families {families_ms:.2} ms, rest {:.2} ms, query {:?}, {} entries",
@@ -2943,6 +3051,118 @@ mod view_tests {
             chart_path,
         };
         e
+    }
+
+    /// A version's origin is its folder's kind: a Bridge folder is a
+    /// community chart, a game-rip folder a rip, everything else —
+    /// own imports, old study/classic twins, built-ins — an import.
+    #[test]
+    fn a_songs_origin_is_its_folders_kind() {
+        let at = |folder: &str| {
+            file_entry(
+                "X",
+                std::path::PathBuf::from(format!("/lib/{folder}/chart.json")),
+            )
+        };
+        assert_eq!(origin_of(&at("bridge-01-toto---africa")), Origin::Community);
+        assert_eq!(origin_of(&at("gamerip-02-toto---africa")), Origin::Rip);
+        assert_eq!(origin_of(&at("toto---africa")), Origin::Import);
+        assert_eq!(origin_of(&at("guitar-study-toto---africa")), Origin::Import);
+        assert_eq!(origin_of(&at("classic-toto---africa")), Origin::Import);
+        assert_eq!(origin_of(&entry("Demo", "BB", None, 1.0)), Origin::Import);
+    }
+
+    /// The filter cycles through all four and back, ALL lets everything
+    /// through, and each other filter exactly its own origin.
+    #[test]
+    fn the_origin_filter_cycles_and_admits_only_its_own() {
+        let mut filter = OriginFilter::default();
+        assert_eq!(
+            filter,
+            OriginFilter::All,
+            "a fresh browser shows everything"
+        );
+        let mut seen = vec![filter];
+        for _ in 0..4 {
+            filter = filter.next();
+            seen.push(filter);
+        }
+        assert_eq!(seen.first(), seen.last(), "four steps come back to ALL");
+        let origins = [Origin::Community, Origin::Rip, Origin::Import];
+        for origin in origins {
+            assert!(OriginFilter::All.admits(origin));
+        }
+        for (filter, own) in [
+            (OriginFilter::Community, Origin::Community),
+            (OriginFilter::Rips, Origin::Rip),
+            (OriginFilter::Imports, Origin::Import),
+        ] {
+            for origin in origins {
+                assert_eq!(
+                    filter.admits(origin),
+                    origin == own,
+                    "{filter:?} / {origin:?}"
+                );
+            }
+        }
+    }
+
+    /// The filter acts on VERSIONS, through the real system: under RIPS
+    /// a song with a community chart and a rip shows only its rip, a
+    /// song with no rip is gone, and ALL brings everything back.
+    #[test]
+    fn the_origin_filter_narrows_families_to_their_matching_versions() {
+        let at = |title: &str, folder: &str| {
+            let mut e = file_entry(
+                title,
+                std::path::PathBuf::from(format!("/lib/{folder}/chart.json")),
+            );
+            e.artist = "Toto".to_owned();
+            e
+        };
+        let entries = vec![
+            at("[BG-01] Africa", "bridge-01-toto---africa"),
+            at("[GR-01] Africa", "gamerip-01-toto---africa"),
+            at("[BG-01] Rosanna", "bridge-01-toto---rosanna"),
+        ];
+        let mut app = App::new();
+        app.insert_resource(SongLibrary { entries })
+            .init_resource::<BrowserCursor>()
+            .init_resource::<BrowserView>()
+            .init_resource::<crate::history::PlayHistory>()
+            .init_resource::<crate::ratings::SongRatings>()
+            .init_resource::<crate::players::Players>()
+            .add_systems(Update, sync_view);
+        app.world_mut().spawn(look::SongList);
+        app.update();
+        let shown = |app: &App| -> Vec<Vec<usize>> {
+            app.world()
+                .resource::<BrowserView>()
+                .families
+                .iter()
+                .map(|f| f.members.clone())
+                .collect()
+        };
+        assert_eq!(
+            shown(&app).len(),
+            2,
+            "ALL: Africa (two versions) and Rosanna"
+        );
+        app.world_mut().resource_mut::<BrowserView>().origin = OriginFilter::Rips;
+        app.update();
+        assert_eq!(shown(&app), vec![vec![1]], "RIPS: Africa's rip alone");
+        app.world_mut().resource_mut::<BrowserView>().origin = OriginFilter::Community;
+        app.update();
+        let community = shown(&app);
+        assert_eq!(community.len(), 2);
+        assert!(
+            community.iter().all(|members| !members.contains(&1)),
+            "no rip"
+        );
+        app.world_mut().resource_mut::<BrowserView>().origin = OriginFilter::All;
+        app.update();
+        assert_eq!(shown(&app).len(), 2);
+        assert!(shown(&app).iter().any(|members| members.len() == 2));
     }
 
     #[test]
@@ -3999,6 +4219,7 @@ mod rebuild_tests {
                 chip::ADD,
                 chip::BRIDGE,
                 chip::SORT,
+                chip::ORIGIN,
                 chip::REVERSE,
                 chip::HELP
             ]

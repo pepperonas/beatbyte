@@ -14,6 +14,29 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.85] - 2026-10-11
+
+### Added
+
+- SHOW in the song list (chip, `Cmd/Ctrl O`, or the action menu) narrows
+  the list to community charts, game rips or your own imports. A song
+  shows when one of its versions passes, and only those versions are
+  offered on `Shift+←/→`. It starts on ALL every time.
+
+### Changed
+
+- Version chips are named in words: COMMUNITY 1, RIP 1, YOUR IMPORT
+  (older study and classic twins read EXTRA CHART). The tags GS, CL,
+  BG-NN and GR-NN no longer appear in the song list.
+- Imports no longer get a `[GS]` guitar-study twin, and the GUITAR STUDY
+  TWINS row is gone from SETTINGS. Existing twins still load; the CLI
+  tools (`study`, `classic`) are unchanged.
+
+### Removed
+
+- The unused tree view of the song list (`song_tree`), left over since
+  the browser became one row per song.
+
 ## [0.18.84] - 2026-10-11
 
 ### Changed

@@ -54,7 +54,6 @@ pub mod song_browser_view;
 pub mod song_family;
 pub mod song_info;
 pub mod song_select;
-pub mod song_tree;
 pub mod states;
 pub mod stats_ui;
 pub mod study_twin;

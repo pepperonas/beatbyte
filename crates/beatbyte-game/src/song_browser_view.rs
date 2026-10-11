@@ -72,6 +72,9 @@ pub struct SortButton;
 /// The button that opens the action menu.
 #[derive(Component)]
 pub struct ActionsButton;
+/// The origin filter's chip (cycles ALL → COMMUNITY → RIPS → IMPORTS).
+#[derive(Component)]
+pub struct OriginButton;
 /// The panel's title.
 #[derive(Component)]
 pub struct PanelTitle;
@@ -216,6 +219,12 @@ pub fn search_line(filter: &str, shown: usize, total: usize, typing: bool) -> St
     }
 }
 
+/// The origin chip's text. Pure.
+#[must_use]
+pub fn origin_line(origin: crate::song_select::OriginFilter) -> String {
+    format!("SHOW  {}", origin.label())
+}
+
 /// The sort line. Pure — tested.
 #[must_use]
 pub fn sort_line(sort: SortMode, flipped: bool) -> String {
@@ -326,10 +335,23 @@ pub fn row_detail(entry: &SongEntry, sort: SortMode, best: Option<f64>) -> Strin
     }
 }
 
-/// The label of a version chip: NORMAL, GS, CL, BG-01 … Pure.
+/// The label of a version chip, in words a player reads without a
+/// glossary: COMMUNITY 1 for a Bridge chart, RIP 1 for a game rip,
+/// YOUR IMPORT for a song brought in by hand. An older study or
+/// classic twin (`[GS]`, `[CL]`) is just an EXTRA CHART now — those
+/// tags no longer appear anywhere a player looks. Pure — tested.
 #[must_use]
 pub fn version_label(entry: &SongEntry) -> String {
-    crate::song_tree::variant_label(&entry.title)
+    use beatbyte_chart::twin::{Kind, split_numbered_title};
+    match split_numbered_title(&entry.title) {
+        Some((Kind::Bridge, number, _)) => format!("COMMUNITY {number}"),
+        Some((Kind::GameRip, number, _)) => format!("RIP {number}"),
+        _ if entry.title.starts_with("[GS] ") || entry.title.starts_with("[CL] ") => {
+            "EXTRA CHART".to_owned()
+        }
+        _ if matches!(entry.source, SongSource::Builtin(_)) => "BUILT-IN".to_owned(),
+        _ => "YOUR IMPORT".to_owned(),
+    }
 }
 
 /// The difficulty whose facts a row and the panel show: the selected
@@ -409,15 +431,20 @@ pub fn spawn_shell(
                         BorderColor::all(line),
                         BackgroundColor(fill),
                     ));
+                    // Some(true) sort, Some(false) origin, None actions.
                     match marker {
                         Some(true) => {
                             e.insert(SortButton);
                         }
-                        _ => {
+                        Some(false) => {
+                            e.insert(OriginButton);
+                        }
+                        None => {
                             e.insert(ActionsButton);
                         }
                     }
                 };
+                chip(bar, Some(false), origin_line(view.origin));
                 chip(bar, Some(true), sort_line(view.sort, view.flipped));
                 chip(bar, None, "ACTIONS  TAB".to_owned());
             });
@@ -934,6 +961,7 @@ pub type PipOnly = (
     Without<DiffChip>,
     Without<VersionChip>,
     Without<SortButton>,
+    Without<OriginButton>,
     Without<ActionsButton>,
     Without<crate::ui_kit::BackButton>,
 );
@@ -1282,9 +1310,10 @@ pub fn paint_bar(
             &mut TextColor,
             &mut BackgroundColor,
             &mut BorderColor,
+            Has<OriginButton>,
         ),
         (
-            With<SortButton>,
+            Or<(With<SortButton>, With<OriginButton>)>,
             Without<SearchLine>,
             Without<ActionsButton>,
         ),
@@ -1314,14 +1343,19 @@ pub fn paint_bar(
             palette::BRAND
         };
     }
-    for (interaction, mut text, mut colour, mut background, mut border) in &mut sort {
-        let wanted = sort_line(view.sort, view.flipped);
+    for (interaction, mut text, mut colour, mut background, mut border, origin) in &mut sort {
+        let wanted = if origin {
+            origin_line(view.origin)
+        } else {
+            sort_line(view.sort, view.flipped)
+        };
         if text.0 != wanted {
             text.0 = wanted;
         }
         ui_kit::paint_selection_chip(
             *interaction,
-            false,
+            // A narrowed list says so: the chip reads as chosen.
+            origin && view.origin != crate::song_select::OriginFilter::All,
             &mut background,
             &mut border,
             Some(&mut colour),
@@ -1705,6 +1739,35 @@ mod tests {
         }
     }
 
+    /// Version chips speak words, not tags: no GS, CL or BG-NN is ever
+    /// shown to a player.
+    #[test]
+    fn version_chips_name_their_origin_in_words() {
+        let titled = |title: &str| SongEntry {
+            title: title.to_owned(),
+            ..entry()
+        };
+        assert_eq!(version_label(&titled("[BG-02] Maria")), "COMMUNITY 2");
+        assert_eq!(version_label(&titled("[GR-01] Maria")), "RIP 1");
+        assert_eq!(version_label(&titled("Maria")), "YOUR IMPORT");
+        assert_eq!(version_label(&titled("[GS] Maria")), "EXTRA CHART");
+        assert_eq!(version_label(&titled("[CL] [GS] Maria")), "EXTRA CHART");
+        let builtin = SongEntry {
+            source: SongSource::Builtin(0),
+            ..titled("Demo")
+        };
+        assert_eq!(version_label(&builtin), "BUILT-IN");
+        for title in ["[BG-02] M", "[GR-01] M", "M", "[GS] M", "[CL] M"] {
+            let label = version_label(&titled(title));
+            for tag in ["GS", "CL", "BG", "GR"] {
+                assert!(
+                    !label.split_whitespace().any(|w| w == tag),
+                    "{label} shows a tag"
+                );
+            }
+        }
+    }
+
     #[test]
     fn the_search_line_invites_then_counts() {
         assert_eq!(search_line("", 0, 466, true), "TYPE TO SEARCH 466 SONGS");
@@ -1741,7 +1804,7 @@ mod tests {
             status_line(&e),
             "NO LYRICS  ·  FIRST CHART  ·  AUDIO NOT MEASURED"
         );
-        assert_eq!(version_label(&e), "BG-01");
+        assert_eq!(version_label(&e), "COMMUNITY 1");
         assert_eq!(best_line(&e, Difficulty::Hard, None), "HARD   NOT PLAYED");
         assert_eq!(
             best_line(&e, Difficulty::Hard, Some((5, 0.854))),
