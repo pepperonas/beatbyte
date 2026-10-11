@@ -24,6 +24,16 @@ the manifest ever carries a version this file does not describe.
 - The browser's SHOW, SORT and ACTIONS chips stay on one line. ACTIONS
   wrapped, and its `TAB` hung below the chip's frame.
 
+### Documentation
+
+- The README opens on new mockups of the current build — a hero collage,
+  the game on a laptop, the browser, the action menu and the results —
+  made reproducibly by `tools/mockups/` from the game's own frames, with
+  no lyrics shown. The old screenshots are gone. New badges: live CI and
+  release status, the tech stack with logos, stage themes, achievements
+  and documentation pages (each checked against the code), and a few for
+  fun.
+
 ## [0.18.89] - 2026-10-11
 
 ### Fixed

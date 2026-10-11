@@ -1,9 +1,8 @@
 <div align="center">
 
-<img src="docs/media/bb-thumb.png" alt="BeatByte" width="900"/>
-<img src="docs/media/banner.png" alt="BeatByte — an original five-lane rhythm game in Rust" width="900"/>
+<img src="docs/media/mockup-hero.png" alt="BeatByte: the song browser, a song in play on the 3D stage and the results screen, side by side under the BEATBYTE wordmark" width="100%"/>
 
-**An original five-lane rhythm game. Your music. Pixel-art or polished — your call.**
+**An original five-lane rhythm game in Rust. Your music, the community's charts, a 3D stage that plays along.**
 
 <h2>🌐 <a href="https://beatbyte.celox.io">beatbyte.celox.io</a></h2>
 
@@ -15,6 +14,10 @@
 
 <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fpepperonas%2Fbeatbyte%2Fmain%2FCargo.toml&query=%24.workspace.package.version&prefix=v&label=version&color=ffd940&style=for-the-badge&logo=rust&logoColor=black" alt="Current version, read live from Cargo.toml"/></a>
 <a href="#development"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fpepperonas%2Fbeatbyte%2Fmain%2Fdocs%2Fbadges%2Floc.json&style=for-the-badge&logo=github&logoColor=white" alt="Lines of code, recounted by CI on every push"/></a>
+<br/>
+<a href="https://github.com/pepperonas/beatbyte/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/pepperonas/beatbyte/ci.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=main" alt="CI status of main, live"/></a>
+<a href="https://github.com/pepperonas/beatbyte/commits/main"><img src="https://img.shields.io/github/commits-since/pepperonas/beatbyte/latest?include_prereleases&style=for-the-badge&logo=git&logoColor=white&color=e040fb&label=commits%20since%20release" alt="Commits on main since the latest release, live"/></a>
+<a href="https://github.com/pepperonas/beatbyte/commits/main"><img src="https://img.shields.io/github/last-commit/pepperonas/beatbyte/main?style=for-the-badge&logo=github&logoColor=white&color=8fe3ff&label=last%20push" alt="Time of the last commit on main, live"/></a>
 
 ### Status
 
@@ -54,6 +57,8 @@
 [![ADRs](https://img.shields.io/badge/decisions-24%20ADRs-lightgrey)](docs/decisions/README.md)
 [![MSRV](https://img.shields.io/badge/MSRV-1.95-orange?logo=rust)](Cargo.toml)
 [![Harnesses](https://img.shields.io/badge/harness%20switches-49-success)](docs/development/harness.md)
+[![Achievements](https://img.shields.io/badge/achievements-300-ffd940)](docs/achievements.md)
+[![Docs pages](https://img.shields.io/badge/documentation-113%20pages-blue)](docs/)
 [![Docs](https://img.shields.io/badge/docs-architecture%20%C2%B7%20ADRs%20%C2%B7%20specs-blue)](docs/)
 [![Design System](https://img.shields.io/badge/UI-one%20design%20kit-blueviolet)](docs/ui/design-system.md)
 [![3D Stage](https://img.shields.io/badge/3D%20stage-documented-blueviolet)](docs/ui/3d-stage.md)
@@ -63,11 +68,20 @@
 [![Versioning](https://img.shields.io/badge/version-bumped%20per%20change-blue)](CHANGELOG.md)
 [![Determinism](https://img.shields.io/badge/charts-reproducible-blueviolet)](docs/audio/analysis.md)
 [![Dependencies](https://img.shields.io/badge/runtime%20deps-Rust%20crates%20only-informational)](Cargo.toml)
-[![Telemetry](https://img.shields.io/badge/telemetry-none-brightgreen)](#legal)
+[![Telemetry](https://img.shields.io/badge/telemetry-local%20only%2C%20never%20uploaded-brightgreen)](#legal)
 [![Network](https://img.shields.io/badge/network-lyrics%20%2B%20community%20charts%20on%20request%20%2B%20opt--in%20room%20lights%20(LAN)-brightgreen)](#legal)
 [![Build](https://img.shields.io/badge/build-one%20command-success)](#building-from-source)
 
 ### Tech
+
+<a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/></a>
+<a href="https://bevy.org/"><img src="https://img.shields.io/badge/Bevy%200.19-232326?style=for-the-badge&logo=bevy&logoColor=white" alt="Bevy 0.19"/></a>
+<a href="https://wgpu.rs/"><img src="https://img.shields.io/badge/wgpu-Metal%20%C2%B7%20Vulkan%20%C2%B7%20DX12-005A9C?style=for-the-badge&logo=webgpu&logoColor=white" alt="wgpu: Metal, Vulkan, DirectX 12"/></a>
+<a href="crates/beatbyte-ml"><img src="https://img.shields.io/badge/ONNX-local%20models-005CED?style=for-the-badge&logo=onnx&logoColor=white" alt="ONNX: the learned features run locally"/></a>
+<a href="crates/beatbyte-telemetry"><img src="https://img.shields.io/badge/SQLite-gameplay%20store-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite: the local gameplay store"/></a>
+<a href="https://ffmpeg.org/"><img src="https://img.shields.io/badge/FFmpeg-imports-007808?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="FFmpeg: used for community chart imports"/></a>
+<a href="https://github.com/pepperonas/beatbyte/actions"><img src="https://img.shields.io/badge/GitHub%20Actions-3%20platforms-2088FF?style=for-the-badge&logo=githubactions&logoColor=white" alt="GitHub Actions builds for three platforms"/></a>
+
 
 [![Rust](https://img.shields.io/badge/Rust-1.95%2B-orange?logo=rust)](https://www.rust-lang.org/)
 [![Edition](https://img.shields.io/badge/edition-2024-orange?logo=rust)](Cargo.toml)
@@ -108,9 +122,19 @@
 [![Motion](https://img.shields.io/badge/stage%20motion-reducible-brightgreen)](#features)
 [![Saves](https://img.shields.io/badge/saves-local%20JSON-brightgreen)](#legal)
 [![Accounts](https://img.shields.io/badge/accounts-none%20required-brightgreen)](#legal)
-[![Offline](https://img.shields.io/badge/offline-no%20telemetry-brightgreen)](#legal)
+[![Offline](https://img.shields.io/badge/offline-plays%20without%20a%20network-brightgreen)](#legal)
 [![DRM](https://img.shields.io/badge/DRM-free-brightgreen)](#legal)
 [![Assets](https://img.shields.io/badge/assets-100%25%20original%20%2F%20CC0%20%2F%20OFL-brightgreen)](#legal)
+
+### Just for fun
+
+[![One more song](https://img.shields.io/badge/one%20more%20song-always-ff69b4)](#features)
+[![Overstrums](https://img.shields.io/badge/autopilot%20overstrums-0-brightgreen)](#testing)
+[![Strum](https://img.shields.io/badge/strum-%F0%9F%8E%B8%20harder-ff6b1a)](#controls)
+[![Crowd](https://img.shields.io/badge/crowd-going%20wild-blueviolet)](docs/ui/3d-stage.md)
+[![Hype](https://img.shields.io/badge/hype-2x%20points-e040fb)](#features)
+[![Rock meter](https://img.shields.io/badge/rock%20meter-in%20the%20green-2ea44f)](#features)
+[![Coffee](https://img.shields.io/badge/fuelled%20by-%E2%98%95%20and%20distortion-6f4e37)](https://github.com/pepperonas/beatbyte/graphs/contributors)
 
 ### Support
 
@@ -134,46 +158,55 @@ one machine.
 > with friends, themed, packaged for all three platforms. 0.x versions
 > until the tuning settles; see the [roadmap](#roadmap).
 
-<p align="center">
-  <img src="docs/media/beatbyte-gameplay.png" alt="BeatByte gameplay: five-lane highway with falling notes, score, combo, multiplier and judgment popup" width="800"/>
-</p>
-
-*A held sustain on the middle lane, a PERFECT called on the note
-just hit and its sparks still in the air, the corner instrument panel
-(score well, multiplier box, streak bulbs, the Hype tube waiting on
-its marked notes) — on the 3D stage with its moving heads, LED wall,
-full PA stacks, a crowd of people dancing to the song, and the sealed
-stage deck the rig's spots reflect off. Every lane has its own gem
-shape, so color is never the only signal.*
+## A tour
 
 <p align="center">
-  <img src="docs/media/beatbyte-round-style.png" alt="BeatByte gameplay, a second moment: the instrument neck with pale strings, a held sustain, the karaoke line with the sung word picked out, the band on the riser, the crowd dial and hype tube" width="800"/>
+  <img src="docs/media/mockup-gameplay.png" alt="BeatByte in play on a laptop: the five-lane neck running into a 3D concert stage with moving heads, PA stacks, a band and a dancing crowd; Hype running at double points with lightning over the crowd" width="100%"/>
 </p>
 
-*Another moment of the same song: the dark instrument neck with its
-pale strings, a held sustain with its pale core, the karaoke line with
-the word being sung picked out, a band playing on the riser the neck
-runs into under a warm key and a cool rim, and the crowd's dial with
-the star-crowned Hype tube beside it. (Until v0.14.44 this caption
-described a second note style you could switch to; there is one style
-now, and this is it.)*
+*A community chart of "Heroes" on Expert with Hype running: double points,
+lightning over the crowd, the hit flame on the green fret. The band plays
+on the riser, the crowd moves to the song, and the PA monitors show the
+level of what you are hearing. Every lane has its own gem shape, so colour
+is never the only signal.*
 
 <p align="center">
-  <img src="docs/media/beatbyte-star-power.png" alt="BeatByte gameplay at the instant a star-power phrase lands whole: every ceiling head white at once, the neck and its rails lifted, a white flash over the picture — with the score, the hit label and the karaoke line all still readable" width="800"/>
+  <img src="docs/media/mockup-starpower.png" alt="A star-power phrase: star-shaped notes on a purple neck heading for the hit line" width="100%"/>
 </p>
 
-*The instant a star-power phrase lands whole. All twelve ceiling heads
-go white in the same frame — which the room's own strobe never does —
-the neck takes the energy in along its rails and hit line, and a short
-white flash catches the whole picture. It is one impulse on one clock,
-read by three systems, and it is gone inside half a second. Readable
-throughout, deliberately: the score, the hit label and the sung line
-are all still legible in this frame, which is 2.1× the brightness of
-the one before it.*
+*Star-shaped notes mark a phrase. Land all of it and the room flashes
+white and the Hype tube fills; spend the tube for double points.*
 
 <p align="center">
-  <img src="docs/media/beatbyte-results.png" alt="BeatByte results screen: S rank, 100% accuracy, 117 perfect notes" width="800"/>
+  <img src="docs/media/mockup-browser.png" alt="The song browser: one list of every song with the SHOW, SORT and ACTIONS chips, the selected song's difficulty, version and ratings, and behind it a search with no match offering to fetch the song online" width="100%"/>
 </p>
+
+*One list, one search. **SHOW** narrows it to community charts, game rips
+or your own imports; each song's versions are named in plain words
+(COMMUNITY 1, RIP 1). A search with no match offers to fetch the song:
+BeatByte asks the community catalogue for a finished chart first and
+only generates one when there is none.*
+
+<p align="center">
+  <img src="docs/media/mockup-actions.png" alt="The action menu, grouped into Play, This song, Library, Edit, Help and Danger, each tool with its key; behind it the ALL KEYS page for keyboard and pad" width="100%"/>
+</p>
+
+*Tab (or the pad's orange fret) opens every tool for the selected song,
+grouped, each with its key. F1 lists every key there is, for keyboard,
+pad and guitar.*
+
+<p align="center">
+  <img src="docs/media/mockup-results.png" alt="The results screen after a full combo: S rank, 100 percent accuracy, every note perfect, rating chips for the song, the chart and the lyrics; behind it the YOU ROCK finale" width="100%"/>
+</p>
+
+*After the last note: rank, accuracy, timing, streak, and three ratings
+(song, chart, lyrics) that the browser remembers.*
+
+<sub>The pictures are the game's own frames, taken by its screenshot
+harness from the current build and set into mockups drawn in CSS:
+`tools/mockups/shoot.sh` takes the frames, `tools/mockups/render.sh` lays
+them out. No lyrics are shown, because the words belong to their
+writers.</sub>
 
 ## Features
 

@@ -67,6 +67,21 @@ in a MacBook/monitor bezel on a gold/navy gradient, a hero collage of three
 staggered screens, feature cards; rendered from HTML with Playwright by a
 script, reproducible), more badges (live GitHub status, tech-stack logos,
 facts from the code checked by `docs_stay_true`, a few in a lighter tone).
+- [x] 5a Frames re-shot from 0.18.90 with lyrics off (browser, action menu,
+  ALL KEYS, the no-match row, Hype, a star phrase, the finale, results);
+  the runs found two defects fixed first (0.18.90: a `[BG-01]` tag in the
+  ribbon and results title, a wrapped ACTIONS chip).
+- [x] 5b `tools/mockups/`: `shoot.sh` (the frames, from the release build),
+  `mockup.html` + `render.sh` (headless Chrome; hero collage, laptop and a
+  two-window "duo" layout) → six pictures in `docs/media/`; the six old
+  screenshots removed.
+- [x] 5c README: the hero on top, a five-picture tour with captions, live
+  status (CI on main, commits since release, last push), a tech row with
+  logos, three new code facts pinned by `docs_stay_true` (stage themes,
+  achievements, documentation pages; each mutation-probed), a fun row; the
+  telemetry badges now say "local only" rather than "none" (ADR-0018).
+- [ ] 5d The product page (`website/site.json`) could use the same mockups;
+  not done, its hero is its own artwork.
 
 ## Whammy diagnostics and sustain feedback (2026-10-10)
 

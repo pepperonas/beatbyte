@@ -181,6 +181,14 @@ A picture of a different SIZE than its reference means the window
 opened on the other display (Retina 2560x1600, a plain monitor
 1280x800); the comparison says so instead of counting pixels.
 
+**The README's pictures are made the same way.** `tools/mockups/shoot.sh
+'"<song>"'` takes the frames from the release build (screen unlocked,
+lyrics off, the window raised every 2.5 s against stale frames) into the
+uncommitted `tools/mockups/raw/`, and `tools/mockups/render.sh` sets them
+into the CSS mockups of `tools/mockups/mockup.html` with headless Chrome,
+writing `docs/media/mockup-*.png`. `shots.txt` names which frame becomes
+which picture and its caption.
+
 **Take screenshots in a separate run from any pass/fail verdict.**
 Capturing a frame stalls it long enough for the key injector to miss a
 note: a song that scores 624 perfect without capture produced 16 misses

@@ -535,6 +535,52 @@ fn checkable_badges_state_the_truth() {
         readme.contains(&format!("decisions-{adrs}%20ADRs")),
         "the ADR badge does not say {adrs}"
     );
+
+    // Stage themes: the length of the theme table.
+    let themes = read("crates/beatbyte-game/src/theme.rs")
+        .lines()
+        .find_map(|line| {
+            line.trim()
+                .strip_prefix("pub const THEMES: [Theme; ")
+                .and_then(|rest| rest.split(']').next())
+                .map(str::to_owned)
+        })
+        .expect("theme.rs declares the THEMES table");
+    assert!(
+        readme.contains(&format!("stage%20themes-{themes}-")),
+        "the themes badge does not say {themes}"
+    );
+
+    // Achievements: every id in the catalogue.
+    let achievements = read("crates/beatbyte-core/src/achievements.rs")
+        .lines()
+        .filter(|line| line.trim().starts_with("id: \""))
+        .count();
+    assert!(
+        readme.contains(&format!("achievements-{achievements}-")),
+        "the achievements badge does not say {achievements}"
+    );
+
+    // Documentation: every Markdown page under docs/.
+    fn markdown(dir: &Path) -> usize {
+        fs::read_dir(dir)
+            .expect("readable docs directory")
+            .filter_map(Result::ok)
+            .map(|entry| {
+                let path = entry.path();
+                if path.is_dir() {
+                    markdown(&path)
+                } else {
+                    usize::from(path.extension().is_some_and(|ext| ext == "md"))
+                }
+            })
+            .sum()
+    }
+    let pages = markdown(&repo().join("docs"));
+    assert!(
+        readme.contains(&format!("documentation-{pages}%20pages")),
+        "the documentation badge does not say {pages} pages"
+    );
 }
 
 #[test]

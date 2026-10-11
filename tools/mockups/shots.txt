@@ -1,0 +1,10 @@
+# output | layout | frames / caption
+#   hero   | <left> | <middle> | <right>
+#   device | <frame> | <title> | <subtitle>
+#   duo    | <back> | <front> | <kicker> | <title> | <text>
+mockup-hero.png|hero|browser.png|gameplay.png|results.png
+mockup-gameplay.png|device|gameplay.png|FIVE LANES, YOUR MUSIC|a 3D stage, a band and a crowd that play along
+mockup-starpower.png|device|starpower.png|LAND THE PHRASE|star notes fill the Hype tube – spend it for double points
+mockup-browser.png|duo|nomatch.png|browser.png|THE SONG BROWSER|ONE SEARCH|Thousands of songs, one search. Filter by community charts, game rips or your own imports. Not there? Press Enter and BeatByte fetches it.
+mockup-actions.png|duo|help.png|actions.png|NOTHING HIDDEN|ONE KEY AWAY|Tab opens every tool for the song, in groups. F1 lists every key for keyboard, pad and guitar.
+mockup-results.png|duo|finale.png|results.png|AFTER THE LAST NOTE|YOU ROCK|Rank, accuracy, timing and streak – then rate the song, the chart and the lyrics.

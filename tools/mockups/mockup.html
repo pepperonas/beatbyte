@@ -1,0 +1,174 @@
+<!doctype html>
+<!--
+  BeatByte README mockups, rendered by tools/mockups/render.sh with
+  headless Chrome. Two layouts, chosen by the URL hash:
+
+    mockup.html#device|<image>|<caption>     one screen in a laptop
+    mockup.html#hero|<img1>|<img2>|<img3>    three staggered screens
+    mockup.html#duo|<back>|<front>|<kicker>|<title>|<text>
+                                             two overlapping windows
+                                             beside an editorial caption
+
+  Images are paths relative to this file. Everything is drawn in CSS —
+  no third-party artwork, no device photo, no trademark — and the only
+  font is Bebas Neue (OFL), the one the game ships.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: Bebas; src: url("../../assets/fonts/BebasNeue-Regular.ttf"); }
+  :root {
+    --gold: #ffd940; --gold-deep: #ff9f1a; --navy: #0b1026; --navy-2: #151d45;
+    --cyan: #8fe3ff; --magenta: #e040fb;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1600px; height: 900px; overflow: hidden; }
+  body {
+    font-family: Bebas, sans-serif; color: #fff;
+    background:
+      radial-gradient(1200px 600px at 78% 18%, rgba(255,159,26,.30), transparent 60%),
+      radial-gradient(900px 520px at 12% 88%, rgba(224,64,251,.22), transparent 60%),
+      radial-gradient(700px 400px at 50% 50%, rgba(143,227,255,.10), transparent 70%),
+      linear-gradient(160deg, var(--navy-2) 0%, var(--navy) 55%, #05070f 100%);
+  }
+  /* Faint highway lines receding to the horizon: the game's own motif. */
+  .lanes {
+    position: absolute; inset: 0; opacity: .16; pointer-events: none;
+    background: repeating-linear-gradient(90deg, transparent 0 158px, rgba(255,217,64,.9) 158px 160px);
+    transform: perspective(700px) rotateX(62deg) translateY(260px) scale(2.2);
+    transform-origin: 50% 100%;
+    mask-image: linear-gradient(to top, #000 0%, transparent 70%);
+  }
+  .glow { position: absolute; border-radius: 50%; filter: blur(80px); opacity: .55; }
+
+  /* ---------------- laptop ---------------- */
+  .laptop { position: absolute; left: 50%; top: 66px; transform: translateX(-50%); width: 1180px; }
+  .lid {
+    position: relative; width: 1180px; height: 700px; border-radius: 28px;
+    background: linear-gradient(180deg, #2a2f45, #12152a);
+    padding: 22px 22px 30px;
+    box-shadow: 0 0 0 2px #3a4060 inset, 0 50px 120px rgba(0,0,0,.65), 0 0 90px rgba(255,217,64,.18);
+  }
+  .lid::before { /* camera */
+    content: ""; position: absolute; top: 9px; left: 50%; width: 8px; height: 8px;
+    margin-left: -4px; border-radius: 50%; background: #0a0c18; box-shadow: 0 0 0 2px #262b44;
+  }
+  .screen {
+    width: 100%; height: 100%; border-radius: 10px; overflow: hidden; background: #000;
+    box-shadow: 0 0 0 1px #000;
+  }
+  .screen img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .base {
+    position: relative; width: 1320px; height: 30px; margin: 0 0 0 -70px;
+    border-radius: 0 0 26px 26px;
+    background: linear-gradient(180deg, #3b4262 0%, #1c2038 60%, #0e1022 100%);
+    box-shadow: 0 30px 60px rgba(0,0,0,.6);
+  }
+  .base::before { /* thumb notch */
+    content: ""; position: absolute; top: 0; left: 50%; width: 180px; height: 10px; margin-left: -90px;
+    border-radius: 0 0 12px 12px; background: #151931;
+  }
+  .caption {
+    position: absolute; left: 0; right: 0; bottom: 36px; text-align: center;
+    font-size: 46px; letter-spacing: 3px; color: var(--gold);
+    text-shadow: 0 0 24px rgba(255,217,64,.45), 0 3px 0 #000;
+  }
+  .caption small { display: block; font-size: 24px; letter-spacing: 2px; color: #c9d2ff; text-shadow: none; }
+
+  /* ---------------- hero collage ---------------- */
+  .stage { position: absolute; inset: 0; perspective: 2400px; }
+  .card {
+    position: absolute; width: 880px; height: 495px; border-radius: 18px; overflow: hidden;
+    background: #000; box-shadow: 0 0 0 3px #2c3352, 0 40px 90px rgba(0,0,0,.7);
+  }
+  .card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .card.left  { left: 40px;  top: 260px; transform: rotateY(24deg) rotateZ(-2deg); opacity: .92; }
+  .card.right { right: 40px; top: 260px; transform: rotateY(-24deg) rotateZ(2deg); opacity: .92; }
+  .card.mid   { left: 50%; top: 300px; margin-left: -470px; width: 940px; height: 529px;
+                box-shadow: 0 0 0 3px var(--gold), 0 50px 120px rgba(0,0,0,.8), 0 0 120px rgba(255,217,64,.35); }
+  .wordmark {
+    position: absolute; top: 36px; left: 0; right: 0; text-align: center;
+    font-size: 168px; letter-spacing: 14px; line-height: 1;
+    background: linear-gradient(180deg, #fff6c2 0%, var(--gold) 45%, var(--gold-deep) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 6px 0 #000) drop-shadow(0 0 40px rgba(255,159,26,.45));
+  }
+  .tagline {
+    position: absolute; top: 210px; left: 0; right: 0; text-align: center;
+    font-size: 34px; letter-spacing: 6px; color: #dfe6ff;
+  }
+
+  /* ---------------- duo ---------------- */
+  .copy { position: absolute; left: 90px; top: 0; bottom: 0; width: 430px;
+          display: flex; flex-direction: column; justify-content: center; }
+  .kicker { font-size: 26px; letter-spacing: 6px; color: var(--cyan); margin-bottom: 14px; }
+  .headline {
+    font-size: 104px; line-height: .92; letter-spacing: 3px;
+    background: linear-gradient(180deg, #fff6c2 0%, var(--gold) 50%, var(--gold-deep) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 5px 0 #000) drop-shadow(0 0 30px rgba(255,159,26,.35));
+  }
+  .body { margin-top: 26px; font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+          font-size: 25px; line-height: 1.45; color: #c9d2ff; }
+  .rule { width: 90px; height: 5px; border-radius: 3px; margin-top: 30px;
+          background: linear-gradient(90deg, var(--gold), var(--magenta)); }
+  .win {
+    position: absolute; width: 860px; border-radius: 16px; overflow: hidden; background: #0b0d18;
+    box-shadow: 0 0 0 2px #2c3352, 0 40px 100px rgba(0,0,0,.7);
+  }
+  .win .bar { height: 30px; background: linear-gradient(180deg, #232846, #171b33);
+              display: flex; align-items: center; gap: 8px; padding-left: 14px; }
+  .win .bar i { width: 11px; height: 11px; border-radius: 50%; background: #3a4166; }
+  .win .bar b { margin-left: auto; margin-right: 18px; font-weight: normal; font-size: 18px;
+                letter-spacing: 3px; color: #7f8ab8; }
+  .win img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; object-position: top; }
+  .win.back  { left: 610px; top: 70px; transform: rotate(-2.5deg); opacity: .9; }
+  .win.front { left: 700px; top: 360px;
+               box-shadow: 0 0 0 2px var(--gold), 0 50px 120px rgba(0,0,0,.85), 0 0 90px rgba(255,217,64,.25); }
+</style>
+</head>
+<body>
+<div class="lanes"></div>
+<div id="root"></div>
+<script>
+  const parts = decodeURIComponent(location.hash.slice(1)).split("|");
+  const root = document.getElementById("root");
+  const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  if (parts[0] === "hero") {
+    root.innerHTML = `
+      <div class="glow" style="left:560px;top:320px;width:480px;height:300px;background:#ffd940"></div>
+      <div class="wordmark">BEATBYTE</div>
+      <div class="tagline">YOUR MUSIC · FIVE LANES · ONE MORE SONG</div>
+      <div class="stage">
+        <div class="card left"><img src="${esc(parts[1])}"></div>
+        <div class="card right"><img src="${esc(parts[3])}"></div>
+        <div class="card mid"><img src="${esc(parts[2])}"></div>
+      </div>`;
+  } else if (parts[0] === "duo") {
+    const [, back, front, kicker, title, text] = parts;
+    const win = (cls, img) =>
+      `<div class="win ${cls}"><div class="bar"><i></i><i></i><i></i><b>BEATBYTE</b></div><img src="${esc(img)}"></div>`;
+    root.innerHTML = `
+      <div class="glow" style="left:900px;top:300px;width:520px;height:340px;background:#e040fb"></div>
+      <div class="glow" style="left:60px;top:260px;width:360px;height:300px;background:#ff9f1a;opacity:.35"></div>
+      <div class="copy">
+        <div class="kicker">${esc(kicker || "")}</div>
+        <div class="headline">${esc(title || "")}</div>
+        <div class="body">${esc(text || "")}</div>
+        <div class="rule"></div>
+      </div>
+      ${win("back", back)}${win("front", front)}`;
+  } else {
+    const [, img, title, sub] = parts;
+    root.innerHTML = `
+      <div class="glow" style="left:620px;top:200px;width:380px;height:300px;background:#ff9f1a"></div>
+      <div class="laptop">
+        <div class="lid"><div class="screen"><img src="${esc(img)}"></div></div>
+        <div class="base"></div>
+      </div>
+      <div class="caption">${esc(title || "")}${sub ? `<small>${esc(sub)}</small>` : ""}</div>`;
+  }
+</script>
+</body>
+</html>
