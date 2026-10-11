@@ -452,6 +452,9 @@ pub fn ribbon_title(
     artist: &str,
     difficulty: Option<beatbyte_core::Difficulty>,
 ) -> String {
+    // The song's name, not its folder's: a version tag (`[BG-01]`) is
+    // the browser's business, and it names versions in words.
+    let title = crate::ratings::bare_title(title);
     match difficulty {
         Some(difficulty) => format!("{title} - {artist}   {difficulty}"),
         None => format!("{title} - {artist}"),
@@ -525,10 +528,10 @@ pub fn spawn_huds(
     // The top strip is the one part of the frame the neck never
     // reaches - it runs to a vanishing point in the middle - so the
     // ribbon costs no playfield and covers nothing.
-    let title = format!(
-        "{} - {}",
-        font.safe(&song.chart.song.title),
-        font.safe(&song.chart.song.artist)
+    let title = ribbon_title(
+        &font.safe(&song.chart.song.title),
+        &font.safe(&song.chart.song.artist),
+        None,
     );
     commands.spawn((
         GameplayScreen,
@@ -2116,6 +2119,21 @@ mod gauge_tests {
         assert_eq!(
             ribbon_title("How Bizarre", "OMC", None),
             "How Bizarre - OMC"
+        );
+    }
+
+    /// The ribbon names the song, never its folder's version tag: the
+    /// browser calls a `[BG-01]` folder COMMUNITY 1, and the screen
+    /// that plays it must not undo that.
+    #[test]
+    fn the_ribbon_drops_the_version_tag() {
+        assert_eq!(
+            ribbon_title("[BG-01] \"Heroes\"", "David Bowie", None),
+            "\"Heroes\" - David Bowie"
+        );
+        assert_eq!(
+            ribbon_title("[GR-02] [GS] Maria", "Blondie", None),
+            "Maria - Blondie"
         );
     }
 

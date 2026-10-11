@@ -14,6 +14,16 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.90] - 2026-10-11
+
+### Fixed
+
+- The playing screen's title ribbon and the results screen name the
+  song, not its folder: `[BG-01] "Heroes"` reads `"Heroes"`, as the
+  browser has since it began naming versions COMMUNITY 1 and RIP 1.
+- The browser's SHOW, SORT and ACTIONS chips stay on one line. ACTIONS
+  wrapped, and its `TAB` hung below the chip's frame.
+
 ## [0.18.89] - 2026-10-11
 
 ### Fixed

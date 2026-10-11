@@ -499,7 +499,9 @@ fn spawn_solo(
     ui_kit::header(
         parent,
         font,
-        &font.safe(&results.title).to_uppercase(),
+        &font
+            .safe(crate::ratings::bare_title(&results.title))
+            .to_uppercase(),
         &subtitle,
     );
 
@@ -809,7 +811,7 @@ fn spawn_multi(parent: &mut ChildSpawnerCommands, results: &LastResults, font: &
     parent.spawn((
         Text::new(format!(
             "\"{}\" on {}",
-            font.safe(&results.title),
+            font.safe(crate::ratings::bare_title(&results.title)),
             results.difficulty
         )),
         font.text(11.0),

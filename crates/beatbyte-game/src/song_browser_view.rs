@@ -427,7 +427,14 @@ pub fn spawn_shell(
                         Text::new(label),
                         font.text(ui_kit::SMALL),
                         TextColor(fg),
-                        ui_kit::selection_chip_node(),
+                        // One line, never squeezed: the search line beside
+                        // them takes the slack (a wrapped "TAB" once hung
+                        // below the ACTIONS frame).
+                        TextLayout::default().with_no_wrap(),
+                        Node {
+                            flex_shrink: 0.0,
+                            ..ui_kit::selection_chip_node()
+                        },
                         BorderColor::all(line),
                         BackgroundColor(fill),
                     ));

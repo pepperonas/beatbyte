@@ -6,7 +6,7 @@ holds the work itself.
 
 ## Menu guidance, GS/CL out of sight, community-first import (2026-10-11)
 
-*Verified: 2227 tests in the source inventory, including documentation examples;
+*Verified: 2228 tests in the source inventory, including documentation examples;
 all local gates; the action menu and the ALL KEYS page photographed on the real
 library (8 571 folders).*
 
