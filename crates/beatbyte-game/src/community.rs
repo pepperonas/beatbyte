@@ -120,7 +120,11 @@ fn bring_in(
     let bytes = client.download(hit)?;
     let package = beatbyte_encore::decode(&bytes)?;
     drop(bytes);
-    let scratch = std::env::temp_dir().join("beatbyte-encore").join(&hit.md5);
+    // Under BeatByte's own data folder, never the shared temp
+    // directory: on a machine where `/tmp` is shared, a path anyone can
+    // predict is a path anyone can prepare (a symlink into somewhere
+    // else, which the unpack would then write through).
+    let scratch = scratch_root()?.join(&hit.md5);
     // A leftover from an interrupted run must not mix into this one.
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(&scratch)
@@ -184,6 +188,14 @@ fn bring_in(
             folder,
         }),
     }
+}
+
+/// The folder packages are unpacked in: `<data>/beatbyte/encore-scratch`,
+/// owned by the player like the rest of the data folder.
+fn scratch_root() -> Result<PathBuf, String> {
+    crate::library::data_dir()
+        .map(|data| data.join("encore-scratch"))
+        .ok_or_else(|| "no data folder on this platform".to_owned())
 }
 
 /// "community" or "game".

@@ -697,7 +697,7 @@ pub fn empty_hint(library_len: usize, filter: &str) -> String {
             command_name()
         )
     } else {
-        format!("no match for \"{filter}\"  -  ESC clears")
+        format!("no match for \"{filter}\"  -  ENTER finds it online  ·  ESC clears")
     }
 }
 
@@ -1034,6 +1034,9 @@ pub struct ToolContext {
     pub own_import: bool,
     /// The queue holds something to play.
     pub queue_nonempty: bool,
+    /// Its folder holds more than one revision of the chart, so
+    /// SWITCH REVISION has somewhere to go.
+    pub has_revisions: bool,
 }
 
 /// The tools the menu offers for a song: everything that applies, in
@@ -1047,14 +1050,14 @@ pub fn tools_for(context: ToolContext) -> Vec<u8> {
         is_file,
         own_import,
         queue_nonempty,
+        has_revisions,
     } = context;
     TOOLS
         .iter()
         .filter(|tool| match tool.id {
             chip::PLAY => has_song,
-            chip::EDIT | chip::INFO | chip::REVISION | chip::TASTE | chip::DELETE => {
-                has_song && is_file
-            }
+            chip::EDIT | chip::INFO | chip::TASTE | chip::DELETE => has_song && is_file,
+            chip::REVISION => has_song && is_file && has_revisions,
             chip::REDESIGN => has_song && is_file && own_import,
             chip::LYRICS | chip::ALIGN | chip::QUEUE | chip::FAVORITE => has_song,
             chip::PLAY_SET => queue_nonempty,
@@ -1107,6 +1110,7 @@ pub(crate) fn action_menu(
     mut paint: crate::menu_list::list::ListPaint<ActionRows>,
     overlays: Query<Entity, With<ActionOverlay>>,
     helps: Query<Entity, With<HelpOverlay>>,
+    mut revisions_seen: Local<Option<(std::path::PathBuf, bool)>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
     clicks.0.clear();
@@ -1141,11 +1145,28 @@ pub(crate) fn action_menu(
         .order
         .get(cursor.0)
         .and_then(|i| library.entries.get(*i));
+    // Whether the folder holds other revisions: a directory read, so
+    // once per selected chart, not once per frame the menu is open.
+    let chart = entry.and_then(|e| match &e.source {
+        SongSource::File { chart_path, .. } => Some(chart_path.clone()),
+        SongSource::Builtin(_) => None,
+    });
+    if revisions_seen.as_ref().map(|(path, _)| path) != chart.as_ref() {
+        let count = chart
+            .as_ref()
+            .and_then(|path| path.parent())
+            .and_then(|folder| beatbyte_chart::twin::names_in(folder).ok())
+            .map_or(0, |names| {
+                beatbyte_chart::versions::list_revisions(&names).len()
+            });
+        *revisions_seen = chart.clone().map(|path| (path, count > 1));
+    }
     let items = tools_for(ToolContext {
         has_song: entry.is_some(),
         is_file: entry.is_some_and(look::is_file),
         own_import: entry.is_some_and(is_own_import),
         queue_nonempty: !queue.0.is_empty(),
+        has_revisions: revisions_seen.as_ref().is_some_and(|(_, many)| *many),
     });
     if overlays.is_empty() || items != menu.items {
         for overlay in &overlays {
@@ -1638,6 +1659,9 @@ pub struct DownloadPrompt {
     pub open: bool,
     /// What has been typed into it.
     pub text: String,
+    /// Search for `text` at once, as if ENTER had been pressed — set by
+    /// the "no match" row, which offers the typed filter as a song.
+    pub submit: bool,
 }
 
 impl DownloadPrompt {
@@ -1780,16 +1804,14 @@ fn download_input(
         sounds.write(crate::sfx::UiSound::Back);
         return;
     }
-    if keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::NumpadEnter) {
+    if std::mem::take(&mut prompt.submit)
+        || keys.just_pressed(KeyCode::Enter)
+        || keys.just_pressed(KeyCode::NumpadEnter)
+    {
         let query = prompt.text.trim().to_owned();
         if query.is_empty() {
             sounds.write(crate::sfx::UiSound::Error);
             status.0 = "type a song name, then ENTER".to_owned();
-            return;
-        }
-        if discovery.running() {
-            sounds.write(crate::sfx::UiSound::Error);
-            status.0 = "a search is already running".to_owned();
             return;
         }
         if !crate::discover::tool_available() {
@@ -1803,19 +1825,35 @@ fn download_input(
             crate::discover::api_key(&settings.anthropic_api_key).as_deref(),
         );
         let fetching = crate::discover::parse_target(&query).is_some();
-        discovery.start(query, backend);
+        let asked = discovery.request(query.clone(), backend);
         prompt.open = false;
         prompt.text.clear();
-        sounds.write(crate::sfx::UiSound::Confirm);
-        status.0 = if fetching {
-            "fetching that video...".to_owned()
+        status.0 = request_line(asked, fetching, &query);
+        sounds.write(if asked == crate::discover::Requested::Full {
+            crate::sfx::UiSound::Error
         } else {
-            "searching...".to_owned()
-        };
+            crate::sfx::UiSound::Confirm
+        });
         return;
     }
     // While it is open the panel shows what is being typed.
     status.0 = prompt.line();
+}
+
+/// What the status row says after a song was asked for. Pure — tested.
+#[must_use]
+pub fn request_line(asked: crate::discover::Requested, fetching: bool, query: &str) -> String {
+    use crate::discover::{MAX_WAITING, Requested};
+    match asked {
+        Requested::Started if fetching => "fetching that video...".to_owned(),
+        Requested::Started => "searching...".to_owned(),
+        Requested::Queued(1) => format!("\"{query}\" is next, after the song being added"),
+        Requested::Queued(n) => format!("\"{query}\" waits, {n} in line"),
+        Requested::Full => {
+            format!("{MAX_WAITING} songs are already waiting - add it when one is in")
+        }
+        Requested::AlreadyAsked => format!("\"{query}\" is already on its way"),
+    }
 }
 
 /// The in-flight lyrics lookup. One at a time: the browser is not a
@@ -1954,6 +1992,19 @@ fn browser_input(
             start.prompt.text.clear();
             sounds.write(crate::sfx::UiSound::Confirm);
             status.0 = start.prompt.line();
+            return;
+        }
+        // Nothing in the library matches what was typed: ENTER (a pad's
+        // green fret, a click on the hint) adds it from the internet —
+        // the same search as the ADD field, without retyping the name.
+        // The filter stays, so the song shows the moment it lands.
+        if !searching
+            && !view.filter.trim().is_empty()
+            && (filter_confirm(&keys, nav.confirm) || empty_clicked)
+        {
+            start.prompt.open = true;
+            start.prompt.text = view.filter.trim().to_owned();
+            start.prompt.submit = true;
             return;
         }
         if leave {
@@ -3429,6 +3480,8 @@ mod view_tests {
         let filtered = empty_hint(12, "queen");
         assert!(filtered.contains("queen"), "{filtered}");
         assert!(filtered.contains("ESC"), "{filtered}");
+        // ... and offers the typed name as a song to fetch.
+        assert!(filtered.contains("ENTER finds it online"), "{filtered}");
     }
 
     #[test]
@@ -4168,6 +4221,7 @@ mod rebuild_tests {
             is_file: true,
             own_import: true,
             queue_nonempty: false,
+            has_revisions: false,
         };
         let file = tools_for(own);
         for id in [
@@ -4195,11 +4249,21 @@ mod rebuild_tests {
             "a Bridge chart or a rip is never redesigned"
         );
         assert!(downloaded.contains(&chip::EDIT), "but it can be edited");
+        assert!(
+            !file.contains(&chip::REVISION),
+            "one revision: nothing to switch to"
+        );
+        let revised = tools_for(ToolContext {
+            has_revisions: true,
+            ..own
+        });
+        assert!(revised.contains(&chip::REVISION));
         let builtin = tools_for(ToolContext {
             has_song: true,
             is_file: false,
             own_import: false,
             queue_nonempty: true,
+            has_revisions: true,
         });
         for id in [
             chip::EDIT,
@@ -4290,6 +4354,25 @@ mod rebuild_tests {
         );
         assert_eq!(delete_answer(1, false, false, false), None, "undecided");
         assert_eq!(delete_answer(0, false, false, false), None);
+    }
+
+    /// The status row after asking for a song says what happened.
+    #[test]
+    fn asking_for_a_song_says_whether_it_started_or_waits() {
+        use super::request_line;
+        use crate::discover::Requested;
+        assert_eq!(
+            request_line(Requested::Started, false, "A - B"),
+            "searching..."
+        );
+        assert_eq!(
+            request_line(Requested::Started, true, "x"),
+            "fetching that video..."
+        );
+        assert!(request_line(Requested::Queued(1), false, "A - B").contains("is next"));
+        assert!(request_line(Requested::Queued(3), false, "A - B").contains("3 in line"));
+        assert!(request_line(Requested::Full, false, "A - B").contains("already waiting"));
+        assert!(request_line(Requested::AlreadyAsked, false, "A - B").contains("on its way"));
     }
 
     /// A chord names the machine's modifier; a plain key stays plain.

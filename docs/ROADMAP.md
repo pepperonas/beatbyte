@@ -6,7 +6,7 @@ holds the work itself.
 
 ## Menu guidance, GS/CL out of sight, community-first import (2026-10-11)
 
-*Verified: 2222 tests in the source inventory, including documentation examples;
+*Verified: 2224 tests in the source inventory, including documentation examples;
 all local gates; the action menu and the ALL KEYS page photographed on the real
 library (8 571 folders).*
 
@@ -52,9 +52,11 @@ Phase 4 — community first, one chart (ADR-0025):
   line; a link skips Encore. End to end: *Kryptonite* → COMMUNITY 1 in 8 s.
 - [ ] 4c The best generation as ONE chart upgraded in place (mix chart now,
   stem + classic rules as `chart.vN` with the pointer moved).
-- [ ] 4d A zero-match row in the browser that adds the typed song; an import
-  queue instead of "one at a time"; SWITCH REVISION only when a folder has
-  more than one revision.
+- [x] 4d A zero-match row in the browser that adds the typed song (ENTER, the
+  green fret or a click); an import queue (up to five) instead of "one at a
+  time"; SWITCH REVISION only when a folder has more than one revision.
+- [x] Security review of 4a/4b: the unpack moved out of the shared temp
+  directory; the decoder's output capped at the package size (pinned).
 Phase 5 (after 1–4, the user's call 2026-10-11) — documentation and a README
 "perfectly staged": the old screenshots replaced by device mockups (real frames
 in a MacBook/monitor bezel on a gold/navy gradient, a hero collage of three

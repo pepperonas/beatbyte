@@ -14,6 +14,30 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.87] - 2026-10-11
+
+### Added
+
+- When the search in the song list matches nothing, `Enter` (the green fret,
+  or a click on the line) finds the typed name online — the same search as
+  ADD A SONG, without typing it again; the filter stays, so the song shows
+  as soon as it lands.
+- Songs asked for while one is being added wait in line (up to five) and
+  start one after the other, instead of being turned away.
+
+### Changed
+
+- SWITCH REVISION appears in the action menu only when the song's folder
+  holds more than one revision.
+
+### Security
+
+- A community chart is unpacked under BeatByte's own data folder instead of
+  a predictable path in the shared temp directory (a prepared symlink there
+  could have redirected the writes).
+- A `.sng` package whose file entries name the same bytes over and over is
+  refused: what is decoded may not exceed the package's own size.
+
 ## [0.18.86] - 2026-10-11
 
 ### Added

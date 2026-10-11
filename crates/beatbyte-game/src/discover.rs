@@ -1294,6 +1294,28 @@ pub struct Discovery {
     /// candidate walks `Fetch` again; a bar that walked back with it
     /// would read as work being undone.
     high: f32,
+    /// Songs asked for while one was running, in order. They start one
+    /// after the other: a search saturates the network and the CPU, and
+    /// two at once would only make both slower.
+    waiting: std::collections::VecDeque<(String, Backend)>,
+    /// What the running search was asked for.
+    query: String,
+}
+
+/// The most songs that may wait behind a running search.
+pub const MAX_WAITING: usize = 5;
+
+/// What asking for a song did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Requested {
+    /// It started at once.
+    Started,
+    /// It waits; this many are now in line, itself included.
+    Queued(usize),
+    /// The line is full; nothing happened.
+    Full,
+    /// It is already running or in line.
+    AlreadyAsked,
 }
 
 /// The search's background task.
@@ -1319,8 +1341,34 @@ impl Discovery {
         if self.running() { self.high } else { 1.0 }
     }
 
+    /// Ask for a song: start it, or line it up behind the running one.
+    /// The same text twice is asked once. Pure apart from the start —
+    /// tested.
+    pub fn request(&mut self, query: String, backend: Backend) -> Requested {
+        let same = |q: &str| q.trim().eq_ignore_ascii_case(query.trim());
+        if self.waiting.iter().any(|(q, _)| same(q)) || (self.running() && same(&self.query)) {
+            return Requested::AlreadyAsked;
+        }
+        if !self.running() {
+            self.start(query, backend);
+            return Requested::Started;
+        }
+        if self.waiting.len() >= MAX_WAITING {
+            return Requested::Full;
+        }
+        self.waiting.push_back((query, backend));
+        Requested::Queued(self.waiting.len())
+    }
+
+    /// How many songs wait behind the running one.
+    #[must_use]
+    pub fn waiting(&self) -> usize {
+        self.waiting.len()
+    }
+
     /// Start one. The caller has already decided it may.
     pub fn start(&mut self, query: String, backend: Backend) {
+        self.query.clone_from(&query);
         let feed = std::sync::Arc::new(std::sync::Mutex::new(Step::new(
             Phase::Look,
             format!("searching for \"{query}\"..."),
@@ -1432,6 +1480,11 @@ pub fn poll_discovery(
     // song once arrived without the work a dropped file got.
     if let (Some(folder), Some(settings), Some(mut twins)) = (folder, settings, twins) {
         crate::study_twin::queue_twin(&mut twins, &settings, folder);
+    }
+    // The next song in line, if any. The line just written stays on
+    // the status row until the next search reports its first step.
+    if let Some((query, backend)) = discovery.waiting.pop_front() {
+        discovery.start(query, backend);
     }
 }
 
@@ -1653,6 +1706,45 @@ mod tests {
             app.world().resource::<Discovery>().since_finished > 0.0,
             "the poll must run wherever the player is"
         );
+    }
+
+    /// Songs asked for while one runs line up, the same one twice is
+    /// asked once, and a full line refuses rather than growing for ever.
+    /// (Only the first request starts a task; the rest never touch the
+    /// network.)
+    #[test]
+    fn songs_line_up_behind_the_running_search() {
+        // One "running" without searching anything: a task that only
+        // answers an error, never polled here.
+        let mut discovery = Discovery {
+            task: Some(DiscoverTask(
+                bevy::tasks::AsyncComputeTaskPool::get_or_init(bevy::tasks::TaskPool::new)
+                    .spawn(async { Err("held".to_owned()) }),
+            )),
+            query: "Toto - Africa".to_owned(),
+            ..Discovery::default()
+        };
+        assert_eq!(
+            discovery.request("toto - africa".to_owned(), Backend::Off),
+            Requested::AlreadyAsked,
+            "the running one, asked again"
+        );
+        for n in 1..=MAX_WAITING {
+            assert_eq!(
+                discovery.request(format!("Band - Song {n}"), Backend::Off),
+                Requested::Queued(n)
+            );
+        }
+        assert_eq!(
+            discovery.request("Band - Song 3".to_owned(), Backend::Off),
+            Requested::AlreadyAsked,
+            "a waiting one, asked again"
+        );
+        assert_eq!(
+            discovery.request("Band - One More".to_owned(), Backend::Off),
+            Requested::Full
+        );
+        assert_eq!(discovery.waiting(), MAX_WAITING);
     }
 
     #[test]

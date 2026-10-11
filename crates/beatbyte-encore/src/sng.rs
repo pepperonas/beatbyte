@@ -170,6 +170,10 @@ pub fn decode(data: &[u8]) -> Result<Package, String> {
         index.push((name, size, offset));
     }
     let mut files = Vec::new();
+    // Two entries may point at the same bytes; without a budget a
+    // package of 4096 entries all naming one large range would decode
+    // to 4096 copies of it. What is written may not exceed what came.
+    let mut budget = data.len();
     for (name, size, offset) in index {
         let end = offset
             .checked_add(size)
@@ -178,6 +182,9 @@ pub fn decode(data: &[u8]) -> Result<Package, String> {
         if !safe_name(&name) {
             continue;
         }
+        budget = budget
+            .checked_sub(size)
+            .ok_or("the package's files add up to more than the package")?;
         let bytes = data[offset..end]
             .iter()
             .enumerate()
@@ -317,6 +324,34 @@ mod tests {
         let size_at = lying.len() - 1 - 16; // the last file's size field
         lying[size_at..size_at + 8].copy_from_slice(&u64::MAX.to_le_bytes());
         assert!(decode(&lying).is_err());
+        // Entries that name the same bytes over and over add up to more
+        // than the package: refused before anything is copied twice.
+        // One 1000-byte chart, then the index rewritten to list it three
+        // times — 3000 bytes asked of a package of about 1150.
+        let chart = vec![b'x'; 1000];
+        let mut repeated = encode(&[], &[("notes.chart", &chart)], MASK);
+        let one = 1 + "notes.chart".len() + 16;
+        let index_at = repeated.len() - chart.len() - one;
+        let entry = repeated[index_at..index_at + one].to_vec();
+        repeated[index_at - 8..index_at].copy_from_slice(&3u64.to_le_bytes());
+        // The index grows by two entries, so every offset moves with it.
+        let moved = |entry: &[u8]| {
+            let mut entry = entry.to_vec();
+            let at = entry.len() - 8;
+            let offset = u64::from_le_bytes(entry[at..].try_into().expect("8 bytes"));
+            entry[at..].copy_from_slice(&(offset + 2 * one as u64).to_le_bytes());
+            entry
+        };
+        let fixed = moved(&entry);
+        repeated.splice(index_at..index_at + one, fixed.iter().copied());
+        for _ in 0..2 {
+            repeated.splice(index_at..index_at, fixed.iter().copied());
+        }
+        assert!(repeated.len() < 3 * chart.len());
+        assert_eq!(
+            decode(&repeated),
+            Err("the package's files add up to more than the package".to_owned())
+        );
         // Without a chart there is nothing to import.
         let no_chart = encode(&[], &[("song.ogg", b"x")], MASK);
         assert_eq!(
