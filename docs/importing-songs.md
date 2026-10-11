@@ -41,6 +41,14 @@ library folder exactly as a dropped file does, and appears in the browser
 the moment it is there. A pasted YouTube link always takes this path:
 it names one recording.
 
+**Then the chart gets better by itself.** A song that came from a
+recording (or a dropped file) is playable at once with its first chart.
+In the background — between songs, never during one — BeatByte separates
+its guitar stem with `demucs`, charts that, plays it by the classic rules
+and makes it the chart that plays; the first chart stays as a revision
+(SWITCH REVISION in the action menu). A chart you edited by hand is never
+replaced, and community charts are left as they came.
+
 **It runs in the background.** Start a search, then browse, change a
 setting or play a song: it carries on and lands anyway. A panel at the
 bottom of the screen — the one a dropped file uses — says which step

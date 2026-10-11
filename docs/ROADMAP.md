@@ -6,7 +6,7 @@ holds the work itself.
 
 ## Menu guidance, GS/CL out of sight, community-first import (2026-10-11)
 
-*Verified: 2224 tests in the source inventory, including documentation examples;
+*Verified: 2227 tests in the source inventory, including documentation examples;
 all local gates; the action menu and the ALL KEYS page photographed on the real
 library (8 571 folders).*
 
@@ -50,8 +50,12 @@ Phase 4 — community first, one chart (ADR-0025):
   phase); up to three charts tried, a chart losing >5 % open notes refused,
   lyrics looked up; every failure falls back to YouTube with the reason on the
   line; a link skips Encore. End to end: *Kryptonite* → COMMUNITY 1 in 8 s.
-- [ ] 4c The best generation as ONE chart upgraded in place (mix chart now,
-  stem + classic rules as `chart.vN` with the pointer moved).
+- [x] 4c The best generation as ONE chart upgraded in place:
+  `beatbyte_chart::study::write_upgrade` (stem chart on the accepted grid +
+  `classic::Recipe::all()`, chords only from a polyphony sidecar) as the
+  folder's next revision with the pointer moved; hand-edited charts kept,
+  a second run writes nothing; the background job runs it for own imports
+  only (not Bridge/rip folders), the twin only on the harness switch.
 - [x] 4d A zero-match row in the browser that adds the typed song (ENTER, the
   green fret or a click); an import queue (up to five) instead of "one at a
   time"; SWITCH REVISION only when a folder has more than one revision.

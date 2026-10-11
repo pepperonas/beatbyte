@@ -63,9 +63,15 @@ Measured before deciding (2026-10-11):
    then a generated chart).
 4. **A link skips Encore.** A pasted YouTube link names one recording; it
    is charted as it always was.
-5. **No twin.** An import is one entry per version. The GUITAR STUDY
-   TWINS setting is gone; the stem pipeline is to improve the import's
-   own chart in place (roadmap, Phase 4c), not add a second entry.
+5. **No twin — the import's own chart is improved in place.** An import
+   is one entry per version. The GUITAR STUDY TWINS setting is gone; the
+   background job that made the twin now writes
+   `beatbyte_chart::study::write_upgrade`: the separated stem charted on
+   the accepted grid, played by the classic rules (`Recipe::all()`, chords
+   only from a polyphony sidecar), saved as the folder's next revision and
+   made the one that plays. The first chart stays one SWITCH REVISION away;
+   a hand-edited chart is never replaced; a Bridge or rip folder is never
+   touched.
 6. **Always built in**, not behind a feature: the game already talks to
    lrclib and runs `yt-dlp` on the same key press, and a feature flag
    would only make the default build the worse one.

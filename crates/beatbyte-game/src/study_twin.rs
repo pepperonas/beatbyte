@@ -1,18 +1,19 @@
-//! The `[GS]` twin for every imported song, made in the
-//! background after the import.
+//! The stem work for an imported song, done in the background after the
+//! import.
 //!
-//! The player's verdict on the stem-charted study was "by a distance
-//! the best", and the ask was that every song carries BOTH — the
-//! mix-charted original and its study twin — as two browser entries,
-//! played against each other in live sessions. An import therefore
-//! queues its folder here; a chore then decodes the song, separates
-//! the `other` stem with demucs, and writes the twin through
-//! [`beatbyte_chart::study::write_twin`] — the same writer the
-//! command line uses. The original folder is never written to.
+//! The player's verdict on the stem-charted study was "by a distance the
+//! best". Since 2026-10-11 (ADR-0025) that verdict improves the import
+//! itself instead of adding a `[GS]` entry beside it: an import queues its
+//! folder here; a chore decodes the song, separates the `other` stem with
+//! demucs, and writes [`beatbyte_chart::study::write_upgrade`] — the stem
+//! chart, played by the classic rules, as the folder's next revision. A
+//! Bridge chart or a game rip is never queued (it came finished), a
+//! hand-edited chart is never replaced, and the `[GS]` twin is made only
+//! when the harness asks for it.
 //!
 //! demucs is a Python tool on the player's machine, not a dependency
-//! of the game: without it the row in SETTINGS says so, the import is
-//! what it always was, and nothing fails.
+//! of the game: without it the import is what it always was, and
+//! nothing fails.
 //!
 //! ## It carries the vocal work too
 //!
@@ -44,8 +45,12 @@ pub const DEMUCS_MODEL: &str = "htdemucs";
 pub struct SongWork {
     /// The song folder.
     pub folder: PathBuf,
-    /// Write the `[GS]` twin from the `other` stem.
+    /// Write the `[GS]` twin from the `other` stem (the harness only).
     pub twin: bool,
+    /// Improve the import's own chart in place from the `other` stem
+    /// (ADR-0025): the stem chart with the classic rules, as the
+    /// folder's next revision.
+    pub upgrade: bool,
     /// Write the vocal chart and keep the karaoke stems.
     pub vocals: bool,
 }
@@ -77,6 +82,27 @@ pub fn demucs_available() -> bool {
         .arg("--help")
         .output()
         .is_ok_and(|out| out.status.success())
+}
+
+/// Whether an import's chart should be improved in place: for the
+/// player's own imports — a Bridge chart or a game rip came finished,
+/// and an old twin is not an import — and under the autopilot only when
+/// its own switch asks (a separation saturates the machine for minutes,
+/// and the autopilot's clock-teleport rule false-fails under that load).
+/// Pure — tested.
+#[must_use]
+pub fn upgrade_wanted(own_import: bool, autopilot: bool, autopilot_twins: bool) -> bool {
+    own_import && (!autopilot || autopilot_twins)
+}
+
+/// Whether a folder holds the player's own import: a folder no twin
+/// kind claims. Pure — tested.
+#[must_use]
+pub fn is_own_import_folder(folder: &Path) -> bool {
+    folder
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .is_some_and(|name| beatbyte_chart::twin::kind_of_folder(&name).is_none())
 }
 
 /// Whether an import should queue a `[GS]` twin: only the harness's
@@ -146,14 +172,16 @@ pub fn queue_twin(queue: &mut StudyQueue, settings: &Settings, folder: PathBuf) 
     let vocals_switch = std::env::var_os("BEATBYTE_AUTOPILOT_VOCALS").is_some();
     let work = SongWork {
         twin: twin_wanted(autopilot, twins),
+        upgrade: upgrade_wanted(is_own_import_folder(&folder), autopilot, twins),
         vocals: vocals_wanted(settings.vocal_charts, autopilot, vocals_switch),
         folder,
     };
-    if work.twin || work.vocals {
+    if work.twin || work.upgrade || work.vocals {
         info!(
-            "song work: queued {} (twin {}, vocals {})",
+            "song work: queued {} (twin {}, upgrade {}, vocals {})",
             work.folder.display(),
             work.twin,
+            work.upgrade,
             work.vocals
         );
         queue.pending.push_back(work);
@@ -249,6 +277,7 @@ fn backfill(
         queue.pending.push_back(SongWork {
             folder,
             twin: false,
+            upgrade: false,
             vocals: true,
         });
     }
@@ -314,27 +343,24 @@ fn do_work(work: &SongWork) -> Result<String, String> {
     }
     let audio_path = song_audio(&work.folder).map_err(|error| format!("song work: {error}"))?;
     if !work.vocals {
-        return make_twin(&work.folder, &audio_path);
+        return make_from_stem(work, &audio_path);
     }
     let scratch = std::env::temp_dir()
         .join("beatbyte-song-work")
         .join(scratch_name(&work.folder));
-    let mut twin: Option<Result<String, String>> = None;
+    let mut from_stem: Vec<Result<String, String>> = Vec::new();
     let vocal = beatbyte_audio::stems::analyse_song(
         &audio_path,
         &scratch,
         &beatbyte_audio::singing::SingingConfig::default(),
-        |other| {
-            if work.twin {
-                twin = Some(write_twin_from(&work.folder, other));
-            }
-        },
+        |other| from_stem = stem_jobs(work, other),
     );
     let mut lines = Vec::new();
-    match twin {
-        Some(Ok(line)) => lines.push(line),
-        Some(Err(reason)) => warn!("guitar study: {reason}"),
-        None => {}
+    for result in from_stem {
+        match result {
+            Ok(line) => lines.push(line),
+            Err(reason) => warn!("song work: {reason}"),
+        }
     }
     lines.push(file_vocal_chart(&audio_path, vocal));
     Ok(lines.join("; "))
@@ -474,9 +500,40 @@ fn write_twin_from(folder: &Path, lead: &Path) -> Result<String, String> {
     }
 }
 
-/// The twin alone: the cheaper two-stem run, unchanged from before
-/// the vocal work existed.
-fn make_twin(folder: &Path, audio_path: &Path) -> Result<String, String> {
+/// What the `other` stem is used for: the in-place upgrade, and the
+/// twin when the harness asks for one.
+fn stem_jobs(work: &SongWork, other: &Path) -> Vec<Result<String, String>> {
+    let mut results = Vec::new();
+    if work.upgrade {
+        results.push(write_upgrade_from(&work.folder, other));
+    }
+    if work.twin {
+        results.push(write_twin_from(&work.folder, other));
+    }
+    results
+}
+
+/// The import's chart improved in place from a separated stem.
+fn write_upgrade_from(folder: &Path, lead: &Path) -> Result<String, String> {
+    use beatbyte_chart::study::Upgrade;
+    let recipe = beatbyte_chart::classic::Recipe::all();
+    match beatbyte_chart::study::write_upgrade(folder, lead, &read, recipe)? {
+        Upgrade::Written { name, notes, .. } => {
+            let counts: Vec<String> = notes.iter().map(|(d, n)| format!("{d} {n}")).collect();
+            info!("chart upgrade: {name} ({})", counts.join(", "));
+            Ok("chart improved: charted from the guitar, played by the classic rules".to_owned())
+        }
+        Upgrade::AlreadyDone => Ok("chart already improved".to_owned()),
+        Upgrade::Kept(reason) => Ok(format!(
+            "chart kept as it was: {}",
+            crate::ui::font_safe(&reason)
+        )),
+    }
+}
+
+/// The stem jobs alone: the cheaper two-stem run.
+fn make_from_stem(work: &SongWork, audio_path: &Path) -> Result<String, String> {
+    let folder = work.folder.as_path();
     let scratch = std::env::temp_dir()
         .join("beatbyte-guitar-study")
         .join(scratch_name(folder));
@@ -508,9 +565,13 @@ fn make_twin(folder: &Path, audio_path: &Path) -> Result<String, String> {
         ));
     }
     let lead = stems.join(DEMUCS_MODEL).join("mix").join("other.wav");
-    let outcome = write_twin_from(folder, &lead);
+    let results = stem_jobs(work, &lead);
     let _ = std::fs::remove_dir_all(&scratch);
-    outcome
+    let mut lines = Vec::new();
+    for result in results {
+        lines.push(result?);
+    }
+    Ok(lines.join("; "))
 }
 
 fn read(path: &Path) -> Result<beatbyte_chart::redesign::Reading, String> {
@@ -662,18 +723,54 @@ mod tests {
             vocal_charts: false,
             ..Settings::default()
         };
-        // Even a settings file that still says yes to twins (every file
-        // written before 2026-10-11 does) queues nothing: a job with no
-        // work in it never starts a chore.
-        queue_twin(&mut queue, &settings, PathBuf::from("/songs/a"));
-        assert!(queue.pending.is_empty(), "an empty job was queued");
+        // A player's import gets its chart improved and no twin — even
+        // from a settings file that still says yes to twins (every file
+        // written before 2026-10-11 does).
+        queue_twin(&mut queue, &settings, PathBuf::from("/songs/toto---africa"));
+        let work = queue.pending.back().expect("queued");
+        assert!(work.upgrade && !work.twin && !work.vocals);
+
+        // A Bridge chart or a game rip came finished: nothing to do, and
+        // a job with no work in it never starts a chore.
+        for folder in [
+            "/songs/bridge-01-toto---africa",
+            "/songs/gamerip-01-toto---africa",
+        ] {
+            queue_twin(&mut queue, &settings, PathBuf::from(folder));
+        }
+        assert_eq!(queue.pending.len(), 1, "an empty job was queued");
 
         // Vocals alone are enough to queue.
         settings.vocal_charts = true;
-        queue_twin(&mut queue, &settings, PathBuf::from("/songs/c"));
+        queue_twin(&mut queue, &settings, PathBuf::from("/songs/bridge-02-x"));
         let work = queue.pending.back().expect("queued");
-        assert!(!work.twin && work.vocals);
-        assert_eq!(queue.pending.len(), 1);
+        assert!(!work.twin && !work.upgrade && work.vocals);
+        assert_eq!(queue.pending.len(), 2);
+    }
+
+    /// The upgrade is for the player's own imports, and stays out of an
+    /// autopilot run unless its switch asks.
+    #[test]
+    fn only_an_own_import_is_upgraded_and_the_harness_asks_first() {
+        assert!(upgrade_wanted(true, false, false));
+        assert!(
+            !upgrade_wanted(false, false, false),
+            "a download came finished"
+        );
+        assert!(
+            !upgrade_wanted(true, true, false),
+            "the harness does not separate uninvited"
+        );
+        assert!(upgrade_wanted(true, true, true));
+        assert!(is_own_import_folder(Path::new("/songs/toto---africa")));
+        for twin in [
+            "/songs/bridge-01-x",
+            "/songs/gamerip-03-x",
+            "/songs/guitar-study-x",
+            "/songs/classic-x",
+        ] {
+            assert!(!is_own_import_folder(Path::new(twin)), "{twin}");
+        }
     }
 
     #[test]

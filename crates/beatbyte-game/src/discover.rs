@@ -1527,33 +1527,28 @@ mod twin_tests {
         // The search calls `import_fetched` straight from its own
         // task, so it must queue the background work itself — once it
         // forgot, and every downloaded song went without. No twin is
-        // made any more; a vocal chart is, when its setting asks.
+        // made any more: an own import's chart is improved in place,
+        // and a community chart, which came finished, gets nothing.
         let folder = std::path::PathBuf::from("/songs/imported/Toto - Africa");
-        let found = || {
+        let found = |folder: &str| {
             Ok(Found {
                 line: "added \"Africa\"".to_owned(),
-                folder: Some(std::path::PathBuf::from("/songs/imported/Toto - Africa")),
+                folder: Some(std::path::PathBuf::from(folder)),
             })
         };
         let mut app = wired();
-        finished(&mut app, found());
-        app.update();
-        assert!(
-            queued(&mut app).is_empty(),
-            "nothing asked for, nothing queued"
-        );
-
-        let mut app = wired();
-        app.world_mut()
-            .resource_mut::<crate::config::Settings>()
-            .vocal_charts = true;
-        finished(&mut app, found());
+        finished(&mut app, found("/songs/imported/Toto - Africa"));
         app.update();
         assert_eq!(
             queued(&mut app),
             vec![folder],
-            "the vocal chart was not queued"
+            "an own import's chart was not queued for its upgrade"
         );
+
+        let mut app = wired();
+        finished(&mut app, found("/songs/bridge-01-toto---africa"));
+        app.update();
+        assert!(queued(&mut app).is_empty(), "a community chart was queued");
     }
 
     #[test]

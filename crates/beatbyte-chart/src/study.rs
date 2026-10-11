@@ -95,6 +95,54 @@ pub fn write_twin(
     if twin::is_finished(&out) {
         return Ok(Outcome::AlreadyThere(out));
     }
+    let (chart, names) = match prepare(
+        song_folder,
+        lead,
+        read,
+        &twin_title,
+        DESIGNER,
+        "guitar-study".to_owned(),
+    )? {
+        Prepared::Chart { chart, names } => (*chart, names),
+        Prepared::Refused(reason) => return Ok(Outcome::Refused(reason)),
+    };
+
+    // The only write boundary: a NEW folder. Audio and sidecars first,
+    // the chart LAST, so a library scan that happens mid-write never
+    // sees a chart without its audio.
+    std::fs::create_dir_all(&out)
+        .map_err(|error| format!("cannot create {}: {error}", out.display()))?;
+    twin::copy_assets(song_folder, &out, &names)?;
+    save_chart_file(&out.join(versions::BASE_CHART), &chart)
+        .map_err(|error| format!("cannot write the study chart: {error}"))?;
+    Ok(Outcome::Written {
+        folder: out,
+        title: chart.song.title.clone(),
+        notes: note_counts(&chart),
+    })
+}
+
+fn note_counts(chart: &ChartFile) -> Vec<(String, usize)> {
+    chart
+        .charts
+        .iter()
+        .map(|c| (c.difficulty.id().to_owned(), c.notes.len()))
+        .collect()
+}
+
+/// A study chart ready to be written, or why there is none.
+enum Prepared {
+    /// The chart and the names of the files in the song folder.
+    Chart {
+        chart: Box<ChartFile>,
+        names: Vec<String>,
+    },
+    /// The stem carries too little to chart.
+    Refused(String),
+}
+
+/// The folder's file names and its active chart, validated.
+fn active_of(song_folder: &Path) -> Result<(Vec<String>, String, ChartFile), String> {
     let names: Vec<String> = std::fs::read_dir(song_folder)
         .map_err(|error| format!("cannot read {}: {error}", song_folder.display()))?
         .filter_map(Result::ok)
@@ -108,6 +156,19 @@ pub fn write_twin(
     if !problems.is_empty() {
         return Err(format!("{active_name} is invalid: {}", problems.join("; ")));
     }
+    Ok((names, active_name, active))
+}
+
+/// Chart the stem at `lead` on the grid of the folder's active chart.
+fn prepare(
+    song_folder: &Path,
+    lead: &Path,
+    read: &dyn Fn(&Path) -> Result<Reading, String>,
+    title: &dyn Fn(&str) -> String,
+    designer: &str,
+    directive: String,
+) -> Result<Prepared, String> {
+    let (names, _, active) = active_of(song_folder)?;
     let parent_hash = chart_hash(&active);
     let audio_path = crate::resolve_audio_path(song_folder, &active.song.audio)
         .map_err(|error| format!("cannot resolve the audio: {error}"))?;
@@ -147,13 +208,13 @@ pub fn write_twin(
     lead_analysis.repeats.clear();
 
     let meta = GenerateMeta {
-        title: twin_title(&active.song.title),
+        title: title(&active.song.title),
         artist: active.song.artist.clone(),
         audio: active.song.audio.clone(),
     };
     let mut chart = generate_lead_study(&lead_analysis, &meta);
     if chart.charts.iter().any(|c| c.notes.is_empty()) {
-        return Ok(Outcome::Refused(format!(
+        return Ok(Prepared::Refused(format!(
             "{}: the stem carries too little tonal evidence for a playable four-difficulty chart",
             active.song.title
         )));
@@ -164,11 +225,11 @@ pub fn write_twin(
     chart.audio_trim = Some(mix_reading.trim);
     chart.provenance = Some(Provenance {
         parent_hash: parent_hash.clone(),
-        designer: DESIGNER.to_owned(),
+        designer: designer.to_owned(),
         created_ms: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_millis() as u64),
-        directive: Some("guitar-study".to_owned()),
+        directive: Some(directive),
     });
     let problems = errors_of(&chart);
     if !problems.is_empty() {
@@ -178,22 +239,98 @@ pub fn write_twin(
         ));
     }
 
-    // The only write boundary: a NEW folder. Audio and sidecars first,
-    // the chart LAST, so a library scan that happens mid-write never
-    // sees a chart without its audio.
-    std::fs::create_dir_all(&out)
-        .map_err(|error| format!("cannot create {}: {error}", out.display()))?;
-    twin::copy_assets(song_folder, &out, &names)?;
-    save_chart_file(&out.join(versions::BASE_CHART), &chart)
-        .map_err(|error| format!("cannot write the study chart: {error}"))?;
-    Ok(Outcome::Written {
-        folder: out,
-        title: chart.song.title.clone(),
-        notes: chart
-            .charts
-            .iter()
-            .map(|c| (c.difficulty.id().to_owned(), c.notes.len()))
-            .collect(),
+    Ok(Prepared::Chart {
+        chart: Box::new(chart),
+        names,
+    })
+}
+
+/// Who an in-place upgrade's provenance names.
+pub const UPGRADE_DESIGNER: &str = "import-upgrade";
+
+/// What an in-place upgrade came to.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Upgrade {
+    /// Written as revision `name`, which now plays.
+    Written {
+        /// The revision file's name (`chart.v2.json`, …).
+        name: String,
+        /// `(difficulty id, notes)` in chart order.
+        notes: Vec<(String, usize)>,
+        /// Chords were asked for with no polyphony evidence beside the
+        /// audio, so none were written.
+        chords_without_evidence: bool,
+    },
+    /// The chart that plays is already an upgrade; nothing written.
+    AlreadyDone,
+    /// Not upgraded, and why: a hand-edited chart is the player's and is
+    /// never replaced; a stem with too little in it charts nothing.
+    Kept(String),
+}
+
+/// Improve an imported song's chart **in its own folder** (ADR-0025):
+/// chart the separated instrument stem at `lead` on the accepted grid,
+/// apply the classic rules of `recipe` (chords from the polyphony
+/// sidecar when one sits beside the audio), write it as the folder's
+/// next revision and point the folder at it. The chart that played
+/// before stays as a revision — one pointer away, as a redesign is.
+///
+/// This replaces the `[GS]` twin for a player's import: one entry per
+/// version, with the better chart, rather than a second entry beside a
+/// worse one.
+///
+/// # Errors
+/// When the folder or its active chart cannot be read, the stem does
+/// not fit the song, or the revision cannot be written.
+pub fn write_upgrade(
+    song_folder: &Path,
+    lead: &Path,
+    read: &dyn Fn(&Path) -> Result<Reading, String>,
+    recipe: crate::classic::Recipe,
+) -> Result<Upgrade, String> {
+    let (_, active_name, active) = active_of(song_folder)?;
+    if versions::is_hand_edited(&active) {
+        return Ok(Upgrade::Kept(format!(
+            "{active_name} was edited by hand and stays the chart that plays"
+        )));
+    }
+    if active
+        .provenance
+        .as_ref()
+        .is_some_and(|p| p.designer == UPGRADE_DESIGNER)
+    {
+        return Ok(Upgrade::AlreadyDone);
+    }
+    let directive = format!("guitar-study+classic:{}", recipe.directive());
+    let (mut chart, names) = match prepare(
+        song_folder,
+        lead,
+        read,
+        &str::to_owned,
+        UPGRADE_DESIGNER,
+        directive,
+    )? {
+        Prepared::Chart { chart, names } => (*chart, names),
+        Prepared::Refused(reason) => return Ok(Upgrade::Kept(reason)),
+    };
+    let poly = crate::classic::poly_beside(song_folder, &chart)?;
+    let changes = crate::classic::apply_with(&mut chart, recipe, poly.as_ref());
+    let problems = errors_of(&chart);
+    if !problems.is_empty() {
+        return Err(format!(
+            "the upgraded chart is invalid: {}",
+            problems.join("; ")
+        ));
+    }
+    let name = versions::next_version_name(&names);
+    save_chart_file(&song_folder.join(&name), &chart)
+        .map_err(|error| format!("cannot write {name}: {error}"))?;
+    crate::io::activate_revision(song_folder, &name)
+        .map_err(|error| format!("cannot point the song at {name}: {error}"))?;
+    Ok(Upgrade::Written {
+        name,
+        notes: note_counts(&chart),
+        chords_without_evidence: changes.chords_without_evidence,
     })
 }
 
@@ -217,6 +354,151 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    /// A reading with a tune in it: onsets on the beat and a melody of
+    /// changing pitches over a minute — enough for every difficulty.
+    fn tuneful() -> beatbyte_core::SongAnalysis {
+        use beatbyte_core::music::{MelodyNote, Onset};
+        let beat = 0.5;
+        let onsets = (0..240)
+            .map(|i| Onset {
+                time_s: 1.0 + f64::from(i) * beat / 2.0,
+                strength: if i % 2 == 0 { 0.9 } else { 0.4 },
+                brightness: (i % 16) as f32 / 16.0,
+            })
+            .collect();
+        let melody = (0..220)
+            .map(|i| MelodyNote {
+                time_s: 1.0 + f64::from(i) * 0.25,
+                end_s: 1.2 + f64::from(i) * 0.25,
+                midi: 55.0 + ((i * 7) % 19) as f32,
+                strength: 0.9,
+            })
+            .collect();
+        beatbyte_core::SongAnalysis {
+            repeats: Vec::new(),
+            downbeats: Vec::new(),
+            bpm: 120.0,
+            bpm_confidence: 0.8,
+            alt_bpm: None,
+            beats: (0..136).map(|i| 1.0 + f64::from(i) * beat).collect(),
+            onsets,
+            energy: vec![0.8; 1400],
+            energy_hop_s: 0.05,
+            duration_s: 68.0,
+            melody,
+        }
+    }
+
+    /// A song folder with a generated chart and its (empty) audio file.
+    fn imported(dir: &Path) {
+        let chart = crate::generate::generate_chart(
+            &tuneful(),
+            &GenerateMeta {
+                title: "Africa".into(),
+                artist: "Toto".into(),
+                audio: "mix.wav".into(),
+            },
+        );
+        save_chart_file(&dir.join(versions::BASE_CHART), &chart).expect("chart");
+        std::fs::write(dir.join("mix.wav"), b"").expect("audio");
+    }
+
+    fn reader(_: &Path) -> Result<Reading, String> {
+        Ok(Reading {
+            analysis: tuneful(),
+            trim: crate::schema::AudioTrim::declared(0, 0, 44_100),
+        })
+    }
+
+    /// The upgrade lands in the song's OWN folder as the next revision,
+    /// keeps the song's title (no tag), names itself in its provenance,
+    /// and plays from now on — the chart that played before stays as a
+    /// revision. A second run writes nothing.
+    #[test]
+    fn an_import_is_upgraded_in_its_own_folder() {
+        let scratch = Scratch::new("upgrade");
+        let song = scratch.0.join("toto---africa");
+        std::fs::create_dir_all(&song).expect("song");
+        imported(&song);
+        let before = std::fs::read(song.join(versions::BASE_CHART)).expect("before");
+        let outcome = write_upgrade(
+            &song,
+            &song.join("other.wav"),
+            &reader,
+            crate::classic::Recipe::all(),
+        )
+        .expect("upgrade");
+        let Upgrade::Written {
+            name,
+            chords_without_evidence,
+            ..
+        } = outcome
+        else {
+            panic!("not written: {outcome:?}");
+        };
+        assert_eq!(name, "chart.v2.json");
+        assert!(
+            chords_without_evidence,
+            "no polyphony sidecar: no chords guessed"
+        );
+        let pointer = std::fs::read_to_string(song.join(versions::POINTER_FILE)).expect("ptr");
+        assert!(pointer.contains("chart.v2.json"), "{pointer}");
+        assert_eq!(
+            std::fs::read(song.join(versions::BASE_CHART)).expect("after"),
+            before,
+            "the chart that played before is untouched"
+        );
+        let upgraded = load_chart_file(&song.join(&name)).expect("v2");
+        assert_eq!(upgraded.song.title, "Africa", "no [GS] in an upgrade");
+        assert_eq!(
+            upgraded.provenance.as_ref().map(|p| p.designer.as_str()),
+            Some(UPGRADE_DESIGNER)
+        );
+        assert!(
+            !twin_folder_for(&song).expect("twin").exists(),
+            "no twin folder"
+        );
+        assert_eq!(
+            write_upgrade(
+                &song,
+                &song.join("other.wav"),
+                &reader,
+                crate::classic::Recipe::all()
+            )
+            .expect("again"),
+            Upgrade::AlreadyDone
+        );
+    }
+
+    /// A chart the player edited by hand is theirs: never replaced, and
+    /// nothing is analysed or written to find that out.
+    #[test]
+    fn a_hand_edited_chart_is_never_upgraded() {
+        let scratch = Scratch::new("upgrade-hand");
+        let song = scratch.0.join("song");
+        std::fs::create_dir_all(&song).expect("song");
+        imported(&song);
+        let path = song.join(versions::BASE_CHART);
+        let mut chart = load_chart_file(&path).expect("chart");
+        chart.provenance = Some(Provenance {
+            parent_hash: chart_hash(&chart),
+            designer: versions::EDITOR_DESIGNER.to_owned(),
+            created_ms: 0,
+            directive: None,
+        });
+        save_chart_file(&path, &chart).expect("save");
+        let never = |_: &Path| -> Result<Reading, String> { panic!("read a hand-edited song") };
+        let outcome = write_upgrade(
+            &song,
+            &song.join("o.wav"),
+            &never,
+            crate::classic::Recipe::all(),
+        )
+        .expect("kept");
+        assert!(matches!(outcome, Upgrade::Kept(_)), "{outcome:?}");
+        assert!(!song.join("chart.v2.json").exists());
     }
 
     #[test]

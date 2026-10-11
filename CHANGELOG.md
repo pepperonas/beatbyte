@@ -14,6 +14,19 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.88] - 2026-10-11
+
+### Changed
+
+- A song you import (a dropped file, or one fetched from a recording) is
+  now improved **in place**: right after it lands with its quick first
+  chart, a background job separates the guitar stem, charts it, plays it
+  by the classic rules (chords where the polyphony sidecar shows them) and
+  makes that the chart that plays — the first chart stays as a revision,
+  one SWITCH REVISION away. It replaces the separate `[GS]` entry. A chart
+  you edited by hand is never replaced; Bridge charts and game rips are left
+  as they came. Needs `demucs`, as the twin did.
+
 ## [0.18.87] - 2026-10-11
 
 ### Added
