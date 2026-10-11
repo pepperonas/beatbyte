@@ -31,6 +31,7 @@ contradicted** — if a decision is reversed, the ADR says so.
 | [0022](ADR-0022-bridge-charts-as-bg-twins.md) | Charts the Bridge downloader fetched become numbered `[BG-NN]` twins: a pure `.chart`/`.mid` converter, the library song matched by letters and digits, one number per download by fingerprint, the audio Bridge's own mixed to AAC by ffmpeg | Accepted |
 | [0023](ADR-0023-menus-as-data.md) | Menus as data: every row-cursor screen on one renderer (`menu_list`) with settings rows as a typed Rust table — not RON files, no wrapper for the special screens, cursors still stop at the ends; each migration proven at 0 changed pixels | Accepted |
 | [0024](ADR-0024-editor-stays-on-bevy-ui.md) | The chart editor stays on Bevy UI and `ui_kit`; `bevy_egui` only for form panels, and only if the editor grows real forms | Accepted |
+| [0025](ADR-0025-community-first-import.md) | Adding a song by name asks Encore for a finished community chart (or game rip) first and generates only when none fits; one entry per version, no `[GS]` twin; the crate `beatbyte-encore` | Accepted |
 
 ## The gap at 0009
 

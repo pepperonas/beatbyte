@@ -14,6 +14,18 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.86] - 2026-10-11
+
+### Added
+
+- Adding a song by name (`Cmd/Ctrl D`, "Artist - Title") asks Encore — the
+  catalogue behind the Bridge app — for a finished community chart first,
+  and brings the best fitting one in as a COMMUNITY version (or a game's own
+  chart as a RIP version), with karaoke lyrics looked up. Only when none
+  fits — or there is no network or ffmpeg — does it search YouTube and
+  generate a chart as before; the line says why. A pasted link skips
+  Encore. New crate `beatbyte-encore` (ADR-0025).
+
 ## [0.18.85] - 2026-10-11
 
 ### Added

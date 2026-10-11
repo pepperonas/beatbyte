@@ -94,6 +94,8 @@ pub enum Phase {
     /// Asking the catalogue what the song is.
     #[default]
     Look,
+    /// Asking the community catalogue for a finished chart (ADR-0025).
+    Community,
     /// Asking the tool for recordings.
     Search,
     /// Asking the model which recording.
@@ -122,6 +124,7 @@ impl Phase {
     pub fn progress(self) -> f32 {
         match self {
             Phase::Look => 0.0,
+            Phase::Community => 0.02,
             Phase::Search => 0.04,
             Phase::Ask => 0.10,
             Phase::Fetch => 0.16,
@@ -137,7 +140,8 @@ impl Phase {
     #[must_use]
     pub fn ceiling(self) -> f32 {
         match self {
-            Phase::Look => Phase::Search.progress(),
+            Phase::Look => Phase::Community.progress(),
+            Phase::Community => Phase::Search.progress(),
             Phase::Search => Phase::Ask.progress(),
             Phase::Ask => Phase::Fetch.progress(),
             Phase::Fetch => Phase::Measure.progress(),
@@ -943,6 +947,33 @@ pub fn discover(query: &str, backend: &Backend, say: &dyn Fn(Step)) -> Result<Fo
         crate::lyrics_fetch::catalogue_duration(&typed_artist, &typed_title)
     };
 
+    // A finished chart first: one a person made, or the game's own,
+    // plays better than any chart generated from a recording. Every
+    // failure here is a reason to go on, said on the line, never an
+    // error of the search.
+    if !typed_artist.is_empty() {
+        say(Step::new(
+            Phase::Community,
+            format!("looking for a community chart of \"{typed_title}\"..."),
+        ));
+        let line = |text: String| say(Step::new(Phase::Community, text));
+        match crate::community::fetch(&typed_artist, &typed_title, catalogue_s, &line) {
+            Ok(arrived) => {
+                return Ok(Found {
+                    line: arrived.line,
+                    folder: Some(arrived.folder),
+                });
+            }
+            Err(reason) => {
+                bevy::log::info!("community: {reason} - generating instead");
+                say(Step::new(
+                    Phase::Search,
+                    format!("{reason} - making a chart from a recording..."),
+                ));
+            }
+        }
+    }
+
     say(Step::new(
         Phase::Search,
         format!("searching for \"{query}\"..."),
@@ -1628,6 +1659,7 @@ mod tests {
     fn the_phases_run_forward_and_end_at_the_top() {
         let order = [
             Phase::Look,
+            Phase::Community,
             Phase::Search,
             Phase::Ask,
             Phase::Fetch,

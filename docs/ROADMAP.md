@@ -6,7 +6,7 @@ holds the work itself.
 
 ## Menu guidance, GS/CL out of sight, community-first import (2026-10-11)
 
-*Verified: 2198 tests in the source inventory, including documentation examples;
+*Verified: 2222 tests in the source inventory, including documentation examples;
 all local gates; the action menu and the ALL KEYS page photographed on the real
 library (8 571 folders).*
 
@@ -42,9 +42,19 @@ Phase 2 — origin filter and plain version names:
 Phase 3 — GS/CL out of the interface:
 - [x] No automatic `[GS]` twins (only the harness's own switch makes one);
   GUITAR STUDY TWINS row removed, its field kept so old files load and sync.
-Phase 4 — `beatbyte-encore` (search, choose, `.sng` decode), Encore before
-YouTube, the best generation as one chart upgraded in place, a zero-match row
-that adds the typed song, an import queue. ADR-0025.
+Phase 4 — community first, one chart (ADR-0025):
+- [x] 4a `beatbyte-encore`: search (advanced, plain as fallback), `choose` (the
+  bulk import's rules, pinned on two real answers), `.sng` decode (untrusted
+  bytes), client; a real round trip as an ignored test.
+- [x] 4b The search asks Encore first when the query names an artist (COMMUNITY
+  phase); up to three charts tried, a chart losing >5 % open notes refused,
+  lyrics looked up; every failure falls back to YouTube with the reason on the
+  line; a link skips Encore. End to end: *Kryptonite* → COMMUNITY 1 in 8 s.
+- [ ] 4c The best generation as ONE chart upgraded in place (mix chart now,
+  stem + classic rules as `chart.vN` with the pointer moved).
+- [ ] 4d A zero-match row in the browser that adds the typed song; an import
+  queue instead of "one at a time"; SWITCH REVISION only when a folder has
+  more than one revision.
 Phase 5 (after 1–4, the user's call 2026-10-11) — documentation and a README
 "perfectly staged": the old screenshots replaced by device mockups (real frames
 in a MacBook/monitor bezel on a gold/navy gradient, a hero collage of three

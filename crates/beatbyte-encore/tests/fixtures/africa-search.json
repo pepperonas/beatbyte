@@ -1,0 +1,2214 @@
+{
+ "found": 15,
+ "data": [
+  {
+   "md5": "1eee6b1f3e66145c980cfdf2a2e29c01",
+   "name": "Africa (Toto cover)",
+   "artist": "Chaos Divine",
+   "charter": "Miscellany",
+   "packName": null,
+   "drivePath": "C/Chaos Divine",
+   "song_length": 285230,
+   "modchart": false,
+   "hasVideoBackground": false,
+   "notesData": {
+    "hasOpenNotes": false,
+    "chartIssues": [],
+    "noteCounts": [
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "count": 1230
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "hard",
+      "count": 1020
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "count": 799
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "count": 595
+     }
+    ]
+   }
+  },
+  {
+   "md5": "1eee6b1f3e66145c980cfdf2a2e29c01",
+   "name": "Africa (Toto cover)",
+   "artist": "Chaos Divine",
+   "charter": "Miscellany",
+   "packName": "Custom Songs Central",
+   "drivePath": "CSC Quarterly Packs/2024/CSC Quarterly Pack - 1st Quarter 2024 (Covers 2)",
+   "song_length": 285230,
+   "modchart": false,
+   "hasVideoBackground": false,
+   "notesData": {
+    "hasOpenNotes": false,
+    "chartIssues": [],
+    "noteCounts": [
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "count": 1230
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "hard",
+      "count": 1020
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "count": 799
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "count": 595
+     }
+    ]
+   }
+  },
+  {
+   "md5": "ceab4d9c2824cd01f14cd5fd5ac07246",
+   "name": "Africa",
+   "artist": "Weezer",
+   "charter": "JRabes",
+   "packName": null,
+   "drivePath": "Full Pack Downloads",
+   "song_length": 237842,
+   "modchart": false,
+   "hasVideoBackground": false,
+   "notesData": {
+    "hasOpenNotes": false,
+    "chartIssues": [
+     {
+      "instrument": "guitar",
+      "difficulty": "hard",
+      "noteIssue": "noStarPower",
+      "description": "This track has no star power."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "noStarPower",
+      "description": "This track has no star power."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:05.88]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:11.04]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:16.84]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:17.33]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:22.04]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:22.53]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:25.30]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:28.55]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:29.03]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:33.75]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:34.24]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:37.00]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:40.25]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:40.74]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:45.45]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:45.94]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:48.71]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:51.96]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:52.44]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:56.51]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:01.09]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:06.30]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:11.51]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:16.72]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:25.18]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:30.39]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:36.17]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:36.67]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:41.44]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:41.93]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:44.72]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:48.00]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:48.50]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:53.34]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:53.83]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:56.64]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:59.89]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:00.38]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:04.46]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:09.02]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:14.24]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:19.46]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:24.67]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:33.07]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:38.26]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:00.46]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:05.00]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:10.06]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:15.11]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:20.32]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:25.45]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:30.58]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:35.68]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:40.83]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:49.43]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "noStarPower",
+      "description": "This track has no star power."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:03.91]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:04.74]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:05.23]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:05.88]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:09.10]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:09.91]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:10.40]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:11.04]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:14.24]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:16.84]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:18.14]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:22.04]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:23.34]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:24.16]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:24.65]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:25.30]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:25.95]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:28.55]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:29.85]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:33.75]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:35.05]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:35.86]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:36.35]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:37.00]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:37.65]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:40.25]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:41.55]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:45.45]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:46.75]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:47.57]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:48.06]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:48.71]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:49.36]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:51.96]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:53.26]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:54.56]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:55.37]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:55.86]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[00:56.51]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:01.09]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:06.30]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:11.51]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:16.72]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:20.62]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:23.23]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:24.04]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:24.53]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:25.18]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:28.44]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:29.25]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:29.74]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:30.39]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:33.55]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:36.17]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:37.50]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:41.44]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:42.75]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:43.57]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:44.06]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:44.72]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:45.37]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:48.00]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:49.32]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:53.34]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:54.66]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:55.49]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:55.99]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:56.64]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:57.28]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[01:59.89]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:01.20]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:02.50]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:03.32]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:03.80]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:04.46]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:09.02]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:14.24]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:19.46]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:24.67]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:28.59]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:31.14]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:31.94]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:32.42]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:33.07]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:36.31]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:37.12]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:37.61]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:38.26]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:58.51]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:59.32]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[02:59.81]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:00.46]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:05.00]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:10.06]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:15.11]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:20.32]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:25.45]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:30.58]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:35.68]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:40.83]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:44.83]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:47.43]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:48.27]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:48.77]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:49.43]: This is a note that isn't allowed on the track's difficulty."
+     }
+    ],
+    "noteCounts": [
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "count": 435
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "hard",
+      "count": 434
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "count": 353
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "count": 217
+     }
+    ]
+   }
+  },
+  {
+   "md5": "7de0c8a3dd4610af742e39b1e113844e",
+   "name": "Africa",
+   "artist": "Quartered",
+   "charter": "RhythmAuthors",
+   "packName": "Rock Band Network",
+   "drivePath": "",
+   "song_length": 387187,
+   "modchart": false,
+   "hasVideoBackground": false,
+   "notesData": {
+    "hasOpenNotes": false,
+    "chartIssues": [
+     {
+      "instrument": null,
+      "difficulty": null,
+      "noteIssue": "badEndEvent",
+      "description": "[06:31.63]: This end event is in an invalid location and will be ignored by most games."
+     }
+    ],
+    "noteCounts": [
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "count": 1294
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "hard",
+      "count": 911
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "count": 614
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "count": 266
+     }
+    ]
+   }
+  },
+  {
+   "md5": "dfcd4301bc80ce24dac2e9e7828f52cb",
+   "name": "Africa (Toto cover)",
+   "artist": "PelleK",
+   "charter": "Kaduzera",
+   "packName": null,
+   "drivePath": "PelleK - Africa (Toto cover)",
+   "song_length": 259368,
+   "modchart": false,
+   "hasVideoBackground": false,
+   "notesData": {
+    "hasOpenNotes": true,
+    "chartIssues": [],
+    "noteCounts": [
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "count": 1195
+     }
+    ]
+   }
+  },
+  {
+   "md5": "05604ef0bea76d68ad4e8c74fb4e2cb6",
+   "name": "Africa (Metal Cover)",
+   "artist": "Leo Moracchioli",
+   "charter": "Akazu",
+   "packName": "Archived Charts",
+   "drivePath": "Akazu's Charts",
+   "song_length": 237802,
+   "modchart": false,
+   "hasVideoBackground": false,
+   "notesData": {
+    "hasOpenNotes": false,
+    "chartIssues": [
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "smallLeadingSilence",
+      "description": "This track has a note that is less than 2000ms after the start of the track."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:01.28]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:05.85]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:10.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:15.00]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:19.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:20.71]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:21.85]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:23.00]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:24.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:25.28]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:26.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:27.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:29.85]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:31.00]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:32.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:33.28]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:34.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:35.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:36.71]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:37.85]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:40.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:41.28]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:42.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:43.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:44.71]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:45.85]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:47.00]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:48.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:50.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:51.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:52.71]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:53.85]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:55.00]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[00:59.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:00.00]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:00.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:01.71]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:02.28]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:02.85]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:03.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:03.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:04.00]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:04.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:05.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:06.28]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:06.85]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:07.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:07.71]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:08.00]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:08.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:09.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:09.71]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:10.85]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:11.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:12.00]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:12.28]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:12.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:13.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:13.71]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:14.28]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:15.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:16.00]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:16.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:17.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:17.71]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:18.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:18.85]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:20.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:24.71]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:29.28]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:30.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:31.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:32.71]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:33.85]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:35.00]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:36.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:37.28]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:39.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:40.71]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:41.85]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:43.00]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:44.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:45.28]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:46.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:47.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:49.85]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:51.00]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:52.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:53.28]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:54.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[01:55.60]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:00.00]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:00.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:01.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:02.28]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:02.85]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:03.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:03.71]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:04.00]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:04.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:05.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:05.71]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:06.85]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:07.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:08.00]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:08.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:09.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:09.71]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:10.28]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:11.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:12.00]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:12.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:13.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:13.71]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:14.28]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:14.85]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:16.00]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:16.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:17.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:17.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:18.28]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:18.71]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:19.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[02:39.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[03:15.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[03:16.00]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[03:16.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[03:17.71]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[03:18.28]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[03:18.85]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[03:19.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[03:19.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[03:20.00]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[03:20.57]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[03:21.14]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[03:22.28]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[03:22.85]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[03:23.42]: This note is not far enough ahead of the previous sustain."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "noteIssue": "badSustainGap",
+      "description": "[03:24.00]: This note is not far enough ahead of the previous sustain."
+     }
+    ],
+    "noteCounts": [
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "count": 965
+     }
+    ]
+   }
+  },
+  {
+   "md5": "6f4d261f9c20535e80038ca0c6a080fe",
+   "name": "Africa (RB3 version)",
+   "artist": "Quartered",
+   "charter": "RhythmAuthors",
+   "packName": "Rock Band Network",
+   "drivePath": "",
+   "song_length": 387187,
+   "modchart": false,
+   "hasVideoBackground": false,
+   "notesData": {
+    "hasOpenNotes": false,
+    "chartIssues": [
+     {
+      "instrument": null,
+      "difficulty": null,
+      "noteIssue": "badEndEvent",
+      "description": "[06:31.63]: This end event is in an invalid location and will be ignored by most games."
+     },
+     {
+      "instrument": "bass",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[04:34.18]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "bass",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[04:34.18]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "bass",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[04:34.90]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:07.63]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:06.54]: This is a note that isn't allowed on the track's difficulty."
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "noteIssue": "difficultyForbiddenNote",
+      "description": "[03:07.63]: This is a note that isn't allowed on the track's difficulty."
+     }
+    ],
+    "noteCounts": [
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "count": 1294
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "hard",
+      "count": 911
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "medium",
+      "count": 614
+     },
+     {
+      "instrument": "guitar",
+      "difficulty": "easy",
+      "count": 266
+     }
+    ]
+   }
+  },
+  {
+   "md5": "cad1b22ef81c35b6c7285604d5206cd4",
+   "name": "Africa Meets Metal",
+   "artist": "ERock",
+   "charter": "alpisaprofit",
+   "packName": null,
+   "drivePath": "",
+   "song_length": 256000,
+   "modchart": false,
+   "hasVideoBackground": false,
+   "notesData": {
+    "hasOpenNotes": false,
+    "chartIssues": [],
+    "noteCounts": [
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "count": 1223
+     }
+    ]
+   }
+  },
+  {
+   "md5": "a2fb82eb7c563169844e04c5f4c2431a",
+   "name": "Africa (Toto Cover)",
+   "artist": "Leo Moracchioli",
+   "charter": "Chezy",
+   "packName": "Custom Songs Central",
+   "drivePath": "CHARTS/!! TIER 67 - This Tier (Is Pretty Neat)",
+   "song_length": 240102,
+   "modchart": false,
+   "hasVideoBackground": false,
+   "notesData": {
+    "hasOpenNotes": true,
+    "chartIssues": [],
+    "noteCounts": [
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "count": 942
+     }
+    ]
+   }
+  },
+  {
+   "md5": "a2fb82eb7c563169844e04c5f4c2431a",
+   "name": "Africa (Toto Cover)",
+   "artist": "Leo Moracchioli",
+   "charter": "Chezy",
+   "packName": null,
+   "drivePath": "",
+   "song_length": 240102,
+   "modchart": false,
+   "hasVideoBackground": false,
+   "notesData": {
+    "hasOpenNotes": true,
+    "chartIssues": [],
+    "noteCounts": [
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "count": 942
+     }
+    ]
+   }
+  },
+  {
+   "md5": "b4c8047ed6d4a673b4eca1df47122d71",
+   "name": "Sunday Morning",
+   "artist": "Amanaz",
+   "charter": "alpisaprofit",
+   "packName": null,
+   "drivePath": "",
+   "song_length": 300495,
+   "modchart": false,
+   "hasVideoBackground": false,
+   "notesData": {
+    "hasOpenNotes": true,
+    "chartIssues": [],
+    "noteCounts": [
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "count": 1072
+     }
+    ]
+   }
+  },
+  {
+   "md5": "08dc786b0caec5e0458c3c6cdbab43c5",
+   "name": "Waka Waka (Esto Es Africa)",
+   "artist": "Shakira",
+   "charter": "REHdMoguel",
+   "packName": "World Charts Community",
+   "drivePath": "WCC 2021-09 Espa\u00f1ol 2",
+   "song_length": 183308,
+   "modchart": false,
+   "hasVideoBackground": false,
+   "notesData": {
+    "hasOpenNotes": false,
+    "chartIssues": [],
+    "noteCounts": [
+     {
+      "instrument": "guitar",
+      "difficulty": "expert",
+      "count": 658
+     }
+    ]
+   }
+  }
+ ]
+}

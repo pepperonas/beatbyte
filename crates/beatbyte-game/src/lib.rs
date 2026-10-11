@@ -15,6 +15,7 @@ pub mod bridge_import;
 pub mod calibration;
 pub mod chore;
 pub mod clipboard;
+pub mod community;
 pub mod config;
 pub mod controls;
 pub mod controls_ui;

@@ -9,7 +9,7 @@ file wins over habit; the roadmap wins over improvisation.
 
 **BeatByte** — an original five-lane rhythm game in **Rust + Bevy
 0.19** (repo `pepperonas/beatbyte`, MIT, © 2026 Martin Pfeffer, public).
-A Cargo workspace of fourteen crates plus a thin launcher (map below);
+A Cargo workspace of fifteen crates plus a thin launcher (map below);
 all logic lives in the crates. UI language is English; the game is
 fully keyboard/gamepad driven.
 
@@ -72,6 +72,13 @@ that may touch Bevy (the full layering and its invariants:
   recordings of "Heroes", all scored 100, 0 to 393 seconds — so
   length decides and unlabelled recordings are a TIER above labelled
   ones. See `docs/audio/catalogue.md`.
+- **`beatbyte-encore`** (—) — a finished community chart for a song
+  the player adds by name (ADR-0025): search Encore (the catalogue
+  behind the Bridge app), choose a hit purely (`choose`, the bulk
+  import's rules), decode the `.sng` package (untrusted bytes). Only
+  its `Client` touches the network; the game's `community.rs` runs it
+  before any YouTube search and converts through
+  `beatbyte_library::bridge::import`.
 - **`beatbyte-game`** (everything above) — the only Bevy crate:
   screens, HUD, 3D stage, input routing, library, settings, harnesses.
 - **`beatbyte-cli`** (all but game and editor) — the offline tool.

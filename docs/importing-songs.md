@@ -20,11 +20,26 @@ LIB="$HOME/Library/Application Support/beatbyte/songs/imported"
 
 ## By name, from inside the game
 
-Press **D** in the browser, type the song and press **Enter** (**Esc**
-cancels). The search looks it up, judges the recordings it finds, fetches the best one,
-measures it, pulls the lyrics and charts it — the result lands in
-the library folder exactly as a dropped file does, and appears in the
-browser the moment it is there.
+Press **Cmd/Ctrl+D** in the browser (or ADD A SONG in the action menu),
+type the song and press **Enter** (**Esc** cancels).
+
+**First, a finished chart** (ADR-0025). When you write `Artist - Title`,
+the search asks [Encore](https://www.enchor.us) — the catalogue behind
+the Bridge app — for that song. A chart somebody made, or the game's own
+chart of it, plays better than anything generated, so the best fitting
+one is downloaded and converted like a Bridge download: it lands as a
+**COMMUNITY** version (a game's chart as a **RIP** version), with the
+karaoke lyrics looked up, usually within seconds. Covers, live takes and
+remixes are left out unless your title asks for one; a chart that would
+lose more than 5 % of its notes as open notes is skipped for the next.
+
+**Otherwise, a recording.** When there is no fitting chart — or no
+network, or no `ffmpeg` — the line says why and the search goes on as it
+always has: it judges the recordings it finds, fetches the best one,
+measures it, pulls the lyrics and charts it — the result lands in the
+library folder exactly as a dropped file does, and appears in the browser
+the moment it is there. A pasted YouTube link always takes this path:
+it names one recording.
 
 **It runs in the background.** Start a search, then browse, change a
 setting or play a song: it carries on and lands anyway. A panel at the
