@@ -21,9 +21,15 @@ use crate::build::LoudnessFacts;
 /// files, and it is deliberately a whitelist by exclusion — a chart
 /// made by hand may be called anything, so the sidecars are what we
 /// can name for certain.
+///
+/// A hidden file is never a chart. macOS writes an AppleDouble
+/// companion (`._chart.json`) beside every file it copies onto a
+/// FAT32 or exFAT stick — 42 857 of them when the library moved to
+/// one — and each would otherwise be read and parsed as a chart.
 #[must_use]
 pub fn is_chart_candidate(name: &str) -> bool {
-    name.ends_with(".json")
+    !name.starts_with('.')
+        && name.ends_with(".json")
         && name != versions::POINTER_FILE
         && name != crate::DOC_FILE
         && name != crate::bridge::SOURCE_FILE
@@ -338,6 +344,10 @@ mod tests {
             "chart-active.json",
             "song.json",
             "notes.txt",
+            // macOS's AppleDouble companions on a FAT32 stick.
+            "._chart.json",
+            "._chart.v4.json",
+            ".hidden.json",
         ] {
             assert!(!is_chart_candidate(sidecar), "{sidecar}");
         }

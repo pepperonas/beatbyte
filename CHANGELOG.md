@@ -14,6 +14,15 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.89] - 2026-10-11
+
+### Fixed
+
+- A library on a FAT32 or exFAT USB stick no longer has every song's
+  hidden macOS companion files (`._chart.json`, written beside each file
+  macOS copies onto such a stick) read as charts. Hidden files are never
+  taken for a chart.
+
 ## [0.18.88] - 2026-10-11
 
 ### Changed
