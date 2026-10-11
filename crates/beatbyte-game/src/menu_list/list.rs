@@ -98,46 +98,60 @@ fn spawn_rows_inner<'a, L: Send + Sync + 'static>(
     fixed: bool,
 ) {
     for (index, label) in labels.into_iter().enumerate() {
-        let mut entity = panel.spawn(row_frame::<L>(index));
-        if fixed {
-            let mut node = ui_kit::row_node();
-            node.flex_shrink = 0.0;
-            entity.insert(node);
-        }
-        entity.with_children(|row| {
-            // Label and value are separate texts in a space-between
-            // line. A single padded string overflowed on the
-            // longest label ("TAP MODE (NO STRUM)") and hung its
-            // value out of the column.
-            let mut label_text = row.spawn((
-                ListLabel::<L>(index, PhantomData),
-                Text::new(label.to_owned()),
-                font.text(ui_kit::ROW),
-                TextColor(palette::TEXT_DIM),
-                ui_kit::label_node(),
-            ));
-            if fixed {
-                label_text.insert(TextLayout::default().with_no_wrap());
-            }
-            let mut value_text = row.spawn((
-                ListValue::<L>(index, PhantomData),
-                Text::new(""),
-                font.text(ui_kit::ROW),
-                TextColor(palette::TEXT_DIM),
-                ui_kit::value_node(),
-            ));
-            if fixed {
-                value_text.insert((
-                    TextLayout::default().with_no_wrap(),
-                    Node {
-                        max_width: percent(55),
-                        overflow: Overflow::clip(),
-                        ..default()
-                    },
-                ));
-            }
-        });
+        spawn_row_at::<L>(panel, font, index, label, fixed);
     }
+}
+
+/// Spawn ONE row with an explicit index — for a list that puts other
+/// things between its rows (the action menu's group headings). The
+/// cursor counts rows only, so whatever sits between them is never
+/// selectable.
+pub fn spawn_row_at<L: Send + Sync + 'static>(
+    panel: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    index: usize,
+    label: &str,
+    fixed: bool,
+) {
+    let mut entity = panel.spawn(row_frame::<L>(index));
+    if fixed {
+        let mut node = ui_kit::row_node();
+        node.flex_shrink = 0.0;
+        entity.insert(node);
+    }
+    entity.with_children(|row| {
+        // Label and value are separate texts in a space-between
+        // line. A single padded string overflowed on the
+        // longest label ("TAP MODE (NO STRUM)") and hung its
+        // value out of the column.
+        let mut label_text = row.spawn((
+            ListLabel::<L>(index, PhantomData),
+            Text::new(label.to_owned()),
+            font.text(ui_kit::ROW),
+            TextColor(palette::TEXT_DIM),
+            ui_kit::label_node(),
+        ));
+        if fixed {
+            label_text.insert(TextLayout::default().with_no_wrap());
+        }
+        let mut value_text = row.spawn((
+            ListValue::<L>(index, PhantomData),
+            Text::new(""),
+            font.text(ui_kit::ROW),
+            TextColor(palette::TEXT_DIM),
+            ui_kit::value_node(),
+        ));
+        if fixed {
+            value_text.insert((
+                TextLayout::default().with_no_wrap(),
+                Node {
+                    max_width: percent(55),
+                    overflow: Overflow::clip(),
+                    ..default()
+                },
+            ));
+        }
+    });
 }
 
 /// Spawn one label-only row per label — a list of actions, like the

@@ -414,6 +414,10 @@ fn enter_shot_state(
         menu.open = true;
         menu.cursor = 0;
     }
+    // ... and the ALL KEYS page, which only F1 or the menu opens.
+    if std::env::var_os("BEATBYTE_SHOT_HELP").is_some() {
+        menu.help = true;
+    }
     // The document screen is the one that cannot be entered cold:
     // the browser hands it what to show. For a photograph, hand it
     // the first song in the library that HAS a document — an empty

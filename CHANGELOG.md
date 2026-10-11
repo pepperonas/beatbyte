@@ -14,6 +14,29 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.83] - 2026-10-11
+
+### Fixed
+
+- A pad or a guitar can start a song from the song list again: the green
+  fret (`A`) plays, as the footer always said. Numpad Enter plays too.
+- A pad or a guitar can reach every tool: the orange fret (`LB`) or
+  `Select` opens the action menu.
+- The empty-library hint names the key that actually opens the add-a-song
+  field (`Cmd D` / `Ctrl D`, not `D`).
+
+### Changed
+
+- The action menu groups its tools under PLAY, THIS SONG, LIBRARY, EDIT,
+  HELP and DANGER, in two columns, and names the modifier of the machine
+  (`CMD` on a Mac). FAVOURITE and REVERSE THE ORDER are in it now, and
+  REDESIGN CHART is offered only for your own imports.
+
+### Added
+
+- ALL KEYS (`F1`, or HELP in the action menu): every key of the song list,
+  keyboard and pad side by side, generated from the menu's own table.
+
 ## [0.18.82] - 2026-10-10
 
 ### Fixed

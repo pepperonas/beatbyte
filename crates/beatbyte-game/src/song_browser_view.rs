@@ -447,8 +447,8 @@ pub fn spawn_shell(
             crate::prompts::device_footer(
                 root,
                 font,
-                "UP/DOWN song  LEFT/RIGHT difficulty  SHIFT+LEFT/RIGHT version  ENTER play  TAB actions  ESC back",
-                "D-PAD song and difficulty  SOUTH play  EAST back",
+                "UP/DOWN song  LEFT/RIGHT difficulty  SHIFT+LEFT/RIGHT version  ENTER play  TAB actions  F1 all keys  ESC back",
+                "D-PAD song and difficulty  GREEN play  ORANGE/SELECT actions  RED back",
             );
             ui_kit::back_button(root, font, "MAIN MENU");
         });
@@ -945,15 +945,59 @@ pub fn is_file(entry: &SongEntry) -> bool {
     matches!(entry.source, SongSource::File { .. })
 }
 
-/// The action menu: a dimmed screen and, centred on it, the tools as
+/// The action menu: an opaque screen and, centred on it, the tools as
 /// a list on the shared renderer — the same rows, keys and look as
-/// every other menu.
+/// every other menu. The tools stand in their groups under a heading
+/// each, in two columns so the whole menu fits a small window: PLAY,
+/// THIS SONG and LIBRARY on the left, the rarer groups on the right.
+/// The cursor walks the rows in menu order, down the left column and
+/// on into the right; headings are not rows, so it never stops on one.
 pub fn spawn_action_menu(commands: &mut Commands, font: &UiFont, items: &[u8], song: &str) {
-    let labels: Vec<&str> = items
+    use crate::song_select::{Section, TOOLS};
+    let tools: Vec<&crate::song_select::Tool> = items
         .iter()
-        .filter_map(|id| crate::song_select::TOOLS.iter().find(|t| t.id == *id))
-        .map(|tool| tool.label)
+        .filter_map(|id| TOOLS.iter().find(|t| t.id == *id))
         .collect();
+    let left_side = |section: Section| matches!(section, Section::Play | Section::Song);
+    let heading = |column: &mut ChildSpawnerCommands, section: Section, first: bool| {
+        column.spawn((
+            Text::new(section.heading()),
+            font.text(ui_kit::SMALL),
+            TextColor(palette::BRAND),
+            Node {
+                margin: UiRect {
+                    top: px(if first { 0 } else { 10 }),
+                    bottom: px(2),
+                    left: px(4),
+                    ..default()
+                },
+                ..default()
+            },
+        ));
+    };
+    let spawn_column = |row: &mut ChildSpawnerCommands, left: bool| {
+        row.spawn(Node {
+            flex_direction: FlexDirection::Column,
+            row_gap: px(ui_kit::ROW_GAP),
+            width: percent(50),
+            ..default()
+        })
+        .with_children(|column| {
+            let mut last: Option<Section> = None;
+            for (index, tool) in tools.iter().enumerate() {
+                if left_side(tool.section) != left {
+                    continue;
+                }
+                if last != Some(tool.section) {
+                    heading(column, tool.section, last.is_none());
+                    last = Some(tool.section);
+                }
+                crate::menu_list::list::spawn_row_at::<crate::song_select::ActionRows>(
+                    column, font, index, tool.label, false,
+                );
+            }
+        });
+    };
     commands
         .spawn((
             crate::song_select::ActionOverlay,
@@ -977,17 +1021,136 @@ pub fn spawn_action_menu(commands: &mut Commands, font: &UiFont, items: &[u8], s
             overlay
                 .spawn((
                     crate::menu_list::list::ListPanel::<crate::song_select::ActionRows>::new(),
-                    ui_kit::panel(),
+                    ui_kit::panel_wide(),
                 ))
                 // Opaque: the browser behind it must not read through
                 // the menu's rows.
                 .insert(BackgroundColor(palette::BACKGROUND))
                 .with_children(|panel| {
-                    crate::menu_list::list::spawn_rows::<crate::song_select::ActionRows>(
-                        panel, font, labels,
-                    );
+                    panel
+                        .spawn(Node {
+                            flex_direction: FlexDirection::Row,
+                            column_gap: px(24),
+                            width: percent(100),
+                            align_items: AlignItems::FlexStart,
+                            ..default()
+                        })
+                        .with_children(|row| {
+                            spawn_column(row, true);
+                            spawn_column(row, false);
+                        });
                 });
-            ui_kit::footer(overlay, font, "UP/DOWN choose  ENTER run  ESC close");
+            crate::prompts::device_footer(
+                overlay,
+                font,
+                "UP/DOWN choose  ENTER run  ESC close",
+                "D-PAD choose  GREEN run  RED close",
+            );
+        });
+}
+
+/// The ALL KEYS page: every key the browser answers to, keyboard on the
+/// left and pad/guitar on the right, so nothing has to be guessed.
+pub fn spawn_help_overlay(
+    commands: &mut Commands,
+    font: &UiFont,
+    keyboard: &[(String, &'static str)],
+) {
+    let line = |column: &mut ChildSpawnerCommands, keys: &str, what: &str| {
+        column
+            .spawn(Node {
+                width: percent(100),
+                justify_content: JustifyContent::SpaceBetween,
+                column_gap: px(12),
+                ..default()
+            })
+            .with_children(|row| {
+                row.spawn((
+                    Text::new(keys.to_owned()),
+                    font.text(ui_kit::SMALL),
+                    TextColor(palette::BRAND),
+                ));
+                row.spawn((
+                    Text::new(what.to_owned()),
+                    font.text(ui_kit::SMALL),
+                    TextColor(palette::TEXT_DIM),
+                ));
+            });
+    };
+    let title = |column: &mut ChildSpawnerCommands, text: &str| {
+        column.spawn((
+            Text::new(text.to_owned()),
+            font.text(ui_kit::ROW),
+            TextColor(palette::TEXT),
+            Node {
+                margin: UiRect::bottom(px(6)),
+                ..default()
+            },
+        ));
+    };
+    commands
+        .spawn((
+            crate::song_select::HelpOverlay,
+            DespawnOnExit(crate::states::AppState::SongSelect),
+            Node {
+                position_type: PositionType::Absolute,
+                width: percent(100),
+                height: percent(100),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            BackgroundColor(palette::BACKGROUND),
+            GlobalZIndex(20),
+        ))
+        .with_children(|overlay| {
+            ui_kit::header(overlay, font, "ALL KEYS", "the song list");
+            overlay
+                .spawn(ui_kit::panel_wide())
+                .insert(BackgroundColor(palette::BACKGROUND))
+                .with_children(|panel| {
+                    panel
+                        .spawn(Node {
+                            flex_direction: FlexDirection::Row,
+                            column_gap: px(32),
+                            width: percent(100),
+                            align_items: AlignItems::FlexStart,
+                            ..default()
+                        })
+                        .with_children(|row| {
+                            row.spawn(Node {
+                                flex_direction: FlexDirection::Column,
+                                row_gap: px(5),
+                                width: percent(58),
+                                ..default()
+                            })
+                            .with_children(|column| {
+                                title(column, "KEYBOARD");
+                                for (keys, what) in keyboard {
+                                    line(column, keys, what);
+                                }
+                            });
+                            row.spawn(Node {
+                                flex_direction: FlexDirection::Column,
+                                row_gap: px(5),
+                                width: percent(42),
+                                ..default()
+                            })
+                            .with_children(|column| {
+                                title(column, "PAD / GUITAR");
+                                for (keys, what) in crate::song_select::PAD_HELP {
+                                    line(column, keys, what);
+                                }
+                            });
+                        });
+                });
+            crate::prompts::device_footer(
+                overlay,
+                font,
+                "ENTER or ESC close",
+                "GREEN or RED close",
+            );
         });
 }
 

@@ -4,6 +4,35 @@
 Rules of engagement live in [`CLAUDE.md`](../CLAUDE.md); this file
 holds the work itself.
 
+## Menu guidance, GS/CL out of sight, community-first import (2026-10-11)
+
+*Verified: 2200 tests in the source inventory, including documentation examples;
+all local gates; the action menu and the ALL KEYS page photographed on the real
+library (8 571 folders).*
+
+The library is the Bridge/Encore pull (4 368 community charts, 4 203 game rips)
+and stays the default list. GS and CL leave the interface; a YouTube import asks
+Encore for a finished chart first and generates ONE chart only when there is none.
+
+Phase 1 — menu defects and orientation:
+- [x] A pad's green fret (`A`) and Numpad Enter play from the search; the
+  orange fret (`LB`) or `Select` opens the action menu.
+- [x] The action menu in groups (PLAY, THIS SONG, LIBRARY, EDIT, HELP, DANGER),
+  two columns, the machine's modifier named; FAVOURITE and REVERSE in it,
+  REDESIGN only for own imports.
+- [x] ALL KEYS page (`F1`), generated from the menu's table.
+- [x] The empty-library hint names the real chord.
+- [ ] Delete asks in a dialog (KEEP preselected) instead of an 8 s status line.
+- [ ] Calibration / Input Test / Statistics return where they were opened from.
+- [ ] One version list: revisions join the versions on `Shift+←/→`; SWITCH
+  REVISION goes; the dead tree code in `song_tree.rs` goes.
+
+Phase 2 — origin filter (ALL / COMMUNITY / RIPS / IMPORTS) and plain version names.
+Phase 3 — no automatic GS twins, GUITAR STUDY TWINS row removed (field still read).
+Phase 4 — `beatbyte-encore` (search, choose, `.sng` decode), Encore before
+YouTube, the best generation as one chart upgraded in place, a zero-match row
+that adds the typed song, an import queue. ADR-0025.
+
 ## Whammy diagnostics and sustain feedback (2026-10-10)
 
 *Verified: 2195 tests in the source inventory, including documentation examples;

@@ -500,6 +500,20 @@ pub fn may_start(filtering: bool, prompt_open: bool, enter: bool, confirm: bool)
     }
 }
 
+/// Whether this frame confirms while the search is taking keys.
+///
+/// `nav` is read in typing mode, so its CONFIRM never comes from a
+/// printable key — Space stays a space. What is left is Enter, a pad's
+/// SOUTH and a guitar's green fret, and none of them is text. Reading
+/// only the Enter key here stranded every pad player in front of the
+/// list: the footer said "SOUTH play" and SOUTH did nothing.
+#[must_use]
+pub fn filter_confirm(keys: &ButtonInput<KeyCode>, typing_nav_confirm: bool) -> bool {
+    typing_nav_confirm
+        || keys.just_pressed(KeyCode::Enter)
+        || keys.just_pressed(KeyCode::NumpadEnter)
+}
+
 /// What a key press means for deleting the highlighted song.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeleteStep {
@@ -599,8 +613,10 @@ fn cursor_after_change(
 #[must_use]
 pub fn empty_hint(library_len: usize, filter: &str) -> String {
     if library_len == 0 {
-        "no songs yet  -  click or press D to add  ·  or drag an audio file onto the window"
-            .to_owned()
+        format!(
+            "no songs yet  -  click or press {} D to add  ·  or drag an audio file onto the window",
+            command_name()
+        )
     } else {
         format!("no match for \"{filter}\"  -  ESC clears")
     }
@@ -684,113 +700,300 @@ pub struct ActionMenu {
     pub spent: bool,
     /// The tools offered, as chip ids, fixed when the menu opened.
     pub items: Vec<u8>,
+    /// The ALL KEYS page is showing (over the menu, or opened straight
+    /// from the browser with F1).
+    pub help: bool,
+}
+
+/// The ALL KEYS page: one line per key, keyboard and pad side by side.
+#[derive(Component)]
+pub struct HelpOverlay;
+
+/// The keyboard half of the ALL KEYS page, as (keys, what) lines:
+/// the moves every list has, then every tool in menu order. Pure —
+/// tested (every tool with a shortcut is on it).
+#[must_use]
+pub fn keyboard_help(command: &str) -> Vec<(String, &'static str)> {
+    let mut lines: Vec<(String, &'static str)> = vec![
+        ("TYPE".to_owned(), "search the library"),
+        ("UP / DOWN".to_owned(), "choose a song"),
+        ("LEFT / RIGHT".to_owned(), "difficulty"),
+        ("SHIFT LEFT / RIGHT".to_owned(), "version of the song"),
+        ("TAB".to_owned(), "all actions"),
+        ("ESC".to_owned(), "clear the search, then back"),
+        (format!("{command} UP / DOWN"), "pick a rating line"),
+        (format!("{command} 1-5 / 0"), "set / clear stars"),
+    ];
+    lines.extend(
+        TOOLS
+            .iter()
+            .filter(|tool| tool.shortcut != Shortcut::None && tool.id != chip::HELP)
+            .map(|tool| (shortcut_label(tool.shortcut, command), tool.label)),
+    );
+    lines
+}
+
+/// The pad and guitar half of the ALL KEYS page.
+pub const PAD_HELP: [(&str, &str); 6] = [
+    ("D-PAD / STRUM", "choose a song"),
+    ("D-PAD LEFT / RIGHT", "difficulty"),
+    ("YELLOW / BLUE  (Y / X)", "difficulty"),
+    ("GREEN  (A)", "play"),
+    ("RED  (B)", "back"),
+    ("ORANGE  (LB)  or SELECT", "all actions"),
+];
+
+/// The group a tool sits in. The menu draws a heading above each
+/// group, in this order — the cursor never stops on a heading.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Section {
+    /// Starting something.
+    Play,
+    /// The selected song: what it is, how the player rates it, words.
+    Song,
+    /// The library as a whole.
+    Library,
+    /// Changing the chart.
+    Edit,
+    /// Every key on one page.
+    Help,
+    /// Removing files.
+    Danger,
+}
+
+impl Section {
+    /// The heading the menu draws.
+    #[must_use]
+    pub const fn heading(self) -> &'static str {
+        match self {
+            Section::Play => "PLAY",
+            Section::Song => "THIS SONG",
+            Section::Library => "LIBRARY",
+            Section::Edit => "EDIT",
+            Section::Help => "HELP",
+            Section::Danger => "DANGER",
+        }
+    }
+}
+
+/// How a tool is reached from the keyboard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shortcut {
+    /// Menu only.
+    None,
+    /// A key on its own (ENTER, F1).
+    Key(&'static str),
+    /// Ctrl/Cmd plus this key — the search owns every plain letter.
+    Chord(&'static str),
+}
+
+/// The modifier the chords use, named for the machine the game runs
+/// on: both keys work everywhere, but a Mac player looks for CMD.
+#[must_use]
+pub const fn command_name() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "CMD"
+    } else {
+        "CTRL"
+    }
+}
+
+/// A shortcut as a row shows it, for the given modifier name.
+/// Pure — tested.
+#[must_use]
+pub fn shortcut_label(shortcut: Shortcut, command: &str) -> String {
+    match shortcut {
+        Shortcut::None => String::new(),
+        Shortcut::Key(key) => key.to_owned(),
+        Shortcut::Chord(key) => format!("{command} {key}"),
+    }
 }
 
 /// One tool of the action menu: its label, its shortcut, its chip id.
 pub struct Tool {
     /// What the row says.
     pub label: &'static str,
-    /// The shortcut, as the row shows it.
-    pub keys: &'static str,
+    /// The keyboard way to it.
+    pub shortcut: Shortcut,
     /// The chip id the tool's handler answers to.
     pub id: u8,
+    /// The group it is drawn in.
+    pub section: Section,
 }
 
-/// Every tool, in menu order.
-pub const TOOLS: [Tool; 14] = [
+impl Tool {
+    /// The shortcut as this machine names it.
+    #[must_use]
+    pub fn keys(&self) -> String {
+        shortcut_label(self.shortcut, command_name())
+    }
+}
+
+/// Every tool, in menu order: grouped, the common ones first.
+pub const TOOLS: [Tool; 17] = [
     Tool {
         label: "PLAY",
-        keys: "ENTER",
+        shortcut: Shortcut::Key("ENTER"),
         id: chip::PLAY,
-    },
-    Tool {
-        label: "EDIT CHART",
-        keys: "CTRL E",
-        id: chip::EDIT,
-    },
-    Tool {
-        label: "SONG INFO",
-        keys: "CTRL I",
-        id: chip::INFO,
-    },
-    Tool {
-        label: "SWITCH REVISION",
-        keys: "",
-        id: chip::REVISION,
-    },
-    Tool {
-        label: "FETCH LYRICS",
-        keys: "CTRL L",
-        id: chip::LYRICS,
-    },
-    Tool {
-        label: "ALIGN LYRICS",
-        keys: "CTRL K",
-        id: chip::ALIGN,
-    },
-    Tool {
-        label: "REDESIGN CHART",
-        keys: "CTRL G",
-        id: chip::REDESIGN,
-    },
-    Tool {
-        label: "TASTE TEST",
-        keys: "CTRL T",
-        id: chip::TASTE,
+        section: Section::Play,
     },
     Tool {
         label: "ADD TO QUEUE / REMOVE",
-        keys: "CTRL Q",
+        shortcut: Shortcut::Chord("Q"),
         id: chip::QUEUE,
+        section: Section::Play,
     },
     Tool {
         label: "PLAY THE QUEUE",
-        keys: "CTRL P",
+        shortcut: Shortcut::Chord("P"),
         id: chip::PLAY_SET,
+        section: Section::Play,
+    },
+    Tool {
+        label: "TASTE TEST",
+        shortcut: Shortcut::Chord("T"),
+        id: chip::TASTE,
+        section: Section::Play,
+    },
+    Tool {
+        label: "SONG INFO",
+        shortcut: Shortcut::Chord("I"),
+        id: chip::INFO,
+        section: Section::Song,
+    },
+    Tool {
+        label: "FAVOURITE / UNFAVOURITE",
+        shortcut: Shortcut::Chord("F"),
+        id: chip::FAVORITE,
+        section: Section::Song,
+    },
+    Tool {
+        label: "FETCH LYRICS",
+        shortcut: Shortcut::Chord("L"),
+        id: chip::LYRICS,
+        section: Section::Song,
+    },
+    Tool {
+        label: "ALIGN LYRICS",
+        shortcut: Shortcut::Chord("K"),
+        id: chip::ALIGN,
+        section: Section::Song,
     },
     Tool {
         label: "ADD A SONG",
-        keys: "CTRL D",
+        shortcut: Shortcut::Chord("D"),
         id: chip::ADD,
+        section: Section::Library,
     },
     Tool {
         label: "IMPORT BRIDGE DOWNLOADS",
-        keys: "CTRL B",
+        shortcut: Shortcut::Chord("B"),
         id: chip::BRIDGE,
+        section: Section::Library,
     },
     Tool {
         label: "SORT",
-        keys: "CTRL S",
+        shortcut: Shortcut::Chord("S"),
         id: chip::SORT,
+        section: Section::Library,
+    },
+    Tool {
+        label: "REVERSE THE ORDER",
+        shortcut: Shortcut::Chord("R"),
+        id: chip::REVERSE,
+        section: Section::Library,
+    },
+    Tool {
+        label: "EDIT CHART",
+        shortcut: Shortcut::Chord("E"),
+        id: chip::EDIT,
+        section: Section::Edit,
+    },
+    Tool {
+        label: "REDESIGN CHART",
+        shortcut: Shortcut::Chord("G"),
+        id: chip::REDESIGN,
+        section: Section::Edit,
+    },
+    Tool {
+        label: "SWITCH REVISION",
+        shortcut: Shortcut::None,
+        id: chip::REVISION,
+        section: Section::Edit,
+    },
+    Tool {
+        label: "ALL KEYS",
+        shortcut: Shortcut::Key("F1"),
+        id: chip::HELP,
+        section: Section::Help,
     },
     Tool {
         label: "DELETE SONG",
-        keys: "CTRL BACKSPACE",
+        shortcut: Shortcut::Chord("BACKSPACE"),
         id: chip::DELETE,
+        section: Section::Danger,
     },
 ];
 
+/// What the menu needs to know about the selected song to decide which
+/// tools apply.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ToolContext {
+    /// A song is selected.
+    pub has_song: bool,
+    /// It lives in files (not a built-in).
+    pub is_file: bool,
+    /// It is the player's own import — not a Bridge chart or a game
+    /// rip, whose charts came finished and are never redesigned.
+    pub own_import: bool,
+    /// The queue holds something to play.
+    pub queue_nonempty: bool,
+}
+
 /// The tools the menu offers for a song: everything that applies, in
 /// menu order — a built-in has no files to edit, inspect, redesign or
-/// delete, and an empty queue has nothing to play. Pure — tested.
+/// delete, a downloaded chart is not redesigned, and an empty queue
+/// has nothing to play. Pure — tested.
 #[must_use]
-pub fn tools_for(is_file: bool, has_song: bool, queue_nonempty: bool) -> Vec<u8> {
+pub fn tools_for(context: ToolContext) -> Vec<u8> {
+    let ToolContext {
+        has_song,
+        is_file,
+        own_import,
+        queue_nonempty,
+    } = context;
     TOOLS
         .iter()
         .filter(|tool| match tool.id {
             chip::PLAY => has_song,
-            chip::EDIT
-            | chip::INFO
-            | chip::REVISION
-            | chip::REDESIGN
-            | chip::TASTE
-            | chip::DELETE => has_song && is_file,
-            chip::LYRICS | chip::ALIGN | chip::QUEUE => has_song,
+            chip::EDIT | chip::INFO | chip::REVISION | chip::TASTE | chip::DELETE => {
+                has_song && is_file
+            }
+            chip::REDESIGN => has_song && is_file && own_import,
+            chip::LYRICS | chip::ALIGN | chip::QUEUE | chip::FAVORITE => has_song,
             chip::PLAY_SET => queue_nonempty,
             _ => true,
         })
         .map(|tool| tool.id)
         .collect()
+}
+
+/// Whether a song's chart is the player's own import: it lives in a
+/// folder of its own that no download made. Pure — tested.
+#[must_use]
+pub fn is_own_import(entry: &SongEntry) -> bool {
+    entry_folder(entry)
+        .and_then(|folder| {
+            folder
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .is_some_and(|name| {
+            !matches!(
+                beatbyte_chart::twin::kind_of_folder(&name),
+                Some(beatbyte_chart::twin::Kind::Bridge | beatbyte_chart::twin::Kind::GameRip)
+            )
+        })
 }
 
 /// The marker of the action menu's rows (the shared list renderer).
@@ -817,9 +1020,29 @@ pub(crate) fn action_menu(
     mut list: crate::menu_list::list::ListInput<ActionRows>,
     mut paint: crate::menu_list::list::ListPaint<ActionRows>,
     overlays: Query<Entity, With<ActionOverlay>>,
+    helps: Query<Entity, With<HelpOverlay>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
     clicks.0.clear();
+    // The ALL KEYS page sits over everything; any confirm or back
+    // closes it, back to the menu when it was opened from there.
+    if menu.help {
+        if helps.is_empty() {
+            look::spawn_help_overlay(&mut commands, &font, &keyboard_help(command_name()));
+            return;
+        }
+        let mut none = 0;
+        let events = list.read(&mut none, 0);
+        if events.nav.back || events.nav.confirm || events.right_click || events.clicked {
+            menu.help = false;
+            menu.spent = true;
+            sounds.write(crate::sfx::UiSound::Back);
+        }
+        return;
+    }
+    for help in &helps {
+        commands.entity(help).despawn();
+    }
     if !menu.open {
         for overlay in &overlays {
             commands.entity(overlay).despawn();
@@ -832,11 +1055,12 @@ pub(crate) fn action_menu(
         .order
         .get(cursor.0)
         .and_then(|i| library.entries.get(*i));
-    let items = tools_for(
-        entry.is_some_and(look::is_file),
-        entry.is_some(),
-        !queue.0.is_empty(),
-    );
+    let items = tools_for(ToolContext {
+        has_song: entry.is_some(),
+        is_file: entry.is_some_and(look::is_file),
+        own_import: entry.is_some_and(is_own_import),
+        queue_nonempty: !queue.0.is_empty(),
+    });
     if overlays.is_empty() || items != menu.items {
         for overlay in &overlays {
             commands.entity(overlay).despawn();
@@ -860,10 +1084,15 @@ pub(crate) fn action_menu(
     if (events.nav.confirm || events.clicked)
         && let Some(&id) = menu.items.get(menu.cursor)
     {
+        sounds.write(crate::sfx::UiSound::Confirm);
+        if id == chip::HELP {
+            // The page opens over the menu; closing it returns here.
+            menu.help = true;
+            return;
+        }
         clicks.0 = vec![id];
         menu.open = false;
         menu.spent = true;
-        sounds.write(crate::sfx::UiSound::Confirm);
     } else if close {
         menu.open = false;
         menu.spent = true;
@@ -873,7 +1102,7 @@ pub(crate) fn action_menu(
         menu.items
             .get(index)
             .and_then(|id| TOOLS.iter().find(|t| t.id == *id))
-            .map_or_else(String::new, |tool| tool.keys.to_owned())
+            .map_or_else(String::new, Tool::keys)
     });
 }
 
@@ -895,6 +1124,9 @@ mod chip {
     pub const INFO: u8 = 15;
     pub const PLAY: u8 = 16;
     pub const REVISION: u8 = 17;
+    pub const FAVORITE: u8 = 18;
+    pub const REVERSE: u8 = 19;
+    pub const HELP: u8 = 20;
 }
 
 /// The tool chosen in the action menu this frame, as a chip id (the
@@ -950,12 +1182,7 @@ fn spawn_browser(
     mut window: ResMut<look::ListWindow>,
     library: Res<SongLibrary>,
 ) {
-    // The search is not open when the screen is entered: coming back
-    // from a song into a field that swallows every letter (S, E, L,
-    // Q, P all "dead") read as a broken screen. The FILTER stays, so
-    // the next song is still a match away; F reopens the field, Esc
-    // or the CLEAR button empties it.
-    // The search is ALWAYS taking keys now (the rebuild of
+    // The search is ALWAYS taking keys (the rebuild of
     // 2026-10-05: "type to search"); the tools moved to Ctrl/Cmd and
     // the action menu.
     view.searching = true;
@@ -1011,7 +1238,7 @@ fn search_sort_input(
     let command = crate::editor_ui::command_held(&keys);
     if typing_allowed(
         command,
-        menu.open || menu.spent,
+        menu.open || menu.help || menu.spent,
         question.armed.is_some(),
         prompt.open,
     ) {
@@ -1046,7 +1273,7 @@ fn search_sort_input(
         view.flipped = false;
         sorted = true;
     }
-    if command && keys.just_pressed(KeyCode::KeyR) {
+    if (command && keys.just_pressed(KeyCode::KeyR)) || ui_kit::chip_hit(&clicks.0, chip::REVERSE) {
         view.flipped = !view.flipped;
         sorted = true;
     }
@@ -1469,7 +1696,7 @@ fn browser_input(
     // The action menu owns the keys while it is open; the frame that
     // closed it is spent there too, but a tool it chose still runs
     // below (through its chip id).
-    if start.menu.open {
+    if start.menu.open || start.menu.help {
         return;
     }
     let spent = std::mem::take(&mut start.menu.spent);
@@ -1514,9 +1741,20 @@ fn browser_input(
         .actions_button
         .iter()
         .any(|i| *i == Interaction::Pressed);
-    if !searching && !spent && (keys.just_pressed(KeyCode::Tab) || actions_clicked) {
+    // A pad or a guitar has no Tab: the orange fret (LB on a pad) and
+    // SELECT open the menu, so every tool is in reach without a
+    // keyboard.
+    let pad_actions = pads.iter().any(|pad| {
+        pad.just_pressed(GamepadButton::LeftTrigger) || pad.just_pressed(GamepadButton::Select)
+    });
+    if !searching && !spent && (keys.just_pressed(KeyCode::Tab) || actions_clicked || pad_actions) {
         start.menu.open = true;
         start.menu.cursor = 0;
+        sounds.write(crate::sfx::UiSound::Confirm);
+        return;
+    }
+    if !searching && !spent && keys.just_pressed(KeyCode::F1) {
+        start.menu.help = true;
         sounds.write(crate::sfx::UiSound::Confirm);
         return;
     }
@@ -1720,7 +1958,7 @@ fn browser_input(
         may_start(
             view.searching,
             start.prompt.open,
-            keys.just_pressed(KeyCode::Enter),
+            filter_confirm(&keys, nav.confirm),
             nav.confirm,
         ),
     );
@@ -2192,6 +2430,7 @@ pub const fn star_click(current: u8, n: u8) -> u8 {
 fn rating_input(
     keys: Res<ButtonInput<KeyCode>>,
     menu: Res<ActionMenu>,
+    clicks: Res<ActionBarClicks>,
     question: Res<DeleteQuestion>,
     prompt: Res<DownloadPrompt>,
     library: Res<SongLibrary>,
@@ -2205,7 +2444,7 @@ fn rating_input(
     labels: Query<(&look::RatingLabel, &Interaction), Changed<Interaction>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
-    if menu.open || question.armed.is_some() || prompt.open {
+    if menu.open || menu.help || question.armed.is_some() || prompt.open {
         return;
     }
     let Some(entry) = view
@@ -2221,7 +2460,12 @@ fn rating_input(
         let now = u8::from(!ratings.favorite(&player, entry));
         ratings.set(&player, entry, beatbyte_sync::ratings::FAVORITE, now);
     };
-    match rating_key(crate::editor_ui::command_held(&keys), &keys) {
+    let key = if ui_kit::chip_hit(&clicks.0, chip::FAVORITE) {
+        Some(RatingKey::Favorite)
+    } else {
+        rating_key(crate::editor_ui::command_held(&keys), &keys)
+    };
+    match key {
         Some(RatingKey::Favorite) => {
             toggle_favorite(&mut ratings);
             sounds.write(crate::sfx::UiSound::Toggle);
@@ -2887,6 +3131,12 @@ mod view_tests {
         assert!(fresh.contains("no songs"), "{fresh}");
         assert!(fresh.contains("drag"), "must name the way in: {fresh}");
         assert!(!fresh.contains("ESC"), "nothing to clear: {fresh}");
+        // A plain D types into the search; the hint must name the
+        // chord that actually opens the field.
+        assert!(
+            fresh.contains(&format!("{} D", super::command_name())),
+            "{fresh}"
+        );
         // A library that HAS songs keeps the search wording.
         let filtered = empty_hint(12, "queen");
         assert!(filtered.contains("queen"), "{filtered}");
@@ -3596,8 +3846,12 @@ mod redesign_tests {
 
 #[cfg(test)]
 mod rebuild_tests {
-    use super::{TOOLS, chip, next_revision, next_version, tools_for, typing_allowed};
+    use super::{
+        Section, Shortcut, TOOLS, ToolContext, chip, filter_confirm, keyboard_help, next_revision,
+        next_version, shortcut_label, tools_for, typing_allowed,
+    };
     use crate::song_family::Family;
+    use bevy::prelude::{ButtonInput, KeyCode};
 
     /// The search takes a key only when nothing else owns it: not with
     /// Ctrl/Cmd held, not while the menu or the delete question has
@@ -3616,19 +3870,49 @@ mod rebuild_tests {
     }
 
     /// The menu offers what applies: a built-in has no files to edit,
-    /// inspect, redesign or delete; an empty queue has nothing to play;
-    /// without a song only the library-wide tools remain.
+    /// inspect, redesign or delete; a downloaded chart is never
+    /// redesigned; an empty queue has nothing to play; without a song
+    /// only the library-wide tools remain.
     #[test]
     fn the_menu_offers_only_what_applies() {
-        let file = tools_for(true, true, false);
-        for id in [chip::PLAY, chip::EDIT, chip::INFO, chip::DELETE, chip::ADD] {
-            assert!(file.contains(&id), "a file song offers {id}");
+        let own = ToolContext {
+            has_song: true,
+            is_file: true,
+            own_import: true,
+            queue_nonempty: false,
+        };
+        let file = tools_for(own);
+        for id in [
+            chip::PLAY,
+            chip::EDIT,
+            chip::INFO,
+            chip::DELETE,
+            chip::ADD,
+            chip::REDESIGN,
+            chip::FAVORITE,
+            chip::HELP,
+        ] {
+            assert!(file.contains(&id), "an own file song offers {id}");
         }
         assert!(
             !file.contains(&chip::PLAY_SET),
             "an empty queue plays nothing"
         );
-        let builtin = tools_for(false, true, true);
+        let downloaded = tools_for(ToolContext {
+            own_import: false,
+            ..own
+        });
+        assert!(
+            !downloaded.contains(&chip::REDESIGN),
+            "a Bridge chart or a rip is never redesigned"
+        );
+        assert!(downloaded.contains(&chip::EDIT), "but it can be edited");
+        let builtin = tools_for(ToolContext {
+            has_song: true,
+            is_file: false,
+            own_import: false,
+            queue_nonempty: true,
+        });
         for id in [
             chip::EDIT,
             chip::INFO,
@@ -3640,13 +3924,107 @@ mod rebuild_tests {
             assert!(!builtin.contains(&id), "a built-in has no files: {id}");
         }
         assert!(builtin.contains(&chip::PLAY_SET));
-        let nothing = tools_for(false, false, false);
-        assert_eq!(nothing, vec![chip::ADD, chip::BRIDGE, chip::SORT]);
+        let nothing = tools_for(ToolContext::default());
+        assert_eq!(
+            nothing,
+            vec![
+                chip::ADD,
+                chip::BRIDGE,
+                chip::SORT,
+                chip::REVERSE,
+                chip::HELP
+            ]
+        );
         // Every tool has a label, and no id is offered twice.
         let mut ids: Vec<u8> = TOOLS.iter().map(|t| t.id).collect();
         ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids.len(), TOOLS.len());
+    }
+
+    /// The groups come in one order and each group's tools stand
+    /// together — a heading is drawn where the section changes, so a
+    /// tool out of place would open its group a second time.
+    #[test]
+    fn every_group_stands_together_in_order() {
+        let order = [
+            Section::Play,
+            Section::Song,
+            Section::Library,
+            Section::Edit,
+            Section::Help,
+            Section::Danger,
+        ];
+        let ranks: Vec<usize> = TOOLS
+            .iter()
+            .map(|t| {
+                order
+                    .iter()
+                    .position(|s| *s == t.section)
+                    .expect("every section is in the order")
+            })
+            .collect();
+        assert!(
+            ranks.windows(2).all(|w| w[0] <= w[1]),
+            "sections out of order: {ranks:?}"
+        );
+        assert_eq!(TOOLS[0].id, chip::PLAY, "PLAY comes first");
+        assert_eq!(
+            TOOLS[TOOLS.len() - 1].id,
+            chip::DELETE,
+            "DELETE stands last, alone"
+        );
+    }
+
+    /// A chord names the machine's modifier; a plain key stays plain.
+    #[test]
+    fn a_shortcut_names_the_modifier_it_needs() {
+        assert_eq!(shortcut_label(Shortcut::Chord("E"), "CMD"), "CMD E");
+        assert_eq!(shortcut_label(Shortcut::Chord("E"), "CTRL"), "CTRL E");
+        assert_eq!(shortcut_label(Shortcut::Key("ENTER"), "CMD"), "ENTER");
+        assert_eq!(shortcut_label(Shortcut::None, "CMD"), "");
+    }
+
+    /// The ALL KEYS page carries every tool that has a key — it is
+    /// generated from the table, so a new tool cannot be left off it.
+    #[test]
+    fn the_key_page_lists_every_shortcut() {
+        let page = keyboard_help("CMD");
+        for tool in TOOLS
+            .iter()
+            .filter(|t| t.shortcut != Shortcut::None && t.id != chip::HELP)
+        {
+            assert!(
+                page.iter().any(|(keys, what)| *what == tool.label
+                    && *keys == shortcut_label(tool.shortcut, "CMD")),
+                "{} is missing from the key page",
+                tool.label
+            );
+        }
+        for hidden in ["CMD UP / DOWN", "CMD 1-5 / 0", "ESC", "TAB"] {
+            assert!(
+                page.iter().any(|(keys, _)| keys == hidden),
+                "{hidden} is missing"
+            );
+        }
+    }
+
+    /// While the search takes keys, a pad's SOUTH or a guitar's green
+    /// fret plays the song (they arrive as the typing nav's confirm),
+    /// and both Enter keys do; nothing else does.
+    #[test]
+    fn a_pad_or_either_enter_plays_from_the_search() {
+        let none = ButtonInput::<KeyCode>::default();
+        assert!(filter_confirm(&none, true), "pad SOUTH / green fret");
+        assert!(!filter_confirm(&none, false));
+        for key in [KeyCode::Enter, KeyCode::NumpadEnter] {
+            let mut keys = ButtonInput::<KeyCode>::default();
+            keys.press(key);
+            assert!(filter_confirm(&keys, false), "{key:?}");
+        }
+        let mut space = ButtonInput::<KeyCode>::default();
+        space.press(KeyCode::Space);
+        assert!(!filter_confirm(&space, false), "Space is text");
     }
 
     /// SHIFT+LEFT/RIGHT walks the versions and stops at the ends, like
@@ -3730,6 +4108,7 @@ mod rating_input_tests {
         let mut app = App::new();
         app.add_message::<crate::sfx::UiSound>()
             .init_resource::<ActionMenu>()
+            .init_resource::<ActionBarClicks>()
             .init_resource::<DeleteQuestion>()
             .init_resource::<DownloadPrompt>()
             .init_resource::<crate::players::Players>()
@@ -3784,6 +4163,19 @@ mod rating_input_tests {
         // A plain F is typing.
         press(&mut app, &[KeyCode::KeyF]);
         assert_eq!(value(&app, 1, FAVORITE), 0);
+    }
+
+    /// FAVOURITE in the action menu does what Cmd+F does: the menu
+    /// hands its choice over as a chip id, and the pad has no Cmd.
+    #[test]
+    fn the_menu_favourite_toggles_like_the_key() {
+        let mut app = app();
+        app.world_mut().resource_mut::<ActionBarClicks>().0 = vec![chip::FAVORITE];
+        press(&mut app, &[]);
+        assert_eq!(value(&app, 1, FAVORITE), 1);
+        app.world_mut().resource_mut::<ActionBarClicks>().0.clear();
+        press(&mut app, &[]);
+        assert_eq!(value(&app, 1, FAVORITE), 1, "no choice, no change");
     }
 
     #[test]
