@@ -11,6 +11,7 @@
 <a href="https://beatbyte.celox.io/download"><img src="https://img.shields.io/badge/download-for%20your%20platform-e040fb?style=for-the-badge&logo=github&logoColor=white" alt="Download the newest build for your platform"/></a>
 <br/>
 <a href="docs/bridge-bulk-import.md"><img src="https://img.shields.io/badge/bridge%20import-community%20charts%20via%20the%20Encore%20API-ff6b1a?style=for-the-badge&logo=musicbrainz&logoColor=white" alt="Bridge import: community guitar charts in bulk through the Encore API"/></a>
+<a href="docs/tracks/README.md"><img src="https://img.shields.io/badge/track%20collection-every%20song%20with%20its%20chart-ffd940?style=for-the-badge&logo=applemusic&logoColor=black" alt="Track collection: every song in the library with length, BPM, note counts and a density chart"/></a>
 
 <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fpepperonas%2Fbeatbyte%2Fmain%2FCargo.toml&query=%24.workspace.package.version&prefix=v&label=version&color=ffd940&style=for-the-badge&logo=rust&logoColor=black" alt="Current version, read live from Cargo.toml"/></a>
 <a href="#development"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fpepperonas%2Fbeatbyte%2Fmain%2Fdocs%2Fbadges%2Floc.json&style=for-the-badge&logo=github&logoColor=white" alt="Lines of code, recounted by CI on every push"/></a>
