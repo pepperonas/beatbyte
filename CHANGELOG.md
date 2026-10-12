@@ -41,8 +41,6 @@ the manifest ever carries a version this file does not describe.
   before its version. `[GS]`/`[CL]` twins keep their names. Scores,
   telemetry and the active chart version do not depend on folder names.
 
-## [0.18.92] - 2026-10-12
-
 ### Fixed
 
 - No selection chip wraps its label out of its frame any more. The
