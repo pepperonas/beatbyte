@@ -267,6 +267,13 @@ pub struct Settings {
     /// Miss sound volume multiplier (0.0 = OFF, 1.0 = full relative to SFX volume).
     #[serde(default = "default_fx_intensity")]
     pub miss_volume: f32,
+    /// The sound of moving through a menu (and of stepping a value).
+    #[serde(default)]
+    pub menu_sound: MenuSound,
+    /// Menu sound volume multiplier (0.0 = OFF, 1.0 = full relative to
+    /// SFX volume). Scales every menu sound, not only the movement.
+    #[serde(default = "default_menu_volume")]
+    pub menu_volume: f32,
 }
 
 /// Visual feedback when a note is missed or an overstrum happens.
@@ -368,6 +375,54 @@ pub enum MissSound {
     BassMute,
 }
 
+/// The sound of moving through a menu.
+///
+/// The classic square-wave beep was found stressful in long browsing
+/// sessions (user report, 2026-10-12), so a softer sample is the
+/// default and the beep is one choice among several.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MenuSound {
+    /// The original synthesized square-wave beep.
+    ClassicBeep,
+    /// A minimal, very short tap.
+    #[default]
+    MinimalTap,
+    /// A soft, rounded click.
+    SoftClick,
+    /// A brighter, crisp click.
+    CrispClick,
+    /// An airy hover tick, the shortest of them.
+    Hover,
+    /// A low keyboard thock.
+    Key,
+}
+
+impl MenuSound {
+    /// Every choice, in the order the setting cycles through them.
+    pub const ALL: [MenuSound; 6] = [
+        MenuSound::ClassicBeep,
+        MenuSound::MinimalTap,
+        MenuSound::SoftClick,
+        MenuSound::CrispClick,
+        MenuSound::Hover,
+        MenuSound::Key,
+    ];
+
+    /// The label the setting shows.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            MenuSound::ClassicBeep => "CLASSIC BEEP",
+            MenuSound::MinimalTap => "MINIMAL TAP",
+            MenuSound::SoftClick => "SOFT CLICK",
+            MenuSound::CrispClick => "CRISP CLICK",
+            MenuSound::Hover => "HOVER",
+            MenuSound::Key => "KEY",
+        }
+    }
+}
+
 /// What the ceiling's white flashes are timed by.
 ///
 /// The light show was built on the room's own level: a threshold that
@@ -460,6 +515,8 @@ impl Default for Settings {
             miss_intensity: 1.0,
             miss_sound: MissSound::default(),
             miss_volume: 1.0,
+            menu_sound: MenuSound::default(),
+            menu_volume: default_menu_volume(),
         }
     }
 }
@@ -492,6 +549,7 @@ impl Settings {
         self.sfx_volume = clean(self.sfx_volume, 0.0, 1.0, 0.45);
         self.miss_intensity = clean(self.miss_intensity, 0.0, 1.0, 1.0);
         self.miss_volume = clean(self.miss_volume, 0.0, 1.0, 1.0);
+        self.menu_volume = clean(self.menu_volume, 0.0, 1.0, default_menu_volume());
         self.latency_offset_ms = clean(self.latency_offset_ms, -250.0, 250.0, 0.0);
         self.video_offset_ms = clean(self.video_offset_ms, -100.0, 100.0, 0.0);
         self.scroll_speed = clean(self.scroll_speed, 240.0, 900.0, 420.0);
@@ -607,6 +665,11 @@ fn default_lyrics_lead_in_ms() -> f32 {
 
 fn default_lyrics_size() -> u8 {
     1
+}
+
+/// Menus speak a little quieter than the game by default.
+fn default_menu_volume() -> f32 {
+    0.7
 }
 
 fn default_fx_intensity() -> f32 {

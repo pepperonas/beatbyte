@@ -14,6 +14,20 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.91] - 2026-10-12
+
+### Added
+
+- **MENU SOUND** and **MENU VOLUME** (Settings → Audio), like the miss
+  sound's pair. The beep on every cursor move can be swapped for one of
+  five softer samples from the sound-effects project — MINIMAL TAP (the
+  new default), SOFT CLICK, CRISP CLICK, HOVER, KEY — or kept as CLASSIC
+  BEEP. The choice also voices a value step; confirm, back, refusal and
+  toggles keep their own sounds. MENU VOLUME scales every menu sound on
+  top of SFX VOLUME (default 70 %, 0 % silences the menus). All samples
+  play at one level, a little under the old beep, so switching never
+  makes the menu louder.
+
 ## [0.18.90] - 2026-10-11
 
 ### Fixed

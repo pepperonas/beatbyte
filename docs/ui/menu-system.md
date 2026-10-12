@@ -159,6 +159,23 @@ editor. They are not row-cursor lists; they use `ui_kit` and `MenuNav`
 directly. The editor's case is recorded in
 [ADR-0024](../decisions/ADR-0024-editor-stays-on-bevy-ui.md).
 
+### Menu sound
+
+`MENU SOUND` (Audio) chooses what moving through a menu sounds like:
+`CLASSIC BEEP` (the original square-wave blip), `MINIMAL TAP` (the
+default), `SOFT CLICK`, `CRISP CLICK`, `HOVER` or `KEY`. The choice
+replaces the two sounds that fire in runs — a cursor move and a value
+step, the step a little quieter because it comes in bursts — while
+confirm, back, refusal and a toggle's click keep their own voices, so a
+rarer moment still sounds different from movement. Stepping the row is
+its own audition: you hear each sound as you pick it. `MENU VOLUME`
+scales every menu sound, on top of `SFX VOLUME`; 0% silences the menus.
+
+The samples come from `pepperonas/sound-effects` and are normalized to
+−0.9 dBFS at the source; each plays with its own gain so all of them sit
+at −24 dBFS RMS, just under the beep (−22), and changing the sound never
+changes the loudness (`sfx::every_menu_sample_plays_at_one_quiet_level`).
+
 ### Miss feedback
 
 `MISS SOUND` selects one of nine short tones. Changing it, `MISS VOLUME`,

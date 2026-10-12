@@ -5,7 +5,7 @@
 use bevy::prelude::*;
 
 use crate::config::{
-    FlashSync, MissColor, MissEffect, MissSound, Settings, TelemetryLevel, save_settings,
+    FlashSync, MenuSound, MissColor, MissEffect, MissSound, Settings, TelemetryLevel, save_settings,
 };
 use crate::menu_list::list::{
     self, ListInput, ListLabel, ListPaint, ListPanel, ListRow, ListValue,
@@ -318,6 +318,29 @@ impl Row {
         slider!(miss_volume, 0.0, 1.0, 0.1, Percent),
         Subtitle::Text("miss sound volume, also scaled by SFX VOLUME; 0% disables; ENTER previews")
     );
+    pub(crate) const MENU_SOUND: Row = row!(
+        "MENU SOUND",
+        Kind::Choice {
+            labels: || MenuSound::ALL
+                .iter()
+                .map(|sound| sound.label().to_owned())
+                .collect(),
+            get: |s: &Settings| MenuSound::ALL
+                .iter()
+                .position(|sound| *sound == s.menu_sound)
+                .unwrap_or(0),
+            set: |s: &mut Settings, i| s.menu_sound = MenuSound::ALL[i],
+            ends: Ends::Wrap,
+        },
+        Subtitle::Text(
+            "the sound of moving through menus and stepping a value; you hear it as you choose"
+        )
+    );
+    pub(crate) const MENU_VOLUME: Row = row!(
+        "MENU VOLUME",
+        slider!(menu_volume, 0.0, 1.0, 0.1, Percent),
+        Subtitle::Text("every menu sound, also scaled by SFX VOLUME; 0% silences the menus")
+    );
     pub(crate) const MUSIC_VOLUME: Row = row!(
         "MUSIC VOLUME",
         slider!(music_volume, 0.0, 1.0, 0.1, Percent)
@@ -419,7 +442,7 @@ impl Row {
     /// Every row, in the order the screen shows them: **alphabetical
     /// by label**, and kept that way by a test — a new row goes where
     /// its name falls, not at the end of the list.
-    pub(crate) const ALL: [Row; 46] = [
+    pub(crate) const ALL: [Row; 48] = [
         Row::AI_SEARCH,
         Row::BEAT_PULSE,
         Row::CALIBRATION,
@@ -439,6 +462,8 @@ impl Row {
         Row::LYRICS_MODEL,
         Row::LYRICS_OFFSET,
         Row::LYRICS_SIZE,
+        Row::MENU_SOUND,
+        Row::MENU_VOLUME,
         Row::MIC_OFFSET,
         Row::MISS_COLOR,
         Row::MISS_EFFECT,
@@ -664,6 +689,8 @@ impl Category {
             Self::Audio => &[
                 Row::MUSIC_VOLUME,
                 Row::SFX_VOLUME,
+                Row::MENU_SOUND,
+                Row::MENU_VOLUME,
                 Row::LOUDNESS_MATCH,
                 Row::SONG_PREVIEW,
             ],

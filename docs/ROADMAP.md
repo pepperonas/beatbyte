@@ -6,7 +6,7 @@ holds the work itself.
 
 ## Menu guidance, GS/CL out of sight, community-first import (2026-10-11)
 
-*Verified: 2228 tests in the source inventory, including documentation examples;
+*Verified: 2231 tests in the source inventory, including documentation examples;
 all local gates; the action menu and the ALL KEYS page photographed on the real
 library (8 571 folders).*
 
@@ -82,6 +82,16 @@ facts from the code checked by `docs_stay_true`, a few in a lighter tone).
   telemetry badges now say "local only" rather than "none" (ADR-0018).
 - [ ] 5d The product page (`website/site.json`) could use the same mockups;
   not done, its hero is its own artwork.
+
+## Menu sound (2026-10-12)
+
+*User report: the beep on every cursor move is stressful.*
+
+- [x] MENU SOUND (classic beep or five softer sound-effects samples,
+  MINIMAL TAP by default) and MENU VOLUME, shared settings like the
+  miss pair; samples levelled to one RMS under the beep (pinned against
+  the files), only movement and value steps re-voiced; three tests, four
+  mutation probes. 0.18.91.
 
 ## Whammy diagnostics and sustain feedback (2026-10-10)
 

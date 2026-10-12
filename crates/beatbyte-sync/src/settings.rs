@@ -63,6 +63,8 @@ pub const SHARED: &[&str] = &[
     "miss_intensity",
     "miss_sound",
     "miss_volume",
+    "menu_sound",
+    "menu_volume",
 ];
 
 /// Keys that describe the MACHINE — its audio path, its screen, its

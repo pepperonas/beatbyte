@@ -1,8 +1,8 @@
 //! Synthesized and embedded sound effects.
 //!
 //! Menu and classic gameplay SFX are synthesized once at startup with
-//! `beatbyte-audio`; selectable miss samples are embedded WAV assets from
-//! sound-effects. Menu sounds and judgment feedback use `bevy_audio`;
+//! `beatbyte-audio`; selectable miss and menu samples are embedded WAV
+//! assets from sound-effects. Menu sounds and judgment feedback use `bevy_audio`;
 //! music keeps its own thread and clock (ADR-0005).
 
 use beatbyte_audio::decode::AudioData;
@@ -12,7 +12,7 @@ use beatbyte_core::SessionEvent;
 use bevy::audio::Volume;
 use bevy::prelude::*;
 
-use crate::config::Settings;
+use crate::config::{MenuSound, Settings};
 use crate::gameplay::SessionFeedback;
 use crate::states::AppState;
 
@@ -47,6 +47,76 @@ pub(crate) struct PreviewMiss;
 
 #[derive(Component)]
 struct MissPreviewPlayer;
+
+/// Effective menu volume: every [`UiSound`] plays at this level times
+/// its voice's own gain.
+pub(crate) fn menu_volume(settings: &Settings) -> f32 {
+    settings.sfx_volume * settings.menu_volume
+}
+
+/// Which clip a menu sound plays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MenuClip {
+    /// One of the synthesized voices, named by the sound it belongs to.
+    Synth(UiSound),
+    /// One of the embedded samples.
+    Sample(MenuSound),
+}
+
+/// A clip and the gain it plays at, relative to [`menu_volume`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct MenuVoice {
+    /// What plays.
+    pub clip: MenuClip,
+    /// Its own level, before the player's volumes.
+    pub gain: f32,
+}
+
+/// Each sample's gain. The sources are all normalized to -0.9 dBFS,
+/// fifteen decibels hotter than the beep; these bring each one to the
+/// same RMS (-24 dBFS), a little under the beep's -22, so switching
+/// sounds does not also switch loudness. Pinned against the embedded
+/// files by a test.
+const fn sample_gain(sound: MenuSound) -> f32 {
+    match sound {
+        MenuSound::ClassicBeep => 1.0,
+        MenuSound::MinimalTap => 0.313,
+        MenuSound::SoftClick => 0.364,
+        MenuSound::CrispClick => 0.404,
+        MenuSound::Hover => 0.303,
+        MenuSound::Key => 0.41,
+    }
+}
+
+/// A value step runs in bursts (holding an arrow on a slider), so with
+/// a sample it speaks a little under a cursor move.
+const STEP_SHARE: f32 = 0.7;
+
+/// What a menu sound plays for the chosen [`MenuSound`]. Pure — tested.
+///
+/// The choice replaces the two sounds that fire in runs — moving the
+/// cursor and stepping a value — because those are the ones a player
+/// hears hundreds of times a session. Confirm, back, refusal and a
+/// toggle's click keep their own voices: they mark rarer, different
+/// moments and must stay distinguishable from movement.
+pub(crate) fn menu_voice(sound: UiSound, choice: MenuSound) -> MenuVoice {
+    let synth = MenuVoice {
+        clip: MenuClip::Synth(sound),
+        gain: 1.0,
+    };
+    if choice == MenuSound::ClassicBeep {
+        return synth;
+    }
+    let sample = |share: f32| MenuVoice {
+        clip: MenuClip::Sample(choice),
+        gain: sample_gain(choice) * share,
+    };
+    match sound {
+        UiSound::Navigate => sample(1.0),
+        UiSound::Slider => sample(STEP_SHARE),
+        UiSound::Confirm | UiSound::Back | UiSound::Error | UiSound::Toggle => synth,
+    }
+}
 
 /// Effective volume, shared by gameplay and settings previews.
 pub(crate) fn miss_volume(settings: &Settings) -> f32 {
@@ -129,9 +199,39 @@ pub struct SfxLib {
     pub banked: Handle<AudioSource>,
     /// Metronome tick (editor audition overlay).
     pub click: Handle<AudioSource>,
+    /// Menu movement samples, one per [`MenuSound`] choice but the beep.
+    pub menu_tap: Handle<AudioSource>,
+    /// A soft, rounded click.
+    pub menu_soft: Handle<AudioSource>,
+    /// A crisp click.
+    pub menu_crisp: Handle<AudioSource>,
+    /// An airy hover tick.
+    pub menu_hover: Handle<AudioSource>,
+    /// A low keyboard thock.
+    pub menu_key: Handle<AudioSource>,
 }
 
 impl SfxLib {
+    /// The handle a menu clip plays.
+    #[must_use]
+    pub(crate) fn menu_clip(&self, clip: MenuClip) -> &Handle<AudioSource> {
+        match clip {
+            MenuClip::Synth(UiSound::Navigate) | MenuClip::Sample(MenuSound::ClassicBeep) => {
+                &self.ui_move
+            }
+            MenuClip::Synth(UiSound::Confirm) => &self.ui_confirm,
+            MenuClip::Synth(UiSound::Back) => &self.ui_back,
+            MenuClip::Synth(UiSound::Error) => &self.ui_error,
+            MenuClip::Synth(UiSound::Toggle) => &self.ui_toggle,
+            MenuClip::Synth(UiSound::Slider) => &self.ui_slider,
+            MenuClip::Sample(MenuSound::MinimalTap) => &self.menu_tap,
+            MenuClip::Sample(MenuSound::SoftClick) => &self.menu_soft,
+            MenuClip::Sample(MenuSound::CrispClick) => &self.menu_crisp,
+            MenuClip::Sample(MenuSound::Hover) => &self.menu_hover,
+            MenuClip::Sample(MenuSound::Key) => &self.menu_key,
+        }
+    }
+
     /// Return the sound handle for a missed note or stray strum based on the player's choice.
     #[must_use]
     pub fn sound_for_miss(&self, sound: crate::config::MissSound) -> &Handle<AudioSource> {
@@ -167,6 +267,12 @@ impl Plugin for SfxPlugin {
             );
     }
 }
+
+const MENU_TAP: &[u8] = include_bytes!("../../../assets/audio/menu_sfx/tap_minimal.wav");
+const MENU_SOFT: &[u8] = include_bytes!("../../../assets/audio/menu_sfx/click_soft.wav");
+const MENU_CRISP: &[u8] = include_bytes!("../../../assets/audio/menu_sfx/click_crisp.wav");
+const MENU_HOVER: &[u8] = include_bytes!("../../../assets/audio/menu_sfx/hover.wav");
+const MENU_KEY: &[u8] = include_bytes!("../../../assets/audio/menu_sfx/key.wav");
 
 /// Synthesize every effect once at startup.
 fn build_sfx(mut commands: Commands, mut assets: ResMut<Assets<AudioSource>>) {
@@ -223,6 +329,11 @@ fn build_sfx(mut commands: Commands, mut assets: ResMut<Assets<AudioSource>>) {
         hype: register(riser(), &mut assets),
         banked: register(charge(), &mut assets),
         click: register(blip(1760.0, 0.03, 0.6), &mut assets),
+        menu_tap: register_bytes(MENU_TAP, &mut assets),
+        menu_soft: register_bytes(MENU_SOFT, &mut assets),
+        menu_crisp: register_bytes(MENU_CRISP, &mut assets),
+        menu_hover: register_bytes(MENU_HOVER, &mut assets),
+        menu_key: register_bytes(MENU_KEY, &mut assets),
     });
 }
 
@@ -355,16 +466,16 @@ fn play_ui_sounds(
     sfx: Res<SfxLib>,
     settings: Res<Settings>,
 ) {
+    let volume = menu_volume(&settings);
     for sound in sounds.read() {
-        let handle = match sound {
-            UiSound::Navigate => &sfx.ui_move,
-            UiSound::Confirm => &sfx.ui_confirm,
-            UiSound::Back => &sfx.ui_back,
-            UiSound::Error => &sfx.ui_error,
-            UiSound::Toggle => &sfx.ui_toggle,
-            UiSound::Slider => &sfx.ui_slider,
-        };
-        play(&mut commands, handle, settings.sfx_volume);
+        let voice = menu_voice(*sound, settings.menu_sound);
+        if volume * voice.gain > 0.0 {
+            play(
+                &mut commands,
+                sfx.menu_clip(voice.clip),
+                volume * voice.gain,
+            );
+        }
     }
 }
 
@@ -565,6 +676,135 @@ mod tests {
             banked_sound_due(10.3, 10.0),
             "but a later phrase is its own moment: the gap is far \
              shorter than any real distance between phrases"
+        );
+    }
+
+    /// The RMS of a 16-bit mono PCM WAV, in dBFS.
+    fn wav_rms_db(bytes: &[u8]) -> f32 {
+        let data = bytes
+            .windows(4)
+            .position(|w| w == b"data")
+            .expect("a data chunk")
+            + 8;
+        let samples: Vec<f32> = bytes[data..]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| f32::from(i16::from_le_bytes(*pair)) / 32768.0)
+            .collect();
+        let mean = samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32;
+        10.0 * mean.log10()
+    }
+
+    #[test]
+    fn every_menu_sample_plays_at_one_quiet_level() {
+        // The sources are normalized to -0.9 dBFS; played raw they
+        // were fifteen decibels over the beep they replace — the
+        // opposite of what a player asking for a calmer menu wants.
+        let beep = blip(880.0, 0.045, 0.5);
+        let beep_db = 10.0
+            * (beep.samples().iter().map(|s| s * s).sum::<f32>() / beep.samples().len() as f32)
+                .log10();
+        for (sound, bytes) in [
+            (MenuSound::MinimalTap, MENU_TAP),
+            (MenuSound::SoftClick, MENU_SOFT),
+            (MenuSound::CrispClick, MENU_CRISP),
+            (MenuSound::Hover, MENU_HOVER),
+            (MenuSound::Key, MENU_KEY),
+        ] {
+            let played = wav_rms_db(bytes) + 20.0 * sample_gain(sound).log10();
+            assert!(
+                (played + 24.0).abs() < 0.5,
+                "{sound:?} plays at {played:.1} dBFS, not the shared -24"
+            );
+            assert!(
+                played < beep_db,
+                "{sound:?} at {played:.1} dBFS is louder than the beep ({beep_db:.1})"
+            );
+        }
+    }
+
+    #[test]
+    fn the_menu_sound_replaces_only_what_fires_in_runs() {
+        for choice in MenuSound::ALL {
+            let navigate = menu_voice(UiSound::Navigate, choice);
+            let step = menu_voice(UiSound::Slider, choice);
+            if choice == MenuSound::ClassicBeep {
+                assert_eq!(navigate.clip, MenuClip::Synth(UiSound::Navigate));
+                assert_eq!(step.clip, MenuClip::Synth(UiSound::Slider));
+            } else {
+                assert_eq!(navigate.clip, MenuClip::Sample(choice));
+                assert_eq!(step.clip, MenuClip::Sample(choice));
+                assert!(
+                    step.gain < navigate.gain,
+                    "a step, which comes in bursts, is quieter than a move"
+                );
+            }
+            // The rarer moments keep their own voices whatever the choice.
+            for other in [
+                UiSound::Confirm,
+                UiSound::Back,
+                UiSound::Error,
+                UiSound::Toggle,
+            ] {
+                let voice = menu_voice(other, choice);
+                assert_eq!(voice.clip, MenuClip::Synth(other));
+                assert!((voice.gain - 1.0).abs() < f32::EPSILON);
+            }
+        }
+    }
+
+    #[test]
+    fn the_menu_volume_scales_every_menu_sound_and_zero_silences_them() {
+        use bevy::state::app::StatesPlugin;
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, StatesPlugin))
+            .init_resource::<Assets<AudioSource>>()
+            .insert_resource(Settings {
+                sfx_volume: 0.5,
+                menu_volume: 0.4,
+                menu_sound: MenuSound::SoftClick,
+                ..default()
+            })
+            .add_message::<UiSound>()
+            .add_systems(Startup, build_sfx)
+            .add_systems(Update, play_ui_sounds);
+        app.update();
+        app.world_mut().write_message(UiSound::Navigate);
+        app.world_mut().write_message(UiSound::Confirm);
+        app.update();
+        let lib = app.world().resource::<SfxLib>();
+        let (soft, confirm) = (lib.menu_soft.clone(), lib.ui_confirm.clone());
+        let mut players = app.world_mut().query::<(&AudioPlayer, &PlaybackSettings)>();
+        let heard: Vec<_> = players
+            .iter(app.world())
+            .map(|(player, playback)| (player.0.clone(), playback.volume))
+            .collect();
+        assert!(heard.contains(&(
+            soft,
+            Volume::Linear(0.5 * 0.4 * sample_gain(MenuSound::SoftClick))
+        )));
+        assert!(heard.contains(&(confirm, Volume::Linear(0.5 * 0.4))));
+        for (entity, _) in app
+            .world_mut()
+            .query::<(Entity, &AudioPlayer)>()
+            .iter(app.world())
+            .map(|(e, p)| (e, p.0.clone()))
+            .collect::<Vec<_>>()
+        {
+            app.world_mut().despawn(entity);
+        }
+        app.world_mut().resource_mut::<Settings>().menu_volume = 0.0;
+        app.world_mut().write_message(UiSound::Navigate);
+        app.world_mut().write_message(UiSound::Back);
+        app.update();
+        assert_eq!(
+            app.world_mut()
+                .query::<&AudioPlayer>()
+                .iter(app.world())
+                .count(),
+            0,
+            "0% is off, for every menu sound"
         );
     }
 
