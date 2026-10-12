@@ -29,6 +29,7 @@ mod players;
 #[cfg(feature = "ml")]
 mod poly;
 mod redesign;
+mod rename;
 mod review;
 mod shots;
 mod study;
@@ -496,6 +497,19 @@ enum Command {
         #[arg(long)]
         status: bool,
     },
+    /// Give every song folder this build's name
+    /// (`artist--title--bg01`). A dry run unless `--apply`.
+    RenameFolders {
+        /// The library: the folder that holds the song folders.
+        library: PathBuf,
+        /// Rename for real.
+        #[arg(long)]
+        apply: bool,
+        /// Append every rename to this file (`old<TAB>new`), to rename
+        /// a mirror (the off-site backup) the same way.
+        #[arg(long)]
+        map: Option<PathBuf>,
+    },
     /// Set a song's genre (display metadata; hash-neutral, so
     /// recorded sessions survive).
     SetGenre {
@@ -951,6 +965,11 @@ fn main() -> ExitCode {
             force,
             status,
         } => vocals::run(&path, &vocals::Args { all, force, status }),
+        Command::RenameFolders {
+            library,
+            apply,
+            map,
+        } => rename::run(&library, apply, map.as_deref()),
         Command::SetGenre { chart, genre } => set_genre(&chart, &genre),
         Command::Sync {
             hub,

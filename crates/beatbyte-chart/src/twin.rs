@@ -134,20 +134,38 @@ pub fn split_bridge_title(title: &str) -> Option<(u8, &str)> {
     split_with(title, Kind::Bridge)
 }
 
-/// The number in a numbered twin's folder name of `kind`
-/// (`bridge-07-…` → 7 for [`Kind::Bridge`]). Pure — tested.
+/// The number in a numbered twin's folder name of `kind`, in either
+/// spelling: `<base>--bg07` (this build) or `bridge-07-<base>` (the
+/// one before 0.18.x, still on every library that has not been
+/// renamed). Pure — tested.
 #[must_use]
 pub fn numbered_number_of_folder(kind: Kind, name: &str) -> Option<u8> {
-    let rest = name.strip_prefix(kind.folder_prefix())?;
-    let digits = rest.get(..2)?;
-    rest.get(2..)?.strip_prefix('-')?;
-    if !digits.bytes().all(|b| b.is_ascii_digit()) {
+    suffix_number(kind, name).or_else(|| legacy_number(kind, name))
+}
+
+fn two_digits(digits: &str) -> Option<u8> {
+    if digits.len() != 2 || !digits.bytes().all(|b| b.is_ascii_digit()) {
         return None;
     }
     digits
         .parse::<u8>()
         .ok()
         .filter(|n| (1..=MAX_BRIDGE_NUMBER).contains(n))
+}
+
+fn suffix_number(kind: Kind, name: &str) -> Option<u8> {
+    let (base, suffix) = name.rsplit_once("--")?;
+    if base.is_empty() {
+        return None;
+    }
+    let tag = numbered_tag(kind).to_ascii_lowercase();
+    two_digits(suffix.strip_prefix(tag.as_str())?)
+}
+
+fn legacy_number(kind: Kind, name: &str) -> Option<u8> {
+    let rest = name.strip_prefix(kind.folder_prefix())?;
+    rest.get(2..)?.strip_prefix('-')?;
+    two_digits(rest.get(..2)?)
 }
 
 /// The number in a Bridge twin's folder name (`bridge-07-…` → 7).
@@ -157,15 +175,111 @@ pub fn bridge_number_of_folder(name: &str) -> Option<u8> {
     numbered_number_of_folder(Kind::Bridge, name)
 }
 
-/// The folder of version `number` of `kind` of the song whose folder
-/// is (or would be) `base`: `bridge-07-<base>`, `gamerip-07-<base>`.
-/// Pure — tested.
+/// The folder of version `number` of `kind` of the song whose
+/// [`song_folder_base`] is `base`: `<base>--bg07`, `<base>--gr07`.
+/// The artist leads, so a library sorts by artist; the version is
+/// always there, so the first version keeps its name when a second
+/// one arrives. Pure — tested.
 #[must_use]
 pub fn numbered_folder_name(kind: Kind, base: &str, number: u8) -> String {
+    format!(
+        "{base}--{}{number:02}",
+        numbered_tag(kind).to_ascii_lowercase()
+    )
+}
+
+/// The folder name an older build gave version `number` of `kind`:
+/// `bridge-07-<base>`, `gamerip-07-<base>`. Read, never written —
+/// a library that has not been renamed still holds these. Pure —
+/// tested.
+#[must_use]
+pub fn legacy_numbered_folder_name(kind: Kind, base: &str, number: u8) -> String {
     format!("{}{number:02}-{base}", kind.folder_prefix())
 }
 
-/// The folder name of Bridge version `number`: `bridge-07-<base>`.
+/// The longest [`song_folder_base`]: with `--bg07` behind it a folder
+/// name stays within 100 characters.
+pub const FOLDER_BASE_MAX: usize = 94;
+
+/// A song's folder name from its artist and title: `artist--title`
+/// (the user's scheme, 2026-10-12). Lower-case, words joined by `-`,
+/// the two parts by `--`, no spaces, no brackets; umlauts written out
+/// (`ä` → `ae`), accents dropped, apostrophes gone (`schools-out`),
+/// letters of other scripts kept as they are. Cut at a word boundary
+/// to [`FOLDER_BASE_MAX`]. Pure — tested.
+#[must_use]
+pub fn song_folder_base(artist: &str, title: &str) -> String {
+    let joined = [slug(artist), slug(title)]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("--");
+    if joined.is_empty() {
+        return "song".to_owned();
+    }
+    if joined.chars().count() <= FOLDER_BASE_MAX {
+        return joined;
+    }
+    let cut: String = joined.chars().take(FOLDER_BASE_MAX).collect();
+    let at_word = match cut.rfind('-') {
+        Some(i) if i > FOLDER_BASE_MAX / 2 => &cut[..i],
+        _ => cut.as_str(),
+    };
+    at_word.trim_end_matches('-').to_owned()
+}
+
+/// One part of a folder name: see [`song_folder_base`]. Pure — tested.
+#[must_use]
+pub fn slug(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars().flat_map(char::to_lowercase) {
+        if matches!(c, '\'' | '’' | '‘' | '`' | '´' | 'ʼ') {
+            continue;
+        }
+        if let Some(latin) = transliterate(c) {
+            out.push_str(latin);
+        } else if c.is_alphanumeric() {
+            out.push(c);
+        } else if !out.ends_with('-') {
+            out.push('-');
+        }
+    }
+    out.trim_matches('-').to_owned()
+}
+
+/// A Latin letter with a mark, written in plain ASCII.
+fn transliterate(c: char) -> Option<&'static str> {
+    if c.is_ascii() {
+        return None;
+    }
+    Some(match c {
+        'ä' => "ae",
+        'ö' => "oe",
+        'ü' => "ue",
+        'ß' => "ss",
+        'æ' => "ae",
+        'œ' => "oe",
+        'þ' => "th",
+        'ð' | 'ď' | 'đ' => "d",
+        'ø' | 'ò' | 'ó' | 'ô' | 'õ' | 'ō' | 'ő' => "o",
+        'à' | 'á' | 'â' | 'ã' | 'å' | 'ā' | 'ă' | 'ą' => "a",
+        'ç' | 'ć' | 'č' => "c",
+        'è' | 'é' | 'ê' | 'ë' | 'ē' | 'ė' | 'ę' | 'ě' => "e",
+        'ğ' => "g",
+        'ì' | 'í' | 'î' | 'ï' | 'ī' | 'į' | 'ı' => "i",
+        'ł' | 'ľ' | 'ĺ' => "l",
+        'ñ' | 'ń' | 'ň' => "n",
+        'ŕ' | 'ř' => "r",
+        'ś' | 'š' | 'ş' | 'ș' => "s",
+        'ť' | 'ţ' | 'ț' => "t",
+        'ù' | 'ú' | 'û' | 'ū' | 'ů' | 'ű' | 'ų' => "u",
+        'ý' | 'ÿ' => "y",
+        'ź' | 'ż' | 'ž' => "z",
+        _ => return None,
+    })
+}
+
+/// The folder name of Bridge version `number`: `<base>--bg07`.
 /// Pure — tested.
 #[must_use]
 pub fn bridge_folder_name(base: &str, number: u8) -> String {
@@ -197,12 +311,19 @@ pub fn next_bridge_number(taken: &[u8]) -> Option<u8> {
 /// The title prefix an older BeatByte wrote for a study.
 const LEGACY_STUDY_PREFIX: &str = "[Guitar Study] ";
 
-/// Which kind of twin a folder name names, if any.
+/// Which kind of twin a folder name names, if any: a prefix
+/// (`guitar-study-`, `classic-`, and the older `bridge-07-` /
+/// `gamerip-07-`) or a numbered suffix (`--bg07`, `--gr07`).
 #[must_use]
 pub fn kind_of_folder(name: &str) -> Option<Kind> {
     Kind::ALL
         .into_iter()
         .find(|kind| name.starts_with(kind.folder_prefix()))
+        .or_else(|| {
+            Kind::NUMBERED
+                .into_iter()
+                .find(|&kind| suffix_number(kind, name).is_some())
+        })
 }
 
 /// Whether a folder name is any twin's.
@@ -551,13 +672,30 @@ mod tests {
         assert_eq!(base_title("[BG-02] [GS] Maria"), Some("[GS] Maria"));
         assert_eq!(display_title("[BG-02] Maria"), "[BG-02] Maria");
         assert_eq!(
-            bridge_folder_name("blondie---maria-m4a", 7),
+            bridge_folder_name("blondie--maria", 7),
+            "blondie--maria--bg07"
+        );
+        assert_eq!(bridge_number_of_folder("blondie--maria--bg07"), Some(7));
+        // The spelling an older build wrote still reads.
+        assert_eq!(
+            legacy_numbered_folder_name(Kind::Bridge, "blondie---maria-m4a", 7),
             "bridge-07-blondie---maria-m4a"
         );
         assert_eq!(
             bridge_number_of_folder("bridge-07-blondie---maria-m4a"),
             Some(7)
         );
+        for not_one in [
+            "blondie--maria--bg7",
+            "blondie--maria--bg00",
+            "--bg07",
+            "blondie--maria--gr07",
+            "blondie-bg07",
+        ] {
+            assert_eq!(bridge_number_of_folder(not_one), None, "{not_one}");
+        }
+        assert_eq!(kind_of_folder("blondie--maria--bg07"), Some(Kind::Bridge));
+        assert_eq!(kind_of_folder("blondie--maria"), None);
         assert_eq!(bridge_number_of_folder("bridge-7-blondie"), None);
         assert_eq!(bridge_number_of_folder("bridge-+7-blondie"), None);
         assert_eq!(bridge_number_of_folder("classic-x"), None);
@@ -600,8 +738,20 @@ mod tests {
         assert_eq!(base_title("[GR-02] Crazy Train"), Some("Crazy Train"));
         assert_eq!(display_title("[GR-02] Crazy Train"), "[GR-02] Crazy Train");
         assert_eq!(
-            numbered_folder_name(Kind::GameRip, "ozzy---crazy-train-m4a", 7),
-            "gamerip-07-ozzy---crazy-train-m4a"
+            numbered_folder_name(Kind::GameRip, "ozzy-osbourne--crazy-train", 7),
+            "ozzy-osbourne--crazy-train--gr07"
+        );
+        assert_eq!(
+            numbered_number_of_folder(Kind::GameRip, "ozzy-osbourne--crazy-train--gr07"),
+            Some(7)
+        );
+        assert_eq!(
+            numbered_number_of_folder(Kind::Bridge, "ozzy-osbourne--crazy-train--gr07"),
+            None
+        );
+        assert_eq!(
+            kind_of_folder("ozzy-osbourne--crazy-train--gr07"),
+            Some(Kind::GameRip)
         );
         assert_eq!(
             numbered_number_of_folder(Kind::GameRip, "gamerip-07-ozzy---crazy-train-m4a"),
@@ -613,6 +763,80 @@ mod tests {
         );
         assert_eq!(kind_of_folder("gamerip-07-x"), Some(Kind::GameRip));
         assert_eq!(titled("Crazy Train", Kind::GameRip), "Crazy Train");
+    }
+
+    /// The folder-name scheme the user chose (2026-10-12), on the
+    /// real names it replaces.
+    #[test]
+    fn a_song_folder_is_artist_and_title_in_plain_ascii() {
+        assert_eq!(
+            song_folder_base("009 Sound System", "Dreamscape"),
+            "009-sound-system--dreamscape"
+        );
+        assert_eq!(
+            song_folder_base("Beyoncé", "Bodyguard"),
+            "beyonce--bodyguard"
+        );
+        assert_eq!(
+            song_folder_base("Alice Cooper", "School's Out"),
+            "alice-cooper--schools-out"
+        );
+        assert_eq!(
+            song_folder_base(
+                "Cyndi Lauper",
+                "Girls Just Want to Have Fun (Live in Paris)"
+            ),
+            "cyndi-lauper--girls-just-want-to-have-fun-live-in-paris"
+        );
+        assert_eq!(
+            song_folder_base("Die Ärzte", "Schrei nach Liebe"),
+            "die-aerzte--schrei-nach-liebe"
+        );
+        assert_eq!(
+            song_folder_base("Motörhead", "Ace of Spades"),
+            "motoerhead--ace-of-spades"
+        );
+        assert_eq!(song_folder_base("AC/DC", "T.N.T."), "ac-dc--t-n-t");
+        assert_eq!(
+            song_folder_base("Sigur Rós", "Hoppípolla"),
+            "sigur-ros--hoppipolla"
+        );
+        // Another script stays itself, never a guessed romanisation.
+        assert_eq!(
+            song_folder_base("ヨルシカ", "ただ君に晴れ"),
+            "ヨルシカ--ただ君に晴れ"
+        );
+        // A missing part leaves no dangling separator.
+        assert_eq!(song_folder_base("", "Maria"), "maria");
+        assert_eq!(song_folder_base("///", "&&"), "song");
+        for name in [
+            song_folder_base("Some Artist", "x"),
+            song_folder_base("Beyoncé", "Bodyguard"),
+        ] {
+            assert!(!name.contains(' ') && !name.contains("---"), "{name}");
+        }
+    }
+
+    #[test]
+    fn a_long_name_is_cut_at_a_word() {
+        let base = song_folder_base(
+            "Godspeed You! Black Emperor",
+            "Storm: Lift Yr Skinny Fists Like Antennas to Heaven, Gathering Storm, Movement Three",
+        );
+        assert!(base.chars().count() <= FOLDER_BASE_MAX, "{base}");
+        assert!(!base.ends_with('-'), "{base}");
+        assert!(
+            "godspeed-you-black-emperor--storm-lift-yr-skinny-fists-like-antennas-to-heaven-gathering-storm-movement-three"
+                .starts_with(&base),
+            "cut inside a word: {base}"
+        );
+        assert!(
+            numbered_folder_name(Kind::Bridge, &base, 99)
+                .chars()
+                .count()
+                <= 100,
+            "{base}"
+        );
     }
 
     #[test]

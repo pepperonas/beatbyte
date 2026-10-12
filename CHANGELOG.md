@@ -14,6 +14,43 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.92] - 2026-10-12
+
+### Changed
+
+- **Song folders get readable names: `artist--title--version`** (the
+  user's scheme). A community chart lands in
+  `009-sound-system--dreamscape--bg01`, a game rip in
+  `alice-cooper--schools-out--gr01`, an own import in
+  `rick-astley--never-gonna-give-you-up` — lower-case, `-` between words,
+  `--` between the parts, no spaces or brackets, umlauts written out,
+  accents and apostrophes dropped, at most 100 characters. The artist
+  leads, so a library sorts by artist; the version is always there, so a
+  first version keeps its name when a second arrives. Folders named by an
+  older build (`bridge-01-…`, `gamerip-01-…`) are still read: a download
+  already in such a library is still recognised and is not fetched twice,
+  and the next one takes the next number.
+
+### Added
+
+- **`beatbyte-cli rename-folders <library>`** renames an existing library
+  to the new scheme: a dry run by default, `--apply` to rename, `--map
+  <file>` to record every rename (`old<TAB>new`) so a mirror — an
+  off-site backup — can be renamed the same way instead of uploaded
+  again. Two folders that would get the same name: the second gets `-2`
+  before its version. `[GS]`/`[CL]` twins keep their names. Scores,
+  telemetry and the active chart version do not depend on folder names.
+
+## [0.18.92] - 2026-10-12
+
+### Fixed
+
+- No selection chip wraps its label out of its frame any more. The
+  settings tabs PLAY & INPUT and MISS FEEDBACK hung below their chips
+  the way the browser's ACTIONS chip did; the cause was in the shared
+  chip itself (it let a row squeeze it), so every chip — settings,
+  statistics, browser, editor — is fixed at once.
+
 ## [0.18.91] - 2026-10-12
 
 ### Added

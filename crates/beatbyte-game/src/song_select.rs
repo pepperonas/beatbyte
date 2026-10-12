@@ -3117,6 +3117,10 @@ mod view_tests {
         };
         assert_eq!(origin_of(&at("bridge-01-toto---africa")), Origin::Community);
         assert_eq!(origin_of(&at("gamerip-02-toto---africa")), Origin::Rip);
+        // This build's spelling (2026-10-12) as well as the older one.
+        assert_eq!(origin_of(&at("toto--africa--bg01")), Origin::Community);
+        assert_eq!(origin_of(&at("toto--africa--gr02")), Origin::Rip);
+        assert_eq!(origin_of(&at("toto--africa")), Origin::Import);
         assert_eq!(origin_of(&at("toto---africa")), Origin::Import);
         assert_eq!(origin_of(&at("guitar-study-toto---africa")), Origin::Import);
         assert_eq!(origin_of(&at("classic-toto---africa")), Origin::Import);

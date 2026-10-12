@@ -18,6 +18,20 @@ below write it as `$LIB`:
 LIB="$HOME/Library/Application Support/beatbyte/songs/imported"
 ```
 
+**How a song folder is named** (since 0.18.x, user's scheme of
+2026-10-12): `artist--title--version`, e.g.
+`009-sound-system--dreamscape--bg01` for the first community chart and
+`alice-cooper--schools-out--gr01` for the first game rip; an own import
+has no version (`rick-astley--never-gonna-give-you-up`). Lower-case,
+words joined by `-`, the parts by `--`, no spaces or brackets, umlauts
+written out (`die-aerzte`), accents and apostrophes dropped, other
+scripts kept as they are, at most 100 characters cut at a word. One
+function writes it (`beatbyte_chart::twin::song_folder_base`). Folders
+an older build named (`bridge-01-…`, `gamerip-01-…`) are still read, and
+`beatbyte-cli rename-folders "$LIB"` renames them; scores, telemetry and
+the active chart version are keyed by the song id and file names inside
+the folder, never by the folder's name.
+
 ## By name, from inside the game
 
 Press **Cmd/Ctrl+D** in the browser (or ADD A SONG in the action menu),

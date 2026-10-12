@@ -245,7 +245,7 @@ the md5s are appended to `done.txt`.
   without it the script runs the same, just without the bar.
 - **The report.** For every song the converter prints what it wrote and
   what it left out, for example:
-  `BG-01 a song of its own → …/bridge-01-goldfinger---superman (easy 500, medium 675, hard 1087, expert 1196); 5 open notes left out; 315 taps as HOPOs`.
+  `BG-01 a song of its own → …/goldfinger--superman--bg01 (easy 500, medium 675, hard 1087, expert 1196); 5 open notes left out; 315 taps as HOPOs`.
   "A song of its own" means the library had no song by that name, so the
   twin stands alone. Otherwise the twin is filed under the existing song
   with the library's spelling of it.

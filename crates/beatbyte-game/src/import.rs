@@ -1024,23 +1024,27 @@ pub(crate) fn import_dir() -> Result<PathBuf, String> {
     }
 }
 
-/// A filesystem-safe folder name from a file name.
+/// The folder name for an imported file: `artist--title` from the
+/// file's name, by the library's one rule
+/// ([`beatbyte_chart::twin::song_folder_base`]). The bracketed noise
+/// of a download (`(Official Video)`, `[id]`) and the extension do not
+/// reach it; a name without an `Artist - Title` split is the title
+/// alone.
 fn sanitize_folder_name(name: &str) -> String {
-    let cleaned: String = name
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '-' || c == '_' {
-                c.to_ascii_lowercase()
-            } else {
-                '-'
-            }
-        })
-        .collect();
-    let trimmed = cleaned.trim_matches('-');
-    if trimmed.is_empty() {
+    let stem = std::path::Path::new(name)
+        .file_stem()
+        .map_or_else(|| name.to_owned(), |s| s.to_string_lossy().into_owned());
+    let (title, artist) = song_name_from_stem(&stem);
+    let artist = if artist == "Unknown" {
+        ""
+    } else {
+        artist.as_str()
+    };
+    let base = beatbyte_chart::twin::song_folder_base(artist, &title);
+    if base == "song" {
         "imported-song".to_owned()
     } else {
-        trimmed.chars().take(60).collect()
+        base
     }
 }
 
@@ -1387,7 +1391,15 @@ mod tests {
     fn folder_names_are_filesystem_safe() {
         assert_eq!(
             sanitize_folder_name("Never Gonna (4K) [id].m4a"),
-            "never-gonna--4k---id--m4a"
+            "never-gonna"
+        );
+        assert_eq!(
+            sanitize_folder_name("Rick Astley - Never Gonna Give You Up (Official Video).m4a"),
+            "rick-astley--never-gonna-give-you-up"
+        );
+        assert_eq!(
+            sanitize_folder_name("Die Ärzte - Zu spät.mp3"),
+            "die-aerzte--zu-spaet"
         );
         assert_eq!(sanitize_folder_name("///"), "imported-song");
     }

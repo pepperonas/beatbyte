@@ -353,7 +353,10 @@ pub fn find_original<'a>(
         .find(|song| match_key(&song.artist) == artist && match_key(&song.title) == title)
 }
 
-/// A folder name for a song that has no folder yet. Pure — tested.
+/// The base an OLDER build gave a song that had no folder yet:
+/// `artist - title` with every other character a dash. Read only, to
+/// find the versions such a build left; new versions are named by
+/// [`twin::song_folder_base`]. Pure — tested.
 #[must_use]
 pub fn standalone_base(artist: &str, title: &str) -> String {
     let cleaned: String = format!("{artist} - {title}")
@@ -378,11 +381,13 @@ pub fn standalone_base(artist: &str, title: &str) -> String {
 /// record (if readable).
 type Version = (twin::Kind, u8, PathBuf, Option<SourceRecord>);
 
-/// Every BG and GR version of the song whose folder name is `base`,
-/// by kind and number. Both kinds, because a download is the same
-/// download whichever series it went into: the fingerprint check
-/// looks at all of them.
-fn versions_of(library_root: &Path, base: &str) -> Vec<Version> {
+/// Every BG and GR version of the song named `base`, by kind and
+/// number — in this build's spelling (`<base>--bg07`) or an older
+/// build's (`bridge-07-<legacy>`). Both kinds, because a download is
+/// the same download whichever series it went into: the fingerprint
+/// check looks at all of them. Both spellings, because a library that
+/// was not renamed must not get its downloads a second time.
+fn versions_of(library_root: &Path, base: &str, legacy: &str) -> Vec<Version> {
     let Ok(entries) = std::fs::read_dir(library_root) else {
         return Vec::new();
     };
@@ -392,12 +397,14 @@ fn versions_of(library_root: &Path, base: &str) -> Vec<Version> {
             let name = entry.file_name().to_string_lossy().into_owned();
             twin::Kind::NUMBERED.into_iter().find_map(|kind| {
                 let number = twin::numbered_number_of_folder(kind, &name)?;
-                (twin::numbered_folder_name(kind, base, number) == name).then(|| {
-                    let record = std::fs::read_to_string(entry.path().join(SOURCE_FILE))
-                        .ok()
-                        .and_then(|t| serde_json::from_str(&t).ok());
-                    (kind, number, entry.path(), record)
-                })
+                (twin::numbered_folder_name(kind, base, number) == name
+                    || twin::legacy_numbered_folder_name(kind, legacy, number) == name)
+                    .then(|| {
+                        let record = std::fs::read_to_string(entry.path().join(SOURCE_FILE))
+                            .ok()
+                            .and_then(|t| serde_json::from_str(&t).ok());
+                        (kind, number, entry.path(), record)
+                    })
             })
         })
         .collect();
@@ -437,7 +444,7 @@ pub fn import(
     // Which song, and its spelling.
     let songs = library_songs(library_root);
     let original = find_original(&songs, &chart.song.artist, &chart.song.title).cloned();
-    let base = match &original {
+    let legacy = match &original {
         Some(song) => {
             chart.song.title.clone_from(&song.title);
             chart.song.artist.clone_from(&song.artist);
@@ -445,9 +452,10 @@ pub fn import(
         }
         None => standalone_base(&chart.song.artist, &chart.song.title),
     };
+    let base = twin::song_folder_base(&chart.song.artist, &chart.song.title);
 
     // Which number — or nothing to do.
-    let existing = versions_of(library_root, &base);
+    let existing = versions_of(library_root, &base, &legacy);
     if let Some((kind, number, folder, _)) = existing.iter().find(|(_, _, folder, record)| {
         twin::is_finished(folder)
             && record
@@ -877,7 +885,10 @@ mod tests {
         };
         assert_eq!(number, 1);
         assert_eq!(original.as_deref(), Some("dragonforce---ttfaf-m4a"));
-        assert_eq!(folder, library.join("bridge-01-dragonforce---ttfaf-m4a"));
+        assert_eq!(
+            folder,
+            library.join("dragonforce--through-the-fire-and-flames--bg01")
+        );
         assert_eq!(report.notes.len(), 1);
         let chart = beatbyte_chart::load_chart_file(&folder.join("chart.json")).unwrap();
         assert_eq!(chart.song.title, "[BG-01] Through the Fire and Flames");
@@ -962,23 +973,59 @@ mod tests {
         // A song not in the library stands alone, under its own name.
         assert!(
             library
-                .join("bridge-01-band---song")
+                .join("band--song--bg01")
                 .join("chart.json")
                 .is_file()
         );
         assert!(
             library
-                .join("bridge-02-band---song")
+                .join("band--song--bg02")
                 .join("chart.json")
                 .is_file()
         );
         // A gap is filled first.
-        std::fs::remove_dir_all(library.join("bridge-01-band---song")).unwrap();
+        std::fs::remove_dir_all(library.join("band--song--bg01")).unwrap();
         let third = download(&dir.0, "Band", "Song", "Three");
         assert!(matches!(
             outcome(&third),
             Outcome::Imported { number: 1, .. }
         ));
+    }
+
+    /// A library an older build filled (`bridge-01-band---song`) must
+    /// not get the same download twice, and a new one takes the next
+    /// number — whichever spelling the versions on disk carry.
+    #[test]
+    fn versions_an_older_build_named_still_count() {
+        let dir = Scratch::new("legacy");
+        let library = dir.0.join("imported");
+        std::fs::create_dir_all(&library).unwrap();
+        let first = download(&dir.0, "Band", "Song", "One");
+        let second = download(&dir.0, "Band", "Song", "Two");
+        let outcome = |source: &Path| import(source, &library, &fake_transcoder, 0).unwrap();
+        assert!(matches!(
+            outcome(&first),
+            Outcome::Imported { number: 1, .. }
+        ));
+        std::fs::rename(
+            library.join("band--song--bg01"),
+            library.join("bridge-01-band---song"),
+        )
+        .unwrap();
+        assert!(matches!(
+            outcome(&first),
+            Outcome::AlreadyThere { number: 1, .. }
+        ));
+        assert!(matches!(
+            outcome(&second),
+            Outcome::Imported { number: 2, .. }
+        ));
+        assert!(
+            library
+                .join("band--song--bg02")
+                .join("chart.json")
+                .is_file()
+        );
     }
 
     #[test]
@@ -1011,7 +1058,7 @@ mod tests {
                 ..
             }
         ));
-        let folder = library.join("gamerip-01-band---song");
+        let folder = library.join("band--song--gr01");
         let chart: beatbyte_chart::ChartFile =
             serde_json::from_str(&std::fs::read_to_string(folder.join("chart.json")).unwrap())
                 .unwrap();
@@ -1032,8 +1079,7 @@ mod tests {
         ));
         // A community chart's record carries no game.
         let bg: SourceRecord = serde_json::from_str(
-            &std::fs::read_to_string(library.join("bridge-01-band---song").join(SOURCE_FILE))
-                .unwrap(),
+            &std::fs::read_to_string(library.join("band--song--bg01").join(SOURCE_FILE)).unwrap(),
         )
         .unwrap();
         assert_eq!(bg.game, None);
