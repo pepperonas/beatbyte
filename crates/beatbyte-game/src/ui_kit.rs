@@ -927,9 +927,15 @@ pub struct SelectionChip {
 
 /// The node a selection chip wears: a real border, so an unselected
 /// chip still reads as a control rather than as a word.
+///
+/// ⚠️ A chip never shrinks. A flex row squeezes its children before it
+/// overflows, a squeezed text wraps, and a wrapped label hangs out of
+/// its frame — "PLAY & INPUT" and "ACTIONS TAB" both shipped that way.
+/// A row that may run out of room wraps its chips instead.
 #[must_use]
 pub fn selection_chip_node() -> Node {
     Node {
+        flex_shrink: 0.0,
         padding: UiRect::axes(px(8), px(2)),
         border: UiRect::all(px(PANEL_BORDER)),
         border_radius: BorderRadius::all(px(4)),
@@ -1149,6 +1155,10 @@ mod cursor_tests {
             node.border,
             UiRect::all(Val::Px(0.0)),
             "a chip without a border is a word"
+        );
+        assert!(
+            node.flex_shrink.abs() < f32::EPSILON,
+            "a squeezed chip wraps its label out of its frame"
         );
     }
 
