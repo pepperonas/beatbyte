@@ -135,6 +135,18 @@ fn with_counter(name: &str, n: u32) -> String {
     }
 }
 
+/// `name` in composed form (NFC), when that differs from how it was
+/// listed. ⚠️ macOS lists a FAT32 volume's names DECOMPOSED (`o` +
+/// combining diaeresis) and then finds them only COMPOSED: renaming
+/// by the listed name fails with "no such file" for every name with
+/// an umlaut or accent — 211 of 8 571 folders on the real library
+/// (2026-10-12). Pure — tested.
+fn composed(name: &str) -> Option<String> {
+    use unicode_normalization::UnicodeNormalization as _;
+    let nfc: String = name.nfc().collect();
+    (nfc != name).then_some(nfc)
+}
+
 fn read_folder(dir: &Path) -> Result<Folder, String> {
     #[derive(serde::Deserialize)]
     struct Head {
@@ -192,7 +204,7 @@ pub fn run(library: &Path, apply: bool, map: Option<&Path>) -> ExitCode {
             println!("skip    {name}: {why}");
         }
     }
-    for (from, to) in renames.iter().take(if apply { 0 } else { 20 }) {
+    for (from, to) in renames.iter().take(if apply { 0 } else { usize::MAX }) {
         println!("{from}\n     -> {to}");
     }
     let skipped = steps.len() - renames.len() - kept;
@@ -229,7 +241,14 @@ pub fn run(library: &Path, apply: bool, map: Option<&Path>) -> ExitCode {
             failed += 1;
             continue;
         }
-        if let Err(e) = std::fs::rename(library.join(from), &target) {
+        let renamed =
+            std::fs::rename(library.join(from), &target).or_else(|e| match composed(from) {
+                Some(nfc) if e.kind() == std::io::ErrorKind::NotFound => {
+                    std::fs::rename(library.join(nfc), &target)
+                }
+                _ => Err(e),
+            });
+        if let Err(e) = renamed {
             eprintln!("failed  {from}: {e}");
             failed += 1;
             continue;
@@ -365,6 +384,17 @@ mod tests {
         assert!(steps.contains(&rename("own", "c--d")));
         assert!(steps.contains(&rename("own2", "c--d-2")));
         assert!(!steps.iter().any(|s| matches!(s, Step::Skip { .. })));
+    }
+
+    #[test]
+    fn a_decomposed_name_is_retried_composed() {
+        let listed = "bridge-01-mo\u{0308}rhead---ace-of-spades";
+        assert_eq!(
+            composed(listed).as_deref(),
+            Some("bridge-01-m\u{00f6}rhead---ace-of-spades")
+        );
+        assert_eq!(composed("bridge-01-a---b"), None);
+        assert_eq!(composed("bridge-01-m\u{00f6}rhead"), None);
     }
 
     /// A second run finds nothing to do.

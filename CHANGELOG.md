@@ -38,7 +38,10 @@ the manifest ever carries a version this file does not describe.
   <file>` to record every rename (`old<TAB>new`) so a mirror — an
   off-site backup — can be renamed the same way instead of uploaded
   again. Two folders that would get the same name: the second gets `-2`
-  before its version. `[GS]`/`[CL]` twins keep their names. Scores,
+  before its version. `[GS]`/`[CL]` twins keep their names. On a FAT32
+  drive, where macOS lists a name with an umlaut decomposed but finds it
+  only composed, a rename that fails is retried with the composed name
+  (211 of the 8 571 real folders needed it). Scores,
   telemetry and the active chart version do not depend on folder names.
 
 ### Fixed
