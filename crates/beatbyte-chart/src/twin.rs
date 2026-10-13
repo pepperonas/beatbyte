@@ -882,4 +882,175 @@ mod tests {
         assert!(!stays_behind("Song.words.context.json"));
         assert!(!stays_behind("words.json"));
     }
+
+    /// The numbered kinds over their whole range: every title, folder
+    /// and legacy folder they write is read back as the same kind and
+    /// number, and the numbers just outside the range are not.
+    #[test]
+    fn every_numbered_name_reads_back_as_what_wrote_it() {
+        for kind in Kind::NUMBERED {
+            for number in 1..=MAX_BRIDGE_NUMBER {
+                let title = numbered_title(kind, "Maria", number);
+                assert_eq!(split_numbered_title(&title), Some((kind, number, "Maria")));
+                assert_eq!(base_title(&title), Some("Maria"));
+                assert_eq!(display_title(&title), title);
+                let folder = numbered_folder_name(kind, "blondie--maria", number);
+                assert_eq!(numbered_number_of_folder(kind, &folder), Some(number));
+                assert_eq!(kind_of_folder(&folder), Some(kind));
+                let legacy = legacy_numbered_folder_name(kind, "blondie--maria", number);
+                assert_eq!(numbered_number_of_folder(kind, &legacy), Some(number));
+                assert_eq!(kind_of_folder(&legacy), Some(kind));
+                let other = if kind == Kind::Bridge {
+                    Kind::GameRip
+                } else {
+                    Kind::Bridge
+                };
+                assert_eq!(numbered_number_of_folder(other, &folder), None);
+            }
+            for outside in ["00", "100", "7", "x1"] {
+                let tag = numbered_tag(kind);
+                assert_eq!(split_numbered_title(&format!("[{tag}-{outside}] M")), None);
+                let lower = tag.to_ascii_lowercase();
+                assert_eq!(
+                    numbered_number_of_folder(kind, &format!("a--b--{lower}{outside}")),
+                    None,
+                    "{outside}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_title_that_only_looks_numbered_is_a_plain_title() {
+        for title in [
+            "[BG-01]Maria",
+            "[BG-1] Maria",
+            "[bg-01] Maria",
+            "BG-01 Maria",
+            "[BG-01]",
+        ] {
+            assert_eq!(split_numbered_title(title), None, "{title}");
+        }
+        // A folder named only by its suffix has no song in it.
+        assert_eq!(bridge_number_of_folder("--bg07"), None);
+        assert_eq!(kind_of_folder("blondie--maria"), None);
+        assert!(!is_twin_folder("blondie--maria"));
+    }
+
+    /// A slug is a clean folder part whatever goes in: lower-case, no
+    /// separator at either end, never two in a row, and slugging it
+    /// again changes nothing.
+    #[test]
+    fn a_slug_is_clean_and_stable_for_any_text() {
+        let samples = [
+            "",
+            "   ",
+            "AC/DC",
+            "Guns N' Roses",
+            "Motörhead — Ace of Spades!!",
+            "--edge--case--",
+            "Ça plane pour moi",
+            "Björk & Sigur Rós",
+            "Песня",
+            "東京",
+            "a\tb\nc",
+            "../../etc/passwd",
+            "C:\\Windows",
+        ];
+        for text in samples {
+            let s = slug(text);
+            assert_eq!(slug(&s), s, "{text:?}");
+            assert!(!s.starts_with('-') && !s.ends_with('-'), "{text:?} → {s}");
+            assert!(!s.contains("--"), "{text:?} → {s}");
+            assert!(!s.chars().any(|c| c.is_uppercase()), "{text:?} → {s}");
+            assert!(
+                !s.contains(['/', '\\', ':', '.', ' ']),
+                "{text:?} → {s} carries a path character"
+            );
+        }
+        assert_eq!(slug("AC/DC"), "ac-dc");
+        assert_eq!(slug("Guns N' Roses"), "guns-n-roses");
+        assert_eq!(slug("Björk & Sigur Rós"), "bjoerk-sigur-ros");
+    }
+
+    #[test]
+    fn a_song_folder_base_always_fits_and_splits_at_one_seam() {
+        let long = "word ".repeat(60);
+        for (artist, title) in [
+            ("Queen", "Killer Queen"),
+            ("", "Only A Title"),
+            ("Only An Artist", ""),
+            ("", ""),
+            (long.as_str(), long.as_str()),
+            ("x".repeat(200).as_str(), "y"),
+        ] {
+            let base = song_folder_base(artist, title);
+            assert!(base.chars().count() <= FOLDER_BASE_MAX, "{base}");
+            assert!(!base.is_empty());
+            assert!(!base.ends_with('-'), "{base}");
+            assert!(base.matches("--").count() <= 1, "{base}");
+            let folder = bridge_folder_name(&base, 99);
+            assert!(folder.chars().count() <= 100, "{folder}");
+            assert_eq!(bridge_number_of_folder(&folder), Some(99));
+        }
+        assert_eq!(song_folder_base("", ""), "song");
+    }
+
+    #[test]
+    fn the_next_bridge_number_runs_out_after_ninety_nine() {
+        let all: Vec<u8> = (1..=MAX_BRIDGE_NUMBER).collect();
+        assert_eq!(next_bridge_number(&all), None);
+        assert_eq!(next_bridge_number(&[]), Some(1));
+        assert_eq!(
+            next_bridge_number(&[0, 100, 200]),
+            Some(1),
+            "out of range is no claim"
+        );
+    }
+
+    #[test]
+    fn titled_adds_a_twin_prefix_once_and_leaves_numbered_kinds_alone() {
+        assert_eq!(titled("Maria", Kind::Study), "[GS] Maria");
+        assert_eq!(titled("[GS] Maria", Kind::Study), "[GS] Maria");
+        assert_eq!(titled("[Guitar Study] Maria", Kind::Study), "[GS] Maria");
+        assert_eq!(titled("[GS] Maria", Kind::Classic), "[CL] [GS] Maria");
+        for kind in Kind::NUMBERED {
+            assert_eq!(titled("Maria", kind), "Maria");
+        }
+        assert_eq!(base_title("Maria"), None);
+        assert_eq!(base_title("[CL] [GS] Maria"), Some("[GS] Maria"));
+    }
+
+    #[test]
+    fn the_twin_folder_sits_beside_its_song() {
+        let song = Path::new("/lib/blondie--maria");
+        assert_eq!(
+            folder_for(song, Kind::Study),
+            Some(PathBuf::from("/lib/guitar-study-blondie--maria"))
+        );
+        assert_eq!(folder_for(Path::new("/"), Kind::Classic), None);
+    }
+
+    #[test]
+    fn what_stays_behind_is_chart_and_identity_and_nothing_else() {
+        for name in [
+            "song.json",
+            "chart.json",
+            "chart-active.json",
+            "chart.v3.json",
+            "chart.context.json",
+            "chart.v3.context.json",
+        ] {
+            assert!(stays_behind(name), "{name}");
+        }
+        for name in [
+            "song.m4a",
+            "lyrics.json",
+            "words.json",
+            "song.loudness.json",
+            "chart.v3.txt",
+        ] {
+            assert!(!stays_behind(name), "{name}");
+        }
+    }
 }

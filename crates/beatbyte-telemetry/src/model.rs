@@ -980,4 +980,141 @@ mod tests {
              rather than claiming the start of the song"
         );
     }
+
+    /// Over every byte a row can hold: a code that reads as something
+    /// reads as the thing whose code it is — no two bytes name the same
+    /// value, and nothing a later schema writes is misread as a known
+    /// one.
+    #[test]
+    fn every_stored_byte_reads_back_as_itself_or_as_nothing() {
+        for code in 0..=u8::MAX {
+            if let Some(kind) = EventType::from_code(code) {
+                assert_eq!(kind.code(), code);
+            }
+            if let Some(action) = Action::from_code(code) {
+                assert_eq!(action.code(), code);
+            }
+            if let Some(rating) = Rating::from_code(code) {
+                assert_eq!(rating.code(), code);
+            }
+        }
+    }
+
+    /// The levels, devices and endings that fall back on an unknown
+    /// byte fall back to the honest answer, and the known ones keep
+    /// their numbers — the numbers are the schema.
+    #[test]
+    fn the_session_facts_keep_their_codes_and_read_unknown_honestly() {
+        for (detail, code) in [
+            (Detail::Results, 0),
+            (Detail::Actions, 1),
+            (Detail::Diagnostic, 2),
+        ] {
+            assert_eq!(detail.code(), code);
+            assert_eq!(Detail::from_code(code), detail);
+        }
+        assert_eq!(Detail::from_code(9), Detail::default());
+        assert_eq!(Detail::default(), Detail::Actions);
+        for (device, code) in [
+            (InputDevice::Unknown, 0),
+            (InputDevice::Keyboard, 1),
+            (InputDevice::Gamepad, 2),
+            (InputDevice::Guitar, 3),
+        ] {
+            assert_eq!(device.code(), code);
+            assert_eq!(InputDevice::from_code(code), device);
+        }
+        assert_eq!(InputDevice::from_code(77), InputDevice::Unknown);
+        for (completion, code) in [
+            (Completion::Unknown, 0),
+            (Completion::Completed, 1),
+            (Completion::Failed, 2),
+            (Completion::Aborted, 3),
+        ] {
+            assert_eq!(completion.code(), code);
+            assert_eq!(Completion::from_code(code), completion);
+        }
+        assert_eq!(Completion::from_code(4), Completion::Unknown);
+    }
+
+    /// An export names every value by a word: two values sharing one
+    /// would merge in every analysis that groups by it.
+    #[test]
+    fn every_export_word_is_unique_within_its_kind() {
+        fn unique(words: Vec<String>) {
+            let mut sorted = words.clone();
+            sorted.sort();
+            sorted.dedup();
+            assert_eq!(sorted.len(), words.len(), "{words:?}");
+            assert!(
+                words
+                    .iter()
+                    .all(|w| !w.is_empty() && *w == w.to_lowercase())
+            );
+        }
+        unique(
+            EventType::ALL
+                .iter()
+                .map(|k| k.label().to_owned())
+                .collect(),
+        );
+        unique(
+            (0..=11u8)
+                .filter_map(Action::from_code)
+                .map(Action::label)
+                .collect(),
+        );
+        unique(
+            (0..4u8)
+                .filter_map(Rating::from_code)
+                .map(|r| r.label().to_owned())
+                .collect(),
+        );
+        unique(
+            [Detail::Results, Detail::Actions, Detail::Diagnostic]
+                .iter()
+                .map(|d| d.label().to_owned())
+                .collect(),
+        );
+        unique(
+            (0..4u8)
+                .map(|c| InputDevice::from_code(c).label().to_owned())
+                .collect(),
+        );
+        unique(
+            (0..4u8)
+                .map(|c| Completion::from_code(c).label().to_owned())
+                .collect(),
+        );
+        assert_eq!(Action::FretDown(Lane::One).label(), "fret1_down");
+        assert_eq!(Action::FretUp(Lane::Five).label(), "fret5_up");
+    }
+
+    #[test]
+    fn flags_are_a_set_whose_bits_never_collide() {
+        let all = [
+            Flags::CHORD,
+            Flags::HOPO,
+            Flags::SUSTAIN,
+            Flags::DONE,
+            Flags::VOCAL,
+            Flags::ASSISTED,
+        ];
+        for (i, a) in all.iter().enumerate() {
+            assert_eq!(a.0.count_ones(), 1, "one bit each");
+            for b in &all[i + 1..] {
+                assert_eq!(a.0 & b.0, 0, "two flags share a bit");
+            }
+            assert!(Flags::NONE.with(*a).has(*a));
+            assert!(!Flags::NONE.has(*a));
+            assert!(a.has(Flags::NONE), "every set holds the empty set");
+        }
+        let both = Flags::CHORD.with(Flags::HOPO);
+        assert!(both.has(Flags::CHORD) && both.has(Flags::HOPO));
+        assert!(
+            !both.has(Flags::CHORD.with(Flags::SUSTAIN)),
+            "all bits, not any"
+        );
+        assert_eq!(Flags::default(), Flags::NONE);
+    }
 }

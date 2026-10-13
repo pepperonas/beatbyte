@@ -427,4 +427,219 @@ mod tests {
         .unwrap();
         assert!((track.content_end_s() - 5.0).abs() < 1e-9);
     }
+
+    #[test]
+    fn a_tap_is_a_strum_without_a_tail_and_a_chord_has_two_lanes() {
+        let tap = ev(1.5, Lane::Two);
+        assert_eq!(tap.kind, NoteKind::Strum);
+        assert!(!tap.is_sustain());
+        assert!(!tap.is_chord());
+        assert!((tap.end_time_s() - 1.5).abs() < 1e-12);
+        let held = NoteEvent {
+            sustain_s: 0.75,
+            ..tap
+        };
+        assert!(held.is_sustain());
+        assert!((held.end_time_s() - 2.25).abs() < 1e-12);
+    }
+
+    #[test]
+    fn a_time_that_is_not_a_number_is_refused_with_its_index() {
+        for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let err = Track::new(
+                Difficulty::Easy,
+                tempo(),
+                vec![ev(1.0, Lane::One), ev(bad, Lane::Two)],
+                vec![],
+            )
+            .unwrap_err();
+            assert!(
+                matches!(err, TrackError::InvalidEventTime { index: 1, .. }),
+                "{err:?}"
+            );
+            let held = NoteEvent {
+                sustain_s: bad,
+                ..ev(1.0, Lane::One)
+            };
+            assert!(matches!(
+                Track::new(Difficulty::Easy, tempo(), vec![held], vec![]),
+                Err(TrackError::InvalidSustain { index: 0, .. })
+            ));
+        }
+    }
+
+    /// Two events further apart than the minimum spacing are two
+    /// events, however close; nearer than that they are one instant.
+    #[test]
+    fn the_spacing_rule_cuts_at_its_constant() {
+        let apart = Track::MIN_EVENT_SPACING_S * 2.0;
+        assert!(
+            Track::new(
+                Difficulty::Easy,
+                tempo(),
+                vec![ev(1.0, Lane::One), ev(1.0 + apart, Lane::Two)],
+                vec![]
+            )
+            .is_ok()
+        );
+        let near = Track::MIN_EVENT_SPACING_S / 2.0;
+        assert!(matches!(
+            Track::new(
+                Difficulty::Easy,
+                tempo(),
+                vec![ev(1.0, Lane::One), ev(1.0 + near, Lane::Two)],
+                vec![]
+            ),
+            Err(TrackError::SimultaneousEvents { .. })
+        ));
+    }
+
+    #[test]
+    fn a_phrase_contains_both_ends_and_bad_bounds_are_refused() {
+        let phrase = Phrase {
+            start_s: 1.0,
+            end_s: 2.0,
+        };
+        assert!(phrase.contains(1.0));
+        assert!(phrase.contains(2.0));
+        assert!(!phrase.contains(0.999));
+        assert!(!phrase.contains(2.001));
+        for (start_s, end_s) in [
+            (2.0, 1.0),
+            (-1.0, 1.0),
+            (f64::NAN, 1.0),
+            (0.0, f64::INFINITY),
+        ] {
+            assert!(
+                matches!(
+                    Track::new(
+                        Difficulty::Easy,
+                        tempo(),
+                        vec![],
+                        vec![Phrase { start_s, end_s }]
+                    ),
+                    Err(TrackError::InvalidPhrase { index: 0 })
+                ),
+                "{start_s}..{end_s}"
+            );
+        }
+    }
+
+    /// Phrases are inclusive at both ends, so two that only touch would
+    /// share an event: refused. Out of order is fine — they are sorted.
+    #[test]
+    fn phrases_that_touch_are_refused_and_unsorted_ones_are_sorted() {
+        let touch = Track::new(
+            Difficulty::Easy,
+            tempo(),
+            vec![],
+            vec![
+                Phrase {
+                    start_s: 0.0,
+                    end_s: 1.0,
+                },
+                Phrase {
+                    start_s: 1.0,
+                    end_s: 2.0,
+                },
+            ],
+        );
+        assert!(matches!(touch, Err(TrackError::OverlappingPhrases { .. })));
+        let track = Track::new(
+            Difficulty::Easy,
+            tempo(),
+            vec![],
+            vec![
+                Phrase {
+                    start_s: 5.0,
+                    end_s: 6.0,
+                },
+                Phrase {
+                    start_s: 1.0,
+                    end_s: 2.0,
+                },
+            ],
+        )
+        .unwrap();
+        let starts: Vec<f64> = track.phrases().iter().map(|p| p.start_s).collect();
+        assert_eq!(starts, vec![1.0, 5.0]);
+    }
+
+    #[test]
+    fn strum_grace_is_off_by_default_and_clamped_into_its_bound() {
+        let track = Track::new(Difficulty::Easy, tempo(), vec![], vec![]).unwrap();
+        assert!(track.is_empty());
+        assert_eq!(track.content_end_s(), 0.0);
+        assert_eq!(track.strum_grace_s(), 0.0);
+        for (asked, got) in [
+            (0.05, 0.05),
+            (1.0, Track::MAX_STRUM_GRACE_S),
+            (-0.5, 0.0),
+            (f64::NAN, 0.0),
+            (f64::INFINITY, 0.0),
+        ] {
+            assert_eq!(track.clone().with_strum_grace(asked).strum_grace_s(), got);
+        }
+    }
+
+    /// A track without grace writes no grace field, so charts saved
+    /// before the rule existed hash the same; one with grace keeps it.
+    #[test]
+    fn strum_grace_is_written_only_when_it_is_on() {
+        let track =
+            Track::new(Difficulty::Easy, tempo(), vec![ev(1.0, Lane::One)], vec![]).unwrap();
+        let plain = serde_json::to_string(&track).unwrap();
+        assert!(!plain.contains("strum_grace_s"), "{plain}");
+        let graced = serde_json::to_string(&track.with_strum_grace(0.06)).unwrap();
+        assert!(graced.contains("\"strum_grace_s\":0.06"), "{graced}");
+        let back: Track = serde_json::from_str(&graced).unwrap();
+        assert_eq!(back.strum_grace_s(), 0.06);
+    }
+
+    #[test]
+    fn every_track_error_names_where_it_is() {
+        let lines = [
+            (
+                TrackError::InvalidEventTime {
+                    index: 3,
+                    time_s: -1.0,
+                },
+                "event 3: invalid time -1",
+            ),
+            (
+                TrackError::InvalidSustain {
+                    index: 2,
+                    sustain_s: -0.5,
+                },
+                "event 2: invalid sustain length -0.5",
+            ),
+            (TrackError::EmptyLanes { index: 7 }, "event 7: no lanes"),
+            (
+                TrackError::InvalidPhrase { index: 1 },
+                "phrase 1: invalid bounds",
+            ),
+            (
+                TrackError::OverlappingPhrases { time_s: 4.5 },
+                "phrases overlap at 4.5s",
+            ),
+        ];
+        for (err, text) in lines {
+            assert_eq!(err.to_string(), text);
+        }
+        assert!(
+            TrackError::SimultaneousEvents { time_s: 1.0 }
+                .to_string()
+                .contains("one chord event")
+        );
+    }
+
+    #[test]
+    fn note_kinds_read_and_write_in_lowercase() {
+        assert_eq!(serde_json::to_string(&NoteKind::Hopo).unwrap(), "\"hopo\"");
+        assert_eq!(
+            serde_json::from_str::<NoteKind>("\"strum\"").unwrap(),
+            NoteKind::Strum
+        );
+        assert!(serde_json::from_str::<NoteKind>("\"Tap\"").is_err());
+    }
 }

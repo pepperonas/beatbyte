@@ -188,7 +188,11 @@ documented step by step in
 ## Layer 4 — Versions and the ear
 
 - A regenerated chart is written as a sibling (`chart.v2.json`) with
-  provenance: parent hash, directive, generator/designer, date.
+  provenance: parent hash, directive, generator/designer, date. Only
+  the spelling the scheme writes counts as a version — no leading zero
+  (`chart.v02.json` is not revision 2) and a number that still has a
+  successor — so a stray file cannot pose as a second revision or make
+  the next version number overflow.
 - It must pass `validate()` plus the playability lints before it can
   be selected at all.
 - It becomes the **active** version only after a by-ear A/B against

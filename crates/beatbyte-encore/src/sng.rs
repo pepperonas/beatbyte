@@ -76,8 +76,9 @@ impl Package {
 }
 
 /// Whether a name from the package may become a file: a plain name, no
-/// separator, no drive, no hidden or parent entry, a kept extension.
-/// Pure — tested.
+/// separator, no drive, no hidden or parent entry, no control character,
+/// not a Windows device name (`CON.ogg` opens the console there, not a
+/// file), a kept extension. Pure — tested.
 #[must_use]
 pub fn safe_name(name: &str) -> bool {
     let Some((stem, ext)) = name.rsplit_once('.') else {
@@ -85,9 +86,23 @@ pub fn safe_name(name: &str) -> bool {
     };
     !stem.is_empty()
         && !name.starts_with('.')
-        && !name.contains(['/', '\\', ':', '\0'])
+        && !name.contains(['/', '\\', ':'])
+        && !name.chars().any(char::is_control)
+        && !is_device_name(stem)
         && name.len() <= 128
         && KEPT_EXTENSIONS.contains(&ext.to_lowercase().as_str())
+}
+
+/// Whether a file stem is one Windows reserves for a device, whatever
+/// the extension behind it: `CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`,
+/// `LPT1`–`LPT9`, in any case.
+fn is_device_name(stem: &str) -> bool {
+    let stem = stem.split('.').next().unwrap_or(stem).to_ascii_uppercase();
+    let numbered = |prefix: &str| {
+        stem.strip_prefix(prefix)
+            .is_some_and(|n| n.len() == 1 && matches!(n.as_bytes()[0], b'1'..=b'9'))
+    };
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL") || numbered("COM") || numbered("LPT")
 }
 
 /// A cursor over the package bytes that refuses to read past the end.
@@ -381,6 +396,115 @@ mod tests {
         assert!(ini.contains("name = Song artist = Evil\n"), "{ini}");
         assert!(ini.contains("beatbyte_game_rip = Rock Band 2 DLC\n"));
         assert_eq!(std::fs::read(dir.join("song.ogg")).expect("ogg"), b"y");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_device_or_control_name_never_becomes_a_file() {
+        for bad in [
+            "CON.ogg",
+            "con.mid",
+            "Nul.chart",
+            "aux.ini",
+            "PRN.wav",
+            "COM1.ogg",
+            "lpt9.mp3",
+            "con.tar.ogg",
+            "song\n.ogg",
+            "so\u{0}ng.ogg",
+            "tab\there.ogg",
+        ] {
+            assert!(!safe_name(bad), "{bad:?}");
+        }
+        // Names that merely start like a device are ordinary names.
+        for good in [
+            "console.ogg",
+            "COM10.ogg",
+            "COM0.ogg",
+            "nullify.mid",
+            "lpt.ogg",
+        ] {
+            assert!(safe_name(good), "{good}");
+        }
+    }
+
+    #[test]
+    fn a_name_is_kept_up_to_its_length_limit() {
+        let at_limit = format!("{}.ogg", "a".repeat(124));
+        assert_eq!(at_limit.len(), 128);
+        assert!(safe_name(&at_limit));
+        let past = format!("{}.ogg", "a".repeat(125));
+        assert!(!safe_name(&past));
+    }
+
+    #[test]
+    fn a_chart_is_found_whatever_its_case_and_nothing_else_counts() {
+        let with = |name: &str| Package {
+            meta: vec![],
+            files: vec![(name.to_owned(), vec![])],
+        };
+        assert!(with("NOTES.MID").has_chart());
+        assert!(with("Notes.Chart").has_chart());
+        assert!(!with("notes.ini").has_chart());
+        assert!(
+            !with("guitar.chart").has_chart(),
+            "only the chart file itself"
+        );
+        assert!(!Package::default().has_chart());
+    }
+
+    #[test]
+    fn a_header_that_claims_too_much_is_refused_before_it_is_read() {
+        let mut head = b"SNGPKG".to_vec();
+        head.extend_from_slice(&1u32.to_le_bytes());
+        head.extend_from_slice(&MASK);
+        head.extend_from_slice(&0u64.to_le_bytes());
+        let mut too_much_meta = head.clone();
+        too_much_meta.extend_from_slice(&(MAX_ENTRIES + 1).to_le_bytes());
+        assert_eq!(
+            decode(&too_much_meta),
+            Err("the package lists too much metadata".to_owned())
+        );
+        // A negative string length is a lie, not a huge allocation.
+        let mut negative = head.clone();
+        negative.extend_from_slice(&1u64.to_le_bytes());
+        negative.extend_from_slice(&(-5i32).to_le_bytes());
+        assert_eq!(decode(&negative), Err("a negative length".to_owned()));
+        // Too many files, after an empty metadata block.
+        let mut too_many = head;
+        too_many.extend_from_slice(&0u64.to_le_bytes());
+        too_many.extend_from_slice(&0u64.to_le_bytes());
+        too_many.extend_from_slice(&(MAX_ENTRIES + 1).to_le_bytes());
+        assert_eq!(
+            decode(&too_many),
+            Err("the package lists too many files".to_owned())
+        );
+    }
+
+    /// The package's own `song.ini` is not copied: the one written comes
+    /// from the metadata, and carries no rip line unless asked.
+    #[test]
+    fn the_written_song_ini_comes_from_the_metadata_alone() {
+        let dir = std::env::temp_dir().join(format!(
+            "bb-sng-ini-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let bytes = encode(
+            &[("name", "Kryptonite")],
+            &[
+                ("notes.chart", b"x"),
+                ("Song.INI", b"[song]\nname = Other\n"),
+            ],
+            MASK,
+        );
+        decode(&bytes)
+            .expect("decodes")
+            .write_folder(&dir, None)
+            .expect("writes");
+        let ini = std::fs::read_to_string(dir.join("song.ini")).expect("ini");
+        assert_eq!(ini, "[song]\nname = Kryptonite\n");
         std::fs::remove_dir_all(&dir).ok();
     }
 }

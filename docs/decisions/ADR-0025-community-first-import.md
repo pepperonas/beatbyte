@@ -47,7 +47,8 @@ Measured before deciding (2026-10-11):
      notes;
    - `sng` decodes the package — untrusted bytes: every length checked
      against what is left, a 512 MB cap, a file name accepted only as a
-     plain name with a known extension;
+     plain name with a known extension — no separator, drive, control
+     character or Windows device name (`CON.ogg`, `COM1.mid`, …);
    - `client` is the only part that touches the network.
 2. **The search asks Encore first** (`community.rs`, a new COMMUNITY
    phase on the overlay) when the query names an artist. Up to three

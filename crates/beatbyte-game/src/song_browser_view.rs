@@ -1883,4 +1883,110 @@ mod tests {
         assert_eq!(effective(&e, Difficulty::Hard), Difficulty::Hard);
         assert_eq!(effective(&e, Difficulty::Easy), Difficulty::Medium);
     }
+
+    #[test]
+    fn the_search_line_shows_the_caret_only_while_typing() {
+        assert_eq!(
+            search_line("queen", 4, 466, false),
+            "SEARCH  queen   4 OF 466   ESC CLEARS"
+        );
+        assert_eq!(search_line("", 0, 0, false), "TYPE TO SEARCH 0 SONGS");
+    }
+
+    #[test]
+    fn the_origin_chip_names_every_filter() {
+        use crate::song_select::OriginFilter;
+        let mut filter = OriginFilter::All;
+        let mut lines = Vec::new();
+        for _ in 0..4 {
+            lines.push(origin_line(filter));
+            filter = filter.next();
+        }
+        assert_eq!(
+            lines,
+            [
+                "SHOW  ALL",
+                "SHOW  COMMUNITY",
+                "SHOW  RIPS",
+                "SHOW  IMPORTS"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_facts_line_leaves_out_what_is_not_known() {
+        let mut e = entry();
+        e.genre = None;
+        assert_eq!(facts_line(&e), "3:02  ·  117 BPM");
+        e.duration_s = None;
+        assert_eq!(facts_line(&e), "117 BPM");
+        e.bpm = 0.0;
+        assert_eq!(facts_line(&e), "");
+        // A length is whole minutes and zero-padded seconds.
+        e.duration_s = Some(65.9);
+        assert_eq!(facts_line(&e), "1:05");
+        e.duration_s = Some(3600.0);
+        assert_eq!(facts_line(&e), "60:00");
+    }
+
+    #[test]
+    fn a_best_rounds_to_a_whole_percent() {
+        let e = entry();
+        assert_eq!(
+            difficulty_line(&e, Difficulty::Hard, Some((1, 0.996))),
+            "386 NOTES   BEST 100%  ·  1"
+        );
+        assert_eq!(row_detail(&e, SortMode::Title, Some(0.0)), "0%");
+        assert_eq!(row_detail(&e, SortMode::Title, Some(1.0)), "100%");
+    }
+
+    #[test]
+    fn a_song_with_no_difficulties_keeps_the_selected_one() {
+        let mut e = entry();
+        e.difficulties.clear();
+        for d in DIFFICULTIES {
+            assert_eq!(effective(&e, d), d);
+        }
+        assert_eq!(bests_line(&e, |_| Some(1.0)), "");
+    }
+
+    #[test]
+    fn only_a_file_is_a_file() {
+        assert!(is_file(&entry()));
+        let builtin = SongEntry {
+            source: SongSource::Builtin(0),
+            ..entry()
+        };
+        assert!(!is_file(&builtin));
+    }
+
+    /// The window rule over a whole small domain: the cursor is always
+    /// inside the window, the window never runs past the end, and a
+    /// cursor already inside it moves nothing.
+    #[test]
+    fn the_window_always_shows_the_cursor_and_never_runs_past_the_end() {
+        for len in 1..=12 {
+            for visible in 1..=8 {
+                for top in 0..=14 {
+                    for cursor in 0..len {
+                        let new = window_top(cursor, top, visible, len);
+                        assert!(new <= cursor, "{cursor} {top} {visible} {len}");
+                        assert!(cursor < new + visible, "{cursor} {top} {visible} {len}");
+                        assert!(new <= len.saturating_sub(visible));
+                        if top <= cursor && cursor < top + visible && top + visible <= len {
+                            assert_eq!(new, top, "a visible cursor moves nothing");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_version_heading_is_upper_case_whatever_the_source_wrote() {
+        assert_eq!(
+            version_heading("bg-01", None, Some("anon")),
+            "VERSION   ·   BG-01 CHARTED BY ANON"
+        );
+    }
 }

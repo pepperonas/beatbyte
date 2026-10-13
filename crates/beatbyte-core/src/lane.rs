@@ -79,8 +79,12 @@ impl core::error::Error for InvalidLane {}
 ///
 /// Backed by a bitmask (bit *n* = lane *n*), so set operations are cheap
 /// and equality is exact — important in the hot judgment path.
+///
+/// It is written as its bitmask, and read back only when the mask names
+/// lanes that exist: a stored `255` is refused rather than kept with
+/// three bits no lane owns (which `len` would count).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-#[serde(transparent)]
+#[serde(try_from = "u8", into = "u8")]
 pub struct LaneSet(u8);
 
 impl LaneSet {
@@ -165,6 +169,41 @@ impl LaneSet {
     }
 }
 
+impl From<LaneSet> for u8 {
+    fn from(set: LaneSet) -> Self {
+        set.0
+    }
+}
+
+impl TryFrom<u8> for LaneSet {
+    type Error = InvalidLaneSet;
+
+    fn try_from(bits: u8) -> Result<Self, Self::Error> {
+        if bits & !LaneSet::FULL_MASK == 0 {
+            Ok(LaneSet(bits))
+        } else {
+            Err(InvalidLaneSet(bits))
+        }
+    }
+}
+
+/// Error returned when a lane-set bitmask names a lane that does not
+/// exist.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InvalidLaneSet(pub u8);
+
+impl core::fmt::Display for InvalidLaneSet {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "invalid lane set {:#010b} (only the five low bits name lanes)",
+            self.0
+        )
+    }
+}
+
+impl core::error::Error for InvalidLaneSet {}
+
 impl FromIterator<Lane> for LaneSet {
     fn from_iter<I: IntoIterator<Item = Lane>>(iter: I) -> Self {
         LaneSet::from_lanes(iter)
@@ -244,5 +283,95 @@ mod tests {
         let set = LaneSet::from_bits_truncated(0b1110_0001);
         assert_eq!(set.bits(), 0b0000_0001);
         assert_eq!(set.len(), 1);
+    }
+
+    /// The domain is 32 sets: every one of them, not a few, so an edge
+    /// (the empty set, the full set, a gap in the middle) cannot hide.
+    #[test]
+    fn every_lane_set_agrees_with_its_own_lanes() {
+        for bits in 0u8..32 {
+            let set = LaneSet::from_bits_truncated(bits);
+            let lanes: Vec<Lane> = set.iter().collect();
+            assert_eq!(set.bits(), bits);
+            assert_eq!(set.len(), lanes.len(), "{bits:05b}");
+            assert_eq!(set.is_empty(), lanes.is_empty(), "{bits:05b}");
+            assert_eq!(set.highest(), lanes.iter().copied().max(), "{bits:05b}");
+            assert_eq!(LaneSet::from_lanes(lanes.iter().copied()), set);
+            assert_eq!(lanes.iter().copied().collect::<LaneSet>(), set);
+            for lane in Lane::ALL {
+                assert_eq!(set.contains(lane), lanes.contains(&lane));
+            }
+            assert!(lanes.windows(2).all(|w| w[0] < w[1]), "left to right");
+        }
+    }
+
+    #[test]
+    fn inserting_twice_and_removing_what_is_absent_change_nothing() {
+        let mut set = LaneSet::single(Lane::Three);
+        set.insert(Lane::Three);
+        assert_eq!(set, LaneSet::single(Lane::Three));
+        set.remove(Lane::One);
+        assert_eq!(set, LaneSet::single(Lane::Three));
+        set.remove(Lane::Three);
+        assert_eq!(set, LaneSet::EMPTY);
+        assert_eq!(LaneSet::default(), LaneSet::EMPTY);
+    }
+
+    #[test]
+    fn a_lane_converts_to_a_set_of_one() {
+        for lane in Lane::ALL {
+            let set: LaneSet = lane.into();
+            assert_eq!(set.len(), 1);
+            assert_eq!(set.highest(), Some(lane));
+            assert_eq!(u8::from(lane) as usize, lane.index());
+        }
+    }
+
+    #[test]
+    fn lanes_order_left_to_right() {
+        assert!(Lane::ALL.windows(2).all(|w| w[0] < w[1]));
+    }
+
+    /// A chart stores lanes as numbers: a number past the last lane is
+    /// untrusted input and must fail to parse, not wrap.
+    #[test]
+    fn a_lane_reads_and_writes_as_its_index_and_an_unknown_one_is_refused() {
+        for lane in Lane::ALL {
+            let text = serde_json::to_string(&lane).unwrap();
+            assert_eq!(text, lane.index().to_string());
+            assert_eq!(serde_json::from_str::<Lane>(&text).unwrap(), lane);
+        }
+        assert!(serde_json::from_str::<Lane>("5").is_err());
+        assert!(serde_json::from_str::<Lane>("-1").is_err());
+        let set = LaneSet::from_lanes([Lane::One, Lane::Five]);
+        assert_eq!(serde_json::to_string(&set).unwrap(), "17");
+        assert_eq!(serde_json::from_str::<LaneSet>("17").unwrap(), set);
+        assert!(serde_json::from_str::<LaneSet>("32").is_err());
+        assert!(serde_json::from_str::<LaneSet>("255").is_err());
+        assert_eq!(serde_json::from_str::<LaneSet>("31").unwrap().len(), 5);
+    }
+
+    #[test]
+    fn a_mask_is_accepted_exactly_when_every_bit_is_a_lane() {
+        for bits in 0u8..=255 {
+            let read = LaneSet::try_from(bits);
+            if bits < 32 {
+                assert_eq!(read, Ok(LaneSet::from_bits_truncated(bits)));
+            } else {
+                assert_eq!(read, Err(InvalidLaneSet(bits)), "{bits:#b}");
+            }
+        }
+        assert_eq!(
+            InvalidLaneSet(0b1000_0001).to_string(),
+            "invalid lane set 0b10000001 (only the five low bits name lanes)"
+        );
+    }
+
+    #[test]
+    fn an_invalid_lane_says_what_it_got_and_what_it_expected() {
+        assert_eq!(
+            InvalidLane(9).to_string(),
+            "invalid lane index 9 (expected 0–4)"
+        );
     }
 }

@@ -4,6 +4,21 @@
 Rules of engagement live in [`CLAUDE.md`](../CLAUDE.md); this file
 holds the work itself.
 
+## Test and documentation audit (2026-10-13)
+
+*Verified: 2290 tests in the source inventory, including documentation examples;
+fmt, clippy `-D warnings --all-features`, `cargo test --workspace`; every new
+hardening pin seen to fail under a mutation.*
+
+- [x] Exhaustive pins over small domains: all 32 lane sets, every stored
+  telemetry byte, every numbered twin name 01–99, the browser's window rule.
+- [x] A lane-set mask with bits no lane owns is refused when read.
+- [x] Only the chart-version spelling the scheme writes counts (no leading
+  zero, always a successor — the next version can no longer overflow).
+- [x] A `.sng` file name that is a Windows device name (`CON.ogg`) or holds a
+  control character never becomes a file.
+- [x] ADR-0025 and `docs/adaptive-charting.md` state the two new rules.
+
 ## Menu guidance, GS/CL out of sight, community-first import (2026-10-11)
 
 *Verified: 2240 tests in the source inventory, including documentation examples;

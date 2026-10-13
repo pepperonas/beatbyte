@@ -14,6 +14,27 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.18.93] - 2026-10-13
+
+### Changed
+
+- **Stricter reading of untrusted names.** A community chart package
+  (`.sng`) whose file is named like a Windows device (`CON.ogg`,
+  `COM1.mid`) or carries a control character in its name skips that file
+  instead of writing it. A chart version file with a leading zero
+  (`chart.v02.json`) or a number with no successor is no longer taken for
+  a revision, so it cannot pose as a second revision 2 or make the next
+  version number overflow. A stored lane set naming lanes that do not
+  exist is refused when read.
+
+### Added
+
+- 50 new unit tests, several of them exhaustive over small domains:
+  all 32 lane sets, every byte a telemetry row can hold, every numbered
+  version name from 01 to 99 in both folder spellings, the song browser's
+  scroll window, track and phrase validation, the `.sng` header limits
+  and the song-folder naming rules.
+
 ## [0.18.92] - 2026-10-12
 
 ### Changed

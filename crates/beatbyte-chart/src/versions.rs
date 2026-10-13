@@ -37,13 +37,17 @@ pub fn is_version_file(name: &str) -> bool {
 }
 
 /// The `N` of `chart.v<N>.json`, if `name` is one.
+///
+/// Only the spelling this scheme writes counts: no leading zero (so
+/// `chart.v02.json` cannot pose as a second revision 2) and a number
+/// below `u32::MAX` (so the next version always has a name to go to).
 #[must_use]
 pub fn version_number(name: &str) -> Option<u32> {
     let digits = name.strip_prefix("chart.v")?.strip_suffix(".json")?;
-    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+    if digits.is_empty() || digits.starts_with('0') || !digits.bytes().all(|b| b.is_ascii_digit()) {
         return None;
     }
-    digits.parse().ok()
+    digits.parse().ok().filter(|n| *n < u32::MAX)
 }
 
 /// The name the next version should be written under, given the file
@@ -269,5 +273,85 @@ mod tests {
                 "{target} must not be followed"
             );
         }
+    }
+
+    #[test]
+    fn only_the_spelling_this_scheme_writes_is_a_version() {
+        assert_eq!(version_number("chart.v2.json"), Some(2));
+        // A leading zero would make a second "revision 2".
+        assert_eq!(version_number("chart.v02.json"), None);
+        assert_eq!(version_number("chart.v0.json"), None);
+        // Signs, spaces and other numerals are not digits here.
+        for name in [
+            "chart.v+2.json",
+            "chart.v 2.json",
+            "chart.v-2.json",
+            "chart.v٢.json",
+        ] {
+            assert_eq!(version_number(name), None, "{name}");
+        }
+        // A number too large to have a successor is not a version.
+        assert_eq!(version_number("chart.v4294967295.json"), None);
+        assert_eq!(version_number("chart.v4294967294.json"), Some(u32::MAX - 1));
+        assert_eq!(version_number("chart.v99999999999.json"), None);
+    }
+
+    /// The highest number a folder can hold still has a successor, so a
+    /// hostile folder name cannot make the next version overflow.
+    #[test]
+    fn the_next_version_never_overflows() {
+        let files = names(&[
+            "chart.json",
+            "chart.v4294967295.json",
+            "chart.v4294967294.json",
+        ]);
+        assert_eq!(next_version_name(&files), "chart.v4294967295.json");
+    }
+
+    #[test]
+    fn a_folder_with_the_same_revision_twice_lists_it_once() {
+        let files = names(&["chart.v3.json", "chart.json", "chart.v3.json"]);
+        let numbers: Vec<u32> = list_revisions(&files).iter().map(|r| r.number).collect();
+        assert_eq!(numbers, vec![1, 3]);
+        assert!(list_revisions(&names(&["song.m4a"])).is_empty());
+    }
+
+    /// Every name the scheme can write is a pointer target the resolver
+    /// follows — and one it refuses never gets written as valid.
+    #[test]
+    fn every_valid_target_round_trips_through_a_pointer() {
+        for name in ["chart.json", "chart.v2.json", "chart.v31.json"] {
+            assert!(is_valid_target(name));
+            let parsed: ActivePointer =
+                serde_json::from_str(&pointer_json(name)).expect("a pointer");
+            assert_eq!(parsed.active, name);
+            assert_eq!(
+                resolve_active(Some(&pointer_json(name)), &names(&[name])),
+                name
+            );
+        }
+        for name in ["chart-active.json", "song.json", "", "chart.v.json"] {
+            assert!(!is_valid_target(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn a_hand_edit_is_known_by_its_designer() {
+        let mut chart = crate::ChartFile::from_json(
+            r#"{"format_version": 1, "song": {"title": "T", "audio": "a.ogg", "bpm": 120.0},
+                "charts": []}"#,
+        )
+        .expect("a chart");
+        assert!(!is_hand_edited(&chart), "no provenance is no hand edit");
+        let by = |designer: &str| crate::Provenance {
+            parent_hash: String::new(),
+            designer: designer.to_owned(),
+            created_ms: 0,
+            directive: None,
+        };
+        chart.provenance = Some(by(EDITOR_DESIGNER));
+        assert!(is_hand_edited(&chart));
+        chart.provenance = Some(by("design-session"));
+        assert!(!is_hand_edited(&chart));
     }
 }

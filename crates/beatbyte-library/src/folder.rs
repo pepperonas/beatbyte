@@ -352,4 +352,81 @@ mod tests {
             assert!(!is_chart_candidate(sidecar), "{sidecar}");
         }
     }
+
+    #[test]
+    fn the_bridge_source_record_is_not_a_chart_either() {
+        assert!(!is_chart_candidate(crate::bridge::SOURCE_FILE));
+        assert!(!is_chart_candidate("chart.v4.context.json"));
+        assert!(
+            !is_chart_candidate("chart.JSON"),
+            "the rule is exact, not case-folded"
+        );
+    }
+
+    /// Hashing in pieces is hashing the whole: the streaming
+    /// fingerprint may cut a file anywhere its buffer ends.
+    #[test]
+    fn hashing_in_chunks_matches_hashing_at_once() {
+        let bytes: Vec<u8> = (0..1_000u32).map(|i| (i * 31 % 251) as u8).collect();
+        let whole = fnv1a_update(FNV_BASIS, &bytes);
+        for cut in [0, 1, 63, 500, 999, 1_000] {
+            let (a, b) = bytes.split_at(cut);
+            assert_eq!(fnv1a_update(fnv1a_update(FNV_BASIS, a), b), whole, "{cut}");
+        }
+    }
+
+    /// A file larger than the read buffer, so the stream really crosses
+    /// a chunk boundary, fingerprints like the bytes it holds; a file
+    /// that is not there has no fingerprint.
+    #[test]
+    fn a_file_fingerprints_as_its_bytes_and_a_missing_one_as_nothing() {
+        let dir = std::env::temp_dir().join(format!(
+            "beatbyte-fingerprint-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("scratch");
+        let path = dir.join("song.bin");
+        let bytes: Vec<u8> = (0..150_000u32).map(|i| (i % 253) as u8).collect();
+        std::fs::write(&path, &bytes).expect("write");
+        let print = fingerprint(&path).expect("readable");
+        assert_eq!(print.size, bytes.len() as u64);
+        assert_eq!(print.hash, fnv1a_update(FNV_BASIS, &bytes));
+        assert_eq!(fingerprint(&dir.join("absent.bin")), None);
+        let empty = dir.join("empty.bin");
+        std::fs::write(&empty, b"").expect("write");
+        assert_eq!(
+            fingerprint(&empty),
+            Some(FileFingerprint {
+                hash: FNV_BASIS,
+                size: 0
+            })
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn twins_alone_are_never_a_duplicate_and_the_report_is_ordered() {
+        assert!(
+            duplicates(&[
+                song("fnv1a64:1:1", "[GS] Maria", true),
+                song("fnv1a64:1:1", "[CL] Maria", true),
+            ])
+            .is_empty()
+        );
+        assert!(duplicates(&[]).is_empty());
+        let found = duplicates(&[
+            song("fnv1a64:b:2", "B", false),
+            song("fnv1a64:a:1", "A", false),
+            song("fnv1a64:b:2", "B again", false),
+            song("fnv1a64:a:1", "A again", false),
+        ]);
+        let prints: Vec<&str> = found.iter().map(|d| d.fingerprint.as_str()).collect();
+        assert_eq!(
+            prints,
+            ["fnv1a64:a:1", "fnv1a64:b:2"],
+            "the same order every run"
+        );
+    }
 }
