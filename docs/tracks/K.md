@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-218 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+219 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -215,6 +215,7 @@
 | The Killers | When You Were Young | Alternative | 3:43 | 130 | 282 · 641 · 800 · 821 | `▂▄▁▁▃▄▃▃▅▄▃▂▃·▁▂▃▅▅▁▁▂▃·` |
 | The Kimberly Trip | California | Pop-Rock | 3:14 | 168 | 224 · 449 · 697 · 855 | `▃▃▅▆▄▃▂▄▄▄▄▃▃▂▃▃▂·▁▃▃▂▃▁` |
 | The Kinks | Living On A Thin Line | rock | 4:05 | 89 | 165 · 454 · 526 · 595 | `▁▁▂▂▂▂▂▂▂▂▂▂▂▂▃▂▂▂▂▂▂▃▂▂` |
+| The Kinks | Lola | Indie Rock | 4:03 | 154 | 319 · 1049 · 1359 · 1495 | `▃▄▄▄▃▄▄▄▅▄▄▄▄▅▄▄▅▅▄▄▄▄▄▃` |
 | The Kinks (WaveGroup) | All Day and All of the Night | Garage Rock | 2:43 | 137 | 270 · 388 · 827 · 998 | `▂▃▃▄▅▅▅▄▄▅▅▃▃▄▅▅▅▃▃▄▅▆▃·` |
 | The KLF | Justified & Ancient | Dance-Pop | 3:50 | 111 | 209 · 537 · 695 · 764 | `·▃▃▂▂▃▂▅▃▂▃▂▃▅▄▂▂▂▂▃▃···` |
 | The Knack (WaveGroup) | My Sharona | Pop Rock | 5:00 | 149 | 611 · 850 · 1206 · 1360 | `·▃▃▃▃▃▃▃▃▃▃▃▃▂▄▆▅▄▄▄▃▃▃▁` |

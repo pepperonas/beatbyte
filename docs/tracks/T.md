@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-376 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+377 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -149,6 +149,7 @@
 | Thin Lizzy | Dancing In The Moonlight | Rock | 3:25 | 145 | 208 · 581 · 673 · 733 | `▂▂▃▃▃▃▂▃▃▃▃▂▂▂▂▂▃▄▂▃▃▃▃▂` |
 | Thin Lizzy | Jailbreak | Hard Rock | 4:05 | 144 | 463 · 634 · 779 · 958 | `▁▄▄▄▃▂▃▄▄▃▁▂▂▃▃▃▂▃▄▄▃▂▂▁` |
 | Thin Lizzy | The Boys Are Back In Town | Hard Rock | 4:54 | 164 | 417 · 779 · 984 · 1197 | `▂▂▃▃▂▂▃▃▂▂▃▅▅▃▃▃▂▂▂▃▃▃▃▂` |
+| Thin Lizzy | Whiskey in the Jar | Classic Rock | 5:46 | 127 | 430 · 924 · 1325 · 1487 | `▁▃▃▃▃▃▂▃▃▃▃▃▄▃▂▃▃▃▃▅▅▃▃▃` |
 | Thin Lizzy (WaveGroup) | Bad Reputation | Hard Rock | 3:16 | 127 | 268 · 392 · 623 · 893 | `▁▂▄▅▄▄▃▂▄▅▃▂▃▃▂▂▄▃▄▄▃▄▂▁` |
 | Third Eye Blind | Can You Take Me | Rock | 3:20 | 122 | 452 · 914 · 1143 · 1592 | `▃▆▅▄▂▆▆▄▃▅▇▅▂▆▆▅▄▄▆▇▇▆▆▅` |
 | Third Eye Blind | Jumper | Alternative Rock | 4:37 | 182 | 1279 · 1279 · 1279 · 1279 | `▃▄▂▂▂▄▅▃▂▂▅▅▄▁▂▄▄▃▃▆▅▃▁▁` |

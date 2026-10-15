@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-931 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+932 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -745,6 +745,7 @@
 | Suzanne Vega | Luka | Pop Rock | 3:52 | 75 | 197 · 565 · 636 · 730 | `▂▂▂▂▂▂▂▂▃▂▅▃▃▂▂▂▂▂▁▂▃▄▂▁` |
 | Suzi Quatro | If You Can't Give Me Love | Glam Rock | 3:55 | 134 | 252 · 960 · 1217 · 1301 | `▃▄▄▅▅▆▄▂▂▃▅▅▆▅▂▂▃▆▆▄▂▂▂▂` |
 | Swedish House Mafia | Don't You Worry Child (ft. John Martin) | House | 3:35 | 129 | 212 · 826 · 993 · 1102 | `▃▄▄▄▄▄▁▂▄▄▄▂▄▄▄▄▅▆▆▅▄▄▄▁` |
+| Sweet | Fox On The Run (Original Version) | Hard Rock | 4:56 | 132 | 317 · 919 · 1144 · 1247 | `▂▃▄▄▄▃▂▂▃▃▃▂▃▄▃▄▂▃▂▃▃▃▄▂` |
 | Sweet (WaveGroup) | Action | Glam | 3:22 | 174 | 247 · 310 · 497 · 667 | `·▂▃▃▅▁▂▂▃▂▃▃▂▁▂▄▂▂▆▄▂▂▁·` |
 | Sweet Billy Pilgrim | Future Perfect Tense | Indie Rock | 4:26 | 120 | 262 · 583 · 932 · 1626 | `▂▃▃▂▃▃▃▃▃▃▃▃▃▃▄▃███▃▃▃▃▁` |
 | Sweethammer | Gypsy Rave Massacre Party 2 | Pop | 2:47 | 180 | 162 · 274 · 335 · 403 | `▁▂▂▂▂▂▂▁▁▁▂▂▂▂▁▁▁▄▅▃▁▁▁·` |

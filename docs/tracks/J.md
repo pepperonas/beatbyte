@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-347 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+348 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -267,6 +267,7 @@
 | Judas Priest | Fever | Metal | 5:26 | 112 | 437 · 625 · 864 · 1109 | `▂▂▂▁▂▂▂▃▃▂▃▄▃▃▃▃▂▂▁▂▂▄▄▃` |
 | Judas Priest | Halls of Valhalla | Metal | 6:01 | 200 | 474 · 961 · 1413 · 2119 | `▁▂▄▅▅▄▄▄▃▄▄▄▅▅▄▄▃▄▄▃▄▄▅▂` |
 | Judas Priest | Lightning Strike | Heavy Metal | 3:32 | 150 | 240 · 706 · 948 · 1057 | `▄▂▃▅▃▂▅▂▃▅▃▂▅▄▃▂▁▃▄▆▃▂▄▂` |
+| Judas Priest | Living After Midnight (Live) | Metal | 4:44 | 67 | 279 · 705 · 1027 · 1337 | `·▂▄▄▃▄▅▃▄▄▄▃▄▃▄▃·▁▄▄▄▃▄▁` |
 | Judas Priest | Night Crawler | Heavy Metal | 5:30 | 194 | 350 · 901 · 1127 · 1240 | `▁▂▃▄▃▃▄▄▃▃▂▂▂▃▁▂▂▂▂▃▄▂▂▂` |
 | Judas Priest | Pain and Pleasure | Metal | 4:19 | 80 | 284 · 508 · 758 · 981 | `▂▃▄▄▄▂▂▃▃▃▄▃▃▃▃▂▂▂▂▃▃▃▂▁` |
 | Judas Priest | Painkiller | Thrash Metal | 6:09 | 114 | 520 · 1152 · 1629 · 1816 | `·▂▂▄▃▄▅▆▆▃▃▅▃▄▃▄▄▅▂▂▄▃▁▁` |

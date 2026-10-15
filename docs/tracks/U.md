@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-43 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+44 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -47,5 +47,6 @@
 | Unearth | We Are Not Anonymous | Metal | 3:08 | 168 | 244 · 463 · 787 · 1162 | `▂▆▆▃▃▃▃▅▄▄▄▄▃▄▃▄▅▅▅▆▅▃▃▂` |
 | Uniform Motion | Roll Over | Indie Rock | 5:02 | 115 | 328 · 672 · 1049 · 1295 | `▂▂▂▂▂▂▂▃▃▃▄▄▃▃▃▄▄▄▄▃▄▃▃▂` |
 | Unlike Pluto | Everything Black | Alternative Rock | 3:51 | 98 | 383 · 561 · 701 · 714 | `▂▂▁▂▂▃▃▃▃▂▁▂▂▂▃▃▃▂▁▂▃▃▃▂` |
+| Uriah Heep | Easy Livin' | Prog Rock | 2:37 | 160 | 198 · 716 · 1154 · 1250 | `▄▇▆▆▄▄▆▆▆▄▄▅▅▅▆▆▇▆▄▅▄▅▃▁` |
 | Usher | U Don't Have To Call | R&B | 4:31 | 100 | 287 · 666 · 849 · 990 | `▁▃▃▃▂▃▃▃▂▃▃▃▃▂▃▃▃▃▂▂▃▃▃▃` |
 | Usher | U Got it Bad | R&B | 4:09 | 124 | 188 · 459 · 524 · 586 | `▂▃▂▂▁▂▂▃▂▁▁▂·▁▁▂▂▃▂▃▃▁▂▁` |

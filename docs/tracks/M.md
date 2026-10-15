@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-710 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+711 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -183,6 +183,7 @@
 | MC Lars | Lars Attacks! | Hip-Hop | 3:38 | 105 | 96 · 220 · 250 · 287 | `▁▁▁···▁▁▂▂▂▂▁▁▁▁▁▁▂▂▂▂▁·` |
 | MC Lars feat. MC Bat Commander and Suburban Legends | This Gigantic Robot Kills | Ska | 3:34 | 154 | 200 · 645 · 892 · 1071 | `▂▃▅▅▅▅▄▄▄▄▅▅▄▃▃▄▅▅▄·····` |
 | MDK | Press Start | Electro | 3:31 | 123 | 230 · 439 · 874 · 1403 | `▁▅▄▄▃▄▄▆▅▆▄▅▅▄▄▄▅▅▆▅▅▅▃▁` |
+| Meat Loaf | Bat Out Of Hell | Rock Opera | 9:53 | 169 | 2893 · 2893 · 2893 · 2890 | `▅▅▃▄▃▄▄▃▂▄▃▅▄▄▂▃▄▃▂▄▂▄▁·` |
 | Meat Loaf | Paradise by the Dashboard Light | Classic Rock | 8:33 | 170 | 665 · 1713 · 2614 · 3580 | `▃▄▄▄▄▄▄▃▃▇▃▃▆▆▅▄▆▄▅▆▆▆▄▅` |
 | Mecano | Hijo de la Luna | Pop-Rock | 4:30 | 180 | 260 · 462 · 651 · 730 | `▂▂▂▂▂▂▂▂▂▂▂▁▂▃▂▂▂▂▂▂▃▂▂·` |
 | Meg & Dia | Monster | Rock | 2:42 | 96 | 179 · 683 · 923 · 1036 | `▃▄▂▃▄▄▃▂▄▃▃▄▄▄▇▆▇▆▅▃▃▅▆▄` |

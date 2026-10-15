@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-460 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+461 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -171,6 +171,7 @@
 | Deep Blue Something | Breakfast at Tiffany's | Pop Rock | 4:21 | 110 | 268 · 852 · 997 · 1211 | `▃▅▅▅▄▃▂▃▃▃▃▂▅▅▄▃▂▂▃▄▃▂▁·` |
 | Deep Purple | Arrogant Boy | Progressive Rock | 3:21 | 163 | 390 · 861 · 1219 · 1359 | `▄▆▆▄▄▆▄▃▃▄▆▅▂▃▂▂▄▇▇▅▄▆▆▃` |
 | Deep Purple | Burn | Hard Rock | 6:07 | 196 | 2139 · 1117 · 1549 · 1716 | `▃▃▂▂▂▂▃▂▂▄▅▄▄▃▂▄▅▇▅▄▂▁▃▂` |
+| Deep Purple | Child in Time | Progressive | 10:06 | 61 | 365 · 747 · 1211 · 2258 | `▁▁▁▁▁▁▁▂▄▂▆▅▄▅▄▁▁▁▁▁▂▁▂█` |
 | Deep Purple | Highway Star | Rock | 6:09 | 175 | 517 · 1147 · 1629 · 1840 | `▁▄▄▃▂▃▃▂▄▇▅▂▃▃▂▃▃▄▇▆▄▃▂▁` |
 | Deep Purple | Hush | Classic Rock | 4:27 | 97 | 320 · 750 · 1120 · 1238 | `·▁▂▃▃▃▂▃▃▂▃▃▃▃▂▅▄▄█▅▂▃▃▂` |
 | Deep Purple | Lazy | Progressive Rock | 7:21 | 94 | 599 · 1331 · 1891 · 2111 | `▁▄▃▄▂▂▃▃▄▅▃▄▅▃▃▃▄▄▃▃▄▃▄▃` |
