@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-348 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+349 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -338,6 +338,7 @@
 | The Jimi Hendrix Experience | Fire | Classic Rock | 2:46 | 154 | 152 · 285 · 432 · 599 | `▂▂▁▁▅▅▁▁▄▅▃▁▂▂▃▁▁▃▄▄▂▂▃▂` |
 | The Jimi Hendrix Experience | Foxey Lady | Classic Rock | 3:26 | 97 | 128 · 279 · 438 · 818 | `▁▁▂▂▄▄▃▃▃▃▃▅▃▃▄▂▄▁·▂▄▄▃▂` |
 | The Jimi Hendrix Experience | Gypsy Eyes | Classic Rock | 3:46 | 116 | 214 · 457 · 838 · 1354 | `·▃▅▆▄▅▄▄▄▂▃▃▄▃▅▇▇▄▃▃▃▃▄▄` |
+| The Jimi Hendrix Experience | Hey Joe (Live) | Classic Rock | 5:43 | 76 | 258 · 594 · 1032 · 1420 | `▂▃▃▃▃▃▄▃▃▃▃▂▃▃▃▃▂▃▄▃▂▂▂▁` |
 | The Jimi Hendrix Experience | Highway Chile | Classic Rock | 3:42 | 140 | 229 · 650 · 937 · 1374 | `▂▃▅▅▅▆▄▅▅▆▄▃▃▄▅▅▆▃▃▃▄▄▃▂` |
 | The Jimi Hendrix Experience | If 6 Was 9 | Classic Rock | 5:40 | 142 | 255 · 489 · 742 · 1145 | `▁▁▂▂▂▂▂▄▃▃▃▃▂▂▂▁▁▅▃▂▄▄▃▂` |
 | The Jimi Hendrix Experience | Little Miss Lover | Classic Rock | 2:32 | 100 | 216 · 429 · 565 · 746 | `··▃▃▄▄▄▃▃▃▄▄▂▂▃▃▃▄▆▄▄▄▄▃` |

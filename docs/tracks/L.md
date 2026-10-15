@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-389 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+390 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -370,6 +370,7 @@
 | Lynyrd Skynyrd | Gimme Three Steps | Southern Rock | 4:45 | 135 | 492 · 774 · 1239 · 1622 | `▃▄▃▃▄▄▄▅▄▄▄▄▅▄▄▄▄▄▄▄▄▄▃▃` |
 | Lynyrd Skynyrd | Saturday Night Special | Southern Rock | 5:01 | 122 | 268 · 569 · 971 · 1175 | `▃▂▃▂▂▂▂▃▃▃▃▃▃▃▃▃▃▃▃▂▂▃▃▃` |
 | Lynyrd Skynyrd | Simple Man | Southern Rock | 6:29 | 60 | 353 · 578 · 938 · 1207 | `▂▃▃▃▂▂▃▂▂▂▃▃▂▂▂▃▂▃▃▂▂▂▂▁` |
+| Lynyrd Skynyrd | Sweet Home Alabama (Live) | Southern Rock | 6:29 | 93 | 298 · 756 · 1338 · 2423 | `▃▄▄▄▄▄▄▄▄▄▄▄▄▄▄▅▅▄▄▅▃▄▅▄` |
 | Lynyrd Skynyrd | That Smell | Southern Rock | 5:48 | 99 | 298 · 670 · 1026 · 1403 | `▂▂▃▃▄▃▃▂▁▃▄▃▃▃▂▃▃▁▃▃▄▃▃▁` |
 | Lynyrd Skynyrd | Tuesday's Gone | Southern Rock | 7:34 | 145 | 492 · 1136 · 1388 · 1639 | `▁▂▂▂▂▂▂▂▃▃▂▄▅▄▂▂▂▂▃▂▄▃▃▃` |
 | Lynyrd Skynyrd | What's Your Name? | Southern Rock | 3:36 | 136 | 213 · 557 · 827 · 1149 | `▂▄▄▄▄▄▄▄▄▄▄▃▄▃▃▃▄▄▄▄▄▄▄▁` |

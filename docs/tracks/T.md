@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-377 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+378 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -146,6 +146,7 @@
 | These Three Poisons | Light Up the Eyes | Metal | 3:19 | 216 | 198 · 563 · 870 · 1418 | `·▂▅▄▅▅▃▃▆▅▆▇▅▃▄▅▆█▇▃▃▆▆▁` |
 | They Might Be Giants | Birdhouse In Your Soul | Alternative Rock | 3:21 | 100 | 192 · 571 · 674 · 746 | `▁▃▂▂▄▇▅▁▃▁▁▁▃▄▇▃▂▃▂▂▃▁▃·` |
 | They Might Be Giants | Istanbul (Not Constantinople) | Alternative Rock | 2:35 | 114 | 150 · 505 · 559 · 736 | `·▂▂▃▃▃▄▄▃▃▄▄▄▃▂▄▄▇▅▃▃▄▃▁` |
+| Thin Lizzy | Cowboy Song (Live) | Classic Rock | 5:29 | 140 | 429 · 636 · 1066 · 1362 | `▂▂▂▂▃▄▄▃▄▄▂▄▄▃▃▃▃▂▁▂▄▃▃▁` |
 | Thin Lizzy | Dancing In The Moonlight | Rock | 3:25 | 145 | 208 · 581 · 673 · 733 | `▂▂▃▃▃▃▂▃▃▃▃▂▂▂▂▂▃▄▂▃▃▃▃▂` |
 | Thin Lizzy | Jailbreak | Hard Rock | 4:05 | 144 | 463 · 634 · 779 · 958 | `▁▄▄▄▃▂▃▄▄▃▁▂▂▃▃▃▂▃▄▄▃▂▂▁` |
 | Thin Lizzy | The Boys Are Back In Town | Hard Rock | 4:54 | 164 | 417 · 779 · 984 · 1197 | `▂▂▃▃▂▂▃▃▂▂▃▅▅▃▃▃▂▂▂▃▃▃▃▂` |

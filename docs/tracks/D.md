@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-461 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+462 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -183,6 +183,7 @@
 | Def Leppard | Love Bites | Rock | 5:45 | 65 | 118 · 210 · 302 · 561 | `·▁▁▁▁▁▂▂▂▁▁▂▁▂▂▂▃▃▁▁▂▂··` |
 | Def Leppard | Nine Lives | Hard Rock | 3:37 | 118 | 369 · 542 · 722 · 982 | `▃▃▃▃▃▃▃▄▄▄▃▃▃▄▃▃▃▃▄▃▃▃▃▂` |
 | Def Leppard | Photograph | Rock | 4:23 | 124 | 256 · 512 · 870 · 1047 | `▂▃▃▃▃▂▃▃▃▃▃▃▃▂▁▃▃▂▃▃▃▃▃▃` |
+| Def Leppard | Pour Some Sugar on Me (Live) | Rock | 5:07 | 89 | 189 · 489 · 677 · 1232 | `▂▄▄▁▃▁▃▃▃▂▃▃▄▃▄▂▃▄▁▃▄▃▃▁` |
 | Def Leppard | Rock of Ages | Rock | 4:01 | 106 | 157 · 307 · 473 · 673 | `·▂▃▂▁▁▂▁▂▂▂▄▂▁▂▂▃▄▄▂▃▃▃·` |
 | Def Leppard | Too Late For Love | rock | 4:29 | 95 | 212 · 718 · 855 · 1088 | `·▁▂▂▂▂▂▂▃▅▆▃▂▂▂▃▄▆▄▃▃▂▃▂` |
 | Def Leppard | Undefeated | Rock | 4:43 | 90 | 197 · 532 · 785 · 1284 | `·▃▂▂▃▃▃▄▄▃▄▃▄▄▃▂▃▂▃▄▄▂▃▃` |

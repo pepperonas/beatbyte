@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-822 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+823 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -678,6 +678,7 @@
 | The B.O.L.T. | Nothing Ever Comes | Indie Rock | 4:00 | 46 | 144 · 488 · 760 · 956 | `▁▃▄▄▅▅▄▄▄▂▁▁▁▄▄▄▃▄▃▁▁▁▃▁` |
 | The Backseat Lovers | Kilby Girl | Indie Rock | 4:06 | 164 | 389 · 880 · 1246 · 1476 | `▃▄▄▃▁▂▅▆▄▃▄▃▄▇▄▃▃▅▇▅▅▃▅▃` |
 | The Backseat Lovers | Maple Syrup | Indie Rock | 4:06 | 103 | 277 · 737 · 996 · 1237 | `▃▅▅▅▅▃▂▂▆▄·▂▃▁▂▁▁▄▇▆▁▄▅▄` |
+| The Band | The Weight (Live) | Classic Rock | 5:10 | 48 | 289 · 903 · 1365 · 2100 | `▂▆▆▆▃▄▆▆▃▄▆▆▄▃▄▄▄▃▄▅▆▄▃▂` |
 | The Bangles | Walk Like an Egyptian | Rock | 3:28 | 207 | 191 · 221 · 410 · 657 | `▁▁▃▃▁▁▁▃▃·▂▃▂▄·▁▃▃▁·▄▄▄▄` |
 | The Beach Boys | Darlin' | Soul | 2:17 | 128 | 47 · 181 · 211 · 234 | `▂▂▂▁···▂▂▂▁▁▁▁▂▂▁▁▁▁▂▂▂▂` |
 | The Beach Boys | Fun, Fun, Fun | Rock 'n' Roll | 2:07 | 156 | 300 · 540 · 686 · 1038 | `▄▅▄▅▆▅▇▇▆▆▆▆▆▃▃▅▆▆▆▇▆▆▁·` |

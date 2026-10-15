@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-219 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+220 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -136,6 +136,7 @@
 | Kirby Krackle | Vault 101 | Pop-Rock | 3:19 | 129 | 217 · 487 · 886 · 982 | `▃▄▃▃▄▄▃▃▄▃▄▄▃▃▃▃▂▄▄▃▃▃▅▃` |
 | KISS | Calling Dr. Love | Classic Rock | 3:33 | 127 | 177 · 286 · 478 · 588 | `▁▂▃▂▃▂▂▂▂▂▂▂▁▂▃▃▃▂▂▂▂▁▃▁` |
 | KISS | Crazy Crazy Nights | Rock | 3:50 | 122 | 246 · 713 · 831 · 904 | `▂▃▃▂▂▃▃▃▂▂▃▂▃▄▃▃▃▂▃▄▃▂▄▃` |
+| KISS | Deuce (Live) | Classic Rock | 3:41 | 130 | 226 · 461 · 724 · 1036 | `▂▄▄▃▃▂▃▄▃▂▂▂▃▃▃▂▄▆▄▃▄▃▄▃` |
 | KISS | Detroit Rock City (Dodger Stadium 1998) | Rock | 6:40 | 178 | 302 · 840 · 956 · 1051 | `▂▂▂▂▂▁▂▂▃▂▁▂▂▁▃▃▁▁▁▁▄▅▃·` |
 | KISS | Forever | Rock | 3:58 | 88 | 218 · 511 · 616 · 696 | `▁▂▂▂▂▂▂▂▃▂▂▃▃▃▂▂▃▂▃▂▂▁▁▁` |
 | Kiss | Heaven's on Fire | Hard Rock | 3:15 | 124 | 181 · 645 · 740 · 774 | `·▁▁▂▅▅▂▂▁▃▅▄▃▂▂▂▃▄▃▄▃▃▃▁` |
