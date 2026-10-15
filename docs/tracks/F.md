@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-341 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+342 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -150,8 +150,8 @@
 | Fleetwood Mac | Everywhere | Pop Rock | 3:45 | 115 | 321 · 714 · 1040 · 1155 | `▄▇▄▂▃▃▃▃▃▃▃▃▇▆▃▃▃▃▃▄▄▃▃▁` |
 | Fleetwood Mac | Go Your Own Way | Classic Rock | 3:56 | 134 | 238 · 639 · 1291 · 1315 | `▃▅▅▅▅▅▅▅▅▅▅▃▁▁▄▄▄▂▃▃▂▄▄▃` |
 | Fleetwood Mac | Gold Dust Woman |  | 5:07 | 123 | 258 · 496 · 711 · 953 | `▂▃▃▂▂▂▂▂▂▂▂▂▃▃▂▂▂▁▂▃▃▃▃▁` |
-| Fleetwood Mac | Keep Me There | Classic Rock | 4:33 | 76 | 308 · 865 · 1260 · 1377 | `▂▃▃▃▃▃▄▅▄▄▄▅▆▅▁▁▃▃▄▄▃▄▄▂` |
 | Fleetwood Mac | Gypsy | Rock | 4:27 | 131 | 296 · 449 · 720 · 816 | `▁▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▅▅▄▃` |
+| Fleetwood Mac | Keep Me There | Classic Rock | 4:33 | 76 | 308 · 865 · 1260 · 1377 | `▂▃▃▃▃▃▄▅▄▄▄▅▆▅▁▁▃▃▄▄▃▄▄▂` |
 | Fleetwood Mac | Landslide | Art Pop | 3:21 | 80 | 211 · 621 · 794 · 866 | `▃▄▄▃▃▃▃▃▃▃▃▂▁▁▃▃▃▃▄▄▄▂▃▁` |
 | Fleetwood Mac | Little Lies | Pop-Rock | 3:28 | 124 | 104 · 208 · 226 · 244 | `··▂▂▂▁··▁▂▂▂··▁▂▂▂▂▂····` |
 | Fleetwood Mac | Oh Daddy | Classic Rock | 3:57 | 69 | 195 · 576 · 653 · 805 | `▂▂▃▃▂▂▂▂▂▃▂▂▃▄▂▃▁▃▂▃▃▃▃▂` |
@@ -160,6 +160,7 @@
 | Fleetwood Mac | Second Hand News | Classic Rock | 2:56 | 117 | 241 · 815 · 1262 · 1351 | `▃▇▇▇▇▆▃▄▆▇▄▇▄▄▃▃▄▆▆█▅▃▃▂` |
 | Fleetwood Mac | Songbird | Soft Rock | 3:24 | 57 | 151 · 577 · 629 · 731 | `·▃▂▃▂▃▃▃▃▃▃▃▄▃▃▃▃▂▃▃▃▁▁▁` |
 | Fleetwood Mac | The Chain | Rock | 4:32 | 75 | 229 · 612 · 708 · 782 | `▁▁▁▁▁▃▃▂▁▁▁▂▃▃▃▂▁▂▄▄▅▄▃·` |
+| Fleetwood Mac | Tusk | Classic Rock | 3:42 | 91 | 125 · 297 · 453 · 613 | `···▁▁▁▁▁▄▃▂▃▃▃▂▂▄▄▃▃▃▂▃·` |
 | Fleetwood Mac | Twist and Shout (Live) | Blues | 7:45 | 109 | 468 · 1595 · 2158 · 2845 | `▁▃▃▃▃▅▅▅▄▄▅▅▅▄▃▃▄▄▃▅▅▆▆·` |
 | Fleetwood Mac | World Turning | Classic Rock | 3:54 | 116 | 302 · 463 · 732 · 1005 | `▂▃▃▃▃▃▄▃▃▄▃▅▄▃▃▄▄▃▃▁▂▂▁·` |
 | Fleetwood Mac | You Make Loving Fun | Classic Rock | 3:42 | 123 | 190 · 408 · 576 · 656 | `·▁▂▂▁▃▂▂▃▁▂▂▂▃▂▃▃▄▃▂▂▂▂▂` |

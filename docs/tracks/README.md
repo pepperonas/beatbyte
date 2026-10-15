@@ -1,6 +1,6 @@
 # Track collection
 
-Every song in the author's BeatByte library: **8,603 songs** with **8,605 charts**, 573 hours of music. Generated on 2026-10-15 by `tools/tracklist/build.py` — edit the script, not these pages.
+Every song in the author's BeatByte library: **8,604 songs** with **8,606 charts**, 573 hours of music. Generated on 2026-10-15 by `tools/tracklist/build.py` — edit the script, not these pages.
 
 BeatByte ships no songs. These charts were imported from the community catalogue behind the Bridge app (Encore); how that works, and how to import charts into your own library, is in [docs/bridge-bulk-import.md](../bridge-bulk-import.md). The audio is the player's own; nothing here is downloadable.
 
@@ -13,7 +13,7 @@ BeatByte ships no songs. These charts were imported from the community catalogue
 | [C](C.md) | 478 |
 | [D](D.md) | 463 |
 | [E](E.md) | 228 |
-| [F](F.md) | 341 |
+| [F](F.md) | 342 |
 | [G](G.md) | 328 |
 | [H](H.md) | 195 |
 | [I](I.md) | 188 |
@@ -59,16 +59,16 @@ Example: `··▂▃▃▅▅▃▃▅▇▇▅▃▃▅▅▇██▇▅▃▂
 
 | Genre | Songs |
 |---|--:|
-| Rock | 1,241 |
-| Metal | 1,004 |
+| Rock | 1,243 |
+| Metal | 1,005 |
 | Alternative | 500 |
 | Pop | 404 |
-| Classic Rock | 323 |
-| Indie Rock | 319 |
+| Classic Rock | 341 |
+| Indie Rock | 320 |
 | Alternative Rock | 308 |
 | Punk | 230 |
 | Pop-Rock | 224 |
-| Hard Rock | 218 |
+| Hard Rock | 219 |
 | Pop Rock | 186 |
 | Country | 144 |
 

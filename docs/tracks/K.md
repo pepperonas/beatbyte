@@ -136,8 +136,8 @@
 | Kirby Krackle | Vault 101 | Pop-Rock | 3:19 | 129 | 217 · 487 · 886 · 982 | `▃▄▃▃▄▄▃▃▄▃▄▄▃▃▃▃▂▄▄▃▃▃▅▃` |
 | KISS | Calling Dr. Love | Classic Rock | 3:33 | 127 | 177 · 286 · 478 · 588 | `▁▂▃▂▃▂▂▂▂▂▂▂▁▂▃▃▃▂▂▂▂▁▃▁` |
 | KISS | Crazy Crazy Nights | Rock | 3:50 | 122 | 246 · 713 · 831 · 904 | `▂▃▃▂▂▃▃▃▂▂▃▂▃▄▃▃▃▂▃▄▃▂▄▃` |
-| KISS | Deuce (Live) | Classic Rock | 3:41 | 130 | 226 · 461 · 724 · 1036 | `▂▄▄▃▃▂▃▄▃▂▂▂▃▃▃▂▄▆▄▃▄▃▄▃` |
 | KISS | Detroit Rock City (Dodger Stadium 1998) | Rock | 6:40 | 178 | 302 · 840 · 956 · 1051 | `▂▂▂▂▂▁▂▂▃▂▁▂▂▁▃▃▁▁▁▁▄▅▃·` |
+| KISS | Deuce (Live) | Classic Rock | 3:41 | 130 | 226 · 461 · 724 · 1036 | `▂▄▄▃▃▂▃▄▃▂▂▂▃▃▃▂▄▆▄▃▄▃▄▃` |
 | KISS | Forever | Rock | 3:58 | 88 | 218 · 511 · 616 · 696 | `▁▂▂▂▂▂▂▂▃▂▂▃▃▃▂▂▃▂▃▂▂▁▁▁` |
 | Kiss | Heaven's on Fire | Hard Rock | 3:15 | 124 | 181 · 645 · 740 · 774 | `·▁▁▂▅▅▂▂▁▃▅▄▃▂▂▂▃▄▃▄▃▃▃▁` |
 | Kiss | I Love It Loud | Glam Metal | 3:28 | 86 | 135 · 405 · 475 · 617 | `···▄▃▃▄▃▃▃▃▂▃▁▁▁▂▃▂▃▄▂▁▁` |
@@ -216,7 +216,7 @@
 | The Killers | When You Were Young | Alternative | 3:43 | 130 | 282 · 641 · 800 · 821 | `▂▄▁▁▃▄▃▃▅▄▃▂▃·▁▂▃▅▅▁▁▂▃·` |
 | The Kimberly Trip | California | Pop-Rock | 3:14 | 168 | 224 · 449 · 697 · 855 | `▃▃▅▆▄▃▂▄▄▄▄▃▃▂▃▃▂·▁▃▃▂▃▁` |
 | The Kinks | Living On A Thin Line | rock | 4:05 | 89 | 165 · 454 · 526 · 595 | `▁▁▂▂▂▂▂▂▂▂▂▂▂▂▃▂▂▂▂▂▂▃▂▂` |
-| The Kinks | Lola | Indie Rock | 4:03 | 154 | 319 · 1049 · 1359 · 1495 | `▃▄▄▄▃▄▄▄▅▄▄▄▄▅▄▄▅▅▄▄▄▄▄▃` |
+| The Kinks | Lola | Indie Rock | 4:04 | 154 | 319 · 1049 · 1359 · 1495 | `▃▄▄▄▃▄▄▄▅▄▄▄▄▅▄▄▅▅▄▄▄▄▄▃` |
 | The Kinks (WaveGroup) | All Day and All of the Night | Garage Rock | 2:43 | 137 | 270 · 388 · 827 · 998 | `▂▃▃▄▅▅▅▄▄▅▅▃▃▄▅▅▅▃▃▄▅▆▃·` |
 | The KLF | Justified & Ancient | Dance-Pop | 3:50 | 111 | 209 · 537 · 695 · 764 | `·▃▃▂▂▃▂▅▃▂▃▂▃▅▄▂▂▂▂▃▃···` |
 | The Knack (WaveGroup) | My Sharona | Pop Rock | 5:00 | 149 | 611 · 850 · 1206 · 1360 | `·▃▃▃▃▃▃▃▃▃▃▃▃▂▄▆▅▄▄▄▃▃▃▁` |

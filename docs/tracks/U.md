@@ -47,6 +47,6 @@
 | Unearth | We Are Not Anonymous | Metal | 3:08 | 168 | 244 · 463 · 787 · 1162 | `▂▆▆▃▃▃▃▅▄▄▄▄▃▄▃▄▅▅▅▆▅▃▃▂` |
 | Uniform Motion | Roll Over | Indie Rock | 5:02 | 115 | 328 · 672 · 1049 · 1295 | `▂▂▂▂▂▂▂▃▃▃▄▄▃▃▃▄▄▄▄▃▄▃▃▂` |
 | Unlike Pluto | Everything Black | Alternative Rock | 3:51 | 98 | 383 · 561 · 701 · 714 | `▂▂▁▂▂▃▃▃▃▂▁▂▂▂▃▃▃▂▁▂▃▃▃▂` |
-| Uriah Heep | Easy Livin' | Prog Rock | 2:37 | 160 | 198 · 716 · 1154 · 1250 | `▄▇▆▆▄▄▆▆▆▄▄▅▅▅▆▆▇▆▄▅▄▅▃▁` |
+| Uriah Heep | Easy Livin' | Prog Rock | 2:38 | 160 | 198 · 716 · 1154 · 1250 | `▄▇▆▆▄▄▆▆▆▄▄▅▅▅▆▆▇▆▄▅▄▅▃▁` |
 | Usher | U Don't Have To Call | R&B | 4:31 | 100 | 287 · 666 · 849 · 990 | `▁▃▃▃▂▃▃▃▂▃▃▃▃▂▃▃▃▃▂▂▃▃▃▃` |
 | Usher | U Got it Bad | R&B | 4:09 | 124 | 188 · 459 · 524 · 586 | `▂▃▂▂▁▂▂▃▂▁▁▂·▁▁▂▂▃▂▃▃▁▂▁` |
