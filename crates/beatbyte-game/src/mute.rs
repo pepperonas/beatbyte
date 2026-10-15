@@ -336,9 +336,13 @@ fn toggle_mute(
     mut env: ResMut<EnvMute>,
     mut saying: ResMut<Saying>,
 ) {
-    let key = keys.just_pressed(KeyCode::KeyM)
-        && *state.get() != AppState::Editor
-        && !(*state.get() == AppState::Settings && settings_view.is_some_and(|view| view.editing));
+    let key = if *state.get() == AppState::SongSelect {
+        crate::editor_ui::command_held(&keys) && keys.just_pressed(KeyCode::KeyM)
+    } else {
+        keys.just_pressed(KeyCode::KeyM)
+            && *state.get() != AppState::Editor
+            && !(*state.get() == AppState::Settings && settings_view.is_some_and(|view| view.editing))
+    };
     let clicked = badges.iter().any(|i| *i == Interaction::Pressed);
     if !key && !clicked {
         return;
@@ -651,5 +655,47 @@ mod tests {
             assert!(!s.label().is_empty());
             assert!(seen.insert(s.label()), "two situations share a name");
         }
+    }
+
+    #[test]
+    fn song_select_typing_m_does_not_toggle_mute_without_command() {
+        let mut app = App::new();
+        app.add_plugins(bevy::state::app::StatesPlugin);
+        app.init_state::<AppState>();
+        app.init_resource::<ButtonInput<KeyCode>>();
+        app.init_resource::<Settings>();
+        app.init_resource::<EnvMute>();
+        app.init_resource::<Saying>();
+        app.add_systems(Update, toggle_mute);
+        app.world_mut()
+            .resource_mut::<NextState<AppState>>()
+            .set(AppState::SongSelect);
+        app.update(); // settle state to SongSelect
+
+        // Plain M in SongSelect: typing to search, MUST NOT mute
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyM);
+        app.update();
+        assert!(
+            !app.world().resource::<Settings>().mute_browsing,
+            "plain 'm' in song select must not mute"
+        );
+
+        // Command + M in SongSelect: explicit tool shortcut, DOES mute
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release(KeyCode::KeyM);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::SuperLeft);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyM);
+        app.update();
+        assert!(
+            app.world().resource::<Settings>().mute_browsing,
+            "Cmd+M in song select must toggle mute"
+        );
     }
 }
