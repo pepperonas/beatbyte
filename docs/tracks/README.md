@@ -1,6 +1,6 @@
 # Track collection
 
-Every song in the author's BeatByte library: **8,588 songs** with **8,590 charts**, 572 hours of music. Generated on 2026-10-15 by `tools/tracklist/build.py` — edit the script, not these pages.
+Every song in the author's BeatByte library: **8,603 songs** with **8,605 charts**, 573 hours of music. Generated on 2026-10-15 by `tools/tracklist/build.py` — edit the script, not these pages.
 
 BeatByte ships no songs. These charts were imported from the community catalogue behind the Bridge app (Encore); how that works, and how to import charts into your own library, is in [docs/bridge-bulk-import.md](../bridge-bulk-import.md). The audio is the player's own; nothing here is downloadable.
 
@@ -8,28 +8,28 @@ BeatByte ships no songs. These charts were imported from the community catalogue
 
 | Letter | Songs |
 |---|--:|
-| [A](A.md) | 673 |
+| [A](A.md) | 680 |
 | [B](B.md) | 823 |
 | [C](C.md) | 478 |
-| [D](D.md) | 462 |
+| [D](D.md) | 463 |
 | [E](E.md) | 228 |
 | [F](F.md) | 341 |
 | [G](G.md) | 328 |
 | [H](H.md) | 195 |
-| [I](I.md) | 187 |
-| [J](J.md) | 349 |
+| [I](I.md) | 188 |
+| [J](J.md) | 350 |
 | [K](K.md) | 220 |
 | [L](L.md) | 390 |
 | [M](M.md) | 711 |
 | [N](N.md) | 270 |
 | [O](O.md) | 179 |
-| [P](P.md) | 417 |
+| [P](P.md) | 419 |
 | [Q](Q.md) | 75 |
 | [R](R.md) | 452 |
 | [S](S.md) | 932 |
-| [T](T.md) | 378 |
+| [T](T.md) | 380 |
 | [U](U.md) | 44 |
-| [V](V.md) | 104 |
+| [V](V.md) | 105 |
 | [W](W.md) | 202 |
 | [X](X.md) | 17 |
 | [Y](Y.md) | 55 |

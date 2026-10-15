@@ -2,13 +2,14 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-104 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+105 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
 | The Vapors | Turning Japanese | Punk | 3:45 | 179 | 285 · 745 · 1080 · 1319 | `▂▄▄▄▄▄▃▅▄▄▃▃▅▄▄▂▄▅▄▃▃▅▄▅` |
 | The Veer Union | Seasons | Rock | 3:46 | 172 | 210 · 443 · 780 · 1047 | `▁▁▅▄▄▄▄▄▂▁▄▄▄▄▂▆▄▂▃▄▃▄▄·` |
 | The Veronicas | Untouched | Pop | 4:15 | 177 | 239 · 662 · 817 · 911 | `··▁▄▂▂▃▄▂▃▂▂▃▄▂▁▄▄▄▄▄▄▃·` |
+| The Verve | Bitter Sweet Symphony | Brit Pop | 6:00 | 86 | 537 · 715 · 735 · 748 | `▁▂▂▂▂▁▁▂▂▂▁▁▂▂▂▁▁▁▂▂▂▂▃▃` |
 | The Vines | Get Free | Rock | 2:07 | 138 | 141 · 348 · 589 · 774 | `▂▄▃▄▄▄▆▆▄▃▃▃▄▄▆▆▄▃▃▄▅▆▆▂` |
 | The Vines | Get Out | Rock | 2:10 | 150 | 152 · 561 · 832 · 1071 | `▃▆▆▅▆▆▆▆▅▆▆▆▆▆▆▃▂▂▆▆▆▆▆▁` |
 | The Vines | He's a Rocker | Rock | 1:57 | 131 | 109 · 410 · 575 · 607 | `▁▃▃▃▅▅▅▃▃▃▅▅▅▃▃▃▂▂▁▅▅▅▅·` |

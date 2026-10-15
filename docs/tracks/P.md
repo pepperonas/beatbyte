@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-417 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+419 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -185,6 +185,7 @@
 | Periphery | Icarus Lives | Metal | 3:17 | 110 | 207 · 318 · 588 · 947 | `▁▃▃▃▄▃▃▃▄▂▂▆▄▃▃▃▄▄▃▃▄▄▃▂` |
 | Pete Townshend | Let My Love Open the Door | Pop-Rock | 2:47 | 165 | 106 · 440 · 526 · 551 | `·▁··▃▃▃▃▄▃▃▄▃▃▂▁▃▁▃▄▄▄▁·` |
 | Peter Cetera | Glory of Love | Pop | 4:31 | 73 | 121 · 261 · 410 · 689 | `····▁▂▄▃▂▂▂▄▃▃▁▂▂▂▂▃▂▁▂▂` |
+| Peter Frampton | Do You Feel Like We Do (Live) | Rock | 13:46 | 108 | 500 · 979 · 1532 · 2565 | `▂▃▂▂▃▃▂▁▁▁▂▂▁▂▁▂▃▂▂▂▃▄▄▃` |
 | Peter Gabriel | In Your Eyes | Pop Rock | 5:23 | 179 | 447 · 524 · 609 · 1034 | `▂▂▂▂▂▃▂▃▃▂▁▂▂▂▃▃▂▃▃▃▃▃▃·` |
 | Peter Gabriel | Sledgehammer | Progressive Rock | 5:10 | 96 | 367 · 517 · 1060 · 1132 | `▁▁▂▂▂▂▂▂▂▂▂▂▂▂▃▃▁▄▄▄▄▄▄▁` |
 | Peter Gabriel | Solsbury Hill | Progressive Rock | 4:22 | 103 | 312 · 491 · 862 · 1440 | `▃▃▄▄▄▄▄▄▄▄▄▄▄▃▄▄▄▄▄▃▃▃▃▃` |
@@ -292,6 +293,7 @@
 | Poets of the Fall | Carnival of Rust | Alternative Rock | 4:20 | 91 | 232 · 571 · 651 · 821 | `▂▃▃▃▃▂▁▁▂▃▃▂▁▁▁▁▁▁▆▅▂▃▂▁` |
 | Poets of the Fall | Lift | Rock | 4:46 | 154 | 275 · 652 · 1019 · 1424 | `▁▃▂▃▃▃▃▄▄▃▃▃▃▃▃▄▄▄▄▇▄▃▃▂` |
 | Poison | Every Rose Has Its Thorn | Glam | 4:20 | 70 | 135 · 344 · 503 · 881 | `▂▃▄▄▄▄▃▂▂▄▃▃▃▁▁▂▂▁▂▂▂▁▁▁` |
+| Poison | Nothin' but a Good Time | Glam | 3:46 | 129 | 191 · 455 · 652 · 972 | `▂▃▄▃▂▃▄▅▂▂▂▃▄▂▁▃▃▅▅▂▄▄▂▂` |
 | Poison | Talk Dirty to Me | Glam | 3:49 | 160 | 223 · 526 · 781 · 1383 | `▃▄▃▄▃▄▄▄▅▄▄▄▄▅▄▄▆▃▄▅▄▄▄▁` |
 | Poison | Unskinny Bop | Glam | 4:04 | 93 | 250 · 448 · 624 · 1086 | `·▁▃▃▃▃▄▃▃▃▃▃▃▃▃▄▄▂▃▃▄▄▄▃` |
 | Polar Bear Club | Living Saints | Punk | 2:39 | 150 | 220 · 501 · 733 · 863 | `▃▄▃▄▃▆▅▃▃▂▂▃▄▆▅▅▂▄▅▆▄▂▃·` |

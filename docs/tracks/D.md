@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-462 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+463 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -407,6 +407,7 @@
 | Duran Duran | Girls on Film | Pop Rock | 3:35 | 132 | 165 · 348 · 539 · 670 | `·▂▃▃▃▂▁▃▄▄▃▂▁▁▁▂▃▄▃▄▁▁▁▁` |
 | Duran Duran | Hungry Like the Wolf | Pop | 3:55 | 128 | 218 · 372 · 827 · 916 | `▂▃▂▂▅▃▄▂▂▃▃▄▄▃▁▂▄▄▃▁▁▂▄▂` |
 | Duran Duran | INVISIBLE | Alternative | 3:13 | 114 | 78 · 199 · 226 · 251 | `▁▁▁·▁▁▁▂▂▁▁▁▁▁▁▂▁▁▁▁▁▂▂▁` |
+| Duran Duran | New Moon on Monday | New Wave | 4:09 | 122 | 227 · 381 · 576 · 638 | `·▂▂▂▂▂▂▂▂▂▂▂▂▂▂▁·▂▂▂▂▂▂▂` |
 | Duran Duran | Rio | Pop Rock | 5:27 | 141 | 188 · 297 · 663 · 939 | `▁▂▂▂▁▁▂▂▂▁▁▁·▅▆▂▅▃▁▂▂▂▂▃` |
 | Duskydemise | Bedrott | Pop-Punk | 1:58 | 186 | 143 · 553 · 722 · 1079 | `▅█▅▃▅▇▇█▇██▃▃▇▇▄▃▇█▅▃▆▇▄` |
 | Duster | Inside Out | Lo-Fi Slowcore | 2:24 | 80 | 177 · 638 · 939 · 989 | `▁▄▅▅▅▅▅▅▅▅▅▅▅▅▅▅▅▅▅▄▃▃▄▁` |

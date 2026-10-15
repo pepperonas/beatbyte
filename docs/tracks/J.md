@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-349 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+350 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -110,6 +110,7 @@
 | Jimi Hendrix | Freedom | Classic Rock | 3:30 | 116 | 170 · 386 · 604 · 986 | `▂▂▃▂▃▁▂▃▄▂▂▂▃▃▃▃▃▃▆▆▆▅▅▁` |
 | Jimi Hendrix | Up from the Skies | Classic Rock | 3:06 | 145 | 200 · 610 · 696 · 1191 | `▂▅▆▆▆▆▅▅▆▄▂▃▃▂▂▄▅▅▆▃▄▃▃▂` |
 | Jimi Hendrix | Valleys of Neptune | Classic Rock | 4:17 | 110 | 427 · 740 · 1639 · 2005 | `▄▆▅▅▅▅▄▆▅▆▄▅▅▃▅▇▇▅▅▅▄▅▅▄` |
+| Jimi Hendrix | Voodoo Child (Slight Return) (Live) | Classic Rock | 6:40 | 58 | 361 · 832 · 1479 · 2660 | `▃▃▄▄▄▅▆▅▄▄▃▄▆▆▅▇▄▃▄▅▆▃▄▂` |
 | Jimi Hendrix (WaveGroup) | Spanish Castle Magic | Hard Rock | 3:14 | 98 | 290 · 530 · 568 · 761 | `▂▂▃▃▂▃▃▃▃▂▃▂▂▃▃▂▂▃▂▃▄▃▃▂` |
 | Jimmy Buffett | Cheeseburger in Paradise | Rock | 3:05 | 135 | 134 · 312 · 567 · 784 | `▂▃▃▃▃▅▄▃▃▄▃▅▃▃▃·▂▄▃▃·▁▃▃` |
 | Jimmy Buffett | Margaritaville | Rock | 4:20 | 125 | 241 · 735 · 1465 · 1906 | `▄▅▅▇▅▅▅▅▅▅▅▅▅▂▂▃▅▄▅▅▆▅▅▄` |

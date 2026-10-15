@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-673 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+680 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -65,17 +65,24 @@
 | ABBA | Mamma Mia | Pop | 3:34 | 137 | 322 · 484 · 677 · 737 | `▂▃▃▂▂▂▂▂▃▃▄▄▃▂▂▂▃▂▂▂▂▃▃▂` |
 | Abnormality | Visions | Metal | 2:58 | 195 | 252 · 480 · 1096 · 1366 | `▂▅▅▆▅▅▅▅▇▅▂▃▃▃▅▆▆▅▅▆▆▆▆▅` |
 | Abraham Nixon | Secondary Gain | Rock | 3:30 | 101 | 171 · 478 · 919 · 1196 | `▃▆▃▃▃▂▅▆▃▃▃▃▆▅▃▅▄▄▃▃▃▅▆▁` |
+| AC/DC | Back in Black (Live) | Classic Rock | 3:57 | 70 | 215 · 388 · 804 · 1023 | `▂▃▃▃▃▃▃▃▃▃▃▃▃▃▃▃▃▃▃▃▂▆▄▁` |
 | AC/DC | Ballbreaker | Hard Rock | 4:32 | 126 | 325 · 969 · 1305 · 1422 | `▂▂▂▃▃▃▂▃▃▃▄▃▆▅▄▃▃▃▃▆█▄▃▃` |
 | AC/DC | Demon Fire | Hard Rock | 3:29 | 160 | 226 · 618 · 812 · 992 | `▂▂▃▃▃▃▃▄▄▄▃▃▃▄▄▃▄▄▂▄▄▃▂▄` |
+| AC/DC | Dirty Deeds Done Dirt Cheap (Live) | Classic Rock | 4:41 | 135 | 195 · 448 · 686 · 995 | `▁▂▂▁▁▃▂▁▁▃▂▃▇▃▁▂▂▁▂▃▃▅▆▄` |
+| AC/DC | For Those About to Rock (We Salute You) (Live) | Classic Rock | 6:36 | 67 | 371 · 597 · 1596 · 2828 | `▃▆▆▄▃▂▂▂▂▃▃▃▂▁▂▅▅▄▄██▇█▄` |
+| AC/DC | Hells Bells (Live) | Classic Rock | 5:52 | 111 | 233 · 472 · 772 · 1435 | `··▁▂▂▂▃▃▃▃▃▃▃▃▃▄▃▃▃▃▃▄▇·` |
 | AC/DC | Highway To Hell | Hard Rock | 3:30 | 116 | 191 · 643 · 739 · 1049 | `▃▃▄▃▃▄▄▄▃▄▄▄▄▄▃▃▂▂▂▁▁▁█▄` |
 | AC/DC | It's A Long Way To The Top (If You Wanna Rock 'n' Roll) | Hard Rock | 5:04 | 137 | 167 · 513 · 603 · 680 | `▂▂▂▃▃▁▁▁▁▂▁▂▂▃▃▂▁▁▂▁▁▁▁▁` |
 | AC/DC | Let There Be Rock | Rock | 6:10 | 182 | 326 · 766 · 1206 · 1813 | `▄▄··▂▄▃▄▃··▂▄▃▅▄▃▃▄▅▇▇▅▂` |
 | AC/DC | Moneytalks | Classic Rock | 3:46 | 120 | 245 · 842 · 977 · 1059 | `▃▃▃▃▃▃▄▃▃▃▃▃▃▃▃▄▄▄▄▄▃▄▃▂` |
 | AC/DC | Realize | Classic Rock | 3:39 | 125 | 226 · 761 · 902 · 1096 | `▁▂▄▄▅▃▁▂▂▃▄▅▅▁▁▂▂██▆▃▄▃·` |
 | AC/DC | Rejection | Hard Rock | 4:08 | 110 | 264 · 990 · 1182 · 1708 | `▄▄▄▄▅▅▅▅▅▄▅▅▅▅▅▄▄▄▆▅▅▄▂▂` |
+| AC/DC | Shoot to Thrill (Live) | Classic Rock | 5:25 | 147 | 323 · 685 · 1066 · 1546 | `▂▄▄▃▃▂▄▃▃▃▄▄▃▂▂▄▅▅▄▂▃▂▄▁` |
 | AC/DC | Shot In The Dark | Rock | 3:07 | 114 | 192 · 589 · 660 · 782 | `▂▃▂▂▃▅▃▃▂▂▂▃▅▄▃▂▄▅▃▃▃▃▂·` |
+| AC/DC | T.N.T. (Live) | Classic Rock | 3:25 | 133 | 155 · 254 · 459 · 787 | `▁▃▃▃▄▃▁▂▂▃▄▃▂▂▂▄▃▂▂▂▃▇▄·` |
 | AC/DC | Thunderstruck | Hard Rock | 4:54 | 110 | 332 · 960 · 1315 · 1435 | `▃▃▃▃▅▅▅▅▃▅▅▅▃▂▂▁▃▃▃▂▁▃▄▂` |
 | AC/DC | War Machine | Rock | 3:12 | 125 | 224 · 631 · 871 · 953 | `·▂▂▂▃▃▃▄▄▄▃▄▅▄▄▃▃▃▅▃▄▃▄▃` |
+| AC/DC | Whole Lotta Rosie (Live) | Classic Rock | 4:39 | 186 | 339 · 605 · 916 · 1537 | `▂▃▂▄▄▄▂▄▄▃▃▅▄▄▃▄▄▃▅▄▃▅▆▁` |
 | AC/DC | You Shook Me All Night Long | Rock | 3:34 | 128 | 270 · 545 · 671 · 848 | `▂▂▂▂▂▂▂▃▃▂▂▂▃▃▃▄▂▃▃▃▃▃▄▆` |
 | Accept | Balls to The Wall | Metal | 5:47 | 116 | 314 · 550 · 699 · 975 | `▃▃▂▂▂▂▃▂▂▁▂▃▂▄▃▂▂···▂▃▃▃` |
 | Acda en de Munnik | Het Regent Zonnestralen | Nederpop | 3:49 | 108 | 231 · 809 · 955 · 1260 | `▃▃▃▄▃▄▄▄▃▄▄▄▄▄▅▅▄▄▄▄▄▄▃▁` |

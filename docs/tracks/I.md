@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-187 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+188 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -127,6 +127,7 @@
 | Intocable | Y Todo para Qué | Regional Mexican | 3:13 | 102 | 351 · 689 · 715 · 722 | `▂▃▄▂▂▃▂▃▂▃▂▃▃▃▂▂▃▂▃▂▃▂▃·` |
 | Intricate Unit | Discharge | Metal | 3:48 | 100 | 229 · 450 · 771 · 1218 | `▁▂▅▄▁▃▄▃▃▅▅▅▁▂▃▃▄▄▅▅▅▅▅▃` |
 | INXS | Devil Inside | Pop-Rock | 3:53 | 151 | 255 · 495 · 623 · 635 | `·▁▂▁▂▂▂▁▂▃▃▂▂▃▂▂▁▂▃▃▃▃▃▂` |
+| INXS | Listen Like Thieves | New Wave | 3:56 | 116 | 249 · 461 · 806 · 1058 | `▂▃▃▂▃▃▃▃▂▂▂▃▃▃▃▂▃▅▃▃▆▅▅▂` |
 | INXS | Need You Tonight | Pop-Rock | 3:05 | 109 | 147 · 288 · 509 · 722 | `·▁▄▃▃▃▄▄▃▃▃▁▃▃▄▃▂▂▂▂▂▃▃▁` |
 | INXS | Never Tear Us Apart | Pop | 3:10 | 64 | 71 · 121 · 159 · 256 | `····▁▁▁▂▁▃▁▂▁▁▂▂▂▂▁▂▁▁▁▁` |
 | INXS | New Sensation | New Wave | 3:43 | 115 | 306 · 1159 · 1661 · 2623 | `▇██▇██▃▃██▇██▂▂▃█████▂▆▃` |

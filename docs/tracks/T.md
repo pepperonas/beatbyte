@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-378 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+380 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -364,7 +364,9 @@
 | Twin Atlantic | Audience and Audio | Alternative | 3:57 | 179 | 281 · 588 · 922 · 1100 | `▂▂▃▃▄▂▂▃▂▃▅▂▂▃▃▃▃▄▅▃▅▆▅▂` |
 | Twin Atlantic | What Is Light? Where Is Laughter? | Alternative | 3:43 | 172 | 203 · 535 · 817 · 1070 | `▄▂▂▃▃▄▄▃▃▂▂▃▃▅▃▂▃▄▄▅▅▂▄▂` |
 | Twintapes | Young | Indie Rock | 4:31 | 145 | 373 · 706 · 1389 · 1737 | `▂▃▃▃▃▃▅▅▆▅▃▃▃▅▅▆▅▆▅▄▆▅▃▁` |
+| Twisted Sister | Come Out and Play | Heavy Metal | 4:34 | 157 | 206 · 486 · 688 · 819 | `·▂▂▂▂▁▂▂▂▂▃▂▃▂▄▆▂▂▃▂▃▃▂·` |
 | Twisted Sister | I Wanna Rock | Heavy Metal | 3:14 | 108 | 278 · 389 · 631 · 829 | `▂▄▃▂▂▄▃▃▂▁▃▃▄▃▂▂▃▅▃▁▅▆▄▁` |
+| Twisted Sister | The Price | Glam Metal | 3:54 | 78 | 206 · 345 · 394 · 429 | `▁▂▂▂▂▂▁▁▁▁▂▂▂▁▁▂▂▂▁▁▂▁▁▁` |
 | Twisted Sister | We're Not Gonna Take It | Heavy Metal | 4:31 | 148 | 282 · 499 · 1081 · 1347 | `·▁▅▇▅▄▇▅▃▄▄▂▂▂▃▁▄▄▄▄▄▃▁▁` |
 | Two Door Cinema Club | Cigarettes In the Theatre | Indie Pop | 3:35 | 169 | 307 · 808 · 1115 · 1438 | `▃▆▂▃▄▃▃▄▄▆▇▃▄▄▆▇▃▃▂▂███▂` |
 | Two Door Cinema Club | I Can Talk | Indie Rock | 2:58 | 163 | 365 · 851 · 1187 · 1318 | `·▁▇▄▂▇▆▇▇▆▂▅▆▇▇▇▃▃▃▂▆▇▇▃` |
