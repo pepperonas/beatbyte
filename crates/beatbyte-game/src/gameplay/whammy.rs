@@ -17,12 +17,12 @@ pub(super) struct WhammyLevel {
 
 /// A pinned, bounded wave shared by the flat and solid sustain renderers.
 pub(super) fn wave_offset(position: f32, seconds: f32, depth: f32, lane_step: f32) -> f32 {
-    let position = position.clamp(0.0, 1.0);
+    let p = position.clamp(0.0, 1.0);
     lane_step
-        * 0.15
+        * 0.38
         * depth
-        * position
-        * (position * std::f32::consts::TAU * 2.0 - seconds * std::f32::consts::TAU * 6.0).sin()
+        * p.powf(0.85)
+        * (p * std::f32::consts::TAU * 2.2 - seconds * std::f32::consts::TAU * 6.5).sin()
 }
 
 #[allow(clippy::too_many_arguments)] // Bevy system dependencies
@@ -343,7 +343,7 @@ mod wave_tests {
             for i in 0..100 {
                 let u = i as f32 / 100.0;
                 let full = wave_offset(u, seconds, 1.0, 76.0);
-                assert!(full.abs() <= 76.0 * 0.15);
+                assert!(full.abs() <= 76.0 * 0.38 + 1e-4);
                 assert_eq!(wave_offset(u, seconds, 0.0, 76.0), 0.0);
                 assert!((wave_offset(u, seconds, 0.5, 76.0) - full * 0.5).abs() < 0.00001);
             }

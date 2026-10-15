@@ -84,7 +84,7 @@ impl<I: Source> Iterator for WhammySource<I> {
         if self.channel == self.channels {
             self.channel = 0;
             self.frame = (self.frame + 1) % self.frames;
-            let ratio = 2.0_f32.powf(-5.0 * self.depth / 12.0);
+            let ratio = 2.0_f32.powf(-2.0 * self.depth / 12.0);
             self.phase = (self.phase + (1.0 - ratio) / self.window).fract();
         }
         Some(out)
@@ -164,8 +164,8 @@ mod tests {
             .filter(|p| p[0] <= 0.0 && p[1] > 0.0)
             .count();
         assert!(
-            (320..340).contains(&crossings),
-            "pitch {crossings} Hz, expected ~330"
+            (385..405).contains(&crossings),
+            "pitch {crossings} Hz, expected ~392"
         );
         assert!(out.iter().all(|x| x.is_finite() && x.abs() <= 1.0));
     }

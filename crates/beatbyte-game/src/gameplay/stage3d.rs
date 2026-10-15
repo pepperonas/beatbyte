@@ -3368,6 +3368,8 @@ pub(super) fn consume_sustains(
             );
         }
         if !held {
+            transform.scale.x = 1.0;
+            transform.scale.z = 1.0;
             continue;
         }
         let Some(event) = player.session.track().events().get(note.event_index) else {
@@ -3376,12 +3378,14 @@ pub(super) fn consume_sustains(
         match sustain_tail_span(event.time_s, event.sustain_s, now, settings.scroll_speed) {
             Some((centre, length)) => {
                 transform.translation.z = centre;
+                transform.scale.x = 1.0 + 0.35 * bend;
                 transform.scale.y = length;
+                transform.scale.z = 1.0 + 0.35 * bend;
                 // Being played, and looking it. Driven from the SONG
                 // clock, so the throb keeps time with the music
                 // rather than with the frame rate.
                 if let Some(mut surface) = materials.get_mut(&material.0) {
-                    let glow = sustain_pulse(now) * (1.0 + 2.0 * bend);
+                    let glow = sustain_pulse(now) * (1.0 + 3.0 * bend);
                     surface.emissive = if is_core {
                         core_color(&note.lane, stage).to_linear() * (1.6 * glow)
                     } else {

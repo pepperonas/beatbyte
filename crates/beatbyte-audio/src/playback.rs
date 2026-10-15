@@ -1274,8 +1274,8 @@ mod whammy_command_tests {
             .filter(|p| p[0] <= 0.0 && p[1] > 0.0)
             .count();
         assert!(
-            (320..340).contains(&crossings),
-            "audio command left pitch at {crossings} Hz"
+            (385..405).contains(&crossings),
+            "audio command left pitch at {crossings} Hz, expected ~392"
         );
         handle.set_whammy(0.0);
         let MusicCommand::Whammy(depth) = rx.recv().expect("valid test fixture") else {

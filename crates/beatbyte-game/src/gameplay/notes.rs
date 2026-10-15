@@ -1321,13 +1321,13 @@ pub(super) fn animate_whammy_segments(
         transform.translation = ((a + b) * 0.5).extend(-0.8);
         transform.rotation = Quat::from_rotation_z(-delta.x.atan2(delta.y));
         sprite.custom_size = Some(Vec2::new(
-            segment.width * (1.0 + 0.25 * bend),
+            segment.width * (1.0 + 0.45 * bend),
             delta.length() + 1.0,
         ));
         sprite.color = theme
             .0
             .lane_color(segment.lane)
-            .mix(&Color::WHITE, bend * 0.55)
-            .with_alpha(0.85);
+            .mix(&Color::WHITE, bend * 0.70)
+            .with_alpha(0.92);
     }
 }

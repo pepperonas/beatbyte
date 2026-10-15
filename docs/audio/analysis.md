@@ -100,7 +100,7 @@ SongAnalysis { bpm, beats[], downbeats[], repeats[], onsets[], melody[{time, end
 ### X-plorer whammy playback
 
 During a successfully hit and still-held sustain, the player's X-plorer
-whammy bar bends playback down continuously, up to five semitones. Native
+whammy bar bends playback down continuously, up to two semitones. Native
 USB reads signed RX at report bytes 10/11 (-32768 at rest, +32767 at full
 travel); driver-backed X-plorers use RightStickX. A 4% rest deadzone rejects
 potentiometer noise. Input follows gameplay routing: the solo default Keyboard player also accepts
