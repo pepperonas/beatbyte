@@ -1,6 +1,6 @@
 # Track collection
 
-Every song in the author's BeatByte library: **8,604 songs** with **8,606 charts**, 573 hours of music. Generated on 2026-10-15 by `tools/tracklist/build.py` — edit the script, not these pages.
+Every song in the author's BeatByte library: **8,605 songs** with **8,607 charts**, 573 hours of music. Generated on 2026-10-15 by `tools/tracklist/build.py` — edit the script, not these pages.
 
 BeatByte ships no songs. These charts were imported from the community catalogue behind the Bridge app (Encore); how that works, and how to import charts into your own library, is in [docs/bridge-bulk-import.md](../bridge-bulk-import.md). The audio is the player's own; nothing here is downloadable.
 
@@ -8,7 +8,7 @@ BeatByte ships no songs. These charts were imported from the community catalogue
 
 | Letter | Songs |
 |---|--:|
-| [A](A.md) | 680 |
+| [A](A.md) | 681 |
 | [B](B.md) | 823 |
 | [C](C.md) | 478 |
 | [D](D.md) | 463 |
@@ -62,7 +62,7 @@ Example: `··▂▃▃▅▅▃▃▅▇▇▅▃▃▅▅▇██▇▅▃▂
 | Rock | 1,243 |
 | Metal | 1,005 |
 | Alternative | 500 |
-| Pop | 404 |
+| Pop | 405 |
 | Classic Rock | 341 |
 | Indie Rock | 320 |
 | Alternative Rock | 308 |

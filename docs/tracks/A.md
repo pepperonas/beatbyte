@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-680 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+681 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -590,6 +590,7 @@
 | Ava Inferi | The Living End | Metal | 6:51 | 120 | 322 · 621 · 875 · 1448 | `▁▁▁▁▂▄▃▁▂▃▃▄▂▂▂▂▄▄▄▃▂▄▄▁` |
 | Ava Max | Kings & Queens | Dance Pop | 2:45 | 130 | 188 · 312 · 362 · 415 | `·▁▂▂▂▂▂▁▃▂▂▂▃▂▂▂▂▁▁▁▂▂▂▁` |
 | Ava Max | My Head & My Heart | Pop | 2:54 | 116 | 580 · 684 · 731 · 811 | `▂▃▃▃▅▃▃▄▃▃▃▃▅▃▃▄▃▂▁▃▄▃▄▃` |
+| Ava Max | Sweet But Psycho (Morgan Page Remix) | Pop | 3:52 | 128 | 116 · 352 · 567 · 662 | `▂▃·▁▃▃▃▁▁·▂▃▃▃▃▄▁··▃▅▁▄▁` |
 | Avatar | Bloody Angel | Rock | 6:05 | 91 | 1813 · 1813 · 1813 · 1813 | `▂▂▂▂▃▆▄▆▄▂▃▅▄▄▂▂▂▅▄▄▇▃▂·` |
 | Avatar | Dance Devil Dance | Metal | 4:03 | 126 | 445 · 472 · 807 · 1714 | `▃▅▅▆▅▅▅▅▅▅▅▆▅▅▅▅▃▃▁▂▄▅▅▃` |
 | Avatar | Don't Go In The Forest | Metal | 4:48 | 138 | 548 · 558 · 1031 · 1849 | `▂▄▃▄▅▅▆▅▃▃▄▄▅▆▄▂▄▄▄▃▄▆▅▃` |
