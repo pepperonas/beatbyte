@@ -189,6 +189,8 @@ pub struct TrackSession {
     phrases: Vec<PhraseProgress>,
     /// End of the short automatic-hit window opened by Hype activation.
     hype_grace_until_s: f64,
+    /// Performance history checkpoints for rewind: (song_time_s, performance snapshot).
+    performance_history: Vec<(f64, PlayerPerformance)>,
 }
 
 impl TrackSession {
@@ -218,10 +220,13 @@ impl TrackSession {
             })
             .collect();
 
+        let initial_perf = PlayerPerformance::new(score);
+        let performance_history = vec![(f64::NEG_INFINITY, initial_perf.clone())];
+
         TrackSession {
             track,
             windows,
-            performance: PlayerPerformance::new(score),
+            performance: initial_perf,
             clock_s: f64::NEG_INFINITY,
             held: LaneSet::EMPTY,
             states,
@@ -234,6 +239,7 @@ impl TrackSession {
             event_phrase,
             phrases,
             hype_grace_until_s: f64::NEG_INFINITY,
+            performance_history,
         }
     }
 
@@ -325,15 +331,14 @@ impl TrackSession {
                 .all(|s| !matches!(s, NoteState::Pending))
     }
 
-    /// Rewind the session to `time_s` (the practice section loop):
+    /// Rewind the session to `time_s` (the practice section loop or timeline seek):
     /// every event at or after the point becomes judgeable again,
     /// the session clock moves back so nothing is phantom-missed,
     /// and the transients (active sustain, HOPO chain) reset —
     /// half-finished cross-boundary state cannot be honestly
     /// resumed. Phrase progress is recomputed from the surviving
-    /// states. The performance totals deliberately stay: rewinding
-    /// exists for practice, which records nothing anyway, and a
-    /// score that ran backwards would look like a display bug.
+    /// states. Performance (score, streak, meter, counts) is restored
+    /// to what was achieved up to `time_s`.
     pub fn rewind_to(&mut self, time_s: f64) {
         if !time_s.is_finite() {
             return;
@@ -368,6 +373,33 @@ impl TrackSession {
                 NoteState::Pending => {}
             }
         }
+
+        // Restore performance to what was achieved up to time_s:
+        if let Some(pos) = self.performance_history.iter().rposition(|(t, _)| *t <= time_s) {
+            self.performance = self.performance_history[pos].1.clone();
+            self.performance_history.truncate(pos + 1);
+        } else {
+            self.performance = PlayerPerformance::new(*self.performance.config());
+            self.performance_history.clear();
+            self.performance_history.push((f64::NEG_INFINITY, self.performance.clone()));
+        }
+    }
+
+    /// Record a performance checkpoint if performance changed.
+    fn checkpoint_performance(&mut self, time_s: f64) {
+        if !time_s.is_finite() {
+            return;
+        }
+        if let Some((last_time, last_perf)) = self.performance_history.last_mut() {
+            if *last_perf == self.performance {
+                return;
+            }
+            if (*last_time - time_s).abs() < 1e-4 {
+                *last_perf = self.performance.clone();
+                return;
+            }
+        }
+        self.performance_history.push((time_s, self.performance.clone()));
     }
 
     /// Advance the song clock, resolving misses, sustain points and Hype
@@ -428,6 +460,7 @@ impl TrackSession {
             }
         }
         self.advance_scan_pointer();
+        self.checkpoint_performance(to_s);
     }
 
     /// Process one input. Inputs must arrive in chronological order;
@@ -464,6 +497,7 @@ impl TrackSession {
                 }
             }
         }
+        self.checkpoint_performance(input.time_s);
     }
 
     // ---- internals -----------------------------------------------------
@@ -1855,6 +1889,51 @@ mod tests {
             "a re-played phrase must complete (meter {})",
             s.performance().hype_meter()
         );
+    }
+
+    #[test]
+    fn rewind_restores_performance_score_and_streak() {
+        let mut s = session(track(vec![
+            tap(1.0, Lane::One),
+            tap(2.0, Lane::Two),
+            tap(3.0, Lane::Three),
+        ]));
+        // Initial performance: 0 points, streak 0
+        assert_eq!(s.performance().score(), 0);
+        assert_eq!(s.performance().streak(), 0);
+
+        // Hit note 1 at 1.0s
+        play(&mut s, 1.0, Lane::One);
+        assert_eq!(s.performance().score(), 50);
+        assert_eq!(s.performance().streak(), 1);
+
+        // Hit note 2 at 2.0s
+        play(&mut s, 2.0, Lane::Two);
+        assert_eq!(s.performance().score(), 100);
+        assert_eq!(s.performance().streak(), 2);
+
+        // Rewind to 1.5s:
+        // Note 0 is Hit, Note 1 is Pending, Note 2 is Pending.
+        // Performance should be rolled back to the checkpoint at 1.0s (score 50, streak 1).
+        s.rewind_to(1.5);
+        assert_eq!(s.performance().score(), 50);
+        assert_eq!(s.performance().streak(), 1);
+        assert!(matches!(s.note_state(0), Some(NoteState::Hit(_))));
+        assert!(matches!(s.note_state(1), Some(NoteState::Pending)));
+        assert!(matches!(s.note_state(2), Some(NoteState::Pending)));
+
+        // Replay note 2 at 2.0s
+        play(&mut s, 2.0, Lane::Two);
+        assert_eq!(s.performance().score(), 100);
+        assert_eq!(s.performance().streak(), 2);
+
+        // Rewind back to 0.0s:
+        // Everything pending, score 0, streak 0
+        s.rewind_to(0.0);
+        assert_eq!(s.performance().score(), 0);
+        assert_eq!(s.performance().streak(), 0);
+        assert!(matches!(s.note_state(0), Some(NoteState::Pending)));
+        assert!(matches!(s.note_state(1), Some(NoteState::Pending)));
     }
 }
 

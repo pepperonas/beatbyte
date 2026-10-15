@@ -481,6 +481,28 @@ pub fn progress_head_x(progress: f32) -> f32 {
     RIBBON_W.mul_add(progress.clamp(0.0, 1.0), -RIBBON_W / 2.0)
 }
 
+/// Whether a 2D world position is over the song progress timeline bar.
+#[must_use]
+pub fn is_over_timeline(world_pos: Vec2) -> bool {
+    let half_w = RIBBON_W / 2.0;
+    (world_pos.x >= -half_w - 15.0 && world_pos.x <= half_w + 15.0)
+        && (world_pos.y >= RIBBON_BAR_Y - 14.0 && world_pos.y <= RIBBON_BAR_Y + 20.0)
+}
+
+/// Normalized progress (0.0..=1.0) along the progress bar for a world x-coordinate.
+#[must_use]
+pub fn timeline_progress_at(world_x: f32) -> f32 {
+    let half_w = RIBBON_W / 2.0;
+    ((world_x + half_w) / RIBBON_W).clamp(0.0, 1.0)
+}
+
+/// Target song time in seconds for a world x-coordinate on the progress bar.
+#[must_use]
+pub fn timeline_target_time(world_x: f32, duration_s: f64) -> f64 {
+    let progress = timeline_progress_at(world_x);
+    (progress as f64 * duration_s).max(0.0)
+}
+
 /// A song position as `m:ss`, for the readout.
 ///
 /// Negative times (the pre-roll) show as `0:00` rather than as a
@@ -1832,9 +1854,11 @@ pub fn update_song_ribbon(
     font: Res<crate::ui::UiFont>,
     players: Query<(&super::PlayerIndex, &super::PlayerSession)>,
     mut fill: Query<&mut Transform, With<SongProgressFill>>,
-    mut head: Query<&mut Transform, SongProgressHeadFilter>,
+    mut head: Query<(&mut Transform, &mut Sprite), SongProgressHeadFilter>,
     mut label: Query<&mut Text2d, (With<SongTimeText>, Without<SongTitleText>)>,
     mut title: Query<&mut Text2d, (With<SongTitleText>, Without<SongTimeText>)>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    cameras: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
 ) {
     // The ribbon says which song, who made it and how hard it is. The
     // difficulty was asked for in the debug overlay and put there
@@ -1880,8 +1904,24 @@ pub fn update_song_ribbon(
     for mut transform in &mut fill {
         transform.scale.x = progress;
     }
-    for mut transform in &mut head {
+    let hovered = (|| {
+        let window = windows.iter().next()?;
+        let pos = window.cursor_position()?;
+        let (cam, xform) = cameras.single().ok()?;
+        let world = cam.viewport_to_world_2d(xform, pos).ok()?;
+        Some(is_over_timeline(world))
+    })()
+    .unwrap_or(false);
+
+    for (mut transform, mut sprite) in &mut head {
         transform.translation.x = progress_head_x(progress);
+        if hovered {
+            transform.scale = Vec3::splat(1.4);
+            sprite.color = palette::HYPE;
+        } else {
+            transform.scale = Vec3::splat(1.0);
+            sprite.color = palette::TEXT;
+        }
     }
     for mut text in &mut label {
         text.0 = format!("{} / {}", clock_text(now), clock_text(duration));
@@ -2435,5 +2475,36 @@ mod gauge_tests {
         assert!(pop_scale(0.1) > 1.0 && pop_scale(0.1) < 1.4);
         assert!((pop_scale(0.2) - 1.0).abs() < 1e-6, "settled after 0.2s");
         assert!((pop_scale(9.0) - 1.0).abs() < 1e-6, "idle stays at rest");
+    }
+
+    #[test]
+    fn timeline_interaction_bounds_and_progress() {
+        use bevy::prelude::Vec2;
+        use super::{is_over_timeline, timeline_progress_at, timeline_target_time, RIBBON_BAR_Y, RIBBON_W};
+
+        // Click detection over the timeline bar
+        assert!(is_over_timeline(Vec2::new(0.0, RIBBON_BAR_Y)));
+        assert!(is_over_timeline(Vec2::new(-RIBBON_W / 2.0, RIBBON_BAR_Y)));
+        assert!(is_over_timeline(Vec2::new(RIBBON_W / 2.0, RIBBON_BAR_Y)));
+        assert!(is_over_timeline(Vec2::new(0.0, RIBBON_BAR_Y + 10.0)));
+        assert!(is_over_timeline(Vec2::new(0.0, RIBBON_BAR_Y - 10.0)));
+
+        // Not over the timeline
+        assert!(!is_over_timeline(Vec2::new(0.0, 0.0)));
+        assert!(!is_over_timeline(Vec2::new(RIBBON_W, RIBBON_BAR_Y)));
+        assert!(!is_over_timeline(Vec2::new(-RIBBON_W, RIBBON_BAR_Y)));
+        assert!(!is_over_timeline(Vec2::new(0.0, 200.0)));
+
+        // Progress computation
+        assert!((timeline_progress_at(-RIBBON_W / 2.0) - 0.0).abs() < 1e-6);
+        assert!((timeline_progress_at(0.0) - 0.5).abs() < 1e-6);
+        assert!((timeline_progress_at(RIBBON_W / 2.0) - 1.0).abs() < 1e-6);
+        assert_eq!(timeline_progress_at(-1000.0), 0.0);
+        assert_eq!(timeline_progress_at(1000.0), 1.0);
+
+        // Target time computation
+        assert!((timeline_target_time(-RIBBON_W / 2.0, 200.0) - 0.0).abs() < 1e-6);
+        assert!((timeline_target_time(0.0, 200.0) - 100.0).abs() < 1e-6);
+        assert!((timeline_target_time(RIBBON_W / 2.0, 200.0) - 200.0).abs() < 1e-6);
     }
 }

@@ -4,6 +4,16 @@
 Rules of engagement live in [`CLAUDE.md`](../CLAUDE.md); this file
 holds the work itself.
 
+## Interactive timeline seeking & score rollback (2026-10-15)
+
+*Verified: clippy `-D warnings`, unit tests in `beatbyte-core` and `beatbyte-game` (1 175 tests across both crates).*
+
+- [x] Top song ribbon progress bar is interactive: clicking anywhere along the bar seeks the song and clock to that position in `Playing` and `Paused` phases.
+- [x] Hovering over the timeline enlarges the playhead pip and highlights it in `palette::HYPE`.
+- [x] Mouse strumming is suppressed when clicking on the timeline so seeking does not cause an accidental overstrum or broken streak.
+- [x] Core session checkpoints performance during gameplay; rewinding restores performance (`score`, `streak`, `rock_meter`, `hype_meter`, judgments) to the snapshot achieved at that timestamp.
+- [x] In-flight note entities are despawned and re-spawned ahead of the new playhead, spawn cursors reset, and the run is marked as `practice.used = true`.
+
 ## Test and documentation audit (2026-10-13)
 
 *Verified: 2290 tests in the source inventory, including documentation examples;

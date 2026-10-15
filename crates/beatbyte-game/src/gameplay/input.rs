@@ -71,6 +71,8 @@ pub(super) fn gameplay_input(
     store: Option<Res<TelemetryStore>>,
     run: Option<Res<StoreRun>>,
     mut chord_latches: Local<HashMap<Entity, HypeChordLatch>>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    cameras: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
 ) {
     // While the autopilot's note injector owns the session it plays
     // every note itself: a key, a pad button or a click from the desk
@@ -154,8 +156,21 @@ pub(super) fn gameplay_input(
                 send(InputKind::FretUp(lane));
             }
         }
-        // The mouse belongs to whoever the keyboard belongs to.
-        let clicked = mouse_strums(device.0, mouse.just_pressed(MouseButton::Left));
+        // The mouse belongs to whoever the keyboard belongs to, unless clicking the timeline.
+        let on_timeline = (|| {
+            let window = windows.iter().next()?;
+            let pos = window.cursor_position()?;
+            let (cam, xform) = cameras.single().ok()?;
+            let world = cam.viewport_to_world_2d(xform, pos).ok()?;
+            Some(crate::gameplay::hud::is_over_timeline(world))
+        })()
+        .unwrap_or(false);
+
+        let clicked = if on_timeline {
+            false
+        } else {
+            mouse_strums(device.0, mouse.just_pressed(MouseButton::Left))
+        };
         if clicked
             || sources.just_pressed(&map, GameAction::StrumUp)
             || sources.just_pressed(&map, GameAction::StrumDown)

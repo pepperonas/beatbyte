@@ -521,7 +521,12 @@ impl Plugin for GameplayPlugin {
             )
             .add_systems(
                 Update,
-                practice_loop_wrap.run_if(in_state(GamePhase::Playing)),
+                (
+                    practice_loop_wrap.run_if(in_state(GamePhase::Playing)),
+                    handle_timeline_click.run_if(
+                        in_state(GamePhase::Playing).or_else(in_state(GamePhase::Paused)),
+                    ),
+                ),
             )
             .init_resource::<PauseCursor>()
             .init_resource::<PauseBarClicks>()
@@ -1774,6 +1779,80 @@ fn practice_loop_wrap(
     }
     // Every note entity in flight belongs to the abandoned pass;
     // the spawn systems rebuild the section from the reset cursor.
+    for entity in &notes {
+        commands.entity(entity).despawn();
+    }
+}
+
+/// Clicking the top timeline progress bar seeks the track to that position,
+/// rewinds player sessions (restoring note states and performance score achieved at that time),
+/// resets spawn cursors, and despawns in-flight notes so they regenerate ahead of the new playhead.
+#[allow(clippy::too_many_arguments)] // Bevy system: params are DI
+fn handle_timeline_click(
+    mut commands: Commands,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    cameras: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    song: Res<LoadedSong>,
+    time: Res<Time>,
+    music: Res<Music>,
+    mut game_clock: ResMut<GameClock>,
+    mut practice: ResMut<PracticeState>,
+    mut players: Query<&mut PlayerSession>,
+    notes: Query<Entity, LoopedNoteEntities>,
+) {
+    if !mouse.just_pressed(MouseButton::Left) {
+        return;
+    }
+    let Some(window) = windows.iter().next() else {
+        return;
+    };
+    let Some(position) = window.cursor_position() else {
+        return;
+    };
+    let Ok((camera, transform)) = cameras.single() else {
+        return;
+    };
+    let Ok(world_pos) = camera.viewport_to_world_2d(transform, position) else {
+        return;
+    };
+
+    if !hud::is_over_timeline(world_pos) {
+        return;
+    }
+
+    let duration = song.chart.song.duration_s.unwrap_or_else(|| {
+        song.chart
+            .charts
+            .iter()
+            .flat_map(|chart| chart.notes.iter())
+            .map(|note| note.time + note.len)
+            .fold(0.0, f64::max)
+    });
+    if duration <= 0.0 || !duration.is_finite() {
+        return;
+    }
+
+    let target = hud::timeline_target_time(world_pos.x, duration);
+    let mono = time.elapsed_secs_f64();
+    info!("timeline clicked: seeking to {target:.2} s (duration {duration:.2} s)");
+
+    music.0.seek_s(target);
+    game_clock.clock.seek(mono, target);
+    game_clock.hold_reconcile_until = mono + 0.25;
+    practice.used = true;
+
+    for mut player in &mut players {
+        player.session.rewind_to(target);
+        let events = player.session.track().events();
+        player.spawn_cursor = events
+            .iter()
+            .position(|event| event.time_s >= target)
+            .unwrap_or(events.len());
+    }
+
+    // Every note entity in flight belongs to the previous position;
+    // despawn them so the spawn system cleanly rebuilds notes ahead of the new playhead.
     for entity in &notes {
         commands.entity(entity).despawn();
     }

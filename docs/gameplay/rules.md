@@ -99,5 +99,12 @@ Chords score per lane (a 3-lane Perfect chord = 150 base points).
   show but never end the song: one player's bad patch should not cut
   another's song short.
 
+## Timeline scrubbing & rewind
+
+- During play or while paused, clicking anywhere along the top song ribbon progress bar seeks the song and clock directly to that position. Hovering over the ribbon highlights and enlarges the playhead pip.
+- Mouse clicks on the timeline are isolated and do not register as mouse strums, preventing accidental overstrums.
+- Rewinding to an earlier position restores player performance (`score`, `streak`, `rock_meter`, `hype_meter`, judgment counts) to the checkpoint recorded up to that second. Notes at or after the new timestamp reset to `Pending`, in-flight note entities are despawned and cleanly re-spawned ahead of the playhead.
+- Any manual timeline seek marks `practice.used = true` so the run is treated as practice and does not overwrite high scores or telemetry.
+
 All numbers live in `ScoreConfig`/`TimingWindows` and are data, not
 hardcoded rules.
