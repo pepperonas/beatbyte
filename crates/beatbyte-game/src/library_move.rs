@@ -104,6 +104,10 @@ pub struct LibraryMove {
     live: Arc<Mutex<Live>>,
     /// Seconds since the last job finished, while the panel lingers.
     lingering: Option<f32>,
+    /// Set when a location change requires rescanning the library on the frame thread.
+    pub needs_rescan: bool,
+    /// Remembered custom folder when cycling presets.
+    custom_memory: Option<PathBuf>,
 }
 
 impl LibraryMove {
@@ -111,6 +115,105 @@ impl LibraryMove {
     #[must_use]
     pub fn busy(&self) -> bool {
         self.task.is_some()
+    }
+
+    /// Whether the row is idle and receptive to preset navigation.
+    #[must_use]
+    pub fn is_idle(&self) -> bool {
+        matches!(self.step, Step::Idle | Step::Done(_) | Step::Failed(_))
+    }
+
+    /// Whether the row is asking to confirm a move.
+    #[must_use]
+    pub fn is_confirming(&self) -> bool {
+        matches!(self.step, Step::Confirm { .. })
+    }
+
+    /// Reset to the default library path.
+    pub fn reset_to_default(&mut self) {
+        let data = data_dir();
+        let default_path = beatbyte_library::location::default_root(&data);
+        match beatbyte_library::location::choose(&data, &default_path) {
+            Ok(()) => {
+                self.needs_rescan = true;
+                self.lingering = Some(0.0);
+                self.step = Step::Done("the library is now default".to_owned());
+            }
+            Err(e) => {
+                self.step = Step::Failed(format!("cannot reset: {e}"));
+            }
+        }
+    }
+
+    /// Cycle between Default, Portable (./songs), and Custom storage presets.
+    pub fn step_preset(&mut self, direction: i32) {
+        let data = data_dir();
+        let def = beatbyte_library::location::default_root(&data);
+        let portable = PathBuf::from("songs");
+        let current = current_root();
+
+        if let Some(ref root) = current
+            && root.chosen && root.path != def && root.path != portable
+        {
+            self.custom_memory = Some(root.path.clone());
+        }
+
+        let is_custom = current
+            .as_ref()
+            .is_some_and(|r| r.chosen && r.path != def && r.path != portable);
+        let is_portable = current.as_ref().is_some_and(|r| r.path == portable);
+        let current_idx: i32 = if is_custom {
+            2
+        } else if is_portable {
+            1
+        } else {
+            0
+        };
+
+        let max_idx = if self.custom_memory.is_some() { 3 } else { 2 };
+        let next_idx = (current_idx + direction).rem_euclid(max_idx);
+
+        let target = match next_idx {
+            1 => portable,
+            2 => self.custom_memory.clone().unwrap_or_else(|| def.clone()),
+            _ => def.clone(),
+        };
+
+        match beatbyte_library::location::choose(&data, &target) {
+            Ok(()) => {
+                self.needs_rescan = true;
+                self.lingering = Some(0.0);
+                let label = if target == def {
+                    "default"
+                } else if target == std::path::Path::new("songs") {
+                    "portable (./songs)"
+                } else {
+                    "custom folder"
+                };
+                self.step = Step::Done(format!("storage switched to {label}"));
+            }
+            Err(e) => {
+                self.step = Step::Failed(format!("cannot change: {e}"));
+            }
+        }
+    }
+
+    /// Point directly to the target folder without copying files.
+    pub fn point_only(&mut self) {
+        if let Step::Confirm { to, .. } = &self.step {
+            let target = to.clone();
+            self.custom_memory = Some(target.clone());
+            match beatbyte_library::location::choose(&data_dir(), &target) {
+                Ok(()) => {
+                    self.needs_rescan = true;
+                    self.lingering = Some(0.0);
+                    self.step = Step::Done(format!("the library is now {}", target.display()));
+                }
+                Err(e) => {
+                    self.step = Step::Failed(format!("cannot record it: {e}"));
+                }
+            }
+        }
     }
 
     fn live(&self) -> (Progress, f64) {
@@ -187,6 +290,7 @@ impl LibraryMove {
 
     /// A folder was chosen (by the dialog or by a drop): ask.
     pub fn chosen(&mut self, to: PathBuf) {
+        self.custom_memory = Some(to.clone());
         let Some(root) = current_root() else {
             self.step = Step::Failed("no library on this platform".to_owned());
             return;
@@ -195,7 +299,10 @@ impl LibraryMove {
             // The library is gone (its drive unplugged): nothing to
             // move, but the player may point the game somewhere else.
             self.step = match beatbyte_library::location::choose(&data_dir(), &to) {
-                Ok(()) => Step::Done(format!("the library is now {}", to.display())),
+                Ok(()) => {
+                    self.needs_rescan = true;
+                    Step::Done(format!("the library is now {}", to.display()))
+                }
                 Err(error) => Step::Failed(format!("cannot record it: {error}")),
             };
             return;
@@ -217,7 +324,10 @@ impl LibraryMove {
             // move: the new place simply becomes the library.
             Err(_) if !root.chosen && !root.path.exists() => {
                 self.step = match beatbyte_library::location::choose(&data_dir(), &to) {
-                    Ok(()) => Step::Done(format!("the library is now {}", to.display())),
+                    Ok(()) => {
+                        self.needs_rescan = true;
+                        Step::Done(format!("the library is now {}", to.display()))
+                    }
                     Err(error) => Step::Failed(format!("cannot record it: {error}")),
                 };
             }
@@ -450,10 +560,16 @@ fn poll_move(
     time: Res<Time>,
     mut state: ResMut<LibraryMove>,
     builtins: Option<Res<crate::boot::BuiltinSongs>>,
-    library: Option<ResMut<crate::library::SongLibrary>>,
+    mut library: Option<ResMut<crate::library::SongLibrary>>,
 ) {
     if let Some(t) = state.lingering.as_mut() {
         *t += time.delta_secs();
+    }
+    if state.needs_rescan {
+        state.needs_rescan = false;
+        if let (Some(builtins), Some(ref mut library)) = (builtins.as_ref(), library.as_mut()) {
+            ***library = crate::boot::scan_with_builtins(&builtins.0);
+        }
     }
     let Some(task) = state.task.as_mut() else {
         return;
@@ -527,7 +643,7 @@ fn say_when_unreachable(mut status: ResMut<crate::import::ImportStatus>) {
         && !root.reachable
     {
         status.0 = format!(
-            "the library at {} is not reachable - connect its drive",
+            "the library at {} is not reachable - using local fallback",
             crate::settings_ui::short_path(&root.path.display().to_string(), 40)
         );
     }
@@ -850,5 +966,31 @@ mod tests {
         };
         state.decline();
         assert_eq!(state.step, Step::Idle);
+    }
+
+    #[test]
+    fn direct_point_and_reset_to_default() {
+        let mut state = LibraryMove::default();
+        assert!(state.is_idle());
+
+        let target = std::env::temp_dir().join("beatbyte-test-point-target");
+        let _ = std::fs::create_dir_all(&target);
+
+        state.step = Step::Confirm {
+            to: target.clone(),
+            bytes: 100,
+            files: 2,
+        };
+        assert!(state.is_confirming());
+
+        state.point_only();
+        assert!(matches!(state.step, Step::Done(_)));
+        assert!(state.needs_rescan);
+
+        state.reset_to_default();
+        assert!(matches!(state.step, Step::Done(_)));
+        assert!(state.needs_rescan);
+
+        let _ = std::fs::remove_dir_all(&target);
     }
 }

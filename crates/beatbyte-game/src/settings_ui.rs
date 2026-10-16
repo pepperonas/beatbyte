@@ -172,7 +172,7 @@ impl Row {
             adjust: None,
             feel: Feel::Tick,
         },
-        Subtitle::Text("ENTER picks a new place - or drop a folder here")
+        Subtitle::Text("ENTER selects folder - ◄/► presets - BACKSPACE default")
     );
     pub(crate) const LOUDNESS_MATCH: Row = row!("LOUDNESS MATCH", toggle!(normalize_loudness));
     pub(crate) const LYRICS: Row = row!("LYRICS", toggle!(lyrics));
@@ -1360,9 +1360,26 @@ fn settings_input(
             say(crate::sfx::UiSound::Confirm);
             return;
         }
-        Some(Act::Library) if events.nav.left => {
+        Some(Act::Library) if keys.just_pressed(KeyCode::Space) && library_move.is_confirming() => {
+            library_move.point_only();
+            say(crate::sfx::UiSound::Confirm);
+            return;
+        }
+        Some(Act::Library) if events.nav.left && library_move.is_confirming() => {
             library_move.decline();
             say(crate::sfx::UiSound::Back);
+            return;
+        }
+        Some(Act::Library) if events.step.is_some() && library_move.is_idle() => {
+            if let Some(direction) = events.step {
+                library_move.step_preset(direction);
+                say(crate::sfx::UiSound::Toggle);
+                return;
+            }
+        }
+        Some(Act::Library) if keys.just_pressed(KeyCode::Backspace) => {
+            library_move.reset_to_default();
+            say(crate::sfx::UiSound::Toggle);
             return;
         }
         // The one explicit action that fetches anything (README):

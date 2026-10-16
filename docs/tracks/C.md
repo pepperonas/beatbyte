@@ -2,7 +2,7 @@
 
 [← Index](README.md) · [A](A.md) · [B](B.md) · [C](C.md) · [D](D.md) · [E](E.md) · [F](F.md) · [G](G.md) · [H](H.md) · [I](I.md) · [J](J.md) · [K](K.md) · [L](L.md) · [M](M.md) · [N](N.md) · [O](O.md) · [P](P.md) · [Q](Q.md) · [R](R.md) · [S](S.md) · [T](T.md) · [U](U.md) · [V](V.md) · [W](W.md) · [X](X.md) · [Y](Y.md) · [Z](Z.md) · [0-9](0-9.md) · [other](other.md)
 
-478 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
+479 songs. Notes = easy · medium · hard · expert. Density = expert notes over the song, start to end ([legend](README.md#reading-the-density-line)).
 
 | Artist | Title | Genre | Length | BPM | Notes | Density (expert) |
 |---|---|---|--:|--:|--:|---|
@@ -98,6 +98,7 @@
 | Cavetown | Devil Town | Alternative | 3:03 | 100 | 248 · 722 · 1069 · 1390 | `▂▄▄▄▄▃▃▃███▄▄▄▃▃▁██▆▅▇▄▃` |
 | Cazuza | Brasil | Rock | 3:14 | 124 | 112 · 224 · 380 · 520 | `▁▃▂▂▂▃▃▂▂▂▃▂▂▃▃▁▁▂▄▂▂▁▁▁` |
 | Cazuza | Exagerado | Power Pop | 3:49 | 136 | 158 · 370 · 593 · 693 | `▂▃▂▂▂▂▂▂▂▂▂▂▃▃▃▂▂▂▂▂▂▃▄▂` |
+| CeCe Peniston | Finally | Dance | 4:09 | 120 | 196 · 360 · 669 · 1129 | `▃▃▃▃▄▃▃▃▄▂▃▄▃▃▃▃▃▃▂▂▃▄▄▃` |
 | Celia Cruz | La Negra Tiene Tumbao | Salsa | 4:15 | 111 | 351 · 561 · 942 · 1208 | `▄▂▄▄▅▅▄▁▃▃▄▄▅▃▁▂▂▃▂▅▅▃▂▂` |
 | Celldweller | Shapeshifter (ft. Styles of Beyond) | Industrial Rock | 3:39 | 116 | 226 · 532 · 649 · 719 | `▁▃▄▃▁▁▂▃▄▃▁▁▂▂▃▄▂▁▂▃▄▃▃·` |
 | Celldweller | Unshakeable | Metal | 5:22 | 180 | 266 · 521 · 926 · 1056 | `▃▄▅▃··▁▄▂▂▂▃▃··▁▄▂▂▃▃▃▃▂` |

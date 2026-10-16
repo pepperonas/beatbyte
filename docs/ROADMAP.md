@@ -4,6 +4,22 @@
 Rules of engagement live in [`CLAUDE.md`](../CLAUDE.md); this file
 holds the work itself.
 
+## Track storage independence & in-app library settings (2026-10-16)
+
+*Verified: clippy `-D warnings`, unit tests in `beatbyte-core`, `beatbyte-library`, and `beatbyte-game` (1 182 tests across crates).*
+
+- [x] App is fully independent of specific external hardware (USB stick) and remote Hetzner mirror:
+  - If a chosen external drive is unreachable, `scan_roots()` automatically falls back to local `user_songs_dir()` so local and bundled songs remain playable.
+  - `import_dir()` gracefully falls back to `user_songs_dir()` instead of failing with an error.
+  - Browser displays clean status message indicating local fallback without crashing or showing an empty library.
+- [x] Track Storage configuration in `SETTINGS` > `LIBRARY`:
+  - ◄ / ► arrow keys cycle storage presets (`DEFAULT` in system app data, `PORTABLE` in `./songs`, and custom external path).
+  - `ENTER` opens the system folder selection dialog or prompts for a custom folder.
+  - `SPACE` allows pointing to any chosen directory immediately without forcing a multi-gigabyte library copy.
+  - `BACKSPACE` resets storage directly to the shipped `DEFAULT`.
+  - Folder drag-and-drop onto the window directly selects the dropped directory.
+- [x] Sourced, generated, and verified *CeCe Peniston – Finally* (120.2 BPM, Dance, 4 difficulty tiers: 196 / 360 / 669 / 1129 notes) stored to USB library and synced to Hetzner off-site backup (total 8,606 songs, 8,608 charts).
+
 ## Interactive timeline seeking & score rollback (2026-10-15)
 
 *Verified: clippy `-D warnings`, unit tests in `beatbyte-core` and `beatbyte-game` (1 175 tests across both crates).*

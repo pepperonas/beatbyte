@@ -1016,6 +1016,8 @@ pub(crate) fn import_dir() -> Result<PathBuf, String> {
         .ok_or_else(|| "no songs directory on this platform".to_owned())?;
     if root.reachable {
         Ok(root.path)
+    } else if let Some(fallback) = crate::library::user_songs_dir() {
+        Ok(fallback.join("imported"))
     } else {
         Err(format!(
             "the library at {} is not reachable - connect its drive or choose another place in SETTINGS",

@@ -296,7 +296,7 @@ pub fn library_root() -> Option<beatbyte_library::location::Root> {
 pub fn scan_roots() -> Vec<PathBuf> {
     let mut roots = vec![PathBuf::from(SONGS_DIR)];
     match library_root() {
-        Some(root) if root.chosen => roots.push(root.path),
+        Some(root) if root.chosen && root.reachable => roots.push(root.path),
         _ => roots.extend(user_songs_dir()),
     }
     roots
