@@ -32,7 +32,7 @@ holds the work itself.
 
 ## Test and documentation audit (2026-10-13)
 
-*Verified: 2290 tests in the source inventory, including documentation examples;
+*Verified: 2294 tests in the source inventory, including documentation examples;
 fmt, clippy `-D warnings --all-features`, `cargo test --workspace`; every new
 hardening pin seen to fail under a mutation.*
 
