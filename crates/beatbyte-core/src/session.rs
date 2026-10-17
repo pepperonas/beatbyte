@@ -375,13 +375,18 @@ impl TrackSession {
         }
 
         // Restore performance to what was achieved up to time_s:
-        if let Some(pos) = self.performance_history.iter().rposition(|(t, _)| *t <= time_s) {
+        if let Some(pos) = self
+            .performance_history
+            .iter()
+            .rposition(|(t, _)| *t <= time_s)
+        {
             self.performance = self.performance_history[pos].1.clone();
             self.performance_history.truncate(pos + 1);
         } else {
             self.performance = PlayerPerformance::new(*self.performance.config());
             self.performance_history.clear();
-            self.performance_history.push((f64::NEG_INFINITY, self.performance.clone()));
+            self.performance_history
+                .push((f64::NEG_INFINITY, self.performance.clone()));
         }
     }
 
@@ -399,7 +404,8 @@ impl TrackSession {
                 return;
             }
         }
-        self.performance_history.push((time_s, self.performance.clone()));
+        self.performance_history
+            .push((time_s, self.performance.clone()));
     }
 
     /// Advance the song clock, resolving misses, sustain points and Hype

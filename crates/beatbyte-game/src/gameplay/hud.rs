@@ -2479,8 +2479,10 @@ mod gauge_tests {
 
     #[test]
     fn timeline_interaction_bounds_and_progress() {
+        use super::{
+            RIBBON_BAR_Y, RIBBON_W, is_over_timeline, timeline_progress_at, timeline_target_time,
+        };
         use bevy::prelude::Vec2;
-        use super::{is_over_timeline, timeline_progress_at, timeline_target_time, RIBBON_BAR_Y, RIBBON_W};
 
         // Click detection over the timeline bar
         assert!(is_over_timeline(Vec2::new(0.0, RIBBON_BAR_Y)));

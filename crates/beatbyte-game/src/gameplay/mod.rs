@@ -523,9 +523,8 @@ impl Plugin for GameplayPlugin {
                 Update,
                 (
                     practice_loop_wrap.run_if(in_state(GamePhase::Playing)),
-                    handle_timeline_click.run_if(
-                        in_state(GamePhase::Playing).or_else(in_state(GamePhase::Paused)),
-                    ),
+                    handle_timeline_click
+                        .run_if(in_state(GamePhase::Playing).or_else(in_state(GamePhase::Paused))),
                 ),
             )
             .init_resource::<PauseCursor>()

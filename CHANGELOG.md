@@ -14,6 +14,20 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.19.0] - 2026-10-17 — Beta 1
+
+### Added
+
+- **First Beta Release (`v0.19.0-beta.1`)**: Feature-complete gameplay with 5-lane guitar rhythm, adaptive charting, full vocal/karaoke mode with pitch tracking, 3D stage and light show.
+- **Track Storage independence & settings**: Custom track directory selection (default app data, portable `./songs`, external storage) in Settings > Library with automatic fallback to local bundled tracks if external storage is unreachable.
+- **Interactive song timeline seeking**: Mouse-interactive progress bar in the top HUD allows clicking any timestamp during gameplay/pause to rewind or jump to that position, with performance state and score snapshot rollback.
+- **CeCe Peniston – Finally**: Added and charted across all four difficulty tiers (196 / 360 / 669 / 1129 notes) with vocal accompaniment.
+
+### Changed
+
+- **Whammy bar balance**: Refined visual distortion effects to be more distinct while reducing acoustic pitch shift prominence for clearer playfeel.
+- **Song browser search**: Typing 'm' in song search no longer triggers global audio mute.
+
 ## [0.18.93] - 2026-10-13
 
 ### Changed

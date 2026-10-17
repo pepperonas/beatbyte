@@ -153,7 +153,9 @@ impl LibraryMove {
         let current = current_root();
 
         if let Some(ref root) = current
-            && root.chosen && root.path != def && root.path != portable
+            && root.chosen
+            && root.path != def
+            && root.path != portable
         {
             self.custom_memory = Some(root.path.clone());
         }

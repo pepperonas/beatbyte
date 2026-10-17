@@ -341,7 +341,8 @@ fn toggle_mute(
     } else {
         keys.just_pressed(KeyCode::KeyM)
             && *state.get() != AppState::Editor
-            && !(*state.get() == AppState::Settings && settings_view.is_some_and(|view| view.editing))
+            && !(*state.get() == AppState::Settings
+                && settings_view.is_some_and(|view| view.editing))
     };
     let clicked = badges.iter().any(|i| *i == Interaction::Pressed);
     if !key && !clicked {
