@@ -145,7 +145,7 @@ impl LibraryMove {
         }
     }
 
-    /// Cycle between Default, Portable (./songs), and Custom storage presets.
+    /// Cycle between Default, Portable (./songs), discovered external drives, and Custom storage presets.
     pub fn step_preset(&mut self, direction: i32) {
         let data = data_dir();
         let def = beatbyte_library::location::default_root(&data);
@@ -160,37 +160,37 @@ impl LibraryMove {
             self.custom_memory = Some(root.path.clone());
         }
 
-        let is_custom = current
-            .as_ref()
-            .is_some_and(|r| r.chosen && r.path != def && r.path != portable);
-        let is_portable = current.as_ref().is_some_and(|r| r.path == portable);
-        let current_idx: i32 = if is_custom {
-            2
-        } else if is_portable {
-            1
-        } else {
-            0
-        };
+        let mut presets = vec![def.clone(), portable.clone()];
+        for ext in crate::library::discover_external_library_roots() {
+            if !presets.contains(&ext) {
+                presets.push(ext);
+            }
+        }
+        if let Some(ref custom) = self.custom_memory
+            && !presets.contains(custom)
+        {
+            presets.push(custom.clone());
+        }
 
-        let max_idx = if self.custom_memory.is_some() { 3 } else { 2 };
-        let next_idx = (current_idx + direction).rem_euclid(max_idx);
+        let current_path = current.as_ref().map(|r| &r.path);
+        let current_idx = current_path
+            .and_then(|cp| presets.iter().position(|p| p == cp))
+            .unwrap_or(0) as i32;
 
-        let target = match next_idx {
-            1 => portable,
-            2 => self.custom_memory.clone().unwrap_or_else(|| def.clone()),
-            _ => def.clone(),
-        };
+        let max_idx = presets.len() as i32;
+        let next_idx = (current_idx + direction).rem_euclid(max_idx) as usize;
+        let target = &presets[next_idx];
 
-        match beatbyte_library::location::choose(&data, &target) {
+        match beatbyte_library::location::choose(&data, target) {
             Ok(()) => {
                 self.needs_rescan = true;
                 self.lingering = Some(0.0);
-                let label = if target == def {
-                    "default"
-                } else if target == std::path::Path::new("songs") {
-                    "portable (./songs)"
+                let label = if *target == def {
+                    "default".to_owned()
+                } else if *target == portable {
+                    "portable (./songs)".to_owned()
                 } else {
-                    "custom folder"
+                    crate::settings_ui::short_path(&target.display().to_string(), 24)
                 };
                 self.step = Step::Done(format!("storage switched to {label}"));
             }

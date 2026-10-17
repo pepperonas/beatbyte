@@ -283,6 +283,51 @@ pub fn library_root() -> Option<beatbyte_library::location::Root> {
     data_dir().map(|data| beatbyte_library::location::library_root(&data))
 }
 
+/// Discovered external library roots on connected volumes.
+#[must_use]
+pub fn discover_external_library_roots() -> Vec<PathBuf> {
+    let mut discovered = Vec::new();
+    #[cfg(target_os = "macos")]
+    let scan_dirs = ["/Volumes"];
+    #[cfg(target_os = "linux")]
+    let scan_dirs = ["/media", "/mnt", "/run/media"];
+    #[cfg(target_os = "windows")]
+    let scan_dirs: [&str; 0] = [];
+
+    for base in scan_dirs {
+        let Ok(entries) = std::fs::read_dir(base) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default();
+            if name.starts_with('.')
+                || name == "Macintosh HD"
+                || name == "Recovery"
+                || name == "bootfs"
+            {
+                continue;
+            }
+            let candidate1 = path.join("beatbyte").join("songs");
+            if candidate1.is_dir() {
+                discovered.push(candidate1);
+                continue;
+            }
+            let candidate2 = path.join("BeatByte");
+            if candidate2.is_dir() {
+                discovered.push(candidate2);
+            }
+        }
+    }
+    discovered
+}
+
 /// Every directory songs are read from, in scan order.
 ///
 /// ONE definition: the scan walks these, and the settings screen
@@ -296,8 +341,19 @@ pub fn library_root() -> Option<beatbyte_library::location::Root> {
 pub fn scan_roots() -> Vec<PathBuf> {
     let mut roots = vec![PathBuf::from(SONGS_DIR)];
     match library_root() {
-        Some(root) if root.chosen && root.reachable => roots.push(root.path),
-        _ => roots.extend(user_songs_dir()),
+        Some(root) if root.chosen => {
+            if root.reachable {
+                roots.push(root.path);
+            }
+        }
+        _ => {
+            roots.extend(user_songs_dir());
+            for external in discover_external_library_roots() {
+                if !roots.contains(&external) {
+                    roots.push(external);
+                }
+            }
+        }
     }
     roots
 }
