@@ -532,157 +532,179 @@ fn spawn_panel(panel: &mut ChildSpawnerCommands, font: &UiFont, star: &Handle<Im
                 },
             ));
         });
-    panel.spawn((
-        PanelArtist,
-        Text::new(""),
-        font.text(ui_kit::ROW),
-        TextColor(palette::TEXT),
-    ));
-    panel.spawn((
-        PanelFacts,
-        Text::new(""),
-        font.text(ui_kit::SMALL),
-        TextColor(palette::dimmed(palette::TEXT_DIM, 0.85)),
-    ));
-    small(panel, "DIFFICULTY");
+    // Below the title: the facts on the left, and beside them the
+    // notes of the song as its preview plays (crate::note_preview).
+    // The column is always laid out, so nothing moves when it shows.
     panel
         .spawn(Node {
             flex_direction: FlexDirection::Row,
-            column_gap: px(6),
-            ..default()
-        })
-        .with_children(|chips| {
-            for difficulty in DIFFICULTIES {
-                let (fg, line, fill) = ui_kit::selection_chip_colours(false, false);
-                chips.spawn((
-                    DiffChip(difficulty),
-                    Button,
-                    Text::new(difficulty.display_name().to_uppercase()),
-                    font.text(ui_kit::SMALL),
-                    TextColor(fg),
-                    ui_kit::selection_chip_node(),
-                    BorderColor::all(line),
-                    BackgroundColor(fill),
-                ));
-            }
-        });
-    panel
-        .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center,
             column_gap: px(12),
             ..default()
         })
-        .with_children(|line| {
-            line.spawn((
-                PanelPips,
-                Node {
-                    flex_direction: FlexDirection::Row,
-                    column_gap: px(3),
+        .with_children(|split| {
+            split
+                .spawn(Node {
+                    flex_direction: FlexDirection::Column,
+                    flex_grow: 1.0,
+                    min_width: px(0),
+                    row_gap: px(8),
                     ..default()
-                },
-            ))
-            .with_children(|pips| {
-                for _ in 0..5 {
-                    pips.spawn((
+                })
+                .with_children(|panel| {
+                    panel.spawn((
+                        PanelArtist,
+                        Text::new(""),
+                        font.text(ui_kit::ROW),
+                        TextColor(palette::TEXT),
+                    ));
+                    panel.spawn((
+                        PanelFacts,
+                        Text::new(""),
+                        font.text(ui_kit::SMALL),
+                        TextColor(palette::dimmed(palette::TEXT_DIM, 0.85)),
+                    ));
+                    small(panel, "DIFFICULTY");
+                    panel
+                        .spawn(Node {
+                            flex_direction: FlexDirection::Row,
+                            column_gap: px(6),
+                            ..default()
+                        })
+                        .with_children(|chips| {
+                            for difficulty in DIFFICULTIES {
+                                let (fg, line, fill) = ui_kit::selection_chip_colours(false, false);
+                                chips.spawn((
+                                    DiffChip(difficulty),
+                                    Button,
+                                    Text::new(difficulty.display_name().to_uppercase()),
+                                    font.text(ui_kit::SMALL),
+                                    TextColor(fg),
+                                    ui_kit::selection_chip_node(),
+                                    BorderColor::all(line),
+                                    BackgroundColor(fill),
+                                ));
+                            }
+                        });
+                    panel
+                        .spawn(Node {
+                            flex_direction: FlexDirection::Row,
+                            align_items: AlignItems::Center,
+                            column_gap: px(12),
+                            ..default()
+                        })
+                        .with_children(|line| {
+                            line.spawn((
+                                PanelPips,
+                                Node {
+                                    flex_direction: FlexDirection::Row,
+                                    column_gap: px(3),
+                                    ..default()
+                                },
+                            ))
+                            .with_children(|pips| {
+                                for _ in 0..5 {
+                                    pips.spawn((
+                                        Node {
+                                            width: px(PIP),
+                                            height: px(PIP),
+                                            ..default()
+                                        },
+                                        BackgroundColor(palette::dimmed(palette::TEXT_DIM, 0.3)),
+                                    ));
+                                }
+                            });
+                            line.spawn((
+                                DiffFacts,
+                                Text::new(""),
+                                font.text(ui_kit::ROW),
+                                TextColor(palette::TEXT),
+                            ));
+                        });
+                    // The heading also says where the selected version comes from: the
+                    // game for a rip, the charter for a community chart.
+                    panel.spawn((
+                        VersionLabel,
+                        Text::new("VERSION"),
+                        font.text(ui_kit::SMALL),
+                        TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
+                        TextLayout::default().with_no_wrap(),
                         Node {
-                            width: px(PIP),
-                            height: px(PIP),
+                            margin: UiRect::top(px(6)),
                             ..default()
                         },
-                        BackgroundColor(palette::dimmed(palette::TEXT_DIM, 0.3)),
                     ));
-                }
-            });
-            line.spawn((
-                DiffFacts,
-                Text::new(""),
-                font.text(ui_kit::ROW),
-                TextColor(palette::TEXT),
-            ));
+                    panel.spawn((
+                        VersionRow,
+                        Node {
+                            flex_direction: FlexDirection::Row,
+                            flex_wrap: FlexWrap::Wrap,
+                            column_gap: px(6),
+                            row_gap: px(6),
+                            ..default()
+                        },
+                    ));
+                    panel.spawn((
+                        BestLine,
+                        Text::new(""),
+                        font.text(ui_kit::SMALL),
+                        TextColor(palette::TEXT_DIM),
+                        Node {
+                            margin: UiRect::vertical(px(4)),
+                            ..default()
+                        },
+                    ));
+                    // Your own stars for the song, this version's chart and the
+                    // lyrics: a click on a star sets it (on the one already set,
+                    // clears it); Ctrl/Cmd+Up/Down picks a line, Ctrl/Cmd+0-5 sets it.
+                    for (line, (_, label)) in RATING_FIELDS.iter().enumerate() {
+                        panel
+                            .spawn(Node {
+                                flex_direction: FlexDirection::Row,
+                                align_items: AlignItems::Center,
+                                column_gap: px(4),
+                                ..default()
+                            })
+                            .with_children(|row| {
+                                row.spawn((
+                                    RatingLabel(line),
+                                    Button,
+                                    Text::new(*label),
+                                    font.text(ui_kit::SMALL),
+                                    TextColor(palette::TEXT_DIM),
+                                    TextLayout::default().with_no_wrap(),
+                                    Node {
+                                        width: px(RATING_LABEL_W),
+                                        ..default()
+                                    },
+                                ));
+                                for n in 1..=beatbyte_sync::ratings::MAX_STARS {
+                                    row.spawn((
+                                        RatingStar(line, n),
+                                        Button,
+                                        ImageNode::new(star.clone())
+                                            .with_color(palette::dimmed(palette::TEXT_DIM, 0.25)),
+                                        Node {
+                                            width: px(RATING_STAR),
+                                            height: px(RATING_STAR),
+                                            ..default()
+                                        },
+                                    ));
+                                }
+                            });
+                    }
+                    panel.spawn((
+                        PanelStatus,
+                        Text::new(""),
+                        font.text(ui_kit::SMALL),
+                        TextColor(palette::dimmed(palette::TEXT_DIM, 0.85)),
+                        Node {
+                            margin: UiRect::top(px(4)),
+                            ..default()
+                        },
+                    ));
+                });
+            crate::note_preview::spawn_box(split, font);
         });
-    // The heading also says where the selected version comes from: the
-    // game for a rip, the charter for a community chart.
-    panel.spawn((
-        VersionLabel,
-        Text::new("VERSION"),
-        font.text(ui_kit::SMALL),
-        TextColor(palette::dimmed(palette::TEXT_DIM, 0.7)),
-        TextLayout::default().with_no_wrap(),
-        Node {
-            margin: UiRect::top(px(6)),
-            ..default()
-        },
-    ));
-    panel.spawn((
-        VersionRow,
-        Node {
-            flex_direction: FlexDirection::Row,
-            flex_wrap: FlexWrap::Wrap,
-            column_gap: px(6),
-            row_gap: px(6),
-            ..default()
-        },
-    ));
-    panel.spawn((
-        BestLine,
-        Text::new(""),
-        font.text(ui_kit::SMALL),
-        TextColor(palette::TEXT_DIM),
-        Node {
-            margin: UiRect::vertical(px(4)),
-            ..default()
-        },
-    ));
-    // Your own stars for the song, this version's chart and the
-    // lyrics: a click on a star sets it (on the one already set,
-    // clears it); Ctrl/Cmd+Up/Down picks a line, Ctrl/Cmd+0-5 sets it.
-    for (line, (_, label)) in RATING_FIELDS.iter().enumerate() {
-        panel
-            .spawn(Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: px(4),
-                ..default()
-            })
-            .with_children(|row| {
-                row.spawn((
-                    RatingLabel(line),
-                    Button,
-                    Text::new(*label),
-                    font.text(ui_kit::SMALL),
-                    TextColor(palette::TEXT_DIM),
-                    TextLayout::default().with_no_wrap(),
-                    Node {
-                        width: px(RATING_LABEL_W),
-                        ..default()
-                    },
-                ));
-                for n in 1..=beatbyte_sync::ratings::MAX_STARS {
-                    row.spawn((
-                        RatingStar(line, n),
-                        Button,
-                        ImageNode::new(star.clone())
-                            .with_color(palette::dimmed(palette::TEXT_DIM, 0.25)),
-                        Node {
-                            width: px(RATING_STAR),
-                            height: px(RATING_STAR),
-                            ..default()
-                        },
-                    ));
-                }
-            });
-    }
-    panel.spawn((
-        PanelStatus,
-        Text::new(""),
-        font.text(ui_kit::SMALL),
-        TextColor(palette::dimmed(palette::TEXT_DIM, 0.85)),
-        Node {
-            margin: UiRect::top(px(4)),
-            ..default()
-        },
-    ));
 }
 
 /// The list's rows, made once: [`POOL`] of them, plus the note that
@@ -938,6 +960,10 @@ pub fn spawn_versions(
                 Text::new(version_label(entry)),
                 font.text(ui_kit::SMALL),
                 TextColor(fg),
+                // One line: the column beside the note preview is
+                // narrower, and a chip broken over two lines reads as
+                // two chips.
+                TextLayout::default().with_no_wrap(),
                 ui_kit::selection_chip_node(),
                 BorderColor::all(line),
                 BackgroundColor(fill),

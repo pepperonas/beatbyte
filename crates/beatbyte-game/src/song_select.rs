@@ -713,6 +713,7 @@ impl Plugin for SongSelectPlugin {
             .init_resource::<crate::mc::McQueue>()
             .init_resource::<BrowserView>()
             .init_resource::<crate::preview::SongPreview>()
+            .init_resource::<crate::note_preview::NotePreview>()
             .init_resource::<ActionBarClicks>()
             .init_resource::<ActionMenu>()
             .init_resource::<DeleteQuestion>()
@@ -757,9 +758,25 @@ impl Plugin for SongSelectPlugin {
                     .chain()
                     .run_if(in_state(AppState::SongSelect)),
             )
+            // The notes of the song under the cursor, following its
+            // preview: read after the audio preview has decided, drawn
+            // after the panel.
+            .add_systems(
+                Update,
+                (
+                    crate::note_preview::drive_note_preview.after(crate::preview::drive_preview),
+                    crate::note_preview::paint_note_preview.after(look::paint_panel),
+                )
+                    .chain()
+                    .run_if(in_state(AppState::SongSelect)),
+            )
             .add_systems(
                 OnExit(AppState::SongSelect),
-                (despawn_browser, crate::preview::stop_preview),
+                (
+                    despawn_browser,
+                    crate::preview::stop_preview,
+                    crate::note_preview::reset_note_preview,
+                ),
             );
     }
 }

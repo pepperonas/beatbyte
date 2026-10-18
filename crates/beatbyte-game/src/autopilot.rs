@@ -488,9 +488,26 @@ fn quit_after_shot(
         return;
     }
     *elapsed += time.delta_secs();
-    if *elapsed > 2.0 {
+    if *elapsed > 2.0_f32.max(shot_settle() + 1.4) {
         app_exit.write(AppExit::Success);
     }
+}
+
+/// How long a screen is on display before it is photographed:
+/// `BEATBYTE_SHOT_SETTLE` seconds, 0.6 by default. Longer waits catch
+/// what appears after a rest — the browser's note preview needs the
+/// cursor still for over a second.
+fn shot_settle() -> f32 {
+    static SETTLE: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
+    *SETTLE.get_or_init(|| parse_shot_settle(std::env::var("BEATBYTE_SHOT_SETTLE").ok().as_deref()))
+}
+
+/// `"2.5"` → 2.5; missing, junk or out of range → the 0.6 default.
+#[must_use]
+pub fn parse_shot_settle(raw: Option<&str>) -> f32 {
+    raw.and_then(|r| r.trim().parse::<f32>().ok())
+        .filter(|s| s.is_finite() && (0.6..=30.0).contains(s))
+        .unwrap_or(0.6)
 }
 
 /// Where autopilot screenshots go.
@@ -576,7 +593,7 @@ fn autopilot_screenshots(
     // shot of a screen entered straight from boot used to catch its
     // black bars and its bright scanline mid-opening — which looked
     // like noise in a pixel comparison and was half the picture.
-    if in_state_for.1 < 0.6 || !shot_ready(*crt) {
+    if in_state_for.1 < shot_settle() || !shot_ready(*crt) {
         return;
     }
     let moment = match state.get() {
@@ -3645,6 +3662,17 @@ mod tests {
             vec![17.5, 39.0]
         );
         assert!(super::parse_shot_times("").is_empty());
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn shot_settle_defaults_and_clamps() {
+        assert_eq!(super::parse_shot_settle(None), 0.6);
+        assert_eq!(super::parse_shot_settle(Some(" 2.5 ")), 2.5);
+        // Shorter than the tube's power-on, absurdly long, or junk.
+        assert_eq!(super::parse_shot_settle(Some("0.1")), 0.6);
+        assert_eq!(super::parse_shot_settle(Some("999")), 0.6);
+        assert_eq!(super::parse_shot_settle(Some("soon")), 0.6);
     }
 
     #[test]

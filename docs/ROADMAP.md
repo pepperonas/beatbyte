@@ -4,6 +4,27 @@
 Rules of engagement live in [`CLAUDE.md`](../CLAUDE.md); this file
 holds the work itself.
 
+## Live note preview in the song browser (2026-10-18)
+
+*Verified: 2310 tests in the source inventory, including documentation examples;
+fmt, clippy `-D warnings --all-features`, `cargo test --workspace`; eight new
+pins seen to fail under a mutation; the preview photographed on the real library
+(8 626 songs) with `BEATBYTE_SHOT_SETTLE=4`.*
+
+- [x] Rest about a second on a song while its audio preview plays and the panel
+  shows its notes: a small five-lane highway scrolling in step with the preview,
+  the whole song's density curve lit up to where it stands, and the average and
+  peak notes per second — for the difficulty that is selected.
+- [x] The list stays as quick as before: nothing is read while the cursor moves,
+  the chart is read off the frame thread one at a time, the last eight are kept,
+  and an idle or unchanged frame writes no node.
+- [x] The preview's column is always laid out, so nothing beside it moves when
+  it appears; version chips no longer wrap in the narrower column.
+- [x] The song browser joined the list screens' query-conflict gate.
+- [ ] Follow-up: the highway follows the audio preview, so with SONG PREVIEW off
+  or the music volume at 0 it stays hidden — decide whether it should run on a
+  silent clock then.
+
 ## Track storage independence & in-app library settings (2026-10-16)
 
 *Verified: clippy `-D warnings`, unit tests in `beatbyte-core`, `beatbyte-library`, and `beatbyte-game` (1 182 tests across crates).*

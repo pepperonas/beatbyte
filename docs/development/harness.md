@@ -49,6 +49,7 @@ about them is compiled into a normal build.
 | `BEATBYTE_SHOT_HELP` | any value | With `BEATBYTE_SHOT_STATE=songselect`, opens the browser's ALL KEYS page (F1), every key for keyboard and pad. |
 | `BEATBYTE_SHOT_DELETE` | any value | With `BEATBYTE_SHOT_STATE=songselect`, opens the delete dialog for the library's first song (a picture only — nothing answers it). |
 | `BEATBYTE_SHOT_SEARCH` | filter text | With `BEATBYTE_SHOT_STATE=songselect` or `settings`, types that filter into the search, so the count, the first-match selection and the empty-result hint are photographable. |
+| `BEATBYTE_SHOT_SETTLE` | seconds (0.6–30) | With `BEATBYTE_SHOT_STATE`, how long the screen is on display before it is photographed (default 0.6). The browser's note preview appears only after the cursor has rested for a second and the song preview has found its hook — `BEATBYTE_SHOT_SETTLE=3` photographs it. |
 | `BEATBYTE_ABOUT_EXPANDED` | set | With `BEATBYTE_SHOT_STATE=about`, pre-expands the changelog section (default collapsed), so the expanded state is photographable. |
 | `BEATBYTE_AUTOPILOT_MC` | comma-separated title needles | Queues the named songs as an MC set and plays it as one continuous performance — the only automated path through the DJ crossfade between songs. Combines with `BEATBYTE_AUTOPILOT_PLAYERS`. |
 | `BEATBYTE_LYRICS_CORPUS` | directory | Where `beatbyte-cli lyrics-eval` finds the JamendoLyrics MultiLang corpus (`--corpus` overrides). The corpus is never in the repository. |

@@ -77,7 +77,8 @@ impl SongPreview {
         self.playing
     }
 
-    /// How long the cursor has rested on the current song.
+    /// How long the cursor has rested on the current song (it keeps
+    /// counting after the preview has started).
     #[must_use]
     pub fn rest_s(&self) -> f32 {
         self.rest_s
@@ -118,10 +119,12 @@ pub fn step(state: &mut SongPreview, cursor: Option<usize>, dt: f32, enabled: bo
     let Some(song) = cursor else {
         return Move::Nothing;
     };
+    // The rest keeps counting while the song plays: the note preview
+    // waits longer than the sound does, on this same clock.
+    state.rest_s += dt;
     if state.playing == Some(song) {
         return Move::Nothing;
     }
-    state.rest_s += dt;
     if state.rest_s >= REST_S {
         state.playing = Some(song);
         return Move::Start(song);
@@ -236,6 +239,18 @@ mod tests {
         assert_eq!(step(&mut state, Some(4), 0.016, true), Move::Stop);
         assert_eq!(state.playing(), None);
         assert_eq!(step(&mut state, Some(4), 0.2, true), Move::Nothing);
+    }
+
+    #[test]
+    fn the_rest_keeps_counting_after_the_preview_starts() {
+        // The note preview waits on this clock past REST_S.
+        let mut state = SongPreview::default();
+        step(&mut state, Some(0), 0.016, true);
+        for _ in 0..100 {
+            step(&mut state, Some(0), 0.02, true);
+        }
+        assert_eq!(state.playing(), Some(0));
+        assert!(state.rest_s() > 1.9, "{}", state.rest_s());
     }
 
     #[test]

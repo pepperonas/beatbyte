@@ -14,6 +14,24 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.19.1] - 2026-10-18
+
+### Added
+
+- **Note preview in the song browser**: rest the cursor on a song for about
+  a second and, while its preview plays, the panel shows a small five-lane
+  highway scrolling in step with the music, the whole song's note density
+  lit up to where the preview stands, and the average and peak notes per
+  second — for the selected difficulty. The chart is read off the frame
+  thread only after the rest (the last eight are kept), so arrowing through
+  the list stays as quick as before.
+- `BEATBYTE_SHOT_SETTLE` holds a photographed screen longer before the
+  shot, so what appears after a rest can be photographed.
+
+### Fixed
+
+- Version chips in the browser no longer break over two lines.
+
 ## [0.19.0] - 2026-10-17 — Beta 1
 
 ### Added

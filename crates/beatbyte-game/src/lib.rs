@@ -36,6 +36,7 @@ pub mod menu;
 pub mod menu_list;
 pub mod multiplayer;
 pub mod mute;
+pub mod note_preview;
 pub mod palette;
 pub mod players;
 pub mod players_ui;
@@ -605,6 +606,7 @@ mod access_tests {
                 crate::achievements_ui::AchievementsUiPlugin,
                 crate::gameplay::GameplayPlugin,
                 crate::sfx::SfxPlugin,
+                crate::song_select::SongSelectPlugin,
             ));
         let world = app.world_mut();
         let mut schedules = world
