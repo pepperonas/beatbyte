@@ -39,6 +39,9 @@ jobs:
       - name: Tests
         run: cargo test --workspace
 
+      - name: Product page tests (newest build + changelog on beatbyte.celox.io)
+        run: python3 -m unittest discover -s tools/website -v
+
       - name: Docs
         run: cargo doc --workspace --no-deps
         env:

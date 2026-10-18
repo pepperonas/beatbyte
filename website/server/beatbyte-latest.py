@@ -49,28 +49,28 @@ CONFIG = json.loads(r'''{
    "id": "macos",
    "label": "Download for macOS",
    "short": "macOS (Apple silicon)",
-   "asset": "^BeatByte-[0-9][0-9.]*-aarch64-apple-darwin\\.dmg$",
+   "asset": "^BeatByte-[0-9][0-9.]*(?:-[0-9A-Za-z.]+)?-aarch64-apple-darwin\\.dmg$",
    "requirement": "macOS 11+ · Apple silicon"
   },
   {
    "id": "macos-intel",
    "label": "Download for Intel Mac",
    "short": "macOS (Intel)",
-   "asset": "^BeatByte-[0-9][0-9.]*-x86_64-apple-darwin\\.dmg$",
+   "asset": "^BeatByte-[0-9][0-9.]*(?:-[0-9A-Za-z.]+)?-x86_64-apple-darwin\\.dmg$",
    "requirement": "macOS 11+ · Intel"
   },
   {
    "id": "windows",
    "label": "Download for Windows",
    "short": "Windows",
-   "asset": "^beatbyte-v[0-9][0-9.]*-x86_64-pc-windows-msvc\\.zip$",
+   "asset": "^beatbyte-v[0-9][0-9.]*(?:-[0-9A-Za-z.]+)?-x86_64-pc-windows-msvc\\.zip$",
    "requirement": "Windows 10/11 · 64-bit · portable zip"
   },
   {
    "id": "linux-appimage",
    "label": "Download AppImage",
    "short": "Linux AppImage",
-   "asset": "^BeatByte-[0-9][0-9.]*-x86_64\\.AppImage$",
+   "asset": "^BeatByte-[0-9][0-9.]*(?:-[0-9A-Za-z.]+)?-x86_64\\.AppImage$",
    "requirement": "Linux · x86_64"
   }
  ]

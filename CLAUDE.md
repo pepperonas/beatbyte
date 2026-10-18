@@ -173,7 +173,12 @@ Step by step in [`docs/ui/menu-system.md`](docs/ui/menu-system.md)
   (`/Users/martin/claude/_templates/apps/product-page`); edit
   `site.json`, rebuild with `build.py --force`, deploy with
   `website/deploy.sh`. New releases reach it by themselves (a VPS
-  timer); never hand-edit the generated files
+  timer); never hand-edit the generated files. **The page must
+  always offer the newest published build and the current
+  CHANGELOG** — `tools/website/test_product_page.py` (in CI) binds
+  the download patterns to the names the release workflow produces,
+  and `tools/website-check.sh` checks the live page after a release
+  (details: `docs/releases/process.md`, "Product page")
 
 ## Autonomous execution protocol
 
@@ -508,11 +513,24 @@ CHANGELOG entry, commit, `git tag -a vX.Y.Z`, push with `--tags`. The
 tag triggers `.github/workflows/release.yml` (~25 min: linux/macos/
 windows + DMG + AppImage) and creates a **draft** release — download an
 artifact, smoke-test it (neutral CWD!), then
-`gh release edit vX.Y.Z --draft=false --prerelease`. Local packaging:
+`gh release edit vX.Y.Z --draft=false --prerelease`. Within 15 minutes
+beatbyte.celox.io must show it: run `tools/website-check.sh` (exit 0) —
+a release is not done while the page still offers the previous build.
+Local packaging:
 `packaging/macos.sh` (.app + DMG), `packaging/appimage.sh`.
 
 ## Hard-won gotchas
 
+- **The product page froze on the last release that matched its
+  patterns, and nothing said so.** The download patterns in
+  `website/site.json` allowed `[0-9.]*` as the version; v0.19.0-beta.1
+  matched none, and the VPS timer kept "the last good state" — the page
+  offered v0.18.18 for a day after the beta shipped, with every run
+  failing quietly in its journal. A new kind of tag (pre-release,
+  `-rc`, renamed asset) must pass `tools/website/test_product_page.py`
+  before it is cut; the patterns live in `site.json`, and after
+  editing them the server script is regenerated with the kit and
+  copied to the VPS (`website/deploy.sh server`).
 - **Asset root**: Bevy's default exe-relative resolution misses the
   workspace `assets/` when running `target/debug/beatbyte` directly —
   and a **failed asset never retries**, so a missed font made ALL text
