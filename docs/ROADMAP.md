@@ -2496,3 +2496,9 @@ Not started without a deliberate roadmap edit pulling them forward:
   earlier drafts were deliberately deleted (tags remain).
 - Menu screenshot in the autopilot set is often black for the same
   occlusion reason; gameplay/results shots are the useful ones.
+
+## Audio-to-chart research prototype (2026-10-21)
+
+- [x] Preserve the standalone generator, configuration, tests and analysis reports under `tools/song-chart`; document setup and playing a generated chart in [the prototype guide](audio/song-chart-prototype.md).
+- [x] Benchmark 48 full songs with DSP and ML; record the negative timing comparison against the existing Mix generator without claiming a musical quality improvement.
+- [ ] Conduct human listening and play comparisons before considering integration into the application pipeline.

@@ -1,0 +1,16 @@
+Model selection 1/8: [GR-01] Can't Let Go
+Model selection 2/8: [GR-01] Speed of Sound
+Model selection 3/8: [BG-01] Through the Fire and Flames
+Model selection 4/8: [GR-01] Queen Bee
+Model selection 5/8: [GR-01] Do the Panic
+Model selection 6/8: [BG-01] MAGIC
+Model selection 7/8: [BG-01] You Make Me
+Model selection 8/8: [BG-01] DRIP
+{'development_excerpts': 8, 'matched_pairs': 8, 'macro_expert_f1_50ms': {'htdemucs': 0.39404526138880785, 'htdemucs_6s': 0.34649310866377037}, 'chosen': 'htdemucs', 'policy': '6s replaces default only with >=4 matched development clips and >0.02 absolute macro-F1 gain. Timing proxy only; no subjective guitar-isolation conclusion.'}
+worker complete: (0, 0)
+worker complete: (1, 0)
+Completed 48 full songs; 48 successful
+Additional previews: 22
+Audio/chart relationship diagnostics: 48 songs
+{'DSP': {'attempted': 48, 'successful': 48, 'errors': 0, 'macro_expert_f1_50ms': {'ours': 0.45831916383185806, 'baseline_mix': 0.5494792794397584, 'baseline_study': 0.44592923379377386}, 'median_generation_s': 5.9575, 'failure_penalized_f1': 0.45831916383185806}, 'ML': {'attempted': 48, 'successful': 48, 'errors': 0, 'macro_expert_f1_50ms': {'ours': 0.4431562967466191, 'baseline_mix': 0.5494792794397584, 'baseline_study': 0.4292251428052965}, 'median_generation_s': 66.3555, 'failure_penalized_f1': 0.44315629674661916}}
+{'charts': 132, 'failed': 0}

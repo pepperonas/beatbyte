@@ -1,0 +1,130 @@
+[
+  {
+    "path": "bbchart/preview.py",
+    "sha256": "61e53fcd4720164fa7bfaa4deae5883457ea8f871d2e694cd904bb24c78d0838"
+  },
+  {
+    "path": "bbchart/metrics.py",
+    "sha256": "6653205d612b5dba53acfaeaf2ac5f23cea8f6281b1a9b6309fc00b2d582d9d1"
+  },
+  {
+    "path": "bbchart/__init__.py",
+    "sha256": "7aa2214d3212986ec2939375c7efcf93d91d4432695f1715146f5abdc801d166"
+  },
+  {
+    "path": "bbchart/generator.py",
+    "sha256": "4c2545999b9110332c4ffbf6eb2d250b20205f45d7d06984e3ab3de1e08ba6d8"
+  },
+  {
+    "path": "bbchart/common.py",
+    "sha256": "358bf573f021d5b423ef6370306fedb98c3144454c732d1aaeacbe73801a3248"
+  },
+  {
+    "path": "bbchart/pipeline.py",
+    "sha256": "217924f60d0de3a5b88850b6bcc2f80d60b5cddaa7d15da2465aca638c72ba10"
+  },
+  {
+    "path": "bbchart/audio.py",
+    "sha256": "bcad0c616033928d5bc426bf3308384db8e0e9a5d1abd7decc792d9bafbda1e2"
+  },
+  {
+    "path": "bbchart/__main__.py",
+    "sha256": "c6f675ad7b17fef5d54b5a92937c2147c3c48f8e0e5a61780d68b9c820d58358"
+  },
+  {
+    "path": "bbchart/inventory.py",
+    "sha256": "dcf07ed416eb7cf8f9a0b9d6080f457a05bf000b0c9762104430dbf1550ffabb"
+  },
+  {
+    "path": "tools/audio_chart_relationships.py",
+    "sha256": "93632213bae0a5abfabfe48a16bf06f30daba88517689ff8ecf26a5a091c20c9"
+  },
+  {
+    "path": "tools/benchmark.py",
+    "sha256": "8f298e5142dcb7076566ae5ec0868815afa0400b5617c116f8a1fe90ec674720"
+  },
+  {
+    "path": "tools/model_selection.py",
+    "sha256": "a9280133660f5329d1dee354c94f5a5d95d4a22c44691825e3a5c32914dbb7de"
+  },
+  {
+    "path": "tools/enrich_results.py",
+    "sha256": "295d48ac8e69160e14247a7a8e56da0849a19891a73841043ddfc4189459d95c"
+  },
+  {
+    "path": "tools/summarize.py",
+    "sha256": "810101b7cd084acabcc62f4ca4f7b6687f4e4feeb8e85210a8630c61bd46836f"
+  },
+  {
+    "path": "tools/complete_previews.py",
+    "sha256": "21d1ef0b7871f00f46e8e73baaa216236ca976190b9e87ab32cfb872d87455ca"
+  },
+  {
+    "path": "tools/prepare_comparisons.py",
+    "sha256": "27ed9f2f099d479ef9422f6be70b9a3953a45adf9f7557aee96a1587467c4d03"
+  },
+  {
+    "path": "tools/verify_outputs.py",
+    "sha256": "b4b7faa7a3772e96fd17f09b7ff156344eaa0f4e3c702b84f018994671859c6f"
+  },
+  {
+    "path": "tools/report_inventory.py",
+    "sha256": "e52838bb7cb1fc67de1b4ec04634308b75122165d62b868be44e8a695205d8bd"
+  },
+  {
+    "path": "tools/prune_completed_pcm.py",
+    "sha256": "4695044581ed2fb5530ad703eab5fe45756bfe65a2fbec4d3055d91dcbb699bb"
+  },
+  {
+    "path": "tests/test_charting.py",
+    "sha256": "26801fdb0438e155c31077f8ec302b38825c4ee34af9369234a1a0bdb35e9a70"
+  },
+  {
+    "path": "tests/test_pipeline.py",
+    "sha256": "2aa0668accdf49f3be567ee55288c756e2bf0de5fb374bc0b33067fc4d71a2c6"
+  },
+  {
+    "path": "setup.sh",
+    "sha256": "542acb8e3d4049992f138652e135026dfca7895cdd5a1403696f683f35fc2dbb"
+  },
+  {
+    "path": "bbchart.sh",
+    "sha256": "996a84a45d25cf34e0e2bc3acac590cfa8fc07e3de3cd7af1d8d269a1a32efd0"
+  },
+  {
+    "path": "adapter/src/main.rs",
+    "sha256": "cb52ba8ba84975fe03565562b232ed0e575517792e7c0c4be52d4b8f69f4eb21"
+  },
+  {
+    "path": "adapter/Cargo.toml",
+    "sha256": "9c483f912b8127747e85a604199dc749528be7569f5f054a52a8f860d5c06d5e"
+  },
+  {
+    "path": "adapter/Cargo.lock",
+    "sha256": "a882a6145219ac3d0c581fcfdd9283b5d2cdbc19625f0edf68054dd0847722e9"
+  },
+  {
+    "path": "requirements.txt",
+    "sha256": "b1d47e7a02f3d4cfb38167bc8aec067f4d009c7b7c736176ec6a8dc48710c284"
+  },
+  {
+    "path": "requirements-lock.txt",
+    "sha256": "e94ee2372e591f1d668bdad4e7c7d62dc086067d942d1d4594d0f44cee24e1f6"
+  },
+  {
+    "path": "config/frozen.json",
+    "sha256": "57c795c33e1a841413e5e83b6be09e72f435371d7dfd9f8b2c0be4cc5d8ca97a"
+  },
+  {
+    "path": "config/calibrated.json",
+    "sha256": "57c795c33e1a841413e5e83b6be09e72f435371d7dfd9f8b2c0be4cc5d8ca97a"
+  },
+  {
+    "path": "config/default.json",
+    "sha256": "57c795c33e1a841413e5e83b6be09e72f435371d7dfd9f8b2c0be4cc5d8ca97a"
+  },
+  {
+    "path": "pyproject.toml",
+    "sha256": "1d4aeb80082b8e4efc0319a1d3414e62c940647724ca8887d5e928eef5b5ab52"
+  }
+]

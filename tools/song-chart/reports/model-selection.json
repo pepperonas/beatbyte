@@ -1,0 +1,202 @@
+[
+  {
+    "song": "[GR-01] Can't Let Go",
+    "category": "rock",
+    "split": "development",
+    "window": [
+      30,
+      90
+    ],
+    "htdemucs": {
+      "hits": 75,
+      "predicted": 138,
+      "reference": 203,
+      "precision": 0.5434782608695652,
+      "recall": 0.3694581280788177,
+      "f1": 0.4398826979472141
+    },
+    "htdemucs_6s": {
+      "hits": 34,
+      "predicted": 73,
+      "reference": 203,
+      "precision": 0.4657534246575342,
+      "recall": 0.16748768472906403,
+      "f1": 0.24637681159420285
+    }
+  },
+  {
+    "song": "[GR-01] Speed of Sound",
+    "category": "rock",
+    "split": "development",
+    "window": [
+      30,
+      90
+    ],
+    "htdemucs": {
+      "hits": 119,
+      "predicted": 282,
+      "reference": 159,
+      "precision": 0.4219858156028369,
+      "recall": 0.7484276729559748,
+      "f1": 0.5396825396825398
+    },
+    "htdemucs_6s": {
+      "hits": 127,
+      "predicted": 260,
+      "reference": 159,
+      "precision": 0.48846153846153845,
+      "recall": 0.7987421383647799,
+      "f1": 0.6062052505966586
+    }
+  },
+  {
+    "song": "[BG-01] Through the Fire and Flames",
+    "category": "metal",
+    "split": "development",
+    "window": [
+      30,
+      90
+    ],
+    "htdemucs": {
+      "hits": 165,
+      "predicted": 266,
+      "reference": 481,
+      "precision": 0.6203007518796992,
+      "recall": 0.34303534303534305,
+      "f1": 0.4417670682730924
+    },
+    "htdemucs_6s": {
+      "hits": 164,
+      "predicted": 220,
+      "reference": 481,
+      "precision": 0.7454545454545455,
+      "recall": 0.340956340956341,
+      "f1": 0.46790299572039945
+    }
+  },
+  {
+    "song": "[GR-01] Queen Bee",
+    "category": "metal",
+    "split": "development",
+    "window": [
+      30,
+      90
+    ],
+    "htdemucs": {
+      "hits": 108,
+      "predicted": 175,
+      "reference": 365,
+      "precision": 0.6171428571428571,
+      "recall": 0.2958904109589041,
+      "f1": 0.4
+    },
+    "htdemucs_6s": {
+      "hits": 109,
+      "predicted": 166,
+      "reference": 365,
+      "precision": 0.6566265060240963,
+      "recall": 0.29863013698630136,
+      "f1": 0.4105461393596987
+    }
+  },
+  {
+    "song": "[GR-01] Do the Panic",
+    "category": "pop",
+    "split": "development",
+    "window": [
+      30,
+      90
+    ],
+    "htdemucs": {
+      "hits": 100,
+      "predicted": 241,
+      "reference": 173,
+      "precision": 0.4149377593360996,
+      "recall": 0.5780346820809249,
+      "f1": 0.48309178743961356
+    },
+    "htdemucs_6s": {
+      "hits": 103,
+      "predicted": 252,
+      "reference": 173,
+      "precision": 0.4087301587301587,
+      "recall": 0.5953757225433526,
+      "f1": 0.48470588235294115
+    }
+  },
+  {
+    "song": "[BG-01] MAGIC",
+    "category": "pop",
+    "split": "development",
+    "window": [
+      30,
+      90
+    ],
+    "htdemucs": {
+      "hits": 25,
+      "predicted": 75,
+      "reference": 254,
+      "precision": 0.3333333333333333,
+      "recall": 0.0984251968503937,
+      "f1": 0.15197568389057753
+    },
+    "htdemucs_6s": {
+      "hits": 12,
+      "predicted": 39,
+      "reference": 254,
+      "precision": 0.3076923076923077,
+      "recall": 0.047244094488188976,
+      "f1": 0.08191126279863481
+    }
+  },
+  {
+    "song": "[BG-01] You Make Me",
+    "category": "electronic",
+    "split": "development",
+    "window": [
+      30,
+      90
+    ],
+    "htdemucs": {
+      "hits": 112,
+      "predicted": 237,
+      "reference": 214,
+      "precision": 0.47257383966244726,
+      "recall": 0.5233644859813084,
+      "f1": 0.4966740576496674
+    },
+    "htdemucs_6s": {
+      "hits": 62,
+      "predicted": 167,
+      "reference": 214,
+      "precision": 0.3712574850299401,
+      "recall": 0.2897196261682243,
+      "f1": 0.32545931758530183
+    }
+  },
+  {
+    "song": "[BG-01] DRIP",
+    "category": "electronic",
+    "split": "development",
+    "window": [
+      30,
+      90
+    ],
+    "htdemucs": {
+      "hits": 28,
+      "predicted": 146,
+      "reference": 135,
+      "precision": 0.1917808219178082,
+      "recall": 0.2074074074074074,
+      "f1": 0.199288256227758
+    },
+    "htdemucs_6s": {
+      "hits": 16,
+      "predicted": 80,
+      "reference": 135,
+      "precision": 0.2,
+      "recall": 0.11851851851851852,
+      "f1": 0.14883720930232558
+    }
+  }
+]

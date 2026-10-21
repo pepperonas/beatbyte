@@ -1,0 +1,22 @@
+test_chord_grouping_is_anchored (test_charting.ChartTests.test_chord_grouping_is_anchored) ... ok
+test_chords_follow_pitch_evidence (test_charting.ChartTests.test_chords_follow_pitch_evidence) ... ok
+test_determinism_and_real_validator (test_charting.ChartTests.test_determinism_and_real_validator) ... ok
+test_encoder_priming_and_variable_tempo_adapter (test_charting.ChartTests.test_encoder_priming_and_variable_tempo_adapter) ... ok
+test_nested_events_and_preserved_rests (test_charting.ChartTests.test_nested_events_and_preserved_rests) ... ok
+test_no_duplicate_lane_events_and_sustain_overlap (test_charting.ChartTests.test_no_duplicate_lane_events_and_sustain_overlap) ... ok
+test_one_to_one_matching_penalizes_excess_notes (test_charting.ChartTests.test_one_to_one_matching_penalizes_excess_notes) ... ok
+test_repeated_pitch_attacks_survive (test_charting.ChartTests.test_repeated_pitch_attacks_survive) ... ok
+test_silence_refuses_invented_chart (test_charting.ChartTests.test_silence_refuses_invented_chart) ... ok
+test_tempo_changes_and_triplets (test_charting.ChartTests.test_tempo_changes_and_triplets) ... ok
+test_audio_transients_have_correct_time_axis (test_pipeline.PipelineTests.test_audio_transients_have_correct_time_axis) ... ok
+test_different_existing_audio_is_never_overwritten (test_pipeline.PipelineTests.test_different_existing_audio_is_never_overwritten) ... ok
+test_existing_chart_is_preserved_before_any_analysis (test_pipeline.PipelineTests.test_existing_chart_is_preserved_before_any_analysis) ... ok
+test_invalid_source_reports_error (test_pipeline.PipelineTests.test_invalid_source_reports_error) ... ok
+test_manual_grid_works_without_periodic_audio (test_pipeline.PipelineTests.test_manual_grid_works_without_periodic_audio) ... ok
+test_real_demucs_cli_accepts_resource_profile (test_pipeline.PipelineTests.test_real_demucs_cli_accepts_resource_profile) ... ok
+test_silent_audio_never_publishes_playable_chart (test_pipeline.PipelineTests.test_silent_audio_never_publishes_playable_chart) ... ok
+
+----------------------------------------------------------------------
+Ran 17 tests in 2.616s
+
+OK

@@ -1,0 +1,21 @@
+{
+  "source": "development split only",
+  "transitions": {},
+  "defaults_kept": [
+    {
+      "level": "hard",
+      "verified_pairs": 1,
+      "reason": "fewer than five verified original development pairs; explicit game-design prior retained"
+    },
+    {
+      "level": "medium",
+      "verified_pairs": 1,
+      "reason": "fewer than five verified original development pairs; explicit game-design prior retained"
+    },
+    {
+      "level": "easy",
+      "verified_pairs": 1,
+      "reason": "fewer than five verified original development pairs; explicit game-design prior retained"
+    }
+  ]
+}

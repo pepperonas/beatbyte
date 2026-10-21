@@ -1,0 +1,16 @@
+[package]
+name = "bb-chart-adapter"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+beatbyte-core = { path = "../../../crates/beatbyte-core" }
+beatbyte-audio = { path = "../../../crates/beatbyte-audio" }
+beatbyte-chart = { path = "../../../crates/beatbyte-chart" }
+beatbyte-meter = { path = "../../../crates/beatbyte-meter" }
+beatbyte-poly = { path = "../../../crates/beatbyte-poly" }
+beatbyte-ml = { path = "../../../crates/beatbyte-ml" }
+serde_json = "1"
+
+# Standalone research tool; the application workspace remains independent.
+[workspace]

@@ -1,0 +1,8 @@
+{
+  "same_notes_and_difficulties": true,
+  "same_grid": true,
+  "validation": {
+    "errors": [],
+    "warnings": []
+  }
+}

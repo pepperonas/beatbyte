@@ -1,0 +1,28 @@
+{
+  "folders": 8626,
+  "readable": 8626,
+  "errors": 0,
+  "unique_song_groups": 8610,
+  "categories": {
+    "electronic": 385,
+    "rock": 4002,
+    "pop": 645,
+    "other": 1710,
+    "metal": 1884
+  },
+  "origins": {
+    "imported_levels_unverified": 8624,
+    "original_levels_verified": 2
+  },
+  "corpus": {
+    "rock/development": 8,
+    "rock/holdout": 4,
+    "metal/development": 8,
+    "metal/holdout": 4,
+    "pop/development": 8,
+    "pop/holdout": 4,
+    "electronic/development": 8,
+    "electronic/holdout": 4
+  },
+  "limitation": "Difficulty origin is unknown unless original source tracks were available. Unverified lower levels are not human ground truth."
+}

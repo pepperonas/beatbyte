@@ -1,0 +1,540 @@
+{
+  "status": "generated",
+  "mode": "ml",
+  "master_events": 602,
+  "phrases": [
+    {
+      "id": 0,
+      "start": 6.88,
+      "end": 7.074327891156463,
+      "events": 1,
+      "reused_mapping": false
+    },
+    {
+      "id": 1,
+      "start": 9.57,
+      "end": 9.687856689342404,
+      "events": 1,
+      "reused_mapping": true
+    },
+    {
+      "id": 2,
+      "start": 11.26,
+      "end": 17.053717913832198,
+      "events": 10,
+      "reused_mapping": false
+    },
+    {
+      "id": 3,
+      "start": 17.610996825396825,
+      "end": 18.68039863945578,
+      "events": 4,
+      "reused_mapping": false
+    },
+    {
+      "id": 4,
+      "start": 20.24,
+      "end": 21.922150113378688,
+      "events": 4,
+      "reused_mapping": false
+    },
+    {
+      "id": 5,
+      "start": 25.12,
+      "end": 25.371597278911565,
+      "events": 1,
+      "reused_mapping": true
+    },
+    {
+      "id": 6,
+      "start": 27.74,
+      "end": 33.712696598639454,
+      "events": 20,
+      "reused_mapping": false
+    },
+    {
+      "id": 7,
+      "start": 33.93,
+      "end": 36.89639818594104,
+      "events": 10,
+      "reused_mapping": false
+    },
+    {
+      "id": 8,
+      "start": 39.620000000000005,
+      "end": 39.98721995464853,
+      "events": 2,
+      "reused_mapping": false
+    },
+    {
+      "id": 9,
+      "start": 41.485,
+      "end": 41.95059002267574,
+      "events": 2,
+      "reused_mapping": false
+    },
+    {
+      "id": 10,
+      "start": 42.97226802721089,
+      "end": 46.0514798185941,
+      "events": 9,
+      "reused_mapping": false
+    },
+    {
+      "id": 11,
+      "start": 47.03832789115646,
+      "end": 48.27026938775511,
+      "events": 4,
+      "reused_mapping": false
+    },
+    {
+      "id": 12,
+      "start": 49.69,
+      "end": 52.4872589569161,
+      "events": 10,
+      "reused_mapping": false
+    },
+    {
+      "id": 13,
+      "start": 55.214999999999996,
+      "end": 56.18179954648526,
+      "events": 3,
+      "reused_mapping": false
+    },
+    {
+      "id": 14,
+      "start": 57.095,
+      "end": 59.21328752834467,
+      "events": 8,
+      "reused_mapping": false
+    },
+    {
+      "id": 15,
+      "start": 60.78191836734694,
+      "end": 67.0087179138322,
+      "events": 20,
+      "reused_mapping": false
+    },
+    {
+      "id": 16,
+      "start": 66.835,
+      "end": 73.10780770975056,
+      "events": 17,
+      "reused_mapping": false
+    },
+    {
+      "id": 17,
+      "start": 73.12,
+      "end": 77.17386757369614,
+      "events": 18,
+      "reused_mapping": false
+    },
+    {
+      "id": 18,
+      "start": 78.0,
+      "end": 78.47546893424037,
+      "events": 2,
+      "reused_mapping": false
+    },
+    {
+      "id": 19,
+      "start": 80.09053968253968,
+      "end": 81.49663083900226,
+      "events": 6,
+      "reused_mapping": false
+    },
+    {
+      "id": 20,
+      "start": 82.12,
+      "end": 82.69245850340135,
+      "events": 2,
+      "reused_mapping": false
+    },
+    {
+      "id": 21,
+      "start": 84.43333333333334,
+      "end": 85.58591065759637,
+      "events": 3,
+      "reused_mapping": false
+    },
+    {
+      "id": 22,
+      "start": 86.32000000000001,
+      "end": 87.36223718820862,
+      "events": 4,
+      "reused_mapping": false
+    },
+    {
+      "id": 23,
+      "start": 88.13,
+      "end": 89.71002040816326,
+      "events": 3,
+      "reused_mapping": false
+    },
+    {
+      "id": 24,
+      "start": 90.56,
+      "end": 91.46441088435374,
+      "events": 2,
+      "reused_mapping": false
+    },
+    {
+      "id": 25,
+      "start": 92.81,
+      "end": 93.9154,
+      "events": 4,
+      "reused_mapping": false
+    },
+    {
+      "id": 26,
+      "start": 94.88,
+      "end": 95.22732743764172,
+      "events": 1,
+      "reused_mapping": true
+    },
+    {
+      "id": 27,
+      "start": 97.24666666666667,
+      "end": 97.95823990929706,
+      "events": 2,
+      "reused_mapping": false
+    },
+    {
+      "id": 28,
+      "start": 99.91,
+      "end": 105.9394299319728,
+      "events": 25,
+      "reused_mapping": false
+    },
+    {
+      "id": 29,
+      "start": 105.95,
+      "end": 109.75007029478458,
+      "events": 15,
+      "reused_mapping": false
+    },
+    {
+      "id": 30,
+      "start": 111.36,
+      "end": 117.11464761904763,
+      "events": 26,
+      "reused_mapping": false
+    },
+    {
+      "id": 31,
+      "start": 117.36,
+      "end": 127.50167074829932,
+      "events": 30,
+      "reused_mapping": false
+    },
+    {
+      "id": 32,
+      "start": 127.6293804988662,
+      "end": 133.7516902494331,
+      "events": 26,
+      "reused_mapping": false
+    },
+    {
+      "id": 33,
+      "start": 135.76,
+      "end": 137.95706984126983,
+      "events": 5,
+      "reused_mapping": false
+    },
+    {
+      "id": 34,
+      "start": 139.5,
+      "end": 139.9784897959184,
+      "events": 2,
+      "reused_mapping": false
+    },
+    {
+      "id": 35,
+      "start": 144.88046802721087,
+      "end": 146.971547845805,
+      "events": 7,
+      "reused_mapping": false
+    },
+    {
+      "id": 36,
+      "start": 148.64666666666668,
+      "end": 154.62765850340136,
+      "events": 28,
+      "reused_mapping": false
+    },
+    {
+      "id": 37,
+      "start": 154.66248843537414,
+      "end": 160.76157823129253,
+      "events": 27,
+      "reused_mapping": false
+    },
+    {
+      "id": 38,
+      "start": 161.12,
+      "end": 165.25849115646258,
+      "events": 19,
+      "reused_mapping": false
+    },
+    {
+      "id": 39,
+      "start": 166.12,
+      "end": 168.39446893424036,
+      "events": 9,
+      "reused_mapping": false
+    },
+    {
+      "id": 40,
+      "start": 169.24666666666667,
+      "end": 170.4855487528345,
+      "events": 4,
+      "reused_mapping": false
+    },
+    {
+      "id": 41,
+      "start": 173.44,
+      "end": 174.7838081632653,
+      "events": 5,
+      "reused_mapping": false
+    },
+    {
+      "id": 42,
+      "start": 175.54500000000002,
+      "end": 176.3176090702948,
+      "events": 3,
+      "reused_mapping": false
+    },
+    {
+      "id": 43,
+      "start": 178.12,
+      "end": 178.23453922902493,
+      "events": 1,
+      "reused_mapping": true
+    },
+    {
+      "id": 44,
+      "start": 178.8,
+      "end": 179.00208163265305,
+      "events": 1,
+      "reused_mapping": true
+    },
+    {
+      "id": 45,
+      "start": 179.67000000000002,
+      "end": 179.79156009070294,
+      "events": 1,
+      "reused_mapping": true
+    },
+    {
+      "id": 46,
+      "start": 180.33499999999998,
+      "end": 180.720358276644,
+      "events": 2,
+      "reused_mapping": false
+    },
+    {
+      "id": 47,
+      "start": 181.92,
+      "end": 183.91566984126985,
+      "events": 9,
+      "reused_mapping": false
+    },
+    {
+      "id": 48,
+      "start": 184.5,
+      "end": 184.6470984126984,
+      "events": 1,
+      "reused_mapping": true
+    },
+    {
+      "id": 49,
+      "start": 185.7745501133787,
+      "end": 185.9603097505669,
+      "events": 1,
+      "reused_mapping": true
+    },
+    {
+      "id": 50,
+      "start": 186.78590204081632,
+      "end": 187.12259138321997,
+      "events": 2,
+      "reused_mapping": false
+    },
+    {
+      "id": 51,
+      "start": 187.94,
+      "end": 188.0862195011338,
+      "events": 1,
+      "reused_mapping": true
+    },
+    {
+      "id": 52,
+      "start": 189.91026984126984,
+      "end": 195.68428027210885,
+      "events": 21,
+      "reused_mapping": false
+    },
+    {
+      "id": 53,
+      "start": 195.56,
+      "end": 201.55117052154196,
+      "events": 27,
+      "reused_mapping": false
+    },
+    {
+      "id": 54,
+      "start": 201.55,
+      "end": 207.54577052154195,
+      "events": 27,
+      "reused_mapping": false
+    },
+    {
+      "id": 55,
+      "start": 207.57,
+      "end": 209.25372108843536,
+      "events": 8,
+      "reused_mapping": false
+    },
+    {
+      "id": 56,
+      "start": 210.04319954648525,
+      "end": 211.15904126984128,
+      "events": 4,
+      "reused_mapping": false
+    },
+    {
+      "id": 57,
+      "start": 211.94851972789115,
+      "end": 224.5078925170068,
+      "events": 57,
+      "reused_mapping": false
+    },
+    {
+      "id": 58,
+      "start": 224.49,
+      "end": 231.4196807256236,
+      "events": 36,
+      "reused_mapping": false
+    }
+  ],
+  "stats": {
+    "easy": {
+      "gems": 177,
+      "events": 177,
+      "events_per_second": 0.7503449066099026,
+      "active_events_per_second": 0.7935084730565767,
+      "nps_median": 1.0,
+      "nps_p95": 2.0,
+      "chord_share": 0.0,
+      "sustain_share": 0.11864406779661017,
+      "hopo_share": 0.0,
+      "median_gap_s": 1.1200000000000045,
+      "mean_lane_jump": 0.6931818181818182,
+      "fast_large_jumps": 0,
+      "lanes": [
+        0,
+        1,
+        2
+      ]
+    },
+    "medium": {
+      "gems": 389,
+      "events": 318,
+      "events_per_second": 1.3480772898415199,
+      "active_events_per_second": 1.4172566714360622,
+      "nps_median": 1.0,
+      "nps_p95": 3.0,
+      "chord_share": 0.22327044025157233,
+      "sustain_share": 0.1289308176100629,
+      "hopo_share": 0.0,
+      "median_gap_s": 0.4749999999999943,
+      "mean_lane_jump": 0.7381703470031545,
+      "fast_large_jumps": 0,
+      "lanes": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "hard": {
+      "gems": 642,
+      "events": 511,
+      "events_per_second": 2.166249984619549,
+      "active_events_per_second": 2.277415594666125,
+      "nps_median": 2.0,
+      "nps_p95": 5.0,
+      "chord_share": 0.2563600782778865,
+      "sustain_share": 0.11545988258317025,
+      "hopo_share": 0.050880626223091974,
+      "median_gap_s": 0.254920499999983,
+      "mean_lane_jump": 0.984313725490196,
+      "fast_large_jumps": 0,
+      "lanes": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    "expert": {
+      "gems": 763,
+      "events": 602,
+      "events_per_second": 2.5520205298257705,
+      "active_events_per_second": 2.6829827553600927,
+      "nps_median": 2.0,
+      "nps_p95": 6.0,
+      "chord_share": 0.23920265780730898,
+      "sustain_share": 0.10631229235880399,
+      "hopo_share": 0.10299003322259136,
+      "median_gap_s": 0.2150000000000034,
+      "mean_lane_jump": 0.9900166389351082,
+      "fast_large_jumps": 0,
+      "lanes": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
+    }
+  },
+  "human_playtest": "not_performed",
+  "warning": "Prototype: model errors and source leakage can create musically wrong notes. Timing agreement alone does not prove playability.",
+  "validation": {
+    "errors": [],
+    "warnings": []
+  },
+  "elapsed_s": 1.556,
+  "source_audio_sha256": "c21605a0de5e4cb0d64ae63b0b5746e2079ce199c9265c2a4b146e548c2fc2dc",
+  "config_sha256": "5fa86aceafd61a218204d10ecdc2838a4b9d71755284f9a568e946f7a098c068",
+  "meter": {
+    "dsp_comparison": "Adopted",
+    "id": "beat-this",
+    "outcome": "Adopted",
+    "policy": "explicit-model-grid-v2",
+    "sha256": "5f810debe53459b559127fb55bbad40035bb47cc567b20e501670f968c770f02"
+  },
+  "separation": {
+    "model": "htdemucs",
+    "device": "mps",
+    "seed": 0,
+    "shifts": 0,
+    "overlap": 0.1,
+    "segment_s": 5.0,
+    "checkpoints": {
+      "5c90dfd2-34c22ccb.th": "34c22ccb381c6f9fdbf324f04e1e2fe21aaaf293f5ded163a162697ff9a02ddd",
+      "955717e8-8726e21a.th": "8726e21a993978c7ba086d3872e7608d7d5bfca646ca4aca459ffda844faa8b4"
+    },
+    "source": "other",
+    "note": "other is not an isolated guitar; 6s guitar is experimental"
+  },
+  "tonal_model": {
+    "model": "basic-pitch",
+    "sha256": "2c3c1d144bfa61ad236e92e169c13535c880469a12a047d4e73451f2c059a0ec"
+  },
+  "limitations": [],
+  "generator_code_sha256": "08b298877dd7ccdf8282001ef42bedc87c77d663aac54104644fd634e302be29",
+  "adapter_sha256": "4182359342df2ff086e4eb17e0e54d3fc67810046230ff0f5411e4b36bfa63bc"
+}

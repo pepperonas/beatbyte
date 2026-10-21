@@ -1,0 +1,29 @@
+[1/24] ml: Pearl Jam / [GR-01] Speed of Sound
+[2/24] ml: The Prodigy / [BG-01] You'll Be Under My Wheels
+[3/24] ml: NOFX / [BG-01] The Separation of Church and Skate
+[4/24] ml: Shinedown / [BG-01] A Symptom of Being Human
+[5/24] ml: James Gang / [GR-01] Walk Away
+[6/24] ml: Bring Me The Horizon / [BG-01] Top 10 staTues tHat CriEd bloOd
+[7/24] ml: Tina Guo / [GR-01] Queen Bee
+[8/24] ml: TRUSTcompany / [GR-01] Downfall
+[9/24] ml: Pantera / [GR-01] Drag the Waters
+[10/24] ml: Metallica / [BG-01] Shadows Follow
+[11/24] ml: Sabaton / [BG-01] The Attack of the Dead Men
+[12/24] ml: Deftones / [BG-01] infinite source
+[13/24] ml: Ado / [BG-01] MAGIC
+[14/24] ml: The Lumineers / [BG-01] Cleopatra
+[15/24] ml: Sabrina Carpenter / [BG-01] Juno
+[16/24] ml: Lady Gaga / [BG-01] The Fame
+[17/24] ml: Avril Lavigne / [BG-01] Complicated
+[18/24] ml: Selena / [BG-01] El Chico Del Apartamento 512
+[19/24] ml: BABYMONSTER / [BG-01] DRIP
+[20/24] ml: Daft Punk / [BG-01] One More Time / Aerodynamic
+[21/24] ml: Depeche Mode / [GR-01] Never Let Me Down Again
+[22/24] ml: Carly Rae Jepsen / [GR-01] Call Me Maybe
+[23/24] ml: Zef / [GR-01] Gambit
+[24/24] ml: Kasino / [BG-01] Can't Get Over
+{
+  "root": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1",
+  "songs": 24,
+  "ok": 24
+}

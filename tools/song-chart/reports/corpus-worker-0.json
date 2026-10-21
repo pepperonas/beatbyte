@@ -1,0 +1,2625 @@
+[
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/death-of-the-cool--cant-let-go--gr01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/death-of-the-cool--cant-let-go--gr01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/death-of-the-cool--cant-let-go--gr01/song.m4a",
+    "title": "[GR-01] Can't Let Go",
+    "artist": "Death of the Cool",
+    "duration_s": 235.874,
+    "genres": [
+      "Rock"
+    ],
+    "category": "rock",
+    "group": "death of the cool|can t let go",
+    "content_hash": "fnv1a64:753ce8bfa9cff9eb:7730067",
+    "charter": "Harmonix",
+    "source_format": "mid",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 275,
+        "events": 275,
+        "events_per_second": 1.1658766968805379,
+        "active_events_per_second": 1.2531504886822105,
+        "nps_median": 1.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.2109090909090909,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.5625,
+        "mean_lane_jump": 0.7299270072992701,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2
+        ]
+      },
+      "medium": {
+        "gems": 466,
+        "events": 432,
+        "events_per_second": 1.8314863020086996,
+        "active_events_per_second": 1.9685854949480541,
+        "nps_median": 2.0,
+        "nps_p95": 5.0,
+        "chord_share": 0.0787037037037037,
+        "sustain_share": 0.13425925925925927,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.375,
+        "mean_lane_jump": 0.605568445475638,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "hard": {
+        "gems": 646,
+        "events": 543,
+        "events_per_second": 2.302076532385935,
+        "active_events_per_second": 2.474402601288874,
+        "nps_median": 2.0,
+        "nps_p95": 6.0,
+        "chord_share": 0.18968692449355432,
+        "sustain_share": 0.11049723756906077,
+        "hopo_share": 0.0718232044198895,
+        "median_gap_s": 0.1875,
+        "mean_lane_jump": 0.9944649446494465,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 955,
+        "events": 627,
+        "events_per_second": 2.6581988688876264,
+        "active_events_per_second": 2.85718311419544,
+        "nps_median": 2.0,
+        "nps_p95": 6.0,
+        "chord_share": 0.5023923444976076,
+        "sustain_share": 0.1547049441786284,
+        "hopo_share": 0.15311004784688995,
+        "median_gap_s": 0.1875,
+        "mean_lane_jump": 1.0244941427050052,
+        "fast_large_jumps": 9,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "development"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/nickelback--someday--gr01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/nickelback--someday--gr01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/nickelback--someday--gr01/song.m4a",
+    "title": "[GR-01] Someday",
+    "artist": "Nickelback",
+    "duration_s": 206.18,
+    "genres": [
+      "Rock"
+    ],
+    "category": "rock",
+    "group": "nickelback|someday",
+    "content_hash": "fnv1a64:0ae8a43e1a990508:6303989",
+    "charter": "Harmonix",
+    "source_format": "mid",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 132,
+        "events": 132,
+        "events_per_second": 0.6402172858667183,
+        "active_events_per_second": 0.6740598228909856,
+        "nps_median": 1.0,
+        "nps_p95": 1.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.022727272727272728,
+        "hopo_share": 0.0,
+        "median_gap_s": 1.472453999999999,
+        "mean_lane_jump": 1.083969465648855,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "medium": {
+        "gems": 455,
+        "events": 245,
+        "events_per_second": 1.1882820836162575,
+        "active_events_per_second": 1.2510958833961476,
+        "nps_median": 1.0,
+        "nps_p95": 2.0,
+        "chord_share": 0.8571428571428571,
+        "sustain_share": 0.012244897959183673,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.7362439999999992,
+        "mean_lane_jump": 0.5717213114754098,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "hard": {
+        "gems": 676,
+        "events": 390,
+        "events_per_second": 1.8915510718789406,
+        "active_events_per_second": 1.991540385814276,
+        "nps_median": 2.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.7333333333333333,
+        "sustain_share": 0.015384615384615385,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.36814850000000376,
+        "mean_lane_jump": 0.7904884318766067,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 1108,
+        "events": 653,
+        "events_per_second": 3.1671355126588416,
+        "active_events_per_second": 3.32825879202947,
+        "nps_median": 3.0,
+        "nps_p95": 5.0,
+        "chord_share": 0.5160796324655437,
+        "sustain_share": 0.033690658499234305,
+        "hopo_share": 0.0903522205206738,
+        "median_gap_s": 0.3661845000000028,
+        "mean_lane_jump": 0.8179959100204498,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "development"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/spinning-chain--pain-i-feel--gr01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/spinning-chain--pain-i-feel--gr01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/spinning-chain--pain-i-feel--gr01/song.m4a",
+    "title": "[GR-01] Pain I Feel",
+    "artist": "Spinning Chain",
+    "duration_s": 217.169,
+    "genres": [
+      "Rock"
+    ],
+    "category": "rock",
+    "group": "spinning chain|pain i feel",
+    "content_hash": "fnv1a64:4cc0ce29458cee38:7105932",
+    "charter": "TSD-Randy",
+    "source_format": "mid",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 186,
+        "events": 186,
+        "events_per_second": 0.8564758321859933,
+        "active_events_per_second": 1.0067198223392815,
+        "nps_median": 1.0,
+        "nps_p95": 2.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.08602150537634409,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.9523800000000051,
+        "mean_lane_jump": 0.8216216216216217,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "medium": {
+        "gems": 549,
+        "events": 336,
+        "events_per_second": 1.5471821484650203,
+        "active_events_per_second": 1.8139155927526056,
+        "nps_median": 2.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.6339285714285714,
+        "sustain_share": 0.050595238095238096,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.47619100000000003,
+        "mean_lane_jump": 0.4597014925373134,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "hard": {
+        "gems": 928,
+        "events": 571,
+        "events_per_second": 2.6292887106354956,
+        "active_events_per_second": 3.078619689593667,
+        "nps_median": 3.0,
+        "nps_p95": 4.0,
+        "chord_share": 0.6252189141856392,
+        "sustain_share": 0.05604203152364273,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.23809699999999623,
+        "mean_lane_jump": 0.4105263157894737,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 1061,
+        "events": 653,
+        "events_per_second": 3.006874830201364,
+        "active_events_per_second": 3.5207332001833,
+        "nps_median": 4.0,
+        "nps_p95": 5.0,
+        "chord_share": 0.6248085758039816,
+        "sustain_share": 0.05053598774885146,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.23809500000000128,
+        "mean_lane_jump": 0.39263803680981596,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "development"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/the-warning--automatic-sun--bg01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/the-warning--automatic-sun--bg01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/the-warning--automatic-sun--bg01/song.m4a",
+    "title": "[BG-01] Automatic Sun",
+    "artist": "The Warning",
+    "duration_s": 227.462,
+    "genres": [
+      "Rock"
+    ],
+    "category": "rock",
+    "group": "the warning|automatic sun",
+    "content_hash": "fnv1a64:5a5d2bbed0837560:7406438",
+    "charter": "CanOfPepsii",
+    "source_format": "chart",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 173,
+        "events": 173,
+        "events_per_second": 0.7605666001354072,
+        "active_events_per_second": 0.924123099004285,
+        "nps_median": 1.0,
+        "nps_p95": 2.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.9942196531791907,
+        "hopo_share": 0.005780346820809248,
+        "median_gap_s": 0.5714285714285765,
+        "mean_lane_jump": 0.6569767441860465,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "medium": {
+        "gems": 354,
+        "events": 345,
+        "events_per_second": 1.516736861541708,
+        "active_events_per_second": 1.8372962283715457,
+        "nps_median": 2.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.02608695652173913,
+        "sustain_share": 0.7159420289855073,
+        "hopo_share": 0.06086956521739131,
+        "median_gap_s": 0.5714285714285694,
+        "mean_lane_jump": 0.5901162790697675,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "hard": {
+        "gems": 414,
+        "events": 405,
+        "events_per_second": 1.780517185288092,
+        "active_events_per_second": 2.156826007218771,
+        "nps_median": 2.0,
+        "nps_p95": 4.0,
+        "chord_share": 0.022222222222222223,
+        "sustain_share": 0.6098765432098765,
+        "hopo_share": 0.21975308641975308,
+        "median_gap_s": 0.47678571428571104,
+        "mean_lane_jump": 0.9207920792079208,
+        "fast_large_jumps": 4,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 464,
+        "events": 455,
+        "events_per_second": 2.0003341217434123,
+        "active_events_per_second": 2.423100822924792,
+        "nps_median": 2.0,
+        "nps_p95": 5.0,
+        "chord_share": 0.01978021978021978,
+        "sustain_share": 0.5428571428571428,
+        "hopo_share": 0.3208791208791209,
+        "median_gap_s": 0.2857142857142918,
+        "mean_lane_jump": 1.0044052863436124,
+        "fast_large_jumps": 7,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "development"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/against-me--stop--gr01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/against-me--stop--gr01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/against-me--stop--gr01/song.m4a",
+    "title": "[GR-01] Stop!",
+    "artist": "Against Me!",
+    "duration_s": 170.375,
+    "genres": [
+      "Punk"
+    ],
+    "category": "rock",
+    "group": "against me|stop",
+    "content_hash": "fnv1a64:ccb77667e25179ce:5479649",
+    "charter": "Harmonix",
+    "source_format": "mid",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 168,
+        "events": 168,
+        "events_per_second": 0.9860601614086574,
+        "active_events_per_second": 1.13915135563334,
+        "nps_median": 1.0,
+        "nps_p95": 2.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.0,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.7562984999999998,
+        "mean_lane_jump": 0.32934131736526945,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2
+        ]
+      },
+      "medium": {
+        "gems": 409,
+        "events": 279,
+        "events_per_second": 1.6375641966250918,
+        "active_events_per_second": 1.8918049298910824,
+        "nps_median": 2.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.4659498207885305,
+        "sustain_share": 0.043010752688172046,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.5041989999999998,
+        "mean_lane_jump": 0.5683453237410072,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "hard": {
+        "gems": 710,
+        "events": 450,
+        "events_per_second": 2.641232575201761,
+        "active_events_per_second": 3.0512982740178747,
+        "nps_median": 3.0,
+        "nps_p95": 4.0,
+        "chord_share": 0.5777777777777777,
+        "sustain_share": 0.16444444444444445,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.2520994999999999,
+        "mean_lane_jump": 0.45657015590200445,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 893,
+        "events": 528,
+        "events_per_second": 3.099046221570066,
+        "active_events_per_second": 3.58018997484764,
+        "nps_median": 4.0,
+        "nps_p95": 6.0,
+        "chord_share": 0.6022727272727273,
+        "sustain_share": 0.20075757575757575,
+        "hopo_share": 0.06439393939393939,
+        "median_gap_s": 0.2520994999999999,
+        "mean_lane_jump": 0.40227703984819735,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "holdout"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/the-beatles--the-word--gr01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/the-beatles--the-word--gr01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/the-beatles--the-word--gr01/song.m4a",
+    "title": "[GR-01] The Word",
+    "artist": "The Beatles",
+    "duration_s": 175.004,
+    "genres": [
+      "Classic Rock"
+    ],
+    "category": "rock",
+    "group": "the beatles|the word",
+    "content_hash": "fnv1a64:0c8d9058d9531990:5675615",
+    "charter": "Harmonix",
+    "source_format": "mid",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 165,
+        "events": 165,
+        "events_per_second": 0.9428355923293182,
+        "active_events_per_second": 1.0126754235196196,
+        "nps_median": 1.0,
+        "nps_p95": 2.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.07272727272727272,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.9775959999999984,
+        "mean_lane_jump": 0.7378048780487805,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2
+        ]
+      },
+      "medium": {
+        "gems": 334,
+        "events": 211,
+        "events_per_second": 1.205686727160522,
+        "active_events_per_second": 1.2949970567432711,
+        "nps_median": 1.0,
+        "nps_p95": 2.0,
+        "chord_share": 0.5829383886255924,
+        "sustain_share": 0.10426540284360189,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.7387357500000107,
+        "mean_lane_jump": 0.5119047619047619,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "hard": {
+        "gems": 355,
+        "events": 232,
+        "events_per_second": 1.3256839843660717,
+        "active_events_per_second": 1.4173588177320136,
+        "nps_median": 1.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.5301724137931034,
+        "sustain_share": 0.2801724137931034,
+        "hopo_share": 0.07327586206896551,
+        "median_gap_s": 0.7258020000000016,
+        "mean_lane_jump": 0.5043290043290043,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 507,
+        "events": 261,
+        "events_per_second": 1.4913944824118306,
+        "active_events_per_second": 1.5945286699485153,
+        "nps_median": 1.0,
+        "nps_p95": 4.0,
+        "chord_share": 0.47126436781609193,
+        "sustain_share": 0.3716475095785441,
+        "hopo_share": 0.2222222222222222,
+        "median_gap_s": 0.5365675000000039,
+        "mean_lane_jump": 0.6705128205128206,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "holdout"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/dragonforce--through-the-fire-and-flames--bg01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/dragonforce--through-the-fire-and-flames--bg01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/dragonforce--through-the-fire-and-flames--bg01/song.m4a",
+    "title": "[BG-01] Through the Fire and Flames",
+    "artist": "DRAGONFORCE",
+    "duration_s": 441.718,
+    "genres": [
+      "Power Metal"
+    ],
+    "category": "metal",
+    "group": "dragonforce|through the fire and flames",
+    "content_hash": "fnv1a64:f284eb9d62dc5524:14308387",
+    "charter": "Stargazer",
+    "source_format": "chart",
+    "origin": "original_levels_verified",
+    "original_difficulties": [
+      "easy",
+      "medium",
+      "hard",
+      "expert"
+    ],
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 3837,
+        "events": 3640,
+        "events_per_second": 8.240551664183936,
+        "active_events_per_second": 8.339987937477046,
+        "nps_median": 8.0,
+        "nps_p95": 14.699999999999818,
+        "chord_share": 0.03324175824175824,
+        "sustain_share": 0.04368131868131868,
+        "hopo_share": 0.43873626373626373,
+        "median_gap_s": 0.07500000000000284,
+        "mean_lane_jump": 1.175139690391133,
+        "fast_large_jumps": 452,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "medium": {
+        "gems": 3837,
+        "events": 3640,
+        "events_per_second": 8.240551664183936,
+        "active_events_per_second": 8.339987937477046,
+        "nps_median": 8.0,
+        "nps_p95": 14.699999999999818,
+        "chord_share": 0.03324175824175824,
+        "sustain_share": 0.04368131868131868,
+        "hopo_share": 0.43873626373626373,
+        "median_gap_s": 0.07500000000000284,
+        "mean_lane_jump": 1.175139690391133,
+        "fast_large_jumps": 452,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "hard": {
+        "gems": 3837,
+        "events": 3640,
+        "events_per_second": 8.240551664183936,
+        "active_events_per_second": 8.339987937477046,
+        "nps_median": 8.0,
+        "nps_p95": 14.699999999999818,
+        "chord_share": 0.03324175824175824,
+        "sustain_share": 0.04368131868131868,
+        "hopo_share": 0.43873626373626373,
+        "median_gap_s": 0.07500000000000284,
+        "mean_lane_jump": 1.175139690391133,
+        "fast_large_jumps": 452,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 3802,
+        "events": 3590,
+        "events_per_second": 8.127357273192398,
+        "active_events_per_second": 8.226841367410762,
+        "nps_median": 8.0,
+        "nps_p95": 14.0,
+        "chord_share": 0.037604456824512536,
+        "sustain_share": 0.044846796657381616,
+        "hopo_share": 0.43760445682451254,
+        "median_gap_s": 0.07500000000000284,
+        "mean_lane_jump": 1.081545462988762,
+        "fast_large_jumps": 336,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "development"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/ultra-vomit--mountains-of-maths--gr01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/ultra-vomit--mountains-of-maths--gr01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/ultra-vomit--mountains-of-maths--gr01/song.m4a",
+    "title": "[GR-01] Mountains of Maths",
+    "artist": "Ultra Vomit",
+    "duration_s": 116.418,
+    "genres": [
+      "Metal"
+    ],
+    "category": "metal",
+    "group": "ultra vomit|mountains of maths",
+    "content_hash": "fnv1a64:7f701295d50612c4:3801961",
+    "charter": "RhythmAuthors",
+    "source_format": "mid",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 109,
+        "events": 109,
+        "events_per_second": 0.9362813310656427,
+        "active_events_per_second": 1.0267025940988006,
+        "nps_median": 1.0,
+        "nps_p95": 2.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.10091743119266056,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.9183979999999963,
+        "mean_lane_jump": 1.3148148148148149,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "medium": {
+        "gems": 356,
+        "events": 209,
+        "events_per_second": 1.795255029291003,
+        "active_events_per_second": 1.9595540909967053,
+        "nps_median": 2.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.7033492822966507,
+        "sustain_share": 0.05741626794258373,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.45852399999999705,
+        "mean_lane_jump": 0.9927884615384616,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "hard": {
+        "gems": 645,
+        "events": 394,
+        "events_per_second": 3.3843563710079194,
+        "active_events_per_second": 3.6940876165201044,
+        "nps_median": 4.0,
+        "nps_p95": 5.0,
+        "chord_share": 0.6370558375634517,
+        "sustain_share": 0.10152284263959391,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.2681740000000019,
+        "mean_lane_jump": 0.7709923664122137,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 977,
+        "events": 643,
+        "events_per_second": 5.523200879589067,
+        "active_events_per_second": 6.001004958342017,
+        "nps_median": 6.0,
+        "nps_p95": 11.0,
+        "chord_share": 0.5194401244167963,
+        "sustain_share": 0.06220839813374806,
+        "hopo_share": 0.006220839813374806,
+        "median_gap_s": 0.15045733333332834,
+        "mean_lane_jump": 0.4750778816199377,
+        "fast_large_jumps": 7,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "development"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/wig-wam--do-ya-wanna-taste-it--bg01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/wig-wam--do-ya-wanna-taste-it--bg01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/wig-wam--do-ya-wanna-taste-it--bg01/song.m4a",
+    "title": "[BG-01] Do Ya Wanna Taste It",
+    "artist": "Wig Wam",
+    "duration_s": 176.828,
+    "genres": [
+      "Glam Metal"
+    ],
+    "category": "metal",
+    "group": "wig wam|do ya wanna taste it",
+    "content_hash": "fnv1a64:e4126fc9cdb2b967:5763172",
+    "charter": "LMBECIL1832",
+    "source_format": "chart",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 241,
+        "events": 241,
+        "events_per_second": 1.3629063270522768,
+        "active_events_per_second": 1.4212820512820512,
+        "nps_median": 1.0,
+        "nps_p95": 2.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.0995850622406639,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.6521739130434767,
+        "mean_lane_jump": 0.6833333333333333,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2
+        ]
+      },
+      "medium": {
+        "gems": 707,
+        "events": 451,
+        "events_per_second": 2.550501051869613,
+        "active_events_per_second": 2.654638515674984,
+        "nps_median": 3.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.5676274944567627,
+        "sustain_share": 0.08869179600886919,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.3260869565217419,
+        "mean_lane_jump": 0.6211111111111111,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "hard": {
+        "gems": 765,
+        "events": 495,
+        "events_per_second": 2.799330422783722,
+        "active_events_per_second": 2.9136276391554703,
+        "nps_median": 3.0,
+        "nps_p95": 5.0,
+        "chord_share": 0.5454545454545454,
+        "sustain_share": 0.08888888888888889,
+        "hopo_share": 0.16565656565656567,
+        "median_gap_s": 0.3260869565217348,
+        "mean_lane_jump": 0.6730769230769231,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 833,
+        "events": 554,
+        "events_per_second": 3.1329879883276406,
+        "active_events_per_second": 3.2609085092770314,
+        "nps_median": 3.0,
+        "nps_p95": 5.0,
+        "chord_share": 0.5036101083032491,
+        "sustain_share": 0.09566787003610108,
+        "hopo_share": 0.2148014440433213,
+        "median_gap_s": 0.3260869565217348,
+        "mean_lane_jump": 0.7025316455696202,
+        "fast_large_jumps": 7,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "development"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/moetley-cruee--too-young-to-fall-in-love--bg01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/moetley-cruee--too-young-to-fall-in-love--bg01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/moetley-cruee--too-young-to-fall-in-love--bg01/song.m4a",
+    "title": "[BG-01] Too Young to Fall in Love",
+    "artist": "Mötley Crüe",
+    "duration_s": 212.01,
+    "genres": [
+      "Glam Metal"
+    ],
+    "category": "metal",
+    "group": "mötley crüe|too young to fall in love",
+    "content_hash": "fnv1a64:d6c009b6fcb3c97a:6828849",
+    "charter": "Sygenysis",
+    "source_format": "mid",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 322,
+        "events": 322,
+        "events_per_second": 1.518796283194189,
+        "active_events_per_second": 1.628853976635283,
+        "nps_median": 2.0,
+        "nps_p95": 2.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.031055900621118012,
+        "hopo_share": 0.049689440993788817,
+        "median_gap_s": 0.6046660000000088,
+        "mean_lane_jump": 0.8130841121495327,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2
+        ]
+      },
+      "medium": {
+        "gems": 888,
+        "events": 543,
+        "events_per_second": 2.5611999433988966,
+        "active_events_per_second": 2.746794128301114,
+        "nps_median": 3.0,
+        "nps_p95": 4.0,
+        "chord_share": 0.6353591160220995,
+        "sustain_share": 0.020257826887661142,
+        "hopo_share": 0.10497237569060773,
+        "median_gap_s": 0.3043750000000074,
+        "mean_lane_jump": 0.7933579335793358,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "hard": {
+        "gems": 1161,
+        "events": 811,
+        "events_per_second": 3.825291259846234,
+        "active_events_per_second": 4.102486257923027,
+        "nps_median": 4.0,
+        "nps_p95": 5.0,
+        "chord_share": 0.4315659679408138,
+        "sustain_share": 0.013563501849568433,
+        "hopo_share": 0.12083847102342787,
+        "median_gap_s": 0.2971999999999895,
+        "mean_lane_jump": 0.9777777777777777,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 1296,
+        "events": 943,
+        "events_per_second": 4.447903400782982,
+        "active_events_per_second": 4.770215217289043,
+        "nps_median": 5.0,
+        "nps_p95": 8.0,
+        "chord_share": 0.3743372216330859,
+        "sustain_share": 0.01166489925768823,
+        "hopo_share": 0.16224814422057265,
+        "median_gap_s": 0.15200000000000102,
+        "mean_lane_jump": 1.1475583864118897,
+        "fast_large_jumps": 1,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "development"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/amberian-dawn--dreamchaser--gr01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/amberian-dawn--dreamchaser--gr01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/amberian-dawn--dreamchaser--gr01/song.m4a",
+    "title": "[GR-01] Dreamchaser",
+    "artist": "Amberian Dawn",
+    "duration_s": 244.87,
+    "genres": [
+      "Metal"
+    ],
+    "category": "metal",
+    "group": "amberian dawn|dreamchaser",
+    "content_hash": "fnv1a64:32da1fac41f76278:7687013",
+    "charter": "RockGamer",
+    "source_format": "mid",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 251,
+        "events": 251,
+        "events_per_second": 1.0250336913464286,
+        "active_events_per_second": 1.0574251004526458,
+        "nps_median": 1.0,
+        "nps_p95": 2.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.0796812749003984,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.8578120000000009,
+        "mean_lane_jump": 0.856,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "medium": {
+        "gems": 508,
+        "events": 457,
+        "events_per_second": 1.8662964021725814,
+        "active_events_per_second": 1.9252719956448572,
+        "nps_median": 2.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.11159737417943107,
+        "sustain_share": 0.11597374179431072,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.4291629999999955,
+        "mean_lane_jump": 1.1008771929824561,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "hard": {
+        "gems": 871,
+        "events": 817,
+        "events_per_second": 3.3364642463347898,
+        "active_events_per_second": 3.4418976377283332,
+        "nps_median": 4.0,
+        "nps_p95": 5.0,
+        "chord_share": 0.06609547123623011,
+        "sustain_share": 0.09791921664626684,
+        "hopo_share": 0.14320685434516525,
+        "median_gap_s": 0.21468399999999832,
+        "mean_lane_jump": 1.0196078431372548,
+        "fast_large_jumps": 1,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 1655,
+        "events": 1595,
+        "events_per_second": 6.513660309552007,
+        "active_events_per_second": 6.719494164230957,
+        "nps_median": 8.0,
+        "nps_p95": 14.0,
+        "chord_share": 0.03385579937304075,
+        "sustain_share": 0.04827586206896552,
+        "hopo_share": 0.7316614420062696,
+        "median_gap_s": 0.10705525000000193,
+        "mean_lane_jump": 1.3716018402342114,
+        "fast_large_jumps": 200,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "holdout"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/gojira--only-pain--bg01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/gojira--only-pain--bg01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/gojira--only-pain--bg01/song.m4a",
+    "title": "[BG-01] Only Pain",
+    "artist": "Gojira",
+    "duration_s": 240.536,
+    "genres": [
+      "Progressive Metal"
+    ],
+    "category": "metal",
+    "group": "gojira|only pain",
+    "content_hash": "fnv1a64:8670931d2d16225f:7821081",
+    "charter": "Revelsa",
+    "source_format": "chart",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 251,
+        "events": 251,
+        "events_per_second": 1.0435028436491836,
+        "active_events_per_second": 1.101952698484006,
+        "nps_median": 1.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.4063745019920319,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.5882352941176521,
+        "mean_lane_jump": 0.612,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "medium": {
+        "gems": 737,
+        "events": 501,
+        "events_per_second": 2.0828483054511593,
+        "active_events_per_second": 2.199515147173255,
+        "nps_median": 2.0,
+        "nps_p95": 6.0,
+        "chord_share": 0.47105788423153694,
+        "sustain_share": 0.36726546906187624,
+        "hopo_share": 0.003992015968063872,
+        "median_gap_s": 0.29999999999999716,
+        "mean_lane_jump": 0.327,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "hard": {
+        "gems": 1011,
+        "events": 606,
+        "events_per_second": 2.5193733994079888,
+        "active_events_per_second": 2.6604913756227395,
+        "nps_median": 2.0,
+        "nps_p95": 7.0,
+        "chord_share": 0.6683168316831684,
+        "sustain_share": 0.30363036303630364,
+        "hopo_share": 0.024752475247524754,
+        "median_gap_s": 0.15151515151515582,
+        "mean_lane_jump": 0.34297520661157027,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 1209,
+        "events": 681,
+        "events_per_second": 2.8311770379485814,
+        "active_events_per_second": 2.9897601102295144,
+        "nps_median": 3.0,
+        "nps_p95": 7.0,
+        "chord_share": 0.5947136563876652,
+        "sustain_share": 0.27165932452276065,
+        "hopo_share": 0.08663729809104258,
+        "median_gap_s": 0.14925373134329334,
+        "mean_lane_jump": 0.3620098039215687,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "holdout"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/phantom-planet--do-the-panic--gr01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/phantom-planet--do-the-panic--gr01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/phantom-planet--do-the-panic--gr01/song.m4a",
+    "title": "[GR-01] Do the Panic",
+    "artist": "Phantom Planet",
+    "duration_s": 214.213,
+    "genres": [
+      "Power Pop"
+    ],
+    "category": "pop",
+    "group": "phantom planet|do the panic",
+    "content_hash": "fnv1a64:968c6014193bc75d:5903040",
+    "charter": "Vicarious Visions",
+    "source_format": "mid",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 373,
+        "events": 246,
+        "events_per_second": 1.1483896869004215,
+        "active_events_per_second": 1.2117749054224463,
+        "nps_median": 1.0,
+        "nps_p95": 2.0,
+        "chord_share": 0.516260162601626,
+        "sustain_share": 1.0,
+        "hopo_share": 0.008130081300813009,
+        "median_gap_s": 0.902000000000001,
+        "mean_lane_jump": 0.9061224489795918,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2
+        ]
+      },
+      "medium": {
+        "gems": 595,
+        "events": 376,
+        "events_per_second": 1.755262285668937,
+        "active_events_per_second": 1.8521437578814628,
+        "nps_median": 2.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.5824468085106383,
+        "sustain_share": 1.0,
+        "hopo_share": 0.005319148936170213,
+        "median_gap_s": 0.4510000000000076,
+        "mean_lane_jump": 1.036,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "hard": {
+        "gems": 852,
+        "events": 542,
+        "events_per_second": 2.5301919117887337,
+        "active_events_per_second": 2.66984552332913,
+        "nps_median": 2.0,
+        "nps_p95": 4.0,
+        "chord_share": 0.5719557195571956,
+        "sustain_share": 1.0,
+        "hopo_share": 0.06088560885608856,
+        "median_gap_s": 0.30066666666667174,
+        "mean_lane_jump": 0.777264325323475,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "expert": {
+        "gems": 899,
+        "events": 577,
+        "events_per_second": 2.693580688380257,
+        "active_events_per_second": 2.8422525220680956,
+        "nps_median": 3.0,
+        "nps_p95": 5.0,
+        "chord_share": 0.537261698440208,
+        "sustain_share": 1.0,
+        "hopo_share": 0.0779896013864818,
+        "median_gap_s": 0.2259999999999991,
+        "mean_lane_jump": 0.7821180555555556,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      }
+    },
+    "split": "development"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/the-xx--angels--bg01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/the-xx--angels--bg01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/the-xx--angels--bg01/song.m4a",
+    "title": "[BG-01] Angels",
+    "artist": "The XX",
+    "duration_s": 171.529,
+    "genres": [
+      "Indie Pop"
+    ],
+    "category": "pop",
+    "group": "the xx|angels",
+    "content_hash": "fnv1a64:b4b154110c186db2:5179748",
+    "charter": "omyyer",
+    "source_format": "chart",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 232,
+        "events": 208,
+        "events_per_second": 1.2126229383952567,
+        "active_events_per_second": 1.4496969696969697,
+        "nps_median": 1.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.11538461538461539,
+        "sustain_share": 0.14903846153846154,
+        "hopo_share": 0.028846153846153848,
+        "median_gap_s": 0.32608695652173836,
+        "mean_lane_jump": 1.3743961352657006,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "medium": {
+        "gems": 232,
+        "events": 208,
+        "events_per_second": 1.2126229383952567,
+        "active_events_per_second": 1.4496969696969697,
+        "nps_median": 1.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.11538461538461539,
+        "sustain_share": 0.14903846153846154,
+        "hopo_share": 0.028846153846153848,
+        "median_gap_s": 0.32608695652173836,
+        "mean_lane_jump": 1.3743961352657006,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "hard": {
+        "gems": 232,
+        "events": 208,
+        "events_per_second": 1.2126229383952567,
+        "active_events_per_second": 1.4496969696969697,
+        "nps_median": 1.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.11538461538461539,
+        "sustain_share": 0.14903846153846154,
+        "hopo_share": 0.028846153846153848,
+        "median_gap_s": 0.32608695652173836,
+        "mean_lane_jump": 1.3743961352657006,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 232,
+        "events": 208,
+        "events_per_second": 1.2126229383952567,
+        "active_events_per_second": 1.4496969696969697,
+        "nps_median": 1.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.11538461538461539,
+        "sustain_share": 0.14903846153846154,
+        "hopo_share": 0.028846153846153848,
+        "median_gap_s": 0.32608695652173836,
+        "mean_lane_jump": 1.3743961352657006,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "development"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/lizzo--about-damn-time--bg01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/lizzo--about-damn-time--bg01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/lizzo--about-damn-time--bg01/song.m4a",
+    "title": "[BG-01] About Damn Time",
+    "artist": "Lizzo",
+    "duration_s": 193.822,
+    "genres": [
+      "Pop"
+    ],
+    "category": "pop",
+    "group": "lizzo|about damn time",
+    "content_hash": "fnv1a64:d22404844b0c103a:6356964",
+    "charter": "KhromaticScale",
+    "source_format": "chart",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 187,
+        "events": 187,
+        "events_per_second": 0.9648027571689488,
+        "active_events_per_second": 1.0126064299446569,
+        "nps_median": 1.0,
+        "nps_p95": 2.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.26737967914438504,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.8256880733944953,
+        "mean_lane_jump": 0.5967741935483871,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "medium": {
+        "gems": 571,
+        "events": 373,
+        "events_per_second": 1.9244461413049085,
+        "active_events_per_second": 2.019797852242551,
+        "nps_median": 2.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.5308310991957105,
+        "sustain_share": 0.15013404825737264,
+        "hopo_share": 0.1260053619302949,
+        "median_gap_s": 0.4128440366972477,
+        "mean_lane_jump": 0.5793010752688172,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "hard": {
+        "gems": 646,
+        "events": 437,
+        "events_per_second": 2.2546460154162067,
+        "active_events_per_second": 2.3663583416353746,
+        "nps_median": 2.0,
+        "nps_p95": 4.0,
+        "chord_share": 0.4782608695652174,
+        "sustain_share": 0.13958810068649885,
+        "hopo_share": 0.18764302059496568,
+        "median_gap_s": 0.412844036697237,
+        "mean_lane_jump": 0.7534403669724771,
+        "fast_large_jumps": 3,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 747,
+        "events": 491,
+        "events_per_second": 2.5332521591976143,
+        "active_events_per_second": 2.6587687545605694,
+        "nps_median": 3.0,
+        "nps_p95": 5.0,
+        "chord_share": 0.4256619144602851,
+        "sustain_share": 0.12423625254582485,
+        "hopo_share": 0.37474541751527496,
+        "median_gap_s": 0.2752293577981817,
+        "mean_lane_jump": 0.8207482993197278,
+        "fast_large_jumps": 19,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "development"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/cocteau-twins--iceblink-luck--bg01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/cocteau-twins--iceblink-luck--bg01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/cocteau-twins--iceblink-luck--bg01/song.m4a",
+    "title": "[BG-01] Iceblink Luck",
+    "artist": "Cocteau Twins",
+    "duration_s": 199.253,
+    "genres": [
+      "Dream Pop"
+    ],
+    "category": "pop",
+    "group": "cocteau twins|iceblink luck",
+    "content_hash": "fnv1a64:6c3fa31edc772433:6573769",
+    "charter": "pauldiscc",
+    "source_format": "chart",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 205,
+        "events": 205,
+        "events_per_second": 1.0288427275875396,
+        "active_events_per_second": 1.1010714715723775,
+        "nps_median": 0.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.05365853658536585,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.2941176470588118,
+        "mean_lane_jump": 0.14705882352941177,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "medium": {
+        "gems": 688,
+        "events": 410,
+        "events_per_second": 2.057685455175079,
+        "active_events_per_second": 2.202142943144755,
+        "nps_median": 2.0,
+        "nps_p95": 4.0,
+        "chord_share": 0.6780487804878049,
+        "sustain_share": 0.3121951219512195,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.2941176470588118,
+        "mean_lane_jump": 0.6112469437652812,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "hard": {
+        "gems": 939,
+        "events": 552,
+        "events_per_second": 2.7703472469674235,
+        "active_events_per_second": 2.9648363527217185,
+        "nps_median": 3.0,
+        "nps_p95": 5.0,
+        "chord_share": 0.7010869565217391,
+        "sustain_share": 0.2427536231884058,
+        "hopo_share": 0.0018115942028985507,
+        "median_gap_s": 0.2940167589552587,
+        "mean_lane_jump": 0.5372050816696915,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 1516,
+        "events": 620,
+        "events_per_second": 3.1116219078257292,
+        "active_events_per_second": 3.3300698164628,
+        "nps_median": 3.0,
+        "nps_p95": 5.0,
+        "chord_share": 0.7225806451612903,
+        "sustain_share": 0.2161290322580645,
+        "hopo_share": 0.0016129032258064516,
+        "median_gap_s": 0.2940167589552516,
+        "mean_lane_jump": 0.48249865374259554,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "development"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/balu-brigada--so-cold--bg01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/balu-brigada--so-cold--bg01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/balu-brigada--so-cold--bg01/song.m4a",
+    "title": "[BG-01] So Cold",
+    "artist": "Balu Brigada",
+    "duration_s": 203.133,
+    "genres": [
+      "Alt-pop"
+    ],
+    "category": "pop",
+    "group": "balu brigada|so cold",
+    "content_hash": "fnv1a64:99017e48d185bd86:6592196",
+    "charter": "alpisaprofit",
+    "source_format": "chart",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 450,
+        "events": 450,
+        "events_per_second": 2.2152973667498634,
+        "active_events_per_second": 2.268518729643251,
+        "nps_median": 2.0,
+        "nps_p95": 4.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.0,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.4054054054054035,
+        "mean_lane_jump": 0.5412026726057907,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2
+        ]
+      },
+      "medium": {
+        "gems": 749,
+        "events": 517,
+        "events_per_second": 2.545130530243732,
+        "active_events_per_second": 2.6027298117767916,
+        "nps_median": 2.0,
+        "nps_p95": 4.0,
+        "chord_share": 0.44874274661508706,
+        "sustain_share": 0.0,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.27027027027028794,
+        "mean_lane_jump": 0.6472868217054264,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "hard": {
+        "gems": 912,
+        "events": 664,
+        "events_per_second": 3.268794336715354,
+        "active_events_per_second": 3.3427709768274463,
+        "nps_median": 3.0,
+        "nps_p95": 5.0,
+        "chord_share": 0.37349397590361444,
+        "sustain_share": 0.0,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.2702702702702702,
+        "mean_lane_jump": 0.7586726998491704,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 1075,
+        "events": 707,
+        "events_per_second": 3.4804783073158965,
+        "active_events_per_second": 3.5787227288224517,
+        "nps_median": 4.0,
+        "nps_p95": 6.0,
+        "chord_share": 0.3507779349363508,
+        "sustain_share": 0.0,
+        "hopo_share": 0.021216407355021217,
+        "median_gap_s": 0.2702702702702666,
+        "mean_lane_jump": 0.8101983002832861,
+        "fast_large_jumps": 6,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "holdout"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/duncan-laurence--arcade--bg01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/duncan-laurence--arcade--bg01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/duncan-laurence--arcade--bg01/song.m4a",
+    "title": "[BG-01] Arcade",
+    "artist": "Duncan Laurence",
+    "duration_s": 185.649,
+    "genres": [
+      "Pop"
+    ],
+    "category": "pop",
+    "group": "duncan laurence|arcade",
+    "content_hash": "fnv1a64:200b7c8934da5254:5899820",
+    "charter": "Sang Duta & Rios",
+    "source_format": "chart",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 93,
+        "events": 93,
+        "events_per_second": 0.5009453323206696,
+        "active_events_per_second": 0.5190697674418604,
+        "nps_median": 0.0,
+        "nps_p95": 2.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.5806451612903226,
+        "hopo_share": 0.13978494623655913,
+        "median_gap_s": 0.8333333333333428,
+        "mean_lane_jump": 1.0434782608695652,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "medium": {
+        "gems": 229,
+        "events": 186,
+        "events_per_second": 1.0018906646413392,
+        "active_events_per_second": 1.0381395348837208,
+        "nps_median": 1.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.23118279569892472,
+        "sustain_share": 0.2903225806451613,
+        "hopo_share": 0.3064516129032258,
+        "median_gap_s": 0.4166666666666714,
+        "mean_lane_jump": 1.1945945945945946,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "hard": {
+        "gems": 262,
+        "events": 219,
+        "events_per_second": 1.1796454599809318,
+        "active_events_per_second": 1.2223255813953486,
+        "nps_median": 1.0,
+        "nps_p95": 4.0,
+        "chord_share": 0.1963470319634703,
+        "sustain_share": 0.2465753424657534,
+        "hopo_share": 0.4292237442922374,
+        "median_gap_s": 0.4166666666666643,
+        "mean_lane_jump": 1.5,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 312,
+        "events": 246,
+        "events_per_second": 1.3250812016224165,
+        "active_events_per_second": 1.3730232558139532,
+        "nps_median": 1.0,
+        "nps_p95": 4.0,
+        "chord_share": 0.17479674796747968,
+        "sustain_share": 0.21951219512195122,
+        "hopo_share": 0.7357723577235772,
+        "median_gap_s": 0.2083333333333428,
+        "mean_lane_jump": 1.4843537414965984,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "holdout"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/avicii--you-make-me--bg01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/avicii--you-make-me--bg01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/avicii--you-make-me--bg01/song.m4a",
+    "title": "[BG-01] You Make Me",
+    "artist": "Avicii",
+    "duration_s": 235.15,
+    "genres": [
+      "Dance"
+    ],
+    "category": "electronic",
+    "group": "avicii|you make me",
+    "content_hash": "fnv1a64:e7801261d9770289:7693763",
+    "charter": "zVersee",
+    "source_format": "chart",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 237,
+        "events": 237,
+        "events_per_second": 1.0078673187327238,
+        "active_events_per_second": 1.104586129753915,
+        "nps_median": 1.0,
+        "nps_p95": 2.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.47257383966244726,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.4800000000000182,
+        "mean_lane_jump": 0.8432203389830508,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "medium": {
+        "gems": 645,
+        "events": 473,
+        "events_per_second": 2.0114820327450564,
+        "active_events_per_second": 2.204511558538404,
+        "nps_median": 2.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.36363636363636365,
+        "sustain_share": 0.23678646934460887,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.4799999999999969,
+        "mean_lane_jump": 1.0614406779661016,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "hard": {
+        "gems": 854,
+        "events": 682,
+        "events_per_second": 2.9002764193068256,
+        "active_events_per_second": 3.175046554934823,
+        "nps_median": 3.0,
+        "nps_p95": 4.0,
+        "chord_share": 0.25219941348973607,
+        "sustain_share": 0.16422287390029325,
+        "hopo_share": 0.1378299120234604,
+        "median_gap_s": 0.2400000000000091,
+        "mean_lane_jump": 1.2261380323054332,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 1066,
+        "events": 766,
+        "events_per_second": 3.2574952158196893,
+        "active_events_per_second": 3.5661080074487894,
+        "nps_median": 3.0,
+        "nps_p95": 5.0,
+        "chord_share": 0.2245430809399478,
+        "sustain_share": 0.1462140992167102,
+        "hopo_share": 0.2506527415143603,
+        "median_gap_s": 0.2400000000000091,
+        "mean_lane_jump": 1.2596949891067537,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "development"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/toby-fox--your-best-nightmare--bg01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/toby-fox--your-best-nightmare--bg01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/toby-fox--your-best-nightmare--bg01/song.m4a",
+    "title": "[BG-01] Your Best Nightmare",
+    "artist": "Toby Fox",
+    "duration_s": 242.57,
+    "genres": [
+      "Electronic"
+    ],
+    "category": "electronic",
+    "group": "toby fox|your best nightmare",
+    "content_hash": "fnv1a64:a0401fad268b2415:7844646",
+    "charter": "itsNatalieAtLeast",
+    "source_format": "chart",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 229,
+        "events": 229,
+        "events_per_second": 0.9440573854969699,
+        "active_events_per_second": 0.9643173758865249,
+        "nps_median": 1.0,
+        "nps_p95": 2.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.388646288209607,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.6315789473684248,
+        "mean_lane_jump": 0.9956140350877193,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2
+        ]
+      },
+      "medium": {
+        "gems": 341,
+        "events": 341,
+        "events_per_second": 1.4057797749103351,
+        "active_events_per_second": 1.430242825607064,
+        "nps_median": 1.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.41348973607038125,
+        "hopo_share": 0.0,
+        "median_gap_s": 0.6315789473684106,
+        "mean_lane_jump": 1.3441176470588236,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "hard": {
+        "gems": 536,
+        "events": 517,
+        "events_per_second": 2.1313435297027663,
+        "active_events_per_second": 2.168432671081678,
+        "nps_median": 2.0,
+        "nps_p95": 5.0,
+        "chord_share": 0.0367504835589942,
+        "sustain_share": 0.29593810444874274,
+        "hopo_share": 0.2804642166344294,
+        "median_gap_s": 0.3157894736842053,
+        "mean_lane_jump": 1.2984496124031009,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 760,
+        "events": 659,
+        "events_per_second": 2.7167415591375685,
+        "active_events_per_second": 2.762188396205603,
+        "nps_median": 2.0,
+        "nps_p95": 7.0,
+        "chord_share": 0.15326251896813353,
+        "sustain_share": 0.2321699544764795,
+        "hopo_share": 0.47040971168437024,
+        "median_gap_s": 0.15789473684213817,
+        "mean_lane_jump": 1.1762917933130699,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "development"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/alan-walker--faded--bg01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/alan-walker--faded--bg01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/alan-walker--faded--bg01/song.m4a",
+    "title": "[BG-01] Faded",
+    "artist": "Alan Walker",
+    "duration_s": 215.733,
+    "genres": [
+      "EDM"
+    ],
+    "category": "electronic",
+    "group": "alan walker|faded",
+    "content_hash": "fnv1a64:e6ca09977d9131da:6881322",
+    "charter": "oBLINKxONCEo",
+    "source_format": "chart",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 224,
+        "events": 224,
+        "events_per_second": 1.038320516564457,
+        "active_events_per_second": 1.1024947939958498,
+        "nps_median": 1.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.7366071428571429,
+        "hopo_share": 0.004464285714285714,
+        "median_gap_s": 0.6666666666666661,
+        "mean_lane_jump": 0.242152466367713,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "medium": {
+        "gems": 530,
+        "events": 447,
+        "events_per_second": 2.0720056736799655,
+        "active_events_per_second": 2.2000677362327896,
+        "nps_median": 2.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.18568232662192394,
+        "sustain_share": 0.668903803131991,
+        "hopo_share": 0.3378076062639821,
+        "median_gap_s": 0.3333333333333428,
+        "mean_lane_jump": 0.6905829596412556,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "hard": {
+        "gems": 676,
+        "events": 587,
+        "events_per_second": 2.720955996532751,
+        "active_events_per_second": 2.889126982480196,
+        "nps_median": 3.0,
+        "nps_p95": 4.0,
+        "chord_share": 0.151618398637138,
+        "sustain_share": 0.5281090289608177,
+        "hopo_share": 0.43100511073253833,
+        "median_gap_s": 0.33333333333333215,
+        "mean_lane_jump": 0.9232081911262798,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 766,
+        "events": 660,
+        "events_per_second": 3.059337236305989,
+        "active_events_per_second": 3.248422160880629,
+        "nps_median": 3.0,
+        "nps_p95": 5.0,
+        "chord_share": 0.13484848484848486,
+        "sustain_share": 0.4696969696969697,
+        "hopo_share": 0.6151515151515151,
+        "median_gap_s": 0.3333333333333286,
+        "mean_lane_jump": 0.8391502276176024,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "development"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/009-sound-system--dreamscape--bg01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/009-sound-system--dreamscape--bg01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/009-sound-system--dreamscape--bg01/song.m4a",
+    "title": "[BG-01] Dreamscape",
+    "artist": "009 Sound System",
+    "duration_s": 279.527,
+    "genres": [
+      "Electronic"
+    ],
+    "category": "electronic",
+    "group": "009 sound system|dreamscape",
+    "content_hash": "fnv1a64:8032dcb9b23f7ecd:9066094",
+    "charter": "emiliANOGod",
+    "source_format": "chart",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 116,
+        "events": 116,
+        "events_per_second": 0.4149867454664487,
+        "active_events_per_second": 0.44323149501709347,
+        "nps_median": 0.0,
+        "nps_p95": 2.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.6206896551724138,
+        "hopo_share": 0.017241379310344827,
+        "median_gap_s": 1.2196510171889372,
+        "mean_lane_jump": 0.8695652173913043,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "medium": {
+        "gems": 294,
+        "events": 232,
+        "events_per_second": 0.8299734909328974,
+        "active_events_per_second": 0.8864629900341869,
+        "nps_median": 1.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.2672413793103448,
+        "sustain_share": 0.4482758620689655,
+        "hopo_share": 0.1206896551724138,
+        "median_gap_s": 0.4878524734120333,
+        "mean_lane_jump": 1.1861471861471862,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "hard": {
+        "gems": 334,
+        "events": 272,
+        "events_per_second": 0.9730723686799486,
+        "active_events_per_second": 1.0393014365918054,
+        "nps_median": 1.0,
+        "nps_p95": 4.0,
+        "chord_share": 0.22794117647058823,
+        "sustain_share": 0.38235294117647056,
+        "hopo_share": 0.125,
+        "median_gap_s": 0.2465949349400347,
+        "mean_lane_jump": 1.1955719557195572,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 368,
+        "events": 306,
+        "events_per_second": 1.0947064147649423,
+        "active_events_per_second": 1.169214116165781,
+        "nps_median": 1.0,
+        "nps_p95": 4.0,
+        "chord_share": 0.20261437908496732,
+        "sustain_share": 0.4117647058823529,
+        "hopo_share": 0.3137254901960784,
+        "median_gap_s": 0.24410685370675367,
+        "mean_lane_jump": 1.1672131147540983,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "development"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/starset--trials--bg01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/starset--trials--bg01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/starset--trials--bg01/song.m4a",
+    "title": "[BG-01] TRIALS",
+    "artist": "Starset",
+    "duration_s": 223.954,
+    "genres": [
+      "Electronic Rock"
+    ],
+    "category": "electronic",
+    "group": "starset|trials",
+    "content_hash": "fnv1a64:b97a70ff4a0426fc:7254191",
+    "charter": "thyhappylittletree",
+    "source_format": "chart",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 242,
+        "events": 242,
+        "events_per_second": 1.0805790474829653,
+        "active_events_per_second": 1.1028352989196628,
+        "nps_median": 1.0,
+        "nps_p95": 3.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.2768595041322314,
+        "hopo_share": 0.049586776859504134,
+        "median_gap_s": 0.285714285714306,
+        "mean_lane_jump": 0.36099585062240663,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "medium": {
+        "gems": 751,
+        "events": 483,
+        "events_per_second": 2.156692892290381,
+        "active_events_per_second": 2.201113427182633,
+        "nps_median": 2.0,
+        "nps_p95": 4.0,
+        "chord_share": 0.5548654244306418,
+        "sustain_share": 0.15734989648033126,
+        "hopo_share": 0.055900621118012424,
+        "median_gap_s": 0.288483729517655,
+        "mean_lane_jump": 0.38589211618257263,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "hard": {
+        "gems": 897,
+        "events": 627,
+        "events_per_second": 2.799682077569501,
+        "active_events_per_second": 2.857346001746399,
+        "nps_median": 3.0,
+        "nps_p95": 5.0,
+        "chord_share": 0.430622009569378,
+        "sustain_share": 0.12280701754385964,
+        "hopo_share": 0.3508771929824561,
+        "median_gap_s": 0.2857142857142776,
+        "mean_lane_jump": 0.3538338658146965,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 974,
+        "events": 704,
+        "events_per_second": 3.143502683586808,
+        "active_events_per_second": 3.2082481423117466,
+        "nps_median": 3.0,
+        "nps_p95": 6.0,
+        "chord_share": 0.3835227272727273,
+        "sustain_share": 0.11079545454545454,
+        "hopo_share": 0.53125,
+        "median_gap_s": 0.2857142857142776,
+        "mean_lane_jump": 0.3492176386913229,
+        "fast_large_jumps": 6,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "holdout"
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/songs/porter-robinson--goodbye-to-a-world--bg01",
+    "chart": "/Volumes/USB-1 128GB/beatbyte/songs/porter-robinson--goodbye-to-a-world--bg01/chart.json",
+    "audio": "/Volumes/USB-1 128GB/beatbyte/songs/porter-robinson--goodbye-to-a-world--bg01/song.m4a",
+    "title": "[BG-01] Goodbye To A World",
+    "artist": "Porter Robinson",
+    "duration_s": 330.568,
+    "genres": [
+      "Electropop"
+    ],
+    "category": "electronic",
+    "group": "porter robinson|goodbye to a world",
+    "content_hash": "fnv1a64:2ae2d170c73179b0:10418507",
+    "charter": "xShamaNama",
+    "source_format": "chart",
+    "origin": "imported_levels_unverified",
+    "original_difficulties": null,
+    "audio_trim": {
+      "priming_samples": 1024,
+      "sample_rate": 44100
+    },
+    "provenance": null,
+    "has_grid": true,
+    "stats": {
+      "easy": {
+        "gems": 319,
+        "events": 319,
+        "events_per_second": 0.9650056871808524,
+        "active_events_per_second": 1.0767932489451477,
+        "nps_median": 1.0,
+        "nps_p95": 2.0,
+        "chord_share": 0.0,
+        "sustain_share": 0.3761755485893417,
+        "hopo_share": 0.0219435736677116,
+        "median_gap_s": 0.46875,
+        "mean_lane_jump": 1.3050314465408805,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "medium": {
+        "gems": 657,
+        "events": 637,
+        "events_per_second": 1.9269862781636458,
+        "active_events_per_second": 2.1490314396406895,
+        "nps_median": 2.0,
+        "nps_p95": 4.0,
+        "chord_share": 0.03139717425431711,
+        "sustain_share": 0.23076923076923078,
+        "hopo_share": 0.5133437990580848,
+        "median_gap_s": 0.3125,
+        "mean_lane_jump": 1.4591194968553458,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "hard": {
+        "gems": 774,
+        "events": 747,
+        "events_per_second": 2.2597468599501465,
+        "active_events_per_second": 2.5201357698769153,
+        "nps_median": 2.0,
+        "nps_p95": 6.0,
+        "chord_share": 0.03614457831325301,
+        "sustain_share": 0.19678714859437751,
+        "hopo_share": 0.6666666666666666,
+        "median_gap_s": 0.1562500000000142,
+        "mean_lane_jump": 1.9932975871313674,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expert": {
+        "gems": 866,
+        "events": 839,
+        "events_per_second": 2.5380557101715837,
+        "active_events_per_second": 2.8305139369835772,
+        "nps_median": 2.0,
+        "nps_p95": 7.0,
+        "chord_share": 0.03218116805721097,
+        "sustain_share": 0.17520858164481526,
+        "hopo_share": 0.7640047675804529,
+        "median_gap_s": 0.15625,
+        "mean_lane_jump": 2.048926014319809,
+        "fast_large_jumps": 0,
+        "lanes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "split": "holdout"
+  }
+]

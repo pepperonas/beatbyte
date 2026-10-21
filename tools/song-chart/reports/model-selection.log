@@ -1,0 +1,9 @@
+Model selection 1/8: [GR-01] Can't Let Go
+Model selection 2/8: [GR-01] Speed of Sound
+Model selection 3/8: [BG-01] Through the Fire and Flames
+Model selection 4/8: [GR-01] Queen Bee
+Model selection 5/8: [GR-01] Do the Panic
+Model selection 6/8: [BG-01] MAGIC
+Model selection 7/8: [BG-01] You Make Me
+Model selection 8/8: [BG-01] DRIP
+{'development_excerpts': 8, 'matched_pairs': 5, 'macro_expert_f1_50ms': {'htdemucs': 0.39065002884587213, 'htdemucs_6s': 0.35004533059313026}, 'chosen': 'htdemucs', 'policy': '6s replaces default only with >=4 matched development clips and >0.02 absolute macro-F1 gain. Timing proxy only; no subjective guitar-isolation conclusion.'}

@@ -1,0 +1,9 @@
+.venv
+.demucs-venv
+__pycache__/
+*.pyc
+cache/
+models
+outputs/
+adapter/target
+reports/inventory.json

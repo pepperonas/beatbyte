@@ -1,0 +1,199 @@
+[
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/charts-bridge/Dragonforce - Through The Fire and Flames (MrOriginalityCH)",
+    "original_difficulties": [
+      "expert"
+    ],
+    "resolution": 192,
+    "tempo_changes": 4,
+    "time_signatures": [
+      [
+        0,
+        4,
+        4
+      ]
+    ]
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/charts-bridge/Tina Turner - What's Love Got to Do with It (Sygenysis + Nunchuck)",
+    "original_difficulties": [
+      "easy",
+      "medium",
+      "hard",
+      "expert"
+    ],
+    "resolution": 480,
+    "tempo_changes": 31,
+    "time_signatures": [
+      [
+        0,
+        4,
+        4
+      ],
+      [
+        1920,
+        5,
+        4
+      ],
+      [
+        4320,
+        4,
+        4
+      ],
+      [
+        111840,
+        6,
+        4
+      ],
+      [
+        114720,
+        4,
+        4
+      ],
+      [
+        141600,
+        6,
+        4
+      ],
+      [
+        144480,
+        4,
+        4
+      ],
+      [
+        156000,
+        6,
+        4
+      ],
+      [
+        158880,
+        4,
+        4
+      ],
+      [
+        170400,
+        6,
+        4
+      ],
+      [
+        173280,
+        4,
+        4
+      ]
+    ]
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/charts-bridge/Tina Turner - We Don't Need Another Hero (Thunderdome) (Sygenysis + Nunchuck)",
+    "original_difficulties": [
+      "easy",
+      "medium",
+      "hard",
+      "expert"
+    ],
+    "resolution": 480,
+    "tempo_changes": 32,
+    "time_signatures": [
+      [
+        0,
+        4,
+        4
+      ],
+      [
+        1920,
+        6,
+        4
+      ],
+      [
+        4800,
+        4,
+        4
+      ],
+      [
+        50880,
+        6,
+        4
+      ],
+      [
+        53760,
+        4,
+        4
+      ],
+      [
+        57600,
+        6,
+        4
+      ],
+      [
+        60480,
+        4,
+        4
+      ],
+      [
+        108480,
+        6,
+        4
+      ],
+      [
+        111360,
+        4,
+        4
+      ],
+      [
+        115200,
+        6,
+        4
+      ],
+      [
+        118080,
+        4,
+        4
+      ]
+    ]
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/charts-bridge/Bryan Adams - It's Only Love (feat. Tina Turner) (Sygenysis + Nunchuck)",
+    "original_difficulties": [
+      "easy",
+      "medium",
+      "hard",
+      "expert"
+    ],
+    "resolution": 480,
+    "tempo_changes": 67,
+    "time_signatures": [
+      [
+        0,
+        4,
+        4
+      ],
+      [
+        1920,
+        6,
+        4
+      ],
+      [
+        4800,
+        4,
+        4
+      ]
+    ]
+  },
+  {
+    "folder": "/Volumes/USB-1 128GB/beatbyte/charts-bridge/DragonForce - Through The Fire and Flames (Stargazer)",
+    "original_difficulties": [
+      "easy",
+      "medium",
+      "hard",
+      "expert"
+    ],
+    "resolution": 480,
+    "tempo_changes": 4,
+    "time_signatures": [
+      [
+        0,
+        4,
+        4
+      ]
+    ]
+  }
+]

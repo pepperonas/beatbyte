@@ -1,0 +1,367 @@
+[
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/c21605a0de5e4cb0d64ae63b0b5746e2079ce199c9265c2a4b146e548c2fc2dc/canonical.wav",
+    "bytes": 20805676
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/c21605a0de5e4cb0d64ae63b0b5746e2079ce199c9265c2a4b146e548c2fc2dc/lead-15c82f6d399a29c1268349cec321b1ebba90e4d9d319520cb863ea557821b2c9.wav",
+    "bytes": 20805676
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/ac12ba90cd64d19275861c9ecbdd9ad9cd4dd97064ed29442f24bf5c8ec15534/canonical.wav",
+    "bytes": 18186284
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/ac12ba90cd64d19275861c9ecbdd9ad9cd4dd97064ed29442f24bf5c8ec15534/lead-56ee2e170c77f3c76fcad2c671894748ad763f1683c512f089527e03d5959a7c.wav",
+    "bytes": 18186284
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/fb625ab145fc83a4901cc1c4fe1e2921f4b661b6f9569c366b2ad9201a05fb72/canonical.wav",
+    "bytes": 19236908
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/fb625ab145fc83a4901cc1c4fe1e2921f4b661b6f9569c366b2ad9201a05fb72/lead-a2f59ae069cda28beb30a41a6e7bd7ac60e85a808c0dc1e9b90015e0bce7eea1.wav",
+    "bytes": 19236908
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/3b6bc84a577a8c59a3c6171be830093a8d62e4133888a40e94a5c803e2f0db2a/canonical.wav",
+    "bytes": 16222252,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/d6e56d63454f38520fb53ae28b0b47c8e3a9e866f132e4ae0514086c3b37057e/canonical.wav",
+    "bytes": 26499116,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/f1c3ceb39f7d9fecd282e4b216ad8db0b9987227b62c03c720684dab6526d07e/canonical.wav",
+    "bytes": 20742188,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/8c734d6938bcba9d543426c674af3c5e39e0824a849df393cefbfa068ec5ca7b/canonical.wav",
+    "bytes": 17575980,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/95e80a52c8088b10e4120cd489d45dc41109eaa65bf3687ac1d6bc4ba0ec1cca/canonical.wav",
+    "bytes": 17160236,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/90606d93fb28a5051bff24b95d76acf29670235a2d892da4dca857a6de824553/canonical.wav",
+    "bytes": 18894892,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/43f4e4951ca6d9f8b558b317de15c65b6137a922fc84c842fcfaaf7628926496/canonical.wav",
+    "bytes": 13201452,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/406689910007833fd3c7c9cf72676c36c0b633d74fc3a9911b48c3b707b74108/canonical.wav",
+    "bytes": 18868268,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/4a7dbbd12fb70d52c2d46aec76afca5622fcaa2a2ef65f2d98bb9606bcad465e/canonical.wav",
+    "bytes": 15368236,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/5bded4c336e709cb33e1937e7dc59f9883e24a2c4ad7c93352bf061587669517/canonical.wav",
+    "bytes": 20973612,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/686bd1f236e0fdfe140cf7b52e4e4945c1c670b35f71b237bb42c5bd0e8ef075/canonical.wav",
+    "bytes": 15597612,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/5e61217f2717ff7366496658b838d37ae07e6b53846450057437a172494f5b4d/canonical.wav",
+    "bytes": 17096748,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/32d7a9978373ce532bd1e3e7ff243ae82eb4896ca37ca18b29c35f2b25afff40/canonical.wav",
+    "bytes": 21391404,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/a3738b2f5fa3f3f3bd6b2587c2d1f0ea4db3287084fdf1d55688b59927bad50a/canonical.wav",
+    "bytes": 21217324,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/ad27a8c2560be1d92b8862e10d9cf4a88531c2f50f3f5013c41ea8ea6b672e0b/canonical.wav",
+    "bytes": 17289260,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/9205598de95cc92a2d0b15f893419d148f8f029780f6134d4f4f6527d98f33fa/canonical.wav",
+    "bytes": 19753004,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/4a4c96cfdd3553ea86b01f9f6c5f188fd83cafee6aa1660314ce8caa97f2a522/canonical.wav",
+    "bytes": 21598252,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/ac31c0772df103de6cb14fb877b25473fd9a7fcb4517025cced51f6982ea2f84/canonical.wav",
+    "bytes": 32946220,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/8476f139c4def9317b39f646f35884a5770371f72f62c2990cad28f03debea88/canonical.wav",
+    "bytes": 17917996,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/88599c7442e560a7272a1aa89f722691e643190c23a2bc0a2794d433bc53f6dd/canonical.wav",
+    "bytes": 17836076,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/423250ec2840f926fc700ce96ce1dbe9c54b0d752027bc3de868963f81a2f539/canonical.wav",
+    "bytes": 20064300,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/531718f0d8479b046314efb7d2438a2d2c2f172feeaddcd75ba577ffe87fd643/canonical.wav",
+    "bytes": 24956972,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/d721bbe2ccd343e2d2a418e15e52629dff566297a794c2847267230bbc819a41/canonical.wav",
+    "bytes": 15130668,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/6c9e202f58e99f185205d4496d55d497c8e405bdcaf3d6edeaf649476e9ade4a/canonical.wav",
+    "bytes": 18354220,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/3ae9c8b8b6199bc110fb46e7872fc7c1ca5451d9a666871eae9edd7670cf65a8/canonical.wav",
+    "bytes": 19822636,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/dd58c5a8373601cea903c5e9294051416236594a59c16904a0679722ad63c42a/canonical.wav",
+    "bytes": 19030060,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/3bf6a8b78cfc7301b8fd273ce25d2ea6600b33b2d147fc1413d1cd0149702a2c/canonical.wav",
+    "bytes": 18927660,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/c1b92ef0a73cf42c905663df2c8c8705ed67f00204da7cb4de7d1965d745c983/canonical.wav",
+    "bytes": 24653868,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/22df7d0317b06086280f08ee72f5985bd67acf9b8b00a16227d3b8fce2ff30aa/canonical.wav",
+    "bytes": 21825580,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/5efcd67bbae55bd3a8e00a85757007325734975002138a9abeaf220ecfe48d25/canonical.wav",
+    "bytes": 26679340,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/00a45714f0f9839d506abe01f4d98f2c2b86d2dfbdffdb88a428ecf3b7c56dec/canonical.wav",
+    "bytes": 16375852,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/54bf947e65d04b3a25d37fbd02261ab6199638b5803ca261a7a8b63181cd8339/canonical.wav",
+    "bytes": 33050668,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/4436e858a41b862f20f9e18a59552b9435985a759e51ebcea5e38bad57709d3d/canonical.wav",
+    "bytes": 18700332,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/c51aa69e4f27446a8a445cb863a0727c24d5813f7ba0863abbefed3af510c7a7/canonical.wav",
+    "bytes": 29157420,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/e8197eed02008dc8a4128fbc0b46d602c8cd69faefab471ba9f3e7ac8af8d4a6/canonical.wav",
+    "bytes": 18284588,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/5a18c0bb7b3d4053249e926e5cc04d4b3e8029628b9ee72fdd5e2d680ca19c52/canonical.wav",
+    "bytes": 19843116,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/4e756dc0fc5e56d2a18d43af067fbc60b133433df702590693b0bcd5380ece1e/canonical.wav",
+    "bytes": 21571628,
+    "reason": "completed DSP, preview ready, PCM can be redecoded for future ML run"
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/423250ec2840f926fc700ce96ce1dbe9c54b0d752027bc3de868963f81a2f539/lead-10ed4dc2811fee2ba817adbbb0bec478f009f5d0fe466e40e991911a6e76e881.wav",
+    "bytes": 20064300
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/2ae356dc72f76a3e4137b56ff77c3febec1a1f7601222aa3825cc365ae8c08aa/canonical.wav",
+    "bytes": 15028268
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/2ae356dc72f76a3e4137b56ff77c3febec1a1f7601222aa3825cc365ae8c08aa/lead-9454d80fd18575197ed5785a35a48f875a3da8f9bcdd636f84759b33aee32110.wav",
+    "bytes": 15028268
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/6b4b3bd5227d24e414cab4338abd82994ac17e2e7275a7e9c4d730652b67ebaa/canonical.wav",
+    "bytes": 15435820
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/6b4b3bd5227d24e414cab4338abd82994ac17e2e7275a7e9c4d730652b67ebaa/lead-e9055ff112b2bd2bd724065014a8d2031d3d000bc0b0b9e53d37f1a6ad5e5e88.wav",
+    "bytes": 15435820
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/021ee05a2bbf8b230ee771d9094f38846aa15ebcfdfad2a3b44828c0f15c4499/canonical.wav",
+    "bytes": 38961196
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/021ee05a2bbf8b230ee771d9094f38846aa15ebcfdfad2a3b44828c0f15c4499/lead-f874e4621264a4f11e8455566db8473ac275f4aac213123222ad39e82f57868a.wav",
+    "bytes": 38961196
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/1553e516694d6b0882f5bedc336057b482801ce6cdf88af8dc6575f5e48e3f4c/canonical.wav",
+    "bytes": 10528812
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/1553e516694d6b0882f5bedc336057b482801ce6cdf88af8dc6575f5e48e3f4c/lead-152b192fed8dce9a4413e7c5a3eaeea10752e0001b7c9d3aa84e655ce245ffbe.wav",
+    "bytes": 10528812
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/686bd1f236e0fdfe140cf7b52e4e4945c1c670b35f71b237bb42c5bd0e8ef075/canonical.wav",
+    "bytes": 15597612
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/686bd1f236e0fdfe140cf7b52e4e4945c1c670b35f71b237bb42c5bd0e8ef075/lead-e4f08356efc7677b76125eaf5ceae3aabce63b2379cb74ad516a6d74c6822bdb.wav",
+    "bytes": 15597612
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/4436e858a41b862f20f9e18a59552b9435985a759e51ebcea5e38bad57709d3d/canonical.wav",
+    "bytes": 18700332
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/4436e858a41b862f20f9e18a59552b9435985a759e51ebcea5e38bad57709d3d/lead-dddb4f10a91ee0b70c7724de7cf20939840c3e4c548d021e7791e64ce7393cee.wav",
+    "bytes": 18700332
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/4a4c96cfdd3553ea86b01f9f6c5f188fd83cafee6aa1660314ce8caa97f2a522/canonical.wav",
+    "bytes": 21598252
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/4a4c96cfdd3553ea86b01f9f6c5f188fd83cafee6aa1660314ce8caa97f2a522/lead-0ac4003e1becf48d72a0cc532a15ab984a7d31a19907e4df078695582ca154a7.wav",
+    "bytes": 21598252
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/a3738b2f5fa3f3f3bd6b2587c2d1f0ea4db3287084fdf1d55688b59927bad50a/canonical.wav",
+    "bytes": 21217324
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/a3738b2f5fa3f3f3bd6b2587c2d1f0ea4db3287084fdf1d55688b59927bad50a/lead-6154b739f18829730359222a913bdd9141cbe7f3a212bdc7a00ee61fb095b531.wav",
+    "bytes": 21217324
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/90606d93fb28a5051bff24b95d76acf29670235a2d892da4dca857a6de824553/canonical.wav",
+    "bytes": 18894892
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/90606d93fb28a5051bff24b95d76acf29670235a2d892da4dca857a6de824553/lead-9174d72cef19c54360cf4c1a015ab44f5d27191a0aab02fe52ec1c6ac315055b.wav",
+    "bytes": 18894892
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/d721bbe2ccd343e2d2a418e15e52629dff566297a794c2847267230bbc819a41/canonical.wav",
+    "bytes": 15130668
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/d721bbe2ccd343e2d2a418e15e52629dff566297a794c2847267230bbc819a41/lead-33f53559519ab9823a68700857afea3e578eb543905b6aec5cc9bd8224a6553d.wav",
+    "bytes": 15130668
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/5e61217f2717ff7366496658b838d37ae07e6b53846450057437a172494f5b4d/canonical.wav",
+    "bytes": 17096748
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/5e61217f2717ff7366496658b838d37ae07e6b53846450057437a172494f5b4d/lead-744fa86a0c5ae9e1fcd7d5752513ecc3c9a40c8bd4c92e6ec7a588242fff5191.wav",
+    "bytes": 17096748
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/8c734d6938bcba9d543426c674af3c5e39e0824a849df393cefbfa068ec5ca7b/canonical.wav",
+    "bytes": 17575980
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/8c734d6938bcba9d543426c674af3c5e39e0824a849df393cefbfa068ec5ca7b/lead-7e72138827fdb5bf3dc5b551593511376fbef9140343bb5f9bd29dcd6ab80888.wav",
+    "bytes": 17575980
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/8476f139c4def9317b39f646f35884a5770371f72f62c2990cad28f03debea88/canonical.wav",
+    "bytes": 17917996
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/8476f139c4def9317b39f646f35884a5770371f72f62c2990cad28f03debea88/lead-935d7f82073b4ba57e6937c81223bf6d4d21c19f430fd70345417f309aa0a7cd.wav",
+    "bytes": 17917996
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/00a45714f0f9839d506abe01f4d98f2c2b86d2dfbdffdb88a428ecf3b7c56dec/canonical.wav",
+    "bytes": 16375852
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/00a45714f0f9839d506abe01f4d98f2c2b86d2dfbdffdb88a428ecf3b7c56dec/lead-6bc3d0865b6ab638c37fc29ad8988586ddd1ce2cba772fb018a6a0c4ec69424a.wav",
+    "bytes": 16375852
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/f1c3ceb39f7d9fecd282e4b216ad8db0b9987227b62c03c720684dab6526d07e/canonical.wav",
+    "bytes": 20742188
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/f1c3ceb39f7d9fecd282e4b216ad8db0b9987227b62c03c720684dab6526d07e/lead-65ab2beac1a4bba1d4a2d111c1b784228750286613744c4dfc818fbe7681d8de.wav",
+    "bytes": 20742188
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/32d7a9978373ce532bd1e3e7ff243ae82eb4896ca37ca18b29c35f2b25afff40/canonical.wav",
+    "bytes": 21391404
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/32d7a9978373ce532bd1e3e7ff243ae82eb4896ca37ca18b29c35f2b25afff40/lead-342f48c0fd40a8fd76912cc075913bada25668ae12ace866a775335add23315d.wav",
+    "bytes": 21391404
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/dd58c5a8373601cea903c5e9294051416236594a59c16904a0679722ad63c42a/canonical.wav",
+    "bytes": 19030060
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/dd58c5a8373601cea903c5e9294051416236594a59c16904a0679722ad63c42a/lead-8c8455d2686eccecf86fb68e1a85f1e5d340934038ec28f980e47d4f99acbc5d.wav",
+    "bytes": 19030060
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/c1b92ef0a73cf42c905663df2c8c8705ed67f00204da7cb4de7d1965d745c983/canonical.wav",
+    "bytes": 24653868
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/c1b92ef0a73cf42c905663df2c8c8705ed67f00204da7cb4de7d1965d745c983/lead-0f0eef05187e644334e322ddd8c06e0137d98f1d856824ac651e9eeab1c705bd.wav",
+    "bytes": 24653868
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/c21605a0de5e4cb0d64ae63b0b5746e2079ce199c9265c2a4b146e548c2fc2dc/canonical.wav",
+    "bytes": 20805676
+  },
+  {
+    "path": "/Users/martin/Downloads/bb-testing-song-chart/cache/c21605a0de5e4cb0d64ae63b0b5746e2079ce199c9265c2a4b146e548c2fc2dc/lead-15c82f6d399a29c1268349cec321b1ebba90e4d9d319520cb863ea557821b2c9.wav",
+    "bytes": 20805676
+  }
+]

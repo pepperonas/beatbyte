@@ -1,0 +1,10 @@
+{
+  "development_excerpts": 8,
+  "matched_pairs": 8,
+  "macro_expert_f1_50ms": {
+    "htdemucs": 0.39404526138880785,
+    "htdemucs_6s": 0.34649310866377037
+  },
+  "chosen": "htdemucs",
+  "policy": "6s replaces default only with >=4 matched development clips and >0.02 absolute macro-F1 gain. Timing proxy only; no subjective guitar-isolation conclusion."
+}

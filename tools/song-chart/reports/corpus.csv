@@ -1,0 +1,49 @@
+category,split,artist,title,duration_s,origin,folder
+rock,development,Death of the Cool,[GR-01] Can't Let Go,235.874,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/death-of-the-cool--cant-let-go--gr01
+rock,development,Pearl Jam,[GR-01] Speed of Sound,215.0,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/pearl-jam--speed-of-sound--gr01
+rock,development,Nickelback,[GR-01] Someday,206.18,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/nickelback--someday--gr01
+rock,development,The Prodigy,[BG-01] You'll Be Under My Wheels,245.21,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/the-prodigy--youll-be-under-my-wheels--bg01
+rock,development,Spinning Chain,[GR-01] Pain I Feel,217.169,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/spinning-chain--pain-i-feel--gr01
+rock,development,NOFX,[BG-01] The Separation of Church and Skate,172.423,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/nofx--the-separation-of-church-and-skate--bg01
+rock,development,The Warning,[BG-01] Automatic Sun,227.462,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/the-warning--automatic-sun--bg01
+rock,development,Shinedown,[BG-01] A Symptom of Being Human,250.454,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/shinedown--a-symptom-of-being-human--bg01
+rock,holdout,Against Me!,[GR-01] Stop!,170.375,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/against-me--stop--gr01
+rock,holdout,James Gang,[GR-01] Walk Away,213.918,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/james-gang--walk-away--gr01
+rock,holdout,The Beatles,[GR-01] The Word,175.004,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/the-beatles--the-word--gr01
+rock,holdout,Bring Me The Horizon,[BG-01] Top 10 staTues tHat CriEd bloOd,227.319,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/bring-me-the-horizon--top-10-statues-that-cried-blood--bg01
+metal,development,DRAGONFORCE,[BG-01] Through the Fire and Flames,441.718,original_levels_verified,/Volumes/USB-1 128GB/beatbyte/songs/dragonforce--through-the-fire-and-flames--bg01
+metal,development,Tina Guo,[GR-01] Queen Bee,140.952,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/tina-guo--queen-bee--gr01
+metal,development,Ultra Vomit,[GR-01] Mountains of Maths,116.418,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/ultra-vomit--mountains-of-maths--gr01
+metal,development,TRUSTcompany,[GR-01] Downfall,194.554,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/trustcompany--downfall--gr01
+metal,development,Wig Wam,[BG-01] Do Ya Wanna Taste It,176.828,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/wig-wam--do-ya-wanna-taste-it--bg01
+metal,development,Pantera,[GR-01] Drag the Waters,300.441,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/pantera--drag-the-waters--gr01
+metal,development,Mötley Crüe,[BG-01] Too Young to Fall in Love,212.01,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/moetley-cruee--too-young-to-fall-in-love--bg01
+metal,development,Metallica,[BG-01] Shadows Follow,374.712,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/metallica--shadows-follow--bg01
+metal,holdout,Amberian Dawn,[GR-01] Dreamchaser,244.87,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/amberian-dawn--dreamchaser--gr01
+metal,holdout,Sabaton,[BG-01] The Attack of the Dead Men,237.781,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/sabaton--the-attack-of-the-dead-men--bg01
+metal,holdout,Gojira,[BG-01] Only Pain,240.536,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/gojira--only-pain--bg01
+metal,holdout,Deftones,[BG-01] infinite source,214.577,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/deftones--infinite-source--bg01
+pop,development,Phantom Planet,[GR-01] Do the Panic,214.213,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/phantom-planet--do-the-panic--gr01
+pop,development,Ado,[BG-01] MAGIC,174.223,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/ado--magic--bg01
+pop,development,The XX,[BG-01] Angels,171.529,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/the-xx--angels--bg01
+pop,development,The Lumineers,[BG-01] Cleopatra,202.215,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/the-lumineers--cleopatra--bg01
+pop,development,Lizzo,[BG-01] About Damn Time,193.822,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/lizzo--about-damn-time--bg01
+pop,development,Sabrina Carpenter,[BG-01] Juno,224.729,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/sabrina-carpenter--juno--bg01
+pop,development,Cocteau Twins,[BG-01] Iceblink Luck,199.253,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/cocteau-twins--iceblink-luck--bg01
+pop,development,Lady Gaga,[BG-01] The Fame,224.976,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/lady-gaga--the-fame--bg01
+pop,holdout,Balu Brigada,[BG-01] So Cold,203.133,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/balu-brigada--so-cold--bg01
+pop,holdout,Avril Lavigne,[BG-01] Complicated,244.552,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/avril-lavigne--complicated--bg01
+pop,holdout,Duncan Laurence,[BG-01] Arcade,185.649,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/duncan-laurence--arcade--bg01
+pop,holdout,Selena,[BG-01] El Chico Del Apartamento 512,208.092,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/selena--el-chico-del-apartamento-512--bg01
+electronic,development,Avicii,[BG-01] You Make Me,235.15,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/avicii--you-make-me--bg01
+electronic,development,BABYMONSTER,[BG-01] DRIP,183.89,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/babymonster--drip--bg01
+electronic,development,Toby Fox,[BG-01] Your Best Nightmare,242.57,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/toby-fox--your-best-nightmare--bg01
+electronic,development,Daft Punk,[BG-01] One More Time / Aerodynamic,374.599,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/daft-punk--one-more-time-aerodynamic--bg01
+electronic,development,Alan Walker,[BG-01] Faded,215.733,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/alan-walker--faded--bg01
+electronic,development,Depeche Mode,[GR-01] Never Let Me Down Again,282.937,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/depeche-mode--never-let-me-down-again--gr01
+electronic,development,009 Sound System,[BG-01] Dreamscape,279.527,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/009-sound-system--dreamscape--bg01
+electronic,development,Carly Rae Jepsen,[GR-01] Call Me Maybe,196.0,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/carly-rae-jepsen--call-me-maybe--gr01
+electronic,holdout,Starset,[BG-01] TRIALS,223.954,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/starset--trials--bg01
+electronic,holdout,Zef,[GR-01] Gambit,287.756,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/zef--gambit--gr01
+electronic,holdout,Porter Robinson,[BG-01] Goodbye To A World,330.568,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/porter-robinson--goodbye-to-a-world--bg01
+electronic,holdout,Kasino,[BG-01] Can't Get Over,207.308,imported_levels_unverified,/Volumes/USB-1 128GB/beatbyte/songs/kasino--cant-get-over--bg01

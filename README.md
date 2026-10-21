@@ -58,7 +58,7 @@
 [![MSRV](https://img.shields.io/badge/MSRV-1.95-orange?logo=rust)](Cargo.toml)
 [![Harnesses](https://img.shields.io/badge/harness%20switches-50-success)](docs/development/harness.md)
 [![Achievements](https://img.shields.io/badge/achievements-300-ffd940)](docs/achievements.md)
-[![Docs pages](https://img.shields.io/badge/documentation-113%20pages-blue)](docs/)
+[![Docs pages](https://img.shields.io/badge/documentation-114%20pages-blue)](docs/)
 [![Docs](https://img.shields.io/badge/docs-architecture%20%C2%B7%20ADRs%20%C2%B7%20specs-blue)](docs/)
 [![Design System](https://img.shields.io/badge/UI-one%20design%20kit-blueviolet)](docs/ui/design-system.md)
 [![3D Stage](https://img.shields.io/badge/3D%20stage-documented-blueviolet)](docs/ui/3d-stage.md)
@@ -637,6 +637,8 @@ designed for a `generated chart → human correction → final chart` workflow.
 **[docs/importing-songs.md](docs/importing-songs.md)** walks through the whole
 flow (every command in it verified end-to-end); see
 [`docs/audio/`](docs/audio/) for analysis quality notes.
+The separate [audio-to-chart research prototype](docs/audio/song-chart-prototype.md)
+provides scripts, benchmark findings and instructions for trying generated charts.
 
 ### Community charts from Bridge
 

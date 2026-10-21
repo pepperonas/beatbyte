@@ -1,0 +1,16 @@
+[project]
+name = "bb-testing-song-chart"
+version = "0.1.0"
+description = "Local audio-to-Beatbyte-chart research prototype"
+requires-python = ">=3.11"
+dependencies = ["numpy>=2.0,<3", "scipy>=1.14,<2", "matplotlib>=3.9,<4", "soundfile>=0.13,<1"]
+
+[project.scripts]
+bbchart = "bbchart.__main__:main"
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["bbchart"]

@@ -1,0 +1,271 @@
+{
+  "status": "generated",
+  "mode": "ml",
+  "master_events": 143,
+  "phrases": [
+    {
+      "id": 0,
+      "start": 7.352967346938776,
+      "end": 14.718828571428572,
+      "events": 15,
+      "reused_mapping": false
+    },
+    {
+      "id": 1,
+      "start": 16.17,
+      "end": 16.473219047619047,
+      "events": 2,
+      "reused_mapping": false
+    },
+    {
+      "id": 2,
+      "start": 54.535000000000004,
+      "end": 54.68282857142857,
+      "events": 1,
+      "reused_mapping": false
+    },
+    {
+      "id": 3,
+      "start": 88.12977959183674,
+      "end": 90.8594081632653,
+      "events": 4,
+      "reused_mapping": false
+    },
+    {
+      "id": 4,
+      "start": 92.34676916099772,
+      "end": 92.52091882086168,
+      "events": 1,
+      "reused_mapping": true
+    },
+    {
+      "id": 5,
+      "start": 95.58,
+      "end": 95.76267029478458,
+      "events": 1,
+      "reused_mapping": true
+    },
+    {
+      "id": 6,
+      "start": 103.51166077097506,
+      "end": 103.66259047619047,
+      "events": 1,
+      "reused_mapping": true
+    },
+    {
+      "id": 7,
+      "start": 105.84,
+      "end": 111.14326757369614,
+      "events": 14,
+      "reused_mapping": false
+    },
+    {
+      "id": 8,
+      "start": 114.45467891156463,
+      "end": 114.84941814058958,
+      "events": 2,
+      "reused_mapping": false
+    },
+    {
+      "id": 9,
+      "start": 124.16,
+      "end": 126.768958276644,
+      "events": 3,
+      "reused_mapping": false
+    },
+    {
+      "id": 10,
+      "start": 133.61237052154195,
+      "end": 143.3015111111111,
+      "events": 18,
+      "reused_mapping": false
+    },
+    {
+      "id": 11,
+      "start": 145.01,
+      "end": 145.91503990929706,
+      "events": 6,
+      "reused_mapping": false
+    },
+    {
+      "id": 12,
+      "start": 147.53,
+      "end": 153.10675147392288,
+      "events": 18,
+      "reused_mapping": false
+    },
+    {
+      "id": 13,
+      "start": 157.39340090702947,
+      "end": 164.10781950113378,
+      "events": 24,
+      "reused_mapping": false
+    },
+    {
+      "id": 14,
+      "start": 166.14084943310658,
+      "end": 168.069389569161,
+      "events": 10,
+      "reused_mapping": false
+    },
+    {
+      "id": 15,
+      "start": 170.19529931972792,
+      "end": 172.37925895691612,
+      "events": 6,
+      "reused_mapping": false
+    },
+    {
+      "id": 16,
+      "start": 175.32999999999998,
+      "end": 175.70228027210885,
+      "events": 1,
+      "reused_mapping": true
+    },
+    {
+      "id": 17,
+      "start": 179.8031700680272,
+      "end": 183.06814149659863,
+      "events": 8,
+      "reused_mapping": false
+    },
+    {
+      "id": 18,
+      "start": 184.6470984126984,
+      "end": 185.17083129251702,
+      "events": 2,
+      "reused_mapping": false
+    },
+    {
+      "id": 19,
+      "start": 191.5137306122449,
+      "end": 192.69794829931973,
+      "events": 4,
+      "reused_mapping": false
+    },
+    {
+      "id": 20,
+      "start": 212.8321619047619,
+      "end": 213.48232063492063,
+      "events": 2,
+      "reused_mapping": false
+    }
+  ],
+  "stats": {
+    "easy": {
+      "gems": 48,
+      "events": 48,
+      "events_per_second": 0.2232383909287257,
+      "active_events_per_second": 0.23360029223396558,
+      "nps_median": 0.0,
+      "nps_p95": 1.0,
+      "chord_share": 0.0,
+      "sustain_share": 0.0625,
+      "hopo_share": 0.0,
+      "median_gap_s": 1.814296000000013,
+      "mean_lane_jump": 0.5531914893617021,
+      "fast_large_jumps": 0,
+      "lanes": [
+        0,
+        1,
+        2
+      ]
+    },
+    "medium": {
+      "gems": 83,
+      "events": 79,
+      "events_per_second": 0.3674131850701944,
+      "active_events_per_second": 0.38446714763506834,
+      "nps_median": 0.0,
+      "nps_p95": 2.0,
+      "chord_share": 0.05063291139240506,
+      "sustain_share": 0.05063291139240506,
+      "hopo_share": 0.0,
+      "median_gap_s": 0.95000000000001,
+      "mean_lane_jump": 0.8205128205128205,
+      "fast_large_jumps": 0,
+      "lanes": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "hard": {
+      "gems": 128,
+      "events": 123,
+      "events_per_second": 0.5720483767548596,
+      "active_events_per_second": 0.5973519417561071,
+      "nps_median": 0.0,
+      "nps_p95": 3.0,
+      "chord_share": 0.04065040650406504,
+      "sustain_share": 0.06504065040650407,
+      "hopo_share": 0.032520325203252036,
+      "median_gap_s": 0.3961904999999959,
+      "mean_lane_jump": 0.9754098360655737,
+      "fast_large_jumps": 0,
+      "lanes": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    "expert": {
+      "gems": 148,
+      "events": 143,
+      "events_per_second": 0.665064372975162,
+      "active_events_per_second": 0.6944823387896205,
+      "nps_median": 0.0,
+      "nps_p95": 3.0,
+      "chord_share": 0.03496503496503497,
+      "sustain_share": 0.06293706293706294,
+      "hopo_share": 0.055944055944055944,
+      "median_gap_s": 0.3200000000000074,
+      "mean_lane_jump": 0.9647887323943662,
+      "fast_large_jumps": 0,
+      "lanes": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
+    }
+  },
+  "human_playtest": "not_performed",
+  "warning": "Prototype: model errors and source leakage can create musically wrong notes. Timing agreement alone does not prove playability.",
+  "validation": {
+    "errors": [],
+    "warnings": []
+  },
+  "elapsed_s": 91.68,
+  "source_audio_sha256": "993011c95621a1c15639e55695d480e4667d8cce32a7eb4676da8ddfc6f9cfae",
+  "config_sha256": "33b541fa3c69468fba85293f4901adafc470dc0b4e5db5eac26a496c04c7f0e4",
+  "meter": {
+    "dsp_comparison": "Disagreement { tracker_bpm: 190.13599838590065, model_bpm: 95.03158291694218 }",
+    "id": "beat-this",
+    "outcome": "Adopted",
+    "policy": "explicit-model-grid-v2",
+    "sha256": "5f810debe53459b559127fb55bbad40035bb47cc567b20e501670f968c770f02"
+  },
+  "separation": {
+    "model": "htdemucs",
+    "device": "mps",
+    "seed": 0,
+    "shifts": 0,
+    "overlap": 0.1,
+    "checkpoints": {
+      "5c90dfd2-34c22ccb.th": "34c22ccb381c6f9fdbf324f04e1e2fe21aaaf293f5ded163a162697ff9a02ddd",
+      "955717e8-8726e21a.th": "8726e21a993978c7ba086d3872e7608d7d5bfca646ca4aca459ffda844faa8b4"
+    },
+    "source": "other",
+    "note": "other is not an isolated guitar; 6s guitar is experimental"
+  },
+  "tonal_model": {
+    "model": "basic-pitch",
+    "sha256": "2c3c1d144bfa61ad236e92e169c13535c880469a12a047d4e73451f2c059a0ec"
+  },
+  "limitations": []
+}

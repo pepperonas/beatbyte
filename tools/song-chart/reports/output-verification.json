@@ -1,0 +1,822 @@
+[
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/cli-smoke/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/electronic-strongest/baseline-mix/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/electronic-strongest/baseline-study/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/electronic-strongest/generated/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/electronic-strongest/reference/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/electronic-weakest/baseline-mix/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/electronic-weakest/baseline-study/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/electronic-weakest/generated/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/electronic-weakest/reference/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/metal-strongest/baseline-mix/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/metal-strongest/baseline-study/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/metal-strongest/generated/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/metal-strongest/reference/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/metal-weakest/baseline-mix/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/metal-weakest/baseline-study/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/metal-weakest/generated/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/metal-weakest/reference/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/pop-strongest/baseline-mix/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/pop-strongest/baseline-study/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/pop-strongest/generated/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/pop-strongest/reference/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/pop-weakest/baseline-mix/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/pop-weakest/baseline-study/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/pop-weakest/generated/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/pop-weakest/reference/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/rock-strongest/baseline-mix/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/rock-strongest/baseline-study/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/rock-strongest/generated/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/rock-strongest/reference/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/rock-weakest/baseline-mix/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/rock-weakest/baseline-study/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/rock-weakest/generated/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/comparisons/rock-weakest/reference/chart.json",
+    "generated_here": false,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/electronic-009-sound-system--dreamscape--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/electronic-alan-walker--faded--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/electronic-avicii--you-make-me--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/electronic-babymonster--drip--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/electronic-carly-rae-jepsen--call-me-maybe--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/electronic-daft-punk--one-more-time-aerodynamic--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/electronic-depeche-mode--never-let-me-down-again--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/electronic-kasino--cant-get-over--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/electronic-porter-robinson--goodbye-to-a-world--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/electronic-starset--trials--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/electronic-toby-fox--your-best-nightmare--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/electronic-zef--gambit--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/metal-amberian-dawn--dreamchaser--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/metal-deftones--infinite-source--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/metal-dragonforce--through-the-fire-and-flames--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/metal-gojira--only-pain--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/metal-metallica--shadows-follow--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/metal-moetley-cruee--too-young-to-fall-in-love--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/metal-pantera--drag-the-waters--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/metal-sabaton--the-attack-of-the-dead-men--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/metal-tina-guo--queen-bee--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/metal-trustcompany--downfall--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/metal-ultra-vomit--mountains-of-maths--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/metal-wig-wam--do-ya-wanna-taste-it--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/pop-ado--magic--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/pop-avril-lavigne--complicated--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/pop-balu-brigada--so-cold--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/pop-cocteau-twins--iceblink-luck--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/pop-duncan-laurence--arcade--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/pop-lady-gaga--the-fame--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/pop-lizzo--about-damn-time--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/pop-phantom-planet--do-the-panic--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/pop-sabrina-carpenter--juno--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/pop-selena--el-chico-del-apartamento-512--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/pop-the-lumineers--cleopatra--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/pop-the-xx--angels--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/rock-against-me--stop--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/rock-bring-me-the-horizon--top-10-statues-that-cried-blood--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/rock-death-of-the-cool--cant-let-go--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/rock-james-gang--walk-away--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/rock-nickelback--someday--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/rock-nofx--the-separation-of-church-and-skate--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/rock-pearl-jam--speed-of-sound--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/rock-shinedown--a-symptom-of-being-human--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/rock-spinning-chain--pain-i-feel--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/rock-the-beatles--the-word--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/rock-the-prodigy--youll-be-under-my-wheels--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-dsp/rock-the-warning--automatic-sun--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/electronic-009-sound-system--dreamscape--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/electronic-alan-walker--faded--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/electronic-avicii--you-make-me--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/electronic-porter-robinson--goodbye-to-a-world--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/electronic-starset--trials--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/electronic-toby-fox--your-best-nightmare--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/metal-amberian-dawn--dreamchaser--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/metal-dragonforce--through-the-fire-and-flames--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/metal-gojira--only-pain--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/metal-moetley-cruee--too-young-to-fall-in-love--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/metal-ultra-vomit--mountains-of-maths--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/metal-wig-wam--do-ya-wanna-taste-it--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/pop-balu-brigada--so-cold--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/pop-cocteau-twins--iceblink-luck--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/pop-duncan-laurence--arcade--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/pop-lizzo--about-damn-time--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/pop-phantom-planet--do-the-panic--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/pop-the-xx--angels--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/rock-against-me--stop--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/rock-death-of-the-cool--cant-let-go--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/rock-nickelback--someday--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/rock-spinning-chain--pain-i-feel--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/rock-the-beatles--the-word--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-0/rock-the-warning--automatic-sun--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/electronic-babymonster--drip--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/electronic-carly-rae-jepsen--call-me-maybe--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/electronic-daft-punk--one-more-time-aerodynamic--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/electronic-depeche-mode--never-let-me-down-again--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/electronic-kasino--cant-get-over--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/electronic-zef--gambit--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/metal-deftones--infinite-source--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/metal-metallica--shadows-follow--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/metal-pantera--drag-the-waters--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/metal-sabaton--the-attack-of-the-dead-men--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/metal-tina-guo--queen-bee--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/metal-trustcompany--downfall--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/pop-ado--magic--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/pop-avril-lavigne--complicated--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/pop-lady-gaga--the-fame--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/pop-sabrina-carpenter--juno--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/pop-selena--el-chico-del-apartamento-512--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/pop-the-lumineers--cleopatra--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/rock-bring-me-the-horizon--top-10-statues-that-cried-blood--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/rock-james-gang--walk-away--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/rock-nofx--the-separation-of-church-and-skate--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/rock-pearl-jam--speed-of-sound--gr01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/rock-shinedown--a-symptom-of-being-human--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/full-ml-1/rock-the-prodigy--youll-be-under-my-wheels--bg01/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection/00-htdemucs/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection/00-htdemucs_6s/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection/01-htdemucs/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection/01-htdemucs_6s/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection/02-htdemucs/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection/02-htdemucs_6s/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection/03-htdemucs/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection/03-htdemucs_6s/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection/04-htdemucs/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection/04-htdemucs_6s/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection/05-htdemucs/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection/05-htdemucs_6s/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection/06-htdemucs/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection/06-htdemucs_6s/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection/07-htdemucs/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection/07-htdemucs_6s/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection-seg5/00-htdemucs/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection-seg5/00-htdemucs_6s/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection-seg5/01-htdemucs/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection-seg5/01-htdemucs_6s/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection-seg5/02-htdemucs/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection-seg5/02-htdemucs_6s/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection-seg5/03-htdemucs/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection-seg5/03-htdemucs_6s/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection-seg5/04-htdemucs/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection-seg5/04-htdemucs_6s/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection-seg5/05-htdemucs/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection-seg5/05-htdemucs_6s/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection-seg5/06-htdemucs/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection-seg5/06-htdemucs_6s/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection-seg5/07-htdemucs/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/model-selection-seg5/07-htdemucs_6s/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/pilot-boilermaker/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/pilot-duvet/chart.json",
+    "generated_here": true,
+    "errors": []
+  },
+  {
+    "chart": "/Users/martin/Downloads/bb-testing-song-chart/outputs/pilot-duvet-6s/chart.json",
+    "generated_here": true,
+    "errors": []
+  }
+]

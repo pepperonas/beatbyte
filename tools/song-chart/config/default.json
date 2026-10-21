@@ -1,0 +1,47 @@
+{
+  "version": "0.1.0",
+  "mode": "ml",
+  "separator": "htdemucs",
+  "snap_tolerance_s": 0.025,
+  "chord_window_s": 0.035,
+  "min_event_gap_s": 0.065,
+  "min_pitch_support": 0.3,
+  "sustain_min_s": 0.25,
+  "sustain_gap_s": 0.06,
+  "max_sustain_s": 20.0,
+  "phrase_beats": 16,
+  "phrase_rest_beats": 2,
+  "max_chord_size": 3,
+  "hopo_max_beats": 0.3541666667,
+  "profiles": {
+    "expert": {
+      "keep": 1.0,
+      "lanes": 5,
+      "chord_cap": 3,
+      "min_gap_s": 0.065,
+      "max_burst": 24
+    },
+    "hard": {
+      "keep": 0.85,
+      "lanes": 5,
+      "chord_cap": 2,
+      "min_gap_s": 0.1,
+      "max_burst": 10
+    },
+    "medium": {
+      "keep": 0.65,
+      "lanes": 4,
+      "chord_cap": 2,
+      "min_gap_s": 0.22,
+      "max_burst": 6
+    },
+    "easy": {
+      "keep": 0.5,
+      "lanes": 3,
+      "chord_cap": 1,
+      "min_gap_s": 0.4,
+      "max_burst": 4
+    }
+  },
+  "separator_segment_s": 5.0
+}
