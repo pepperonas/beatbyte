@@ -2,13 +2,38 @@ import tempfile, unittest, subprocess, json
 from pathlib import Path
 import numpy as np
 import soundfile as sf
-from bbchart.audio import features, demucs_args, analyze
+from bbchart.audio import features, demucs_args, analyze, ensure_models
 from bbchart.common import ROOT,config
 from bbchart.pipeline import generate_song
 
 (ROOT/'cache').mkdir(exist_ok=True)
 
 class PipelineTests(unittest.TestCase):
+    def test_game_model_check_never_downloads_missing_weights(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)
+            with patch('bbchart.audio.ROOT',root), patch('bbchart.audio.Path.home',return_value=root), patch('bbchart.audio.run_adapter') as adapter:
+                with self.assertRaises(RuntimeError):ensure_models(allow_downloads=False)
+                adapter.assert_not_called()
+
+    def test_failed_analysis_never_reports_a_completed_import(self):
+        sr=22050;x=np.zeros(sr*8,dtype='float32')
+        for i,t in enumerate(np.arange(.5,7.5,.5)):
+            n=np.arange(int(sr*.35));idx=round(t*sr)
+            x[idx:idx+len(n)]+=(np.sin(n*2*np.pi*(440 if i%2 else 330)/sr)*np.exp(-n/(sr*.12))).astype('float32')
+        with tempfile.TemporaryDirectory(dir=ROOT/'cache') as folder:
+            root=Path(folder);audio=root/'notes.wav';sf.write(audio,x,sr);out=root/'out';updates=[]
+            def progress(phase,fraction):
+                if phase=='done':self.assertTrue((out/'chart.json').is_file())
+                updates.append((phase,fraction))
+            from bbchart.generator import InsufficientEvidence
+            with self.assertRaises(InsufficientEvidence):
+                generate_song(audio,out,mode='dsp',bpm=120,first_beat=0,make_preview=False,progress=progress)
+            self.assertNotIn(('done',1.),updates)
+            self.assertFalse((out/'chart.json').exists())
+            self.assertEqual([v for _,v in updates],sorted(v for _,v in updates))
+
     def test_real_demucs_cli_accepts_resource_profile(self):
         python=Path.home()/'demucs-env/bin/python'
         if not python.exists():self.skipTest('local Demucs environment missing')

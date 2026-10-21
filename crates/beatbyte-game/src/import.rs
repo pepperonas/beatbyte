@@ -231,8 +231,10 @@ impl Plugin for ImportPlugin {
         app.insert_resource(ImportedIndex::load())
             .init_resource::<ImportStatus>()
             .init_resource::<ImportQueue>()
+            .init_resource::<crate::song_chart::Progress>()
             .init_resource::<WatchState>()
             .add_systems(Startup, spawn_import_panel)
+            .add_systems(Last, stop_import_workers)
             .add_systems(
                 Update,
                 (
@@ -248,6 +250,12 @@ impl Plugin for ImportPlugin {
                 )
                     .chain(),
             );
+    }
+}
+
+fn stop_import_workers(mut exits: MessageReader<AppExit>) {
+    if exits.read().next().is_some() {
+        crate::song_chart::shutdown();
     }
 }
 
@@ -329,6 +337,7 @@ fn start_next_import(
     mut queue: ResMut<ImportQueue>,
     mut status: ResMut<ImportStatus>,
     running: Option<Res<ImportTask>>,
+    progress: Res<crate::song_chart::Progress>,
 ) {
     if running.is_some() {
         return;
@@ -347,10 +356,14 @@ fn start_next_import(
     status.0 = format!("importing \"{}\"...", crate::ui::font_safe(&title));
     info!("import: \"{title}\" by {artist} from {}", source.display());
     queue.current = Some(title.clone());
+    let progress = (*progress).clone();
+    progress.set("Preparing import", 0.0);
     let task = AsyncComputeTaskPool::get().spawn(async move {
-        import_song(&source, &title, &artist, None).map(|warning| match warning {
-            Some(warning) => format!("{title}\u{1f}{warning}"),
-            None => title,
+        import_song_with_progress(&source, &title, &artist, None, &progress).map(|warning| {
+            match warning {
+                Some(warning) => format!("{title}\u{1f}{warning}"),
+                None => title,
+            }
         })
     });
     commands.insert_resource(ImportTask(task));
@@ -434,8 +447,12 @@ fn poll_import(
         }
     }
     if !queue.active() {
-        queue.since_finished = 0.0;
-        status.0 = summary_line(queue.ok, queue.failed, queue.skipped);
+        queue.since_finished = if queue.failed > 0 { -8.0 } else { 0.0 };
+        status.0 = format!(
+            "{}: {}",
+            summary_line(queue.ok, queue.failed, queue.skipped),
+            status.0
+        );
     }
 }
 
@@ -586,6 +603,8 @@ fn update_import_panel(
     mut queue: ResMut<ImportQueue>,
     discovery: Res<crate::discover::Discovery>,
     chore: Res<crate::chore::Chore>,
+    status: Res<ImportStatus>,
+    progress: Res<crate::song_chart::Progress>,
     library_move: Res<crate::library_move::LibraryMove>,
     mut root: Query<&mut Visibility, With<ImportPanelRoot>>,
     mut boxes: Query<&mut BorderColor, With<ImportPanelBox>>,
@@ -634,18 +653,19 @@ fn update_import_panel(
         PanelSource::LibraryMove => library_move.busy(),
     };
 
+    let (progress_label, progress_fraction) = progress.get();
     if let Ok(mut text) = texts.single_mut() {
         let line = if importing {
             if queue.active() {
                 let name = queue.current.as_deref().unwrap_or("...");
                 let name = crate::ui::font_safe(name);
                 format!(
-                    "importing \"{name}\"  ({}/{})",
+                    "importing \"{name}\"  ({}/{})\n{progress_label}",
                     (queue.done + 1).min(queue.total),
                     queue.total
                 )
             } else {
-                summary_line(queue.ok, queue.failed, queue.skipped)
+                crate::ui::font_safe(&status.0)
             }
         } else if source == PanelSource::Search {
             crate::ui::font_safe(&discovery.line)
@@ -671,7 +691,16 @@ fn update_import_panel(
 
     if let Ok((mut node, mut color)) = fills.single_mut() {
         let target = match source {
-            PanelSource::Import => queue.done as f32 / queue.total.max(1) as f32 * 100.0,
+            PanelSource::Import => {
+                (queue.done as f32
+                    + if queue.active() && queue.current.is_some() {
+                        progress_fraction
+                    } else {
+                        0.0
+                    })
+                    / queue.total.max(1) as f32
+                    * 100.0
+            }
             PanelSource::Search => discovery.bar() * 100.0,
             PanelSource::Chore => chore.bar() * 100.0,
             PanelSource::LibraryMove => library_move.panel_bar() * 100.0,
@@ -760,11 +789,57 @@ fn import_song(
     artist: &str,
     origin: Option<Origin>,
 ) -> Result<Option<String>, String> {
+    import_song_with_progress(
+        source,
+        title,
+        artist,
+        origin,
+        &crate::song_chart::Progress::default(),
+    )
+}
+
+fn import_song_with_progress(
+    source: &Path,
+    title: &str,
+    artist: &str,
+    origin: Option<Origin>,
+    progress: &crate::song_chart::Progress,
+) -> Result<Option<String>, String> {
+    let _running = crate::song_chart::ImportGuard::start()?;
+    let folder = landing_folder(source).ok_or_else(|| "file has no name".to_owned())?;
+    let data = crate::library::data_dir().ok_or_else(|| "no app data directory".to_owned())?;
+    import_transaction(&folder, || {
+        finish_import(source, title, artist, origin, progress, &folder, &data)
+    })
+}
+
+fn import_transaction(
+    folder: &Path,
+    work: impl FnOnce() -> Result<Option<String>, String>,
+) -> Result<Option<String>, String> {
+    if let Some(parent) = folder.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::create_dir(folder).map_err(|e| format!("cannot create song folder: {e}"))?;
+    let result = work();
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(folder);
+    }
+    result
+}
+
+fn finish_import(
+    source: &Path,
+    title: &str,
+    artist: &str,
+    origin: Option<Origin>,
+    progress: &crate::song_chart::Progress,
+    folder: &Path,
+    data: &Path,
+) -> Result<Option<String>, String> {
     let file_name = source
         .file_name()
         .ok_or_else(|| "file has no name".to_owned())?;
-    let folder = landing_folder(source).ok_or_else(|| "file has no name".to_owned())?;
-    std::fs::create_dir_all(&folder).map_err(|e| format!("cannot create folder: {e}"))?;
     let audio_dest = folder.join(file_name);
     std::fs::copy(source, &audio_dest).map_err(|e| format!("cannot copy audio: {e}"))?;
     // A .lrc beside the source travels with the song, so imported
@@ -779,26 +854,42 @@ fn import_song(
     // Free here, and only here: the song is already decoded for the
     // chart. Doing it later would mean decoding it a second time.
     let features = beatbyte_audio::features::measure(audio.samples(), audio.sample_rate());
-    #[allow(unused_mut)] // mutated only under `ml`
-    let mut analysis = SpectralAnalyzer::default().analyze(&audio);
-    // The local beat/downbeat model, when this build carries the
-    // runtime and the user has installed the pair: bar lines from the
-    // music rather than counted in fours. Never a reason to fail an
-    // import — without it the chart is exactly what it was.
-    #[cfg(feature = "ml")]
-    match beatbyte_meter::refine(&mut analysis, &audio, beatbyte_meter::DEFAULT_POLICY) {
-        Ok(Some(applied)) => bevy::log::info!("meter: {}", applied.summary()),
-        Ok(None) => {}
-        Err(error) => bevy::log::warn!("meter: {error}; charting without downbeats"),
-    }
-    let mut chart = generate_chart(
-        &analysis,
-        &GenerateMeta {
-            title: title.to_owned(),
-            artist: artist.to_owned(),
-            audio: file_name.to_string_lossy().into_owned(),
-        },
-    );
+    let runtime = crate::song_chart::Runtime::registered(data)?;
+    let (mut chart, standard_warning) = if let Some(runtime) = runtime {
+        let mut generated = runtime.generate(&audio_dest, title, artist, data, progress)?;
+        generated.chart.song.audio = file_name.to_string_lossy().into_owned();
+        let bytes = serde_json::to_vec_pretty(&generated.evidence).map_err(|e| e.to_string())?;
+        beatbyte_chart::io::write_atomic(&folder.join("chart-generation.json"), &bytes)
+            .map_err(|e| format!("cannot save chart generation evidence: {e}"))?;
+        info!("import: AI song-chart pipeline generated all four difficulties");
+        (generated.chart, None)
+    } else {
+        progress.set("Standard charting (AI not installed)", 0.5);
+        #[allow(unused_mut)] // mutated only under `ml`
+        let mut analysis = SpectralAnalyzer::default().analyze(&audio);
+        // The local beat/downbeat model, when this build carries the
+        // runtime and the user has installed the pair: bar lines from the
+        // music rather than counted in fours. Never a reason to fail an
+        // import — without it the chart is exactly what it was.
+        #[cfg(feature = "ml")]
+        match beatbyte_meter::refine(&mut analysis, &audio, beatbyte_meter::DEFAULT_POLICY) {
+            Ok(Some(applied)) => bevy::log::info!("meter: {}", applied.summary()),
+            Ok(None) => {}
+            Err(error) => bevy::log::warn!("meter: {error}; charting without downbeats"),
+        }
+        let chart = generate_chart(
+            &analysis,
+            &GenerateMeta {
+                title: title.to_owned(),
+                artist: artist.to_owned(),
+                audio: file_name.to_string_lossy().into_owned(),
+            },
+        );
+        (
+            chart,
+            Some("standard chart created; AI charting is not installed".to_owned()),
+        )
+    };
     // The file's own genre tag, when it carries one - a metadata
     // probe, no second decode.
     chart.song.genre = beatbyte_audio::read_genre(&audio_dest);
@@ -817,7 +908,8 @@ fn import_song(
     {
         return Err("generated chart failed validation".to_owned());
     }
-    let (chart_path, pointer) = plan_chart_write(&folder)?;
+    progress.set("Saving song", 0.98);
+    let (chart_path, pointer) = plan_chart_write(folder)?;
     beatbyte_chart::save_chart_file(&chart_path, &chart).map_err(|e| e.to_string())?;
     if let Some((pointer_path, text)) = pointer {
         std::fs::write(pointer_path, text).map_err(|e| format!("cannot write pointer: {e}"))?;
@@ -860,7 +952,7 @@ fn import_song(
     // real audio — so it is closed by construction rather than
     // pinned.
     write_document(
-        &folder,
+        folder,
         &chart,
         &chart_path,
         &audio_dest,
@@ -868,7 +960,11 @@ fn import_song(
         features,
         origin.as_ref(),
     );
-    Ok(warning)
+    progress.set("Import complete", 1.0);
+    Ok(match (warning, standard_warning) {
+        (Some(a), Some(b)) => Some(format!("{a}; {b}")),
+        (a, b) => a.or(b),
+    })
 }
 
 /// Give the freshly imported song the document it will carry from
@@ -1342,6 +1438,156 @@ mod watch_tests {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::{import_dir, sanitize_folder_name, song_name_from_stem};
+
+    #[test]
+    fn failed_import_is_retryable_and_existing_song_is_never_removed() {
+        let root =
+            std::env::temp_dir().join(format!("bb-import-transaction-{}", std::process::id()));
+        let folder = root.join("song");
+        let _ = std::fs::remove_dir_all(&root);
+        let failed = super::import_transaction(&folder, || {
+            std::fs::write(folder.join("audio.m4a"), b"partial").unwrap();
+            Err("AI failed".to_owned())
+        });
+        assert!(failed.is_err());
+        assert!(!folder.exists());
+        assert!(
+            super::import_transaction(&folder, || {
+                std::fs::write(folder.join("chart.json"), b"preserve").unwrap();
+                Ok(None)
+            })
+            .is_ok()
+        );
+        assert!(super::import_transaction(&folder, || panic!("must not run")).is_err());
+        assert_eq!(
+            std::fs::read(folder.join("chart.json")).unwrap(),
+            b"preserve"
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_dropped_m4a_enters_the_background_import_queue() {
+        use super::*;
+        let source = std::env::temp_dir().join(format!("bb-event-{}.M4A", std::process::id()));
+        std::fs::write(&source, b"unique queued audio bytes").unwrap();
+        let mut app = App::new();
+        app.add_message::<bevy::window::FileDragAndDrop>()
+            .init_resource::<ImportQueue>()
+            .init_resource::<ImportStatus>()
+            .init_resource::<ImportedIndex>()
+            .init_resource::<crate::config::Settings>()
+            .add_systems(Update, handle_drops);
+        app.world_mut()
+            .write_message(bevy::window::FileDragAndDrop::DroppedFile {
+                window: Entity::PLACEHOLDER,
+                path_buf: source.clone(),
+            });
+        app.update();
+        let queue = app.world().resource::<ImportQueue>();
+        assert_eq!(queue.total, 1);
+        assert_eq!(queue.pending.front().map(|p| &p.0), Some(&source));
+        std::fs::remove_file(source).unwrap();
+    }
+
+    #[test]
+    fn the_overlay_shows_worker_progress_and_retains_the_failure_reason() {
+        use super::*;
+        let mut app = App::new();
+        let mut time = Time::<()>::default();
+        time.advance_by(std::time::Duration::from_millis(100));
+        let progress = crate::song_chart::Progress::default();
+        let writer = progress.clone();
+        std::thread::spawn(move || writer.set("AI: detecting notes", 0.7))
+            .join()
+            .unwrap();
+        app.insert_resource(time)
+            .insert_resource(progress)
+            .insert_resource(ImportQueue {
+                total: 1,
+                current: Some("A song".to_owned()),
+                ..default()
+            })
+            .init_resource::<ImportStatus>()
+            .init_resource::<crate::discover::Discovery>()
+            .init_resource::<crate::chore::Chore>()
+            .init_resource::<crate::library_move::LibraryMove>()
+            .add_systems(Update, update_import_panel);
+        app.world_mut().spawn((ImportPanelRoot, Visibility::Hidden));
+        let text = app.world_mut().spawn((ImportPanelText, Text::new(""))).id();
+        let bar = app
+            .world_mut()
+            .spawn((
+                ImportBarFill,
+                Node {
+                    width: percent(0),
+                    ..default()
+                },
+                BackgroundColor::default(),
+            ))
+            .id();
+        app.update();
+        assert!(
+            app.world()
+                .get::<Text>(text)
+                .unwrap()
+                .0
+                .contains("AI: detecting notes")
+        );
+        assert!(matches!(app.world().get::<Node>(bar).unwrap().width, Val::Percent(v) if v>0.0));
+        {
+            let mut queue = app.world_mut().resource_mut::<ImportQueue>();
+            queue.done = 1;
+            queue.failed = 1;
+            queue.current = None;
+        }
+        app.world_mut().resource_mut::<ImportStatus>().0 =
+            "import failed: model missing".to_owned();
+        app.update();
+        assert!(
+            app.world()
+                .get::<Text>(text)
+                .unwrap()
+                .0
+                .contains("model missing")
+        );
+    }
+
+    #[test]
+    #[ignore = "needs installed AI runtime and BEATBYTE_AUTOPILOT_DROP audio"]
+    fn installed_pipeline_imports_real_audio_and_preserves_all_four_levels() {
+        let source = std::path::PathBuf::from(
+            std::env::var_os("BEATBYTE_AUTOPILOT_DROP").expect("audio path"),
+        );
+        let data = crate::library::data_dir().expect("data directory");
+        let root = std::env::temp_dir().join(format!("bb-real-ai-import-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let result = super::finish_import(
+            &source,
+            "Integration test",
+            "Test",
+            None,
+            &crate::song_chart::Progress::default(),
+            &root,
+            &data,
+        );
+        assert!(result.is_ok(), "{result:?}");
+        let chart = beatbyte_chart::load_chart_file(&root.join("chart.json")).unwrap();
+        assert_eq!(chart.charts.len(), 4);
+        if let Some(reference) = std::env::var_os("BBCHART_REFERENCE_CHART") {
+            let expected =
+                beatbyte_chart::load_chart_file(std::path::Path::new(&reference)).unwrap();
+            assert_eq!(
+                chart.charts, expected.charts,
+                "the game must use the same notes as the CLI"
+            );
+            assert_eq!(chart.grid, expected.grid);
+        }
+        assert!(crate::song_chart::owns_chart(&root));
+        let doc = beatbyte_library::store::read(&root).unwrap();
+        assert_eq!(doc.gameplay.chart_file.as_deref(), Some("chart.json"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     /// ⚠️ Imports land in the data directory and nowhere else — never
     /// in a `songs/` beside the working directory, which is how the

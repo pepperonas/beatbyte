@@ -14,6 +14,26 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.19.2] - 2026-10-21
+
+### Added
+
+- Drag-and-drop and fetched-audio imports use the explicitly installed local
+  audio-to-chart pipeline: Beat This!, instrument separation and note detection
+  create Easy, Medium, Hard and Expert before the song appears. The import
+  panel shows each analysis stage; configuration and model evidence stay
+  beside the chart. Setup registers the runtime for this device, including
+  installed app bundles launched outside the checkout.
+
+### Fixed
+
+- A failed import removes only its newly created folder and remains retryable;
+  an existing song is never overwritten. AI failures do not silently produce a
+  standard chart. Devices without an AI installation retain standard charting,
+  identified in the import panel and completion message.
+- The older automatic guitar upgrade leaves newly generated AI charts intact;
+  optional vocal processing remains available.
+
 ## [0.19.1] - 2026-10-18
 
 ### Added

@@ -5,7 +5,7 @@ import soundfile as sf
 from scipy.signal import find_peaks, stft
 from .common import ROOT, REPO_ROOT, digest, read_json, write_json, run_adapter
 
-def ensure_models():
+def ensure_models(allow_downloads=True):
     import re
     registry=(REPO_ROOT/'crates/beatbyte-ml/src/registry.rs').read_text()
     existing=Path.home()/'Library/Application Support/beatbyte/models'
@@ -17,6 +17,7 @@ def ensure_models():
         if src.exists() and digest(src)==hashes[model]:
             folder.mkdir(parents=True,exist_ok=True);shutil.copy2(src,dest)
         else:
+            if not allow_downloads:raise RuntimeError('AI models missing or invalid; run tools/song-chart/setup.sh first.')
             run_adapter('install-models',ROOT/'models');break
     # Keep Demucs model downloads and their upstream hash-verified weights in this project.
     old=Path.home()/'.cache/torch/hub/checkpoints'
@@ -60,7 +61,7 @@ def demucs_args(model, device, segment, destination, wav):
     return ['-n',model,'--device',device,'--shifts','0','--overlap','0.1','--segment',str(int(segment)),
             '--flac','--int24','-o',str(destination),str(wav)]
 
-def separate(wav, folder, model, device='auto', demucs_python=None, segment=5.):
+def separate(wav, folder, model, device='auto', demucs_python=None, segment=5., offline=False):
     if not (float(segment).is_integer() and 1<=segment<=7):
         raise ValueError('Demucs segment must be an integer between 1 and 7 seconds.')
     separation_root=folder/f'separated-seg-{segment:g}'
@@ -73,6 +74,8 @@ def separate(wav, folder, model, device='auto', demucs_python=None, segment=5.):
     env={**os.environ,'TORCH_HOME':str(ROOT/'models/torch'),'OMP_NUM_THREADS':'4','MKL_NUM_THREADS':'4','PYTHONHASHSEED':'0'}
     # Seed torch before the upstream CLI; shifts disabled for reproducibility.
     runner="import random,numpy as np,torch,sys; random.seed(0); np.random.seed(0); torch.manual_seed(0); torch.set_num_threads(4); from demucs.separate import main; main()"
+    if offline:
+        runner="import torch.hub; torch.hub.download_url_to_file=lambda *a,**k: (_ for _ in ()).throw(RuntimeError('Model download disabled during game import; run setup first.')); "+runner
     devices=['mps','cpu'] if device=='auto' else [device]
     errors=[]
     for selected in devices:
@@ -92,9 +95,12 @@ def separate(wav, folder, model, device='auto', demucs_python=None, segment=5.):
         errors.append(f'{selected}: {log.read_text()[-1400:]}')
     raise RuntimeError('Instrumententrennung fehlgeschlagen: '+'\n'.join(errors))
 
-def analyze(audio, cfg, mode='ml', lead=None, bpm=None, first_beat=None, device='auto', demucs_python=None):
+def analyze(audio, cfg, mode='ml', lead=None, bpm=None, first_beat=None, device='auto', demucs_python=None, progress=None, offline=False):
+    update=progress or (lambda phase,fraction:None)
+    update('decoding',.02)
     folder,wav,decoded=canonical(audio)
-    if mode=='ml':ensure_models()
+    update('beats',.12)
+    if mode=='ml':ensure_models(allow_downloads=not offline)
     meter_mode='dsp' if bpm is not None else mode
     mixpath=folder/f'mix-{meter_mode}.json'
     if not mixpath.exists() or (meter_mode=='ml' and read_json(mixpath).get('meter',{}).get('policy')!='explicit-model-grid-v2'):
@@ -110,14 +116,16 @@ def analyze(audio, cfg, mode='ml', lead=None, bpm=None, first_beat=None, device=
         analysis['bpm']=float(bpm);analysis['beats']=np.arange(origin,decoded['duration_s'],60/bpm).tolist();analysis['downbeats']=analysis['beats'][::4];analysis['repeats']=[]
         mix['meter']={'policy':'manual-constant','bpm':bpm,'first_beat':origin,'meter_assumption':'4/4'}
     elif first_beat is not None:raise ValueError('--first-beat benötigt --bpm.')
+    update('instruments',.35)
     separation=None
     if lead:
         _,source,_=canonical(lead)
         actual=sf.info(source).duration
         if abs(actual-decoded['duration_s'])>.025:raise ValueError('Instrumentenspur weicht um mehr als 25 ms in der Länge ab. Identische Zeitachse erforderlich.')
         separation={'source':'user-provided','sha256':digest(lead),'alignment':'length checked only; sample alignment is user responsibility'}
-    elif mode=='ml':source,separation=separate(wav,folder,cfg['separator'],device,demucs_python,cfg.get('separator_segment_s',5.))
+    elif mode=='ml':source,separation=separate(wav,folder,cfg['separator'],device,demucs_python,cfg.get('separator_segment_s',5.),offline=offline)
     else:source=wav
+    update('notes',.70)
     leadkey=digest(source); tonalpath=folder/f'tonal-{mode}-{leadkey}.json'
     if not tonalpath.exists():
         tonal=run_adapter('poly' if mode=='ml' else 'analyze',source,*([] if mode=='ml' else ['dsp']))

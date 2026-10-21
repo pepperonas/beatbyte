@@ -156,6 +156,15 @@ Step by step in [`docs/ui/menu-system.md`](docs/ui/menu-system.md)
   screen too (`BEATBYTE_SHOT_STATE` + `BEATBYTE_SHOT_ROW`), not only at
   the "same" verdict for the old ones.
 
+### Local AI audio import
+
+`tools/song-chart/setup.sh` explicitly registers the per-device runtime in
+`song-chart-runtime.json`. `song_chart.rs` runs its offline `game-import` protocol
+from the shared import worker; never spawn code discovered in CWD. A registered
+AI failure must stay a failure, not silently become a standard chart. Preserve
+`chart-generation.json`: the old automatic stem upgrade must not replace these
+notes. See `docs/audio/song-chart-prototype.md`.
+
 ### Where to look before deriving something twice
 
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — the work itself, in order

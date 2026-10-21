@@ -1,7 +1,7 @@
 # Importing Your Own Songs
 
-BeatByte turns any song you own into a playable chart in about a
-minute: analyze → generate → play, with the built-in editor as the
+BeatByte turns your audio into a playable chart; analysis time depends on
+the recording and the installed generator: analyze → generate → play, with the built-in editor as the
 correction pass. Every command below was run exactly as written
 (against an MP3) while writing this guide.
 
@@ -32,6 +32,20 @@ an older build named (`bridge-01-…`, `gamerip-01-…`) are still read, and
 the active chart version are keyed by the song id and file names inside
 the folder, never by the folder's name.
 
+## Drag and drop with local AI charting
+
+Since 0.19.2, an explicitly installed local charting runtime is used by the
+shared audio import path, including dropped files and fetched recordings.
+Drop MP3, M4A, WAV, OGG or FLAC into the menu or browser. The panel shows
+beats, instrument separation, note detection and creation of all four
+difficulties. The song appears after chart validation; long recordings
+can take several minutes. See [setup and behavior](audio/song-chart-prototype.md).
+
+Without that installation the standard generator remains available and is
+identified in the panel and completion message. A registered AI installation
+that fails reports the error instead of silently switching generators. Failed
+imports can be retried; existing song folders are never overwritten.
+
 ## By name, from inside the game
 
 Press **Cmd/Ctrl+D** in the browser (or ADD A SONG in the action menu),
@@ -55,13 +69,12 @@ library folder exactly as a dropped file does, and appears in the browser
 the moment it is there. A pasted YouTube link always takes this path:
 it names one recording.
 
-**Then the chart gets better by itself.** A song that came from a
-recording (or a dropped file) is playable at once with its first chart.
-In the background — between songs, never during one — BeatByte separates
-its guitar stem with `demucs`, charts that, plays it by the classic rules
-and makes it the chart that plays; the first chart stays as a revision
-(SWITCH REVISION in the action menu). A chart you edited by hand is never
-replaced, and community charts are left as they came.
+**Background instrument analysis.** Standard-generator imports can still get
+an instrument-based chart in the background between songs. The first chart
+stays as a revision (SWITCH REVISION in the action menu), and hand-edited and
+community charts are preserved. Charts created by the new local AI runtime
+have already used instrument separation; the older automatic upgrade leaves
+their notes intact. Optional vocal processing remains available.
 
 **It runs in the background.** Start a search, then browse, change a
 setting or play a song: it carries on and lands anyway. A panel at the

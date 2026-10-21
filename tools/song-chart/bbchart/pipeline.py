@@ -6,7 +6,8 @@ from .generator import generate
 from .preview import preview
 from .metrics import compare, stats, grid_compare
 
-def generate_song(audio,out,*,cfg=None,mode='ml',lead=None,bpm=None,first_beat=None,title=None,artist='Unknown',device='auto',demucs_python=None,make_preview=True):
+def generate_song(audio,out,*,cfg=None,mode='ml',lead=None,bpm=None,first_beat=None,title=None,artist='Unknown',device='auto',demucs_python=None,make_preview=True,progress=None,offline=False):
+    update=progress or (lambda phase,fraction:None)
     cfg=cfg or config();audio=Path(audio).resolve();out=Path(out).resolve()
     # Caller must choose a new run directory; never overwrite an existing playable chart.
     if (out/'chart.json').exists():raise FileExistsError(f'Chart existiert bereits: {out}. Neuen --out Ordner wählen.')
@@ -14,11 +15,13 @@ def generate_song(audio,out,*,cfg=None,mode='ml',lead=None,bpm=None,first_beat=N
     existing_audio=out/('song'+audio.suffix.lower())
     if existing_audio.exists() and digest(existing_audio)!=digest(audio):
         raise FileExistsError(f'Ausgabe enthält bereits eine andere Audiodatei: {existing_audio}. Neuen --out Ordner wählen.')
-    started=time.monotonic();result,feat=analyze(audio,cfg,mode,lead,bpm,first_beat,device,demucs_python)
+    started=time.monotonic();result,feat=analyze(audio,cfg,mode,lead,bpm,first_beat,device,demucs_python,progress=progress,offline=offline)
+    update('patterns',.88)
     chart,report=generate(result,feat,cfg,title or audio.stem,artist,'song'+audio.suffix.lower())
     out.mkdir(parents=True,exist_ok=True);audio_out=out/chart['song']['audio']
     shutil.copy2(audio,audio_out)
     # Write provisional chart, validate, then publish playable chart last.
+    update('validating',.95)
     temp=out/'chart.pending.json';write_json(temp,chart)
     try: report['validation']=validate(temp)
     except Exception:
@@ -32,6 +35,7 @@ def generate_song(audio,out,*,cfg=None,mode='ml',lead=None,bpm=None,first_beat=N
     write_json(out/'config.json',cfg);write_json(out/'analysis.json',result);write_json(out/'report.json',report)
     if make_preview:preview(chart,result['canonical_wav'],out)
     temp.rename(out/'chart.json')
+    update('done',1.)
     return report
 
 def evaluate(corpus_path,mode='dsp',limit=None,split='all',cfg_path=None,device='auto',tag=None):

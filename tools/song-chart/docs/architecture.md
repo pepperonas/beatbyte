@@ -2,7 +2,7 @@
 
 ## Bestehendes Beatbyte-Projekt
 
-Untersuchter Stand: siehe `reports/beatbyte-revision.txt`. Quellprojekt: `/Users/martin/claude/beat-byte`. Der ursprünglich externe Prototyp ist jetzt unter `tools/song-chart` versioniert; die App-Pipeline bleibt unverändert.
+Untersuchter Stand: siehe `reports/beatbyte-revision.txt`. Quellprojekt: `/Users/martin/claude/beat-byte`. Der ursprünglich externe Prototyp ist jetzt unter `tools/song-chart` versioniert; seit 0.19.2 kann der gemeinsame Audioimport im Spiel die ausdrücklich registrierte Pipeline aufrufen.
 
 Die bestehende Pipeline ist bereits umfangreich. `beatbyte-audio/src/analysis/mod.rs` decodiert / halbiert hohe Sampleraten, erkennt Spectral-Flux-Onsets, schätzt Tempo, verfolgt ein variables Beat-Raster, extrahiert Melodien und findet Wiederholungen. Die eingebaute Analyse allein liefert keine Downbeats. `beatbyte-meter` ergänzt Beat This!. `beatbyte-poly` führt Basic Pitch über den bestehenden verifizierten ONNX-Runtime aus. `beatbyte-chart/src/generate.rs` erzeugt den Standardchart, `generate/lead_study.rs` den vorhandenen instrumentbezogenen Versuch.
 

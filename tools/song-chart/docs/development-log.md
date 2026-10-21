@@ -55,3 +55,12 @@ Builds, Cache, Ausgaben und die vollständige lokale Bibliotheksinventur
 werden nicht versioniert. Die Berichte bleiben als historische Evidenz
 erhalten; die Ausgangsdaten liegen weiterhin im Downloads-Testordner.
 Die App-Pipeline wurde nicht durch den Prototyp ersetzt.
+
+## Spielintegration in 0.19.2
+
+Der gemeinsame Audioimport nutzt nun die ausdrücklich registrierte lokale
+Runtime. Fortschritt, Offline-Betrieb, native Validierung, transaktionales
+Anlegen des Songordners und Prozessbeendigung sind verbunden. Die ältere
+automatische Gitarren-Nachoptimierung überschreibt diese neuen Charts nicht.
+Prüfungen und tatsächlicher M4A-Spieltest stehen in
+[integration-validation.md](integration-validation.md).

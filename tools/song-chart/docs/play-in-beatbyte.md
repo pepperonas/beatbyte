@@ -2,6 +2,16 @@
 
 Die Ausgabedateien wurden mit Beatbytes eigenem Format-v1-Parser und Validator geprüft. Ein echter menschlicher Spieltest wurde noch nicht durchgeführt. Der folgende Ladeweg stammt aus dem untersuchten Projektstand; eine ältere installierte App kann sich anders verhalten.
 
+## Direkt im Spiel (seit 0.19.2)
+
+Bei eingerichteter und registrierter Runtime genügt Drag and drop einer
+Audiodatei ins Hauptmenü oder den Songbrowser. Der gemeinsame Import zeigt die
+Analyseschritte an und legt den Song mit vier Schwierigkeiten in der gewählten
+Bibliothek ab. Auf diesem Mac ist die Runtime registriert; die App muss den
+neuen Build verwenden. [Details zur Einrichtung](../../../docs/audio/song-chart-prototype.md).
+
+Die folgenden Schritte bleiben als manueller Skript- und Vergleichsweg verfügbar.
+
 ## Neue Audiodatei einlesen und spielen
 
 Im Repository zum Prototyp wechseln, nach einem frischen Checkout zuerst `./setup.sh --demucs` ausführen:

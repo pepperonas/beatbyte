@@ -6,7 +6,7 @@ holds the work itself.
 
 ## Live note preview in the song browser (2026-10-18)
 
-*Verified: 2310 tests in the source inventory, including documentation examples;
+*Verified: 2320 tests in the source inventory, including documentation examples;
 fmt, clippy `-D warnings --all-features`, `cargo test --workspace`; eight new
 pins seen to fail under a mutation; the preview photographed on the real library
 (8 626 songs) with `BEATBYTE_SHOT_SETTLE=4`.*
@@ -2502,3 +2502,10 @@ Not started without a deliberate roadmap edit pulling them forward:
 - [x] Preserve the standalone generator, configuration, tests and analysis reports under `tools/song-chart`; document setup and playing a generated chart in [the prototype guide](audio/song-chart-prototype.md).
 - [x] Benchmark 48 full songs with DSP and ML; record the negative timing comparison against the existing Mix generator without claiming a musical quality improvement.
 - [ ] Conduct human listening and play comparisons before considering integration into the application pipeline.
+
+## In-game local AI charting (0.19.2)
+
+- [x] Connect the explicitly registered local chart runtime to the shared audio import pipeline; show analysis progress and preserve errors.
+- [x] Keep imported AI charts from being overwritten by the older automatic guitar upgrade; retain vocal processing.
+- [x] Make failed imports retryable without overwriting existing songs.
+- [ ] Human comparisons across more genres before claiming better musical quality.

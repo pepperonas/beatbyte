@@ -6,30 +6,40 @@ def main():
     parser=argparse.ArgumentParser(description='Beatbyte Audio → Guitar-Hero-Stil Charts (Forschungsprototyp)')
     sub=parser.add_subparsers(dest='command',required=True)
     scan=sub.add_parser('scan');scan.add_argument('library',type=Path);scan.add_argument('--out',type=Path)
-    for name in ('analyze','generate'):
+    for name in ('analyze','generate','game-import'):
         p=sub.add_parser(name);p.add_argument('audio',type=Path);p.add_argument('--out',type=Path,required=True);p.add_argument('--mode',choices=['ml','dsp'],default='ml')
         p.add_argument('--lead',type=Path);p.add_argument('--bpm',type=float);p.add_argument('--first-beat',type=float);p.add_argument('--config',type=Path)
         p.add_argument('--device',choices=['auto','cpu','mps'],default='auto');p.add_argument('--demucs-python');p.add_argument('--separator',choices=['htdemucs','htdemucs_6s'])
-        if name=='generate':p.add_argument('--title');p.add_argument('--artist',default='Unknown');p.add_argument('--no-preview',action='store_true')
+        if name in ('generate','game-import'):p.add_argument('--title');p.add_argument('--artist',default='Unknown');p.add_argument('--no-preview',action='store_true')
+        if name=='game-import':p.add_argument('--progress-file',type=Path,required=True)
+    sub.add_parser('register')
     e=sub.add_parser('evaluate');e.add_argument('--corpus',type=Path,default=ROOT/'reports/corpus.json');e.add_argument('--mode',choices=['ml','dsp'],default='dsp');e.add_argument('--limit',type=int);e.add_argument('--split',choices=['all','development','holdout'],default='all');e.add_argument('--config',type=Path);e.add_argument('--device',choices=['auto','cpu','mps'],default='auto');e.add_argument('--tag')
-    sub.add_parser('models')
+    sub.add_parser('models').add_argument('--with-separator',action='store_true')
     a=parser.parse_args()
     try:
-        if a.command=='scan':
+        if a.command=='register':
+            from .runtime import register
+            result=register()
+        elif a.command=='scan':
             from .inventory import scan
             result=scan(a.library,a.out)
         elif a.command=='models':
             from .audio import ensure_models
-            ensure_models();result={'models':'verified in '+str(ROOT/'models')}
+            ensure_models()
+            if a.with_separator:
+                from .runtime import separator_model
+                separator_model()
+            result={'models':'verified in '+str(ROOT/'models')}
         elif a.command=='evaluate':
             from .pipeline import evaluate
             result=evaluate(a.corpus,a.mode,a.limit,a.split,a.config,a.device,a.tag)
         else:
             cfg=config(a.config)
             if a.separator:cfg['separator']=a.separator
-            if a.command=='generate':
+            if a.command in ('generate','game-import'):
                 from .pipeline import generate_song
-                result=generate_song(a.audio,a.out,cfg=cfg,mode=a.mode,lead=a.lead,bpm=a.bpm,first_beat=a.first_beat,title=a.title,artist=a.artist,device=a.device,demucs_python=a.demucs_python,make_preview=not a.no_preview)
+                progress=(lambda phase,fraction:write_json(a.progress_file,{'phase':phase,'fraction':fraction})) if a.command=='game-import' else None
+                result=generate_song(a.audio,a.out,cfg=cfg,mode=a.mode,lead=a.lead,bpm=a.bpm,first_beat=a.first_beat,title=a.title,artist=a.artist,device=a.device,demucs_python=a.demucs_python,make_preview=not a.no_preview,progress=progress,offline=a.command=='game-import')
             else:
                 from .audio import analyze
                 result,_=analyze(a.audio,cfg,a.mode,a.lead,a.bpm,a.first_beat,a.device,a.demucs_python)

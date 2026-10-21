@@ -172,7 +172,8 @@ pub fn queue_twin(queue: &mut StudyQueue, settings: &Settings, folder: PathBuf) 
     let vocals_switch = std::env::var_os("BEATBYTE_AUTOPILOT_VOCALS").is_some();
     let work = SongWork {
         twin: twin_wanted(autopilot, twins),
-        upgrade: upgrade_wanted(is_own_import_folder(&folder), autopilot, twins),
+        upgrade: upgrade_wanted(is_own_import_folder(&folder), autopilot, twins)
+            && !crate::song_chart::owns_chart(&folder),
         vocals: vocals_wanted(settings.vocal_charts, autopilot, vocals_switch),
         folder,
     };

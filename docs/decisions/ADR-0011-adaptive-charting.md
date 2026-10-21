@@ -116,3 +116,16 @@ Each layer lands with its own tests (schema round-trip, hash binding,
 directive thresholds, version provenance) and the documentation drift
 tests bind this ADR into the index and badge. The roadmap carries the
 phases; nothing here is done until it is checked off there.
+
+## Installed local chart authoring (0.19.2)
+
+The shared in-game audio import can call the separately installed
+`tools/song-chart` runtime through a versioned device registration. This keeps
+the tested Python chart rules identical between CLI and drag-and-drop, instead
+of maintaining a second Rust transcription and fret-mapping implementation.
+The native parser validates all four output difficulties before publishing.
+There is no model download during import and no silent fallback after an AI
+failure. Devices without registration retain the identified standard generator.
+Runtime/model installation is separate from game packaging; this is not a
+claim that the benchmark has established superior musical quality. See
+[the integration guide](../audio/song-chart-prototype.md).

@@ -1,8 +1,20 @@
 # Beatbyte – automatische Song-Charts
 
-Eigenständiger Forschungsprototyp: neue Audioaufnahme → lokale Audio-KI → musikalische Ereignisse → Guitar-Hero-Griffmuster → vier Beatbyte-Schwierigkeiten. Der Prototyp liegt unter `tools/song-chart`; er verändert weder die App-Pipeline noch die USB-Bibliothek.
+Eigenständiger Forschungsprototyp: neue Audioaufnahme → lokale Audio-KI → musikalische Ereignisse → Guitar-Hero-Griffmuster → vier Beatbyte-Schwierigkeiten. Die Pipeline liegt unter `tools/song-chart` und kann seit Beatbyte 0.19.2 auch vom Audioimport im Spiel aufgerufen werden.
 
-Abgeschlossen: 48 vollständige Songs jeweils mit DSP und KI verarbeitet, 17 Tests bestanden und 164 Chartdateien einschließlich Vergleichsfassungen geprüft. Im zeitlichen Expert-Referenzvergleich liegt der KI-Prototyp bei F1 0,443 gegenüber 0,549 für den vorhandenen Mix-Generator. Ein musikalischer Qualitätsgewinn ist noch nicht nachgewiesen; dafür sind die Hör-/Spielvergleiche vorbereitet.
+Historischer Benchmarkstand vor der Spielintegration: 48 vollständige Songs jeweils mit DSP und KI verarbeitet, damals 17 Tests bestanden und 164 Chartdateien einschließlich Vergleichsfassungen geprüft. Im zeitlichen Expert-Referenzvergleich liegt der KI-Prototyp bei F1 0,443 gegenüber 0,549 für den vorhandenen Mix-Generator. Ein musikalischer Qualitätsgewinn ist noch nicht nachgewiesen; dafür sind die Hör-/Spielvergleiche vorbereitet.
+
+## Im Spiel per Drag and drop
+
+Seit Beatbyte 0.19.2 kann der gemeinsame Audioimport diese Pipeline direkt
+aufrufen. Einmal `./setup.sh --demucs` ausführen; bei bereits eingerichteter
+Umgebung genügt `./bbchart.sh register`. Setup lädt Modelle ausdrücklich vorab
+und registriert die Installation pro Gerät. Danach Audiodateien ins Menü oder
+den Songbrowser ziehen. [Einrichtung und Verhalten](../../docs/audio/song-chart-prototype.md).
+
+Ohne Registrierung verwendet das Spiel den sichtbaren Standardgenerator;
+eine registrierte, fehlerhafte KI-Installation führt zu einem wiederholbaren
+Importfehler. Während des Imports werden keine Modelle heruntergeladen.
 
 ## Einen neuen Song verarbeiten
 
@@ -72,7 +84,8 @@ Versioniert sind Quellcode, Konfiguration, Tests und die bisherigen Ergebnisberi
 - `docs/methodology.md`: genaue Messmethodik und bekannte Einschränkungen.
 - `reports/audio-chart-relationships.md`: gemessene Beziehung zwischen Audio-Tonhöhen und Referenzgriffen.
 - `docs/limitations-and-next-steps.md`: konkrete Grenzen und priorisierte Fortsetzung.
-- `reports/tests.log`: technische Tests.
+- `reports/tests.log`: historische technische Tests.
+- [Prüfung der Spielintegration](docs/integration-validation.md): aktuelle Protokoll-, M4A- und Spiel-Harness-Prüfung.
 
 Zeitliche Treffer allein beweisen keine musikalische Qualität. Die Berichte nennen Precision und Recall gemeinsam und markieren den menschlichen Spieltest ausdrücklich als noch offen.
 
@@ -108,7 +121,7 @@ Demucs wird bevorzugt aus `.demucs-venv`, sonst aus `/Users/martin/demucs-env` a
 
 ## Grenzen
 
-V1 verwendet eine ausgewählte harmonische Instrumentenspur pro Song. Die Instrumententrennung und Polyphonieerkennung können gerade bei verzerrten Gitarren, schnellen Soli und elektronischen Sounds irren. Vollautomatischer musikalischer Stimmenwechsel und semantische Songstruktur-Erkennung sind noch nicht zuverlässig gelöst. Hör- und Spieltests sind deshalb der nächste Qualitätsmaßstab, bevor der Generator in die App übernommen wird.
+V1 verwendet eine ausgewählte harmonische Instrumentenspur pro Song. Die Instrumententrennung und Polyphonieerkennung können gerade bei verzerrten Gitarren, schnellen Soli und elektronischen Sounds irren. Vollautomatischer musikalischer Stimmenwechsel und semantische Songstruktur-Erkennung sind noch nicht zuverlässig gelöst. Weitere Hör- und Spieltests sind deshalb der nächste Qualitätsmaßstab; die experimentelle Spielintegration belegt für sich keinen Qualitätsgewinn.
 
 Die abschließenden Benchmarks verwenden 5-Sekunden-Segmente für die Instrumententrennung. GPU-Trennungen werden innerhalb dieses Testprojekts über eine Dateisperre nacheinander ausgeführt; auf dem 16-GB-Mac war gleichzeitige Trennung langsamer und speicherintensiv.
 
