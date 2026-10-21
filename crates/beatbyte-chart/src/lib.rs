@@ -44,6 +44,7 @@ pub mod escalation;
 pub mod fit;
 pub mod generate;
 pub mod grid;
+pub mod import_policy;
 pub mod io;
 pub mod lyrics;
 pub mod poly;

@@ -1,9 +1,9 @@
 # Importing Your Own Songs
 
 BeatByte turns your audio into a playable chart; analysis time depends on
-the recording and the installed generator: analyze → generate → play, with the built-in editor as the
-correction pass. Every command below was run exactly as written
-(against an MP3) while writing this guide.
+the recording: analyze → generate → play, with the built-in editor as the
+correction pass. Since 0.19.3 new imports require the installed song-chart
+pipeline; the legacy command examples later in this guide are archived.
 
 **Where the library lives.** Every import lands in the data
 directory: `~/Library/Application Support/beatbyte/songs/imported` on
@@ -41,40 +41,24 @@ beats, instrument separation, note detection and creation of all four
 difficulties. The song appears after chart validation; long recordings
 can take several minutes. See [setup and behavior](audio/song-chart-prototype.md).
 
-Without that installation the standard generator remains available and is
-identified in the panel and completion message. A registered AI installation
-that fails reports the error instead of silently switching generators. Failed
-imports can be retried; existing song folders are never overwritten.
+Since 0.19.3, this is the only enabled import path. Missing or broken runtime
+registration reports an error; no standard chart is produced. The legacy
+algorithms remain in the source but their game/CLI entry points are disabled.
+Failed imports can be retried; existing song folders are never overwritten.
+Audio and all playable song data are copied together into the chosen library
+(SETTINGS > LIBRARY). A disconnected chosen drive stops imports rather than
+redirecting them to the internal disk. The source audio is kept.
 
 ## By name, from inside the game
 
 Press **Cmd/Ctrl+D** in the browser (or ADD A SONG in the action menu),
 type the song and press **Enter** (**Esc** cancels).
 
-**First, a finished chart** (ADR-0025). When you write `Artist - Title`,
-the search asks [Encore](https://www.enchor.us) — the catalogue behind
-the Bridge app — for that song. A chart somebody made, or the game's own
-chart of it, plays better than anything generated, so the best fitting
-one is downloaded and converted like a Bridge download: it lands as a
-**COMMUNITY** version (a game's chart as a **RIP** version), with the
-karaoke lyrics looked up, usually within seconds. Covers, live takes and
-remixes are left out unless your title asks for one; a chart that would
-lose more than 5 % of its notes as open notes is skipped for the next.
-
-**Otherwise, a recording.** When there is no fitting chart — or no
-network, or no `ffmpeg` — the line says why and the search goes on as it
-always has: it judges the recordings it finds, fetches the best one,
-measures it, pulls the lyrics and charts it — the result lands in the
-library folder exactly as a dropped file does, and appears in the browser
-the moment it is there. A pasted YouTube link always takes this path:
-it names one recording.
-
-**Background instrument analysis.** Standard-generator imports can still get
-an instrument-based chart in the background between songs. The first chart
-stays as a revision (SWITCH REVISION in the action menu), and hand-edited and
-community charts are preserved. Charts created by the new local AI runtime
-have already used instrument separation; the older automatic upgrade leaves
-their notes intact. Optional vocal processing remains available.
+The search fetches a recording, then sends its audio through the same installed
+song-chart pipeline as a dropped file. Direct YouTube links select one recording.
+Bridge/Encore community charts and game-rip chart downloads are disabled, as are
+the old automatic guitar upgrades and study twins. Optional vocal processing
+remains available. Existing community, study and classic charts still play.
 
 **It runs in the background.** Start a search, then browse, change a
 setting or play a song: it carries on and lands anyway. A panel at the
@@ -166,11 +150,11 @@ longer makes one, and the SETTINGS row is gone (2026-10-11: one entry
 per version, and the tags GS and CL leave the interface; what the stem
 pipeline knows goes into the import's own chart instead — see the
 roadmap). Existing twins still load and group under their song, shown as
-EXTRA CHART. The tools remain for whoever wants one by hand:
-`beatbyte-cli study <folder> --lead <other.wav>` writes one,
-`tools/guitar-study.sh` every folder without a twin.
+EXTRA CHART. The old `beatbyte-cli study` command and `tools/guitar-study.sh` are disabled
+since 0.19.3. The following legacy sections describe the preserved historical
+formats; their authoring commands no longer execute.
 
-## The `[CL]` twin
+## The `[CL]` twin (archived authoring)
 
 A second kind, and one nothing makes for you: **`[CL] <title>`** is a
 folder's ACTIVE chart with the classic ingredients applied — the
@@ -369,18 +353,9 @@ browser stays deleted — its fingerprint is remembered, so the watcher
 does not resurrect it from the folder. The SONG FOLDER row in the
 settings shows the watched folder; confirming the row clears it.
 
-## Community charts from Bridge
+## Community charts from Bridge (archived)
 
-Charts made by people instead of the generator: a folder the
-[Bridge](https://github.com/Geomitron/Bridge) downloader fetched
-converts into a numbered BG twin with its own audio (ADR-0022). This
-needs `ffmpeg`:
-
-```bash
-beatbyte-cli bridge ~/Downloads/charts --library "$LIB"   # or B in the song browser
-```
-
-To import hundreds at once (the best-known songs of the whole community
-library, one good chart each, nothing the library already has), use
-the bulk tools: **[bridge-bulk-import.md](bridge-bulk-import.md)**.
-
+New Bridge/community chart imports, `beatbyte-cli bridge`, the browser shortcut
+and the bulk downloader are disabled since 0.19.3. Existing converted song
+folders still play. The preserved format and earlier bulk workflow are described
+in [bridge-bulk-import.md](bridge-bulk-import.md).

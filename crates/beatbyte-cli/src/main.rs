@@ -226,7 +226,7 @@ enum Command {
         #[arg(long)]
         json: Option<PathBuf>,
     },
-    /// Generate a BeatByte chart (all four difficulties) from a song.
+    /// Disabled: Archived standard generator; use tools/song-chart instead.
     Generate {
         /// Path to the audio file (wav/ogg/flac/mp3/m4a).
         song: PathBuf,
@@ -256,7 +256,7 @@ enum Command {
     /// slice (from the chart's preview anchor unless `--from` says
     /// otherwise), which is what makes two variants comparable in
     /// half a minute.
-    /// Build the `[GS]` twin of a song folder from an
+    /// Disabled: Build the `[GS]` twin of a song folder from an
     /// instrument stem: a new folder beside the original with the same
     /// audio and one stem-charted `chart.json`, so both play in the
     /// browser. The original is never touched.
@@ -395,7 +395,7 @@ enum Command {
         #[arg(long)]
         out: Option<PathBuf>,
     },
-    /// Convert charts the Bridge downloader fetched into BG versions
+    /// Disabled: Convert charts the Bridge downloader fetched into BG versions
     /// (`[BG-01]`, `[BG-02]`, …) of the library's songs. A download
     /// of a song already in the library goes under it; any other
     /// becomes a song of its own. A download converted before is
@@ -409,7 +409,7 @@ enum Command {
         #[arg(long)]
         library: Option<PathBuf>,
     },
-    /// Apply the classic ingredients — the rules the early guitar
+    /// Disabled: Apply the classic ingredients — the rules the early guitar
     /// games played by — as a NEW version whose parent is the one
     /// active now (or, with `--twin`, as a `[CL]` twin folder).
     /// `hopo`: hammer-ons tempo-relative and exclusive, so straight
@@ -446,7 +446,7 @@ enum Command {
         #[arg(long, value_name = "INGREDIENTS")]
         with: Option<String>,
     },
-    /// Regenerate hard + expert as a new sibling version, keeping
+    /// Disabled: Regenerate hard + expert as a new sibling version, keeping
     /// easy + medium from the active version (the difficulty
     /// redesign rollout; docs/difficulty-redesign-plan.md).
     Redesign {
@@ -773,7 +773,20 @@ enum ModelsAction {
 }
 
 fn main() -> ExitCode {
-    match Cli::parse().command {
+    let command = Cli::parse().command;
+    if matches!(
+        &command,
+        Command::Generate { .. }
+            | Command::Study { .. }
+            | Command::Classic { .. }
+            | Command::Redesign { .. }
+            | Command::Bridge { .. }
+    ) && let Err(reason) = beatbyte_chart::import_policy::require_legacy_imports()
+    {
+        eprintln!("{reason}");
+        return ExitCode::from(2);
+    }
+    match command {
         Command::Analyze { song, json } => analyze(&song, json.as_deref()),
         Command::Generate {
             song,

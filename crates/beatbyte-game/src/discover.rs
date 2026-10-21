@@ -951,7 +951,7 @@ pub fn discover(query: &str, backend: &Backend, say: &dyn Fn(Step)) -> Result<Fo
     // plays better than any chart generated from a recording. Every
     // failure here is a reason to go on, said on the line, never an
     // error of the search.
-    if !typed_artist.is_empty() {
+    if beatbyte_chart::import_policy::LEGACY_IMPORTS_ENABLED && !typed_artist.is_empty() {
         say(Step::new(
             Phase::Community,
             format!("looking for a community chart of \"{typed_title}\"..."),
@@ -1525,10 +1525,8 @@ mod twin_tests {
     #[test]
     fn a_song_found_by_the_search_gets_the_work_its_settings_ask_for() {
         // The search calls `import_fetched` straight from its own
-        // task, so it must queue the background work itself — once it
-        // forgot, and every downloaded song went without. No twin is
-        // made any more: an own import's chart is improved in place,
-        // and a community chart, which came finished, gets nothing.
+        // task. Legacy upgrades are disabled for fetched recordings too;
+        // only explicitly enabled vocal work may enter the queue.
         let folder = std::path::PathBuf::from("/songs/imported/Toto - Africa");
         let found = |folder: &str| {
             Ok(Found {
@@ -1539,10 +1537,16 @@ mod twin_tests {
         let mut app = wired();
         finished(&mut app, found("/songs/imported/Toto - Africa"));
         app.update();
+        assert!(queued(&mut app).is_empty(), "legacy upgrade was queued");
+        app.world_mut()
+            .resource_mut::<crate::config::Settings>()
+            .vocal_charts = true;
+        finished(&mut app, found("/songs/imported/Toto - Africa"));
+        app.update();
         assert_eq!(
             queued(&mut app),
             vec![folder],
-            "an own import's chart was not queued for its upgrade"
+            "optional vocal work was lost"
         );
 
         let mut app = wired();

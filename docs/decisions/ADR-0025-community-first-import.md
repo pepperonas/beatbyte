@@ -6,6 +6,12 @@ youtube möglich sein — aber wichtig: mit der besten import strategie um
 den song chart zu bauen". Of three offered strategies the user chose
 "Encore zuerst, sonst generieren".)
 
+**Superseded for new imports (0.19.3, 2026-10-21):** the user now requires
+only audio imports through the installed local song-chart pipeline. Encore/
+Bridge chart downloads and automatic legacy upgrades are disabled; existing
+charts remain playable. The text below records the earlier decision.
+See [the current policy](ADR-0011-adaptive-charting.md#installed-local-chart-authoring-0192).
+
 ## Context
 
 The library is almost entirely what the bulk import (`tools/bridge-bulk`,

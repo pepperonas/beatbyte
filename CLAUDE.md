@@ -120,10 +120,11 @@ None of this is in the repository; it is per-machine state the game
 writes. On macOS both directories below are
 `~/Library/Application Support`.
 
-- `<data>/beatbyte/songs/imported/<song>/` — the library; every import
-  lands there (since 0.18.39 — before, a game started from the checkout
-  imported into the repo, ADR-0021). `songs/` beside the working
-  directory is still read, but nothing is written to it.
+- `<data>/beatbyte/songs/imported/<song>/` — the default library.
+  SETTINGS > LIBRARY / `library-location.json` can select another root,
+  including USB; new imports copy audio and song data there together.
+  An unavailable chosen root stops imports. `songs/` beside the working
+  directory is still read, but nothing is written to it by default.
 - `<config>/beatbyte/settings.json` — settings. The game REWRITES it
   on exit; read the gotcha before editing it to set up a run.
 - `<data>/beatbyte/` — `scores.json`, `players.json`, `history.jsonl`,
@@ -156,12 +157,22 @@ Step by step in [`docs/ui/menu-system.md`](docs/ui/menu-system.md)
   screen too (`BEATBYTE_SHOT_STATE` + `BEATBYTE_SHOT_ROW`), not only at
   the "same" verdict for the old ones.
 
+Tap assistance (`tap_mode`) defaults to **false**, including settings files
+missing that field (user request, 2026-10-21). Preserve an explicit opt-in;
+never force the setting on every load. The standard setting requires strumming.
+
 ### Local AI audio import
 
 `tools/song-chart/setup.sh` explicitly registers the per-device runtime in
 `song-chart-runtime.json`. `song_chart.rs` runs its offline `game-import` protocol
 from the shared import worker; never spawn code discovered in CWD. A registered
-AI failure must stay a failure, not silently become a standard chart. Preserve
+AI failure must stay a failure, not silently become a standard chart. Since
+0.19.3 registration is REQUIRED: `beatbyte_chart::import_policy` disables all
+legacy generator/finished-chart import entry points, including CLI and harness
+switches. Keep their algorithms for historical research, never enable a fallback.
+An unreachable chosen library must stop imports, not redirect to the Mac.
+Library-location tests must pass scratch data directories to `point_only_in` /
+`reset_to_default_in`; the old direct-call test reset the real device choice. Preserve
 `chart-generation.json`: the old automatic stem upgrade must not replace these
 notes. See `docs/audio/song-chart-prototype.md`.
 

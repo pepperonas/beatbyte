@@ -825,6 +825,10 @@ pub fn keyboard_help(command: &str) -> Vec<(String, &'static str)> {
         TOOLS
             .iter()
             .filter(|tool| tool.shortcut != Shortcut::None && tool.id != chip::HELP)
+            .filter(|tool| {
+                beatbyte_chart::import_policy::LEGACY_IMPORTS_ENABLED
+                    || !matches!(tool.id, chip::REDESIGN | chip::BRIDGE)
+            })
             .map(|tool| (shortcut_label(tool.shortcut, command), tool.label)),
     );
     lines
@@ -1075,7 +1079,13 @@ pub fn tools_for(context: ToolContext) -> Vec<u8> {
             chip::PLAY => has_song,
             chip::EDIT | chip::INFO | chip::TASTE | chip::DELETE => has_song && is_file,
             chip::REVISION => has_song && is_file && has_revisions,
-            chip::REDESIGN => has_song && is_file && own_import,
+            chip::REDESIGN => {
+                beatbyte_chart::import_policy::LEGACY_IMPORTS_ENABLED
+                    && has_song
+                    && is_file
+                    && own_import
+            }
+            chip::BRIDGE => beatbyte_chart::import_policy::LEGACY_IMPORTS_ENABLED,
             chip::LYRICS | chip::ALIGN | chip::QUEUE | chip::FAVORITE => has_song,
             chip::PLAY_SET => queue_nonempty,
             _ => true,
@@ -1637,6 +1647,7 @@ fn chart_folder(source: &SongSource) -> Option<std::path::PathBuf> {
 /// decode and analysis an import does, so a redesigned chart and a
 /// freshly imported one come from the same reading.
 fn redesign_song(folder: &std::path::Path) -> Result<String, String> {
+    beatbyte_chart::import_policy::require_legacy_imports()?;
     beatbyte_chart::redesign::redesign_folder(
         folder,
         &|audio_path| {
@@ -4251,7 +4262,6 @@ mod rebuild_tests {
             chip::INFO,
             chip::DELETE,
             chip::ADD,
-            chip::REDESIGN,
             chip::FAVORITE,
             chip::HELP,
         ] {
@@ -4260,6 +4270,14 @@ mod rebuild_tests {
         assert!(
             !file.contains(&chip::PLAY_SET),
             "an empty queue plays nothing"
+        );
+        assert!(
+            !file.contains(&chip::REDESIGN),
+            "legacy redesign is disabled"
+        );
+        assert!(
+            !file.contains(&chip::BRIDGE),
+            "only audio imports are allowed"
         );
         let downloaded = tools_for(ToolContext {
             own_import: false,
@@ -4302,7 +4320,6 @@ mod rebuild_tests {
             nothing,
             vec![
                 chip::ADD,
-                chip::BRIDGE,
                 chip::SORT,
                 chip::ORIGIN,
                 chip::REVERSE,
@@ -4413,6 +4430,7 @@ mod rebuild_tests {
         for tool in TOOLS
             .iter()
             .filter(|t| t.shortcut != Shortcut::None && t.id != chip::HELP)
+            .filter(|t| !matches!(t.id, chip::REDESIGN | chip::BRIDGE))
         {
             assert!(
                 page.iter().any(|(keys, what)| *what == tool.label
@@ -4421,6 +4439,11 @@ mod rebuild_tests {
                 tool.label
             );
         }
+        assert!(
+            !page
+                .iter()
+                .any(|(keys, _)| keys == "CMD G" || keys == "CMD B")
+        );
         for hidden in ["CMD UP / DOWN", "CMD 1-5 / 0", "ESC", "TAB"] {
             assert!(
                 page.iter().any(|(keys, _)| keys == hidden),

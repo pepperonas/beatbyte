@@ -131,9 +131,12 @@ impl LibraryMove {
 
     /// Reset to the default library path.
     pub fn reset_to_default(&mut self) {
-        let data = data_dir();
-        let default_path = beatbyte_library::location::default_root(&data);
-        match beatbyte_library::location::choose(&data, &default_path) {
+        self.reset_to_default_in(&data_dir());
+    }
+
+    fn reset_to_default_in(&mut self, data: &std::path::Path) {
+        let default_path = beatbyte_library::location::default_root(data);
+        match beatbyte_library::location::choose(data, &default_path) {
             Ok(()) => {
                 self.needs_rescan = true;
                 self.lingering = Some(0.0);
@@ -202,10 +205,14 @@ impl LibraryMove {
 
     /// Point directly to the target folder without copying files.
     pub fn point_only(&mut self) {
+        self.point_only_in(&data_dir());
+    }
+
+    fn point_only_in(&mut self, data: &std::path::Path) {
         if let Step::Confirm { to, .. } = &self.step {
             let target = to.clone();
             self.custom_memory = Some(target.clone());
-            match beatbyte_library::location::choose(&data_dir(), &target) {
+            match beatbyte_library::location::choose(data, &target) {
                 Ok(()) => {
                     self.needs_rescan = true;
                     self.lingering = Some(0.0);
@@ -975,8 +982,11 @@ mod tests {
         let mut state = LibraryMove::default();
         assert!(state.is_idle());
 
-        let target = std::env::temp_dir().join("beatbyte-test-point-target");
-        let _ = std::fs::create_dir_all(&target);
+        let scratch =
+            std::env::temp_dir().join(format!("beatbyte-test-point-{}", std::process::id()));
+        let data = scratch.join("data");
+        let target = scratch.join("songs");
+        std::fs::create_dir_all(&target).expect("scratch library");
 
         state.step = Step::Confirm {
             to: target.clone(),
@@ -985,14 +995,19 @@ mod tests {
         };
         assert!(state.is_confirming());
 
-        state.point_only();
+        state.point_only_in(&data);
         assert!(matches!(state.step, Step::Done(_)));
         assert!(state.needs_rescan);
 
-        state.reset_to_default();
+        assert_eq!(
+            beatbyte_library::location::chosen_root(&data),
+            Some(target.clone())
+        );
+        state.reset_to_default_in(&data);
         assert!(matches!(state.step, Step::Done(_)));
         assert!(state.needs_rescan);
 
-        let _ = std::fs::remove_dir_all(&target);
+        assert!(beatbyte_library::location::chosen_root(&data).is_none());
+        let _ = std::fs::remove_dir_all(&scratch);
     }
 }

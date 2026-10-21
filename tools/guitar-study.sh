@@ -10,6 +10,10 @@
 # the run is resumable; a song the study refuses (too little tonal
 # evidence) is listed at the end and keeps its original as the only
 # version. The originals are never written to.
+echo "Guitar Study is disabled. Import audio with tools/song-chart instead." >&2
+exit 2
+
+# Archived implementation (intentionally retained).
 set -u
 ROOT="${1:-$HOME/Library/Application Support/beatbyte/songs/imported}"
 SCRATCH="${2:-${TMPDIR:-/tmp}/guitar-study}"

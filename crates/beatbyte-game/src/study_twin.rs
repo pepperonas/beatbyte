@@ -1,28 +1,9 @@
-//! The stem work for an imported song, done in the background after the
-//! import.
+//! Archived guitar-study/upgrade implementation and optional vocal work.
 //!
-//! The player's verdict on the stem-charted study was "by a distance the
-//! best". Since 2026-10-11 (ADR-0025) that verdict improves the import
-//! itself instead of adding a `[GS]` entry beside it: an import queues its
-//! folder here; a chore decodes the song, separates the `other` stem with
-//! demucs, and writes [`beatbyte_chart::study::write_upgrade`] — the stem
-//! chart, played by the classic rules, as the folder's next revision. A
-//! Bridge chart or a game rip is never queued (it came finished), a
-//! hand-edited chart is never replaced, and the `[GS]` twin is made only
-//! when the harness asks for it.
-//!
-//! demucs is a Python tool on the player's machine, not a dependency
-//! of the game: without it the import is what it always was, and
-//! nothing fails.
-//!
-//! ## It carries the vocal work too
-//!
-//! Since v0.17 this queue runs a song's whole background job, not
-//! just its twin, because both want the same expensive thing. htdemucs
-//! computes all four sources whatever it is asked for, so when VOCAL
-//! CHARTS is on the job takes ONE four-source run, hands `other` to
-//! the twin writer and reads the sung line off `vocals` — instead of
-//! two separations of the same song, minutes apart, for one song.
+//! Since 0.19.3 the shared import policy disables guitar twins and upgrades,
+//! including harness requests. Only the installed song-chart pipeline creates
+//! new five-lane charts. The implementations stay here for historical research;
+//! optional vocal charts and karaoke stems remain independent of that policy.
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -89,10 +70,13 @@ pub fn demucs_available() -> bool {
 /// and an old twin is not an import — and under the autopilot only when
 /// its own switch asks (a separation saturates the machine for minutes,
 /// and the autopilot's clock-teleport rule false-fails under that load).
+/// Archived policy, globally disabled since 0.19.3.
 /// Pure — tested.
 #[must_use]
 pub fn upgrade_wanted(own_import: bool, autopilot: bool, autopilot_twins: bool) -> bool {
-    own_import && (!autopilot || autopilot_twins)
+    beatbyte_chart::import_policy::LEGACY_IMPORTS_ENABLED
+        && own_import
+        && (!autopilot || autopilot_twins)
 }
 
 /// Whether a folder holds the player's own import: a folder no twin
@@ -110,10 +94,10 @@ pub fn is_own_import_folder(folder: &Path) -> bool {
 /// second, stem-charted entry beside it (2026-10-11, the user: GS and
 /// CL leave the interface); the library is one entry per version, and
 /// what the stem pipeline knows goes into the import itself. Pure —
-/// tested.
+/// tested. Globally disabled since 0.19.3, including the harness.
 #[must_use]
 pub fn twin_wanted(autopilot: bool, autopilot_twins: bool) -> bool {
-    autopilot && autopilot_twins
+    beatbyte_chart::import_policy::LEGACY_IMPORTS_ENABLED && autopilot && autopilot_twins
 }
 
 /// The VOCAL CHARTS row's second line.
@@ -505,6 +489,9 @@ fn write_twin_from(folder: &Path, lead: &Path) -> Result<String, String> {
 /// twin when the harness asks for one.
 fn stem_jobs(work: &SongWork, other: &Path) -> Vec<Result<String, String>> {
     let mut results = Vec::new();
+    if !beatbyte_chart::import_policy::LEGACY_IMPORTS_ENABLED {
+        return results;
+    }
     if work.upgrade {
         results.push(write_upgrade_from(&work.folder, other));
     }
@@ -603,7 +590,10 @@ mod tests {
             !twin_wanted(true, false),
             "the harness does not separate stems uninvited"
         );
-        assert!(twin_wanted(true, true), "unless its switch says so");
+        assert!(
+            !twin_wanted(true, true),
+            "legacy charting is disabled even in the harness"
+        );
     }
 
     fn entry(audio: &Path) -> crate::library::SongEntry {
@@ -724,12 +714,9 @@ mod tests {
             vocal_charts: false,
             ..Settings::default()
         };
-        // A player's import gets its chart improved and no twin — even
-        // from a settings file that still says yes to twins (every file
-        // written before 2026-10-11 does).
+        // Old settings must not re-enable either archived generator.
         queue_twin(&mut queue, &settings, PathBuf::from("/songs/toto---africa"));
-        let work = queue.pending.back().expect("queued");
-        assert!(work.upgrade && !work.twin && !work.vocals);
+        assert!(queue.pending.is_empty(), "legacy upgrades are disabled");
 
         // A Bridge chart or a game rip came finished: nothing to do, and
         // a job with no work in it never starts a chore.
@@ -739,21 +726,35 @@ mod tests {
         ] {
             queue_twin(&mut queue, &settings, PathBuf::from(folder));
         }
-        assert_eq!(queue.pending.len(), 1, "an empty job was queued");
+        assert_eq!(queue.pending.len(), 0, "an empty job was queued");
 
         // Vocals alone are enough to queue.
         settings.vocal_charts = true;
         queue_twin(&mut queue, &settings, PathBuf::from("/songs/bridge-02-x"));
         let work = queue.pending.back().expect("queued");
         assert!(!work.twin && !work.upgrade && work.vocals);
-        assert_eq!(queue.pending.len(), 2);
+        assert_eq!(queue.pending.len(), 1);
     }
 
     /// The upgrade is for the player's own imports, and stays out of an
     /// autopilot run unless its switch asks.
     #[test]
-    fn only_an_own_import_is_upgraded_and_the_harness_asks_first() {
-        assert!(upgrade_wanted(true, false, false));
+    fn legacy_charting_is_disabled_for_every_setting_and_even_direct_stem_jobs() {
+        for own in [false, true] {
+            for autopilot in [false, true] {
+                for twins in [false, true] {
+                    assert!(!upgrade_wanted(own, autopilot, twins));
+                    assert!(!twin_wanted(autopilot, twins));
+                }
+            }
+        }
+        let work = SongWork {
+            folder: PathBuf::from("/never-write"),
+            twin: true,
+            upgrade: true,
+            vocals: false,
+        };
+        assert!(stem_jobs(&work, Path::new("/missing-stem.wav")).is_empty());
         assert!(
             !upgrade_wanted(false, false, false),
             "a download came finished"
@@ -762,7 +763,7 @@ mod tests {
             !upgrade_wanted(true, true, false),
             "the harness does not separate uninvited"
         );
-        assert!(upgrade_wanted(true, true, true));
+        assert!(!upgrade_wanted(true, true, true));
         assert!(is_own_import_folder(Path::new("/songs/toto---africa")));
         for twin in [
             "/songs/bridge-01-x",

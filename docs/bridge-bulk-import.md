@@ -1,5 +1,9 @@
 # Bulk import from the Bridge chart library (Encore API)
 
+> Archived workflow: since Beatbyte 0.19.3, the chart downloader and Bridge
+> game/CLI import entry points are disabled. New songs are imported from audio
+> through the installed local song-chart pipeline. Existing charts still play.
+
 BeatByte can play the community guitar charts that the
 [Bridge](https://github.com/Geomitron/Bridge) downloader fetches: a
 download is converted into a numbered **BG twin** (`[BG-01] <title>`)

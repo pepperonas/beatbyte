@@ -12,9 +12,9 @@ Umgebung genügt `./bbchart.sh register`. Setup lädt Modelle ausdrücklich vora
 und registriert die Installation pro Gerät. Danach Audiodateien ins Menü oder
 den Songbrowser ziehen. [Einrichtung und Verhalten](../../docs/audio/song-chart-prototype.md).
 
-Ohne Registrierung verwendet das Spiel den sichtbaren Standardgenerator;
-eine registrierte, fehlerhafte KI-Installation führt zu einem wiederholbaren
-Importfehler. Während des Imports werden keine Modelle heruntergeladen.
+Seit 0.19.3 ist dies der einzige Importweg. Ohne Registrierung oder bei einer
+fehlerhaften KI-Installation wird der Import mit einer Fehlermeldung abgebrochen.
+Die alten Generatoren und fertige Chartimporte sind deaktiviert. Während des Imports werden keine Modelle heruntergeladen.
 
 ## Einen neuen Song verarbeiten
 

@@ -10,6 +10,15 @@ Analyseschritte an und legt den Song mit vier Schwierigkeiten in der gewählten
 Bibliothek ab. Auf diesem Mac ist die Runtime registriert; die App muss den
 neuen Build verwenden. [Details zur Einrichtung](../../../docs/audio/song-chart-prototype.md).
 
+Neue Importe verwenden ausschließlich diese Pipeline (seit 0.19.3). Ohne
+Einrichtung wird der Import abgebrochen. Das Ziel wird unter SETTINGS > LIBRARY
+gewählt; auf einem USB-Laufwerk liegen Audio, Charts und Songdaten gemeinsam.
+Ohne angeschlossenes, ausgewähltes Laufwerk wird nicht intern weiterimportiert.
+
+Für den Gitarrencontroller: SETTINGS > PLAY & INPUT > **TAP MODE (NO STRUM)**
+auf **OFF** lassen. Das ist seit 0.19.3 der Standard; Strum-Noten brauchen
+Greifen und Anschlagen. Die Tap-Hilfe bleibt bewusst einschaltbar.
+
 Die folgenden Schritte bleiben als manueller Skript- und Vergleichsweg verfügbar.
 
 ## Neue Audiodatei einlesen und spielen

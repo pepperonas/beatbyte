@@ -14,6 +14,22 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.19.3] - 2026-10-22
+
+### Changed
+
+- TAP MODE (NO STRUM) now defaults to OFF: strum notes require fretting and
+  strumming. Explicitly enabled tap assistance remains available.
+- New songs can only be imported from audio through the installed local
+  song-chart pipeline. Missing registration is an import error; the standard
+  fallback, guitar-study twins/upgrades, Classic, legacy redesign and
+  Bridge/community chart imports are disabled. Their implementations remain
+  in the source; existing songs and revisions remain playable. The old CLI
+  authoring commands and guitar-study script refuse without writing files.
+- An unavailable chosen library now stops imports instead of redirecting them
+  to the internal disk, so an unplugged USB drive cannot split the library.
+  Library-location tests use scratch settings and preserve the device choice.
+
 ## [0.19.2] - 2026-10-21
 
 ### Added

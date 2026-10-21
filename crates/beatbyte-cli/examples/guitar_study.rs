@@ -40,6 +40,7 @@ fn valid(chart: &ChartFile) -> Result<(), Box<dyn Error>> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    beatbyte_chart::import_policy::require_legacy_imports()?;
     let args = Args::parse();
     if args.out.exists() {
         return Err("output directory already exists; choose a new study folder".into());

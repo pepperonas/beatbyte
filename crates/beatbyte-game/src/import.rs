@@ -3,8 +3,7 @@
 //! Drop an audio file onto the window (menu or song browser): it is
 //! copied into the imported-songs folder, analyzed and charted off
 //! the main thread, and appears in the browser when done. The
-//! terminal workflow (`beatbyte-cli generate`) keeps existing for
-//! fine control — this is the zero-friction path.
+//! installed song-chart pipeline is required; legacy generators are archived.
 
 use std::path::{Path, PathBuf};
 
@@ -402,9 +401,8 @@ fn poll_import(
                 None => (outcome, None),
             };
             queue.ok += 1;
-            // The song's `[GS]` twin, made in the background
-            // once the batch is out of the way: the folder is the one
-            // the import just wrote, by the import's own naming rule.
+            // Optional vocal work only; the shared policy disables legacy
+            // study twins and guitar upgrades, including harness requests.
             if let Some(folder) = queue
                 .current_source
                 .as_ref()
@@ -777,10 +775,14 @@ pub(crate) struct Origin {
 /// did not, because only one path knew where the song had landed.
 #[must_use]
 pub(crate) fn landing_folder(source: &Path) -> Option<PathBuf> {
-    let name = source.file_name()?;
-    import_dir()
-        .ok()
-        .map(|dir| dir.join(sanitize_folder_name(&name.to_string_lossy())))
+    landing_folder_result(source).ok()
+}
+
+fn landing_folder_result(source: &Path) -> Result<PathBuf, String> {
+    let name = source
+        .file_name()
+        .ok_or_else(|| "file has no name".to_owned())?;
+    Ok(import_dir()?.join(sanitize_folder_name(&name.to_string_lossy())))
 }
 
 fn import_song(
@@ -806,7 +808,7 @@ fn import_song_with_progress(
     progress: &crate::song_chart::Progress,
 ) -> Result<Option<String>, String> {
     let _running = crate::song_chart::ImportGuard::start()?;
-    let folder = landing_folder(source).ok_or_else(|| "file has no name".to_owned())?;
+    let folder = landing_folder_result(source)?;
     let data = crate::library::data_dir().ok_or_else(|| "no app data directory".to_owned())?;
     import_transaction(&folder, || {
         finish_import(source, title, artist, origin, progress, &folder, &data)
@@ -863,7 +865,7 @@ fn finish_import(
             .map_err(|e| format!("cannot save chart generation evidence: {e}"))?;
         info!("import: AI song-chart pipeline generated all four difficulties");
         (generated.chart, None)
-    } else {
+    } else if beatbyte_chart::import_policy::LEGACY_IMPORTS_ENABLED {
         progress.set("Standard charting (AI not installed)", 0.5);
         #[allow(unused_mut)] // mutated only under `ml`
         let mut analysis = SpectralAnalyzer::default().analyze(&audio);
@@ -889,6 +891,8 @@ fn finish_import(
             chart,
             Some("standard chart created; AI charting is not installed".to_owned()),
         )
+    } else {
+        return Err("Audio import requires the local song-chart pipeline. Run tools/song-chart/setup.sh --demucs on this device.".to_owned());
     };
     // The file's own genre tag, when it carries one - a metadata
     // probe, no second decode.
@@ -1110,10 +1114,12 @@ pub(crate) fn import_dir() -> Result<PathBuf, String> {
     }
     let root = crate::library::library_root()
         .ok_or_else(|| "no songs directory on this platform".to_owned())?;
+    reachable_import_root(root)
+}
+
+fn reachable_import_root(root: beatbyte_library::location::Root) -> Result<PathBuf, String> {
     if root.reachable {
         Ok(root.path)
-    } else if let Some(fallback) = crate::library::user_songs_dir() {
-        Ok(fallback.join("imported"))
     } else {
         Err(format!(
             "the library at {} is not reachable - connect its drive or choose another place in SETTINGS",
@@ -1438,6 +1444,7 @@ mod watch_tests {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::{import_dir, sanitize_folder_name, song_name_from_stem};
+    use std::path::PathBuf;
 
     #[test]
     fn failed_import_is_retryable_and_existing_song_is_never_removed() {
@@ -1551,6 +1558,64 @@ mod tests {
                 .0
                 .contains("model missing")
         );
+    }
+
+    #[test]
+    fn missing_pipeline_refuses_real_audio_without_leaving_a_song() {
+        let temp = std::env::temp_dir().join(format!("bb-no-runtime-{}", std::process::id()));
+        std::fs::create_dir_all(&temp).unwrap();
+        let source = temp.join("song.wav");
+        beatbyte_audio::write_wav_mono16(&source, &beatbyte_audio::demo::render_demo_song())
+            .unwrap();
+        let folder = temp.join("library/song");
+        let data = temp.join("data");
+        let error = super::import_transaction(&folder, || {
+            super::finish_import(
+                &source,
+                "Test",
+                "Test",
+                None,
+                &crate::song_chart::Progress::default(),
+                &folder,
+                &data,
+            )
+        })
+        .unwrap_err();
+        assert!(
+            error.contains("requires the local song-chart pipeline"),
+            "{error}"
+        );
+        assert!(
+            !folder.exists(),
+            "no standard chart or partial song may remain"
+        );
+        assert!(source.exists(), "the original audio must be kept");
+        assert!(
+            crate::bridge_import::import_all()
+                .unwrap_err()
+                .contains("disabled")
+        );
+        std::fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn an_unplugged_chosen_library_never_redirects_an_import_to_the_mac() {
+        let path = PathBuf::from("/missing-usb/beatbyte/songs");
+        for chosen in [false, true] {
+            let root = beatbyte_library::location::Root {
+                path: path.clone(),
+                chosen,
+                reachable: false,
+            };
+            let error = super::reachable_import_root(root).unwrap_err();
+            assert!(error.contains("connect its drive"), "{error}");
+        }
+        let root = beatbyte_library::location::Root {
+            path: path.clone(),
+            chosen: true,
+            reachable: true,
+        };
+        assert_eq!(super::reachable_import_root(root).unwrap(), path);
     }
 
     #[test]

@@ -92,6 +92,8 @@ def unpack(sng_path, out_dir):
         raise ValueError("no notes file")
 
 def main():
+    raise SystemExit("Bridge chart downloads are disabled. Import audio through tools/song-chart instead.")
+    # Archived implementation retained for historical research.
     selection = json.load(open(f"{WORK}/" + os.environ.get("SELECTION", "selection-next.json")))
     done = set(open(DONE).read().split()) if os.path.exists(DONE) else set()
     total = int(open(BYTES).read()) if os.path.exists(BYTES) else 0

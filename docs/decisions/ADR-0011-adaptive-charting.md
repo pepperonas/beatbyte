@@ -125,7 +125,10 @@ the tested Python chart rules identical between CLI and drag-and-drop, instead
 of maintaining a second Rust transcription and fret-mapping implementation.
 The native parser validates all four output difficulties before publishing.
 There is no model download during import and no silent fallback after an AI
-failure. Devices without registration retain the identified standard generator.
+failure. Since 0.19.3, missing registration also fails: audio through this
+runtime is the only allowed import. Standard fallback, study/Classic authoring,
+legacy redesign and Bridge/community chart imports remain in source but are
+disabled at their game and CLI entry points. Existing charts still load.
 Runtime/model installation is separate from game packaging; this is not a
 claim that the benchmark has established superior musical quality. See
 [the integration guide](../audio/song-chart-prototype.md).

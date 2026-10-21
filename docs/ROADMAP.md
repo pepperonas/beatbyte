@@ -6,7 +6,7 @@ holds the work itself.
 
 ## Live note preview in the song browser (2026-10-18)
 
-*Verified: 2320 tests in the source inventory, including documentation examples;
+*Verified: 2322 tests in the source inventory, including documentation examples;
 fmt, clippy `-D warnings --all-features`, `cargo test --workspace`; eight new
 pins seen to fail under a mutation; the preview photographed on the real library
 (8 626 songs) with `BEATBYTE_SHOT_SETTLE=4`.*
@@ -2509,3 +2509,11 @@ Not started without a deliberate roadmap edit pulling them forward:
 - [x] Keep imported AI charts from being overwritten by the older automatic guitar upgrade; retain vocal processing.
 - [x] Make failed imports retryable without overwriting existing songs.
 - [ ] Human comparisons across more genres before claiming better musical quality.
+
+## Audio-only imports and default strumming (0.19.3)
+
+- [x] Retain legacy algorithms but disable their game, CLI, script and harness entry points; require the installed local audio charting runtime.
+- [x] Skip community/Bridge chart downloads; fetched recordings use the same audio pipeline.
+- [x] Refuse import into a disconnected chosen library instead of silently splitting storage.
+
+- [x] Default TAP MODE (NO STRUM) to OFF; explicitly requested tap assistance remains available.

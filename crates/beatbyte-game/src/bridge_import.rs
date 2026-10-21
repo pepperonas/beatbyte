@@ -20,6 +20,7 @@ use beatbyte_library::bridge::{self, Outcome};
 /// When Bridge's folder, the library or ffmpeg cannot be found, there
 /// is nothing to convert, or every conversion failed.
 pub fn import_all() -> Result<String, String> {
+    beatbyte_chart::import_policy::require_legacy_imports()?;
     let source = bridge_folder()
         .ok_or("no Bridge download folder - set one in Bridge's settings and download a chart")?;
     let library = crate::import::import_dir()?;

@@ -36,3 +36,46 @@ Sie ersetzt die menschliche Bewertung von Rhythmus und Griffgefühl nicht.
 Lokale Rohprotokolle, Screenshots und der kurzlebige Testsong liegen unter
 `temp/song-chart-integration` im Projekt; sie werden nicht gepusht. Die
 historischen 48-Song-Benchmarks bleiben davon getrennt unter `reports`.
+
+## Audio-only-Import und Anschlagen – 22.10.2026, Beatbyte 0.19.3
+
+- Die alten Standard-/Study-/Classic-Generatoren und fertige Bridge-/Community-
+  Chartimporte bleiben im Quellcode, sind aber an den Spiel-, CLI- und
+  Skript-Einstiegen deaktiviert. Fünf echte CLI-Aufrufe wurden mit nicht
+  existierenden Eingaben geprüft: alle brechen vor Dateizugriffen mit der
+  Abschaltmeldung ab. Auch die alten Batch-Skripte verweigern die Ausführung.
+- Zwei neue Verhaltenstests prüfen einen echten WAV-Import ohne registrierte
+  Pipeline samt Aufräumen und die Ablehnung eines unerreichbaren Bibliotheksziels.
+  Beide erkannten die gezielt wieder eingeschalteten Altwege. Danach wurden
+  die Änderungen zurückgenommen und die vollständigen Projektprüfungen bestanden:
+  fmt, Clippy aller Targets/Features mit verbotenen Warnungen, Workspace-Tests,
+  Check sowie Rustdoc mit Standard- und allen Features. Quellinventar: 2.322 Tests.
+- Die vollständige M4A-Aufnahme wurde durch den nativen Import geprüft:
+  Noten aller vier Stufen und Beat-Raster entsprechen exakt dem vorherigen
+  Skriptergebnis. Die bestehende USB-Kopie ist bytegleich mit der Quelldatei.
+- Der finale Release-Build mit `--features ml` wurde mit einer separaten
+  Testbibliothek direkt auf dem USB-Laufwerk geprüft: M4A per Drop importiert,
+  Originalaudio bytegleich kopiert, vier Charts, `chart-generation.json`,
+  `song.json` und Lautheitsdaten gespeichert, anschließend Expert gespielt.
+  Bei **Tap-Hilfe OFF**: 103 perfekte Spielereignisse, 0 Misses, 0 Overstrums,
+  100 % Genauigkeit, explizites `run PASSED`, Exit 0.
+- Der echte Einstellungsbildschirm wurde mit fehlendem `tap_mode`-Feld und
+  gespeichertem `false` fotografiert und per OCR sowie Sichtprüfung als OFF
+  geprüft. Ein ausdrücklich gespeichertes `true` bleibt ON. Das globale
+  Default ist OFF; bestehende bewusste Opt-ins werden nicht beim Laden erzwungen.
+- Menüs und Tastenhilfe zeigen die deaktivierten Bridge-/Redesign-Aktionen
+  nicht mehr. Das README-Mockup wird aus aktuellen Spielaufnahmen mit dem
+  bestehenden HTML/CSS-Renderer erzeugt. Für statische Menübilder sind die
+  Startanimationen reduziert; die eigentliche Spielrunde nutzt die gespeicherten
+  Spieleinstellungen.
+- Ein bestehender Bibliotheks-Test änderte noch die echte Gerätewahl. Er nutzt
+  jetzt ausschließlich ein Testverzeichnis. Die vollständige Testsuite erhält
+  die gewählte USB-Bibliothek; nach allen GUI-Prüfungen wurden die Einstellungen
+  wiederhergestellt. Test-Songs lagen außerhalb der echten Songsammlung und
+  wurden nach erfolgreicher Prüfung entfernt.
+
+Lokale Protokolle, Aufnahmen und Prüfbelege liegen unter
+`temp/audio-only-import` und werden nicht gepusht. Ältere, erneut erzeugbare
+Compiler-Ausgaben wurden platzsparend auf dem USB-Laufwerk gesichert; die
+Dateiliste samt SHA-256 liegt in `build-cache-relocation.json` dieses Ordners.
+Songdateien und Modelle wurden dabei nicht verschoben.

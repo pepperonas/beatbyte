@@ -200,9 +200,8 @@ pub struct Settings {
     #[serde(default)]
     pub original_vocals: f32,
     /// Tap mode: notes hit on fret press alone, no strum required.
-    /// ON by default — the first real playtest showed keyboard
-    /// players press frets and nothing happens (receptors light up,
-    /// notes die); strumming is the opt-in purist mode.
+    /// OFF by default: strum notes require frets plus a strum, including
+    /// guitar controllers. Players may explicitly enable the tap assist.
     pub tap_mode: bool,
     /// Depth view: the 2D highway runs toward a vanishing point.
     ///
@@ -499,7 +498,7 @@ impl Default for Settings {
             mic_offset_ms: 0.0,
             vocal_pitch_mode: beatbyte_core::vocal::PitchMode::OctaveIndependent,
             original_vocals: 0.0,
-            tap_mode: true,
+            tap_mode: false,
             perspective: true,
             stage_3d: true,
             performance_mode: true,

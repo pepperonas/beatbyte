@@ -43,6 +43,7 @@ pub fn fetch(
     length_s: Option<f64>,
     progress: &dyn Fn(String),
 ) -> Result<Arrived, String> {
+    beatbyte_chart::import_policy::require_legacy_imports()?;
     if artist.trim().is_empty() {
         return Err("no artist to look a community chart up by".to_owned());
     }
@@ -66,6 +67,7 @@ pub fn fetch_into(
     length_s: Option<f64>,
     progress: &dyn Fn(String),
 ) -> Result<Arrived, String> {
+    beatbyte_chart::import_policy::require_legacy_imports()?;
     if artist.trim().is_empty() {
         return Err("no artist to look a community chart up by".to_owned());
     }
@@ -117,6 +119,7 @@ fn bring_in(
     library: &Path,
     transcode: &bridge::Transcoder<'_>,
 ) -> Result<Arrived, String> {
+    beatbyte_chart::import_policy::require_legacy_imports()?;
     let bytes = client.download(hit)?;
     let package = beatbyte_encore::decode(&bytes)?;
     drop(bytes);

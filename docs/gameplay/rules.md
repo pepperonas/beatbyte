@@ -1,5 +1,9 @@
 # Gameplay Rules
 
+Since 0.19.3, **TAP MODE (NO STRUM)** defaults to **OFF** in SETTINGS >
+PLAY & INPUT. Strum notes require the correct frets and a strum; ordinary
+HOPO rules still apply. Tap assistance can be explicitly enabled by the player.
+
 Implemented and unit-tested in `beatbyte-core` (`session`, `score`,
 `timing`). This document describes the *rules*; the code is the
 authority.
