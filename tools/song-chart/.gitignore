@@ -7,3 +7,6 @@ models
 outputs/
 adapter/target
 reports/inventory.json
+
+# Preserved local prototype sources/builds and unversioned research data.
+local-archive/

@@ -79,3 +79,37 @@ Lokale Protokolle, Aufnahmen und Prüfbelege liegen unter
 Compiler-Ausgaben wurden platzsparend auf dem USB-Laufwerk gesichert; die
 Dateiliste samt SHA-256 liegt in `build-cache-relocation.json` dieses Ordners.
 Songdateien und Modelle wurden dabei nicht verschoben.
+
+
+## Projektlokale Laufzeit – 22.10.2026
+
+Der frühere Ordner `/Users/martin/Downloads/bb-testing-song-chart` wurde
+vollständig nach `tools/song-chart` überführt. `.venv`, `models` und
+`adapter/target` sind echte Verzeichnisse im Projekt; ihre alten Verknüpfungen
+sind entfernt. Demucs liegt als eigene `.demucs-venv` ebenfalls im Projekt.
+Absolute Pfade in den Startskripten beider Python-Umgebungen wurden angepasst.
+Der gemeinsame ältere Demucs-Installationsordner bleibt unberührt, wird von
+dieser Einrichtung jedoch nicht mehr benötigt.
+
+Die ursprünglichen Ausgaben liegen in `outputs/prototype-history/`, die übrigen
+Originaldateien und zusätzlichen Berichte in `local-archive/downloads-prototype/`.
+Der historische Forschungs-Cache bleibt auf USB; die archivierte Verknüpfung
+zeigt weiterhin dorthin. Historische Messberichte behalten ihre damaligen Pfade.
+Modelle, Umgebungen, Testaudio und Archiv werden nicht eingecheckt.
+
+Prüfung bei bereits entferntem Downloads-Ordner:
+
+- Explizite Offline-Registrierung erfolgreich, Modelle und Separator geprüft.
+- Alle 19 Python-Tests erfolgreich, einschließlich der beiden echten Adaptertests.
+- Die umgezogenen `pip`- und `demucs`-Startskripte laufen am neuen Ort.
+- Nativer M4A-Import auf eine isolierte USB-Testbibliothek erfolgreich:
+  vier Schwierigkeitsstufen, bytegleich kopiertes Audio und Song-Begleitdaten.
+  Anschließender Expert-Spieltest: 103 perfekte Treffer, 100 %, keine Fehler
+  oder zusätzlichen Anschläge; `tap_mode=false`, Ergebnis `run PASSED`.
+- Persönliche Einstellungen und die echte USB-Bibliotheksauswahl wurden
+  nach dem Spieltest wiederhergestellt.
+
+Formatierung, Clippy (alle Targets/Features), sämtliche Workspace-Tests,
+`cargo check` und Rustdoc mit sowie ohne optionale Features bestehen ebenfalls.
+
+Lokale Prüfprotokolle: `temp/runtime-relocation/` (nicht versioniert).

@@ -163,6 +163,13 @@ never force the setting on every load. The standard setting requires strumming.
 
 ### Local AI audio import
 
+Keep the local charting environments (`.venv`, `.demucs-venv`) and models
+inside `tools/song-chart`, ignored by Git; never link them into Downloads.
+Prototype outputs live in `outputs/prototype-history`, older files in the
+ignored `local-archive/downloads-prototype`. Python environments contain
+absolute launcher paths: repair them after moving and re-register/verify
+the offline pipeline. Historical report paths describe the original runs.
+
 `tools/song-chart/setup.sh` explicitly registers the per-device runtime in
 `song-chart-runtime.json`. `song_chart.rs` runs its offline `game-import` protocol
 from the shared import worker; never spawn code discovered in CWD. A registered

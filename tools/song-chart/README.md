@@ -70,7 +70,11 @@ Die fünf Spielspuren sind keine Gitarrentabulatur. Das Modell erkennt Instrumen
 
 ## Gespeicherte Daten und Berichte
 
-Versioniert sind Quellcode, Konfiguration, Tests und die bisherigen Ergebnisberichte. Audio, Modelle, Python-Umgebungen, Rust-Builds, Cache und `outputs/` werden nicht eingecheckt. Die vollständige Bibliotheksinventur `reports/inventory.json` entsteht durch `scan` und bleibt lokal. Die Berichte sind historische Messungen vom 21.10.2026; darin enthaltene Dateipfade und Prüfsummen beschreiben den damaligen Lauf. Die Links auf Audio-/Chart-Vergleiche funktionieren erst nach Erzeugung der zugehörigen Ausgaben. Die ursprünglichen vollständigen Testdaten liegen auf diesem Mac weiterhin unter `/Users/martin/Downloads/bb-testing-song-chart`.
+Versioniert sind Quellcode, Konfiguration, Tests und die bisherigen Ergebnisberichte. Audio, Modelle, Python-Umgebungen, Rust-Builds, Cache und `outputs/` werden nicht eingecheckt. Die vollständige Bibliotheksinventur `reports/inventory.json` entsteht durch `scan` und bleibt lokal. Die Berichte sind historische Messungen vom 21.10.2026; darin enthaltene Dateipfade und Prüfsummen beschreiben den damaligen Lauf. Die Links auf Audio-/Chart-Vergleiche funktionieren erst nach Erzeugung der zugehörigen Ausgaben.
+
+Die lokale Einrichtung liegt vollständig unter `tools/song-chart/`: `.venv/` und `.demucs-venv/` enthalten die Python-Umgebungen, `models/` die Modellgewichte. Die ursprünglichen Testausgaben liegen in `outputs/prototype-history/`; ältere Prototyp-Dateien und zusätzliche Berichte sind unverändert in `local-archive/downloads-prototype/` gesichert. Diese lokalen Daten bleiben von Git ausgeschlossen.
+
+Der frühere Downloads-Ordner wird nicht mehr benötigt. Nur der große historische Forschungs-Cache bleibt über die archivierte `cache`-Verknüpfung auf dem USB-Stick; neue Importe benötigen ihn nicht.
 
 ## Analyse und Ergebnisse lesen
 

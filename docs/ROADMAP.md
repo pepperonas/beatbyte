@@ -2517,3 +2517,7 @@ Not started without a deliberate roadmap edit pulling them forward:
 - [x] Refuse import into a disconnected chosen library instead of silently splitting storage.
 
 - [x] Default TAP MODE (NO STRUM) to OFF; explicitly requested tap assistance remains available.
+
+## Self-contained local charting setup (2026-10-22)
+
+- [x] Move the Downloads prototype into `tools/song-chart`, preserve original results and archive, replace environment/model symlinks with real directories and install a project-local Demucs environment.
