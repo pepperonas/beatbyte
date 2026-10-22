@@ -368,6 +368,12 @@ pub struct InputSources<'a> {
     pub keys: &'a ButtonInput<KeyCode>,
     /// Every connected gamepad.
     pub pads: Vec<&'a Gamepad>,
+    /// Read the keyboard's fret keys mirrored: the key bound to fret
+    /// `i` plays fret `4 - i`. Set for a left-handed player, whose
+    /// highway is drawn mirrored — the keys follow the PICTURE (A
+    /// hits the lane on the left of the screen), while a pad's fret
+    /// buttons keep their colour (see `Handedness`).
+    pub mirror_keys: bool,
 }
 
 /// Which physical thing delivered an action this frame.
@@ -400,6 +406,38 @@ impl Source {
 }
 
 impl InputSources<'_> {
+    /// Whose KEY bindings stand for this action: the action itself,
+    /// or for a mirrored keyboard the fret at the other end. Pure.
+    #[must_use]
+    pub const fn key_action(&self, action: GameAction) -> GameAction {
+        match action {
+            GameAction::Fret(index) if self.mirror_keys && index < 5 => GameAction::Fret(4 - index),
+            other => other,
+        }
+    }
+
+    /// The keys that deliver this action this frame.
+    fn keys_of<'m>(
+        &self,
+        map: &'m InputMap,
+        action: GameAction,
+    ) -> impl Iterator<Item = KeyCode> + 'm {
+        map.of(self.key_action(action))
+            .iter()
+            .filter_map(|binding| match binding {
+                Binding::Key(key) => Some(*key),
+                Binding::Pad(_) => None,
+            })
+    }
+
+    /// The pad buttons that deliver this action — never mirrored.
+    fn buttons_of(map: &InputMap, action: GameAction) -> impl Iterator<Item = GamepadButton> + '_ {
+        map.of(action).iter().filter_map(|binding| match binding {
+            Binding::Pad(button) => Some(*button),
+            Binding::Key(_) => None,
+        })
+    }
+
     /// Which source just pressed a binding of this action, if any.
     ///
     /// The keyboard is checked first, which is the order
@@ -408,46 +446,44 @@ impl InputSources<'_> {
     /// sent once either way.
     #[must_use]
     pub fn source_just_pressed(&self, map: &InputMap, action: GameAction) -> Option<Source> {
-        for binding in map.of(action) {
-            match binding {
-                Binding::Key(key) if self.keys.just_pressed(*key) => return Some(Source::Keyboard),
-                Binding::Pad(button) => {
-                    if let Some(index) = self.pads.iter().position(|pad| pad.just_pressed(*button))
-                    {
-                        return Some(Source::Pad(index));
-                    }
-                }
-                Binding::Key(_) => {}
-            }
+        if self
+            .keys_of(map, action)
+            .any(|key| self.keys.just_pressed(key))
+        {
+            return Some(Source::Keyboard);
         }
-        None
+        Self::buttons_of(map, action).find_map(|button| {
+            self.pads
+                .iter()
+                .position(|pad| pad.just_pressed(button))
+                .map(Source::Pad)
+        })
     }
 
     /// Was any binding of this action just pressed?
     #[must_use]
     pub fn just_pressed(&self, map: &InputMap, action: GameAction) -> bool {
-        map.of(action).iter().any(|binding| match binding {
-            Binding::Key(key) => self.keys.just_pressed(*key),
-            Binding::Pad(button) => self.pads.iter().any(|pad| pad.just_pressed(*button)),
-        })
+        self.keys_of(map, action)
+            .any(|key| self.keys.just_pressed(key))
+            || Self::buttons_of(map, action)
+                .any(|button| self.pads.iter().any(|pad| pad.just_pressed(button)))
     }
 
     /// Was any binding of this action just released?
     #[must_use]
     pub fn just_released(&self, map: &InputMap, action: GameAction) -> bool {
-        map.of(action).iter().any(|binding| match binding {
-            Binding::Key(key) => self.keys.just_released(*key),
-            Binding::Pad(button) => self.pads.iter().any(|pad| pad.just_released(*button)),
-        })
+        self.keys_of(map, action)
+            .any(|key| self.keys.just_released(key))
+            || Self::buttons_of(map, action)
+                .any(|button| self.pads.iter().any(|pad| pad.just_released(button)))
     }
 
     /// Is any binding of this action currently held?
     #[must_use]
     pub fn pressed(&self, map: &InputMap, action: GameAction) -> bool {
-        map.of(action).iter().any(|binding| match binding {
-            Binding::Key(key) => self.keys.pressed(*key),
-            Binding::Pad(button) => self.pads.iter().any(|pad| pad.pressed(*button)),
-        })
+        self.keys_of(map, action).any(|key| self.keys.pressed(key))
+            || Self::buttons_of(map, action)
+                .any(|button| self.pads.iter().any(|pad| pad.pressed(button)))
     }
 }
 
@@ -463,6 +499,58 @@ mod tests {
             pad.digital_mut().press(*button);
         }
         pad
+    }
+
+    /// A left-handed keyboard player: the keys follow the mirrored
+    /// picture (A plays the lane at the left of the screen, orange);
+    /// a guitar's green button stays green.
+    #[test]
+    fn a_mirrored_keyboard_plays_the_other_end_and_a_guitar_does_not() {
+        let map = InputMap::default();
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::KeyA);
+        let mirrored = InputSources {
+            keys: &keys,
+            pads: Vec::new(),
+            mirror_keys: true,
+        };
+        assert!(mirrored.just_pressed(&map, GameAction::Fret(4)));
+        assert!(mirrored.pressed(&map, GameAction::Fret(4)));
+        assert!(!mirrored.just_pressed(&map, GameAction::Fret(0)));
+        assert_eq!(
+            mirrored.source_just_pressed(&map, GameAction::Fret(4)),
+            Some(Source::Keyboard)
+        );
+        // Strum and Hype are not frets and are never mirrored.
+        assert_eq!(mirrored.key_action(GameAction::Hype), GameAction::Hype);
+        let plain = InputSources {
+            keys: &keys,
+            pads: Vec::new(),
+            mirror_keys: false,
+        };
+        assert!(plain.just_pressed(&map, GameAction::Fret(0)));
+        assert!(!plain.just_pressed(&map, GameAction::Fret(4)));
+
+        let green = map
+            .of(GameAction::Fret(0))
+            .iter()
+            .find_map(|b| match b {
+                Binding::Pad(button) => Some(*button),
+                Binding::Key(_) => None,
+            })
+            .expect("fret 0 has a pad binding");
+        let pad = pad_pressing(&[green]);
+        let silent = ButtonInput::<KeyCode>::default();
+        let guitar = InputSources {
+            keys: &silent,
+            pads: vec![&pad],
+            mirror_keys: true,
+        };
+        assert!(
+            guitar.just_pressed(&map, GameAction::Fret(0)),
+            "green stays green"
+        );
+        assert!(!guitar.just_pressed(&map, GameAction::Fret(4)));
     }
 
     #[test]

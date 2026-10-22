@@ -65,6 +65,9 @@ pub const PREROLL_S: f64 = 2.0;
 #[derive(Resource, Debug, Clone)]
 pub struct HighwayLayout {
     origins: Vec<f32>,
+    /// Per player: whether the highway is drawn mirrored (a
+    /// left-handed player — green on the right).
+    mirrored: Vec<bool>,
     /// Center-to-center lane spacing in pixels.
     pub lane_step: f32,
 }
@@ -79,7 +82,41 @@ impl HighwayLayout {
             3 => (vec![-420.0, 0.0, 420.0], 48.0),
             _ => (vec![-465.0, -155.0, 155.0, 465.0], 40.0),
         };
-        HighwayLayout { origins, lane_step }
+        let mirrored = vec![false; origins.len()];
+        HighwayLayout {
+            origins,
+            mirrored,
+            lane_step,
+        }
+    }
+
+    /// Draw one player's highway mirrored (or not). The ONLY place a
+    /// left-handed player is honoured on screen: every lane position
+    /// goes through [`HighwayLayout::lane_x`].
+    #[must_use]
+    pub fn with_mirror(mut self, player: usize, mirrored: bool) -> HighwayLayout {
+        if let Some(slot) = self.mirrored.get_mut(player) {
+            *slot = mirrored;
+        }
+        self
+    }
+
+    /// Whether a player's highway is drawn mirrored.
+    #[must_use]
+    pub fn mirrored(&self, player: usize) -> bool {
+        self.mirrored.get(player).copied().unwrap_or(false)
+    }
+
+    /// Where a lane sits counted from the left, 0..5: its own index,
+    /// or the other end of the neck for a mirrored player.
+    #[must_use]
+    pub fn slot(&self, player: usize, lane: Lane) -> usize {
+        let index = lane.index();
+        if self.mirrored(player) {
+            4 - index
+        } else {
+            index
+        }
     }
 
     /// Number of players in this layout.
@@ -97,7 +134,7 @@ impl HighwayLayout {
     /// The x position of a lane's center for a player.
     #[must_use]
     pub fn lane_x(&self, player: usize, lane: Lane) -> f32 {
-        self.origin(player) + (lane.index() as f32 - 2.0) * self.lane_step
+        self.origin(player) + (self.slot(player, lane) as f32 - 2.0) * self.lane_step
     }
 
     /// Width of one highway bed.
@@ -117,6 +154,14 @@ impl HighwayLayout {
     pub fn receptor_size(&self) -> f32 {
         self.lane_step * 0.58
     }
+}
+
+/// Whether the first highway is drawn mirrored: the playing profile
+/// is left-handed, or the autopilot plays as if it were
+/// (`BEATBYTE_AUTOPILOT_LEFTY`). Pure — tested.
+#[must_use]
+pub fn first_highway_mirrored(hand: beatbyte_core::player::Handedness, forced: bool) -> bool {
+    hand.mirrors() || forced
 }
 
 /// Which player an entity belongs to (0-based).
@@ -595,6 +640,7 @@ fn setup_gameplay(
     mut next_state: ResMut<NextState<AppState>>,
     taste: Option<Res<crate::taste::TasteTest>>,
     playtest: Option<Res<crate::editor_ui::Playtest>>,
+    profiles: Option<Res<crate::players::Players>>,
 ) {
     // Stage identity for this song.
     theme.0 = crate::theme::choose_theme(&settings.theme, &song.chart.song.title);
@@ -621,7 +667,19 @@ fn setup_gameplay(
         track.len(),
         devices.len()
     );
-    commands.insert_resource(HighwayLayout::for_players(devices.len()));
+    // The profile that is playing plays the first highway; a left
+    // hand turns that one over. Further players have no profile and
+    // stay right-handed.
+    let hand = profiles
+        .as_deref()
+        .map_or(beatbyte_core::player::Handedness::Right, |p| {
+            p.0.current_handedness()
+        });
+    let lefty = first_highway_mirrored(hand, crate::autopilot::forces_lefty());
+    if lefty {
+        info!("first highway mirrored: left-handed player");
+    }
+    commands.insert_resource(HighwayLayout::for_players(devices.len()).with_mirror(0, lefty));
     let score_config = score_config_for(settings.no_fail, devices.len());
     for (index, device) in devices.into_iter().enumerate() {
         let mut session = TrackSession::new(track.clone(), TimingWindows::default(), score_config);
@@ -1315,6 +1373,7 @@ fn pause_input(
     let sources = crate::controls::InputSources {
         keys: &keys,
         pads: pads.iter().collect(),
+        mirror_keys: false,
     };
     let pause = sources.just_pressed(&map, crate::controls::GameAction::Pause);
     match phase.get() {
@@ -2033,6 +2092,79 @@ mod pause_menu_tests {
             practice.step(1.0);
         }
         assert_eq!(practice.speed_percent, 150);
+    }
+}
+
+#[cfg(test)]
+mod handedness_tests {
+    use super::{HighwayLayout, first_highway_mirrored};
+    use beatbyte_core::Lane;
+    use beatbyte_core::player::Handedness;
+
+    #[test]
+    fn a_mirrored_highway_puts_green_where_orange_was() {
+        let right = HighwayLayout::for_players(1);
+        let left = HighwayLayout::for_players(1).with_mirror(0, true);
+        for lane in Lane::ALL {
+            let opposite = Lane::from_index(4 - lane.index()).unwrap_or(lane);
+            assert!(
+                (left.lane_x(0, lane) - right.lane_x(0, opposite)).abs() < 1e-4,
+                "{lane:?}"
+            );
+        }
+        // Green on the far right, orange on the far left.
+        assert!(left.lane_x(0, Lane::One) > left.lane_x(0, Lane::Five));
+        assert!(left.mirrored(0) && !right.mirrored(0));
+    }
+
+    #[test]
+    fn only_the_mirrored_player_turns_over() {
+        let duo = HighwayLayout::for_players(2).with_mirror(0, true);
+        let plain = HighwayLayout::for_players(2);
+        for lane in Lane::ALL {
+            assert!((duo.lane_x(1, lane) - plain.lane_x(1, lane)).abs() < 1e-4);
+        }
+        // A slot that does not exist is ignored, not a panic.
+        let solo = HighwayLayout::for_players(1).with_mirror(3, true);
+        assert!(!solo.mirrored(3) && !solo.mirrored(0));
+    }
+
+    #[test]
+    fn the_playing_hand_or_the_autopilot_mirrors_the_first_highway() {
+        assert!(!first_highway_mirrored(Handedness::Right, false));
+        assert!(first_highway_mirrored(Handedness::Left, false));
+        assert!(first_highway_mirrored(Handedness::Right, true));
+    }
+
+    /// Every lane position goes through `HighwayLayout::lane_x` — the
+    /// one place a left hand is honoured. A second "index − 2" anywhere
+    /// in gameplay would draw that part of the highway the right way
+    /// round for a left-handed player.
+    #[test]
+    fn no_gameplay_code_places_a_lane_on_its_own() {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src/gameplay");
+        // Assembled at run time, or this test would find itself.
+        let needle = ["as f32", " - 2.0"].concat();
+        let mut found = 0;
+        for entry in std::fs::read_dir(dir).unwrap_or_else(|e| panic!("{dir}: {e}")) {
+            let path = entry.map(|e| e.path()).unwrap_or_default();
+            if path.extension().is_none_or(|ext| ext != "rs") {
+                continue;
+            }
+            let source = std::fs::read_to_string(&path).unwrap_or_default();
+            for line in source.lines() {
+                let code = line.split("//").next().unwrap_or("");
+                if code.contains(&needle) {
+                    found += 1;
+                    assert!(
+                        code.contains("self.slot(player, lane)"),
+                        "{}: places a lane outside HighwayLayout: {line}",
+                        path.display()
+                    );
+                }
+            }
+        }
+        assert_eq!(found, 1, "the one lane formula in HighwayLayout::lane_x");
     }
 }
 

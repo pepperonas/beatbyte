@@ -61,6 +61,48 @@ pub const NAME_MAX: usize = 24;
 /// garnish, the id is the identity.
 pub const COLOURS: usize = 4;
 
+/// Which hand a player frets with.
+///
+/// A left-handed player turns the guitar over: the lowest fret
+/// (green) moves to the far right of the neck, so the highway is
+/// drawn mirrored for them. Only the PICTURE and keys that stand for
+/// a place on it follow; a fret button on a guitar controller keeps
+/// its colour, because the player's fingers find that button by
+/// touch, not by its place on screen.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Handedness {
+    /// Green on the left — the guitar as it comes.
+    #[default]
+    Right,
+    /// Green on the right — the guitar turned over.
+    Left,
+}
+
+impl Handedness {
+    /// Whether this is the default, right hand. Used to keep the
+    /// field out of the file for everyone who never changed it.
+    #[must_use]
+    pub const fn is_right(&self) -> bool {
+        matches!(self, Handedness::Right)
+    }
+
+    /// Whether the highway is drawn mirrored for this hand.
+    #[must_use]
+    pub const fn mirrors(self) -> bool {
+        matches!(self, Handedness::Left)
+    }
+
+    /// The other hand.
+    #[must_use]
+    pub const fn flipped(self) -> Handedness {
+        match self {
+            Handedness::Right => Handedness::Left,
+            Handedness::Left => Handedness::Right,
+        }
+    }
+}
+
 /// One player on this machine.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Player {
@@ -86,6 +128,11 @@ pub struct Player {
     /// newer change wins (ADR-0021).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_ms: Option<u64>,
+    /// Which hand this player frets with. Absent from the file for a
+    /// right-handed player, so rosters written before the field
+    /// existed read back unchanged.
+    #[serde(default, skip_serializing_if = "Handedness::is_right")]
+    pub handedness: Handedness,
 }
 
 impl Player {
@@ -186,6 +233,7 @@ impl Roster {
             colour: self.players.len() % COLOURS,
             preferred_difficulty: None,
             updated_ms: None,
+            handedness: Handedness::Right,
         });
         // The first player to exist is the one playing: nobody
         // creates a roster in order to then pick from it.
@@ -307,6 +355,26 @@ impl Roster {
         }
     }
 
+    /// Set the hand a player frets with. Returns whether anything
+    /// changed — the caller stamps the player only then, so choosing
+    /// the hand they already have does not make this device's copy the
+    /// newer one (ADR-0021).
+    pub fn set_handedness(&mut self, id: PlayerId, hand: Handedness) -> bool {
+        match self.players.iter_mut().find(|p| p.id == id) {
+            Some(player) if player.handedness != hand => {
+                player.handedness = hand;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// The hand of whoever is playing; right when nobody is chosen.
+    #[must_use]
+    pub fn current_handedness(&self) -> Handedness {
+        self.current().map_or(Handedness::Right, |p| p.handedness)
+    }
+
     /// The difficulty the current player last chose, if any.
     #[must_use]
     pub fn current_preferred_difficulty(&self) -> Option<Difficulty> {
@@ -372,6 +440,44 @@ mod tests {
     }
 
     #[test]
+    fn a_roster_from_before_handedness_reads_as_right_handed() {
+        let old = r#"{"players":[{"id":3,"name":"Kim","created_ms":1,"colour":0}],"selected":3}"#;
+        let roster: Roster = serde_json::from_str(old).unwrap();
+        assert_eq!(roster.players[0].handedness, Handedness::Right);
+        assert_eq!(roster.current_handedness(), Handedness::Right);
+        // And a right-handed player writes no field at all, so the
+        // file of someone who never touched it does not change.
+        let written = serde_json::to_string(&roster).unwrap();
+        assert!(!written.contains("handedness"), "{written}");
+    }
+
+    #[test]
+    fn a_left_hand_round_trips_and_only_a_real_change_counts() {
+        let mut roster = Roster::default();
+        let id = roster.add("Anna", 1).unwrap();
+        assert!(
+            !roster.set_handedness(id, Handedness::Right),
+            "already right"
+        );
+        assert!(roster.set_handedness(id, Handedness::Left));
+        assert!(
+            !roster.set_handedness(id, Handedness::Left),
+            "no change twice"
+        );
+        assert!(
+            !roster.set_handedness(id + 999, Handedness::Left),
+            "unknown id"
+        );
+        assert_eq!(roster.current_handedness(), Handedness::Left);
+        let written = serde_json::to_string(&roster).unwrap();
+        assert!(written.contains(r#""handedness":"left""#), "{written}");
+        let back: Roster = serde_json::from_str(&written).unwrap();
+        assert_eq!(back.players[0].handedness, Handedness::Left);
+        assert!(Handedness::Left.mirrors() && !Handedness::Right.mirrors());
+        assert_eq!(Handedness::Left.flipped(), Handedness::Right);
+    }
+
+    #[test]
     fn a_hand_edited_file_cannot_make_two_players_share_an_id() {
         // next_id says 1, but a player already holds 7: the counter
         // must jump past them rather than collide.
@@ -383,6 +489,7 @@ mod tests {
                 colour: 0,
                 preferred_difficulty: None,
                 updated_ms: None,
+                handedness: Handedness::Right,
             }],
             selected: None,
             next_id: 1,

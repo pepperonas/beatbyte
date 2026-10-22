@@ -66,6 +66,7 @@ pub(super) fn gameplay_input(
     time: Res<Time>,
     settings: Res<Settings>,
     injector: Option<Res<crate::autopilot::InjectorOwnsInput>>,
+    layout: Option<Res<super::HighwayLayout>>,
     // Optional so a headless test app can run this system without
     // standing up the store's plugin.
     store: Option<Res<TelemetryStore>>,
@@ -104,6 +105,9 @@ pub(super) fn gameplay_input(
         .zip(run);
     let stamp = beatbyte_telemetry::model::micros(now);
     for (player_entity, index, device, mut player) in &mut players {
+        // A left-handed player's highway is mirrored; their KEYS follow
+        // the picture, their guitar's buttons keep their colour.
+        let mirrored = layout.as_deref().is_some_and(|l| l.mirrored(index.0));
         let sources = match device.0 {
             DeviceId::Keyboard => InputSources {
                 keys: &keys,
@@ -112,6 +116,7 @@ pub(super) fn gameplay_input(
                 } else {
                     Vec::new()
                 },
+                mirror_keys: mirrored,
             },
             DeviceId::Pad(pad_entity) => InputSources {
                 keys: &silent_keys,
@@ -119,6 +124,7 @@ pub(super) fn gameplay_input(
                     .get(pad_entity)
                     .map(|(_, pad)| vec![pad])
                     .unwrap_or_default(),
+                mirror_keys: false,
             },
         };
         let player = &mut *player;

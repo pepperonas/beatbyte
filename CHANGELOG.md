@@ -14,6 +14,22 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.19.4] - 2026-10-22
+
+### Added
+
+- Left- and right-handed players. On PLAYERS each row ends in a small
+  fretboard — the five lane colours in the order that player sees them —
+  and `←` on a row makes that player left-handed, `→` right-handed (the
+  guitar's D-pad too); `H` and the new HAND chip turn it over. A flip
+  slides the dots into their new order and the status line says what it
+  does. For a left-handed player the highway is mirrored, green on the
+  right; the keyboard's fret keys follow the picture (`A` plays the lane
+  at the left of the screen), while a guitar controller's frets keep
+  their colours. The guitarist on the 3D stage plays left-handed with
+  them. The hand travels with the player between devices (ADR-0021).
+- `BEATBYTE_AUTOPILOT_LEFTY` plays a run as a left-handed player.
+
 ## [0.19.3] - 2026-10-22
 
 ### Changed

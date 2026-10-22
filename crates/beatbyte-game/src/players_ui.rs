@@ -11,8 +11,19 @@
 //! mark shows the moment it happens — not on the next visit. The
 //! player who is playing stands at the top ([`display_order`]), and
 //! the cursor follows the player it was on across a rebuild.
+//!
+//! # Left and right hand
+//!
+//! Each row ends in a small fretboard: the five lane colours in the
+//! order that player sees them on the highway — green first for a
+//! right hand, orange first for a left one, whose neck is mirrored.
+//! The control is spatial: **LEFT** on a row makes that player
+//! left-handed, **RIGHT** right-handed (the guitar's D-pad does the
+//! same), and `H` or the HAND chip turns it over. A flip slides the
+//! dots to their new places, so the change is seen, not just read.
 
-use beatbyte_core::player::{NameError, PlayerId};
+use beatbyte_core::Lane;
+use beatbyte_core::player::{Handedness, NameError, PlayerId};
 use beatbyte_core::stats::{self, Filter};
 use bevy::prelude::*;
 use bevy::ui::Val::Px as px;
@@ -124,6 +135,8 @@ pub enum Gesture {
     Stats,
     /// Open the selected player's achievements.
     Achievements,
+    /// Turn the selected player's guitar over (left ↔ right hand).
+    Hand,
 }
 
 /// What a key press means, given whether a field is open.
@@ -147,6 +160,7 @@ pub fn press_means(key: KeyCode, typed: Option<char>, field_open: bool) -> Press
                 KeyCode::KeyR => Press::Gesture(Gesture::Rename),
                 KeyCode::KeyS => Press::Gesture(Gesture::Stats),
                 KeyCode::KeyA => Press::Gesture(Gesture::Achievements),
+                KeyCode::KeyH => Press::Gesture(Gesture::Hand),
                 _ => Press::Ignore,
             }
         }
@@ -161,7 +175,7 @@ pub fn footer_hint(field_open: bool, has_players: bool) -> String {
         return "TYPE A NAME   ENTER CONFIRM   ESC CANCEL".to_owned();
     }
     if has_players {
-        "UP/DOWN SELECT   ENTER PLAY AS   chips above   ESC BACK".to_owned()
+        "UP/DOWN SELECT   LEFT/RIGHT HAND   ENTER PLAY AS   chips above   ESC BACK".to_owned()
     } else {
         "NEW chip or N   ESC BACK".to_owned()
     }
@@ -173,13 +187,14 @@ mod chip {
     pub const RENAME: u8 = 1;
     pub const STATS: u8 = 2;
     pub const AWARDS: u8 = 3;
+    pub const HAND: u8 = 4;
 }
 
 /// Pressed ActionBar chip ids for this frame.
 #[derive(Resource, Default)]
 struct ActionBarClicks(Vec<u8>);
 
-fn roster_chips(has_players: bool) -> [ui_kit::ChipSpec; 4] {
+fn roster_chips(has_players: bool) -> [ui_kit::ChipSpec; 5] {
     [
         ui_kit::ChipSpec {
             id: chip::NEW,
@@ -199,6 +214,11 @@ fn roster_chips(has_players: bool) -> [ui_kit::ChipSpec; 4] {
         ui_kit::ChipSpec {
             id: chip::AWARDS,
             label: "Awards",
+            enabled: has_players,
+        },
+        ui_kit::ChipSpec {
+            id: chip::HAND,
+            label: "Hand",
             enabled: has_players,
         },
     ]
@@ -229,9 +249,86 @@ fn chip_gesture(clicks: &[u8]) -> Option<Gesture> {
         Some(Gesture::Stats)
     } else if ui_kit::chip_hit(clicks, chip::AWARDS) {
         Some(Gesture::Achievements)
+    } else if ui_kit::chip_hit(clicks, chip::HAND) {
+        Some(Gesture::Hand)
     } else {
         None
     }
+}
+
+/// The hand a row's LEFT/RIGHT key asks for: the direction of the
+/// key IS the hand. LEFT wins a frame that pressed both. Pure —
+/// tested.
+#[must_use]
+pub const fn hand_from_arrows(left: bool, right: bool) -> Option<Handedness> {
+    if left {
+        Some(Handedness::Left)
+    } else if right {
+        Some(Handedness::Right)
+    } else {
+        None
+    }
+}
+
+/// The lanes in the order a player with this hand sees them, left to
+/// right on screen. Pure — tested.
+#[must_use]
+pub fn lanes_on_screen(hand: Handedness) -> [Lane; 5] {
+    let mut lanes = Lane::ALL;
+    if hand.mirrors() {
+        lanes.reverse();
+    }
+    lanes
+}
+
+/// The short word a row shows for its hand. Pure.
+#[must_use]
+pub const fn hand_word(hand: Handedness) -> &'static str {
+    match hand {
+        Handedness::Right => "RIGHT",
+        Handedness::Left => "LEFT",
+    }
+}
+
+/// What the status line says after a hand was chosen: who, and what
+/// it does to the picture. Pure — tested.
+#[must_use]
+pub fn hand_status(name: &str, hand: Handedness) -> String {
+    match hand {
+        Handedness::Right => format!("{name} PLAYS RIGHT-HANDED - GREEN ON THE LEFT"),
+        Handedness::Left => format!("{name} PLAYS LEFT-HANDED - GREEN ON THE RIGHT"),
+    }
+}
+
+/// Distance between two dots of a row's fretboard.
+const DOT_STEP: f32 = 11.0;
+/// Side of one dot.
+const DOT_SIZE: f32 = 8.0;
+/// How long a flipped fretboard takes to slide into its new order.
+const FLIP_SLIDE_S: f32 = 0.22;
+
+/// One dot of a row's fretboard: where it slides from and to.
+#[derive(Component, Debug, Clone, Copy)]
+struct HandDot {
+    from: f32,
+    to: f32,
+}
+
+/// The last hand change, so the rebuilt row can slide its dots from
+/// the old order instead of jumping.
+#[derive(Resource, Debug, Clone, Copy, Default)]
+struct HandFlip {
+    player: Option<PlayerId>,
+    at_s: f32,
+}
+
+/// The x of a dot in the slide: eased from where it was to where it
+/// goes. Pure — tested.
+#[must_use]
+fn slide_x(from: f32, to: f32, elapsed_s: f32) -> f32 {
+    let t = (elapsed_s / FLIP_SLIDE_S).clamp(0.0, 1.0);
+    let eased = 1.0 - (1.0 - t).powi(3);
+    from + (to - from) * eased
 }
 
 /// The line that describes a player in the list. Pure — tested.
@@ -262,6 +359,7 @@ impl Plugin for PlayersUiPlugin {
         app.init_resource::<RosterCursor>()
             .init_resource::<ActionBarClicks>()
             .init_resource::<RosterView>()
+            .init_resource::<HandFlip>()
             .add_systems(
                 OnEnter(AppState::Players),
                 spawn_roster.after(crate::history::HistoryReloaded),
@@ -270,7 +368,14 @@ impl Plugin for PlayersUiPlugin {
                 Update,
                 (
                     paint_action_bar.before(roster_keys),
-                    (roster_keys, roster_nav, rebuild_list, refresh_rows).chain(),
+                    (
+                        roster_keys,
+                        roster_nav,
+                        rebuild_list,
+                        refresh_rows,
+                        slide_hand_dots,
+                    )
+                        .chain(),
                 )
                     .run_if(in_state(AppState::Players)),
             );
@@ -308,7 +413,9 @@ fn spawn_roster(
                         },
                         RosterList,
                     ))
-                    .with_children(|list| spawn_rows(list, &font, &players, &history, &view));
+                    .with_children(|list| {
+                        spawn_rows(list, &font, &players, &history, &view, None);
+                    });
                 panel.spawn((
                     Node {
                         margin: UiRect::top(px(10.0)),
@@ -331,7 +438,7 @@ fn spawn_roster(
                 root,
                 &font,
                 &footer_hint(false, !players.0.is_empty()),
-                "D-PAD select  SOUTH play as  EAST back",
+                "D-PAD select  LEFT/RIGHT hand  SOUTH play as  EAST back",
             );
         });
 }
@@ -343,6 +450,7 @@ fn spawn_rows(
     players: &Players,
     history: &crate::history::PlayHistory,
     view: &RosterView,
+    flipped: Option<PlayerId>,
 ) {
     if players.0.is_empty() {
         crate::plot::empty_note(list, font, "NOBODY YET - PRESS N TO ADD THE FIRST PLAYER");
@@ -358,10 +466,14 @@ fn spawn_rows(
             list,
             font,
             row,
-            &player.name,
-            player.colour,
-            players.0.selected == Some(player.id),
-            &player_line(summary.runs, summary.songs, summary.last_played_ms),
+            &RowFacts {
+                name: &player.name,
+                colour: player.colour,
+                playing: players.0.selected == Some(player.id),
+                line: &player_line(summary.runs, summary.songs, summary.last_played_ms),
+                hand: player.handedness,
+                just_flipped: flipped == Some(player.id),
+            },
         );
     }
 }
@@ -380,6 +492,7 @@ fn rebuild_list(
     mut cursor: ResMut<RosterCursor>,
     lists: Query<Entity, With<RosterList>>,
     mut hints: Query<&mut crate::prompts::DeviceHint>,
+    flip: Res<HandFlip>,
 ) {
     let field_open = cursor.field.is_some();
     let wanted_hint = footer_hint(field_open, !players.0.is_empty());
@@ -396,9 +509,9 @@ fn rebuild_list(
     cursor.row = cursor_after_rebuild(&players.0.players, &view.order, on, cursor.row);
     for list in &lists {
         commands.entity(list).despawn_children();
-        commands
-            .entity(list)
-            .with_children(|list| spawn_rows(list, &font, &players, &history, &view));
+        commands.entity(list).with_children(|list| {
+            spawn_rows(list, &font, &players, &history, &view, flip.player);
+        });
     }
 }
 
@@ -421,15 +534,19 @@ pub fn cursor_after_rebuild(
         .unwrap_or_else(|| row.min(order.len().saturating_sub(1)))
 }
 
-fn spawn_row(
-    parent: &mut ChildSpawnerCommands,
-    font: &UiFont,
-    index: usize,
-    name: &str,
+/// What one row shows.
+struct RowFacts<'a> {
+    name: &'a str,
     colour: usize,
     playing: bool,
-    line: &str,
-) {
+    line: &'a str,
+    hand: Handedness,
+    /// This player's hand just changed: slide the dots from the old
+    /// order rather than drawing the new one at once.
+    just_flipped: bool,
+}
+
+fn spawn_row(parent: &mut ChildSpawnerCommands, font: &UiFont, index: usize, facts: &RowFacts) {
     parent
         .spawn(list::row_frame::<RosterRows>(index))
         .with_children(|row| {
@@ -444,21 +561,21 @@ fn spawn_row(
                 },
                 BackgroundColor(
                     crate::multiplayer::PLAYER_COLORS
-                        [colour % crate::multiplayer::PLAYER_COLORS.len()],
+                        [facts.colour % crate::multiplayer::PLAYER_COLORS.len()],
                 ),
             ));
             row.spawn((
                 ui_kit::label_node(),
-                Text::new(name.to_owned()),
+                Text::new(facts.name.to_owned()),
                 font.text(ui_kit::ROW),
                 TextColor(palette::TEXT),
             ));
             row.spawn((
-                Text::new(line.to_owned()),
+                Text::new(facts.line.to_owned()),
                 font.text(ui_kit::SMALL),
                 TextColor(ui_kit::dimmed_subtitle()),
             ));
-            if playing {
+            if facts.playing {
                 row.spawn((
                     Node {
                         margin: UiRect::left(px(10.0)),
@@ -469,7 +586,116 @@ fn spawn_row(
                     TextColor(palette::BRAND),
                 ));
             }
+            spawn_fretboard(row, font, facts.hand, facts.just_flipped);
         });
+}
+
+/// The row's fretboard: five lane dots in the order this hand sees
+/// them, then the hand's word.
+fn spawn_fretboard(row: &mut ChildSpawnerCommands, font: &UiFont, hand: Handedness, flipped: bool) {
+    row.spawn((
+        Node {
+            align_items: AlignItems::Center,
+            column_gap: px(6.0),
+            margin: UiRect::left(px(12.0)),
+            ..default()
+        },
+        HandBoard,
+    ))
+    .with_children(|board| {
+        board
+            .spawn(Node {
+                width: px(DOT_STEP * 4.0 + DOT_SIZE),
+                height: px(DOT_SIZE),
+                ..default()
+            })
+            .with_children(|strip| {
+                let order = lanes_on_screen(hand);
+                let before = lanes_on_screen(hand.flipped());
+                for lane in Lane::ALL {
+                    let place = |lanes: [Lane; 5]| {
+                        lanes.iter().position(|l| *l == lane).unwrap_or(0) as f32 * DOT_STEP
+                    };
+                    let to = place(order);
+                    let from = if flipped { place(before) } else { to };
+                    strip.spawn((
+                        Node {
+                            position_type: PositionType::Absolute,
+                            left: px(from),
+                            width: px(DOT_SIZE),
+                            height: px(DOT_SIZE),
+                            border_radius: BorderRadius::all(px(DOT_SIZE / 2.0)),
+                            ..default()
+                        },
+                        BackgroundColor(palette::lane_color(lane)),
+                        HandDot { from, to },
+                    ));
+                }
+            });
+        board.spawn((
+            Node {
+                width: px(44.0),
+                ..default()
+            },
+            Text::new(hand_word(hand).to_owned()),
+            font.text(ui_kit::SMALL),
+            TextColor(ui_kit::dimmed_subtitle()),
+        ));
+    });
+}
+
+/// A row's fretboard node.
+#[derive(Component)]
+struct HandBoard;
+
+/// Slide the dots of a just-flipped fretboard into their new order.
+/// Writes only dots that are still moving.
+fn slide_hand_dots(
+    time: Res<Time>,
+    flip: Res<HandFlip>,
+    mut dots: Query<(&HandDot, &mut Node), Without<list::ListRow<RosterRows>>>,
+) {
+    let elapsed = time.elapsed_secs() - flip.at_s;
+    for (dot, mut node) in &mut dots {
+        if (dot.from - dot.to).abs() < f32::EPSILON {
+            continue;
+        }
+        let x = px(slide_x(dot.from, dot.to, elapsed));
+        if node.left != x {
+            node.left = x;
+        }
+    }
+}
+
+/// Give the selected player this hand (or, with `None`, the other
+/// one). Saves, stamps and reports only when something changed.
+#[allow(clippy::too_many_arguments)] // the screen's state, passed through
+fn choose_hand(
+    wanted: Option<Handedness>,
+    cursor: &mut RosterCursor,
+    view: &RosterView,
+    players: &mut Players,
+    flip: &mut HandFlip,
+    now_s: f32,
+    sounds: &mut MessageWriter<crate::sfx::UiSound>,
+) {
+    let Some(player) = view.player(players, cursor.row) else {
+        return;
+    };
+    let (id, name) = (player.id, player.name.clone());
+    let hand = wanted.unwrap_or_else(|| player.handedness.flipped());
+    if players.0.set_handedness(id, hand) {
+        // The newest version of this player; another device's older
+        // one must not win it back (ADR-0021).
+        players.0.stamp(id, now_ms());
+        save_roster(players);
+        *flip = HandFlip {
+            player: Some(id),
+            at_s: now_s,
+        };
+        sounds.write(crate::sfx::UiSound::Toggle);
+    }
+    cursor.status = hand_status(&name, hand);
 }
 
 /// Apply a roster [`Gesture`] (shared by letter keys and ActionBar chips).
@@ -511,6 +737,8 @@ fn apply_gesture(
                 next.set(AppState::Achievements);
             }
         }
+        // Changes the roster, so `roster_keys` handles it itself.
+        Gesture::Hand => {}
     }
 }
 
@@ -527,12 +755,26 @@ fn roster_keys(
     mut next: ResMut<NextState<AppState>>,
     mut chosen: ResMut<crate::stats_ui::StatsFor>,
     mut awards: ResMut<crate::achievements_ui::AchievementsFor>,
+    mut flip: ResMut<HandFlip>,
+    time: Res<Time>,
+    mut sounds: MessageWriter<crate::sfx::UiSound>,
 ) {
     // Chips first: they must not type into an open field, and a
     // chip click is the mouse door onto the same gestures as N/R/S/A.
     if cursor.field.is_none()
         && let Some(gesture) = chip_gesture(&clicks.0)
     {
+        if gesture == Gesture::Hand {
+            choose_hand(
+                None,
+                &mut cursor,
+                &view,
+                &mut players,
+                &mut flip,
+                time.elapsed_secs(),
+                &mut sounds,
+            );
+        }
         apply_gesture(
             gesture,
             &mut cursor,
@@ -564,6 +806,15 @@ fn roster_keys(
                 cursor.field = None;
                 cursor.status.clear();
             }
+            Press::Gesture(Gesture::Hand) => choose_hand(
+                None,
+                &mut cursor,
+                &view,
+                &mut players,
+                &mut flip,
+                time.elapsed_secs(),
+                &mut sounds,
+            ),
             Press::Gesture(gesture) => {
                 apply_gesture(
                     gesture,
@@ -651,6 +902,8 @@ fn roster_nav(
     mut selected: ResMut<crate::song_select::SelectedDifficulty>,
     mut next: ResMut<NextState<AppState>>,
     mut sounds: MessageWriter<crate::sfx::UiSound>,
+    mut flip: ResMut<HandFlip>,
+    time: Res<Time>,
 ) {
     // A field open means the arrows and Enter belong to it.
     if cursor.field.is_some() {
@@ -660,6 +913,22 @@ fn roster_nav(
     let mut row = cursor.row;
     let events = list.read(&mut row, count);
     cursor.row = row;
+    // LEFT and RIGHT on a row choose that hand: the key's direction is
+    // the hand. Not the list's `step`, which Enter also produces —
+    // Enter here means "play as".
+    if count > 0
+        && let Some(hand) = hand_from_arrows(events.nav.left, events.nav.right)
+    {
+        choose_hand(
+            Some(hand),
+            &mut cursor,
+            &view,
+            &mut players,
+            &mut flip,
+            time.elapsed_secs(),
+            &mut sounds,
+        );
+    }
     if count > 0
         && (events.nav.confirm || events.clicked)
         && let Some(player) = view.player(&players, cursor.row)
@@ -707,6 +976,7 @@ fn refresh_rows(
     ui_kit::set_chip_enabled(&mut chips, chip::RENAME, has_players);
     ui_kit::set_chip_enabled(&mut chips, chip::STATS, has_players);
     ui_kit::set_chip_enabled(&mut chips, chip::AWARDS, has_players);
+    ui_kit::set_chip_enabled(&mut chips, chip::HAND, has_players);
     // The rows carry their own texts; the renderer dresses the frames.
     paint.paint(cursor.row, settings.high_contrast, |_| String::new());
     if let Ok(mut text) = field.single_mut() {
@@ -787,6 +1057,47 @@ mod tests {
     }
 
     #[test]
+    fn h_turns_the_guitar_over_but_is_a_letter_in_a_name() {
+        assert_eq!(
+            press_means(KeyCode::KeyH, Some('h'), false),
+            Press::Gesture(Gesture::Hand)
+        );
+        assert_eq!(
+            press_means(KeyCode::KeyH, Some('h'), true),
+            Press::Type('h')
+        );
+        assert_eq!(chip_gesture(&[chip::HAND]), Some(Gesture::Hand));
+        assert!(footer_hint(false, true).contains("LEFT/RIGHT HAND"));
+        assert!(!footer_hint(false, false).contains("HAND"));
+    }
+
+    #[test]
+    fn the_arrow_direction_is_the_hand() {
+        assert_eq!(hand_from_arrows(true, false), Some(Handedness::Left));
+        assert_eq!(hand_from_arrows(false, true), Some(Handedness::Right));
+        assert_eq!(hand_from_arrows(true, true), Some(Handedness::Left));
+        assert_eq!(hand_from_arrows(false, false), None);
+    }
+
+    #[test]
+    fn the_fretboard_shows_the_lanes_as_that_hand_sees_them() {
+        assert_eq!(lanes_on_screen(Handedness::Right)[0], Lane::One);
+        assert_eq!(lanes_on_screen(Handedness::Left)[0], Lane::Five);
+        assert_eq!(lanes_on_screen(Handedness::Left)[4], Lane::One);
+        assert!(hand_status("Anna", Handedness::Left).contains("GREEN ON THE RIGHT"));
+        assert!(hand_status("Anna", Handedness::Right).contains("GREEN ON THE LEFT"));
+    }
+
+    #[test]
+    fn a_flip_slides_from_the_old_place_to_the_new_one() {
+        assert!((slide_x(0.0, 44.0, 0.0) - 0.0).abs() < 1e-4);
+        assert!((slide_x(0.0, 44.0, FLIP_SLIDE_S) - 44.0).abs() < 1e-4);
+        assert!((slide_x(0.0, 44.0, 10.0) - 44.0).abs() < 1e-4, "it stops");
+        let mid = slide_x(0.0, 44.0, FLIP_SLIDE_S / 2.0);
+        assert!(mid > 22.0 && mid < 44.0, "eases out: {mid}");
+    }
+
+    #[test]
     fn a_player_line_counts_in_the_right_plural_and_says_when_empty() {
         assert_eq!(player_line(0, 0, None), "NO RUNS YET");
         assert!(player_line(1, 1, None).starts_with("1 RUN   1 SONG"));
@@ -848,6 +1159,7 @@ mod tests {
             .init_resource::<crate::config::Settings>()
             .init_resource::<RosterCursor>()
             .init_resource::<RosterView>()
+            .init_resource::<HandFlip>()
             .add_systems(Startup, spawn_roster)
             .add_systems(Update, rebuild_list);
         let font = app
@@ -923,5 +1235,109 @@ mod tests {
         }
         app.update();
         assert!(names_on_screen(&mut app).contains(&"Anna".to_owned()));
+    }
+
+    /// The roster's input system on a real list, driven by keys.
+    fn hand_app(roster: beatbyte_core::player::Roster) -> App {
+        use bevy::input::mouse::MouseWheel;
+        use bevy::window::CursorMoved;
+        let mut app = App::new();
+        let order = display_order(&roster.players, roster.selected);
+        app.add_plugins(bevy::MinimalPlugins)
+            .insert_resource(Players(roster))
+            .insert_resource(RosterView { order })
+            .init_resource::<RosterCursor>()
+            .init_resource::<HandFlip>()
+            .insert_resource(crate::song_select::SelectedDifficulty(
+                beatbyte_core::Difficulty::Medium,
+            ))
+            .init_resource::<NextState<AppState>>()
+            .init_resource::<crate::controls::InputMap>()
+            .init_resource::<ButtonInput<KeyCode>>()
+            .init_resource::<ButtonInput<MouseButton>>()
+            .add_message::<MouseWheel>()
+            .add_message::<CursorMoved>()
+            .add_message::<crate::sfx::UiSound>()
+            .add_systems(Update, roster_nav);
+        app
+    }
+
+    fn press(app: &mut App, key: KeyCode) {
+        {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.reset_all();
+            keys.press(key);
+        }
+        app.update();
+    }
+
+    /// LEFT on a row makes that player left-handed and stamps them;
+    /// RIGHT turns them back; Enter still only chooses who plays.
+    #[test]
+    fn left_and_right_on_a_row_choose_the_hand() {
+        let mut app = hand_app(roster(&["Ann", "Ben"]));
+        let ann = app.world().resource::<Players>().0.players[0].id;
+        press(&mut app, KeyCode::ArrowLeft);
+        let players = &app.world().resource::<Players>().0;
+        assert_eq!(
+            players.get(ann).map(|p| p.handedness),
+            Some(Handedness::Left)
+        );
+        assert!(
+            players.get(ann).and_then(|p| p.updated_ms).is_some(),
+            "stamped"
+        );
+        assert_eq!(
+            players.players[1].handedness,
+            Handedness::Right,
+            "only the selected row"
+        );
+        assert!(
+            app.world()
+                .resource::<RosterCursor>()
+                .status
+                .contains("LEFT-HANDED")
+        );
+        assert_eq!(app.world().resource::<HandFlip>().player, Some(ann));
+
+        press(&mut app, KeyCode::ArrowRight);
+        let players = &app.world().resource::<Players>().0;
+        assert_eq!(
+            players.get(ann).map(|p| p.handedness),
+            Some(Handedness::Right)
+        );
+
+        // Enter chooses the player and leaves the hand alone.
+        press(&mut app, KeyCode::ArrowLeft);
+        press(&mut app, KeyCode::Enter);
+        let players = &app.world().resource::<Players>().0;
+        assert_eq!(
+            players.get(ann).map(|p| p.handedness),
+            Some(Handedness::Left)
+        );
+    }
+
+    /// The rebuilt row draws its dots in the new order; a just-flipped
+    /// one starts where the old order had it.
+    #[test]
+    fn a_left_handed_row_draws_orange_first() {
+        let mut lefty = roster(&["Ann"]);
+        let id = lefty.players[0].id;
+        lefty.set_handedness(id, Handedness::Left);
+        let mut app = wired(lefty);
+        let mut dots: Vec<(f32, f32, Color)> = app
+            .world_mut()
+            .query::<(&HandDot, &BackgroundColor)>()
+            .iter(app.world())
+            .map(|(dot, colour)| (dot.to, dot.from, colour.0))
+            .collect();
+        dots.sort_by(|a, b| a.0.total_cmp(&b.0));
+        assert_eq!(dots.len(), 5);
+        assert_eq!(dots[0].2, palette::lane_color(Lane::Five), "orange first");
+        assert_eq!(dots[4].2, palette::lane_color(Lane::One), "green last");
+        assert!(
+            dots.iter().all(|d| (d.0 - d.1).abs() < 1e-4),
+            "no slide on entry"
+        );
     }
 }

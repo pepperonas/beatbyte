@@ -278,6 +278,7 @@ fn run_tester(
     let sources = InputSources {
         keys: &keys,
         pads: pads.iter().map(|(_, pad)| pad).collect(),
+        mirror_keys: false,
     };
 
     // Devices + mode lines.

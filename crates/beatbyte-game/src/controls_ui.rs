@@ -289,6 +289,7 @@ fn refresh_pad_tester(
     let sources = crate::controls::InputSources {
         keys: &keys,
         pads: pads.iter().map(|(_, pad)| pad).collect(),
+        mirror_keys: false,
     };
     for (lamp, mut color) in &mut lamps {
         let pressed = sources.pressed(&map, GameAction::Fret(lamp.0));

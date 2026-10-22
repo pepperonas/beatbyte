@@ -83,6 +83,11 @@ pub struct BandMember {
     /// Radians of offset into the beat, so four figures do not pump
     /// as one block.
     pub phase: f32,
+    /// Plays left-handed: the pose mirrored, the instrument turned
+    /// over. Set on the guitarist when the playing profile is
+    /// left-handed, so the figure on stage holds the guitar the way
+    /// the player does.
+    pub lefty: bool,
 }
 
 /// Marks a band figure's joints (disjoint from the crowd's).
@@ -332,6 +337,51 @@ pub fn role_pose(role: Role, beats: f32, phase: f32, hype: bool, arm_up: f32) ->
     }
 }
 
+/// A pose seen in a mirror: the arms change sides, and everything that
+/// leans one way leans the other. Pure — tested.
+#[must_use]
+pub fn mirrored_pose(pose: Pose) -> Pose {
+    Pose {
+        hips_roll: -pose.hips_roll,
+        twist: -pose.twist,
+        side: -pose.side,
+        head_tilt: -pose.head_tilt,
+        arms: [pose.arms[1], pose.arms[0]],
+        ..pose
+    }
+}
+
+/// A mesh mirrored across its own x = 0 plane: positions and normals
+/// flipped, and every triangle's winding reversed so its front face
+/// stays the outside. A negative `scale.x` would not do: Bevy uses the
+/// transform's determinant only for tangents, not for culling, and the
+/// instrument would render inside out. Pure — tested.
+#[must_use]
+pub fn mirrored_x(mut mesh: Mesh) -> Mesh {
+    use bevy::mesh::{Indices, VertexAttributeValues};
+    for attribute in [Mesh::ATTRIBUTE_POSITION, Mesh::ATTRIBUTE_NORMAL] {
+        if let Some(VertexAttributeValues::Float32x3(values)) = mesh.attribute_mut(attribute) {
+            for value in values.iter_mut() {
+                value[0] = -value[0];
+            }
+        }
+    }
+    match mesh.indices_mut() {
+        Some(Indices::U32(indices)) => indices
+            .as_chunks_mut::<3>()
+            .0
+            .iter_mut()
+            .for_each(|t| t.swap(1, 2)),
+        Some(Indices::U16(indices)) => indices
+            .as_chunks_mut::<3>()
+            .0
+            .iter_mut()
+            .for_each(|t| t.swap(1, 2)),
+        None => {}
+    }
+    mesh
+}
+
 /// A box translated into place, for the instruments.
 fn block(size: Vec3, at: Vec3) -> Mesh {
     Mesh::from(Cuboid::from_size(size)).translated_by(at)
@@ -516,6 +566,7 @@ fn strap_mesh() -> Mesh {
 /// Spawn the band. Instrument neck only — the 8-bit stage is left
 /// exactly as it was.
 #[allow(clippy::too_many_lines)] // one figure after another; splitting it would scatter the layout
+#[allow(clippy::too_many_arguments)] // Bevy system params
 pub fn spawn_band(
     mut commands: Commands,
     settings: Res<Settings>,
@@ -524,10 +575,20 @@ pub fn spawn_band(
     surfaces: Res<crate::surfaces::StageSurfaces>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    profiles: Option<Res<crate::players::Players>>,
 ) {
     if !super::stage3d::active(&settings) {
         return;
     }
+    // The guitarist plays with the same hand as whoever is playing.
+    let lefty = super::first_highway_mirrored(
+        profiles
+            .as_deref()
+            .map_or(beatbyte_core::player::Handedness::Right, |p| {
+                p.0.current_handedness()
+            }),
+        crate::autopilot::forces_lefty(),
+    );
     let stage = theme.0;
     let dark = stage.background;
     let layer = RenderLayers::layer(STAGE_LAYER);
@@ -600,6 +661,16 @@ pub fn spawn_band(
     let bass = meshes.add(guitar_mesh(true));
     let guitar_bits = meshes.add(guitar_chrome());
     let strap = meshes.add(strap_mesh());
+    // The guitarist's own set, turned over when they play left-handed.
+    let (own_guitar, own_bits, own_strap) = if lefty {
+        (
+            meshes.add(mirrored_x(guitar_mesh(false))),
+            meshes.add(mirrored_x(guitar_chrome())),
+            meshes.add(mirrored_x(strap_mesh())),
+        )
+    } else {
+        (guitar.clone(), guitar_bits.clone(), strap.clone())
+    };
     let stick = meshes.add(block(
         Vec3::new(0.012, 0.012, 0.23),
         Vec3::new(0.0, -0.185, 0.13),
@@ -640,7 +711,16 @@ pub fn spawn_band(
             &spec,
             stance(role),
             root,
-            (GameplayScreen, Stage3d, Band, BandMember { role, phase }),
+            (
+                GameplayScreen,
+                Stage3d,
+                Band,
+                BandMember {
+                    role,
+                    phase,
+                    lefty: lefty && role == Role::Guitarist,
+                },
+            ),
             BandJoint,
         );
 
@@ -649,13 +729,17 @@ pub fn spawn_band(
                 // The instrument hangs across the body from the
                 // spine, neck out to the figure's left, tilted up.
                 let tilt = if role == Role::Bassist { 0.2 } else { 0.35 };
-                let hang = Transform::from_xyz(-0.02, -0.08, 0.13)
-                    .with_rotation(Quat::from_rotation_z(tilt));
+                // A left-handed guitarist: the neck out to the
+                // figure's RIGHT, the hang mirrored with it.
+                let turned = lefty && role == Role::Guitarist;
+                let sign = if turned { -1.0 } else { 1.0 };
+                let hang = Transform::from_xyz(-0.02 * sign, -0.08, 0.13)
+                    .with_rotation(Quat::from_rotation_z(tilt * sign));
                 commands.spawn((
                     Mesh3d(if role == Role::Bassist {
                         bass.clone()
                     } else {
-                        guitar.clone()
+                        own_guitar.clone()
                     }),
                     MeshMaterial3d(instrument_material.clone()),
                     hang,
@@ -663,14 +747,22 @@ pub fn spawn_band(
                     ChildOf(handles.spine),
                 ));
                 commands.spawn((
-                    Mesh3d(guitar_bits.clone()),
+                    Mesh3d(if turned {
+                        own_bits.clone()
+                    } else {
+                        guitar_bits.clone()
+                    }),
                     MeshMaterial3d(chrome.clone()),
                     hang,
                     layer.clone(),
                     ChildOf(handles.spine),
                 ));
                 commands.spawn((
-                    Mesh3d(strap.clone()),
+                    Mesh3d(if turned {
+                        own_strap.clone()
+                    } else {
+                        strap.clone()
+                    }),
                     MeshMaterial3d(assets.bottoms[0].clone()),
                     Transform::IDENTITY,
                     layer.clone(),
@@ -862,9 +954,14 @@ pub fn animate_band(
     let poses: Vec<(Entity, Pose)> = members
         .iter()
         .map(|(entity, member)| {
+            let pose = role_pose(member.role, beats, member.phase, hype, mood.arm_up);
             (
                 entity,
-                role_pose(member.role, beats, member.phase, hype, mood.arm_up),
+                if member.lefty {
+                    mirrored_pose(pose)
+                } else {
+                    pose
+                },
             )
         })
         .collect();
@@ -882,6 +979,46 @@ pub fn animate_band(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_left_handed_guitarist_frets_with_the_other_arm() {
+        let pose = role_pose(Role::Guitarist, 1.3, 0.4, false, 0.0);
+        let lefty = mirrored_pose(pose);
+        assert_eq!(lefty.arms[0], pose.arms[1], "strumming arm moved over");
+        assert_eq!(lefty.arms[1], pose.arms[0], "fretting arm moved over");
+        assert!((lefty.twist + pose.twist).abs() < 1e-6);
+        assert!((lefty.head_tilt + pose.head_tilt).abs() < 1e-6);
+        assert!((lefty.hips_roll + pose.hips_roll).abs() < 1e-6);
+        assert!(
+            (lefty.lean - pose.lean).abs() < 1e-6,
+            "lean is not sideways"
+        );
+        assert_eq!(mirrored_pose(lefty), pose, "a mirror twice is the original");
+    }
+
+    #[test]
+    fn a_turned_over_guitar_points_its_neck_the_other_way_and_stays_outside_out() {
+        use bevy::mesh::VertexAttributeValues;
+        let xs = |mesh: &Mesh| -> Vec<f32> {
+            match mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
+                Some(VertexAttributeValues::Float32x3(v)) => v.iter().map(|p| p[0]).collect(),
+                _ => Vec::new(),
+            }
+        };
+        let plain = guitar_mesh(false);
+        let turned = mirrored_x(guitar_mesh(false));
+        let reach = |v: &[f32]| v.iter().copied().fold(f32::MIN, f32::max);
+        let low = |v: &[f32]| v.iter().copied().fold(f32::MAX, f32::min);
+        // The neck went out to +x; now it goes out to -x as far.
+        assert!((low(&xs(&turned)) + reach(&xs(&plain))).abs() < 1e-5);
+        // Winding reversed: the first triangle's last two corners swap.
+        let tri = |mesh: &Mesh| -> Vec<u32> {
+            mesh.indices()
+                .map_or(Vec::new(), |i| i.iter().take(3).map(|x| x as u32).collect())
+        };
+        let (a, b) = (tri(&plain), tri(&turned));
+        assert_eq!((a[0], a[1], a[2]), (b[0], b[2], b[1]));
+    }
 
     #[test]
     fn a_body_loads_the_knees_and_stays_grounded() {

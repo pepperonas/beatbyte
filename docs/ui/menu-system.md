@@ -151,6 +151,17 @@ row edits exactly one field of its own checked it without being told.
    at both pictures** when anything changed. 0 changed pixels is the
    default; a difference is a bug until it is explained.
 
+### The roster's hand control
+
+PLAYERS uses the renderer for its rows but reads LEFT and RIGHT itself:
+on this screen they mean **which hand that player frets with**, not a
+value step — the key's direction is the hand (`hand_from_arrows`). It
+reads `events.nav.left/right`, never `events.step`, because the
+renderer also turns Enter into a step and Enter here means "play as".
+`H` and the HAND chip toggle. Each row ends in a five-dot fretboard in
+the order that hand sees the lanes; a flip rebuilds the row and its dots
+slide from the old order (`HandFlip`, `slide_hand_dots`, 0.22 s).
+
 ## What is not on the renderer
 
 The song browser (a tree with columns, search and sorting), statistics,

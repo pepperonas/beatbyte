@@ -4,6 +4,27 @@
 Rules of engagement live in [`CLAUDE.md`](../CLAUDE.md); this file
 holds the work itself.
 
+## Left- and right-handed players (2026-10-22)
+
+*Verified: 2338 tests in the source inventory, including documentation examples;
+fmt, clippy `-D warnings --all-features`, `cargo test --workspace`; the new pins
+seen to fail under a mutation; autopilot with `BEATBYTE_AUTOPILOT_LEFTY` and
+`BEATBYTE_AUTOPILOT_KEYS` on an own song.*
+
+- [x] A player profile carries a hand; `←`/`→` on a PLAYERS row choose it, `H`
+  and the HAND chip turn it over, and the row shows the lanes in that hand's
+  order.
+- [x] The first highway is mirrored for a left-handed player through
+  `HighwayLayout`, the one place lanes are placed (a test forbids a second).
+- [x] Keyboard frets follow the mirrored picture; guitar and pad frets keep
+  their colours.
+- [x] The stage guitarist mirrors pose and instrument (not a negative scale:
+  Bevy would cull it inside out).
+- [ ] Follow-up: confirm on the X-plorer that its tilt still triggers Hype when
+  the guitar is held turned over; invert the tilt per profile if not.
+- [ ] Follow-up: the INPUT TEST and calibration screens still draw the lanes
+  right-handed.
+
 ## Live note preview in the song browser (2026-10-18)
 
 *Verified: 2322 tests in the source inventory, including documentation examples;

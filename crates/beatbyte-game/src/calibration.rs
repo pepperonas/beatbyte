@@ -230,6 +230,7 @@ fn calibration_input(
     let sources = crate::controls::InputSources {
         keys: &keys,
         pads: pads.iter().collect(),
+        mirror_keys: false,
     };
     // ⚠️ Save and cancel deliberately do NOT go through `MenuNav`
     // here: its pad bindings are the green and red frets, and on
@@ -357,6 +358,7 @@ mod tests {
             let sources = InputSources {
                 keys: &keys,
                 pads: vec![&pad],
+                mirror_keys: false,
             };
             tapped(&sources, &map)
         };

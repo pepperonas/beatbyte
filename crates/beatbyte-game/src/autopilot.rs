@@ -3179,9 +3179,11 @@ fn autopilot_reset_on_swap(
 /// `ButtonInput<KeyCode>` at the notes' times. One event per frame —
 /// a lag spike shifts a stamp into Great territory, never into a
 /// phantom input.
+#[allow(clippy::too_many_arguments)] // Bevy system params
 fn autopilot_key_play(
     mut keys: ResMut<ButtonInput<KeyCode>>,
     players: Query<&PlayerSession>,
+    layout: Option<Res<crate::gameplay::HighwayLayout>>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
     mut cursor: Local<usize>,
@@ -3249,8 +3251,12 @@ fn autopilot_key_play(
         *cursor += 1;
         return;
     }
+    // The key under each lane's place on screen: for a mirrored
+    // highway the key at the other end (a mirror is its own inverse).
+    let mirrored = layout.as_deref().is_some_and(|l| l.mirrored(0));
     for (index, key) in FRETS.iter().enumerate() {
-        let lane = beatbyte_core::Lane::from_index(index).map(|l| event.lanes.contains(l));
+        let lane_index = if mirrored { 4 - index } else { index };
+        let lane = beatbyte_core::Lane::from_index(lane_index).map(|l| event.lanes.contains(l));
         match lane {
             Some(true) => {
                 // Tap mode hits on the press EDGE — a still-held key
@@ -3284,6 +3290,17 @@ fn autopilot_key_play(
         keys.press(KeyCode::Enter);
     }
     *cursor += 1;
+}
+
+/// `BEATBYTE_AUTOPILOT_LEFTY=1`: the autopilot plays as a
+/// left-handed player — the first highway mirrored, and with
+/// `BEATBYTE_AUTOPILOT_KEYS` the keys pressed where the lanes are on
+/// screen. Only while the autopilot runs, so a stray variable cannot
+/// turn a real player's neck over.
+#[must_use]
+pub fn forces_lefty() -> bool {
+    std::env::var_os("BEATBYTE_AUTOPILOT").is_some()
+        && std::env::var_os("BEATBYTE_AUTOPILOT_LEFTY").is_some()
 }
 
 /// How much further than the frame itself song time may step before

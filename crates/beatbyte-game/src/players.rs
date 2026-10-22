@@ -46,7 +46,14 @@ pub fn load_roster() -> Players {
 }
 
 /// Write the roster out.
+///
+/// A no-op in this crate's tests: a wired test that changes a player
+/// (a rename, a hand) must never rewrite the real `players.json` of
+/// whoever runs the suite.
 pub fn save_roster(players: &Players) {
+    if cfg!(test) {
+        return;
+    }
     let Some(path) = roster_path() else {
         return;
     };

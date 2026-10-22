@@ -8,6 +8,18 @@ Implemented and unit-tested in `beatbyte-core` (`session`, `score`,
 `timing`). This document describes the *rules*; the code is the
 authority.
 
+## Left-handed players
+
+A player profile carries a hand (`Handedness`, default right). For a
+left-handed profile the **first** highway — the one the playing profile
+plays; further local players have no profile — is drawn mirrored: green
+on the right, orange on the left. The mirror lives in one function,
+`HighwayLayout::lane_x`, and a test forbids any other lane placement in
+`gameplay/`. Judgment is untouched: a lane is a lane. The keyboard's
+fret keys follow the picture (the key bound to fret *i* plays fret
+4 − *i*); a guitar or pad keeps its colours, since a fretting hand finds
+the green button by touch, not by its place on screen.
+
 ## Hit windows & judgment
 
 Symmetric windows around each note time (defaults, configurable):

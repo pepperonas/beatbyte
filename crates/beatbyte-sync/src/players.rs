@@ -192,6 +192,7 @@ mod tests {
             colour: 0,
             preferred_difficulty: None,
             updated_ms: None,
+            handedness: beatbyte_core::player::Handedness::Right,
         }
     }
 
@@ -266,6 +267,26 @@ mod tests {
         let remote = roster(vec![renamed]);
         assert_eq!(merge(&local, &remote).roster.players[0].name, "Martin P");
         assert_eq!(merge(&remote, &local).roster.players[0].name, "Martin P");
+    }
+
+    /// A hand chosen on one device reaches the other: it is part of the
+    /// player, so the newer version carries it — in either order.
+    #[test]
+    fn the_newer_hand_travels_with_the_player() {
+        use beatbyte_core::player::Handedness;
+        let mut lefty = player(1, "Martin", 100);
+        lefty.handedness = Handedness::Left;
+        lefty.updated_ms = Some(9_000);
+        let local = roster(vec![player(1, "Martin", 100)]);
+        let remote = roster(vec![lefty]);
+        assert_eq!(
+            merge(&local, &remote).roster.players[0].handedness,
+            Handedness::Left
+        );
+        assert_eq!(
+            merge(&remote, &local).roster.players[0].handedness,
+            Handedness::Left
+        );
     }
 
     /// Order-independence and idempotence: the two devices end on the
