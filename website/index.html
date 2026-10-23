@@ -95,6 +95,7 @@
    "Karaoke lyrics from lrclib or your own .lrc file",
    "3D concert stage with lights, crowd and effects",
    "Keyboard, gamepads and a native Guitar Hero X-plorer driver",
+   "Left- and right-handed player profiles with a mirrored highway",
    "Local multiplayer for two to four players",
    "In-game latency calibration and practice mode",
    "Built-in chart editor",
@@ -165,6 +166,14 @@
     "acceptedAnswer": {
      "@type": "Answer",
      "text": "macOS 11 or later on Apple silicon or Intel, 64-bit Windows 10 or 11, or 64-bit Linux, with a GPU that runs Metal, DirectX 12 or Vulkan. A keyboard is enough to play."
+    }
+   },
+   {
+    "@type": "Question",
+    "name": "Can I play left-handed?",
+    "acceptedAnswer": {
+     "@type": "Answer",
+     "text": "Yes. On the player screen, select your profile and press ← for left-handed or → for right-handed (or H to switch). The highway is mirrored for you, green on the right and orange on the left, and so is the guitarist on stage. On a keyboard the fret keys follow the picture; a guitar or gamepad keeps its colours, because your fingers find green by touch."
     }
    },
    {
@@ -290,7 +299,7 @@
         </article>
         <article class="card">
           <h3 data-i18n="f4.t">Keyboard, gamepad or guitar</h3>
-          <p data-i18n="f4.p">Every input is remappable in the game. Gamepads work through the system, and a built-in driver reads the wired Guitar Hero X-plorer directly. Two to four players share the screen.</p>
+          <p data-i18n="f4.p">Every input is remappable in the game. Gamepads work through the system, and a built-in driver reads the wired Guitar Hero X-plorer directly. Two to four players share the screen. Left-handed? Set it per player profile and the highway flips: green on the right, orange on the left.</p>
         </article>
         <article class="card">
           <h3 data-i18n="f5.t">Timing you can trust</h3>
@@ -350,16 +359,20 @@
           <p data-i18n="faq.q3a">macOS 11 or later on Apple silicon or Intel, 64-bit Windows 10 or 11, or 64-bit Linux, with a GPU that runs Metal, DirectX 12 or Vulkan. A keyboard is enough to play.</p>
         </details>
         <details class="faq-item">
-          <summary data-i18n="faq.q4">Why does macOS warn me the first time?</summary>
-          <p data-i18n="faq.q4a">The macOS builds are signed ad hoc but not notarized by Apple. Right-click the app and choose <em>Open</em> once; after that it starts normally.</p>
+          <summary data-i18n="faq.q4">Can I play left-handed?</summary>
+          <p data-i18n="faq.q4a">Yes. On the player screen, select your profile and press <code>←</code> for left-handed or <code>→</code> for right-handed (or <code>H</code> to switch). The highway is mirrored for you, green on the right and orange on the left, and so is the guitarist on stage. On a keyboard the fret keys follow the picture; a guitar or gamepad keeps its colours, because your fingers find green by touch.</p>
         </details>
         <details class="faq-item">
-          <summary data-i18n="faq.q5">How do I update?</summary>
-          <p data-i18n="faq.q5a">Download the newest build from this page and replace the old one. Your songs, charts, scores, players and settings live in your user data folder and stay where they are.</p>
+          <summary data-i18n="faq.q5">Why does macOS warn me the first time?</summary>
+          <p data-i18n="faq.q5a">The macOS builds are signed ad hoc but not notarized by Apple. Right-click the app and choose <em>Open</em> once; after that it starts normally.</p>
         </details>
         <details class="faq-item">
-          <summary data-i18n="faq.q6">Is the download genuine?</summary>
-          <p data-i18n="faq.q6a">Every file comes straight from the project’s GitHub Releases, built by its release workflow. The SHA-256 of each file is listed on this page; compare it with the file you downloaded.</p>
+          <summary data-i18n="faq.q6">How do I update?</summary>
+          <p data-i18n="faq.q6a">Download the newest build from this page and replace the old one. Your songs, charts, scores, players and settings live in your user data folder and stay where they are.</p>
+        </details>
+        <details class="faq-item">
+          <summary data-i18n="faq.q7">Is the download genuine?</summary>
+          <p data-i18n="faq.q7a">Every file comes straight from the project’s GitHub Releases, built by its release workflow. The SHA-256 of each file is listed on this page; compare it with the file you downloaded.</p>
         </details>
       </div>
     </section>

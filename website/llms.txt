@@ -37,7 +37,7 @@ Everything below is also available without JavaScript: the page's HTML carries t
 - Your songs become charts: MP3, M4A, FLAC, OGG or WAV: BeatByte analyses tempo, beats and onsets and builds a playable chart in Easy, Medium, Hard and Expert. Drop a folder on the window and it watches it for new tracks.
 - Karaoke on the highway: Press `L` and BeatByte fetches synced lyrics from lrclib’s open catalogue, or drop your own `.lrc`. The words fill in on the same clock the notes fall on; an optional local aligner times them word by word.
 - A stage, not a backdrop: A 3D concert venue with moving heads, PA stacks, fog and a crowd that dances to the song. Land a star-power phrase and lightning strikes the fret.
-- Keyboard, gamepad or guitar: Every input is remappable in the game. Gamepads work through the system, and a built-in driver reads the wired Guitar Hero X-plorer directly. Two to four players share the screen.
+- Keyboard, gamepad or guitar: Every input is remappable in the game. Gamepads work through the system, and a built-in driver reads the wired Guitar Hero X-plorer directly. Two to four players share the screen. Left-handed? Set it per player profile and the highway flips: green on the right, orange on the left.
 - Timing you can trust: Judgment runs on input timestamps against a clock reconciled with the audio device, not on frames. Calibrate latency in the game, slow any section to 50 % and loop it in practice mode.
 - Edit, track, improve: A built-in chart editor fixes what the generator got wrong and playtests it in the real highway. A local roster files every run under its player, with statistics and three hundred achievements.
 

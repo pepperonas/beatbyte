@@ -21,7 +21,7 @@ Files in the current release:
 - **Your songs become charts** — MP3, M4A, FLAC, OGG or WAV: BeatByte analyses tempo, beats and onsets and builds a playable chart in Easy, Medium, Hard and Expert. Drop a folder on the window and it watches it for new tracks.
 - **Karaoke on the highway** — Press `L` and BeatByte fetches synced lyrics from lrclib’s open catalogue, or drop your own `.lrc`. The words fill in on the same clock the notes fall on; an optional local aligner times them word by word.
 - **A stage, not a backdrop** — A 3D concert venue with moving heads, PA stacks, fog and a crowd that dances to the song. Land a star-power phrase and lightning strikes the fret.
-- **Keyboard, gamepad or guitar** — Every input is remappable in the game. Gamepads work through the system, and a built-in driver reads the wired Guitar Hero X-plorer directly. Two to four players share the screen.
+- **Keyboard, gamepad or guitar** — Every input is remappable in the game. Gamepads work through the system, and a built-in driver reads the wired Guitar Hero X-plorer directly. Two to four players share the screen. Left-handed? Set it per player profile and the highway flips: green on the right, orange on the left.
 - **Timing you can trust** — Judgment runs on input timestamps against a clock reconciled with the audio device, not on frames. Calibrate latency in the game, slow any section to 50 % and loop it in practice mode.
 - **Edit, track, improve** — A built-in chart editor fixes what the generator got wrong and playtests it in the real highway. A local roster files every run under its player, with statistics and three hundred achievements.
 
@@ -44,6 +44,8 @@ Files in the current release:
 **Which songs can I play?** Your own: MP3, M4A, FLAC, OGG and WAV files. No song ships with the game. With `yt-dlp` installed you can also add a song by typing its name.
 
 **What do I need to run it?** macOS 11 or later on Apple silicon or Intel, 64-bit Windows 10 or 11, or 64-bit Linux, with a GPU that runs Metal, DirectX 12 or Vulkan. A keyboard is enough to play.
+
+**Can I play left-handed?** Yes. On the player screen, select your profile and press `←` for left-handed or `→` for right-handed (or `H` to switch). The highway is mirrored for you, green on the right and orange on the left, and so is the guitarist on stage. On a keyboard the fret keys follow the picture; a guitar or gamepad keeps its colours, because your fingers find green by touch.
 
 **Why does macOS warn me the first time?** The macOS builds are signed ad hoc but not notarized by Apple. Right-click the app and choose *Open* once; after that it starts normally.
 

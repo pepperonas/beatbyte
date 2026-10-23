@@ -32,6 +32,7 @@
       "Karaoke lyrics from lrclib or your own .lrc file",
       "3D concert stage with lights, crowd and effects",
       "Keyboard, gamepads and a native Guitar Hero X-plorer driver",
+      "Left- and right-handed player profiles with a mirrored highway",
       "Local multiplayer for two to four players",
       "In-game latency calibration and practice mode",
       "Built-in chart editor",

@@ -131,6 +131,7 @@
    "Karaoke lyrics from lrclib or your own .lrc file",
    "3D concert stage with lights, crowd and effects",
    "Keyboard, gamepads and a native Guitar Hero X-plorer driver",
+   "Left- and right-handed player profiles with a mirrored highway",
    "Local multiplayer for two to four players",
    "In-game latency calibration and practice mode",
    "Built-in chart editor",
@@ -237,11 +238,11 @@
      "fr": "Clavier, manette ou guitare"
     },
     "p": {
-     "en": "Every input is remappable in the game. Gamepads work through the system, and a built-in driver reads the wired Guitar Hero X-plorer directly. Two to four players share the screen.",
-     "de": "Jede Eingabe lässt sich im Spiel neu belegen. Gamepads laufen über das System, und ein eingebauter Treiber liest die kabelgebundene Guitar-Hero-X-plorer direkt. Zwei bis vier Spieler teilen sich den Bildschirm.",
-     "es": "Todos los controles se pueden reasignar en el juego. Los mandos funcionan a través del sistema y un controlador integrado lee directamente la guitarra Guitar Hero X-plorer con cable. De dos a cuatro jugadores comparten pantalla.",
-     "it": "Ogni comando si può rimappare nel gioco. I gamepad funzionano tramite il sistema e un driver integrato legge direttamente la chitarra Guitar Hero X-plorer cablata. Da due a quattro giocatori condividono lo schermo.",
-     "fr": "Chaque commande se réassigne dans le jeu. Les manettes passent par le système, et un pilote intégré lit directement la guitare filaire Guitar Hero X-plorer. De deux à quatre joueurs partagent l’écran."
+     "en": "Every input is remappable in the game. Gamepads work through the system, and a built-in driver reads the wired Guitar Hero X-plorer directly. Two to four players share the screen. Left-handed? Set it per player profile and the highway flips: green on the right, orange on the left.",
+     "de": "Jede Eingabe lässt sich im Spiel neu belegen. Gamepads laufen über das System, und ein eingebauter Treiber liest die kabelgebundene Guitar-Hero-X-plorer direkt. Zwei bis vier Spieler teilen sich den Bildschirm. Linkshänder? Im Spielerprofil umstellen, und der Highway dreht sich: Grün rechts, Orange links.",
+     "es": "Todos los controles se pueden reasignar en el juego. Los mandos funcionan a través del sistema y un controlador integrado lee directamente la guitarra Guitar Hero X-plorer con cable. De dos a cuatro jugadores comparten pantalla. ¿Zurdo? Actívalo en tu perfil de jugador y la pista se invierte: verde a la derecha, naranja a la izquierda.",
+     "it": "Ogni comando si può rimappare nel gioco. I gamepad funzionano tramite il sistema e un driver integrato legge direttamente la chitarra Guitar Hero X-plorer cablata. Da due a quattro giocatori condividono lo schermo. Mancino? Impostalo nel profilo giocatore e la pista si capovolge: verde a destra, arancione a sinistra.",
+     "fr": "Chaque commande se réassigne dans le jeu. Les manettes passent par le système, et un pilote intégré lit directement la guitare filaire Guitar Hero X-plorer. De deux à quatre joueurs partagent l’écran. Gaucher ? Réglez-le dans votre profil de joueur et la piste s’inverse : vert à droite, orange à gauche."
     }
    },
    {
@@ -402,6 +403,22 @@
      "es": "macOS 11 o posterior en Apple silicon o Intel, Windows 10 u 11 de 64 bits, o Linux de 64 bits, con una GPU compatible con Metal, DirectX 12 o Vulkan. Para jugar basta un teclado.",
      "it": "macOS 11 o successivo su Apple silicon o Intel, Windows 10 o 11 a 64 bit, o Linux a 64 bit, con una GPU che supporti Metal, DirectX 12 o Vulkan. Per giocare basta una tastiera.",
      "fr": "macOS 11 ou ultérieur sur Apple silicon ou Intel, Windows 10 ou 11 64 bits, ou Linux 64 bits, avec un GPU compatible Metal, DirectX 12 ou Vulkan. Un clavier suffit pour jouer."
+    }
+   },
+   {
+    "q": {
+     "en": "Can I play left-handed?",
+     "de": "Kann ich als Linkshänder spielen?",
+     "es": "¿Puedo jugar siendo zurdo?",
+     "it": "Posso giocare da mancino?",
+     "fr": "Puis-je jouer en gaucher ?"
+    },
+    "a": {
+     "en": "Yes. On the player screen, select your profile and press <code>←</code> for left-handed or <code>→</code> for right-handed (or <code>H</code> to switch). The highway is mirrored for you, green on the right and orange on the left, and so is the guitarist on stage. On a keyboard the fret keys follow the picture; a guitar or gamepad keeps its colours, because your fingers find green by touch.",
+     "de": "Ja. Wähle auf der Spielerseite dein Profil und drück <code>←</code> für Linkshänder oder <code>→</code> für Rechtshänder (oder <code>H</code> zum Umschalten). Der Highway wird für dich gespiegelt, Grün rechts und Orange links, und der Gitarrist auf der Bühne ebenso. Auf der Tastatur folgen die Bundtasten dem Bild; Gitarre und Gamepad behalten ihre Farben, weil deine Finger Grün ertasten.",
+     "es": "Sí. En la pantalla de jugadores, elige tu perfil y pulsa <code>←</code> para zurdo o <code>→</code> para diestro (o <code>H</code> para alternar). La pista se refleja para ti, verde a la derecha y naranja a la izquierda, y también el guitarrista del escenario. En el teclado las teclas de traste siguen la imagen; una guitarra o un mando conserva sus colores, porque tus dedos encuentran el verde al tacto.",
+     "it": "Sì. Nella schermata dei giocatori scegli il tuo profilo e premi <code>←</code> per mancino o <code>→</code> per destrorso (oppure <code>H</code> per alternare). La pista si specchia per te, verde a destra e arancione a sinistra, e così il chitarrista sul palco. Sulla tastiera i tasti delle corsie seguono l’immagine; chitarra e gamepad mantengono i loro colori, perché le dita trovano il verde al tatto.",
+     "fr": "Oui. Sur l’écran des joueurs, choisissez votre profil et appuyez sur <code>←</code> pour gaucher ou <code>→</code> pour droitier (ou <code>H</code> pour basculer). La piste est inversée pour vous, vert à droite et orange à gauche, tout comme le guitariste sur scène. Au clavier, les touches de frette suivent l’image ; une guitare ou une manette garde ses couleurs, car vos doigts trouvent le vert au toucher."
     }
    },
    {
