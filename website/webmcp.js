@@ -24,7 +24,7 @@
       "Gamepad",
       "Guitar controller",
       "MP3 · M4A · FLAC · OGG · WAV",
-      "2–4 players"
+      "1–4 players"
     ],
     "features": [
       "Automatic charts from your own music in four difficulties",
