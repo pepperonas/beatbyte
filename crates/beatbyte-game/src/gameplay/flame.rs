@@ -711,17 +711,19 @@ pub fn drive_flames(
         // foot stays planted while the tip sways.
         transform.translation = Vec3::new(lane_x(&layout, body.player, body.lane), 0.03, 0.0)
             + transform.rotation * Vec3::Y * (height * 0.5);
-        if let Some(mut paint) = materials.get_mut(&material.0) {
-            let (base, glow) =
-                body_color_with(body.layer, life, theme.0.lane_color(body.lane), &character);
-            let alpha = match body.layer {
-                Layer::Core => 0.9,
-                Layer::Mantle => 0.7,
-                Layer::Aura => 0.45,
-            } * life.min(1.0);
-            paint.base_color = base.with_alpha(alpha);
-            paint.emissive = base.to_linear() * (glow * life.min(1.0));
-        }
+        let (base, glow) =
+            body_color_with(body.layer, life, theme.0.lane_color(body.lane), &character);
+        let alpha = match body.layer {
+            Layer::Core => 0.9,
+            Layer::Mantle => 0.7,
+            Layer::Aura => 0.45,
+        } * life.min(1.0);
+        super::stage3d::paint_if_changed(
+            &mut materials,
+            &material.0,
+            base.with_alpha(alpha),
+            base.to_linear() * (glow * life.min(1.0)),
+        );
     }
 
     for (light, mut point) in &mut lights {
@@ -813,11 +815,13 @@ pub fn drive_embers(
         let t = (ember.age / ember.ttl).clamp(0.0, 1.0);
         let shrink = 1.0 - 0.6 * t;
         transform.scale = Vec3::splat(shrink);
-        if let Some(mut paint) = materials.get_mut(&material.0) {
-            let colour = ember_color(t);
-            paint.base_color = colour.with_alpha(alpha);
-            paint.emissive = colour.to_linear() * (6.0 * alpha);
-        }
+        let colour = ember_color(t);
+        super::stage3d::paint_if_changed(
+            &mut materials,
+            &material.0,
+            colour.with_alpha(alpha),
+            colour.to_linear() * (6.0 * alpha),
+        );
     }
 }
 

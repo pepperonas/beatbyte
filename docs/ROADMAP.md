@@ -4,6 +4,27 @@
 Rules of engagement live in [`CLAUDE.md`](../CLAUDE.md); this file
 holds the work itself.
 
+## Smooth on the 2015 MacBook Pro (2026-10-26)
+
+*Verified: 2351 tests in the source inventory, including documentation examples;
+fmt, clippy `-D warnings --all-features`, `cargo test --workspace`; the governor's
+pins seen to fail under a mutation; autopilot on an own song with the stage pinned
+to 55 %.*
+
+- [x] The stage renders into a smaller image in PERFORMANCE MODE when frames are
+  missed (`gameplay/render_scale.rs`): 100/85/70/55 %, a governor that steps
+  down on a run of misses, ignores single hitches, probes sharper after a calm
+  and locks out a failed probe; the settled step is a DEVICE setting.
+- [x] The bar lines share one material per fade level instead of owning one
+  each, written every frame; receptors, fills, bursts and flames write their
+  material only when its colours change.
+- [x] Bench probes for the render path (`hdr`, `distfog`, `unlit`, `blend`,
+  `gpupre`, `nostage`), `BEATBYTE_STAGE_SCALE`, and `tools/bench.sh` able to
+  measure windowed (`WINDOWED`) and vsynced (`VSYNC`).
+- [ ] Measure on the 2015 (windowed, the player's case): the installed build
+  against this one, then the probes; act on what the floor turns out to be.
+- [ ] Release, then smoke-test the x86_64 artifact on the 2015 itself.
+
 ## Left- and right-handed players (2026-10-22)
 
 *Verified: 2338 tests in the source inventory, including documentation examples;

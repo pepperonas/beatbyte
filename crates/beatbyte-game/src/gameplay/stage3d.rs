@@ -2580,16 +2580,19 @@ pub fn update_receptors(
         transform.translation.y = 0.045f32.mul_add(-press, 0.02) + 0.06 * hit;
         transform.scale = Vec3::splat(0.18f32.mul_add(hit, 1.0) + 0.08 * press);
 
-        if let Some(mut surface) = materials.get_mut(&material.0) {
+        {
             let colour = theme.0.lane_color(receptor.lane);
             // The hit line flares with the phrase, which is where the
             // energy actually went in — the one spatial part of the
-            // impulse, and it costs nothing because this material is
-            // already written every frame.
+            // impulse.
             let flare = star.neck(receptor.player) * settings.fx_intensity.clamp(0.0, 1.0);
             let glow = 4.5f32.mul_add(press, 0.4) + 9.0f32.mul_add(hit, STAR_RECEPTOR_GLOW * flare);
-            surface.emissive = colour.to_linear() * glow;
-            surface.base_color = colour.mix(&Color::WHITE, 0.6f32.mul_add(hit, 0.5 * flare));
+            paint_if_changed(
+                &mut materials,
+                &material.0,
+                colour.mix(&Color::WHITE, 0.6f32.mul_add(hit, 0.5 * flare)),
+                colour.to_linear() * glow,
+            );
         }
         remembered.push((receptor.player, receptor.lane, press, hit));
     }
@@ -2615,15 +2618,17 @@ pub fn update_receptors(
         else {
             continue;
         };
-        if let Some(mut surface) = materials.get_mut(&fill_material.0) {
-            let colour = theme.0.lane_color(fill.lane);
-            surface.base_color = theme
+        let colour = theme.0.lane_color(fill.lane);
+        paint_if_changed(
+            &mut materials,
+            &fill_material.0,
+            theme
                 .0
                 .background
                 .mix(&colour, *press)
-                .mix(&Color::WHITE, *hit);
-            surface.emissive = colour.to_linear() * 3.2f32.mul_add(*press, 8.0 * hit);
-        }
+                .mix(&Color::WHITE, *hit),
+            colour.to_linear() * 3.2f32.mul_add(*press, 8.0 * hit),
+        );
     }
 
     // The burst: a flat ring of light spreading ACROSS the board from
@@ -2652,11 +2657,13 @@ pub fn update_receptors(
         let progress = 1.0 - burst.life;
         let spread = 2.2f32.mul_add(progress, 0.35);
         burst_transform.scale = Vec3::new(spread, 1.0, spread);
-        if let Some(mut surface) = materials.get_mut(&burst_material.0) {
-            let colour = theme.0.lane_color(burst.lane);
-            surface.base_color = colour.with_alpha(burst.life.powf(1.3));
-            surface.emissive = colour.to_linear() * (7.0 * burst.life);
-        }
+        let colour = theme.0.lane_color(burst.lane);
+        paint_if_changed(
+            &mut materials,
+            &burst_material.0,
+            colour.with_alpha(burst.life.powf(1.3)),
+            colour.to_linear() * (7.0 * burst.life),
+        );
     }
 }
 
@@ -2729,19 +2736,21 @@ pub fn spawn_fret_bars(
     // its ruled, instrument-like surface, and at 0.045 deep it read as
     // a scratch rather than a fret.
     let mesh = meshes.add(Cuboid::new(1.0, 0.014, 0.085));
+    // One material per FADE LEVEL, shared by every bar on that level.
+    // Each bar used to own a material written every frame, and every
+    // write is a fresh upload and bind group: forty of them a frame
+    // were part of the fixed cost the 2015 MacBook could not pay. A
+    // bar now changes HANDLE when it crosses a level, which costs
+    // nothing on the GPU side.
+    let pool = FretBarMaterials(
+        (0..FRET_FADE_LEVELS)
+            .map(|level| materials.add(fret_bar_material(fade_of_level(level))))
+            .collect(),
+    );
     for index in &players {
         let origin = layout.origin(index.0) * WORLD_PER_PIXEL;
         let width = layout.bed_width() * WORLD_PER_PIXEL * 1.18 * neck_spread(&layout);
         for &(t, downbeat) in &marks {
-            // Its own material, because each bar fades by its own
-            // distance — sharing one handle made every bar in the song
-            // pile into a solid white wedge at the horizon.
-            let material = materials.add(StandardMaterial {
-                base_color: Color::srgba(0.80, 0.82, 0.88, 1.0),
-                emissive: LinearRgba::rgb(0.55, 0.56, 0.64),
-                alpha_mode: AlphaMode::Blend,
-                ..default()
-            });
             commands.spawn((
                 GameplayScreen,
                 Stage3d,
@@ -2751,7 +2760,7 @@ pub fn spawn_fret_bars(
                 },
                 on_the_neck(),
                 Mesh3d(mesh.clone()),
-                MeshMaterial3d(material),
+                MeshMaterial3d(pool.0[0].clone()),
                 // Parked off-screen until the scroll system places it.
                 Transform::from_xyz(origin, 0.012, -900.0).with_scale(Vec3::new(
                     width,
@@ -2762,6 +2771,64 @@ pub fn spawn_fret_bars(
             ));
         }
     }
+    commands.insert_resource(pool);
+}
+
+/// Write a material's two animated colours only when they differ from
+/// what it already holds. `Assets::get_mut` marks the asset changed
+/// whether or not anything moved, and every changed material is
+/// prepared and uploaded again: a receptor at rest wrote the same
+/// numbers sixty times a second.
+pub(crate) fn paint_if_changed(
+    materials: &mut Assets<StandardMaterial>,
+    handle: &Handle<StandardMaterial>,
+    base_color: Color,
+    emissive: LinearRgba,
+) -> bool {
+    let unchanged = materials
+        .get(handle)
+        .is_some_and(|m| m.base_color == base_color && m.emissive == emissive);
+    if unchanged {
+        return false;
+    }
+    if let Some(mut surface) = materials.get_mut(handle) {
+        surface.base_color = base_color;
+        surface.emissive = emissive;
+        return true;
+    }
+    false
+}
+
+/// How many fade levels the bar lines are drawn with. Sixty-four
+/// steps of an alpha that tops out at 0.85 are 0.013 apart — below
+/// what a thin line on a dark neck can show.
+const FRET_FADE_LEVELS: usize = 64;
+
+/// The shared bar-line materials, one per fade level (index 0 is
+/// fully transparent).
+#[derive(Resource)]
+pub struct FretBarMaterials(Vec<Handle<StandardMaterial>>);
+
+/// The fade (0..=1) a level stands for.
+fn fade_of_level(level: usize) -> f32 {
+    level as f32 / (FRET_FADE_LEVELS - 1) as f32
+}
+
+/// The level nearest to a fade, clamped into range.
+fn level_of_fade(fade: f32) -> usize {
+    ((fade.clamp(0.0, 1.0) * (FRET_FADE_LEVELS - 1) as f32).round() as usize)
+        .min(FRET_FADE_LEVELS - 1)
+}
+
+/// A bar line at one strength: the colours `move_fret_bars` wrote per
+/// bar before the levels existed.
+fn fret_bar_material(strength: f32) -> StandardMaterial {
+    StandardMaterial {
+        base_color: Color::srgba(0.75, 0.78, 0.85, strength * 0.85),
+        emissive: LinearRgba::rgb(0.35, 0.36, 0.42) * strength,
+        alpha_mode: AlphaMode::Blend,
+        ..default()
+    }
 }
 
 /// Scroll the bar lines with the song, and fade them with distance so
@@ -2771,21 +2838,24 @@ pub fn move_fret_bars(
     settings: Res<Settings>,
     game_clock: Res<GameClock>,
     time: Res<Time>,
+    pool: Option<Res<FretBarMaterials>>,
     mut bars: Query<(
         &FretBar,
         &mut Transform,
-        &MeshMaterial3d<StandardMaterial>,
+        &mut MeshMaterial3d<StandardMaterial>,
         &mut Visibility,
     )>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     if !active(&settings) {
         return;
     }
+    let Some(pool) = pool else {
+        return;
+    };
     let Some(now) = game_clock.visual_time(&time, &settings) else {
         return;
     };
-    for (bar, mut transform, material, mut visibility) in &mut bars {
+    for (bar, mut transform, mut material, mut visibility) in &mut bars {
         let z = note_z(bar.time_s - now, settings.scroll_speed);
         transform.translation.z = z;
         // Beyond the drawn highway there is nothing to see, and a
@@ -2793,20 +2863,23 @@ pub fn move_fret_bars(
         // wedge rather than as depth.
         let distance = -z;
         let visible = (-1.0..HIGHWAY_LENGTH).contains(&distance);
-        *visibility = if visible {
+        let wanted = if visible {
             Visibility::Inherited
         } else {
             Visibility::Hidden
         };
+        if *visibility != wanted {
+            *visibility = wanted;
+        }
         if !visible {
             continue;
         }
-        if let Some(mut surface) = materials.get_mut(&material.0) {
-            // Full strength close by, gone by the far end.
-            let fade = (1.0 - (distance / HIGHWAY_LENGTH).clamp(0.0, 1.0)).powf(1.6);
-            let weight = if bar.downbeat { 1.0 } else { OFFBEAT_WEIGHT };
-            surface.base_color = Color::srgba(0.75, 0.78, 0.85, fade * 0.85 * weight);
-            surface.emissive = LinearRgba::rgb(0.35, 0.36, 0.42) * (fade * weight);
+        // Full strength close by, gone by the far end.
+        let fade = (1.0 - (distance / HIGHWAY_LENGTH).clamp(0.0, 1.0)).powf(1.6);
+        let weight = if bar.downbeat { 1.0 } else { OFFBEAT_WEIGHT };
+        let handle = &pool.0[level_of_fade(fade * weight)];
+        if material.0 != *handle {
+            material.0 = handle.clone();
         }
     }
 }
@@ -4166,6 +4239,36 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn fret_levels_cover_the_fade_and_round_trip() {
+        assert_eq!(level_of_fade(0.0), 0);
+        assert_eq!(level_of_fade(1.0), FRET_FADE_LEVELS - 1);
+        assert_eq!(level_of_fade(-3.0), 0);
+        assert_eq!(level_of_fade(7.0), FRET_FADE_LEVELS - 1);
+        for level in 0..FRET_FADE_LEVELS {
+            assert_eq!(level_of_fade(fade_of_level(level)), level);
+        }
+        // Nearest level: never further than half a step from the fade.
+        for i in 0..=1000 {
+            let fade = i as f32 / 1000.0;
+            let back = fade_of_level(level_of_fade(fade));
+            assert!((back - fade).abs() <= 0.5 / (FRET_FADE_LEVELS - 1) as f32 + 1e-6);
+        }
+    }
+
+    #[test]
+    fn paint_if_changed_writes_only_a_change() {
+        let mut materials = Assets::<StandardMaterial>::default();
+        let handle = materials.add(StandardMaterial::default());
+        let base = Color::srgb(0.2, 0.4, 0.6);
+        let glow = LinearRgba::rgb(1.0, 2.0, 3.0);
+        assert!(paint_if_changed(&mut materials, &handle, base, glow));
+        assert!(!paint_if_changed(&mut materials, &handle, base, glow));
+        let surface = materials.get(&handle).expect("added");
+        assert_eq!((surface.base_color, surface.emissive), (base, glow));
+        assert!(paint_if_changed(&mut materials, &handle, base, glow * 2.0));
+    }
 
     #[test]
     fn the_hit_line_is_the_origin_and_the_future_is_negative_z() {

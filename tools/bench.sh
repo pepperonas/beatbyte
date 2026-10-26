@@ -8,6 +8,8 @@
 #   RUNS     repetitions            (default 3; soak ignores it)
 #   SOAK_MIN soak length in minutes (default 15)
 #   COMMIT   the commit the binary was built from, when not run in its checkout
+#   WINDOWED set: play in the default 1280x720 window instead of full screen
+#   VSYNC    set: keep vsync on (the player's pacing) instead of uncapped
 #
 # Each run is the autopilot playing one song perfectly under
 # BEATBYTE_UNCAPPED=1, full screen, with the bench (`BEATBYTE_BENCH`)
@@ -37,7 +39,10 @@ case $scenario in
 esac
 
 [ -x "$bin" ] || { echo "no binary at $bin" >&2; exit 2; }
-if python3 -c "import Quartz,sys; sys.exit(0 if dict(Quartz.CGSessionCopyCurrentDictionary()).get('CGSSessionScreenIsLocked') else 1)" 2>/dev/null; then
+# Asked of the IO registry, not of Quartz: the system python on the
+# 2015 MacBook has no PyObjC, and a check that fails to import must not
+# read as "unlocked".
+if ioreg -n Root -d1 | grep -q '"CGSSessionScreenIsLocked"=Yes'; then
   echo "the screen is locked: every frame would be the compositor's, not the game's" >&2
   exit 3
 fi
@@ -52,8 +57,10 @@ if [ -z "${FORCE:-}" ] && awk -v l="$load" -v m="${MAX_LOAD:-$cores}" 'BEGIN{exi
 fi
 echo "bench $scenario: $song ($diff), $runs run(s), binary $bin, load $load on $cores cores"
 for i in $(seq 1 "$runs"); do
-  env BEATBYTE_AUTOPILOT=1 BEATBYTE_AUTOPILOT_MUTE=1 BEATBYTE_UNCAPPED=1 \
-      BEATBYTE_BENCH_FULLSCREEN=1 \
+  mode=()
+  [ -z "${WINDOWED:-}" ] && mode+=(BEATBYTE_BENCH_FULLSCREEN=1)
+  [ -z "${VSYNC:-}" ] && mode+=(BEATBYTE_UNCAPPED=1)
+  env BEATBYTE_AUTOPILOT=1 BEATBYTE_AUTOPILOT_MUTE=1 ${mode[@]+"${mode[@]}"} \
       BEATBYTE_AUTOPILOT_SONG="$song" BEATBYTE_AUTOPILOT_DIFFICULTY="$diff" \
       BEATBYTE_BENCH="$scenario" BEATBYTE_BENCH_OUT="$work/run-$i.json" \
       caffeinate -disu "$bin" > "$work/run-$i.log" 2>&1 &

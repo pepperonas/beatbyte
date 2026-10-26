@@ -330,7 +330,8 @@ fn write_result(
 }
 
 /// Which cost probes this run switches off (`BEATBYTE_PROBE`, a
-/// comma list): `msaa`, `bloom`, `shadows`, `lights`. Measurement
+/// comma list): `msaa`, `bloom`, `shadows`, `lights`, and the parts and
+/// render-path probes below. Measurement
 /// only — each takes one cost out of the frame so its price can be
 /// read off the difference. Never read outside a bench run.
 fn probe(name: &str) -> bool {
@@ -422,6 +423,67 @@ fn despawn_probes(
     drop(probe("monitors"), &mut monitors.iter());
 }
 
+/// The render-path probes (2026-10-26, the 2015 MacBook's floor):
+/// `hdr` takes HDR off both cameras, `distfog` the distance fog,
+/// `nostage` the 3D camera itself (the floor of UI + HUD alone).
+#[allow(clippy::type_complexity)]
+fn apply_render_probes(
+    mut commands: Commands,
+    mut cameras: Query<(Entity, &mut Camera, Has<Camera3d>), Added<Camera>>,
+) {
+    for (entity, mut camera, is_3d) in &mut cameras {
+        if probe("hdr") {
+            commands.entity(entity).remove::<bevy::camera::Hdr>();
+        }
+        if is_3d && probe("distfog") {
+            commands.entity(entity).remove::<bevy::pbr::DistanceFog>();
+        }
+        if is_3d && probe("nostage") {
+            camera.is_active = false;
+        }
+    }
+}
+
+/// `unlit`: every 3D material renders unlit, without normal maps or
+/// clearcoat — the price of PBR shading. `blend`: every blended or
+/// additive 3D mesh is hidden — the price of overdraw.
+fn apply_material_probes(
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut meshes: Query<(&MeshMaterial3d<StandardMaterial>, &mut Visibility)>,
+) {
+    if probe("unlit") {
+        let ids: Vec<_> = materials
+            .iter()
+            .filter(|(_, m)| !m.unlit)
+            .map(|(id, _)| id)
+            .collect();
+        for id in ids {
+            if let Some(mut m) = materials.get_mut(id) {
+                m.unlit = true;
+                m.normal_map_texture = None;
+                m.clearcoat = 0.0;
+            }
+        }
+    }
+    if probe("blend") {
+        for (material, mut visibility) in &mut meshes {
+            let blended = materials
+                .get(&material.0)
+                .is_some_and(|m| matches!(m.alpha_mode, AlphaMode::Add | AlphaMode::Blend));
+            if blended && *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
+        }
+    }
+}
+
+/// The `gpupre` probe: Bevy's GPU mesh preprocessing (compute-built
+/// instance buffers, indirect draws) off — the CPU path instead.
+#[must_use]
+pub fn gpu_preprocessing() -> bool {
+    !(active() && probe("gpupre"))
+}
+
 /// The `hidpi` probe: render at one pixel per point — a quarter of
 /// a Retina display's pixels, the stand-in for a render scale of 50 %
 /// until one exists. Anything else passes through.
@@ -455,6 +517,9 @@ impl Plugin for BenchPlugin {
                 PostUpdate,
                 (
                     apply_probes.after(crate::config::apply_render_quality),
+                    apply_render_probes.after(crate::config::apply_render_quality),
+                    apply_material_probes
+                        .before(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate),
                     despawn_probes,
                 ),
             )

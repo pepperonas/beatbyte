@@ -2610,9 +2610,9 @@ fn autopilot_pause(
     phase: Res<State<crate::states::GamePhase>>,
     overlays: Query<&bevy::ui::ComputedNode, With<crate::gameplay::PauseOverlay>>,
     cameras_2d: Query<&bevy::camera::Camera, With<bevy::camera::Camera2d>>,
-    hdr_cameras: Query<Has<bevy::camera::Hdr>, WindowCameras>,
+    hdr_cameras: Query<(Has<bevy::camera::Hdr>, &bevy::camera::RenderTarget), WindowCameras>,
     stage_cameras: Query<
-        (),
+        &bevy::camera::RenderTarget,
         (
             With<bevy::camera::Camera3d>,
             With<crate::gameplay::stage3d::Stage3d>,
@@ -2703,7 +2703,14 @@ fn autopilot_pause(
                 // the stage vanished under the 8-bit style exactly
                 // so, hidden behind one settings combination.
                 0 if {
-                    let mut flags = hdr_cameras.iter();
+                    // Only cameras that draw INTO the window share
+                    // its frame; a stage scaled into an image does not.
+                    let mut flags = hdr_cameras
+                        .iter()
+                        .filter(|(_, target)| {
+                            matches!(target, bevy::camera::RenderTarget::Window(_))
+                        })
+                        .map(|(hdr, _)| hdr);
                     let first = flags.next();
                     flags.any(|hdr| Some(hdr) != first)
                 } =>
@@ -2715,7 +2722,7 @@ fn autopilot_pause(
                 }
                 0 if cameras_2d.iter().any(|camera| {
                     matches!(camera.clear_color, bevy::camera::ClearColorConfig::None)
-                        != !stage_cameras.is_empty()
+                        != crate::gameplay::render_scale::stage_on_window(stage_cameras)
                 }) =>
                 {
                     fail(

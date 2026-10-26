@@ -216,6 +216,12 @@ pub struct Settings {
     /// Reduce expensive rendering effects to keep input and notes smooth.
     #[serde(default = "default_true")]
     pub performance_mode: bool,
+    /// Where the stage's render scale settled on this device (an
+    /// index into `gameplay::render_scale::STEPS`; 0 = full scale).
+    /// Written by the governor when a song ends, so a weak GPU does
+    /// not start every song at full scale and miss its way down.
+    #[serde(default)]
+    pub stage_scale_step: u8,
     /// Fullscreen window mode.
     pub fullscreen: bool,
     /// A folder watched for new audio tracks (set by dropping a
@@ -502,6 +508,7 @@ impl Default for Settings {
             perspective: true,
             stage_3d: true,
             performance_mode: true,
+            stage_scale_step: 0,
             fullscreen: false,
             watch_folder: None,
             telemetry: TelemetryLevel::default(),

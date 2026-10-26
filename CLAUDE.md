@@ -1204,6 +1204,14 @@ Local packaging:
   within a second of `caffeinate -u`. It first read as a slow "first
   launch" and was written down as one. Remote runs there go under
   `caffeinate -disu`.
+- **The game has no `--version`: any argument just starts it.** On the
+  2015 over SSH, `beatbyte --version` launched a full game that then
+  hung with the display asleep (2026-10-26) — kill it by PID. Read a
+  build's version from its log line or its bundle's `Info.plist`.
+- **The bench's lock check used to pass on the 2015 by accident**:
+  it imported Quartz, which the system python there lacks, and a
+  failed import read as "unlocked". It asks `ioreg` now; check that a
+  measuring run on another machine actually refuses a locked screen.
 - **The Iris Pro in the 2015 cannot run this renderer** (Metal
   GPUFamily macOS 1: its compiler fails wgpu's and Bevy's compute
   pipelines, device lost at start). Bevy takes the AMD by default;

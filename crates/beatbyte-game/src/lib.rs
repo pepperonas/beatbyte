@@ -225,7 +225,11 @@ pub fn run() -> AppExit {
                 ..default()
             })
             // Pixel art: nearest-neighbor sampling keeps pixels crisp.
-            .set(ImagePlugin::default_nearest()),
+            .set(ImagePlugin::default_nearest())
+            .set(bevy::pbr::PbrPlugin {
+                use_gpu_instance_buffer_builder: bench::gpu_preprocessing(),
+                ..default()
+            }),
     )
     .insert_resource(ClearColor(palette::BACKGROUND))
     .init_resource::<room_stage::RoomStage>()
@@ -440,11 +444,18 @@ pub fn ui_scale_target(window_height: f32, user_scale: f32) -> f32 {
 /// bloom pipeline, which is why the bug hid behind one particular
 /// settings combination. Without a stage camera the 2D camera is
 /// alone again and must clear, or menus would smear.
+///
+/// A stage scaled down by the render scale draws into an image, not
+/// the window; the 2D camera then shows it as a sprite and clears
+/// first, like a menu.
 fn sync_stage_compositing(
-    stage_cameras: Query<(), (With<Camera3d>, With<gameplay::stage3d::Stage3d>)>,
+    stage_cameras: Query<
+        &bevy::camera::RenderTarget,
+        (With<Camera3d>, With<gameplay::stage3d::Stage3d>),
+    >,
     mut cameras: Query<&mut Camera, With<Camera2d>>,
 ) {
-    let wanted = if stage_cameras.is_empty() {
+    let wanted = if !gameplay::render_scale::stage_on_window(stage_cameras) {
         bevy::camera::ClearColorConfig::Default
     } else {
         bevy::camera::ClearColorConfig::None

@@ -83,6 +83,7 @@ pub const DEVICE: &[&str] = &[
     "ui_scale",
     "stage_3d",
     "performance_mode",
+    "stage_scale_step",
     "particles",
     "fx_intensity",
     "input_map",

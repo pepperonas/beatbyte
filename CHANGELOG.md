@@ -14,6 +14,33 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.19.5] - 2026-10-26
+
+### Performance
+
+- **The stage scales itself down on a slow GPU.** In PERFORMANCE MODE
+  the 3D stage now renders into a smaller image when frames are being
+  missed — 85, 70 or 55 % of the window's pixels — while the HUD,
+  lyrics and every text stay at full sharpness. The step is chosen by
+  watching frame times, not by guessing at the hardware: it steps down
+  on a run of misses, ignores a single hitch, tries one step sharper
+  after twenty calm seconds and keeps a step that failed out for the
+  rest of the session. Where it settles is remembered per device. A
+  machine that keeps up never leaves full scale.
+- **Less work for the GPU every frame.** Each bar line on the neck had
+  its own material, rewritten every frame — dozens of uploads a frame;
+  they now share one material per fade level. The receptors, their
+  fills, the hit bursts and the flames rewrote their colours every
+  frame even at rest; they now write only a change.
+
+### Tools
+
+- Bench probes for the render path (`hdr`, `distfog`, `unlit`,
+  `blend`, `gpupre`, `nostage`), `BEATBYTE_STAGE_SCALE` to pin one
+  scale, and `tools/bench.sh` measuring windowed (`WINDOWED=1`) and
+  under vsync (`VSYNC=1`). Its lock check no longer passes on a Mac
+  whose python lacks PyObjC.
+
 ## [0.19.4] - 2026-10-22
 
 ### Added

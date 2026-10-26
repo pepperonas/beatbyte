@@ -31,6 +31,7 @@ pub mod miss_feedback;
 pub mod monitors;
 pub mod notes;
 pub mod pa;
+pub mod render_scale;
 pub mod rig;
 pub mod spark3d;
 pub mod stage3d;
@@ -620,7 +621,8 @@ impl Plugin for GameplayPlugin {
                 OnExit(AppState::Gameplay),
                 (teardown_gameplay, restore_normal_speed),
             )
-            .add_plugins(stage3d::Stage3dPlugin);
+            .add_plugins(stage3d::Stage3dPlugin)
+            .add_plugins(render_scale::RenderScalePlugin);
     }
 }
 
