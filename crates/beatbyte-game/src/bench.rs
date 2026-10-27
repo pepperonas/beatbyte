@@ -425,7 +425,9 @@ fn despawn_probes(
 
 /// The render-path probes (2026-10-26, the 2015 MacBook's floor):
 /// `hdr` takes HDR off both cameras, `distfog` the distance fog,
-/// `nostage` the 3D camera itself (the floor of UI + HUD alone).
+/// `nostage` the 3D camera itself (the floor of UI + HUD alone),
+/// `noindirect` GPU culling and indirect draws (preprocessing stays on
+/// the GPU), `hdr2d` HDR off the 2D camera only.
 #[allow(clippy::type_complexity)]
 fn apply_render_probes(
     mut commands: Commands,
@@ -441,7 +443,42 @@ fn apply_render_probes(
         if is_3d && probe("nostage") {
             camera.is_active = false;
         }
+        if !is_3d && probe("hdr2d") {
+            commands.entity(entity).remove::<bevy::camera::Hdr>();
+        }
     }
+}
+
+/// The `cpupre` probe: the WHOLE render path on CPU preprocessing —
+/// what a device without compute shaders runs. Unlike turning off the
+/// instance-buffer builder alone (0.19.6, half the scene missing), this
+/// tells every consumer the same thing: the mesh plugin, the cameras
+/// and the render phases all read [`GpuPreprocessingSupport`]. It is
+/// inserted before any plugin's `finish` (which only inits it when
+/// absent) and set again after Bevy's own `RenderStartup` init, which
+/// would otherwise overwrite it.
+///
+/// [`GpuPreprocessingSupport`]: bevy::render::batching::gpu_preprocessing::GpuPreprocessingSupport
+fn force_cpu_preprocessing(app: &mut App) {
+    use bevy::render::batching::gpu_preprocessing::{
+        GpuPreprocessingMode, GpuPreprocessingSupport,
+    };
+    fn none(mut commands: Commands) {
+        commands.insert_resource(GpuPreprocessingSupport {
+            max_supported_mode: GpuPreprocessingMode::None,
+        });
+    }
+    let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) else {
+        return;
+    };
+    render_app
+        .insert_resource(GpuPreprocessingSupport {
+            max_supported_mode: GpuPreprocessingMode::None,
+        })
+        .add_systems(
+            bevy::render::RenderStartup,
+            none.after(bevy::render::init_gpu_resource::<GpuPreprocessingSupport>),
+        );
 }
 
 /// `unlit`: every 3D material renders unlit, without normal maps or
@@ -501,6 +538,38 @@ fn preprocessing_choice(probe_off: bool, overridden: Option<&str>) -> bool {
     !probe_off && overridden != Some("off")
 }
 
+/// Whether the stage camera draws through GPU culling and indirect
+/// draws (Bevy's default) or with direct draws.
+///
+/// Off on Intel Macs. Measured on the 2015 MacBook Pro's Radeon R9
+/// M370X (2026-10-27, windowed, performance mode, stage pinned at
+/// 55 %): median 19.5–21.3 → 12.6 ms, p99 33.5–37.6 → 17.4 ms, with
+/// the full scene photographed on that machine under the switch. Mesh
+/// preprocessing stays on the GPU — only culling and the indirect
+/// draw path go. Apple silicon and other platforms keep the default.
+/// `BEATBYTE_INDIRECT_DRAWING` (`on` / `off`) overrides it for a
+/// measurement; the `noindirect` probe turns it off.
+#[must_use]
+pub fn indirect_drawing() -> bool {
+    indirect_choice(
+        cfg!(all(target_os = "macos", target_arch = "x86_64")),
+        active() && probe("noindirect"),
+        std::env::var("BEATBYTE_INDIRECT_DRAWING").ok().as_deref(),
+    )
+}
+
+/// The decision behind [`indirect_drawing`], pure.
+fn indirect_choice(intel_mac: bool, probe_off: bool, overridden: Option<&str>) -> bool {
+    if probe_off {
+        return false;
+    }
+    match overridden {
+        Some("on") => true,
+        Some("off") => false,
+        _ => !intel_mac,
+    }
+}
+
 /// The `hidpi` probe: render at one pixel per point — a quarter of
 /// a Retina display's pixels, the stand-in for a render scale of 50 %
 /// until one exists. Anything else passes through.
@@ -527,6 +596,9 @@ impl Plugin for BenchPlugin {
         if std::env::var_os("BEATBYTE_BENCH_GPU").is_some() {
             app.add_plugins(bevy::render::diagnostic::RenderDiagnosticsPlugin);
         }
+        if probe("cpupre") {
+            force_cpu_preprocessing(app);
+        }
         app.insert_resource(Bench::new(scenario))
             .add_systems(First, mark_frame_start)
             .add_systems(Last, record_frame)
@@ -548,6 +620,27 @@ impl Plugin for BenchPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn indirect_drawing_is_off_on_intel_macs_only() {
+        // Every combination: the probe always wins, an override beats
+        // the platform, and the platform decides the rest.
+        for intel in [false, true] {
+            for over in [None, Some("on"), Some("off"), Some("junk")] {
+                assert!(!indirect_choice(intel, true, over));
+                let want = match over {
+                    Some("on") => true,
+                    Some("off") => false,
+                    _ => !intel,
+                };
+                assert_eq!(
+                    indirect_choice(intel, false, over),
+                    want,
+                    "{intel} {over:?}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn gpu_preprocessing_is_on_unless_turned_off_for_a_measurement() {

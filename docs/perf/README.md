@@ -88,6 +88,15 @@ renderer at all).
   turned it off on Intel Macs, and the "saved" 14 ms a frame were most
   of the scene not being drawn (`baseline.md`). `BEATBYTE_GPU_PREPROCESSING=off`
   still exists for a measurement; a frame under it is not the full scene.
+- **The stage camera draws directly** (since 0.19.10): no GPU culling and
+  no indirect draws (`NoIndirectDrawing`), preprocessing still on the GPU.
+  That path cost the Radeon about 8 ms a frame; the full scene was
+  photographed under the change. `BEATBYTE_INDIRECT_DRAWING=on|off`
+  overrides it; the `noindirect` and `cpupre` probes measure it.
+- **The binary must be named `beatbyte`.** `tools/bench.sh` raises the
+  window by process name, and a copy called anything else is neither
+  raised nor found by `pkill -x beatbyte` — a leftover run then keeps
+  playing beside the next one and every number measures two games.
 - **The render scale** (`gameplay/render_scale.rs`, PERFORMANCE MODE
   only): when frames are missed the 3D stage renders into an image at
   85, 70 or 55 % of the window's pixels, drawn behind the HUD, which

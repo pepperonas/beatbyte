@@ -38,7 +38,7 @@ is in.
 
 ## Smooth on the 2015 MacBook Pro (2026-10-26)
 
-*Verified: 2365 tests in the source inventory, including documentation examples;
+*Verified: 2366 tests in the source inventory, including documentation examples;
 fmt, clippy `-D warnings --all-features`, `cargo test --workspace`; the governor's
 pins seen to fail under a mutation; autopilot on an own song with the stage pinned
 to 55 %.*
@@ -70,9 +70,13 @@ to 55 %.*
   With GPU preprocessing on again it measures median 20.7 ms (~48 fps), p99
   ~33 ms windowed and uncapped. Every
   2015 measurement from now on carries an engine screenshot taken on the
-  2015 in the same run. Candidates: a real CPU preprocessing path (force
-  Bevy's `GpuPreprocessingSupport` to `None` so cameras and phases follow),
-  the render scale, the stage's mesh count.
+  2015 in the same run. **0.19.10: GPU culling and indirect draws off on
+  Intel Macs** (probes `noindirect` / `cpupre`, both photographed with the
+  full scene): live median 20.7 → 13.3–14.6 ms, p99 ~33 → 21.9–24.9 ms;
+  with vsync median 22.6 → 16.3–17.0 ms, p99 ~38 → 25.2 ms. The stage's
+  parts (crowd, band, rig) and the 2D camera's HDR measured within noise.
+  Still open: the 99th percentile under vsync (25 ms), and the HUD-only
+  floor of 7.5 ms.
 - [x] Per-frame waste removed without touching the picture *(v0.19.7)*:
   indexed beat lookups (bit-identical to the walk), the Hype auto-hit scan
   stops at the first later note, the song end is computed once everyone has

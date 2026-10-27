@@ -101,6 +101,33 @@ strings, crowd and band were missing on the 2015 (engine screenshots,
 0.19.6 to 0.19.8 that ran with it off measures that incomplete scene.
 With the full scene (0.19.9, "Maria" medium, windowed, uncapped, two runs) the 2015 measures median 20.7 ms (~48 fps), p99 32.5–33.0 ms, worst frame 48.6 ms; main-world CPU median 2.7 ms.
 
+### The floor, found for real (2026-10-27, 0.19.9 → 0.19.10)
+
+Windowed, PERFORMANCE MODE, "Maria" medium, uncapped unless noted. Every
+render-path variant below was photographed on the 2015 in a run of its
+own and draws the full scene. Raw: `mbp2015:~/bench/p-*.json`, `q-*.json`.
+
+| Build / probe (stage pinned at 55 % unless noted) | median | p99 |
+|---|---|---|
+| 0.19.9 (three runs) | 19.5–21.3 ms | 33.5–37.6 |
+| probe `noindirect` (no GPU culling, direct draws) | 12.6 | 17.4 |
+| probe `cpupre` (whole path on CPU preprocessing) | 11.7–12.4 | 17.3–17.6 |
+| probes `crowd` / `band` / `rig` | 19.8–20.4 | 32.6–35.5 |
+| probe `hdr2d` (no HDR on the 2D camera) | 20.5 | 35.4 |
+| probe `nostage` (lower bound) | 7.5 | 12.4 |
+| **0.19.10**, 55 % | **13.2** | **21.0** |
+| **0.19.10**, live governor | **13.3–14.6** | **21.9–24.9** |
+| **0.19.10**, 100 % | 22.3 | 38.0 |
+| **0.19.10**, vsync | **16.3–17.0** | **25.2** |
+| 0.19.9, vsync (for comparison) | 22.6 | 36.9–40.3 |
+
+GPU culling and indirect draws cost the Radeon ~8 ms a frame; the stage's
+parts barely matter. 0.19.10 turns them off on Intel Macs. With vsync the
+median is now a 60 Hz frame; the 99th percentile (25 ms) still misses it.
+The `monitors` probe measures nothing: the stage respawns the monitors the
+frame after the probe removes them, meshes and materials included, so the
+run costs ~29 ms of CPU a frame.
+
 ### Findings the bench made on the way
 
 - **The song clock jumped forward** 0.7–1.0 s in a single short frame

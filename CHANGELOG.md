@@ -14,6 +14,22 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.19.10] - 2026-10-27
+
+### Changed
+
+- **Smoother on Intel Macs.** The stage camera there now draws its meshes
+  directly instead of through Bevy's GPU culling and indirect draws; mesh
+  preprocessing stays on the GPU. On the 2015 MacBook Pro's Radeon R9 M370X
+  that path cost about 8 ms a frame: with the stage pinned at 55 %, the
+  median fell from 19.5–21.3 ms to 12.6 ms and the 99th percentile from
+  33.5–37.6 ms to 17.4 ms. The full scene was photographed on that machine
+  with the change. With the render scale governor running, the median
+  went from 20.7 ms to 13.3–14.6 ms (p99 ~33 → 21.9–24.9 ms); with vsync
+  from 22.6 ms to 16.3–17.0 ms (p99 ~38 → 25.2 ms), so most frames now
+  make 60 Hz. Apple silicon is unchanged.
+  `BEATBYTE_INDIRECT_DRAWING` (`on` / `off`) overrides it.
+
 ## [0.19.9] - 2026-10-27
 
 ### Fixed

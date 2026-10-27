@@ -1232,6 +1232,14 @@ Local packaging:
   (engine screenshots, `BEATBYTE_SHOT_TIMES` — they need no screen
   recording permission, `screencapture` over SSH shows only the
   wallpaper). GPU preprocessing is on everywhere again since 0.19.9.
+- **A copy of the game under another name escapes every cleanup.**
+  `tools/bench.sh` raises the window by the process name `beatbyte`, and
+  `pkill -x beatbyte` matches only that name. A probe binary copied as
+  `beatbyte-p2` was neither raised nor killed: its photo runs kept
+  playing, and the next measurement ran two games at once (the player
+  saw it as heavy lag). Put an experimental build in its own directory
+  under the name `beatbyte`, and refuse to start a run while
+  `pgrep -x beatbyte` finds one.
 - **Never `Image::resize` a render target.** Bevy copies the old texture
   into the resized one, which needs `COPY_SRC`; a render target has
   none, wgpu raises a validation error and the app QUITS. The render

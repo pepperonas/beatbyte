@@ -2022,6 +2022,11 @@ pub fn setup_stage(
         Transform::from_translation(CAMERA_POS).looking_at(CAMERA_LOOK, Vec3::Y),
         RenderLayers::layer(STAGE_LAYER),
     ));
+    // Direct draws on Intel Macs: GPU culling and indirect draws cost
+    // the 2015 MacBook's Radeon ~8 ms a frame (`bench::indirect_drawing`).
+    if !crate::bench::indirect_drawing() {
+        stage_camera.insert(bevy::render::view::NoIndirectDrawing);
+    }
     // Ambient light is a component ON THE CAMERA in this Bevy
     // (`AmbientLight` requires `Camera`): spawned on its own entity,
     // as it was until 2026-09-07, it lit nothing and stood in the

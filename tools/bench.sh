@@ -86,7 +86,7 @@ import json, sys
 run = json.load(open(sys.argv[1]))
 before_result = open(sys.argv[2]).read().split('bench: wrote', 1)[0]
 complete = 'gameplay ended: song finished' in before_result
-sys.exit(0 if complete and run.get('song') == sys.argv[3] and run['frame_ms']['n'] >= 1000 else 1)
+sys.exit(0 if complete and sys.argv[3] in run.get('song', '') and run['frame_ms']['n'] >= 1000 else 1)
 PY
   then
     echo "  run $i: wrong song or incomplete sample — not counted; log kept at $work/run-$i.log"
