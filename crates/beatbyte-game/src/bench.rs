@@ -459,6 +459,22 @@ fn apply_render_probes(
 /// would otherwise overwrite it.
 ///
 /// [`GpuPreprocessingSupport`]: bevy::render::batching::gpu_preprocessing::GpuPreprocessingSupport
+/// `single`: the main world's schedules on the single-threaded
+/// executor — whether the multi-threaded one's overhead (a task per
+/// system, its locks and queues) is what a small frame pays for on a
+/// four-core CPU.
+fn single_threaded(app: &mut App) {
+    use bevy::ecs::schedule::{Schedule, SingleThreadedExecutor};
+    let single = |schedule: &mut Schedule| {
+        schedule.set_executor(SingleThreadedExecutor::new());
+    };
+    app.edit_schedule(First, single)
+        .edit_schedule(PreUpdate, single)
+        .edit_schedule(Update, single)
+        .edit_schedule(PostUpdate, single)
+        .edit_schedule(Last, single);
+}
+
 fn force_cpu_preprocessing(app: &mut App) {
     use bevy::render::batching::gpu_preprocessing::{
         GpuPreprocessingMode, GpuPreprocessingSupport,
@@ -598,6 +614,9 @@ impl Plugin for BenchPlugin {
         }
         if probe("cpupre") {
             force_cpu_preprocessing(app);
+        }
+        if probe("single") {
+            single_threaded(app);
         }
         app.insert_resource(Bench::new(scenario))
             .add_systems(First, mark_frame_start)

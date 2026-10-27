@@ -75,8 +75,13 @@ to 55 %.*
   full scene): live median 20.7 → 13.3–14.6 ms, p99 ~33 → 21.9–24.9 ms;
   with vsync median 22.6 → 16.3–17.0 ms, p99 ~38 → 25.2 ms. The stage's
   parts (crowd, band, rig) and the 2D camera's HDR measured within noise.
-  Still open: the 99th percentile under vsync (25 ms), and the HUD-only
-  floor of 7.5 ms.
+  Still open: the 99th percentile under vsync (25 ms). The HUD-only floor
+  (6.7 ms) was examined after the release: ~5 ms fixed GPU/present cost,
+  ~1.8 ms pixels, no thread busy; the single-threaded executor (probe
+  `single`) cuts main-world CPU 40 % and the frame not at all — no CPU
+  lever left there (`docs/perf/baseline.md`). A frame-rate cap for the M1
+  was built, measured as less even than plain vsync at 120 Hz, and
+  withdrawn.
   Released as v0.19.10; the installed app on the 2015 was PHOTOGRAPHED
   with the full scene, the release artifact played Maria 504/504 there
   (backup `~/bench/BeatByte-0.19.9-backup.app`).

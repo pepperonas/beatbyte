@@ -128,6 +128,31 @@ The `monitors` probe measures nothing: the stage respawns the monitors the
 frame after the probe removes them, meshes and materials included, so the
 run costs ~29 ms of CPU a frame.
 
+### The HUD floor and the executor (2026-10-27, after 0.19.10)
+
+Windowed, PERFORMANCE MODE, "Maria" medium, uncapped. Raw:
+`mbp2015:~/bench/h-*.json`, `k-*.json`, `n-*.json`.
+
+| Run | median | p99 | main CPU |
+|---|---|---|---|
+| HUD only (`nostage`), 2560×1440 | 6.7 ms | 11.2 | 3.9 |
+| HUD only, 1280×720 (`hidpi`) | 5.3 | 10.4 | 3.0 |
+| HUD only, 640×360 | 5.0 | 9.0 | 2.9 |
+| full scene at 55 %, 0.19.10 (two runs) | 12.9 / 14.0 | 21.8 / 21.7 | 4.6 / 4.9 |
+| the same, probe `single` | 13.6 | 21.6 | **2.9** |
+
+About 1.8 ms of the HUD floor is pixels; the other ~5 ms are fixed. A
+`sample` profile of both cases shows no thread busier than ~27 % of the
+time — the frame waits for the GPU. Bevy's multi-threaded executor
+(task spawning, locks, queue pops) tops the CPU profile, and running the
+main schedules single-threaded takes 40 % off the main world's CPU time
+but nothing off the frame. Neither lever moves the 2015; the stage does.
+
+The R9 M370X reports no GPU timestamps (`BEATBYTE_BENCH_GPU` gives
+`null`), so the floor cannot be split by pass. A series run while the
+machine sat at load ~4 measured everything 50 % slower (`m-*.json`) —
+alternate builds within one series before reading a difference.
+
 ### Findings the bench made on the way
 
 - **The song clock jumped forward** 0.7–1.0 s in a single short frame
@@ -143,6 +168,24 @@ run costs ~29 ms of CPU a frame.
 
 ## Device A — MacBook Pro 14" M1 Pro
 
-Not measured yet. The machine was under heavy load (load average
+### A frame-rate cap does not help (2026-10-27)
+
+Windowed, vsync (the player's pace), "Dear Maria" medium, at load ~15
+from other work. A sleep-on-a-grid limiter was built and measured, then
+withdrawn (not shipped):
+
+| Pace | median | p95 | p99 |
+|---|---|---|---|
+| display (no cap) | 8.3 ms | 9.6 | 15.9 |
+| capped at 60 | 16.6 | 18.6 | 22.0 |
+| capped at 100 (first series, load ~18) | 10.0 | 14.4 | 22.8 |
+
+The M1 already holds 120 Hz in a window; a cap below the panel's rate
+fights its vsync (a frame finishing just after a refresh waits for the
+next one, and the grid slips) and makes the pace less even, not more.
+The stutter seen that evening was the machine: a full disk and a VM
+put the load between 18 and 250.
+
+The full baseline is still open. The machine was under heavy load (load average
 19–76 from other work) in every attempt, and a measuring window steals
 focus from whoever is working. It needs an hour nobody uses it.
