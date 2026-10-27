@@ -10,6 +10,7 @@
 #   COMMIT   the commit the binary was built from, when not run in its checkout
 #   WINDOWED set: play in the default 1280x720 window instead of full screen
 #   VSYNC    set: keep vsync on (the player's pacing) instead of uncapped
+#   SONG     the exact title to play instead of the scenario's song
 #
 # Each run is the autopilot playing one song perfectly under
 # BEATBYTE_UNCAPPED=1, full screen, with the bench (`BEATBYTE_BENCH`)
@@ -37,6 +38,10 @@ case $scenario in
           runs=$(( ( ${SOAK_MIN:-15} * 60 + 263 ) / 264 )) ;;
   *) echo "unknown scenario: $scenario" >&2; exit 2 ;;
 esac
+# A library without the scenario's song (the M1's "Maria" is "Dear
+# Maria", which the title check then rightly refuses): SONG names the
+# exact title to play instead; the difficulty stays the scenario's.
+song=${SONG:-$song}
 
 [ -x "$bin" ] || { echo "no binary at $bin" >&2; exit 2; }
 # Asked of the IO registry, not of Quartz: the system python on the
