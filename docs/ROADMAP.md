@@ -45,9 +45,16 @@ to 55 %.*
   crashed 85 % → 100 % because `apply` and `camera_system` had no order;
   `apply` now runs `.before(CameraUpdateSystems)`, pinned by a test that
   runs the real `camera_system` through the plugin.
-- [ ] Measure 0.19.7 on the 2015 against 0.19.6 and GPU-preprocessing-on,
-  alternating to cancel heat, at a pinned scale and live; the M1 as well.
-- [ ] Release, then smoke-test the x86_64 artifact on the 2015 itself.
+- [x] Measure 0.19.7 on the 2015 against 0.19.6 and GPU-preprocessing-on,
+  alternating to cancel heat, at a pinned scale and live: median 17.1/14.8 →
+  14.1/12.3 ms (`docs/perf/baseline.md`). 0.19.8 live: median 11.9/13.1 ms,
+  p99 27 ms; with vsync 60 fps at the median, p99 22.6 ms.
+- [ ] Measure the M1 old against new: four attempts were refused because the
+  screen locked itself during the runs.
+- [x] Released as v0.19.8 (0.19.5–0.19.7 never published); the x86_64
+  artifact smoke-tested and autopiloted on the 2015 ("Maria", the governor
+  stepping back to 100 % without a crash, 504/504 perfect), the player's
+  app there updated, the product page offers it.
 
 ## Left- and right-handed players (2026-10-22)
 
