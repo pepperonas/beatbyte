@@ -1215,7 +1215,7 @@ pub fn move_phrase_bands(
             .find(|(index, _)| index.0 == band.player)
             .is_some_and(|(_, player)| player.session.phrase_broken(band.phrase));
         if broken {
-            *visibility = Visibility::Hidden;
+            visibility.set_if_neq(Visibility::Hidden);
             continue;
         }
         let near = note_z(band.start_s - now, settings.scroll_speed);
@@ -1226,10 +1226,10 @@ pub fn move_phrase_bands(
         let far = far.max(-HIGHWAY_LENGTH);
         let length = near - far;
         if length <= 0.0 {
-            *visibility = Visibility::Hidden;
+            visibility.set_if_neq(Visibility::Hidden);
             continue;
         }
-        *visibility = Visibility::Inherited;
+        visibility.set_if_neq(Visibility::Inherited);
         transform.translation.z = (near + far) / 2.0;
         transform.scale.z = length;
     }
@@ -1332,6 +1332,105 @@ pub struct SustainTail3d;
 pub(super) struct WhammyMesh {
     rest: Vec<[f32; 3]>,
     bent: bool,
+    /// Whether the tail owns its mesh. A tail starts on the SHARED
+    /// template and gets its own copy only the first time the whammy
+    /// bends it: every sustain used to clone the mesh at spawn, a new
+    /// upload and draw per tail that was never bent.
+    owned: bool,
+    /// Whether the tail owns its material. It starts on a material
+    /// shared by every tail spawned from the same lane colour and gets
+    /// its own copy when the hold starts, before the throb writes it.
+    own_material: bool,
+}
+
+impl WhammyMesh {
+    /// A tail still drawn with the shared template and material.
+    fn shared() -> WhammyMesh {
+        WhammyMesh {
+            rest: Vec::new(),
+            bent: false,
+            owned: false,
+            own_material: false,
+        }
+    }
+}
+
+/// A shared tail material and the lane colours it was taken from.
+type TailSnapshot = (
+    AssetId<StandardMaterial>,
+    Color,
+    LinearRgba,
+    Handle<StandardMaterial>,
+);
+
+/// The materials sustain tails share until they are held, per lane.
+///
+/// A tail's colour is frozen at spawn — the lane material it was cloned
+/// from is tinted by Hype later — so a snapshot is reused only while
+/// the lane material still holds the colours it was taken from. The
+/// core's pale strip depends on the theme alone.
+#[derive(Default)]
+pub struct SustainLooks {
+    tail: Vec<Option<TailSnapshot>>,
+    core: Vec<Option<(Color, Handle<StandardMaterial>)>>,
+}
+
+impl SustainLooks {
+    /// The shared tail material for `lane`, as a snapshot of `source`.
+    fn tail(
+        &mut self,
+        materials: &mut Assets<StandardMaterial>,
+        lane: usize,
+        source: &Handle<StandardMaterial>,
+    ) -> Handle<StandardMaterial> {
+        let Some(current) = materials.get(source).cloned() else {
+            return source.clone();
+        };
+        if self.tail.len() <= lane {
+            self.tail.resize(lane + 1, None);
+        }
+        if let Some((id, base, glow, handle)) = &self.tail[lane]
+            && *id == source.id()
+            && *base == current.base_color
+            && *glow == current.emissive
+        {
+            return handle.clone();
+        }
+        let (base, glow) = (current.base_color, current.emissive);
+        let handle = materials.add(current);
+        self.tail[lane] = Some((source.id(), base, glow, handle.clone()));
+        handle
+    }
+
+    /// The shared core material for `lane` in colour `pale`.
+    fn core(
+        &mut self,
+        materials: &mut Assets<StandardMaterial>,
+        lane: usize,
+        pale: Color,
+    ) -> Handle<StandardMaterial> {
+        if self.core.len() <= lane {
+            self.core.resize(lane + 1, None);
+        }
+        if let Some((colour, handle)) = &self.core[lane]
+            && *colour == pale
+            && materials.get(handle).is_some()
+        {
+            return handle.clone();
+        }
+        let handle = materials.add(core_material(pale));
+        self.core[lane] = Some((pale, handle.clone()));
+        handle
+    }
+}
+
+/// The resting look of a sustain's pale core.
+fn core_material(pale: Color) -> StandardMaterial {
+    StandardMaterial {
+        base_color: pale,
+        emissive: pale.to_linear() * 1.6,
+        ..default()
+    }
 }
 
 fn whammy_mesh(meshes: &mut Assets<Mesh>, template: &Handle<Mesh>) -> (Mesh3d, WhammyMesh) {
@@ -1343,7 +1442,15 @@ fn whammy_mesh(meshes: &mut Assets<Mesh>, template: &Handle<Mesh>) -> (Mesh3d, W
         Some(bevy::mesh::VertexAttributeValues::Float32x3(positions)) => positions.clone(),
         _ => Vec::new(),
     };
-    (Mesh3d(meshes.add(mesh)), WhammyMesh { rest, bent: false })
+    (
+        Mesh3d(meshes.add(mesh)),
+        WhammyMesh {
+            rest,
+            bent: false,
+            owned: true,
+            own_material: false,
+        },
+    )
 }
 
 fn deform_sustain_mesh(
@@ -2295,6 +2402,28 @@ pub fn setup_stage(
         // the lanes are; a divider says where one ENDS, which is the
         // difference between a highway and five parallel wires. Kept
         // dimmer than the lane lines, or the board reads as a grid.
+        // The dividers, strings and collars are never painted after
+        // spawn (none is `HypeTinted`), so each kind shares ONE
+        // material: fourteen identical materials per player were
+        // fourteen bind groups and as many breaks in batching.
+        let divider_material = materials.add(StandardMaterial {
+            base_color: stage.background.mix(&Color::WHITE, 0.30),
+            perceptual_roughness: 0.8,
+            ..default()
+        });
+        let string_material = materials.add(StandardMaterial {
+            base_color: string_color(stage),
+            emissive: string_color(stage).to_linear() * 0.22,
+            perceptual_roughness: 0.3,
+            metallic: 0.7,
+            ..default()
+        });
+        let collar_material = materials.add(StandardMaterial {
+            base_color: stage.background.mix(&Color::WHITE, 0.30),
+            perceptual_roughness: 0.30,
+            metallic: 0.85,
+            ..default()
+        });
         for gap in 0..4 {
             let left = Lane::from_index(gap).expect("four gaps between five lanes");
             let right = Lane::from_index(gap + 1).expect("four gaps between five lanes");
@@ -2304,11 +2433,7 @@ pub fn setup_stage(
                 Stage3d,
                 on_the_neck(),
                 Mesh3d(lane_strip.clone()),
-                MeshMaterial3d(materials.add(StandardMaterial {
-                    base_color: stage.background.mix(&Color::WHITE, 0.30),
-                    perceptual_roughness: 0.8,
-                    ..default()
-                })),
+                MeshMaterial3d(divider_material.clone()),
                 Transform::from_xyz(middle, 0.004, centre).with_scale(Vec3::new(0.6, 1.0, 1.0)),
                 RenderLayers::layer(STAGE_LAYER),
             ));
@@ -2322,19 +2447,12 @@ pub fn setup_stage(
         // it is. That is the buttons' and the gems' job.
         for lane in Lane::ALL {
             let colour = stage.lane_color(lane);
-            let string_material = StandardMaterial {
-                base_color: string_color(stage),
-                emissive: string_color(stage).to_linear() * 0.22,
-                perceptual_roughness: 0.3,
-                metallic: 0.7,
-                ..default()
-            };
             commands.spawn((
                 GameplayScreen,
                 Stage3d,
                 on_the_neck(),
                 Mesh3d(lane_strip.clone()),
-                MeshMaterial3d(materials.add(string_material)),
+                MeshMaterial3d(string_material.clone()),
                 Transform::from_xyz(lane_x(&layout, player, lane), 0.005, centre),
                 RenderLayers::layer(STAGE_LAYER),
             ));
@@ -2350,12 +2468,7 @@ pub fn setup_stage(
                 Stage3d,
                 on_the_neck(),
                 Mesh3d(collar_mesh.clone()),
-                MeshMaterial3d(materials.add(StandardMaterial {
-                    base_color: stage.background.mix(&Color::WHITE, 0.30),
-                    perceptual_roughness: 0.30,
-                    metallic: 0.85,
-                    ..default()
-                })),
+                MeshMaterial3d(collar_material.clone()),
                 Transform::from_xyz(lane_x(&layout, player, lane), 0.006, 0.0),
                 RenderLayers::layer(STAGE_LAYER),
             ));
@@ -2479,6 +2592,7 @@ pub fn update_receptors(
         (
             &mut HitBurst,
             &mut Transform,
+            &mut Visibility,
             &MeshMaterial3d<StandardMaterial>,
         ),
         Without<Receptor3d>,
@@ -2634,7 +2748,7 @@ pub fn update_receptors(
     // The burst: a flat ring of light spreading ACROSS the board from
     // the fret and gone in about a fifth of a second — the genre's
     // flame, which is what tells you the note actually landed.
-    for (mut burst, mut burst_transform, burst_material) in &mut bursts {
+    for (mut burst, mut burst_transform, mut burst_visibility, burst_material) in &mut bursts {
         if holds(burst.player, burst.lane) {
             // A sustained hold re-blooms instead of dying: the ring
             // spreads, fades, and starts again about three times a
@@ -2653,6 +2767,20 @@ pub fn update_receptors(
                 burst.life = *hit;
             }
             burst.life = (burst.life - 5.0 * delta).max(0.0);
+        }
+        // A spent ring has alpha and glow 0, yet a large additive disc
+        // was still drawn and rescaled every frame. Hidden until the
+        // next hit, shown again before this frame's writes.
+        let wanted = if burst.life > 0.0 {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *burst_visibility != wanted {
+            *burst_visibility = wanted;
+        }
+        if burst.life <= 0.0 {
+            continue;
         }
         let progress = 1.0 - burst.life;
         let spread = 2.2f32.mul_add(progress, 0.35);
@@ -2857,12 +2985,18 @@ pub fn move_fret_bars(
     };
     for (bar, mut transform, mut material, mut visibility) in &mut bars {
         let z = note_z(bar.time_s - now, settings.scroll_speed);
-        transform.translation.z = z;
         // Beyond the drawn highway there is nothing to see, and a
         // hundred bars stacked at the vanishing point read as a solid
         // wedge rather than as depth.
         let distance = -z;
         let visible = (-1.0..HIGHWAY_LENGTH).contains(&distance);
+        // A hidden bar is not moved: the song has a bar per beat, and
+        // writing every one of them each frame marked hundreds of
+        // transforms changed for propagation and extraction. It is
+        // placed again the frame it comes back into view.
+        if visible || *visibility != Visibility::Hidden {
+            transform.translation.z = z;
+        }
         let wanted = if visible {
             Visibility::Inherited
         } else {
@@ -3101,7 +3235,7 @@ pub fn spawn_due_notes(
     assets: Option<Res<NoteAssets>>,
     theme: Res<crate::theme::ActiveTheme>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut meshes: ResMut<Assets<Mesh>>,
+    mut looks: Local<SustainLooks>,
 ) {
     if !active(&settings) {
         return;
@@ -3236,14 +3370,13 @@ pub fn spawn_due_notes(
                 // the gem — length is the note's own held time.
                 if event.is_sustain() {
                     let length = (event.sustain_s as f32) * settings.scroll_speed * Z_PER_PIXEL;
-                    // Its own material: the lane's is SHARED by every
-                    // note in that lane, and pulsing it while a note
-                    // is held would light the whole lane along with it
-                    // - the same trap that once greyed a lane out.
-                    let tail_material = materials
-                        .get(&material)
-                        .cloned()
-                        .map_or_else(|| material.clone(), |own| materials.add(own));
+                    // Not the lane's material: that one is SHARED by
+                    // every note in the lane, and pulsing it while a
+                    // note is held would light the whole lane along
+                    // with it - the same trap that once greyed a lane
+                    // out. A snapshot of it, shared by the tails that
+                    // wait to be held; the hold gets its own copy.
+                    let tail_material = looks.tail(&mut materials, lane.index(), &material);
                     commands.spawn((
                         GameplayScreen,
                         Stage3d,
@@ -3254,7 +3387,8 @@ pub fn spawn_due_notes(
                         },
                         SustainTail3d,
                         on_the_neck(),
-                        whammy_mesh(&mut meshes, &assets.sustain),
+                        Mesh3d(assets.sustain.clone()),
+                        WhammyMesh::shared(),
                         bevy::camera::visibility::NoFrustumCulling,
                         MeshMaterial3d(tail_material),
                         // The cylinder is built along Y, so it is
@@ -3282,13 +3416,10 @@ pub fn spawn_due_notes(
                             SustainTail3d,
                             SustainCore,
                             on_the_neck(),
-                            whammy_mesh(&mut meshes, core_mesh),
+                            Mesh3d(core_mesh.clone()),
+                            WhammyMesh::shared(),
                             bevy::camera::visibility::NoFrustumCulling,
-                            MeshMaterial3d(materials.add(StandardMaterial {
-                                base_color: pale,
-                                emissive: pale.to_linear() * 1.6,
-                                ..default()
-                            })),
+                            MeshMaterial3d(looks.core(&mut materials, lane.index(), pale)),
                             Transform::from_xyz(
                                 lane_x(&layout, index.0, lane),
                                 0.062,
@@ -3399,9 +3530,9 @@ pub(super) fn consume_sustains(
             Entity,
             &Note3d,
             &mut Transform,
-            &MeshMaterial3d<StandardMaterial>,
+            &mut MeshMaterial3d<StandardMaterial>,
             Has<SustainCore>,
-            &Mesh3d,
+            &mut Mesh3d,
             &mut WhammyMesh,
         ),
         With<SustainTail3d>,
@@ -3416,7 +3547,7 @@ pub(super) fn consume_sustains(
     let (Some(now), Some(assets)) = (game_clock.visual_time(&time, &settings), assets) else {
         return;
     };
-    for (entity, note, mut transform, material, is_core, mesh, mut wave) in &mut tails {
+    for (entity, note, mut transform, mut material, is_core, mut mesh, mut wave) in &mut tails {
         let Some((_, player)) = players.iter().find(|(index, _)| index.0 == note.player) else {
             continue;
         };
@@ -3429,7 +3560,18 @@ pub(super) fn consume_sustains(
         } else {
             0.0
         };
-        if (bend > 0.0 || wave.bent)
+        if bend > 0.0 && !wave.owned {
+            // The first bend: take a copy of the shared template, so
+            // the wave moves this tail and no other.
+            let (own, fresh) = whammy_mesh(&mut meshes, &mesh.0);
+            *mesh = own;
+            *wave = WhammyMesh {
+                own_material: wave.own_material,
+                ..fresh
+            };
+        }
+        if wave.owned
+            && (bend > 0.0 || wave.bent)
             && let Some(mut mesh) = meshes.get_mut(&mesh.0)
         {
             deform_sustain_mesh(
@@ -3441,8 +3583,10 @@ pub(super) fn consume_sustains(
             );
         }
         if !held {
-            transform.scale.x = 1.0;
-            transform.scale.z = 1.0;
+            if transform.scale.x != 1.0 || transform.scale.z != 1.0 {
+                transform.scale.x = 1.0;
+                transform.scale.z = 1.0;
+            }
             continue;
         }
         let Some(event) = player.session.track().events().get(note.event_index) else {
@@ -3457,6 +3601,15 @@ pub(super) fn consume_sustains(
                 // Being played, and looking it. Driven from the SONG
                 // clock, so the throb keeps time with the music
                 // rather than with the frame rate.
+                if !wave.own_material {
+                    // The hold starts: a copy of the shared material,
+                    // made before the first write, so the throb lights
+                    // this tail and no other.
+                    if let Some(copy) = materials.get(&material.0).cloned() {
+                        material.0 = materials.add(copy);
+                    }
+                    wave.own_material = true;
+                }
                 if let Some(mut surface) = materials.get_mut(&material.0) {
                     let glow = sustain_pulse(now) * (1.0 + 3.0 * bend);
                     surface.emissive = if is_core {
@@ -3474,7 +3627,7 @@ pub(super) fn consume_sustains(
     // A tail whose hold has ended but which still has length left was
     // DROPPED — it greys out and slides away, so letting go looks
     // different from playing it out.
-    for (entity, note, transform, _, _, _, _) in &tails {
+    for (entity, note, transform, material, _, _, _) in &tails {
         let held = players
             .iter()
             .find(|(index, _)| index.0 == note.player)
@@ -3487,7 +3640,7 @@ pub(super) fn consume_sustains(
             .find(|(index, _)| index.0 == note.player)
             .and_then(|(_, player)| player.session.note_state(note.event_index))
             .is_some_and(|state| matches!(state, beatbyte_core::session::NoteState::Hit(_)));
-        if struck {
+        if struck && material.0 != assets.missed_material {
             commands
                 .entity(entity)
                 .insert(MeshMaterial3d(assets.missed_material.clone()));
@@ -5184,5 +5337,184 @@ mod whammy_mesh_tests {
             panic!("positions")
         };
         assert_eq!(restored, &original);
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod fret_bar_tests {
+    use super::*;
+    use bevy::ecs::system::RunSystemOnce;
+
+    /// A bar out of view keeps its transform untouched — the song has
+    /// a bar per beat, and moving all of them each frame was the cost —
+    /// while a bar in view is placed, and a bar leaving view is placed
+    /// on its way out.
+    #[test]
+    fn only_bars_in_view_or_leaving_it_are_moved() {
+        let mut app = App::new();
+        app.init_resource::<Time>()
+            .init_resource::<Assets<StandardMaterial>>();
+        let settings = Settings {
+            stage_3d: true,
+            ..Settings::default()
+        };
+        let mut clock = GameClock::default();
+        clock.begin(0.0, 10.0);
+        let pool = {
+            let mut materials = app.world_mut().resource_mut::<Assets<StandardMaterial>>();
+            FretBarMaterials(
+                (0..FRET_FADE_LEVELS)
+                    .map(|level| materials.add(fret_bar_material(fade_of_level(level))))
+                    .collect(),
+            )
+        };
+        app.insert_resource(settings)
+            .insert_resource(clock)
+            .insert_resource(pool);
+        let bar = |time_s: f64, visibility: Visibility| {
+            (
+                FretBar {
+                    time_s,
+                    downbeat: true,
+                },
+                Transform::from_xyz(0.0, 0.0, -900.0),
+                MeshMaterial3d::<StandardMaterial>::default(),
+                visibility,
+            )
+        };
+        let world = app.world_mut();
+        let far_hidden = world.spawn(bar(500.0, Visibility::Hidden)).id();
+        let near = world.spawn(bar(10.5, Visibility::Inherited)).id();
+        let leaving = world.spawn(bar(400.0, Visibility::Inherited)).id();
+        world
+            .run_system_once(move_fret_bars)
+            .expect("valid fixture");
+        let z = |e: Entity| world.get::<Transform>(e).unwrap().translation.z;
+        assert_eq!(z(far_hidden), -900.0, "a hidden bar is not moved");
+        assert_ne!(z(near), -900.0, "a bar in view is placed");
+        assert_ne!(
+            z(leaving),
+            -900.0,
+            "a bar leaving view is placed on its way out"
+        );
+        assert_eq!(
+            *world.get::<Visibility>(leaving).unwrap(),
+            Visibility::Hidden
+        );
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod burst_rest_tests {
+    use super::*;
+    use bevy::ecs::system::RunSystemOnce;
+
+    /// A spent burst ring is hidden and not rescaled; a live one is
+    /// shown and spreads.
+    #[test]
+    fn a_spent_burst_is_hidden_and_a_live_one_drawn() {
+        let mut app = App::new();
+        app.init_resource::<Time>()
+            .init_resource::<Assets<StandardMaterial>>()
+            .init_resource::<crate::theme::ActiveTheme>()
+            .init_resource::<super::super::starpower::StarPower>()
+            .init_resource::<FretHeat>()
+            .insert_resource(Settings {
+                stage_3d: true,
+                ..Settings::default()
+            })
+            .add_message::<super::super::SessionFeedback>();
+        let material = app
+            .world_mut()
+            .resource_mut::<Assets<StandardMaterial>>()
+            .add(StandardMaterial::default());
+        let parked = Transform::from_scale(Vec3::splat(7.0));
+        let mut burst = |life: f32| {
+            app.world_mut()
+                .spawn((
+                    HitBurst {
+                        player: 0,
+                        lane: Lane::One,
+                        life,
+                    },
+                    parked,
+                    Visibility::Inherited,
+                    MeshMaterial3d(material.clone()),
+                ))
+                .id()
+        };
+        let spent = burst(0.0);
+        let live = burst(0.6);
+        let world = app.world_mut();
+        world
+            .run_system_once(update_receptors)
+            .expect("valid fixture");
+        assert_eq!(*world.get::<Visibility>(spent).unwrap(), Visibility::Hidden);
+        assert_eq!(
+            *world.get::<Transform>(spent).unwrap(),
+            parked,
+            "a spent ring is not rescaled"
+        );
+        assert_eq!(
+            *world.get::<Visibility>(live).unwrap(),
+            Visibility::Inherited
+        );
+        assert_ne!(
+            *world.get::<Transform>(live).unwrap(),
+            parked,
+            "a live ring spreads"
+        );
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod sustain_look_tests {
+    use super::*;
+
+    /// Tails spawned from an unchanged lane colour share one material;
+    /// a Hype tint in between gives the next tail a new snapshot and
+    /// leaves the earlier tails' material as it was.
+    #[test]
+    fn tails_share_a_snapshot_until_the_lane_colour_moves() {
+        let mut materials = Assets::<StandardMaterial>::default();
+        let lane = materials.add(StandardMaterial {
+            base_color: Color::srgb(0.1, 0.8, 0.2),
+            emissive: LinearRgba::rgb(0.2, 1.0, 0.3),
+            ..default()
+        });
+        let mut looks = SustainLooks::default();
+        let first = looks.tail(&mut materials, 0, &lane);
+        assert_ne!(first, lane, "never the lane's own material");
+        assert_eq!(looks.tail(&mut materials, 0, &lane), first);
+
+        materials.get_mut(&lane).unwrap().emissive = LinearRgba::rgb(2.0, 2.0, 0.5);
+        let tinted = looks.tail(&mut materials, 0, &lane);
+        assert_ne!(tinted, first);
+        assert_eq!(
+            materials.get(&tinted).unwrap().emissive,
+            LinearRgba::rgb(2.0, 2.0, 0.5)
+        );
+        assert_eq!(
+            materials.get(&first).unwrap().emissive,
+            LinearRgba::rgb(0.2, 1.0, 0.3),
+            "a tail keeps the colour it was spawned with"
+        );
+
+        let other_lane = looks.tail(&mut materials, 1, &lane);
+        assert_ne!(other_lane, tinted, "each lane keeps its own snapshot");
+    }
+
+    #[test]
+    fn cores_share_one_material_per_lane_colour() {
+        let mut materials = Assets::<StandardMaterial>::default();
+        let mut looks = SustainLooks::default();
+        let pale = Color::srgb(0.9, 0.95, 0.9);
+        let a = looks.core(&mut materials, 2, pale);
+        assert_eq!(looks.core(&mut materials, 2, pale), a);
+        assert_eq!(materials.get(&a).unwrap().emissive, pale.to_linear() * 1.6);
+        assert_ne!(looks.core(&mut materials, 2, Color::WHITE), a);
     }
 }

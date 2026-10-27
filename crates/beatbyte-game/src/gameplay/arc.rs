@@ -257,11 +257,14 @@ pub fn crackle_arcs(
             && intensity > 0.0
             && phase.glow > 0.0
             && (seg.segment as f32) < phase.reach * SEGMENTS as f32;
-        *visibility = if live {
+        // Guarded: eighty segments a player, and an unconditional
+        // write marked every one changed for visibility propagation
+        // each frame, Hype or not.
+        visibility.set_if_neq(if live {
             Visibility::Inherited
         } else {
             Visibility::Hidden
-        };
+        });
         if !live {
             continue;
         }

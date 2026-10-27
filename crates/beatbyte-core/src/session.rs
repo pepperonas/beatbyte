@@ -530,10 +530,12 @@ impl TrackSession {
             .iter()
             .enumerate()
             .skip(self.scan_from)
-            .find(|(index, state)| {
-                matches!(state, NoteState::Pending)
-                    && self.track.events()[*index].time_s <= through_s
-            })
+            // Events are time-sorted: nothing past `through_s` can be
+            // taken, so stop there instead of scanning the rest of the
+            // song. Once a Hype has run, its grace end stays in the
+            // past and this ran on every advance until the song ended.
+            .take_while(|(index, _)| self.track.events()[*index].time_s <= through_s)
+            .find(|(_, state)| matches!(state, NoteState::Pending))
             .map(|(index, _)| index)
         {
             let note_time = self.track.events()[index].time_s;

@@ -65,6 +65,15 @@ normal scenario. Raw results: `mbp2015:~/bench/w-*.json`.
 | probe `blend` (no blended or additive meshes) | 26 | 33 |
 | **probe `gpupre` (CPU-built instance buffers)** | **12** | **18** |
 | probe `nostage` (lower bound: HUD only) | 8 | 14 |
+| 0.19.6 build, live governor (later series) | 15–16 | 29–33 |
+| the same build, GPU preprocessing forced on | 22 | 36 |
+| 0.19.6 build with vsync | 16.6 (60 fps) | 24 |
+
+The later series ran the shipped build after two hours of benching;
+it is 3–4 ms slower than the `gpupre` probe was, which ran at full
+scale on the 0.19.5 binary. The controlled comparison is the pair
+above it, same binary, same session: 22 → 15–16 ms. Whether the rest
+is heat or the build, the next series alternates the two.
 
 The 30–40 ms floor was **Bevy's GPU mesh preprocessing** on the Radeon:
 a fixed ~14 ms a frame, independent of pixels and of what is on the

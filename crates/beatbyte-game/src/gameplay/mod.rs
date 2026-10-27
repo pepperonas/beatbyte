@@ -874,11 +874,14 @@ fn taste_transition(
     };
     let all_finished =
         !players.is_empty() && players.iter().all(|(_, player)| player.session.finished());
+    if !all_finished {
+        return;
+    }
     let content_end = players
         .iter()
         .map(|(_, player)| player.session.track().content_end_s())
         .fold(0.0, f64::max);
-    if !(all_finished && now > content_end + 1.0) {
+    if now <= content_end + 1.0 {
         return;
     }
     let Some(index) = taste.advance() else {
@@ -962,11 +965,14 @@ fn mc_transition(
     };
     let all_finished =
         !players.is_empty() && players.iter().all(|(_, player)| player.session.finished());
+    if !all_finished {
+        return;
+    }
     let content_end = players
         .iter()
         .map(|(_, player)| player.session.track().content_end_s())
         .fold(0.0, f64::max);
-    if !(all_finished && now > content_end + 1.5) {
+    if now <= content_end + 1.5 {
         return;
     }
     let Some(next) = mc.advance() else {
@@ -1073,14 +1079,17 @@ fn playtest_watch(
         *first_seen = None;
     }
     let began = *first_seen.get_or_insert(now);
-    let content_end = players
-        .iter()
-        .map(|player| player.session.track().content_end_s())
-        .fold(0.0, f64::max);
     let done = !players.is_empty() && players.iter().all(|p| p.session.finished());
     let failed = players.iter().any(|p| p.session.performance().failed());
     let past_end = playtest.end_s.is_some_and(|end| now > end + 1.0);
-    if failed || past_end || (done && now > content_end + 1.0) {
+    let past_content_end = || {
+        let content_end = players
+            .iter()
+            .map(|player| player.session.track().content_end_s())
+            .fold(0.0, f64::max);
+        now > content_end + 1.0
+    };
+    if failed || past_end || (done && past_content_end()) {
         let mut report = playtest_report(&players);
         report.recorded = store_run.recording();
         report.began_s = began;
@@ -1127,11 +1136,16 @@ fn check_song_end(
     };
     let all_finished =
         !players.is_empty() && players.iter().all(|(_, player)| player.session.finished());
+    // The end is a fold over every note of the track: ask for it only
+    // once every player is done, not each frame of the whole song.
+    if !all_finished {
+        return;
+    }
     let content_end = players
         .iter()
         .map(|(_, player)| player.session.track().content_end_s())
         .fold(0.0, f64::max);
-    if all_finished && now > content_end + 1.5 {
+    if now > content_end + 1.5 {
         let mut results: Vec<PlayerResult> = players
             .iter()
             .map(|(index, player)| PlayerResult {

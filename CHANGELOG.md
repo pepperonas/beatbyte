@@ -14,6 +14,40 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.19.7] - 2026-10-27
+
+### Fixed
+
+- **The render scale no longer crashes the game stepping back to full
+  scale.** Bevy measures a camera's target again only on a window or
+  image event, a new camera or a changed projection — not on a changed
+  target. Going from a scaled image back to the window left the old
+  size in place for a frame, the depth buffer no longer matched, and
+  the app quit with a graphics validation error (seen on the 2015,
+  85 % → 100 %). A change of target now marks the projection changed.
+
+### Performance
+
+- **Less work every frame, the picture unchanged.**
+  - Beat lookups (crowd, lights, band, scoring) walked the whole beat
+    grid from the start of the song on every call — a thousand steps
+    late in a track, several times a frame. They are now a binary
+    search over precomputed totals, bit-identical to the walk.
+  - After the first Hype, every frame scanned all remaining notes of
+    the song; the scan now stops at the first note it cannot take.
+    The song's end is worked out once everyone has finished, not each
+    frame.
+  - Bar lines out of view, flames at rest and spent hit rings are no
+    longer moved or drawn each frame.
+  - Sustain tails share their mesh and material until the whammy bends
+    them or the hold starts, instead of each creating two of each;
+    the neck's dividers, strings and collars share one material per
+    kind.
+  - The song clock, lyrics, vocal readouts, the import overlay, the HUD
+    meters and the camera shake write only what changed — every
+    rewrite of a text made Bevy lay it out again, and a song without
+    lyrics cleared its empty preview line every frame.
+
 ## [0.19.6] - 2026-10-27
 
 ### Performance
@@ -22,9 +56,11 @@ the manifest ever carries a version this file does not describe.
   mesh instance buffers on the GPU by default; on the 2015 MacBook
   Pro's Radeon R9 M370X that step alone cost a fixed 14 ms a frame —
   the floor no resolution or stage part explained. Intel Macs now
-  build them on the CPU: windowed, the median frame went from 26 to
-  12 ms and the 99th percentile from 33 to 18 ms. Apple silicon and
-  other platforms are unchanged. `BEATBYTE_GPU_PREPROCESSING=on|off`
+  build them on the CPU. Windowed and uncapped, the build itself ran
+  at a median of 15–16 ms a frame against 22 ms with the GPU path
+  forced back on (the installed 0.19.0 ran at 45–50 ms); with vsync
+  it holds 60 fps at the median, its 99th percentile at 24 ms. Apple
+  silicon and other platforms are unchanged. `BEATBYTE_GPU_PREPROCESSING=on|off`
   overrides the choice for a measurement.
 
 ### Fixed

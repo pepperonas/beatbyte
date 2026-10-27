@@ -818,8 +818,12 @@ fn apply_shake(
         return;
     };
     if !settings.screen_shake || shake.trauma <= 0.0 {
-        transform.translation.x = 0.0;
-        transform.translation.y = 0.0;
+        // At rest the camera is already home: writing zero anyway
+        // marked the camera moved every frame.
+        if transform.translation.x != 0.0 || transform.translation.y != 0.0 {
+            transform.translation.x = 0.0;
+            transform.translation.y = 0.0;
+        }
         return;
     }
     shake.trauma = (shake.trauma - time.delta_secs() * 1.6).max(0.0);

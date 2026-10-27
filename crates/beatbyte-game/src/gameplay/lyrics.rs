@@ -306,6 +306,11 @@ pub struct LyricDisplay {
     size_step: u8,
     /// When the current line's glyphs appeared (for the entry ease).
     entered_at: f32,
+    /// The preview line last folded for the monospace face, by line
+    /// index, and the active line's folded length: folding is an
+    /// allocation per call, and both were folded every frame.
+    preview_memo: Option<(usize, String)>,
+    active_memo: Option<(usize, usize)>,
 }
 
 /// Marker for everything the lyric display owns.
@@ -507,6 +512,12 @@ pub fn update_lyrics(
     // A song swap (MC set, the taste test's second side) or a disabled
     // setting clears the board.
     let mut cleared = false;
+    if song.is_changed() {
+        // The memos are keyed by line index: another song, or new
+        // lyrics for this one, has other lines under the same numbers.
+        display.preview_memo = None;
+        display.active_memo = None;
+    }
     if song.is_changed() || lyrics.is_none() {
         if display.line.is_some() || lyrics.is_none() {
             clear_glyphs(&mut commands, &glyphs);
@@ -551,32 +562,55 @@ pub fn update_lyrics(
     }
 
     // The preview: the next line, dimmed, below the active one.
-    let wanted_preview = cue
-        .upcoming
-        .and_then(|index| lyrics.lines.get(index))
-        // Only tease a line that is actually near (a preview half a
-        // song early reads as a stuck display).
-        .filter(|line| line.start - position < 14.0)
-        .map(|line| font.mono_safe(&line.text))
-        .unwrap_or_default();
+    let near = cue.upcoming.filter(|&index| {
+        lyrics
+            .lines
+            .get(index)
+            // Only tease a line that is actually near (a preview
+            // half a song early reads as a stuck display).
+            .is_some_and(|line| line.start - position < 14.0)
+    });
+    if near.is_some()
+        && display.preview_memo.as_ref().map(|(i, _)| *i) != near
+        && let Some(index) = near
+    {
+        display.preview_memo = Some((index, font.mono_safe(&lyrics.lines[index].text)));
+    }
+    let wanted_preview: &str = match (near, &display.preview_memo) {
+        (Some(index), Some((memo, text))) if *memo == index => text,
+        _ => "",
+    };
     let size = size_for(settings.lyrics_size);
     let preview_y = LYRIC_Y - size * 1.15 - 12.0;
     if let Ok((mut text, mut transform, mut visibility)) = preview.single_mut() {
         if text.0 != wanted_preview {
-            text.0.clone_from(&wanted_preview);
+            text.0.clear();
+            text.0.push_str(wanted_preview);
         }
-        transform.translation.y = preview_y;
-        *visibility = if wanted_preview.is_empty() {
+        if transform.translation.y != preview_y {
+            transform.translation.y = preview_y;
+        }
+        visibility.set_if_neq(if wanted_preview.is_empty() {
             Visibility::Hidden
         } else {
             Visibility::Inherited
-        };
+        });
     }
+    let preview_chars = wanted_preview.chars().count();
 
     // The scrim sizes to whatever is on show.
     let active_line = cue.active.and_then(|index| lyrics.lines.get(index));
-    let active_chars = active_line.map_or(0, |line| font.mono_safe(&line.text).chars().count());
-    let preview_chars = wanted_preview.chars().count();
+    let active_chars = match (cue.active, active_line) {
+        (Some(index), Some(line)) => match display.active_memo {
+            Some((memo, chars)) if memo == index => chars,
+            _ => {
+                let chars = font.mono_safe(&line.text).chars().count();
+                display.active_memo = Some((index, chars));
+                chars
+            }
+        },
+        _ => 0,
+    };
     let em = font.glyph_em();
     let content_w = (active_chars as f32 * glyph_advance(size * em, active_chars))
         .max(preview_chars as f32 * size * PREVIEW_SCALE * em);
@@ -587,10 +621,13 @@ pub fn update_lyrics(
             } else {
                 size * 1.7
             };
-            sprite.custom_size = Some(Vec2::new(content_w + 48.0, height));
-            *visibility = Visibility::Inherited;
+            let wanted = Some(Vec2::new(content_w + 48.0, height));
+            if sprite.custom_size != wanted {
+                sprite.custom_size = wanted;
+            }
+            visibility.set_if_neq(Visibility::Inherited);
         } else {
-            *visibility = Visibility::Hidden;
+            visibility.set_if_neq(Visibility::Hidden);
         }
     }
 
@@ -608,11 +645,17 @@ pub fn update_lyrics(
             _ => 0.0,
         };
         if box_size == Vec2::ZERO || !settings.lyrics || grow <= 0.0 {
-            *visibility = Visibility::Hidden;
+            visibility.set_if_neq(Visibility::Hidden);
         } else {
-            sprite.custom_size = Some(Vec2::new(box_size.x * grow, box_size.y));
-            transform.translation.y = LYRIC_Y + size * 0.55;
-            *visibility = Visibility::Inherited;
+            let wanted = Some(Vec2::new(box_size.x * grow, box_size.y));
+            if sprite.custom_size != wanted {
+                sprite.custom_size = wanted;
+            }
+            let y = LYRIC_Y + size * 0.55;
+            if transform.translation.y != y {
+                transform.translation.y = y;
+            }
+            visibility.set_if_neq(Visibility::Inherited);
         }
     }
 
@@ -640,16 +683,24 @@ pub fn update_lyrics(
     });
     for (pulse, mut sprite, mut transform, mut visibility) in &mut pulses {
         match countdown {
-            None => *visibility = Visibility::Hidden,
+            None => {
+                visibility.set_if_neq(Visibility::Hidden);
+            }
             Some(lit) => {
-                sprite.color = if pulse.0 < lit {
+                let colour = if pulse.0 < lit {
                     palette::BRAND
                 } else {
                     palette::dimmed(palette::TEXT, 0.3)
                 };
+                if sprite.color != colour {
+                    sprite.color = colour;
+                }
                 // Above the row, clear of the band, whatever the size.
-                transform.translation.y = pulse_y(size);
-                *visibility = Visibility::Inherited;
+                let y = pulse_y(size);
+                if transform.translation.y != y {
+                    transform.translation.y = y;
+                }
+                visibility.set_if_neq(Visibility::Inherited);
             }
         }
     }
@@ -678,10 +729,14 @@ pub fn update_lyrics(
             }
             None => line_timed_tone(cue.phase, position < line.start),
         };
-        color.0 = base.with_alpha(base.alpha() * fade * enter);
+        color.set_if_neq(TextColor(base.with_alpha(base.alpha() * fade * enter)));
         // The entry ease: the line rises the last few pixels into
-        // place. Motion-gated via `enter` staying 1.0.
-        transform.translation.y = glyph.home.y - 8.0 * (1.0 - enter);
+        // place. Motion-gated via `enter` staying 1.0. Once it has
+        // landed the position no longer moves, and is not rewritten.
+        let y = glyph.home.y - 8.0 * (1.0 - enter);
+        if transform.translation.y != y {
+            transform.translation.y = y;
+        }
     }
 }
 
@@ -857,18 +912,23 @@ fn hide_chrome(
     highlight: &mut HighlightQuery,
     pulses: &mut PulseQuery,
 ) {
+    // Runs every frame of a song without lyrics: each write is guarded,
+    // or clearing an empty text marked it changed and Bevy laid it out
+    // again sixty times a second.
     if let Ok((mut text, _, mut visibility)) = preview.single_mut() {
-        text.0.clear();
-        *visibility = Visibility::Hidden;
+        if !text.0.is_empty() {
+            text.0.clear();
+        }
+        visibility.set_if_neq(Visibility::Hidden);
     }
     if let Ok((_, mut visibility)) = scrim.single_mut() {
-        *visibility = Visibility::Hidden;
+        visibility.set_if_neq(Visibility::Hidden);
     }
     if let Ok((_, _, mut visibility)) = highlight.single_mut() {
-        *visibility = Visibility::Hidden;
+        visibility.set_if_neq(Visibility::Hidden);
     }
     for (_, _, _, mut visibility) in pulses.iter_mut() {
-        *visibility = Visibility::Hidden;
+        visibility.set_if_neq(Visibility::Hidden);
     }
 }
 
@@ -1306,5 +1366,49 @@ mod tests {
             }
         }
         assert_ne!(glyph_tone(true), glyph_tone(false), "the step is a step");
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod quiet_tests {
+    use super::*;
+
+    /// A song without lyrics leaves the preview text alone frame after
+    /// frame: clearing an empty text still marked it changed, and Bevy
+    /// laid it out again every frame of the song.
+    #[test]
+    fn a_song_without_lyrics_does_not_touch_the_preview_each_frame() {
+        let mut app = App::new();
+        let mut song = crate::gameplay::hud::tests_support::song();
+        song.lyrics = None;
+        app.init_resource::<Time>()
+            .init_resource::<Settings>()
+            .init_resource::<GameClock>()
+            .init_resource::<LyricDisplay>()
+            .insert_resource(song)
+            .insert_resource(UiFont::from_handle(Handle::default()))
+            .add_systems(Update, update_lyrics);
+        let preview = app
+            .world_mut()
+            .spawn((
+                LyricPreview,
+                Text2d::default(),
+                Transform::default(),
+                Visibility::Hidden,
+            ))
+            .id();
+        let touched = |app: &App| {
+            app.world()
+                .entity(preview)
+                .get_ref::<Text2d>()
+                .unwrap()
+                .last_changed()
+        };
+        app.update();
+        let first = touched(&app);
+        app.update();
+        app.update();
+        assert_eq!(touched(&app), first);
     }
 }

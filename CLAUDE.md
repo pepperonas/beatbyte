@@ -1214,7 +1214,8 @@ Local packaging:
   measuring run on another machine actually refuses a locked screen.
 - **The 2015's "floor" was Bevy's GPU mesh preprocessing**, not pixels,
   lights, HDR or the stage: ~14 ms a frame on the Radeon R9 M370X,
-  measured with the `gpupre` probe (median 26 → 12 ms). Intel Macs build
+  measured with the `gpupre` probe (median 26 → 12 ms; the shipped build, same
+  session: 22 → 15–16 ms against GPU preprocessing forced on). Intel Macs build
   instance buffers on the CPU since 0.19.6 (`bench::gpu_preprocessing`).
   When an old GPU has a fixed cost no scene change moves, probe the
   engine's compute passes before the content.
@@ -1224,6 +1225,13 @@ Local packaging:
   scale did this the moment its governor stepped — the bench's pinned
   steps never step, so only a live run found it. Give a new size a new
   image.
+- **Changing a camera's `RenderTarget` does not make Bevy 0.19 measure
+  it again.** `camera_system` recomputes the target size on a window or
+  image event, a new camera or a changed projection — nothing else. A
+  freshly added image fires its own asset event, so image → image
+  worked; image → window kept the image's size for a frame, the depth
+  texture came out 544×306 for a 640×360 window, and the app quit. Mark
+  the `Projection` changed with every retarget (`render_scale::retarget`).
 - **The Iris Pro in the 2015 cannot run this renderer** (Metal
   GPUFamily macOS 1: its compiler fails wgpu's and Bevy's compute
   pipelines, device lost at start). Bevy takes the AMD by default;

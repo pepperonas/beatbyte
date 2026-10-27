@@ -1286,35 +1286,49 @@ pub fn update_huds(
                 if text.0 != line {
                     text.0 = line;
                 }
-                color.0 = if hype {
+                color.set_if_neq(TextColor(if hype {
                     palette::HYPE
                 } else if perf.multiplier() >= 4 {
                     palette::BRAND
                 } else {
                     palette::TEXT
-                };
+                }));
             }
         }
         for (fill, mut transform) in &mut fills {
             if fill.0 == index.0 {
-                transform.scale.x = perf.hype_meter() as f32;
                 // A completed phrase thickens the bar for a moment:
                 // the multiplayer highways have no crown to pop.
-                transform.scale.y = step_pop(steps.age(index.0), reduced);
+                let scale = Vec3::new(
+                    perf.hype_meter() as f32,
+                    step_pop(steps.age(index.0), reduced),
+                    transform.scale.z,
+                );
+                if transform.scale != scale {
+                    transform.scale = scale;
+                }
             }
         }
         for (fill, mut transform, mut sprite) in &mut meters {
             if fill.0 == index.0 {
                 let meter = perf.meter() as f32;
-                transform.scale.x = meter;
-                sprite.color = zone_color(meter_zone(meter));
+                if transform.scale.x != meter {
+                    transform.scale.x = meter;
+                }
+                let colour = zone_color(meter_zone(meter));
+                if sprite.color != colour {
+                    sprite.color = colour;
+                }
             }
         }
         // The solo dial's needle sweeps with the ROCK meter; the tube
         // beside it fills with Hype.
         if index.0 == 0 {
+            let rotation = Quat::from_rotation_z(gauge_angle(perf.meter() as f32));
             for mut transform in &mut needles {
-                transform.rotation = Quat::from_rotation_z(gauge_angle(perf.meter() as f32));
+                if transform.rotation != rotation {
+                    transform.rotation = rotation;
+                }
             }
             // The tube's own animator owns the column now (it eases,
             // and carries the meniscus and the shimmer with it).
@@ -1334,7 +1348,7 @@ pub fn update_huds(
                 pulse.seen = perf.score();
                 pulse.age = 0.0;
             }
-            let digits = perf.score().to_string().len();
+            let digits = perf.score().checked_ilog10().map_or(1, |d| d as usize + 1);
             let wanted = "0".repeat(SCORE_DIGITS.saturating_sub(digits));
             if pad.0 != wanted {
                 pad.0 = wanted;
@@ -1363,7 +1377,7 @@ pub fn update_huds(
         for (bead, rim, mut sprite) in &mut beads {
             let lit = bead.0 < toward_next;
             let next = bead.0 == toward_next && toward_next < STREAK_BEADS;
-            sprite.color = match (lit, rim) {
+            let colour = match (lit, rim) {
                 // The ring rim takes the lit color; a filled dot in
                 // a lit ring reads as a lamp, crisply, without any
                 // additive halo (they smeared at this pitch).
@@ -1375,17 +1389,23 @@ pub fn update_huds(
                 (false, false) if next => palette::dimmed(lit_color, 0.35),
                 (false, false) => palette::dimmed(palette::TEXT_DIM, 0.25),
             };
+            if sprite.color != colour {
+                sprite.color = colour;
+            }
         }
 
         let meter = perf.hype_meter() as f32;
         if let Ok(mut sprite) = boxes.single_mut() {
-            sprite.color = if perf.hype_active() {
+            let colour = if perf.hype_active() {
                 palette::HYPE
             } else if perf.multiplier() >= 4 {
                 palette::BRAND
             } else {
                 palette::dimmed(palette::TEXT_DIM, 0.5)
             };
+            if sprite.color != colour {
+                sprite.color = colour;
+            }
         }
 
         if let Ok(mut text) = texts.p4().single_mut() {
@@ -1859,6 +1879,7 @@ pub fn update_song_ribbon(
     mut title: Query<&mut Text2d, (With<SongTitleText>, Without<SongTimeText>)>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     cameras: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
+    mut seen: Local<RibbonSeen>,
 ) {
     // The ribbon says which song, who made it and how hard it is. The
     // difficulty was asked for in the debug overlay and put there
@@ -1874,35 +1895,49 @@ pub fn update_song_ribbon(
         .iter()
         .find(|(index, _)| index.0 == 0)
         .map(|(_, player)| player.session.track().difficulty);
-    let wanted = ribbon_title(
-        &font.safe(&song.chart.song.title),
-        &font.safe(&song.chart.song.artist),
-        difficulty,
-    );
-    // Composed every frame and written only on a change: an MC-set
-    // swap replaces the song resource mid-gameplay, and the
-    // difficulty can travel with it.
+    // Composed again only when the song or the difficulty changes —
+    // an MC-set swap replaces the song resource mid-gameplay, and the
+    // difficulty can travel with it — and written only on a change.
+    // A freshly spawned ribbon counts as new too: `seen` outlives the
+    // screen, and the same song played again leaves the resource as
+    // it was.
+    let new_song = song.is_changed() || seen.duration.is_none();
     if let Ok(mut text) = title.single_mut()
-        && text.0 != wanted
+        && (new_song || text.is_added() || seen.difficulty != Some(difficulty))
     {
-        text.0 = wanted;
+        seen.difficulty = Some(difficulty);
+        let wanted = ribbon_title(
+            &font.safe(&song.chart.song.title),
+            &font.safe(&song.chart.song.artist),
+            difficulty,
+        );
+        if text.0 != wanted {
+            text.0 = wanted;
+        }
     }
+    // A chart need not declare a duration; the last note is then the
+    // best available end, and it is the end that matters to a player.
+    // Worked out once per song: it is a fold over every note of every
+    // difficulty, and it ran each frame.
+    if new_song {
+        seen.duration = Some(song.chart.song.duration_s.unwrap_or_else(|| {
+            song.chart
+                .charts
+                .iter()
+                .flat_map(|chart| chart.notes.iter())
+                .map(|note| note.time + note.len)
+                .fold(0.0, f64::max)
+        }));
+    }
+    let duration = seen.duration.unwrap_or(0.0);
     let Some(now) = game_clock.song_time(&time) else {
         return;
     };
-    // A chart need not declare a duration; the last note is then the
-    // best available end, and it is the end that matters to a player.
-    let duration = song.chart.song.duration_s.unwrap_or_else(|| {
-        song.chart
-            .charts
-            .iter()
-            .flat_map(|chart| chart.notes.iter())
-            .map(|note| note.time + note.len)
-            .fold(0.0, f64::max)
-    });
     let progress = song_progress(now, duration);
     for mut transform in &mut fill {
-        transform.scale.x = progress;
+        if transform.scale.x != progress {
+            transform.scale.x = progress;
+        }
     }
     let hovered = (|| {
         let window = windows.iter().next()?;
@@ -1913,19 +1948,42 @@ pub fn update_song_ribbon(
     })()
     .unwrap_or(false);
 
+    let (scale, colour) = if hovered {
+        (Vec3::splat(1.4), palette::HYPE)
+    } else {
+        (Vec3::splat(1.0), palette::TEXT)
+    };
     for (mut transform, mut sprite) in &mut head {
-        transform.translation.x = progress_head_x(progress);
-        if hovered {
-            transform.scale = Vec3::splat(1.4);
-            sprite.color = palette::HYPE;
-        } else {
-            transform.scale = Vec3::splat(1.0);
-            sprite.color = palette::TEXT;
+        let x = progress_head_x(progress);
+        if transform.translation.x != x || transform.scale != scale {
+            transform.translation.x = x;
+            transform.scale = scale;
+        }
+        if sprite.color != colour {
+            sprite.color = colour;
         }
     }
+    // The clock changes once a second, and every write of a `Text2d`
+    // makes Bevy lay the text out again: written only when the shown
+    // seconds move.
+    let shown = (
+        now.max(0.0).floor() as u64,
+        duration.max(0.0).floor() as u64,
+    );
     for mut text in &mut label {
-        text.0 = format!("{} / {}", clock_text(now), clock_text(duration));
+        if new_song || text.is_added() || seen.clock != Some(shown) {
+            text.0 = format!("{} / {}", clock_text(now), clock_text(duration));
+        }
     }
+    seen.clock = Some(shown);
+}
+
+/// What the song ribbon last showed, so it writes only on a change.
+#[derive(Default)]
+pub struct RibbonSeen {
+    difficulty: Option<Option<beatbyte_core::Difficulty>>,
+    duration: Option<f64>,
+    clock: Option<(u64, u64)>,
 }
 
 #[cfg(test)]
@@ -2508,5 +2566,106 @@ mod gauge_tests {
         assert!((timeline_target_time(-RIBBON_W / 2.0, 200.0) - 0.0).abs() < 1e-6);
         assert!((timeline_target_time(0.0, 200.0) - 100.0).abs() < 1e-6);
         assert!((timeline_target_time(RIBBON_W / 2.0, 200.0) - 200.0).abs() < 1e-6);
+    }
+}
+
+/// A small song for wired tests of the gameplay screen.
+#[cfg(test)]
+pub(crate) mod tests_support {
+    use beatbyte_chart::schema::{ChartDef, ChartFile, ChartNote, SongMeta};
+    use beatbyte_core::Difficulty;
+
+    /// "Maria", one note at 200 s held for 4 s, no declared duration.
+    pub(crate) fn song() -> crate::boot::LoadedSong {
+        crate::boot::LoadedSong {
+            chart: ChartFile {
+                format_version: 1,
+                song: SongMeta {
+                    title: "Maria".to_owned(),
+                    artist: "Blondie".to_owned(),
+                    audio: "maria.mp3".to_owned(),
+                    bpm: 120.0,
+                    offset_s: 0.0,
+                    preview_start_s: None,
+                    duration_s: None,
+                    genre: None,
+                },
+                charts: vec![ChartDef {
+                    difficulty: Difficulty::Medium,
+                    lanes: 5,
+                    notes: vec![ChartNote {
+                        time: 200.0,
+                        lane: 0,
+                        len: 4.0,
+                        hopo: false,
+                    }],
+                    phrases: Vec::new(),
+                }],
+                provenance: None,
+                audio_trim: None,
+                grid: None,
+                rules: None,
+            },
+            audio: crate::boot::SongAudio::File(std::path::PathBuf::from("maria.mp3")),
+            lyrics: None,
+            vocals: None,
+            lyric_offset_ms: 0,
+            song_id: None,
+        }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod ribbon_clock_tests {
+    use super::tests_support::song;
+    use super::*;
+
+    /// The clock is written when the shown seconds move and left alone
+    /// in between — every write lays the text out again.
+    #[test]
+    fn the_clock_is_written_only_when_its_seconds_move() {
+        let mut app = App::new();
+        let mut clock = super::super::GameClock::default();
+        clock.begin(0.0, 10.2);
+        app.init_resource::<Time>()
+            .insert_resource(clock)
+            .insert_resource(song())
+            .insert_resource(crate::ui::UiFont::from_handle(Handle::default()))
+            .add_systems(Update, update_song_ribbon);
+        let label = app
+            .world_mut()
+            .spawn((SongTimeText, Text2d::new("0:00")))
+            .id();
+        let text = |app: &App| app.world().get::<Text2d>(label).unwrap().0.clone();
+        let touched = |app: &App| {
+            app.world()
+                .entity(label)
+                .get_ref::<Text2d>()
+                .unwrap()
+                .last_changed()
+        };
+
+        app.update();
+        assert_eq!(
+            text(&app),
+            "0:10 / 3:24",
+            "the end is the last note's end when none is declared"
+        );
+        let first = touched(&app);
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_millis(300));
+        app.update();
+        assert_eq!(
+            touched(&app),
+            first,
+            "10.2 s and 10.5 s show the same clock"
+        );
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_millis(600));
+        app.update();
+        assert_eq!(text(&app), "0:11 / 3:24");
     }
 }

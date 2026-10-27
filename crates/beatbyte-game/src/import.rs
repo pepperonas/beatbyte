@@ -626,11 +626,14 @@ fn update_import_panel(
         chore.showing(),
         library_move.panel_showing(),
     );
+    // Runs in every state, every frame: each write below is guarded,
+    // or the hidden panel was marked changed sixty times a second and
+    // a visible one relaid its UI tree each frame.
     let Some(source) = source else {
-        *visibility = Visibility::Hidden;
+        visibility.set_if_neq(Visibility::Hidden);
         return;
     };
-    *visibility = Visibility::Visible;
+    visibility.set_if_neq(Visibility::Visible);
     let importing = source == PanelSource::Import;
 
     // A step forward flashes the fill, whichever kind of step it was.
@@ -684,7 +687,7 @@ fn update_import_panel(
         } else {
             0.8
         };
-        *border = BorderColor::all(crate::palette::BRAND.with_alpha(alpha));
+        border.set_if_neq(BorderColor::all(crate::palette::BRAND.with_alpha(alpha)));
     }
 
     if let Ok((mut node, mut color)) = fills.single_mut() {
@@ -709,11 +712,14 @@ fn update_import_panel(
         };
         // Ease toward the target; snap when close.
         let eased = current + (target - current) * (time.delta_secs() * 8.0).min(1.0);
-        node.width = percent(if (eased - target).abs() < 0.5 {
+        let width = percent(if (eased - target).abs() < 0.5 {
             target
         } else {
             eased
         });
+        if node.width != width {
+            node.width = width;
+        }
         // A search that came home empty says so in the bar's colour;
         // an import keeps the one it has always had.
         let failed = match source {
@@ -727,7 +733,7 @@ fn update_import_panel(
         } else {
             crate::palette::BRAND
         };
-        color.0 = base.mix(&Color::WHITE, *flash * 0.7);
+        color.set_if_neq(BackgroundColor(base.mix(&Color::WHITE, *flash * 0.7)));
     }
 }
 

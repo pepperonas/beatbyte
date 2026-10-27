@@ -824,18 +824,26 @@ fn draw(
         *visibility = Visibility::Inherited;
     }
 
+    // Texts are written only when they change: every write of a text
+    // makes Bevy lay it out again, and both were written every frame.
     if let Ok(mut text) = readout.single_mut() {
-        text.0 = readout_line(&run, drawn_now, &config);
+        let wanted = readout_line(&run, drawn_now, &config);
+        if text.0 != wanted {
+            text.0 = wanted;
+        }
     }
     if let Ok((mut text, mut colour)) = banner.single_mut() {
         match run.banner {
             Some((outcome, _)) => {
-                text.0 = format!(
+                let wanted = format!(
                     "{}  x{}  {}",
                     outcome.grade.label(),
                     outcome.multiplier,
                     outcome.points
                 );
+                if text.0 != wanted {
+                    text.0 = wanted;
+                }
                 // Reduced Flashing keeps the verdict and drops the
                 // swell: the words are the information, the flash was
                 // only ever the celebration.
@@ -845,15 +853,21 @@ fn draw(
                 } else {
                     1.0
                 };
-                colour.0 = (match outcome.grade {
-                    VocalGrade::Perfect => palette::PERFECT,
-                    VocalGrade::Great => palette::GREAT,
-                    VocalGrade::Good => palette::GOOD,
-                    VocalGrade::Weak | VocalGrade::Miss => palette::MISS,
-                })
-                .with_alpha(swell);
+                colour.set_if_neq(TextColor(
+                    (match outcome.grade {
+                        VocalGrade::Perfect => palette::PERFECT,
+                        VocalGrade::Great => palette::GREAT,
+                        VocalGrade::Good => palette::GOOD,
+                        VocalGrade::Weak | VocalGrade::Miss => palette::MISS,
+                    })
+                    .with_alpha(swell),
+                ));
             }
-            None => text.0.clear(),
+            None => {
+                if !text.0.is_empty() {
+                    text.0.clear();
+                }
+            }
         }
     }
 }

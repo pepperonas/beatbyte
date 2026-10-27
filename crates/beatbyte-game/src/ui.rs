@@ -99,10 +99,17 @@ impl UiFont {
     /// folded onto what it can draw: a plain letter beats a box.
     #[must_use]
     pub fn mono_safe(&self, text: &str) -> String {
-        font_safe(text)
-            .chars()
-            .map(|c| fold_latin(c).map_or_else(|| c.to_string(), ToOwned::to_owned))
-            .collect()
+        // One string, pushed into: collecting a `String` per character
+        // allocated once per glyph, and the lyric row asks every frame.
+        let safe = font_safe(text);
+        let mut out = String::with_capacity(safe.len());
+        for c in safe.chars() {
+            match fold_latin(c) {
+                Some(folded) => out.push_str(folded),
+                None => out.push(c),
+            }
+        }
+        out
     }
 
     /// A [`TextFont`] in the engine's monospace face, at the given

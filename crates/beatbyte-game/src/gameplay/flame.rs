@@ -661,6 +661,7 @@ pub fn drive_flames(
         (
             &FlameBody,
             &mut Transform,
+            &mut Visibility,
             &MeshMaterial3d<StandardMaterial>,
         ),
         Without<FlameLight>,
@@ -691,7 +692,7 @@ pub fn drive_flames(
         state.last_hit = hit;
     }
 
-    for (body, mut transform, material) in &mut bodies {
+    for (body, mut transform, mut visibility, material) in &mut bodies {
         let Some((_, state)) = states
             .iter()
             .find(|(b, _)| b.player == body.player && b.lane == body.lane)
@@ -699,6 +700,22 @@ pub fn drive_flames(
             continue;
         };
         let life = state.life;
+        // A flame at rest is fully transparent and scaled to nothing,
+        // yet it was drawn and re-placed every frame: fifteen bodies
+        // and their feet per player. Hidden it costs neither; it is
+        // shown again in the very frame its life rises, before the
+        // writes below, so the ignition frame is not lost.
+        let wanted = if life > 0.0 {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *visibility != wanted {
+            *visibility = wanted;
+        }
+        if life <= 0.0 {
+            continue;
+        }
         let character = state.character;
         let (girth, height) = body_shape_with(body.layer, life, intensity, &character);
         let (flick_h, lean) =
@@ -1148,5 +1165,78 @@ mod tests {
         assert_eq!(ember_count(1.0), EMBERS);
         assert_eq!(ember_count(0.5), 3);
         assert_eq!(ember_count(0.0), 0);
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod rest_tests {
+    use super::*;
+    use crate::gameplay::stage3d::FretHeatEntry;
+    use bevy::ecs::system::RunSystemOnce;
+
+    /// A flame at rest is hidden and left alone; a strike shows it and
+    /// places it in the same frame.
+    #[test]
+    fn a_resting_flame_is_hidden_and_a_strike_shows_it_at_once() {
+        let mut app = App::new();
+        app.init_resource::<Time>()
+            .init_resource::<Assets<StandardMaterial>>()
+            .init_resource::<Settings>()
+            .init_resource::<crate::theme::ActiveTheme>()
+            .init_resource::<FretHeat>()
+            .insert_resource(HighwayLayout::for_players(1));
+        let material = app
+            .world_mut()
+            .resource_mut::<Assets<StandardMaterial>>()
+            .add(StandardMaterial::default());
+        let parked = Transform::from_xyz(9.0, 9.0, 9.0);
+        let flame = app
+            .world_mut()
+            .spawn((
+                FlameBody {
+                    player: 0,
+                    lane: Lane::One,
+                    layer: Layer::Core,
+                    phase: 0.0,
+                },
+                FlameState {
+                    life: 0.0,
+                    last_hit: 0.0,
+                    last_launch: -1.0,
+                    strikes: 0,
+                    character: Character::NEUTRAL,
+                },
+                parked,
+                Visibility::Inherited,
+                MeshMaterial3d(material),
+            ))
+            .id();
+        let world = app.world_mut();
+        world.run_system_once(drive_flames).expect("valid fixture");
+        assert_eq!(*world.get::<Visibility>(flame).unwrap(), Visibility::Hidden);
+        assert_eq!(
+            *world.get::<Transform>(flame).unwrap(),
+            parked,
+            "a resting flame is not moved"
+        );
+
+        world.resource_mut::<FretHeat>().0.push(FretHeatEntry {
+            player: 0,
+            lane: Lane::One,
+            press: 1.0,
+            hit: 1.0,
+            held: false,
+        });
+        world.run_system_once(drive_flames).expect("valid fixture");
+        assert_eq!(
+            *world.get::<Visibility>(flame).unwrap(),
+            Visibility::Inherited
+        );
+        assert_ne!(
+            *world.get::<Transform>(flame).unwrap(),
+            parked,
+            "the ignition frame is drawn"
+        );
     }
 }

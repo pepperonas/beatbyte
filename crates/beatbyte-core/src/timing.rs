@@ -24,11 +24,36 @@ pub struct TempoChange {
 /// Format v1 charts carry a single BPM, but the domain supports a full
 /// tempo map so tempo changes are a file-format addition, not a
 /// gameplay rewrite.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(from = "TempoMapData")]
 pub struct TempoMap {
     /// Tempo changes ordered by time; the first entry's `time_s` is the
     /// musical origin (beat 0), typically the chart offset.
     changes: Vec<TempoChange>,
+    /// `starts[i]` = beats elapsed at `changes[i].time_s`, summed in the
+    /// same order the linear walk sums them, so a lookup through it is
+    /// bit-identical to the walk. Empty when `changes` is not sorted
+    /// (only possible from a deserialized file), which keeps the walk.
+    #[serde(skip)]
+    starts: Vec<f64>,
+}
+
+/// The serialized shape of a [`TempoMap`]: its changes, nothing derived.
+#[derive(Deserialize)]
+struct TempoMapData {
+    changes: Vec<TempoChange>,
+}
+
+impl From<TempoMapData> for TempoMap {
+    fn from(data: TempoMapData) -> TempoMap {
+        TempoMap::indexed(data.changes)
+    }
+}
+
+impl PartialEq for TempoMap {
+    fn eq(&self, other: &TempoMap) -> bool {
+        self.changes == other.changes
+    }
 }
 
 impl TempoMap {
@@ -43,12 +68,30 @@ impl TempoMap {
         } else {
             Self::FALLBACK_BPM
         };
-        TempoMap {
-            changes: vec![TempoChange {
-                time_s: offset_s,
-                bpm,
-            }],
+        TempoMap::indexed(vec![TempoChange {
+            time_s: offset_s,
+            bpm,
+        }])
+    }
+
+    /// Wrap `changes` and precompute the beat count at each change.
+    ///
+    /// A beat grid carries one change per beat, so the walk the lookups
+    /// used to do grew with the song: over a thousand steps late in a
+    /// track, several times a frame.
+    fn indexed(changes: Vec<TempoChange>) -> TempoMap {
+        let sorted = changes.windows(2).all(|w| w[0].time_s <= w[1].time_s);
+        let mut starts = Vec::new();
+        if sorted && !changes.is_empty() {
+            starts.reserve(changes.len());
+            let mut beats = 0.0;
+            starts.push(beats);
+            for pair in changes.windows(2) {
+                beats += (pair[1].time_s - pair[0].time_s) * pair[0].bpm / 60.0;
+                starts.push(beats);
+            }
         }
+        TempoMap { changes, starts }
     }
 
     /// Build from a list of tempo changes. Changes are sorted by time;
@@ -66,12 +109,21 @@ impl TempoMap {
             }
         }
         changes.sort_by(|a, b| a.time_s.total_cmp(&b.time_s));
-        Ok(TempoMap { changes })
+        Ok(TempoMap::indexed(changes))
     }
 
     /// The tempo in effect at the given song time.
     #[must_use]
     pub fn bpm_at(&self, time_s: f64) -> f64 {
+        if !self.starts.is_empty() {
+            let n = self.changes.partition_point(|c| c.time_s <= time_s);
+            return self.changes[n.saturating_sub(1)].bpm;
+        }
+        self.bpm_at_walk(time_s)
+    }
+
+    /// The linear walk [`TempoMap::bpm_at`] indexes away.
+    fn bpm_at_walk(&self, time_s: f64) -> f64 {
         let mut bpm = self.changes[0].bpm;
         for change in &self.changes {
             if change.time_s <= time_s {
@@ -92,6 +144,22 @@ impl TempoMap {
     /// Convert a song time to musical beats (beat 0 = first change).
     #[must_use]
     pub fn beats_at(&self, time_s: f64) -> f64 {
+        if self.starts.is_empty() {
+            return self.beats_at_walk(time_s);
+        }
+        let first = self.changes[0];
+        if time_s < first.time_s {
+            return (time_s - first.time_s) * first.bpm / 60.0;
+        }
+        // The walk stops at the first later change whose time is not
+        // before `time_s`; in a sorted map that is a partition point.
+        let k = self.changes[1..].partition_point(|c| c.time_s < time_s);
+        let prev = self.changes[k];
+        self.starts[k] + (time_s - prev.time_s) * prev.bpm / 60.0
+    }
+
+    /// The linear walk [`TempoMap::beats_at`] indexes away.
+    fn beats_at_walk(&self, time_s: f64) -> f64 {
         let mut beats = 0.0;
         let mut prev = self.changes[0];
         // Time before the musical origin counts backwards at the first tempo.
@@ -405,5 +473,93 @@ mod tests {
         assert!(Judgment::Perfect < Judgment::Great);
         assert!(Judgment::Great < Judgment::Good);
         assert!(Judgment::Good < Judgment::Miss);
+    }
+
+    /// A jittered one-change-per-beat grid, like a chart's beat grid,
+    /// with a duplicated time and a tempo step in it.
+    fn grid() -> Vec<TempoChange> {
+        let mut changes = Vec::new();
+        let mut t = 0.37;
+        for i in 0..600 {
+            let bpm = if i < 300 { 118.0 } else { 141.5 } + (i % 7) as f64 * 0.013;
+            changes.push(TempoChange { time_s: t, bpm });
+            if i == 200 {
+                changes.push(TempoChange {
+                    time_s: t,
+                    bpm: bpm + 1.0,
+                });
+            }
+            t += 60.0 / bpm + ((i * 31) % 11) as f64 * 1e-4;
+        }
+        changes
+    }
+
+    fn probes(map: &TempoMap) -> Vec<f64> {
+        let mut times = vec![-5.0, 0.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 1e9];
+        for c in map.changes() {
+            times.extend([c.time_s, c.time_s - 1e-9, c.time_s + 1e-9, c.time_s + 0.1]);
+        }
+        times
+    }
+
+    #[test]
+    fn indexed_lookups_are_bit_identical_to_the_walk() {
+        for map in [
+            TempoMap::from_changes(grid()).unwrap(),
+            TempoMap::constant(97.0, 2.0),
+        ] {
+            assert!(!map.starts.is_empty());
+            for t in probes(&map) {
+                assert_eq!(
+                    map.beats_at(t).to_bits(),
+                    map.beats_at_walk(t).to_bits(),
+                    "beats_at({t})"
+                );
+                assert_eq!(
+                    map.bpm_at(t).to_bits(),
+                    map.bpm_at_walk(t).to_bits(),
+                    "bpm_at({t})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_deserialized_map_is_indexed_again_and_compares_by_its_changes() {
+        let map = TempoMap::from_changes(grid()).unwrap();
+        let back: TempoMap = serde_json::from_str(&serde_json::to_string(&map).unwrap()).unwrap();
+        // serde_json may move a float by one ULP on load (no
+        // `float_roundtrip`), so the index is checked against the map
+        // that came back, and equality on values that survive the trip.
+        assert_eq!(back.starts.len(), map.changes().len());
+        for t in probes(&back) {
+            assert_eq!(back.beats_at(t).to_bits(), back.beats_at_walk(t).to_bits());
+        }
+        let simple = TempoMap::from_changes(vec![
+            TempoChange {
+                time_s: 0.5,
+                bpm: 120.0,
+            },
+            TempoChange {
+                time_s: 8.5,
+                bpm: 90.0,
+            },
+        ])
+        .unwrap();
+        let back: TempoMap =
+            serde_json::from_str(&serde_json::to_string(&simple).unwrap()).unwrap();
+        assert_eq!(back, simple);
+        assert!(!serde_json::to_string(&map).unwrap().contains("starts"));
+    }
+
+    #[test]
+    fn an_unsorted_file_keeps_the_walk() {
+        let json = r#"{"changes":[{"time_s":4.0,"bpm":90.0},{"time_s":1.0,"bpm":120.0}]}"#;
+        let map: TempoMap = serde_json::from_str(json).unwrap();
+        assert!(map.starts.is_empty());
+        for t in [0.0, 1.0, 2.5, 4.0, 9.0] {
+            assert_eq!(map.beats_at(t).to_bits(), map.beats_at_walk(t).to_bits());
+            assert_eq!(map.bpm_at(t).to_bits(), map.bpm_at_walk(t).to_bits());
+        }
     }
 }

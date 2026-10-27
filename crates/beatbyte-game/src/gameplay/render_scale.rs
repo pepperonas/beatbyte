@@ -281,12 +281,19 @@ fn apply(
     mut scale: ResMut<StageScale>,
     settings: Res<Settings>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    mut stage: Query<&mut RenderTarget, (With<Camera3d>, With<super::stage3d::Stage3d>)>,
+    mut stage: Query<
+        (&mut RenderTarget, &mut Projection),
+        (
+            With<Camera3d>,
+            With<super::stage3d::Stage3d>,
+            Without<Camera2d>,
+        ),
+    >,
     view: Query<&Projection, With<Camera2d>>,
     mut sprites: Query<(Entity, &mut Sprite, &mut Transform), With<StageScaleSprite>>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    let Ok(mut target) = stage.single_mut() else {
+    let Ok((mut target, mut projection)) = stage.single_mut() else {
         return;
     };
     let factor = match (&scale.governor, settings.performance_mode) {
@@ -297,6 +304,7 @@ fn apply(
         // Full scale: straight into the window, exactly as before.
         if !matches!(*target, RenderTarget::Window(_)) {
             *target = RenderTarget::Window(bevy::window::WindowRef::Primary);
+            retarget(&mut projection);
         }
         for (entity, ..) in &sprites {
             commands.entity(entity).despawn();
@@ -336,6 +344,7 @@ fn apply(
     };
     if target.as_image() != Some(&handle) {
         *target = RenderTarget::Image(handle.clone().into());
+        retarget(&mut projection);
         info!("render scale: stage renders into a {w}x{h} image");
     }
     // Cover exactly what the 2D camera shows: the stage filled the
@@ -371,6 +380,22 @@ fn apply(
             RenderLayers::layer(0),
         ));
     }
+}
+
+/// Make the camera measure its target again.
+///
+/// Bevy 0.19's `camera_system` recomputes a camera's target size only
+/// when the window or the image itself reports a change, the camera is
+/// new, or its PROJECTION changed — a changed `RenderTarget` is not on
+/// the list. Switching to a freshly added image happened to work (the
+/// new image's asset event counts), but switching back to the window
+/// left the old image's size in place for a frame: the depth texture
+/// was made at 544×306 for a 640×360 colour target, wgpu raised a
+/// validation error and the app quit (seen on the 2015, stepping from
+/// 85 % back to full scale). Touching the projection is the documented
+/// trigger, and it changes nothing about the projection itself.
+fn retarget(projection: &mut Mut<Projection>) {
+    projection.set_changed();
 }
 
 #[cfg(test)]
@@ -445,6 +470,64 @@ mod tests {
         // The same size again keeps the image it has.
         app.update();
         assert_eq!(app.world().resource::<StageScale>().image, Some(second));
+    }
+
+    /// Every change of target marks the projection changed, so Bevy
+    /// measures the new target before it sizes the depth texture —
+    /// back to the window above all, where nothing else tells it.
+    #[test]
+    fn a_change_of_target_makes_the_camera_measure_again() {
+        let mut app = App::new();
+        app.insert_resource(Assets::<Image>::default())
+            .insert_resource(Settings {
+                performance_mode: true,
+                ..default()
+            })
+            .insert_resource(StageScale {
+                governor: Some(Governor::new(1)),
+                image: None,
+                pinned: false,
+            })
+            .add_systems(Update, apply);
+        let mut window = Window::default();
+        window.resolution.set_physical_resolution(2000, 1000);
+        app.world_mut().spawn((window, PrimaryWindow));
+        let camera = app
+            .world_mut()
+            .spawn((
+                Camera3d::default(),
+                super::super::stage3d::Stage3d,
+                RenderTarget::Window(bevy::window::WindowRef::Primary),
+                Projection::default(),
+            ))
+            .id();
+        let touched = |app: &App| {
+            app.world()
+                .entity(camera)
+                .get_ref::<Projection>()
+                .unwrap()
+                .last_changed()
+        };
+
+        app.update();
+        let into_image = touched(&app);
+        app.update();
+        assert_eq!(
+            touched(&app),
+            into_image,
+            "the same target leaves the projection alone"
+        );
+
+        app.world_mut().resource_mut::<StageScale>().governor = Some(Governor::new(0));
+        app.update();
+        assert!(matches!(
+            app.world().get::<RenderTarget>(camera).unwrap(),
+            RenderTarget::Window(_)
+        ));
+        assert!(
+            touched(&app) != into_image,
+            "back to the window, the camera measures again"
+        );
     }
 
     #[test]

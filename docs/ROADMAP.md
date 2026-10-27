@@ -6,7 +6,7 @@ holds the work itself.
 
 ## Smooth on the 2015 MacBook Pro (2026-10-26)
 
-*Verified: 2353 tests in the source inventory, including documentation examples;
+*Verified: 2364 tests in the source inventory, including documentation examples;
 fmt, clippy `-D warnings --all-features`, `cargo test --workspace`; the governor's
 pins seen to fail under a mutation; autopilot on an own song with the stage pinned
 to 55 %.*
@@ -32,6 +32,17 @@ to 55 %.*
   series found the render scale quitting the app with a validation error the
   moment it stepped (in-place resize of a render target); fixed with a fresh
   image per scale.
+- [x] Per-frame waste removed without touching the picture *(v0.19.7)*:
+  indexed beat lookups (bit-identical to the walk), the Hype auto-hit scan
+  stops at the first later note, the song end is computed once everyone has
+  finished, hidden bar lines / resting flames / spent hit rings are neither
+  moved nor drawn, sustain tails share mesh and material until bent or held,
+  the neck's dividers/strings/collars share one material per kind, and the
+  ribbon clock, lyrics, vocal texts, import overlay, HUD meters and camera
+  shake write only a change. Found on the way: the render scale crashed
+  stepping back to full scale (Bevy does not re-measure a changed target).
+- [ ] Measure 0.19.7 on the 2015 against 0.19.6 and GPU-preprocessing-on,
+  alternating to cancel heat, at a pinned scale and live; the M1 as well.
 - [ ] Release, then smoke-test the x86_64 artifact on the 2015 itself.
 
 ## Left- and right-handed players (2026-10-22)
