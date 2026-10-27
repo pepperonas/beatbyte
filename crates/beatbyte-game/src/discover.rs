@@ -1506,8 +1506,21 @@ mod twin_tests {
     }
 
     /// Hand the resource a search that has already finished.
+    ///
+    /// Waits until the task really has: the system polls it once per
+    /// frame, and on a busy CI runner the pool had not run it by the
+    /// next `update` — the vocal-work test failed on Linux every run of
+    /// a day while passing on the Mac.
     fn finished(app: &mut App, result: Result<Found, String>) {
         let task = bevy::tasks::AsyncComputeTaskPool::get().spawn(async move { result });
+        let started = std::time::Instant::now();
+        while !task.is_finished() {
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(10),
+                "the search task never ran"
+            );
+            std::thread::yield_now();
+        }
         let mut discovery = app.world_mut().resource_mut::<Discovery>();
         discovery.ran = true;
         discovery.task = Some(DiscoverTask(task));
