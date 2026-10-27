@@ -77,6 +77,9 @@ to 55 %.*
   parts (crowd, band, rig) and the 2D camera's HDR measured within noise.
   Still open: the 99th percentile under vsync (25 ms), and the HUD-only
   floor of 7.5 ms.
+  Released as v0.19.10; the installed app on the 2015 was PHOTOGRAPHED
+  with the full scene, the release artifact played Maria 504/504 there
+  (backup `~/bench/BeatByte-0.19.9-backup.app`).
 - [x] Per-frame waste removed without touching the picture *(v0.19.7)*:
   indexed beat lookups (bit-identical to the walk), the Hype auto-hit scan
   stops at the first later note, the song end is computed once everyone has
