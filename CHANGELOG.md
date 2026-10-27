@@ -14,6 +14,19 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.19.9] - 2026-10-27
+
+### Fixed
+
+- **On Intel Macs the highway was empty: no notes, no fret buttons, no
+  strings, and no crowd or band.** 0.19.6 turned Bevy's GPU mesh
+  preprocessing off there to save frame time, but the switch changes
+  only half of Bevy's pipeline, and with the halves out of step most
+  meshes were not drawn. It is on everywhere again; the full scene is
+  back on the 2015 MacBook Pro. The frame-time savings reported for
+  0.19.6–0.19.8 on that machine came from the missing scene and are
+  withdrawn.
+
 ## [0.19.8] - 2026-10-27
 
 ### Fixed

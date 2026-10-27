@@ -84,11 +84,10 @@ renderer at all).
 
 ### What runs differently there
 
-- **GPU mesh preprocessing is off** on Intel Macs: Bevy builds the
-  instance buffers on the CPU (`bench::gpu_preprocessing`). On the
-  Radeon the compute path was a fixed ~14 ms a frame
-  (`baseline.md`, "The floor, found"). `BEATBYTE_GPU_PREPROCESSING=on`
-  measures the other side.
+- **GPU mesh preprocessing stays on** (since 0.19.9 again). 0.19.6–0.19.8
+  turned it off on Intel Macs, and the "saved" 14 ms a frame were most
+  of the scene not being drawn (`baseline.md`). `BEATBYTE_GPU_PREPROCESSING=off`
+  still exists for a measurement; a frame under it is not the full scene.
 - **The render scale** (`gameplay/render_scale.rs`, PERFORMANCE MODE
   only): when frames are missed the 3D stage renders into an image at
   85, 70 or 55 % of the window's pixels, drawn behind the HUD, which

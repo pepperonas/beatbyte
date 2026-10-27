@@ -1219,13 +1219,19 @@ Local packaging:
   it imported Quartz, which the system python there lacks, and a
   failed import read as "unlocked". It asks `ioreg` now; check that a
   measuring run on another machine actually refuses a locked screen.
-- **The 2015's "floor" was Bevy's GPU mesh preprocessing**, not pixels,
-  lights, HDR or the stage: ~14 ms a frame on the Radeon R9 M370X,
-  measured with the `gpupre` probe (median 26 → 12 ms; the shipped build, same
-  session: 22 → 15–16 ms against GPU preprocessing forced on). Intel Macs build
-  instance buffers on the CPU since 0.19.6 (`bench::gpu_preprocessing`).
-  When an old GPU has a fixed cost no scene change moves, probe the
-  engine's compute passes before the content.
+- **A speed-up that removes the work is not a speed-up — LOOK at the
+  frame.** 0.19.6 set `PbrPlugin::use_gpu_instance_buffer_builder =
+  false` on Intel Macs and the 2015 got 14 ms faster: that flag
+  switches only the mesh uniform builder, cameras and render phases
+  stay on the GPU path, and with the two out of step most meshes were
+  not drawn (no gems, receptors, strings, crowd or band). Three
+  releases shipped it; the autopilot passed every run because judgment
+  needs no pixels, and the only frames looked at came from the M1,
+  where the default never changed. The player found it. Any render
+  change measured on a machine must be photographed ON THAT MACHINE
+  (engine screenshots, `BEATBYTE_SHOT_TIMES` — they need no screen
+  recording permission, `screencapture` over SSH shows only the
+  wallpaper). GPU preprocessing is on everywhere again since 0.19.9.
 - **Never `Image::resize` a render target.** Bevy copies the old texture
   into the resized one, which needs `COPY_SRC`; a render target has
   none, wgpu raises a validation error and the app QUITS. The render

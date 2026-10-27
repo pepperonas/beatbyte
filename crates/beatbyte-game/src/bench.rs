@@ -480,32 +480,25 @@ fn apply_material_probes(
 /// Whether Bevy builds mesh instance buffers on the GPU (compute
 /// preprocessing, indirect draws) or on the CPU.
 ///
-/// Off on Intel Macs. Measured on the 2015 MacBook Pro's Radeon R9
-/// M370X, windowed, performance mode: the GPU path cost a fixed
-/// 14 ms a frame (median 26 → 12 ms, p99 33 → 18 ms with it off) —
-/// the "floor" no pixel count or stage part explained. Apple silicon
-/// and other platforms keep Bevy's default. `BEATBYTE_GPU_PREPROCESSING`
-/// (`on` / `off`) overrides it for a measurement; the `gpupre` bench
-/// probe turns it off.
+/// On everywhere. 0.19.6–0.19.8 turned it off on Intel Macs, which
+/// looked like a 14 ms saving on the 2015 MacBook Pro — but the flag
+/// only switches Bevy's mesh uniform builder: the cameras and render
+/// phases stay on the GPU path, and with the two out of step most
+/// meshes (gems, receptors, strings, crowd, band) were simply not
+/// drawn. The saving was the missing scene. `BEATBYTE_GPU_PREPROCESSING`
+/// (`on` / `off`) and the `gpupre` probe still turn it off for a
+/// measurement; a frame under `off` is not the full scene.
 #[must_use]
 pub fn gpu_preprocessing() -> bool {
     preprocessing_choice(
-        cfg!(all(target_os = "macos", target_arch = "x86_64")),
         active() && probe("gpupre"),
         std::env::var("BEATBYTE_GPU_PREPROCESSING").ok().as_deref(),
     )
 }
 
 /// The decision behind [`gpu_preprocessing`], pure.
-fn preprocessing_choice(intel_mac: bool, probe_off: bool, overridden: Option<&str>) -> bool {
-    if probe_off {
-        return false;
-    }
-    match overridden {
-        Some("on") => true,
-        Some("off") => false,
-        _ => !intel_mac,
-    }
+fn preprocessing_choice(probe_off: bool, overridden: Option<&str>) -> bool {
+    !probe_off && overridden != Some("off")
 }
 
 /// The `hidpi` probe: render at one pixel per point — a quarter of
@@ -557,23 +550,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn gpu_preprocessing_is_off_on_intel_macs_only() {
-        // Every combination: the probe always wins, an override beats
-        // the platform, and the platform decides otherwise.
-        for intel_mac in [false, true] {
-            for overridden in [None, Some("on"), Some("off"), Some("junk")] {
-                assert!(!preprocessing_choice(intel_mac, true, overridden));
-                let expected = match overridden {
-                    Some("on") => true,
-                    Some("off") => false,
-                    _ => !intel_mac,
-                };
-                assert_eq!(
-                    preprocessing_choice(intel_mac, false, overridden),
-                    expected,
-                    "intel_mac={intel_mac} overridden={overridden:?}"
-                );
-            }
+    fn gpu_preprocessing_is_on_unless_turned_off_for_a_measurement() {
+        // Every platform draws the full scene; only the probe or an
+        // explicit "off" turns the GPU path off.
+        for overridden in [None, Some("on"), Some("off"), Some("junk")] {
+            assert!(!preprocessing_choice(true, overridden));
+            assert_eq!(
+                preprocessing_choice(false, overridden),
+                overridden != Some("off"),
+                "overridden={overridden:?}"
+            );
         }
     }
 

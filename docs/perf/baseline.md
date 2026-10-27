@@ -91,11 +91,15 @@ little off the CPU; the 99th percentile moves too much between rounds
 to read. The same series found 0.19.7's live runs and both autopilot
 runs quitting on the step back to full scale — fixed in 0.19.8.
 
-The 30–40 ms floor was **Bevy's GPU mesh preprocessing** on the Radeon:
-a fixed ~14 ms a frame, independent of pixels and of what is on the
-stage. 0.19.6 turns it off on Intel Macs (`bench::gpu_preprocessing`).
-The render scale barely matters here once the floor is gone; it stays
-as a safety net for heavier scenes.
+⚠️ **Withdrawn (0.19.9): the "floor" was not found.** 0.19.6 turned
+Bevy's GPU mesh preprocessing off on Intel Macs and the frame time
+dropped by ~14 ms — because the flag switches only the mesh uniform
+builder while cameras and render phases stay on the GPU path, and with
+the two out of step most meshes were not drawn: gems, receptors,
+strings, crowd and band were missing on the 2015 (engine screenshots,
+2026-10-27; the player saw an empty highway). Every 2015 number from
+0.19.6 to 0.19.8 that ran with it off measures that incomplete scene.
+With the full scene (0.19.9, "Maria" medium, windowed, uncapped, two runs) the 2015 measures median 20.7 ms (~48 fps), p99 32.5–33.0 ms, worst frame 48.6 ms; main-world CPU median 2.7 ms.
 
 ### Findings the bench made on the way
 

@@ -4,6 +4,38 @@
 Rules of engagement live in [`CLAUDE.md`](../CLAUDE.md); this file
 holds the work itself.
 
+## Bevy 0.20 migration (planned 2026-10-27, not started)
+
+Maintenance, not a performance fix: on the 2015 the game is GPU-bound and
+the main world needs 3–4 ms, so 0.20's CPU-side gains (retained UI
+rendering, sprites on the shared Mesh2d path) are expected to be neutral
+to small there. Start only after v0.19.9 is out. On branch
+`upgrade/bevy-0.20`, never on main, and nothing merged until the A/B below
+is in.
+
+- [ ] Instrument first: `tools/bench.sh` records RSS, startup time and
+  song load time (today it records frame times only). GPU pass times are
+  not available on Metal — say so in the table rather than leave a gap.
+- [ ] Baseline on **0.19.9** (the full scene), on the M1 AND the 2015, with
+  the existing scenarios (`normal`, `dense`, `hype`, menus via
+  `BEATBYTE_FPS`), several runs each, windowed and vsynced. **Every
+  measuring run carries an engine screenshot taken on the machine being
+  measured** (`BEATBYTE_SHOT_TIMES`) — the 0.19.6 "win" was a missing scene
+  and no number showed it.
+- [ ] Migrate the workspace to the latest 0.20.x: compatibility changes
+  only, no unrelated optimization. Audit the camera/HDR/render-target
+  rules, the render scale, `NotShadowCaster` on blended meshes, materials
+  and UI against 0.20 — verify each documented 0.19 workaround before
+  keeping or removing it.
+- [ ] Full gate, autopilot (incl. edit/pause/model drills), `shot-check`
+  on the M1, and a look at frames from the 2015.
+- [ ] Repeat the identical bench; table 0.19 vs 0.20 (p99 first, then
+  spikes, median, CPU, memory, FPS) with noisy rows marked; classify
+  (clear win / small win / neutral / regression).
+- [ ] Document the migration (CLAUDE.md gotchas, ADR if the camera or
+  compositing rules change) and the 0.20 optimizations deliberately left
+  out.
+
 ## Smooth on the 2015 MacBook Pro (2026-10-26)
 
 *Verified: 2365 tests in the source inventory, including documentation examples;
@@ -28,10 +60,19 @@ to 55 %.*
   render scale only 26 → 23 ms at 55 %; probes `hdr`, `distfog`, `unlit`,
   `blend` within noise; **`gpupre` 12 / 18 ms** — the floor was Bevy's GPU
   mesh preprocessing on the Radeon. Off on Intel Macs since 0.19.6
-  (`bench::gpu_preprocessing`). `nostage` (lower bound) 8 / 14 ms. The same
+  (`bench::gpu_preprocessing`). ⚠️ **Withdrawn in 0.19.9:** with it off most
+  meshes were not drawn (empty highway on the 2015, found by the player);
+  the 12 ms measured an incomplete scene. On again everywhere. `nostage` (lower bound) 8 / 14 ms. The same
   series found the render scale quitting the app with a validation error the
   moment it stepped (in-place resize of a render target); fixed with a fresh
   image per scale.
+- [ ] **The 2015 at 60 fps, measured on the FULL scene** (0.19.9 onward).
+  With GPU preprocessing on again it measures median 20.7 ms (~48 fps), p99
+  ~33 ms windowed and uncapped. Every
+  2015 measurement from now on carries an engine screenshot taken on the
+  2015 in the same run. Candidates: a real CPU preprocessing path (force
+  Bevy's `GpuPreprocessingSupport` to `None` so cameras and phases follow),
+  the render scale, the stage's mesh count.
 - [x] Per-frame waste removed without touching the picture *(v0.19.7)*:
   indexed beat lookups (bit-identical to the walk), the Hype auto-hit scan
   stops at the first later note, the song end is computed once everyone has
@@ -50,7 +91,8 @@ to 55 %.*
   14.1/12.3 ms (`docs/perf/baseline.md`). 0.19.8 live: median 11.9/13.1 ms,
   p99 27 ms; with vsync 60 fps at the median, p99 22.6 ms.
 - [ ] Measure the M1 old against new: four attempts were refused because the
-  screen locked itself during the runs.
+  screen locked itself during the runs; the fifth (2026-10-27) was stopped
+  when the empty highway on the 2015 turned up.
 - [x] Released as v0.19.8 (0.19.5–0.19.7 never published); the x86_64
   artifact smoke-tested and autopiloted on the 2015 ("Maria", the governor
   stepping back to 100 % without a crash, 504/504 perfect), the player's
