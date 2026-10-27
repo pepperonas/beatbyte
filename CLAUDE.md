@@ -1212,6 +1212,18 @@ Local packaging:
   it imported Quartz, which the system python there lacks, and a
   failed import read as "unlocked". It asks `ioreg` now; check that a
   measuring run on another machine actually refuses a locked screen.
+- **The 2015's "floor" was Bevy's GPU mesh preprocessing**, not pixels,
+  lights, HDR or the stage: ~14 ms a frame on the Radeon R9 M370X,
+  measured with the `gpupre` probe (median 26 → 12 ms). Intel Macs build
+  instance buffers on the CPU since 0.19.6 (`bench::gpu_preprocessing`).
+  When an old GPU has a fixed cost no scene change moves, probe the
+  engine's compute passes before the content.
+- **Never `Image::resize` a render target.** Bevy copies the old texture
+  into the resized one, which needs `COPY_SRC`; a render target has
+  none, wgpu raises a validation error and the app QUITS. The render
+  scale did this the moment its governor stepped — the bench's pinned
+  steps never step, so only a live run found it. Give a new size a new
+  image.
 - **The Iris Pro in the 2015 cannot run this renderer** (Metal
   GPUFamily macOS 1: its compiler fails wgpu's and Bevy's compute
   pipelines, device lost at start). Bevy takes the AMD by default;

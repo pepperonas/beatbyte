@@ -263,6 +263,16 @@ fn govern(
     }
 }
 
+/// The image the scaled stage renders into.
+fn stage_image(w: u32, h: u32) -> Image {
+    let mut image = Image::new_target_texture(w, h, TextureFormat::Rgba8UnormSrgb, None);
+    // The app samples nearest by default (pixel art); a scaled-up
+    // stage wants a smooth filter.
+    image.sampler = ImageSampler::linear();
+    image.asset_usage = RenderAssetUsages::RENDER_WORLD;
+    image
+}
+
 /// Point the stage camera at the window (full scale) or at an image
 /// of the scaled size drawn across the 2D camera's view.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)] // Bevy system: params are DI, not an API
@@ -303,24 +313,23 @@ fn apply(
         height: h,
         depth_or_array_layers: 1,
     };
-    let handle = match scale.image.clone() {
-        Some(handle) => {
-            if images
-                .get(&handle)
-                .is_some_and(|image| image.texture_descriptor.size != size)
-                && let Some(mut image) = images.get_mut(&handle)
-            {
-                image.resize(size);
-            }
-            handle
-        }
+    // A new size gets a NEW image. Resizing one in place makes Bevy
+    // copy the old texture into the new one, which needs COPY_SRC on a
+    // render target — without it wgpu raises a validation error and
+    // the app quits the moment the governor steps (seen on the 2015).
+    // The stage redraws every frame, so there is nothing to keep.
+    let current = scale.image.clone().filter(|handle| {
+        images
+            .get(handle)
+            .is_some_and(|image| image.texture_descriptor.size == size)
+    });
+    let handle = match current {
+        Some(handle) => handle,
         None => {
-            let mut image = Image::new_target_texture(w, h, TextureFormat::Rgba8UnormSrgb, None);
-            // The app samples nearest by default (pixel art); a
-            // scaled-up stage wants a smooth filter.
-            image.sampler = ImageSampler::linear();
-            image.asset_usage = RenderAssetUsages::RENDER_WORLD;
-            let handle = images.add(image);
+            if let Some(old) = scale.image.take() {
+                images.remove(&old);
+            }
+            let handle = images.add(stage_image(w, h));
             scale.image = Some(handle.clone());
             handle
         }
@@ -365,6 +374,7 @@ fn apply(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
@@ -373,6 +383,68 @@ mod tests {
     fn run(governor: &mut Governor, ms: f32, seconds: f32) -> usize {
         let frames = (seconds * 1000.0 / ms).ceil() as usize;
         (0..frames).filter(|_| governor.advance(ms, true)).count()
+    }
+
+    /// A step change must hand the stage a NEW image of the new size
+    /// and drop the old one: resizing in place made Bevy copy the old
+    /// texture, which a render target cannot do without COPY_SRC, and
+    /// the app quit with a validation error on the 2015.
+    #[test]
+    fn a_step_change_swaps_in_a_fresh_image() {
+        let mut app = App::new();
+        app.insert_resource(Assets::<Image>::default())
+            .insert_resource(Settings {
+                performance_mode: true,
+                ..default()
+            })
+            .insert_resource(StageScale {
+                governor: Some(Governor::new(1)),
+                image: None,
+                pinned: false,
+            })
+            .add_systems(Update, apply);
+        let mut window = Window::default();
+        window.resolution.set_physical_resolution(2000, 1000);
+        app.world_mut().spawn((window, PrimaryWindow));
+        let camera = app
+            .world_mut()
+            .spawn((
+                Camera3d::default(),
+                super::super::stage3d::Stage3d,
+                RenderTarget::Window(bevy::window::WindowRef::Primary),
+            ))
+            .id();
+        app.update();
+        let first = app.world().resource::<StageScale>().image.clone().unwrap();
+        let first_size = app
+            .world()
+            .resource::<Assets<Image>>()
+            .get(&first)
+            .unwrap()
+            .size();
+        assert_eq!(first_size, UVec2::from(target_size(2000, 1000, STEPS[1])));
+
+        app.world_mut().resource_mut::<StageScale>().governor = Some(Governor::new(2));
+        app.update();
+        let second = app.world().resource::<StageScale>().image.clone().unwrap();
+        assert_ne!(
+            first, second,
+            "a new size must be a new image, not a resize"
+        );
+        let images = app.world().resource::<Assets<Image>>();
+        assert!(images.get(&first).is_none(), "the old image is dropped");
+        assert_eq!(
+            images.get(&second).unwrap().size(),
+            UVec2::from(target_size(2000, 1000, STEPS[2]))
+        );
+        assert_eq!(
+            app.world().get::<RenderTarget>(camera).unwrap().as_image(),
+            Some(&second)
+        );
+
+        // The same size again keeps the image it has.
+        app.update();
+        assert_eq!(app.world().resource::<StageScale>().image, Some(second));
     }
 
     #[test]

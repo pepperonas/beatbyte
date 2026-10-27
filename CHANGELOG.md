@@ -14,6 +14,27 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.19.6] - 2026-10-27
+
+### Performance
+
+- **Twice the frame rate on Intel Macs.** Bevy builds the stage's
+  mesh instance buffers on the GPU by default; on the 2015 MacBook
+  Pro's Radeon R9 M370X that step alone cost a fixed 14 ms a frame —
+  the floor no resolution or stage part explained. Intel Macs now
+  build them on the CPU: windowed, the median frame went from 26 to
+  12 ms and the 99th percentile from 33 to 18 ms. Apple silicon and
+  other platforms are unchanged. `BEATBYTE_GPU_PREPROCESSING=on|off`
+  overrides the choice for a measurement.
+
+### Fixed
+
+- **The render scale no longer crashes the game when it steps.** A
+  new scale resized the stage image in place, which a render target
+  cannot do; the app quit with a graphics validation error the moment
+  the scale changed during a song. Each scale now gets a fresh image.
+  (0.19.5 was never published.)
+
 ## [0.19.5] - 2026-10-26
 
 ### Performance

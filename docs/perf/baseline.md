@@ -49,6 +49,29 @@ measurable: their cost is per pixel.
 The `hidpi` probe has no effect in full screen (macOS keeps the native
 resolution), which is why the pixel table is windowed.
 
+### The floor, found (2026-10-27, 0.19.5 → 0.19.6)
+
+Windowed at 2560×1440 (the player's case), PERFORMANCE MODE, uncapped,
+normal scenario. Raw results: `mbp2015:~/bench/w-*.json`.
+
+| Build / probe | median | p99 |
+|---|---|---|
+| installed 0.19.0-beta.1 | 45–50 ms | 137–151 |
+| 0.19.5 (bar lines share materials, no idle writes) | 26 | 33–43 |
+| 0.19.5, stage pinned to 85 / 70 / 55 % | 25 / 24 / 23 | 32 / 31 / 37 |
+| probe `hdr` (no HDR on either camera) | 27 | 44 |
+| probe `distfog` | 27 | 35 |
+| probe `unlit` (no PBR, normal maps, clearcoat) | 24 | 39 |
+| probe `blend` (no blended or additive meshes) | 26 | 33 |
+| **probe `gpupre` (CPU-built instance buffers)** | **12** | **18** |
+| probe `nostage` (lower bound: HUD only) | 8 | 14 |
+
+The 30–40 ms floor was **Bevy's GPU mesh preprocessing** on the Radeon:
+a fixed ~14 ms a frame, independent of pixels and of what is on the
+stage. 0.19.6 turns it off on Intel Macs (`bench::gpu_preprocessing`).
+The render scale barely matters here once the floor is gone; it stays
+as a safety net for heavier scenes.
+
 ### Findings the bench made on the way
 
 - **The song clock jumped forward** 0.7–1.0 s in a single short frame

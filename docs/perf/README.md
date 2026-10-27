@@ -81,3 +81,17 @@ that display sleeps. Set `COMMIT=<sha>` there, since the binary is
 measured away from its checkout. The result names the GPU; it has to
 be the AMD Radeon R9 M370X, not the Iris Pro (which cannot run this
 renderer at all).
+
+### What runs differently there
+
+- **GPU mesh preprocessing is off** on Intel Macs: Bevy builds the
+  instance buffers on the CPU (`bench::gpu_preprocessing`). On the
+  Radeon the compute path was a fixed ~14 ms a frame
+  (`baseline.md`, "The floor, found"). `BEATBYTE_GPU_PREPROCESSING=on`
+  measures the other side.
+- **The render scale** (`gameplay/render_scale.rs`, PERFORMANCE MODE
+  only): when frames are missed the 3D stage renders into an image at
+  85, 70 or 55 % of the window's pixels, drawn behind the HUD, which
+  stays sharp. A governor picks the step from frame times and the step
+  it settles on is a DEVICE setting (`stage_scale_step`).
+  `BEATBYTE_STAGE_SCALE=0..3` pins a step for a measurement.

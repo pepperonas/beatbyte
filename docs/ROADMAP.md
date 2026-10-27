@@ -6,7 +6,7 @@ holds the work itself.
 
 ## Smooth on the 2015 MacBook Pro (2026-10-26)
 
-*Verified: 2351 tests in the source inventory, including documentation examples;
+*Verified: 2353 tests in the source inventory, including documentation examples;
 fmt, clippy `-D warnings --all-features`, `cargo test --workspace`; the governor's
 pins seen to fail under a mutation; autopilot on an own song with the stage pinned
 to 55 %.*
@@ -21,8 +21,17 @@ to 55 %.*
 - [x] Bench probes for the render path (`hdr`, `distfog`, `unlit`, `blend`,
   `gpupre`, `nostage`), `BEATBYTE_STAGE_SCALE`, and `tools/bench.sh` able to
   measure windowed (`WINDOWED`) and vsynced (`VSYNC`).
-- [ ] Measure on the 2015 (windowed, the player's case): the installed build
+- [x] Measure on the 2015 (windowed, the player's case): the installed build
   against this one, then the probes; act on what the floor turns out to be.
+  *(v0.19.6)* Uncapped, windowed, performance mode, "Maria" medium: installed
+  0.19.0 median 45–50 ms / p99 137–151; with the material fix 26 / 33–43; the
+  render scale only 26 → 23 ms at 55 %; probes `hdr`, `distfog`, `unlit`,
+  `blend` within noise; **`gpupre` 12 / 18 ms** — the floor was Bevy's GPU
+  mesh preprocessing on the Radeon. Off on Intel Macs since 0.19.6
+  (`bench::gpu_preprocessing`). `nostage` (lower bound) 8 / 14 ms. The same
+  series found the render scale quitting the app with a validation error the
+  moment it stepped (in-place resize of a render target); fixed with a fresh
+  image per scale.
 - [ ] Release, then smoke-test the x86_64 artifact on the 2015 itself.
 
 ## Left- and right-handed players (2026-10-22)
