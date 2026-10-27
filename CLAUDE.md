@@ -558,6 +558,13 @@ Local packaging:
   before it is cut; the patterns live in `site.json`, and after
   editing them the server script is regenerated with the kit and
   copied to the VPS (`website/deploy.sh server`).
+- **Never tag a `[skip ci]` commit.** The LOC-badge bot pushes a
+  `chore(badges): … [skip ci]` commit after every push to main, so
+  `git tag -a vX.Y.Z HEAD` right after a pull usually lands on it — and
+  GitHub skips EVERY workflow for that push, the tag's release run
+  included. Nothing fails; the release simply never starts (v0.19.8 sat
+  untriggered twice). Tag your own commit (`git log --oneline -3`) and
+  check that `gh run list --workflow release.yml` shows the tag.
 - **Asset root**: Bevy's default exe-relative resolution misses the
   workspace `assets/` when running `target/debug/beatbyte` directly —
   and a **failed asset never retries**, so a missed font made ALL text
