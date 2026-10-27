@@ -1231,7 +1231,12 @@ Local packaging:
   freshly added image fires its own asset event, so image → image
   worked; image → window kept the image's size for a frame, the depth
   texture came out 544×306 for a 640×360 window, and the app quit. Mark
-  the `Projection` changed with every retarget (`render_scale::retarget`).
+  the `Projection` changed with every retarget (`render_scale::retarget`)
+  AND run that system `.before(CameraUpdateSystems)`: a mark set after
+  `camera_system` ran is read a frame late, which is the same crash
+  (0.19.7 shipped the mark without the order). A test that only checks
+  the mark cannot see this — the render-scale test runs the real
+  `camera_system` and checks the size in the same frame.
 - **The Iris Pro in the 2015 cannot run this renderer** (Metal
   GPUFamily macOS 1: its compiler fails wgpu's and Bevy's compute
   pipelines, device lost at start). Bevy takes the AMD by default;

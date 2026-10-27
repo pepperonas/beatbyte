@@ -14,6 +14,19 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.19.8] - 2026-10-27
+
+### Fixed
+
+- **The render scale still crashed stepping back to full scale, and
+  now does not.** 0.19.7 made the stage camera measure its target
+  again after a change, but the system doing it ran in the same phase
+  as Bevy's camera update with no order between them: whenever it ran
+  second, the measurement waited a frame, and that frame drew with the
+  new target and the old size (seen on the M1 this time, 85 % →
+  100 %). It now runs first, and a test runs Bevy's own camera update
+  beside it to check the size in the same frame.
+
 ## [0.19.7] - 2026-10-27
 
 ### Fixed

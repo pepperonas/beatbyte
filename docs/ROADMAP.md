@@ -6,7 +6,7 @@ holds the work itself.
 
 ## Smooth on the 2015 MacBook Pro (2026-10-26)
 
-*Verified: 2364 tests in the source inventory, including documentation examples;
+*Verified: 2365 tests in the source inventory, including documentation examples;
 fmt, clippy `-D warnings --all-features`, `cargo test --workspace`; the governor's
 pins seen to fail under a mutation; autopilot on an own song with the stage pinned
 to 55 %.*
@@ -41,6 +41,10 @@ to 55 %.*
   ribbon clock, lyrics, vocal texts, import overlay, HUD meters and camera
   shake write only a change. Found on the way: the render scale crashed
   stepping back to full scale (Bevy does not re-measure a changed target).
+- [x] The 0.19.7 retarget fix was half a fix *(v0.19.8)*: the M1 bench
+  crashed 85 % → 100 % because `apply` and `camera_system` had no order;
+  `apply` now runs `.before(CameraUpdateSystems)`, pinned by a test that
+  runs the real `camera_system` through the plugin.
 - [ ] Measure 0.19.7 on the 2015 against 0.19.6 and GPU-preprocessing-on,
   alternating to cancel heat, at a pinned scale and live; the M1 as well.
 - [ ] Release, then smoke-test the x86_64 artifact on the 2015 itself.
@@ -1163,8 +1167,8 @@ chart format v1 can be frozen as a promise.
 
 - [x] G9 **AAA polish for the round style.** HDR Bloom component synced to the style at runtime; shading-function texture suite (lit sphere, gloss, gaussian dot, tube, glow strip, bed gradient — 5 geometry/lighting tests); emissive gem tint feeds the bloom. Honest scope note: this is 2D done well, not photorealism — a 3D/PBR look would be a renderer rewrite. *Verified: flawless runs both styles; screenshots; 8-bit unchanged.*
 
-- [x] G11 **Depth-view geometry fix + stage polish.** User screenshot: notes ran beside the lines — the guides used a DIFFERENT straight line than the note path; now they are its exact extension (`depth::extend_below`, collinearity-pinned). Polish: flattened receptor rings, glowing hit line, per-gem halos, corner vignette, distance-faded fret lines. *Verified: identical score again (23640), screenshot shows notes ON strings.*
-- [x] G10 **Depth view (vanishing-point highway).** `depth::project` (pure, 3 tests: identity at the hit line, monotonic climb/shrink, lane convergence), per-frame projected notes/fret lines/sustains, leaning lane guides, trapezoid bed as a real 2D mesh. Both views coexist as a settings row. *Verified: IDENTICAL autopilot score flat vs depth (23640) — presentation only; screenshots; 8-bit untouched.*
+- [x] G11 **Depth-view geometry fix + stage polish.** User screenshot: notes ran beside the lines — the guides used a DIFFERENT straight line than the note path; now they are its exact extension (`depth::extend_below`, collinearity-pinned). Polish: flattened receptor rings, glowing hit line, per-gem halos, corner vignette, distance-faded fret lines. *Verified: identical score again (23650), screenshot shows notes ON strings.*
+- [x] G10 **Depth view (vanishing-point highway).** `depth::project` (pure, 3 tests: identity at the hit line, monotonic climb/shrink, lane convergence), per-frame projected notes/fret lines/sustains, leaning lane guides, trapezoid bed as a real 2D mesh. Both views coexist as a settings row. *Verified: IDENTICAL autopilot score flat vs depth (23650) — presentation only; screenshots; 8-bit untouched.*
 
 - [x] G12 **Window-independent scaling.** Ortho projection `AutoMin{1280,720}` + `UiScale` synced to window height (0.6..2.5) + `BEATBYTE_WINDOW=WxH` for pinned sizes. *Verified: flawless runs with full stage/HUD at 800x500 and 1920x1200 (screenshots).*
 

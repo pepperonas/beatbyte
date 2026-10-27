@@ -207,10 +207,22 @@ impl Plugin for RenderScalePlugin {
             .add_systems(OnExit(AppState::Gameplay), finish)
             .add_systems(
                 PostUpdate,
-                (govern, apply).chain().run_if(in_state(AppState::Gameplay)),
+                (govern, apply)
+                    .chain()
+                    .before(CameraUpdateSystems)
+                    .run_if(in_state(AppState::Gameplay)),
             );
     }
 }
+
+/// `apply` must run BEFORE Bevy's `camera_system` (in
+/// [`CameraUpdateSystems`], also PostUpdate): the projection it marks
+/// changed is what makes the camera measure its new target, and a mark
+/// set after `camera_system` ran is read only next frame. That one
+/// frame was extracted with the new target and the old size — the
+/// validation error the 0.19.7 fix alone did not stop (seen on the
+/// M1, 85 % → 100 %). A test runs the real `camera_system` beside it.
+pub use bevy::camera::CameraUpdateSystems;
 
 /// A song starts from the step this device settled on last time.
 fn begin(mut scale: ResMut<StageScale>, settings: Res<Settings>) {
@@ -637,5 +649,71 @@ mod tests {
         assert!(stage_on_window([&window]));
         assert!(!stage_on_window([&image]));
         assert!(stage_on_window([&image, &window]));
+    }
+
+    /// The camera measures its new target in the SAME frame the scale
+    /// changes it, with Bevy's own `camera_system` in the schedule —
+    /// back to the window above all, where a frame late was a crash.
+    #[test]
+    fn the_camera_measures_a_new_target_in_the_same_frame() {
+        use bevy::asset::AssetPlugin;
+        use bevy::window::{WindowCreated, WindowResized, WindowScaleFactorChanged};
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+            .init_asset::<Image>()
+            .add_message::<WindowResized>()
+            .add_message::<WindowCreated>()
+            .add_message::<WindowScaleFactorChanged>()
+            .init_resource::<bevy::render::texture::ManualTextureViews>()
+            .insert_resource(Settings {
+                performance_mode: true,
+                ..default()
+            })
+            .add_systems(
+                PostUpdate,
+                bevy::render::camera::camera_system.in_set(CameraUpdateSystems),
+            )
+            // The plugin itself, so its ordering is what is tested.
+            .add_plugins(bevy::state::app::StatesPlugin)
+            .init_state::<AppState>()
+            .insert_state(AppState::Gameplay)
+            .init_resource::<GameClock>()
+            .add_plugins(RenderScalePlugin);
+        let mut window = Window::default();
+        window.resolution.set_physical_resolution(2000, 1000);
+        app.world_mut().spawn((window, PrimaryWindow));
+        let camera = app
+            .world_mut()
+            .spawn((
+                Camera3d::default(),
+                super::super::stage3d::Stage3d,
+                RenderTarget::Window(bevy::window::WindowRef::Primary),
+            ))
+            .id();
+        let measured = |app: &App| {
+            app.world()
+                .get::<Camera>(camera)
+                .unwrap()
+                .physical_target_size()
+        };
+        // Entering gameplay hands the governor its remembered step;
+        // the test then sets the steps itself.
+        app.update();
+        app.world_mut().resource_mut::<StageScale>().governor = Some(Governor::new(1));
+        app.update();
+        assert_eq!(
+            measured(&app),
+            Some(UVec2::from(target_size(2000, 1000, STEPS[1])))
+        );
+        for step in [2, 1, 0, 3, 0] {
+            app.world_mut().resource_mut::<StageScale>().governor = Some(Governor::new(step));
+            app.update();
+            let wanted = if step == 0 {
+                UVec2::new(2000, 1000)
+            } else {
+                UVec2::from(target_size(2000, 1000, STEPS[step]))
+            };
+            assert_eq!(measured(&app), Some(wanted), "step {step}");
+        }
     }
 }

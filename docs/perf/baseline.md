@@ -75,6 +75,22 @@ scale on the 0.19.5 binary. The controlled comparison is the pair
 above it, same binary, same session: 22 → 15–16 ms. Whether the rest
 is heat or the build, the next series alternates the two.
 
+### 0.19.7 against 0.19.6 (2026-10-27, alternating, stage pinned at 100 %)
+
+Windowed, uncapped, "Maria" medium, `BEATBYTE_STAGE_SCALE=0`, two rounds
+of old → new → new with GPU preprocessing on. Raw: `mbp2015:~/bench/d-*.json`.
+
+| Build | median | p99 | max | CPU main median |
+|---|---|---|---|---|
+| 0.19.6 | 17.1 / 14.8 | 30 / 31 | 149 / 44 | 7.3 / 6.1 |
+| **0.19.7** | **14.1 / 12.3** | 33 / 20 | 66 / 57 | 6.1 / 4.8 |
+| 0.19.7, GPU preprocessing on | 34.7 / 26.1 | 47 / 33 | 81 / 60 | 5.0 / 3.6 |
+
+The per-frame cleanup takes 2.5–3 ms (about 17 %) off the median and a
+little off the CPU; the 99th percentile moves too much between rounds
+to read. The same series found 0.19.7's live runs and both autopilot
+runs quitting on the step back to full scale — fixed in 0.19.8.
+
 The 30–40 ms floor was **Bevy's GPU mesh preprocessing** on the Radeon:
 a fixed ~14 ms a frame, independent of pixels and of what is on the
 stage. 0.19.6 turns it off on Intel Macs (`bench::gpu_preprocessing`).
