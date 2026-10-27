@@ -93,6 +93,11 @@ to 55 %.*
 - [ ] Measure the M1 old against new: four attempts were refused because the
   screen locked itself during the runs; the fifth (2026-10-27) was stopped
   when the empty highway on the 2015 turned up.
+- [x] Released as v0.19.9: GPU preprocessing on again everywhere (with it
+  off the 2015 drew an empty highway). The x86_64 artifact smoke-tested,
+  autopiloted (504/504) and PHOTOGRAPHED on the 2015 — full scene; the
+  player's app there updated (0.19.8 kept as `~/bench/BeatByte-0.19.8-backup.app`),
+  the product page offers it.
 - [x] Released as v0.19.8 (0.19.5–0.19.7 never published); the x86_64
   artifact smoke-tested and autopiloted on the 2015 ("Maria", the governor
   stepping back to 100 % without a crash, 504/504 perfect), the player's
