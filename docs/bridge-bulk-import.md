@@ -66,6 +66,72 @@ SELECTION=selection-next.json python3 tools/bridge-bulk/fetch.py | tee "$BRIDGE_
 To pick more later, run `pick.py` again. It reads the library afresh,
 so whatever the last run added counts as "already there".
 
+## Every Bridge song in one file
+
+[`bridge-tracks.json`](bridge-tracks.json) lists **every Bridge chart in
+the library — 8 597 of 8 619** (2026-11-06), each with the Encore `md5`
+its download needs (`https://files.enchor.us/<md5>.sng`), artist, title,
+charter, pack, and the library folder it was converted into. It is a
+**track list, not a backup**: no audio, no chart, only what is needed to
+fetch each song again. It has the shape `pick.py` writes, so `fetch.py`
+reads it as a selection:
+
+```bash
+cp docs/bridge-tracks.json "$BRIDGE_WORK/"
+SELECTION=bridge-tracks.json python3 tools/bridge-bulk/fetch.py | tee "$BRIDGE_WORK/fetch-all.log"
+```
+
+That run is about **90 GB** of downloads (the earlier runs: 10–11 GB
+per 1 000) and, at the pace of the earlier runs, about 15 hours; `done.txt`
+makes it resumable, and `CAP_GB` must be raised above the default 200 only
+if the work folder already counts earlier downloads.
+
+⚠️ **Downloading and converting are switched off since 0.19.3**
+(`beatbyte_chart::import_policy`: only the audio-to-chart pipeline may
+create game charts; `fetch.py` and `beatbyte-cli bridge` refuse). The
+list itself needs nothing switched on — a plain loop downloads every
+package:
+
+```bash
+python3 -c 'import json; [print(e["md5"]) for e in json.load(open("docs/bridge-tracks.json"))]' |
+  while read md5; do curl -sf -o "$md5.sng" "https://files.enchor.us/$md5.sng"; sleep 0.3; done
+```
+
+Turning those packages into songs again needs `LEGACY_IMPORTS_ENABLED`
+set to `true` for the run — a decision, not a step of this recipe.
+
+**How the list is made.** A converted folder keeps no download key — its
+`bridge-source.json` holds the charter and a fingerprint of the files,
+not the `md5` — so [`tracklist.py`](../tools/bridge-bulk/tracklist.py)
+finds it again in a fresh catalogue:
+
+```bash
+BRIDGE_WORK=<scratch> python3 -c 'import sys; sys.path.insert(0, "tools/bridge-bulk"); import catalog; catalog.crawl()'   # ~25 min
+BRIDGE_WORK=<scratch> BEATBYTE_LIB=<library> python3 tools/bridge-bulk/tracklist.py
+```
+
+A library chart matches when the normalised artist, title and charter
+agree; 512 songs have several such charts (re-uploads, revisions), and
+there the song length decides — the converter keeps it to the
+millisecond, and 8 591 of the matches agree within 1.5 s (the other 6,
+the first hand-picked songs, have no length in the catalogue). The
+Expert note count only breaks a tie: the API counts a chord as one note,
+the library one per lane. Tests: `python3 -m unittest discover -s
+tools/bridge-bulk`.
+
+**Not in the list (22):** their charts are gone from the catalogue,
+mostly charter Wagsii's — A Perfect Circle *Pet*, A2M *I Got Bitches*,
+Alan Walker *Spectre*, Alter Bridge *Metalingus*, Arctic Monkeys *If You
+Were There, Beware*, Ariana Grande *Positions*, Ava Max *Sweet but
+Psycho (Morgan Page Remix)*, Bloodhound Gang *The Bad Touch*, Bullet for
+My Valentine *Waking the Demon*, Disturbed *Down with the Sickness*,
+*The Game* and *Voices*, Eric Johnson *Cliffs of Dover*, Fleetwood Mac
+*Tusk*, Gwen Stefani *Hollaback Girl*, I Prevail *Body Bag*, Peter
+Gabriel *In Your Eyes*, *Sledgehammer* and *Solsbury Hill*, Peyton
+Parrish *I'll Make a Man Out of You*, Simple Minds *Don't You (Forget
+About Me)*, Zach Bryan *Oklahoma Smokeshow*. For a restore they would
+need another chart of the same song (`pick.py` finds one).
+
 ## The API
 
 Encore is the backend of the Bridge app, and an unofficial one: it has

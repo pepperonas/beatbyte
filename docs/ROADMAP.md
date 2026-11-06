@@ -22,6 +22,11 @@ twice, the second run writing nothing; all 54 new versions validated.*
 - [x] Discarded from the library (kept outside it): TTFAF [BG-01] — [BG-02] and
   [GR-01] are properly levelled — and five charts with 1–9 notes on every
   level (Blackout, Outside, Sick Sick Sick, The Catalyst, Sad to Know).
+- [x] `docs/bridge-tracks.json`: every Bridge chart in the library (8 597 of
+  8 619) with the Encore md5 its download needs, recovered from a fresh
+  catalogue by `tools/bridge-bulk/tracklist.py` (artist, title and charter;
+  the length decides between re-uploads). 22 charts are gone from the
+  catalogue. Tests in CI, three mutations caught.
 - [ ] Bulk import: `pick.py` counts a pasted level as "charted by hand" and
   may prefer such a chart over a genuinely levelled one.
 
