@@ -14,6 +14,26 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.19.11] - 2026-11-06
+
+### Fixed
+
+- **Difficulty levels that were copies are real levels again.** Some
+  community charts carry one track pasted under several names — Through
+  the Fire and Flames [BG-01] played the same chart on Easy, Medium and
+  Hard — or a stub of a few notes below a charted level. The importer now
+  treats such a level as missing and derives it from the one above, like a
+  level the download never had. `beatbyte-cli relevel --all <library>`
+  fixes songs imported before, as a new chart version beside the active
+  one; the old version stays.
+
+### Changed
+
+- **A lighter venue on Intel Macs.** No fog machine or haze sheets, only
+  the LED wall's middle row of panels, only the front row of the crowd
+  and no fan cards or phones. Apple silicon keeps the full venue;
+  `BEATBYTE_LITE_VENUE=on|off` overrides the choice.
+
 ## [0.19.10] - 2026-10-27
 
 ### Changed

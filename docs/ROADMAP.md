@@ -4,6 +4,27 @@
 Rules of engagement live in [`CLAUDE.md`](../CLAUDE.md); this file
 holds the work itself.
 
+## Difficulty levels that were copies (2026-11-06, v0.19.11)
+
+*Verified: 2375 tests in the source inventory, including documentation examples;
+fmt, clippy `-D warnings --all-features`, `cargo test --workspace`; the copy and
+stub pins seen to fail under six mutations; `relevel --all` over the library
+twice, the second run writing nothing; all 54 new versions validated.*
+
+- [x] Through the Fire and Flames [BG-01] played the same chart on Easy, Medium
+  and Hard. 58 of 8 630 library charts carried a level pasted from the one
+  above it, one (Hey Nineteen) a 5-note stub under a 690-note Expert. The
+  converter now treats both as missing and derives them down the classic
+  ladder (`bridge::copied_levels`, `bridge::relevel`).
+- [x] `beatbyte-cli relevel [--all] [--dry-run]` fixes songs imported before
+  the rule, as a new chart version beside the active one. Run over the
+  library: 54 songs re-levelled.
+- [x] Discarded from the library (kept outside it): TTFAF [BG-01] — [BG-02] and
+  [GR-01] are properly levelled — and five charts with 1–9 notes on every
+  level (Blackout, Outside, Sick Sick Sick, The Catalyst, Sad to Know).
+- [ ] Bulk import: `pick.py` counts a pasted level as "charted by hand" and
+  may prefer such a chart over a genuinely levelled one.
+
 ## Bevy 0.20 migration (planned 2026-10-27, not started)
 
 Maintenance, not a performance fix: on the 2015 the game is GPU-bound and
@@ -85,6 +106,12 @@ to 55 %.*
   Released as v0.19.10; the installed app on the 2015 was PHOTOGRAPHED
   with the full scene, the release artifact played Maria 504/504 there
   (backup `~/bench/BeatByte-0.19.9-backup.app`).
+- [x] A lighter venue on Intel Macs *(v0.19.11)*: no fog machine or haze
+  sheets, the LED wall's middle row only, the crowd's front row only, no
+  cards or phones (`stage3d::lite_venue`, `BEATBYTE_LITE_VENUE`). Measured
+  under screen-sharing load: median −1 to −3 ms, vsync p99 35 → 32 ms; a
+  clean re-measurement is open (`docs/perf/baseline.md`). The M1 is
+  unchanged.
 - [x] Per-frame waste removed without touching the picture *(v0.19.7)*:
   indexed beat lookups (bit-identical to the walk), the Hype auto-hit scan
   stops at the first later note, the song end is computed once everyone has

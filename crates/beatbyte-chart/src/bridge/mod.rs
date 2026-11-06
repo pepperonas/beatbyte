@@ -112,8 +112,14 @@ pub struct Report {
     /// Tap notes played as HOPOs.
     pub taps_as_hopo: usize,
     /// Levels the download did not have, derived from the one above
-    /// it by the classic ladder.
+    /// it by the classic ladder. Includes the [`copied`](Self::copied)
+    /// ones.
     pub derived: Vec<Difficulty>,
+    /// Levels the download had only as a copy of the level above —
+    /// note for note the same chart, so choosing them changed nothing —
+    /// or as a stub of a few notes. They were thrown away and derived
+    /// like missing ones.
+    pub copied: Vec<Difficulty>,
 }
 
 /// Why a folder cannot be converted.
@@ -301,8 +307,89 @@ pub fn assemble(
         grid: Some(grid(&map, &song.time_signatures, end_tick, shift)),
         rules: None,
     };
-    report.derived = fill_missing_levels(&mut chart);
+    (report.derived, report.copied) = restore_levels(&mut chart);
     Ok((chart, report))
+}
+
+/// A level above with at least this many notes can have a stub
+/// under it — below that, a sparse level may simply be a sparse song.
+const STUB_BASE: usize = 100;
+
+/// A level with fewer than 1/`STUB_RATIO` of the notes of the level
+/// above is a stub. The ladder never thins that far (Easy keeps about
+/// a fifth of Expert in the library).
+const STUB_RATIO: usize = 10;
+
+/// Levels below the top that are no level at all: a copy of the
+/// nearest level above them present — note for note the same chart —
+/// or a stub with under a tenth of its notes. Some charters fill the
+/// levels they did not chart by pasting one track into all of them,
+/// others leave a handful of notes there (59 of 8 630 library charts,
+/// 2026-11-06): choosing such a level changes nothing, or leaves the
+/// player with a silent song. Pure — tested.
+pub fn copied_levels(chart: &ChartFile) -> Vec<Difficulty> {
+    let order = [
+        Difficulty::Expert,
+        Difficulty::Hard,
+        Difficulty::Medium,
+        Difficulty::Easy,
+    ];
+    let mut above: Option<&ChartDef> = None;
+    let mut copies = Vec::new();
+    for level in order {
+        let Some(this) = chart.chart_for(level) else {
+            continue;
+        };
+        if let Some(upper) = above {
+            let copy = !this.notes.is_empty() && this.notes == upper.notes;
+            let stub =
+                upper.notes.len() >= STUB_BASE && this.notes.len() * STUB_RATIO < upper.notes.len();
+            if copy || stub {
+                copies.push(level);
+            }
+        }
+        above = Some(this);
+    }
+    copies
+}
+
+/// Replace every [copied level](copied_levels) by one derived from
+/// the level above it, as if the download had left it out. A copy
+/// whose derivation comes out empty is put back — a level the player
+/// could choose before must not vanish. Returns the levels replaced.
+/// Pure — tested.
+pub fn relevel(chart: &mut ChartFile) -> Vec<Difficulty> {
+    restore_levels(chart).1
+}
+
+/// Throw out the copied levels, then derive every level missing — the
+/// copies and the ones the download never had — in one top-down pass,
+/// so a copy is judged against what the download wrote, never against
+/// a level derived a moment earlier. Returns (every level derived,
+/// the copies among them).
+fn restore_levels(chart: &mut ChartFile) -> (Vec<Difficulty>, Vec<Difficulty>) {
+    let copies = copied_levels(chart);
+    let mut removed = Vec::new();
+    chart.charts.retain(|c| {
+        if copies.contains(&c.difficulty) {
+            removed.push(c.clone());
+            false
+        } else {
+            true
+        }
+    });
+    let derived = fill_missing_levels(chart);
+    let mut replaced = Vec::new();
+    for def in removed {
+        if derived.contains(&def.difficulty) {
+            replaced.push(def.difficulty);
+        } else {
+            chart.charts.push(def);
+        }
+    }
+    chart.charts.sort_by_key(|c| c.difficulty);
+    replaced.sort_by_key(|d| std::cmp::Reverse(*d));
+    (derived, replaced)
 }
 
 /// Derive every level below the highest one present that the
@@ -631,6 +718,120 @@ mod tests {
                 .iter()
                 .all(|i| i.severity != crate::Severity::Error)
         );
+    }
+
+    /// The download the levels were pasted into: one track under
+    /// every name. Each level below the top comes out derived and
+    /// sparser than the one above — choosing a level means something
+    /// again — and the conversion says so.
+    #[test]
+    fn levels_that_copy_the_one_above_are_derived_like_missing_ones() {
+        let notes: Vec<TickNote> = (0..64u64)
+            .map(|i| note(i * 96, if i % 8 == 0 { 0b00101 } else { 1 << (i % 5) }))
+            .collect();
+        let mut pasted = song(notes.clone());
+        for difficulty in [Difficulty::Hard, Difficulty::Medium, Difficulty::Easy] {
+            pasted.tracks.push(TickTrack {
+                difficulty,
+                notes: notes.clone(),
+                star_power: vec![],
+            });
+        }
+        let (chart, report) = assemble(&pasted, &SongIni::default(), "a.m4a").unwrap();
+        let all_below = vec![Difficulty::Hard, Difficulty::Medium, Difficulty::Easy];
+        assert_eq!(report.copied, all_below);
+        assert_eq!(report.derived, all_below);
+        let count = |d| chart.chart_for(d).map_or(0, |c| c.notes.len());
+        assert!(count(Difficulty::Expert) > count(Difficulty::Hard));
+        assert!(count(Difficulty::Hard) > count(Difficulty::Medium));
+        assert!(count(Difficulty::Medium) > count(Difficulty::Easy));
+        assert!(copied_levels(&chart).is_empty());
+    }
+
+    fn file_with(levels: &[(Difficulty, Vec<f64>)]) -> ChartFile {
+        let (mut chart, _) =
+            assemble(&song(vec![note(0, 1)]), &SongIni::default(), "a.m4a").unwrap();
+        chart.charts = levels
+            .iter()
+            .map(|(difficulty, times)| ChartDef {
+                difficulty: *difficulty,
+                notes: times
+                    .iter()
+                    .enumerate()
+                    .map(|(i, t)| ChartNote {
+                        time: *t,
+                        lane: (i % 5) as u8,
+                        ..chart.charts[0].notes[0]
+                    })
+                    .collect(),
+                ..chart.charts[0].clone()
+            })
+            .collect();
+        chart
+    }
+
+    /// A level with a handful of notes under a charted one is a stub;
+    /// a merely sparse level, or a sparse song, is not.
+    #[test]
+    fn a_stub_under_a_charted_level_counts_as_a_copy() {
+        let full: Vec<f64> = (0..200).map(|i| 1.0 + f64::from(i) * 0.25).collect();
+        let five: Vec<f64> = full[..5].to_vec();
+        let chart = file_with(&[
+            (Difficulty::Hard, five.clone()),
+            (Difficulty::Expert, full.clone()),
+        ]);
+        assert_eq!(copied_levels(&chart), vec![Difficulty::Hard]);
+        let fifth: Vec<f64> = full[..40].to_vec();
+        let chart = file_with(&[
+            (Difficulty::Easy, fifth),
+            (Difficulty::Expert, full.clone()),
+        ]);
+        assert!(copied_levels(&chart).is_empty(), "a fifth is a level");
+        let sparse: Vec<f64> = full[..60].to_vec();
+        let chart = file_with(&[(Difficulty::Hard, five), (Difficulty::Expert, sparse)]);
+        assert!(
+            copied_levels(&chart).is_empty(),
+            "too few notes above to judge"
+        );
+    }
+
+    /// Only a level identical to the nearest one ABOVE it is a copy:
+    /// a charted level stays, a gap in between is skipped over, and
+    /// Expert is never one.
+    #[test]
+    fn a_copy_is_judged_against_the_nearest_level_above() {
+        let a = vec![0.5, 1.0, 1.5, 2.0];
+        let b = vec![0.5, 1.5];
+        let chart = file_with(&[
+            (Difficulty::Easy, a.clone()),
+            (Difficulty::Medium, b.clone()),
+            (Difficulty::Expert, b.clone()),
+        ]);
+        assert_eq!(copied_levels(&chart), vec![Difficulty::Medium]);
+        let chart = file_with(&[(Difficulty::Hard, a.clone()), (Difficulty::Expert, b)]);
+        assert!(copied_levels(&chart).is_empty());
+        let chart = file_with(&[(Difficulty::Expert, a)]);
+        assert!(copied_levels(&chart).is_empty());
+    }
+
+    /// A copy the ladder cannot derive anything from stays as it was:
+    /// re-levelling may make a level different, never make it vanish.
+    #[test]
+    fn a_copy_that_derives_to_nothing_is_kept() {
+        let mut chart = file_with(&[(Difficulty::Hard, vec![]), (Difficulty::Expert, vec![])]);
+        assert!(relevel(&mut chart).is_empty());
+        assert_eq!(chart.charts.len(), 2);
+        let notes = vec![0.5, 1.0];
+        let mut chart = file_with(&[
+            (Difficulty::Medium, notes.clone()),
+            (Difficulty::Hard, notes.clone()),
+            (Difficulty::Expert, notes),
+        ]);
+        let replaced = relevel(&mut chart);
+        for level in [Difficulty::Medium, Difficulty::Hard, Difficulty::Expert] {
+            assert!(chart.chart_for(level).is_some_and(|c| !c.notes.is_empty()));
+        }
+        assert!(replaced.iter().all(|d| *d != Difficulty::Expert));
     }
 
     /// Untrusted input: ticks at the end of the integer range, a

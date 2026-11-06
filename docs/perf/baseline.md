@@ -153,6 +153,34 @@ The R9 M370X reports no GPU timestamps (`BEATBYTE_BENCH_GPU` gives
 machine sat at load ~4 measured everything 50 % slower (`m-*.json`) —
 alternate builds within one series before reading a difference.
 
+### The lighter venue (2026-11-06, 0.19.10 → 0.19.11)
+
+The hide probes `haze`, `ledwall`, `cards` and `screens` first measured
+what each part of the venue costs; the cuts that came out of it — no fog
+machine or haze sheets, the LED wall's middle row only, the crowd's front
+row only, no cards or phones — are 0.19.11's lighter venue on Intel Macs.
+The installed 0.19.10 and the new build alternated on "Maria" medium,
+windowed, stage pinned at 55 %; the new build was photographed on the
+2015 at 45 s and 60 s with the full lighter scene (58–59 fps on the
+overlay).
+
+| Run | 0.19.10 median / p99 | 0.19.11 median / p99 |
+|---|---|---|
+| uncapped, round 1 | 17.67 / 26.93 ms | 17.49 / 27.17 ms |
+| uncapped, round 2 | 19.15 / 28.20 ms | 16.38 / 28.83 ms |
+| vsync | 19.27 / 34.98 ms | 17.85 / 31.59 ms |
+| live governor | — | 18.51 / 30.71 ms |
+
+⚠️ **These numbers carry a load that was not the game's.** macOS screen
+sharing to the 2015 was active through the whole series
+(`ScreensharingAgent` at 51 % CPU, load average 4.5–5), and the 0.19.10
+medians sit 5–6 ms above the same build's release measurement. The gain
+reads as 1–2 ms on the median and ~3 ms on the vsync p99 — near the
+noise of a loaded machine. A clean re-measurement without screen sharing
+is still open; it may also explain the "hot phases" earlier series
+attributed to heat. **Check `pgrep -l ScreensharingAgent` before any
+2015 measurement.**
+
 ### Findings the bench made on the way
 
 - **The song clock jumped forward** 0.7–1.0 s in a single short frame

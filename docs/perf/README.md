@@ -93,6 +93,11 @@ renderer at all).
   That path cost the Radeon about 8 ms a frame; the full scene was
   photographed under the change. `BEATBYTE_INDIRECT_DRAWING=on|off`
   overrides it; the `noindirect` and `cpupre` probes measure it.
+- **A lighter venue** (since 0.19.11): no fog machine and no haze
+  sheets, only the LED wall's middle row of panels, only the crowd's
+  front row (20 instead of 56) and no fan cards or phones.
+  `BEATBYTE_LITE_VENUE=on|off` overrides it — `on` shows the M1 what the
+  2015 draws. Apple silicon keeps the full venue.
 - **The binary must be named `beatbyte`.** `tools/bench.sh` raises the
   window by process name, and a copy called anything else is neither
   raised nor found by `pkill -x beatbyte` — a leftover run then keeps

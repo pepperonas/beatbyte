@@ -176,6 +176,7 @@ mod tests {
             early_notes_dropped: 0,
             taps_as_hopo: 0,
             derived: vec![Difficulty::Medium, Difficulty::Easy],
+            copied: vec![],
         };
         let line = describe(
             "TTFAF (Stargazer)",

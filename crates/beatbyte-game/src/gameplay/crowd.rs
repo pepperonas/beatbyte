@@ -567,7 +567,7 @@ pub fn spawn_crowd(
     commands.insert_resource(CrowdMood::default());
 
     let seed = song_seed(&song.chart.song.title);
-    for index in 0..2 * CROWD_PER_SIDE {
+    for index in 0..crowd_count(stage3d::lite_venue()) {
         let slot = slot(index, seed);
         spawn_figure(
             &mut commands,
@@ -578,6 +578,18 @@ pub fn spawn_crowd(
             (GameplayScreen, Stage3d, slot.dancer),
             CrowdJoint,
         );
+    }
+}
+
+/// How many people stand in the crowd: everyone, or in the lighter
+/// venue only the front row (the first slots are the front row on both
+/// sides). Pure — tested.
+#[must_use]
+pub fn crowd_count(lite: bool) -> usize {
+    if lite {
+        2 * ROWS[0]
+    } else {
+        2 * CROWD_PER_SIDE
     }
 }
 
@@ -659,6 +671,20 @@ pub fn animate_crowd(
 mod tests {
     use super::figure::{Build, Joint, Side, hand_position, joint_transform};
     use super::*;
+
+    #[test]
+    fn the_lighter_venue_keeps_exactly_the_front_row() {
+        assert_eq!(crowd_count(false), 2 * CROWD_PER_SIDE);
+        let lite = crowd_count(true);
+        assert_eq!(lite, 2 * ROWS[0]);
+        let seed = song_seed("a song");
+        let front_x = slot(0, seed).position.x.abs();
+        for index in 0..2 * CROWD_PER_SIDE {
+            let row_x = slot(index, seed).position.x.abs();
+            let front = (row_x - front_x).abs() < ROW_PITCH_X / 2.0;
+            assert_eq!(index < lite, front, "slot {index} at |x| {row_x}");
+        }
+    }
     use beatbyte_core::{Lane, LaneSet};
 
     const MOVES: [Move; 7] = [

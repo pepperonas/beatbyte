@@ -1369,6 +1369,24 @@ Local packaging:
   that read like a measurement. Check the log for a sign the keys
   arrived (the browser preview line changes with the selection) before
   reading any number from such a run.
+- **`/Applications/BeatByte.app` is a launcher, not a build.** Its
+  `Contents/MacOS/beatbyte` is a zsh script that runs
+  `target/release/beatbyte` from this checkout — and BUILDS it first
+  (`--release --features ml`) when the binary is missing or older than the
+  sources. A harness run through the app therefore starts a full release
+  build in the background, which outlives a killed run (2026-11-06: an
+  orphaned cargo was found compiling on a disk with 4 GB free). Run the
+  binary directly, and kill a stray build by PID.
+- **Screen sharing to the 2015 is a load the bench cannot see.**
+  `ScreensharingAgent` ran at half a core through a whole measuring series
+  (load average 4.5–5) and put the reference build's median 5–6 ms above
+  its own release numbers. Check `pgrep -l ScreensharingAgent` (and the
+  load average) before measuring there, and disconnect the viewer.
+- **A level can be a copy.** Community charts sometimes paste one track
+  under every difficulty name; the converter derives such levels like
+  missing ones (`bridge::copied_levels`). When a player reports that a
+  difficulty "changes nothing", hash the levels' notes before suspecting
+  the game.
 - **A disk that fills during a release link leaves a 2 KB binary that
   cargo calls fresh.** The strip step failed with "No space left on
   device", `target/release/beatbyte` was 2 464 bytes, and the next build

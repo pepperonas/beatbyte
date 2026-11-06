@@ -455,7 +455,8 @@ pub fn spawn_cards(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    if !stage3d::active(&settings) {
+    // The lighter venue has no rows behind the front one to hold them.
+    if !stage3d::active(&settings) || stage3d::lite_venue() {
         return;
     }
     let assets = if let Some(existing) = existing {

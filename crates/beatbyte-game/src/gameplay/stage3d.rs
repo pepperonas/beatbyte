@@ -253,6 +253,38 @@ pub fn active(settings: &Settings) -> bool {
     settings.stage_3d
 }
 
+/// Whether this machine gets the lighter venue: no fog machine, no
+/// haze sheets, one row of the LED wall instead of three, and only the
+/// front row of the crowd, without cards and phones. On Intel Macs,
+/// whose GPUs cannot hold 60 Hz with the full room; Apple silicon keeps
+/// the full venue. `BEATBYTE_LITE_VENUE` (`on` / `off`) overrides it
+/// for a measurement. The neck, the notes and the band are the same
+/// everywhere.
+#[must_use]
+pub fn lite_venue() -> bool {
+    lite_choice(
+        cfg!(all(target_os = "macos", target_arch = "x86_64")),
+        std::env::var("BEATBYTE_LITE_VENUE").ok().as_deref(),
+    )
+}
+
+/// The decision behind [`lite_venue`], pure.
+fn lite_choice(intel_mac: bool, overridden: Option<&str>) -> bool {
+    match overridden {
+        Some("on") => true,
+        Some("off") => false,
+        _ => intel_mac,
+    }
+}
+
+/// The rows of the LED wall a venue builds (0 = the lowest). The
+/// lighter venue keeps the middle row, so the wall still frames the
+/// band.
+#[must_use]
+pub fn led_rows(lite: bool) -> &'static [usize] {
+    if lite { &[1] } else { &[0, 1, 2] }
+}
+
 /// The colour of the venue wash on one side (`side` < 0 is the left):
 /// the theme's accent on the left, the fourth lane's colour on the
 /// right. The fog machines on each side wear it too, so the fog is lit
@@ -1577,6 +1609,10 @@ pub fn pulse_led_wall(
 #[derive(Component)]
 struct Venue;
 
+/// One of the static haze sheets low in the room.
+#[derive(Component)]
+pub struct HazeSheet;
+
 /// The band's warm key light (a spot from the front truss).
 #[derive(Component)]
 pub struct BandKey;
@@ -1718,7 +1754,13 @@ fn spawn_venue(
         cull_mode: None,
         ..default()
     });
-    for (y, z, width) in [(1.5, -36.0, 1.0f32), (2.5, -26.0, 0.8), (1.0, -17.0, 0.6)] {
+    let lite = lite_venue();
+    let haze_sheets: &[(f32, f32, f32)] = if lite {
+        &[]
+    } else {
+        &[(1.5, -36.0, 1.0), (2.5, -26.0, 0.8), (1.0, -17.0, 0.6)]
+    };
+    for &(y, z, width) in haze_sheets {
         commands.spawn((
             GameplayScreen,
             Stage3d,
@@ -1727,6 +1769,7 @@ fn spawn_venue(
             // haze sheet that shadowed the floor would be a black
             // wall. Every ghost on the stage carries this.
             NotShadowCaster,
+            HazeSheet,
             Mesh3d(haze_quad.clone()),
             MeshMaterial3d(haze_material.clone()),
             Transform::from_xyz(0.0, y, z).with_scale(Vec3::new(width, 1.0, 1.0)),
@@ -1839,8 +1882,8 @@ fn spawn_venue(
         perceptual_roughness: 0.7,
         ..default()
     });
-    for row in 0..3 {
-        for column in 0..9 {
+    for &row in led_rows(lite) {
+        for column in 0..9usize {
             let x = (column as f32 - 4.0) * 4.0;
             let y = 6.5 + row as f32 * 2.1;
             let checker = (row + column) % 2 == 0;
@@ -3758,7 +3801,25 @@ mod held_tail_tests {
 
 #[cfg(test)]
 mod tests {
-    use super::{backdrop_shade, gem_shade};
+    use super::{backdrop_shade, gem_shade, led_rows, lite_choice};
+
+    #[test]
+    fn the_lighter_venue_is_for_intel_macs_only() {
+        for intel_mac in [false, true] {
+            for overridden in [None, Some("on"), Some("off"), Some("junk")] {
+                let want = match overridden {
+                    Some("on") => true,
+                    Some("off") => false,
+                    _ => intel_mac,
+                };
+                assert_eq!(lite_choice(intel_mac, overridden), want);
+            }
+        }
+        // The full venue keeps its three rows; the lighter one the
+        // middle row.
+        assert_eq!(led_rows(false), &[0, 1, 2]);
+        assert_eq!(led_rows(true), &[1]);
+    }
 
     #[test]
     fn a_gem_face_is_brightest_near_its_highlight() {

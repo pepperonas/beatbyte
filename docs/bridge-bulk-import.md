@@ -182,6 +182,12 @@ song, preferring in this order: **a community chart over a game rip**,
 **fewest API-reported issues**, **most levels charted by hand**, **most
 Expert notes**. A chart that is Expert only is fine, because the
 converter derives Hard, Medium and Easy down the classic ladder.
+The converter treats a level that is a note-for-note copy of the level
+above it, or a stub with under a tenth of its notes, as missing and
+derives it the same way: some charters paste one track under every
+name, and choosing Easy then played Expert. Songs imported before that
+rule existed are fixed with `beatbyte-cli relevel --all <library>`,
+which writes a new chart version beside the active one.
 
 ## Duplicates
 

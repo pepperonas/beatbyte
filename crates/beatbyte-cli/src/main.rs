@@ -29,6 +29,7 @@ mod players;
 #[cfg(feature = "ml")]
 mod poly;
 mod redesign;
+mod relevel;
 mod rename;
 mod review;
 mod shots;
@@ -457,6 +458,20 @@ enum Command {
         /// Treat the path as a directory of song folders.
         #[arg(long)]
         all: bool,
+    },
+    /// Re-derive levels that are a copy of the level above them (a
+    /// community chart with one track pasted under several names), as
+    /// a new chart version beside the active one. Folders without
+    /// copies are left alone and say nothing.
+    Relevel {
+        /// A song folder — or, with `--all`, a directory of them.
+        path: PathBuf,
+        /// Treat the path as a directory of song folders.
+        #[arg(long)]
+        all: bool,
+        /// Report what would change, write nothing.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Measure a song's loudness and audio quality the way the game
     /// levels it (EBU R128 integrated loudness, true peak, loudness
@@ -965,6 +980,7 @@ fn main() -> ExitCode {
                 redesign::run_redesign(&chart)
             }
         }
+        Command::Relevel { path, all, dry_run } => relevel::run(&path, all, dry_run),
         Command::Loudness { path, all, write } => {
             if all {
                 loudness::run_all(&path, write)

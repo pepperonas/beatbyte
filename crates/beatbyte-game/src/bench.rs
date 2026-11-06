@@ -423,6 +423,52 @@ fn despawn_probes(
     drop(probe("monitors"), &mut monitors.iter());
 }
 
+/// Take a part of the stage out of the picture by visibility, every
+/// frame — for parts whose systems respawn or re-show them (the
+/// monitors respawned the frame after `despawn_probes` removed them,
+/// so that probe measured the respawn). The part's animation still
+/// runs; only its drawing goes. `haze` the three haze sheets,
+/// `ledwall` the LED wall behind the stage, `cards` the crowd's cards
+/// and phones, `screens` the PA monitors.
+#[allow(clippy::type_complexity)]
+fn hide_probes(
+    mut parts: Query<
+        (
+            &mut Visibility,
+            Has<crate::gameplay::stage3d::HazeSheet>,
+            Has<crate::gameplay::stage3d::LedPanel>,
+            Has<crate::gameplay::crowd_cards::CrowdCard>,
+            Has<crate::gameplay::crowd_cards::CardPhone>,
+            Has<crate::gameplay::monitors::Monitor>,
+            Has<crate::gameplay::monitors::MonitorDot>,
+        ),
+        Or<(
+            With<crate::gameplay::stage3d::HazeSheet>,
+            With<crate::gameplay::stage3d::LedPanel>,
+            With<crate::gameplay::crowd_cards::CrowdCard>,
+            With<crate::gameplay::crowd_cards::CardPhone>,
+            With<crate::gameplay::monitors::Monitor>,
+            With<crate::gameplay::monitors::MonitorDot>,
+        )>,
+    >,
+) {
+    let (haze, wall, cards, screens) = (
+        probe("haze"),
+        probe("ledwall"),
+        probe("cards"),
+        probe("screens"),
+    );
+    for (mut visibility, h, l, card, phone, monitor, dot) in &mut parts {
+        let hide = (haze && h)
+            || (wall && l)
+            || (cards && (card || phone))
+            || (screens && (monitor || dot));
+        if hide && *visibility != Visibility::Hidden {
+            *visibility = Visibility::Hidden;
+        }
+    }
+}
+
 /// The render-path probes (2026-10-26, the 2015 MacBook's floor):
 /// `hdr` takes HDR off both cameras, `distfog` the distance fog,
 /// `nostage` the 3D camera itself (the floor of UI + HUD alone),
@@ -629,6 +675,8 @@ impl Plugin for BenchPlugin {
                     apply_material_probes
                         .before(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate),
                     despawn_probes,
+                    hide_probes
+                        .before(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate),
                 ),
             )
             .add_systems(OnEnter(AppState::Gameplay), mark_gameplay_entered)

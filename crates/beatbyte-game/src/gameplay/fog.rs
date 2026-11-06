@@ -416,10 +416,11 @@ fn spawn_fog(
     sprites: Option<Res<FogSprites>>,
     theme: Res<crate::theme::ActiveTheme>,
 ) {
-    if !stage3d::active(&settings) {
+    *schedule = FogSchedule::default();
+    // The lighter venue has no fog machines: no pool, nothing fires.
+    if !stage3d::active(&settings) || stage3d::lite_venue() {
         return;
     }
-    *schedule = FogSchedule::default();
     // The sprites cost a moment to draw; they are made once per run.
     let sprites = if let Some(sprites) = sprites {
         sprites.0.clone()
