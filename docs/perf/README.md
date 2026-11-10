@@ -32,10 +32,11 @@ adds work.
 
 ## Rules
 
-The settings screen has **PERFORMANCE MODE**, enabled by default (also
-for older settings files). It disables MSAA, bloom, the directional
-shadow map and extra point/spot lights. Turn it off to compare the
-original stage look. For comparison runs, set
+The settings screen has **GRAPHICS**: AUTO (the default), FULL or
+PERFORMANCE. Performance mode disables MSAA, bloom, the directional
+shadow map and extra point/spot lights, and lets the stage's render
+scale drop. AUTO means FULL on Apple silicon (measured to afford it,
+`baseline.md`) and PERFORMANCE on every other machine. For comparison runs, set
 `BEATBYTE_BENCH_QUALITY=full` or `performance`; this overrides the
 setting for that benchmark process only. Benchmark JSON records the
 choice. Keep window

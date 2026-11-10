@@ -213,7 +213,13 @@ pub struct Settings {
     /// of the 2D projection. Presentation only — judgment is
     /// input-stamp driven and identical across all three views.
     pub stage_3d: bool,
+    /// The GRAPHICS choice. `performance_mode` below is what it means
+    /// on this machine.
+    #[serde(default)]
+    pub graphics: Graphics,
     /// Reduce expensive rendering effects to keep input and notes smooth.
+    /// DERIVED from `graphics` (`set_graphics`, `sanitize`); still
+    /// written so older builds reading the file keep a sensible value.
     #[serde(default = "default_true")]
     pub performance_mode: bool,
     /// Where the stage's render scale settled on this device (an
@@ -380,6 +386,77 @@ pub enum MissSound {
     BassMute,
 }
 
+/// How much the stage renders: the choice behind GRAPHICS.
+///
+/// Until 0.19.12 this was one switch, PERFORMANCE MODE, on by default
+/// everywhere — so an M1 drew the stage without its lights, bloom,
+/// shadows and anti-aliasing although the full look costs it about
+/// 0.2 ms a frame (measured 2026-11-10, `docs/perf/baseline.md`).
+/// `Auto` decides by the machine instead.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Graphics {
+    /// Full on Apple silicon, performance everywhere else.
+    #[default]
+    Auto,
+    /// Stage lights, bloom, the shadow map and 4x MSAA.
+    Full,
+    /// None of the four, and the stage's render scale may drop.
+    Performance,
+}
+
+impl Graphics {
+    /// Every choice, in the order the setting cycles through them.
+    pub const ALL: [Graphics; 3] = [Graphics::Auto, Graphics::Full, Graphics::Performance];
+
+    /// The name the settings row shows.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Graphics::Auto => "AUTO",
+            Graphics::Full => "FULL",
+            Graphics::Performance => "PERFORMANCE",
+        }
+    }
+
+    /// Whether this choice means performance mode on a machine that
+    /// is (`capable`) or is not known to afford the full look. Pure.
+    #[must_use]
+    pub fn performance_on(self, capable: bool) -> bool {
+        match self {
+            Graphics::Auto => !capable,
+            Graphics::Full => false,
+            Graphics::Performance => true,
+        }
+    }
+
+    /// [`Self::performance_on`] for this machine.
+    #[must_use]
+    pub fn performance(self) -> bool {
+        self.performance_on(affords_full_graphics())
+    }
+
+    /// The choice a settings file from before GRAPHICS stands for: a
+    /// file that had PERFORMANCE MODE switched off made a choice
+    /// (the default was on), every other file only carried the default.
+    #[must_use]
+    pub fn from_legacy(has_graphics_key: bool, stored: Graphics, performance_mode: bool) -> Self {
+        match (has_graphics_key, performance_mode) {
+            (true, _) => stored,
+            (false, false) => Graphics::Full,
+            (false, true) => Graphics::Auto,
+        }
+    }
+}
+
+/// Whether `Graphics::Auto` means the full look here: Apple silicon,
+/// the one family measured to afford it. Intel Macs cannot (the 2015
+/// MacBook: 100 ms a frame), and an unknown GPU keeps the safe choice.
+#[must_use]
+pub fn affords_full_graphics() -> bool {
+    cfg!(all(target_os = "macos", target_arch = "aarch64"))
+}
+
 /// The sound of moving through a menu.
 ///
 /// The classic square-wave beep was found stressful in long browsing
@@ -507,7 +584,8 @@ impl Default for Settings {
             tap_mode: false,
             perspective: true,
             stage_3d: true,
-            performance_mode: true,
+            graphics: Graphics::Auto,
+            performance_mode: Graphics::Auto.performance(),
             stage_scale_step: 0,
             fullscreen: false,
             watch_folder: None,
@@ -540,8 +618,15 @@ impl Settings {
         f64::from(self.video_offset_ms) / 1000.0
     }
 
+    /// Choose the graphics quality; `performance_mode` follows.
+    pub fn set_graphics(&mut self, graphics: Graphics) {
+        self.graphics = graphics;
+        self.performance_mode = graphics.performance();
+    }
+
     /// Clamp all values into their valid ranges (files are input too).
     pub fn sanitize(&mut self) {
+        self.performance_mode = self.graphics.performance();
         // The flat view was removed; a settings file that still
         // selects it would otherwise leave the highway with no depth
         // and no way to get it back from the VIEW row.
@@ -715,6 +800,11 @@ pub fn load_settings() -> Settings {
     match std::fs::read_to_string(&path) {
         Ok(text) => match serde_json::from_str::<Settings>(&text) {
             Ok(mut settings) => {
+                settings.graphics = Graphics::from_legacy(
+                    text.contains("\"graphics\""),
+                    settings.graphics,
+                    settings.performance_mode,
+                );
                 settings.sanitize();
                 settings
             }
@@ -960,15 +1050,52 @@ mod tests {
     }
 
     #[test]
-    fn older_settings_adopt_performance_mode() {
-        let settings: Settings = serde_json::from_str("{}").unwrap();
+    fn auto_graphics_decides_by_the_machine() {
+        use super::Graphics;
+        assert!(!Graphics::Auto.performance_on(true));
+        assert!(Graphics::Auto.performance_on(false));
+        for capable in [true, false] {
+            assert!(!Graphics::Full.performance_on(capable));
+            assert!(Graphics::Performance.performance_on(capable));
+        }
+        // A file from before GRAPHICS: the default (on) was nobody's
+        // choice, a switched-off PERFORMANCE MODE was.
+        assert_eq!(
+            Graphics::from_legacy(false, Graphics::Auto, true),
+            Graphics::Auto
+        );
+        assert_eq!(
+            Graphics::from_legacy(false, Graphics::Auto, false),
+            Graphics::Full
+        );
+        for stored in Graphics::ALL {
+            for mode in [true, false] {
+                assert_eq!(Graphics::from_legacy(true, stored, mode), stored);
+            }
+        }
+    }
+
+    #[test]
+    fn performance_mode_follows_the_graphics_choice() {
+        use super::Graphics;
+        let mut settings: Settings = serde_json::from_str("{}").unwrap();
+        assert_eq!(settings.graphics, Graphics::Auto);
+        settings.sanitize();
+        assert_eq!(settings.performance_mode, !super::affords_full_graphics());
+        // A stale derived value in the file does not survive a load.
+        let mut stale: Settings =
+            serde_json::from_str(r#"{"graphics":"full","performance_mode":true}"#).unwrap();
+        stale.sanitize();
+        assert!(!stale.performance_mode);
+        settings.set_graphics(Graphics::Performance);
         assert!(settings.performance_mode);
-        let full = Settings {
-            performance_mode: false,
-            ..Settings::default()
-        };
-        let back: Settings = serde_json::from_str(&serde_json::to_string(&full).unwrap()).unwrap();
-        assert!(!back.performance_mode);
+        let back: Settings =
+            serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+        assert_eq!(back.graphics, Graphics::Performance);
+        assert_eq!(
+            Settings::default().performance_mode,
+            Graphics::Auto.performance()
+        );
     }
 
     #[test]
@@ -976,8 +1103,12 @@ mod tests {
         use bevy::prelude::*;
 
         let mut app = App::new();
-        app.insert_resource(Settings::default())
-            .add_systems(PostUpdate, super::apply_render_quality);
+        // Stated, not defaulted: what AUTO means depends on the machine.
+        app.insert_resource(Settings {
+            performance_mode: true,
+            ..Settings::default()
+        })
+        .add_systems(PostUpdate, super::apply_render_quality);
         let camera = app
             .world_mut()
             .spawn((

@@ -82,6 +82,7 @@ pub const DEVICE: &[&str] = &[
     "fullscreen",
     "ui_scale",
     "stage_3d",
+    "graphics",
     "performance_mode",
     "stage_scale_step",
     "particles",

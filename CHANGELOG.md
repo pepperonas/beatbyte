@@ -14,6 +14,20 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.19.12] - 2026-11-10
+
+### Changed
+
+- **The stage looks the way it was built on Apple silicon.** PERFORMANCE
+  MODE was on by default on every machine, so an M1 drew the stage without
+  its lights, bloom, shadows and anti-aliasing. Settings now has
+  **GRAPHICS**: AUTO (the default), FULL or PERFORMANCE. AUTO means the
+  full look on Apple silicon and performance mode on Intel Macs and
+  everything else, as before. Measured on an M1 Pro, the full look costs
+  nothing in a window (4.7 ms a frame either way) and about 0.2 ms at full
+  screen (5.0–5.3 against 4.9–5.0 ms). A settings file that had
+  PERFORMANCE MODE switched off reads as FULL; every other file as AUTO.
+
 ## [0.19.11] - 2026-11-06
 
 ### Fixed

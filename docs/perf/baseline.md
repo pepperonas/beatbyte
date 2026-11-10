@@ -196,6 +196,24 @@ attributed to heat. **Check `pgrep -l ScreensharingAgent` before any
 
 ## Device A — MacBook Pro 14" M1 Pro
 
+### The full look costs almost nothing here (2026-11-10, 0.19.11)
+
+"Never Gonna Give You Up" medium, uncapped, stage scale pinned at
+100 %, medians of 5 s windows (`BEATBYTE_FPS`), one or two 50 s runs
+each, load average 10–14 (not a quiet machine: read the differences,
+not the absolute numbers).
+
+| Mode | window 2560×1440 | full screen |
+|---|---|---|
+| performance | 4.6–4.9 ms | 4.9–5.0 ms |
+| full | 4.6–4.9 ms | 5.0–5.3 ms |
+| full without bloom / shadow map / lights | 4.6–5.3 ms each: no difference outside the noise | — |
+
+The frame is bound by the CPU in a window; at full screen the four
+effects together cost about 0.2 ms. Hence GRAPHICS: AUTO since 0.19.12.
+The run without MSAA read 5.9–6.1 ms in three of four windows, at the
+series' highest load (13); not repeated.
+
 ### A frame-rate cap does not help (2026-10-27)
 
 Windowed, vsync (the player's pace), "Dear Maria" medium, at load ~15

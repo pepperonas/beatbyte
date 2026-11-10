@@ -5,7 +5,8 @@
 use bevy::prelude::*;
 
 use crate::config::{
-    FlashSync, MenuSound, MissColor, MissEffect, MissSound, Settings, TelemetryLevel, save_settings,
+    FlashSync, Graphics, MenuSound, MissColor, MissEffect, MissSound, Settings, TelemetryLevel,
+    save_settings,
 };
 use crate::menu_list::list::{
     self, ListInput, ListLabel, ListPaint, ListPanel, ListRow, ListValue,
@@ -155,6 +156,22 @@ impl Row {
         Subtitle::Text("ROOM LEVEL hears the room; SONG BEAT needs no mic")
     );
     pub(crate) const FULLSCREEN: Row = row!("FULLSCREEN", toggle!(fullscreen));
+    pub(crate) const GRAPHICS: Row = row!(
+        "GRAPHICS",
+        Kind::Choice {
+            labels: || Graphics::ALL
+                .iter()
+                .map(|choice| choice.label().to_owned())
+                .collect(),
+            get: |s: &Settings| Graphics::ALL
+                .iter()
+                .position(|choice| *choice == s.graphics)
+                .unwrap_or(0),
+            set: |s: &mut Settings, i| s.set_graphics(Graphics::ALL[i]),
+            ends: Ends::Wrap,
+        },
+        Subtitle::Text("FULL adds stage lights, bloom and shadows; AUTO decides")
+    );
     pub(crate) const HIGH_CONTRAST: Row = row!("HIGH CONTRAST", toggle!(high_contrast));
     pub(crate) const HIT_LABELS: Row = row!("HIT LABELS", toggle!(hit_labels));
     pub(crate) const INPUT_TEST: Row =
@@ -352,11 +369,6 @@ impl Row {
         Subtitle::Text("above zero marks a vocal run assisted")
     );
     pub(crate) const PARTICLES: Row = row!("PARTICLES", toggle!(particles));
-    pub(crate) const PERFORMANCE_MODE: Row = row!(
-        "PERFORMANCE MODE",
-        toggle!(performance_mode),
-        Subtitle::Text("simpler lighting and effects for smoother play")
-    );
     pub(crate) const REDUCED_FLASHING: Row = row!("REDUCED FLASHING", toggle!(reduced_flashing));
     pub(crate) const ROOM_LIGHTS: Row = row!("ROOM LIGHTS", toggle!(room_lights));
     pub(crate) const SCREEN_SHAKE: Row = row!("SCREEN SHAKE", toggle!(screen_shake));
@@ -451,6 +463,7 @@ impl Row {
         Row::EXPORT_HISTORY,
         Row::FLASH_SYNC,
         Row::FULLSCREEN,
+        Row::GRAPHICS,
         Row::HIGH_CONTRAST,
         Row::HIT_LABELS,
         Row::INPUT_TEST,
@@ -475,7 +488,6 @@ impl Row {
         Row::NO_FAIL,
         Row::ORIGINAL_VOCALS,
         Row::PARTICLES,
-        Row::PERFORMANCE_MODE,
         Row::REDUCED_FLASHING,
         Row::ROOM_LIGHTS,
         Row::SCREEN_SHAKE,
@@ -729,7 +741,7 @@ impl Category {
                 Row::TEXT_SCALE,
                 Row::HIGH_CONTRAST,
                 Row::REDUCED_FLASHING,
-                Row::PERFORMANCE_MODE,
+                Row::GRAPHICS,
                 Row::TELEMETRY,
                 Row::EXPORT_HISTORY,
             ],
@@ -2305,7 +2317,6 @@ mod tests {
         let mut settings = Settings::default();
         for row in [
             Row::PARTICLES,
-            Row::PERFORMANCE_MODE,
             Row::SCREEN_SHAKE,
             Row::BEAT_PULSE,
             Row::LOUDNESS_MATCH,

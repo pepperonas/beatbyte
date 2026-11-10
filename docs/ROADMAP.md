@@ -4,6 +4,26 @@
 Rules of engagement live in [`CLAUDE.md`](../CLAUDE.md); this file
 holds the work itself.
 
+## Graphics by machine (2026-11-10, v0.19.12)
+
+*Verified: 2376 tests in the source inventory, including documentation examples;
+the game crate's suite and the sync crate's in the release profile (the disk had
+no room for a debug build — the full gate did not run locally); the derived
+switch seen to fail under one mutation; the autopilot through "Never Gonna
+Give You Up" with the player's own settings file, which came back as AUTO.*
+
+- [x] PERFORMANCE MODE was the default everywhere and stripped the M1's stage
+  of lights, bloom, shadows and MSAA. GRAPHICS (AUTO / FULL / PERFORMANCE)
+  replaces it; AUTO is full on Apple silicon, performance elsewhere
+  (`config::Graphics`). `performance_mode` stays in the file, derived.
+- [x] Measured on the M1 Pro, uncapped, load 10–14: window 4.7 ms in both
+  modes; full screen 5.0–5.3 ms full against 4.9–5.0 ms performance.
+- [ ] Look at a frame of the shipped build with AUTO and at the GRAPHICS row:
+  the screen locked before either could be photographed (the full look itself
+  was photographed through the bench override, same render path).
+- [ ] The vsync pace on the M1 with an external 100 Hz display attached — the
+  runs taken that evening were on a locked screen and say nothing.
+
 ## Difficulty levels that were copies (2026-11-06, v0.19.11)
 
 *Verified: 2375 tests in the source inventory, including documentation examples;
