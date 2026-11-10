@@ -1387,6 +1387,14 @@ Local packaging:
   missing ones (`bridge::copied_levels`). When a player reports that a
   difficulty "changes nothing", hash the levels' notes before suspecting
   the game.
+- **A default that depends on the machine makes the suite depend on
+  it.** GRAPHICS: AUTO means full on Apple silicon and performance
+  elsewhere; on the M1 a step from AUTO to FULL changes one field, on
+  the Linux runner two, and `every_row_edits_one_field_of_its_own` went
+  red in CI after a green local run (0.19.12). After touching
+  `config::affords_full_graphics` or anything that reads it, run the
+  game suite once with that function returning the OTHER answer
+  (back the file up, edit, test, restore, `cmp`).
 - **A disk that fills during a release link leaves a 2 KB binary that
   cargo calls fresh.** The strip step failed with "No space left on
   device", `target/release/beatbyte` was 2 464 bytes, and the next build

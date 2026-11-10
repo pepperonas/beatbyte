@@ -2393,6 +2393,11 @@ mod tests {
                     break;
                 }
             }
+            // `performance_mode` is not a setting of its own any more:
+            // it is what GRAPHICS means on this machine, and moves with
+            // it wherever AUTO and the new choice differ (not on Apple
+            // silicon from AUTO to FULL, which is why only CI saw it).
+            changed.retain(|field| field != "performance_mode");
             match row.spec().kind {
                 Kind::Door(_) => assert!(
                     changed.is_empty(),
