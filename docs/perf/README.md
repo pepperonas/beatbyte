@@ -35,8 +35,16 @@ adds work.
 The settings screen has **GRAPHICS**: AUTO (the default), FULL or
 PERFORMANCE. Performance mode disables MSAA, bloom, the directional
 shadow map and extra point/spot lights, and lets the stage's render
-scale drop. AUTO means FULL on Apple silicon (measured to afford it,
-`baseline.md`) and PERFORMANCE on every other machine. For comparison runs, set
+scale drop. AUTO is performance mode on every machine; on Apple silicon it keeps
+4x MSAA, which costs nothing there (`baseline.md`).
+
+**Measure a quality decision under vsync, not uncapped.** Uncapped, the
+main loop runs ahead of a GPU nobody waits for: the full look and
+performance mode both read 4.7 ms on the M1 Pro while one drew 80 and
+the other 120 frames a second. Count frames per 5 s window
+(`BEATBYTE_FPS`) in a bench run (a 1280×720 window; a plain autopilot
+run opens 320×180), with the window on the display it is played on and
+frontmost for the whole run — macOS paces a background window at 60 Hz. For comparison runs, set
 `BEATBYTE_BENCH_QUALITY=full` or `performance`; this overrides the
 setting for that benchmark process only. Benchmark JSON records the
 choice. Keep window

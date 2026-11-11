@@ -4,6 +4,33 @@
 Rules of engagement live in [`CLAUDE.md`](../CLAUDE.md); this file
 holds the work itself.
 
+## The full look was too dear for 120 Hz (2026-11-11, v0.19.13)
+
+*Verified: 2377 tests in the source inventory, including documentation examples;
+the game crate's suite in the release profile, once as Apple silicon and once
+with `affords_smooth_edges` returning false (1008 passed each); the frame
+counts below under vsync in a 2560×1440 window, focus held, on the build before
+the fix through the probes. The fixed build itself was not measured: the screen
+locked.*
+
+- [x] Reported: a short lag every few seconds. Cause: 0.19.12's default. Full
+  look 390 frames per 5 s, performance mode 590–597 (M1 Pro, 120 Hz).
+- [x] What costs it, frames per 5 s with one thing removed from FULL: spots
+  399, near point lights 400, the seven far point lights 505–520, all point
+  lights 535–540, all lights 565. Added to performance mode: MSAA 585–586
+  (free), bloom 566–570, shadow map 570–577, bloom + MSAA 541–557.
+- [x] AUTO = performance mode, plus MSAA on Apple silicon.
+- [x] Tried and withdrawn, no measurable effect: `USER_INTERACTIVE` quality of
+  service for the frame threads (five alternating pairs), the single-threaded
+  executor, and three malloc settings against the ~6 400 page faults a second
+  the Metal driver takes per frame in every mode.
+- [ ] Measure the shipped build's AUTO against PERFORMANCE under vsync, and
+  look at a frame of it.
+- [ ] The floor's colour wash without seven real lights (baked into the deck's
+  emissive, or two lights instead of seven) — it is what FULL is chosen for.
+- [ ] `BEATBYTE_SMOKE_TEST` fails on a library of 8 600 songs on a USB stick
+  ("demo load never finished").
+
 ## Graphics by machine (2026-11-10, v0.19.12)
 
 *Verified: 2376 tests in the source inventory, including documentation examples;
@@ -18,6 +45,7 @@ Give You Up" with the player's own settings file, which came back as AUTO.*
   (`config::Graphics`). `performance_mode` stays in the file, derived.
 - [x] Measured on the M1 Pro, uncapped, load 10–14: window 4.7 ms in both
   modes; full screen 5.0–5.3 ms full against 4.9–5.0 ms performance.
+  **Wrong conclusion** — uncapped does not see the GPU; see 0.19.13 above.
 - [ ] Look at a frame of the shipped build with AUTO and at the GRAPHICS row:
   the screen locked before either could be photographed (the full look itself
   was photographed through the bench override, same render path).

@@ -296,7 +296,9 @@ pub fn run() -> AppExit {
     // default so the resource does not exist and the system returns
     // immediately.
     if std::env::var_os("BEATBYTE_FPS").is_some() {
-        app.init_resource::<FrameLog>();
+        app.init_resource::<FrameLog>()
+            .add_systems(First, mark_frame_start)
+            .add_systems(Last, mark_frame_end);
     }
 
     // Headless-ish smoke testing: `BEATBYTE_SMOKE_TEST=1 beatbyte` exits
@@ -371,10 +373,36 @@ fn spawn_camera(mut commands: Commands) {
 struct FrameLog {
     samples: Vec<f32>,
     next_report_s: f32,
+    /// The last window's median: what "a long frame" is measured against.
+    median_ms: f32,
+    /// When this frame's main schedule began, and how long the last
+    /// two took (First to Last): a long frame whose main schedules were
+    /// short was held up in rendering or presenting, not in the game.
+    began: Option<std::time::Instant>,
+    main_ms: [f32; 2],
+    /// The long frames of this window: wall seconds since start, the
+    /// frame's length, and the main-schedule time of the frame it spans.
+    long: Vec<(f32, f32, f32)>,
+}
+
+fn mark_frame_start(mut log: ResMut<FrameLog>) {
+    log.began = Some(std::time::Instant::now());
+}
+
+fn mark_frame_end(mut log: ResMut<FrameLog>) {
+    if let Some(began) = log.began {
+        log.main_ms = [log.main_ms[1], began.elapsed().as_secs_f32() * 1000.0];
+    }
+}
+
+/// Whether a frame counts as long against the last window's median:
+/// 1.6 times it, which under vsync is any frame that took two refreshes.
+fn is_long_frame(delta_ms: f32, median_ms: f32) -> bool {
+    median_ms > 0.0 && delta_ms > median_ms * 1.6
 }
 
 /// Log frame timings periodically when asked to.
-fn report_frame_times(time: Res<Time>, mut log: Option<ResMut<FrameLog>>) {
+fn report_frame_times(time: Res<Time<Real>>, mut log: Option<ResMut<FrameLog>>) {
     let Some(log) = log.as_mut() else {
         return;
     };
@@ -383,6 +411,11 @@ fn report_frame_times(time: Res<Time>, mut log: Option<ResMut<FrameLog>>) {
         log.samples.push(delta * 1000.0);
     }
     let elapsed = time.elapsed_secs();
+    // This frame's delta spans the PREVIOUS frame's work.
+    if is_long_frame(delta * 1000.0, log.median_ms) && log.long.len() < 64 {
+        let main = log.main_ms[1];
+        log.long.push((elapsed, delta * 1000.0, main));
+    }
     if elapsed < log.next_report_s || log.samples.len() < 30 {
         return;
     }
@@ -399,6 +432,15 @@ fn report_frame_times(time: Res<Time>, mut log: Option<ResMut<FrameLog>>) {
         1000.0 / median.max(0.001),
         sorted.len()
     );
+    log.median_ms = median;
+    let long = core::mem::take(&mut log.long);
+    if !long.is_empty() {
+        let list: Vec<String> = long
+            .iter()
+            .map(|(at, ms, main)| format!("{at:.2}s {ms:.1} (main {main:.1})"))
+            .collect();
+        info!("long frames: {}", list.join(", "));
+    }
 }
 
 /// Scale the (screen-space) UI with the window so menus stay
@@ -512,6 +554,16 @@ fn smoke_test_exit(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_long_frame_is_measured_against_the_last_window() {
+        // No median yet: nothing is long. Under vsync a frame that took
+        // two refreshes is long, one that took a little over one is not.
+        use super::is_long_frame;
+        assert!(!is_long_frame(40.0, 0.0));
+        assert!(is_long_frame(16.7, 8.33));
+        assert!(!is_long_frame(9.5, 8.33));
+    }
     /// The parser, lifted out of [`parse_window_env`] so it can be
     /// tested without touching the process environment — a test that
     /// sets environment variables is a test that fights every other

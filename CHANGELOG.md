@@ -14,6 +14,26 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.19.13] - 2026-11-11
+
+### Fixed
+
+- **The game lagged on Apple silicon since 0.19.12.** That version made
+  the full stage look the default there, from a measurement that did not
+  see the GPU. In a 2560×1440 window at 120 Hz the full look draws about
+  80 frames a second on an M1 Pro — every other frame late — where
+  performance mode draws 120. GRAPHICS: AUTO is performance mode again;
+  on Apple silicon it adds smooth edges (4× MSAA), which were measured
+  to cost nothing there. FULL stays a choice for whoever prefers the
+  look to the frame rate. What costs the frames is the room's seven
+  far-reaching point lights; bloom and the shadow map cost 2–3 % each.
+
+### Added
+
+- `BEATBYTE_FPS` lists each window's long frames with the time they
+  happened and the main schedules' share, and `BEATBYTE_PROBE` can take
+  out one group of lights (`spots`, `points`, `farpoints`, `nearpoints`).
+
 ## [0.19.12] - 2026-11-10
 
 ### Changed

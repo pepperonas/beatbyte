@@ -347,7 +347,23 @@ fn apply_probes(
     cameras: Query<Entity, Added<Camera>>,
     mut directional: Query<&mut DirectionalLight, Added<DirectionalLight>>,
     lights: Query<Entity, Or<(Added<PointLight>, Added<SpotLight>)>>,
+    points: Query<(Entity, &PointLight), Added<PointLight>>,
+    spots: Query<Entity, Added<SpotLight>>,
 ) {
+    // The light groups one at a time: every spot, every point light,
+    // or the point lights by reach (the room's fills reach 26-60 m,
+    // the flames and strikes under 3).
+    for (entity, light) in &points {
+        let far = light.range >= 20.0;
+        if probe("points") || (probe("farpoints") && far) || (probe("nearpoints") && !far) {
+            commands.entity(entity).remove::<PointLight>();
+        }
+    }
+    if probe("spots") {
+        for entity in &spots {
+            commands.entity(entity).remove::<SpotLight>();
+        }
+    }
     for camera in &cameras {
         if probe("msaa") {
             commands.entity(camera).insert(Msaa::Off);

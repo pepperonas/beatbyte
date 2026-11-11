@@ -196,7 +196,46 @@ attributed to heat. **Check `pgrep -l ScreensharingAgent` before any
 
 ## Device A — MacBook Pro 14" M1 Pro
 
-### The full look costs almost nothing here (2026-11-10, 0.19.11)
+### What the full look costs at 120 Hz (2026-11-11, 0.19.12)
+
+"Never Gonna Give You Up" medium, **vsync**, a 1280×720 window (2560×1440
+pixels) on the built-in 120 Hz panel, frontmost throughout, load 5–9.
+Frames drawn per 5 s window (600 = every refresh met), one 60 s run each.
+
+| Taken out of FULL | frames / 5 s |
+|---|---|
+| nothing | 387–404 |
+| spot lights | 397–399 |
+| point lights under 20 m reach (flames, strikes) | 393–406 |
+| point lights of 20 m reach and more (the room's seven fills) | 504–521 |
+| all point lights | 533–540 |
+| all lights | 555–567 |
+
+| Added to PERFORMANCE | frames / 5 s |
+|---|---|
+| nothing | 581–598 |
+| 4× MSAA | 585–586 |
+| bloom | 566–570 |
+| the shadow map | 569–577 |
+| bloom and MSAA | 541–557 |
+
+The full look runs at about 80 fps with every other frame late; the
+room's far point lights are most of it. MSAA is free. The section below
+measured the same thing uncapped and concluded the opposite.
+
+Also tried against the remaining single late frames and the stalls that
+come with a loaded machine, each without a measurable effect:
+`USER_INTERACTIVE` quality of service on the main, compute and render
+threads (five alternating pairs, the result followed the load average,
+not the switch), the single-threaded executor, and `MallocSecureAllocator`,
+`MallocLargeCache`, `MallocNanoZone` against the ~6 400 page faults a
+second (54 a frame, the same in every quality mode) that the Metal
+driver takes when a render pass begins.
+
+### The full look costs almost nothing here — WRONG, see above (2026-11-10, 0.19.11)
+
+Kept as measured. Uncapped, the frame time is the main loop's; the GPU
+is not waited for, so its cost does not show.
 
 "Never Gonna Give You Up" medium, uncapped, stage scale pinned at
 100 %, medians of 5 s windows (`BEATBYTE_FPS`), one or two 50 s runs

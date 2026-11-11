@@ -170,7 +170,7 @@ impl Row {
             set: |s: &mut Settings, i| s.set_graphics(Graphics::ALL[i]),
             ends: Ends::Wrap,
         },
-        Subtitle::Text("FULL adds stage lights, bloom and shadows; AUTO decides")
+        Subtitle::Text("AUTO smooths edges; FULL adds lights, bloom and shadows")
     );
     pub(crate) const HIGH_CONTRAST: Row = row!("HIGH CONTRAST", toggle!(high_contrast));
     pub(crate) const HIT_LABELS: Row = row!("HIT LABELS", toggle!(hit_labels));
@@ -2394,9 +2394,7 @@ mod tests {
                 }
             }
             // `performance_mode` is not a setting of its own any more:
-            // it is what GRAPHICS means on this machine, and moves with
-            // it wherever AUTO and the new choice differ (not on Apple
-            // silicon from AUTO to FULL, which is why only CI saw it).
+            // it is what GRAPHICS means, and moves with it.
             changed.retain(|field| field != "performance_mode");
             match row.spec().kind {
                 Kind::Door(_) => assert!(

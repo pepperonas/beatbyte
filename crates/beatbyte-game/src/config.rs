@@ -389,14 +389,16 @@ pub enum MissSound {
 /// How much the stage renders: the choice behind GRAPHICS.
 ///
 /// Until 0.19.12 this was one switch, PERFORMANCE MODE, on by default
-/// everywhere — so an M1 drew the stage without its lights, bloom,
-/// shadows and anti-aliasing although the full look costs it about
-/// 0.2 ms a frame (measured 2026-11-10, `docs/perf/baseline.md`).
-/// `Auto` decides by the machine instead.
+/// everywhere. 0.19.12 made `Auto` mean the FULL look on Apple silicon
+/// from a measurement taken uncapped, which sees the main loop and not
+/// the GPU: under vsync at 2560x1440 the full look runs an M1 Pro at
+/// 80 fps instead of 120, every other frame late (`docs/perf/baseline.md`,
+/// 2026-11-11). `Auto` is performance mode again, plus the one effect
+/// that was measured to be free there: 4x MSAA.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Graphics {
-    /// Full on Apple silicon, performance everywhere else.
+    /// Performance mode; with smooth edges where they are free.
     #[default]
     Auto,
     /// Stage lights, bloom, the shadow map and 4x MSAA.
@@ -419,21 +421,28 @@ impl Graphics {
         }
     }
 
-    /// Whether this choice means performance mode on a machine that
-    /// is (`capable`) or is not known to afford the full look. Pure.
+    /// Whether this choice means performance mode: everything but FULL,
+    /// on every machine.
     #[must_use]
-    pub fn performance_on(self, capable: bool) -> bool {
+    pub fn performance(self) -> bool {
+        self != Graphics::Full
+    }
+
+    /// Whether this choice draws with 4x MSAA on a machine that is
+    /// (`capable`) or is not known to get it for free. Pure.
+    #[must_use]
+    pub fn smooth_edges_on(self, capable: bool) -> bool {
         match self {
-            Graphics::Auto => !capable,
-            Graphics::Full => false,
-            Graphics::Performance => true,
+            Graphics::Auto => capable,
+            Graphics::Full => true,
+            Graphics::Performance => false,
         }
     }
 
-    /// [`Self::performance_on`] for this machine.
+    /// [`Self::smooth_edges_on`] for this machine.
     #[must_use]
-    pub fn performance(self) -> bool {
-        self.performance_on(affords_full_graphics())
+    pub fn smooth_edges(self) -> bool {
+        self.smooth_edges_on(affords_smooth_edges())
     }
 
     /// The choice a settings file from before GRAPHICS stands for: a
@@ -449,11 +458,12 @@ impl Graphics {
     }
 }
 
-/// Whether `Graphics::Auto` means the full look here: Apple silicon,
-/// the one family measured to afford it. Intel Macs cannot (the 2015
-/// MacBook: 100 ms a frame), and an unknown GPU keeps the safe choice.
+/// Whether `Graphics::Auto` adds 4x MSAA here: Apple silicon, where
+/// its tile-based GPU resolves it at no measured cost (585 frames in
+/// 5 s with it, 584-589 without, M1 Pro at 120 Hz). Intel Macs pay 8 %
+/// of a frame for it, and an unknown GPU keeps the safe choice.
 #[must_use]
-pub fn affords_full_graphics() -> bool {
+pub fn affords_smooth_edges() -> bool {
     cfg!(all(target_os = "macos", target_arch = "aarch64"))
 }
 
@@ -585,7 +595,7 @@ impl Default for Settings {
             perspective: true,
             stage_3d: true,
             graphics: Graphics::Auto,
-            performance_mode: Graphics::Auto.performance(),
+            performance_mode: true,
             stage_scale_step: 0,
             fullscreen: false,
             watch_folder: None,
@@ -856,8 +866,8 @@ impl Plugin for ConfigPlugin {
         let mut settings = load_settings();
         if crate::bench::active() {
             match std::env::var("BEATBYTE_BENCH_QUALITY").as_deref() {
-                Ok("performance") => settings.performance_mode = true,
-                Ok("full") => settings.performance_mode = false,
+                Ok("performance") => settings.set_graphics(Graphics::Performance),
+                Ok("full") => settings.set_graphics(Graphics::Full),
                 _ => {}
             }
         }
@@ -894,9 +904,14 @@ pub(crate) fn apply_render_quality(
             continue;
         }
         if settings.performance_mode {
+            let msaa = if settings.graphics.smooth_edges() {
+                Msaa::Sample4
+            } else {
+                Msaa::Off
+            };
             commands
                 .entity(entity)
-                .insert(Msaa::Off)
+                .insert(msaa)
                 .remove::<bevy::post_process::bloom::Bloom>();
         } else {
             let intensity = if camera_2d.is_some() { 0.22 } else { 0.18 };
@@ -1050,13 +1065,18 @@ mod tests {
     }
 
     #[test]
-    fn auto_graphics_decides_by_the_machine() {
+    fn only_full_leaves_performance_mode() {
         use super::Graphics;
-        assert!(!Graphics::Auto.performance_on(true));
-        assert!(Graphics::Auto.performance_on(false));
+        assert!(Graphics::Auto.performance());
+        assert!(Graphics::Performance.performance());
+        assert!(!Graphics::Full.performance());
+        // Smooth edges: AUTO takes them where they are free, FULL
+        // always, PERFORMANCE never.
+        assert!(Graphics::Auto.smooth_edges_on(true));
+        assert!(!Graphics::Auto.smooth_edges_on(false));
         for capable in [true, false] {
-            assert!(!Graphics::Full.performance_on(capable));
-            assert!(Graphics::Performance.performance_on(capable));
+            assert!(Graphics::Full.smooth_edges_on(capable));
+            assert!(!Graphics::Performance.smooth_edges_on(capable));
         }
         // A file from before GRAPHICS: the default (on) was nobody's
         // choice, a switched-off PERFORMANCE MODE was.
@@ -1081,21 +1101,18 @@ mod tests {
         let mut settings: Settings = serde_json::from_str("{}").unwrap();
         assert_eq!(settings.graphics, Graphics::Auto);
         settings.sanitize();
-        assert_eq!(settings.performance_mode, !super::affords_full_graphics());
+        assert!(settings.performance_mode);
         // A stale derived value in the file does not survive a load.
         let mut stale: Settings =
             serde_json::from_str(r#"{"graphics":"full","performance_mode":true}"#).unwrap();
         stale.sanitize();
         assert!(!stale.performance_mode);
-        settings.set_graphics(Graphics::Performance);
-        assert!(settings.performance_mode);
+        settings.set_graphics(Graphics::Full);
+        assert!(!settings.performance_mode);
         let back: Settings =
             serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
-        assert_eq!(back.graphics, Graphics::Performance);
-        assert_eq!(
-            Settings::default().performance_mode,
-            Graphics::Auto.performance()
-        );
+        assert_eq!(back.graphics, Graphics::Full);
+        assert!(Settings::default().performance_mode);
     }
 
     #[test]
@@ -1103,12 +1120,11 @@ mod tests {
         use bevy::prelude::*;
 
         let mut app = App::new();
-        // Stated, not defaulted: what AUTO means depends on the machine.
-        app.insert_resource(Settings {
-            performance_mode: true,
-            ..Settings::default()
-        })
-        .add_systems(PostUpdate, super::apply_render_quality);
+        // Stated, not defaulted: what AUTO adds depends on the machine.
+        let mut plain = Settings::default();
+        plain.set_graphics(super::Graphics::Performance);
+        app.insert_resource(plain)
+            .add_systems(PostUpdate, super::apply_render_quality);
         let camera = app
             .world_mut()
             .spawn((
@@ -1135,7 +1151,27 @@ mod tests {
                 .shadow_maps_enabled
         );
 
-        app.world_mut().resource_mut::<Settings>().performance_mode = false;
+        // AUTO stays in performance mode and smooths the edges where
+        // that is free: no bloom either way.
+        app.world_mut()
+            .resource_mut::<Settings>()
+            .set_graphics(super::Graphics::Auto);
+        app.update();
+        let wanted = if super::affords_smooth_edges() {
+            Msaa::Sample4
+        } else {
+            Msaa::Off
+        };
+        assert_eq!(app.world().get::<Msaa>(camera), Some(&wanted));
+        assert!(
+            app.world()
+                .get::<bevy::post_process::bloom::Bloom>(camera)
+                .is_none()
+        );
+
+        app.world_mut()
+            .resource_mut::<Settings>()
+            .set_graphics(super::Graphics::Full);
         let new_point = app.world_mut().spawn(PointLight::default()).id();
         app.update();
         let world = app.world();

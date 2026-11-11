@@ -1388,13 +1388,27 @@ Local packaging:
   difficulty "changes nothing", hash the levels' notes before suspecting
   the game.
 - **A default that depends on the machine makes the suite depend on
-  it.** GRAPHICS: AUTO means full on Apple silicon and performance
-  elsewhere; on the M1 a step from AUTO to FULL changes one field, on
-  the Linux runner two, and `every_row_edits_one_field_of_its_own` went
-  red in CI after a green local run (0.19.12). After touching
-  `config::affords_full_graphics` or anything that reads it, run the
-  game suite once with that function returning the OTHER answer
-  (back the file up, edit, test, restore, `cmp`).
+  it.** What GRAPHICS: AUTO means differs between Apple silicon and
+  everything else; a test green on the M1 went red on the Linux runner
+  (0.19.12). After touching `config::affords_smooth_edges` or anything
+  that reads it, run the game suite once with that function returning
+  the OTHER answer (back the file up, edit, test, restore, `cmp`).
+- **An uncapped frame time does not measure the GPU on Apple silicon.**
+  `BEATBYTE_UNCAPPED` read 4.7 ms a frame for the full look and for
+  performance mode alike, and 0.19.12 made the full look the M1's
+  default on that. Under vsync at the real window size the same build
+  drew 390 frames in 5 s where performance mode drew 595: every other
+  frame late, which the player saw as lag at once. Uncapped, the main
+  loop runs ahead of a GPU that is not waited for. A render-quality
+  decision is measured UNDER VSYNC, as frames per 5 s window
+  (`BEATBYTE_FPS`), and three things must hold or the number is not
+  the game's: the window at its real size (a plain autopilot run opens
+  320x180 — use a bench run, which opens 1280x720), on the display it
+  will be played on (the window lands on either display from one run
+  to the next; move it and read its position back), and FRONTMOST for
+  the whole run (macOS paces a background window at 60 Hz; check who is
+  frontmost every two seconds and raise only when it was lost — a raise
+  every two seconds is itself a 40 ms hitch on that beat).
 - **A disk that fills during a release link leaves a 2 KB binary that
   cargo calls fresh.** The strip step failed with "No space left on
   device", `target/release/beatbyte` was 2 464 bytes, and the next build
