@@ -1385,7 +1385,8 @@ Local packaging:
   build. And "is it installed?" is answered by looking at the file, each
   time: hours later the whole `target/` was gone (not the disk watchdog,
   whose log names what it deletes), and the app's next start is then a
-  full release build of about 10 GB.
+  full release build: 16 minutes and 2.3 GB on the M1 Pro with
+  `CARGO_INCREMENTAL=0`.
 - **Screen sharing to the 2015 is a load the bench cannot see.**
   `ScreensharingAgent` ran at half a core through a whole measuring series
   (load average 4.5–5) and put the reference build's median 5–6 ms above

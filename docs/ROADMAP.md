@@ -25,8 +25,9 @@ locked.*
   executor, and three malloc settings against the ~6 400 page faults a second
   the Metal driver takes per frame in every mode.
 - [ ] Measure the shipped build's AUTO against PERFORMANCE under vsync, and
-  look at a frame of it. Needs a release build first: `target/` was gone on
-  2026-11-11 afternoon, with 12 GB free on the disk.
+  look at a frame of it. The release build is back since
+  2026-11-11 14:42 (it starts as v0.19.13); what is missing is an unlocked
+  screen.
 - [ ] The floor's colour wash without seven real lights (baked into the deck's
   emissive, or two lights instead of seven) — it is what FULL is chosen for.
 - [ ] `BEATBYTE_SMOKE_TEST` fails on a library of 8 600 songs on a USB stick
