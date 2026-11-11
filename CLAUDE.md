@@ -1377,6 +1377,15 @@ Local packaging:
   build in the background, which outlives a killed run (2026-11-06: an
   orphaned cargo was found compiling on a disk with 4 GB free). Run the
   binary directly, and kill a stray build by PID.
+  ⚠️ The check is by file time, so `git pull --rebase` with local changes
+  (stash and unstash) or a branch switch makes it rebuild although no
+  content changed: on 2026-11-11 eight sources carried a stamp 14 s after
+  the binary. When the tree is known to be what the binary was built from,
+  `touch target/release/beatbyte` is what the launcher itself does after a
+  build. And "is it installed?" is answered by looking at the file, each
+  time: hours later the whole `target/` was gone (not the disk watchdog,
+  whose log names what it deletes), and the app's next start is then a
+  full release build of about 10 GB.
 - **Screen sharing to the 2015 is a load the bench cannot see.**
   `ScreensharingAgent` ran at half a core through a whole measuring series
   (load average 4.5–5) and put the reference build's median 5–6 ms above
