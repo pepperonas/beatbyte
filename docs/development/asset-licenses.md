@@ -17,6 +17,7 @@ commercial games.
 | `assets/audio/miss_sfx/*.wav` (seven files) | [pepperonas/sound-effects](https://github.com/pepperonas/sound-effects) by Martin Pfeffer, byte-identical copies of its generated output; the file-by-file mapping is in `assets/audio/miss_sfx/README.md` | MIT | Procedurally synthesized by that project. The selectable miss sounds. |
 | `assets/audio/menu_sfx/*.wav` (five files) | [pepperonas/sound-effects](https://github.com/pepperonas/sound-effects) by Martin Pfeffer, byte-identical copies of its generated output; the file-by-file mapping is in `assets/audio/menu_sfx/README.md` | MIT | Procedurally synthesized by that project. The selectable menu movement sounds. |
 | `assets/fonts/BebasNeue-Regular.ttf` | [Bebas Neue](https://fonts.google.com/specimen/Bebas+Neue) by Dharma Type (via google/fonts) | [SIL OFL 1.1](../../assets/fonts/BebasNeue.OFL.txt) | License text bundled next to the font as required. The round style's display face (HUD, menus); chosen for tabular digits — measured, all ten at the same advance — so the score counter never jitters. |
+| `website/assets/fonts/BebasNeue-Regular.woff2` | The same Bebas Neue, converted to WOFF2 with fontTools (`pyftsubset --flavor=woff2 --unicodes='*'`, no glyph removed) | [SIL OFL 1.1](../../website/assets/fonts/BebasNeue.OFL.txt) | The product page's display face, served from the page's own host. License text bundled next to it. |
 
 When adding an asset:
 

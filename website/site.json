@@ -10,8 +10,8 @@
  "tagline": "Your music. Five lanes. One stage.",
  "license": "MIT",
  "year": 2026,
- "asset_version": 2,
- "theme_source": "packaging/icon.png (neon cyan to magenta on near-black) and crates/beatbyte-game/src/palette.rs (BACKGROUND, SURFACE, TEXT)",
+ "asset_version": 3,
+ "theme_source": "crates/beatbyte-game/src/palette.rs (BACKGROUND, SURFACE, BRAND, HYPE, LANES) and ui_kit.rs; the game's look block at the end of styles.css is hand-written and must survive a rebuild",
  "theme": {
   "bg": "#0b0b16",
   "bg-lowest": "#07070f",
@@ -21,16 +21,16 @@
   "surface-highest": "#26283b",
   "on-bg": "#eaedf7",
   "on-variant": "#b8c0d8",
-  "outline": "#8c93ab",
+  "outline": "#8c99bf",
   "outline-variant": "#3a3d55",
-  "primary": "#8fe3ff",
-  "on-primary": "#00344a",
-  "primary-container": "#1d4a6e",
-  "on-primary-container": "#cfefff",
+  "primary": "#ffd940",
+  "on-primary": "#1a1400",
+  "primary-container": "#4a3c1c",
+  "on-primary-container": "#ffe9a0",
   "secondary-container": "#3b2a55",
-  "on-secondary-container": "#f1dcff",
-  "tertiary": "#ff8ad8",
-  "accent": "#e040fb"
+  "on-secondary-container": "#e6d2ff",
+  "tertiary": "#bf80ff",
+  "accent": "#ffb020"
  },
  "hero": {
   "bg": "#0b0b16",
@@ -94,23 +94,23 @@
  "chips": [
   {
    "label": "Keyboard",
-   "color": "#2ecc71"
+   "color": "#3ddb85"
   },
   {
    "label": "Gamepad",
-   "color": "#e74c3c"
+   "color": "#ff5252"
   },
   {
    "label": "Guitar controller",
-   "color": "#f1c40f"
+   "color": "#ffd640"
   },
   {
    "label": "MP3 · M4A · FLAC · OGG · WAV",
-   "color": "#3498db"
+   "color": "#40c4ff"
   },
   {
    "label": "1–4 players",
-   "color": "#e67e22"
+   "color": "#ffab40"
   }
  ],
  "verify_rows": [],
@@ -121,7 +121,7 @@
    "og_title": "BeatByte — Your music. Five lanes. One stage.",
    "og_description": "Free, open-source five-lane rhythm game for macOS, Windows and Linux. Bring your own music; BeatByte charts it and puts it on a 3D stage.",
    "twitter_description": "Free, open-source five-lane rhythm game. Bring your own music; BeatByte charts it and puts it on a 3D stage.",
-   "image_alt": "BeatByte in play: a five-lane highway on a 3D concert stage, a lightning strike landing on a fret"
+   "image_alt": "The BEATBYTE wordmark over three screens of the game: the song browser, a song in play on the 3D stage, and the results"
   },
   "summary": "BeatByte is a free, open-source (MIT) five-lane rhythm game for macOS, Windows and Linux, written in Rust. It turns the player's own music files into playable charts in four difficulties, shows karaoke lyrics, runs on a 3D concert stage, and plays with a keyboard, gamepads or a guitar controller, for one to four local players. No song ships with the game; nothing is uploaded.",
   "meta_fallback": "Newest release · macOS, Windows, Linux · free, MIT licence",

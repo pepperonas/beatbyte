@@ -174,5 +174,35 @@ class DeployNeverDeletesWhatTheTimerWrites(unittest.TestCase):
                 self.assertIn(f"--exclude {path}", deploy)
 
 
+class ThePageWearsTheGamesLook(unittest.TestCase):
+    """The page follows the game's palette and face, and that part is hand-written.
+
+    `build.py --force` rewrites styles.css from the kit, which knows neither Bebas Neue nor the
+    panel shapes. A rebuild that drops the block shows up here instead of on the live page.
+    """
+
+    CSS = (ROOT / "website" / "styles.css").read_text()
+
+    def test_the_hand_written_block_survived(self):
+        self.assertIn("---------- the game's look ----------", self.CSS)
+        self.assertIn('font-family: "Bebas Neue"', self.CSS)
+        self.assertTrue((ROOT / "website" / "assets" / "fonts" / "BebasNeue-Regular.woff2").is_file())
+        self.assertTrue((ROOT / "website" / "assets" / "fonts" / "BebasNeue.OFL.txt").is_file())
+
+    def test_the_colours_are_the_palettes(self):
+        palette = (ROOT / "crates" / "beatbyte-game" / "src" / "palette.rs").read_text()
+
+        def rust(name):
+            r, g, b = re.search(rf"pub const {name}: Color = Color::srgb\(([\d.]+), ([\d.]+), ([\d.]+)\)", palette).groups()
+            return "#" + "".join(f"{round(float(c) * 255):02x}" for c in (r, g, b))
+
+        self.assertEqual(SITE["theme"]["primary"], rust("BRAND"))
+        self.assertEqual(SITE["theme"]["bg"], rust("BACKGROUND"))
+        self.assertEqual(SITE["theme"]["tertiary"], rust("HYPE"))
+        for key in ("primary", "bg", "tertiary"):
+            with self.subTest(key=key):
+                self.assertIn(f"--{key}: {SITE['theme'][key]};", self.CSS)
+
+
 if __name__ == "__main__":
     unittest.main()

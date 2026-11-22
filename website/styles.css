@@ -1,5 +1,6 @@
 /* BeatByte — product page (generated from templates/apps/product-page, then edited freely).
-   Colours: the app's own dark scheme (packaging/icon.png (neon cyan to magenta on near-black) and crates/beatbyte-game/src/palette.rs (BACKGROUND, SURFACE, TEXT)). */
+   Colours, type and shapes follow the game: crates/beatbyte-game/src/palette.rs (BACKGROUND, SURFACE, BRAND, HYPE, GREAT, LANES)
+   and ui_kit.rs (Bebas Neue, thin-bordered panels, the gold accent bar of a selected row). The block "the game's look" at the end carries it. */
 :root {
   --bg: #0b0b16;
   --bg-lowest: #07070f;
@@ -9,20 +10,20 @@
   --surface-highest: #26283b;
   --on-bg: #eaedf7;
   --on-variant: #b8c0d8;
-  --outline: #8c93ab;
+  --outline: #8c99bf;
   --outline-variant: #3a3d55;
-  --primary: #8fe3ff;
-  --on-primary: #00344a;
-  --primary-container: #1d4a6e;
-  --on-primary-container: #cfefff;
+  --primary: #ffd940;
+  --on-primary: #1a1400;
+  --primary-container: #4a3c1c;
+  --on-primary-container: #ffe9a0;
   --secondary-container: #3b2a55;
-  --on-secondary-container: #f1dcff;
-  --tertiary: #ff8ad8;
-  --accent: #e040fb;
+  --on-secondary-container: #e6d2ff;
+  --tertiary: #bf80ff;
+  --accent: #ffb020;
 
-  --r-xl: 28px;
-  --r-l: 20px;
-  --r-full: 999px;
+  --r-xl: 6px;
+  --r-l: 4px;
+  --r-full: 4px;
   --measure: 1120px;
   --gutter: clamp(16px, 4vw, 32px);
   --ease-spring: cubic-bezier(.34, 1.36, .64, 1);
@@ -196,11 +197,11 @@ h1 {
   /* Narrow screens show the whole banner — cropping it cut its wordmark mid-word. */
   .hero {
     display: block; min-height: 0;
-    padding-top: calc(env(safe-area-inset-top) + 60px + 49.45vw + 8px);
+    padding-top: calc(env(safe-area-inset-top) + 60px + 67.2vw + 8px);
     padding-bottom: 56px;
   }
   .hero-bg, .hero-scrim {
-    top: calc(env(safe-area-inset-top) + 60px); height: 49.45vw; bottom: auto;
+    top: calc(env(safe-area-inset-top) + 60px); height: 67.2vw; bottom: auto;
   }
   .hero-bg img { object-fit: cover; object-position: 50% 50%; }
   .hero-scrim {
@@ -216,11 +217,11 @@ h1 {
 
 /* ---------- platforms ---------- */
 .defs { position: absolute; }
-.chip-0 { --c: #2ecc71; }
-.chip-1 { --c: #e74c3c; }
-.chip-2 { --c: #f1c40f; }
-.chip-3 { --c: #3498db; }
-.chip-4 { --c: #e67e22; }
+.chip-0 { --c: #3ddb85; }
+.chip-1 { --c: #ff5252; }
+.chip-2 { --c: #ffd640; }
+.chip-3 { --c: #40c4ff; }
+.chip-4 { --c: #ffab40; }
 .platforms { padding: 8px var(--gutter) 0; }
 .platforms ul {
   max-width: var(--measure); margin: 0 auto; padding: 0; list-style: none;
@@ -548,3 +549,135 @@ h1 {
 .fc-area li { margin: 8px 0; color: var(--on-variant); overflow-wrap: anywhere; }
 .fc-area li strong { color: var(--on-bg); }
 .fc-area li code { font-size: .9em; padding: 1px 5px; border-radius: 6px; background: var(--surface-high); color: var(--on-bg); }
+
+/* ---------- the game's look ----------
+   The page wears what the game's menus wear: Bebas Neue for everything that is a label or a
+   heading, brand gold on deep navy, panels with a thin border and a small radius, and the
+   selected row's cue (gold bar on the left, a gold wash) wherever something answers the pointer.
+   Body copy stays in the system face: condensed capitals do not carry a paragraph. */
+@font-face {
+  font-family: "Bebas Neue"; font-style: normal; font-weight: 400; font-display: swap;
+  src: url("assets/fonts/BebasNeue-Regular.woff2") format("woff2");
+}
+:root {
+  --display: "Bebas Neue", "Arial Narrow", "Helvetica Neue Condensed", Impact, sans-serif;
+  --cool: #8cd9ff;
+  --lane-g: #3ddb85; --lane-r: #ff5252; --lane-y: #ffd640; --lane-b: #40c4ff; --lane-o: #ffab40;
+  --lanes: linear-gradient(90deg, var(--lane-g) 0 20%, var(--lane-r) 0 40%, var(--lane-y) 0 60%, var(--lane-b) 0 80%, var(--lane-o) 0);
+}
+/* The stage's light on the page: cool from the left, hype purple low, warm rig light from the right. */
+body {
+  background:
+    radial-gradient(70vw 60vh at 0% 0%, rgba(40, 60, 150, .22), transparent 70%),
+    radial-gradient(60vw 55vh at 100% 8%, rgba(255, 176, 32, .10), transparent 70%),
+    radial-gradient(80vw 70vh at 0% 100%, rgba(140, 70, 220, .14), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
+}
+:focus-visible { border-radius: 4px; }
+
+.brand span {
+  font: 400 26px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--primary);
+}
+.bar-links a, .lang-btn {
+  font: 400 17px/1 var(--display); letter-spacing: .08em; text-transform: uppercase;
+}
+.bar-links a:hover { background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary); }
+
+.hero-scrim {
+  background:
+    linear-gradient(90deg, transparent 30%, color-mix(in srgb, var(--bg) 94%, transparent) 47%, var(--bg) 56%),
+    linear-gradient(180deg, color-mix(in srgb, var(--bg) 92%, transparent) 0, color-mix(in srgb, var(--bg) 30%, transparent) 10%, transparent 20%, transparent 78%, var(--bg) 100%);
+}
+.hero-bg img { object-position: 0% 50%; }
+.kicker {
+  padding: 0; border-radius: 0; background: none; color: var(--cool);
+  font: 400 clamp(1.05rem, 1.8vw, 1.35rem)/1.2 var(--display); letter-spacing: .28em; text-transform: uppercase;
+}
+h1 {
+  font: 400 clamp(3.6rem, 8.4vw, 6.6rem)/.92 var(--display); letter-spacing: .03em; text-transform: uppercase;
+  color: var(--primary);
+  background: linear-gradient(180deg, #fff3a8 0%, #ffd940 42%, #ffab1f 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 4px 0 rgba(0, 0, 0, .55)) drop-shadow(0 0 34px rgba(255, 176, 32, .35));
+  padding-top: .06em;
+}
+.btn {
+  min-height: 54px; padding: 0 26px; border-radius: 4px;
+  font: 400 22px/1 var(--display); letter-spacing: .08em; text-transform: uppercase;
+  transition: transform .2s var(--ease-emph), box-shadow .3s, background-color .2s, border-color .2s, color .2s;
+}
+.btn.primary { box-shadow: 0 0 0 1px #ffe98a inset, 0 10px 34px -10px rgba(255, 176, 32, .7); }
+.btn.primary:hover { background: #ffe26a; box-shadow: 0 0 0 1px #fff3a8 inset, 0 14px 40px -10px rgba(255, 176, 32, .9); }
+.btn.tonal {
+  background: color-mix(in srgb, var(--surface-low) 80%, transparent); color: var(--on-bg);
+  border: 1px solid var(--outline);
+}
+.btn.tonal:hover { background: color-mix(in srgb, var(--primary) 14%, transparent); border-color: var(--primary); color: var(--primary); }
+.btn:active { transform: scale(.98); border-radius: 4px; }
+.btn.paypal, .btn.review { font-size: 20px; }
+
+.platforms li, .dl-others a, .dl-others li {
+  border-radius: 4px;
+}
+.platforms li { font: 400 17px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; padding: 9px 14px; }
+.platforms li::before { border-radius: 50%; box-shadow: 0 0 0 2px #0b0b16, 0 0 0 3px var(--c), 0 0 12px var(--c); width: 8px; height: 8px; margin: 0 3px; }
+
+.section h2 {
+  font: 400 clamp(2.2rem, 4.6vw, 3.4rem)/1 var(--display); letter-spacing: .04em; text-transform: uppercase;
+  color: var(--primary);
+}
+/* Five lanes under every heading: the strum bar of the page. */
+.section h2::after {
+  content: ""; display: block; width: 120px; height: 4px; margin-top: 14px; background: var(--lanes);
+}
+.support-text h2::after { display: none; }
+.card, .faq-item, .fc-area {
+  border-radius: 6px; border-color: var(--outline-variant);
+  background: color-mix(in srgb, var(--surface-low) 86%, transparent);
+}
+.card { position: relative; }
+.card h3, .faq-item summary {
+  font: 400 1.45rem/1.15 var(--display); letter-spacing: .05em; text-transform: uppercase; color: var(--on-bg);
+}
+.card h3 { margin-bottom: 10px; }
+/* The selected row of a game menu: a gold bar on the left and a gold wash. */
+.card::before, .faq-item::before {
+  content: ""; position: absolute; left: -1px; top: 10px; bottom: 10px; width: 3px;
+  background: var(--primary); opacity: 0; transition: opacity .2s;
+}
+.faq-item { position: relative; }
+.faq-item[open] { background: color-mix(in srgb, var(--primary) 9%, var(--surface-low)); border-color: color-mix(in srgb, var(--primary) 45%, var(--outline-variant)); }
+.faq-item[open]::before { opacity: 1; }
+.faq-item[open] summary { color: var(--primary); }
+.faq-item summary::after { border-color: var(--outline); }
+@media (hover: hover) and (pointer: fine) {
+  .grid .card:hover, .steps .card:hover {
+    transform: none; background: color-mix(in srgb, var(--primary) 9%, var(--surface-low));
+    border-color: color-mix(in srgb, var(--primary) 45%, var(--outline-variant));
+  }
+  .grid .card:hover::before, .steps .card:hover::before { opacity: 1; }
+  .grid .card:hover h3, .steps .card:hover h3, .faq-item summary:hover { color: var(--primary); }
+}
+/* The multiplier box of the HUD, in gold. */
+.steps .num {
+  width: 44px; height: 44px; border-radius: 4px; background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border: 2px solid var(--primary); color: var(--primary);
+  font: 400 26px/1 var(--display); padding-top: 2px;
+}
+.shots picture img, .shot-open, .shot img { border-radius: 6px; }
+.support {
+  border-radius: 6px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(140, 70, 220, .22), transparent 60%),
+    radial-gradient(90% 120% at 100% 100%, rgba(255, 176, 32, .14), transparent 60%),
+    var(--surface-low);
+  border: 1px solid color-mix(in srgb, var(--primary) 40%, transparent);
+}
+.license, .lang-menu { border-radius: 6px; }
+.foot-links a, .linklike { letter-spacing: .02em; }
+/* Narrow screens: the frame fills the banner; the padding to its right runs off the edge. */
+@media (max-width: 860px) {
+  .hero-bg img { width: 136%; max-width: none; object-position: 0% 50%; }
+  .brand span { font-size: 22px; }
+}

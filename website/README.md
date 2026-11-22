@@ -37,7 +37,7 @@ written for three readers — people, search engines, and **AI agents** — and 
 | File | Purpose |
 |------|---------|
 | `index.html` | The page. English in the markup (what crawlers and agents read without JavaScript). Contains the SSI includes for the release facts and the JSON-LD. |
-| `styles.css` | All styling. Colours are the app's own dark scheme (packaging/icon.png (neon cyan to magenta on near-black) and crates/beatbyte-game/src/palette.rs (BACKGROUND, SURFACE, TEXT)) as tokens on `:root`, from `site.json` → `theme`. |
+| `styles.css` | All styling. Colours follow the game's palette (`crates/beatbyte-game/src/palette.rs`) as tokens on `:root`, from `site.json` → `theme`. The block "the game's look" at the end is hand-written (Bebas Neue, panel shapes, the gold selection cue) and the kit does not know it: after `build.py --force`, put it back. `tools/website/test_product_page.py` fails when it is gone. |
 | `app.js` | Language switching and menu, the download button and meta line from `latest.json`, licence dialog, sticky bar, reveal animation. |
 | `i18n.js` | German, Spanish, Italian and French strings, keyed like the `data-i18n` attributes. A missing key falls back to the English in the markup. |
 | `changelog.js` | Changelog dialog: loads `changelog.md` (same origin) and renders it with a small escaping Markdown renderer. |
