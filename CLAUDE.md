@@ -200,7 +200,11 @@ notes. See `docs/audio/song-chart-prototype.md`.
   (`/Users/martin/claude/_templates/apps/product-page`); edit
   `site.json`, rebuild with `build.py --force`, deploy with
   `website/deploy.sh`. New releases reach it by themselves (a VPS
-  timer); never hand-edit the generated files. **The page must
+  timer); never hand-edit the generated files. One exception: the
+  block "the game's look" at the end of `website/styles.css` is
+  hand-written (Bebas Neue, the palette's gold on navy, the menus'
+  panels) and the kit does not know it — put it back after a rebuild;
+  a page test fails when it is gone or the colours leave `palette.rs`. **The page must
   always offer the newest published build and the current
   CHANGELOG** — `tools/website/test_product_page.py` (in CI) binds
   the download patterns to the names the release workflow produces,
