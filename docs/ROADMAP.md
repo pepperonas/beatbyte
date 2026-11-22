@@ -4,9 +4,33 @@
 Rules of engagement live in [`CLAUDE.md`](../CLAUDE.md); this file
 holds the work itself.
 
+## Late buffers no longer move the clock; LIMIT TO 60 FPS (2026-11-22, v0.19.15)
+
+*Verified: the game crate's suite in the release profile (1018 passed) and
+clippy on Rust 1.100; on the M1 Pro under vsync, 0.19.14 under a load of 54:
+58 clock snaps in 150 s; with the confirmation rule under a load of 7–10: none
+in 55 s and none in 190 s, and the player reports the jerk gone. With the
+limit on the built-in display: 296–302 frames per 5 s window, median 16.65 ms
+(a first version that waited 10.6 ms ran at 94 fps and never shipped). NOT
+verified: that 60 timed frames on the 120 Hz panel LOOK even (the log times
+the main loop, not the presentation), a quiet machine (load 7–30 throughout,
+focus lost 15–21 times a run), the external monitor, anything on the 2015
+(its screen is locked; the Intel build of 0.19.14 lies in `~/bench/p14`), no
+mutation probes.*
+
+- [x] A step a snap's worth off the clock needs three in a row, or a quarter
+  second (`audio_sys::weigh_step`).
+- [x] LIMIT TO 60 FPS, on by default, only above 60 Hz (`config::frame_wait`,
+  `pace_frames`); `BEATBYTE_FRAME_CAP` for measurements.
+- [ ] Look at the limit on the built-in panel and on the external monitor; if
+  it stutters, the timer is beating against the refresh and needs a lock.
+- [ ] The 2015: MINIMAL against PERFORMANCE under vsync, pictures looked at
+  (`~/bench/run-2015p.sh`, to be rebuilt as 0.19.15).
+- [ ] Mutation probes for `weigh_step` and `frame_wait`.
+
 ## The notes jerked without a late frame; GRAPHICS: MINIMAL (2026-11-22, v0.19.14)
 
-*Verified: 2384 tests in the source inventory, including documentation examples;
+*Verified: 2387 tests in the source inventory, including documentation examples;
 the game crate's suite in the release profile (1015 passed); a frame of MINIMAL
 on the M1 Pro looked at (neck, gems, receptors, display, nothing else). NOT
 verified: the clock fix in a live run and any frame count — the machine stood

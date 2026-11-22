@@ -7,6 +7,7 @@
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 use crate::controls::InputMap;
 use crate::gameplay::fx::EffectSettings;
@@ -69,6 +70,15 @@ pub struct Settings {
     /// makes an older file adopt it.
     #[serde(default = "default_true")]
     pub ai_search: bool,
+    /// Whether the game draws 60 frames a second and no more, on a
+    /// display that could show 120.
+    ///
+    /// On by default (2026-11-22, the player's call): a 120 Hz panel
+    /// that the scene sometimes cannot fill shows every late frame as a
+    /// stutter, where 60 a second leaves the machine twice the time for
+    /// each. See [`frame_wait`].
+    #[serde(default = "default_true")]
+    pub limit_60_fps: bool,
     /// Whether sound is off while browsing and in the menus.
     ///
     /// ⚠️ Mute is remembered PER SITUATION, not once. Browsing plays
@@ -606,6 +616,7 @@ impl Default for Settings {
             no_fail: true,
             reduced_flashing: false,
             ai_search: true,
+            limit_60_fps: true,
             mute_browsing: false,
             mute_playing: false,
             mute_autopilot: false,
@@ -836,6 +847,96 @@ fn default_true() -> bool {
     true
 }
 
+/// How long the main loop waits from the start of one frame to the
+/// start of the next, or `None` to run with the display. Pure.
+///
+/// The limit is for a display that refreshes faster than 60 times a
+/// second (`refresh_mhz`, in millihertz): there the loop is timed at a
+/// sixtieth of a second and each picture stands for two refreshes. A
+/// 60 Hz display already paces the game through vsync, exactly, and a
+/// timer beside it could only disturb that — so there, and where the
+/// rate is unknown, nothing is limited.
+///
+/// ⚠️ The wait IS the frame time: rendering runs on its own thread, so
+/// vsync does not hold the main loop back to a refresh. A first version
+/// waited 10.6 ms and expected vsync to round it up to 16.7; it ran at
+/// 94 frames a second (measured, 2026-11-22).
+///
+/// `BEATBYTE_FRAME_CAP` overrides the setting for a measurement: `off`,
+/// or the wait in milliseconds on any display. An uncapped run is never
+/// limited.
+#[must_use]
+pub fn frame_wait(
+    limit: bool,
+    refresh_mhz: Option<u32>,
+    cap_override: Option<&str>,
+    uncapped: bool,
+) -> Option<Duration> {
+    if uncapped {
+        return None;
+    }
+    let chosen = (limit && refresh_mhz.is_some_and(|mhz| mhz > 70_000)).then_some(FRAME_WAIT);
+    match cap_override {
+        Some("off") => None,
+        Some(ms) => match ms.parse::<f64>() {
+            Ok(ms) if (1.0..=100.0).contains(&ms) => Some(Duration::from_secs_f64(ms / 1000.0)),
+            _ => chosen,
+        },
+        None => chosen,
+    }
+}
+
+/// A sixtieth of a second.
+pub const FRAME_WAIT: Duration = Duration::from_nanos(16_666_667);
+
+/// Keep the main loop's pace in step with the setting and with the
+/// display the window is on — the player drags it from the built-in
+/// panel to a monitor and back.
+fn pace_frames(
+    settings: Res<Settings>,
+    time: Res<Time<Real>>,
+    windows: Query<Entity, With<bevy::window::PrimaryWindow>>,
+    winit: Option<ResMut<bevy::winit::WinitSettings>>,
+    mut next_look: Local<f64>,
+    _main_thread: bevy::ecs::system::NonSendMarker,
+) {
+    let Some(mut winit) = winit else {
+        return;
+    };
+    let now = time.elapsed_secs_f64();
+    if now < *next_look && !settings.is_changed() {
+        return;
+    }
+    *next_look = now + 1.0;
+    let refresh_mhz = windows.single().ok().and_then(|entity| {
+        bevy::winit::WINIT_WINDOWS.with_borrow(|all| {
+            all.get_window(entity)
+                .and_then(|window| window.current_monitor())
+                .and_then(|monitor| monitor.refresh_rate_millihertz())
+        })
+    });
+    let wanted = match frame_wait(
+        settings.limit_60_fps,
+        refresh_mhz,
+        std::env::var("BEATBYTE_FRAME_CAP").ok().as_deref(),
+        std::env::var_os("BEATBYTE_UNCAPPED").is_some(),
+    ) {
+        // Only the timer wakes the loop: a key or a mouse move that
+        // started a frame of its own would break the cadence.
+        Some(wait) => bevy::winit::UpdateMode::Reactive {
+            wait,
+            react_to_device_events: false,
+            react_to_user_events: false,
+            react_to_window_events: false,
+        },
+        None => bevy::winit::UpdateMode::Continuous,
+    };
+    if winit.focused_mode != wanted {
+        info!("frame pacing: {wanted:?} (display {refresh_mhz:?} mHz)");
+        winit.focused_mode = wanted;
+    }
+}
+
 fn clean(value: f32, min: f32, max: f32, fallback: f32) -> f32 {
     if value.is_finite() {
         value.clamp(min, max)
@@ -934,7 +1035,7 @@ impl Plugin for ConfigPlugin {
         // controls screen edits the resource and writes it back.
         app.insert_resource(settings.input_map.clone())
             .insert_resource(settings)
-            .add_systems(Update, apply_settings)
+            .add_systems(Update, (apply_settings, pace_frames))
             .add_systems(PostUpdate, apply_render_quality);
     }
 }
@@ -1103,7 +1204,8 @@ mod tests {
         assert_eq!(s.browser_sort, "standard", "unknown labels fall back");
     }
 
-    use super::Settings;
+    use super::{FRAME_WAIT, Settings, frame_wait};
+    use std::time::Duration;
 
     /// Forward compatibility: a settings file written by a NEWER
     /// BeatByte (extra fields) or an OLDER one (missing fields) must
@@ -1124,6 +1226,40 @@ mod tests {
 
     /// MINIMAL is itself everywhere, AUTO is MINIMAL on a weak machine
     /// only, and the two full-room choices never are: all eight cases.
+    #[test]
+    fn the_frame_limit_waits_unless_told_otherwise() {
+        let fast = Some(120_000);
+        assert_eq!(frame_wait(true, fast, None, false), Some(FRAME_WAIT));
+        assert_eq!(frame_wait(false, fast, None, false), None);
+        // A 60 Hz display paces the game itself; an unknown one is left alone.
+        assert_eq!(frame_wait(true, Some(60_000), None, false), None);
+        assert_eq!(frame_wait(true, Some(59_940), None, false), None);
+        assert_eq!(frame_wait(true, None, None, false), None);
+        assert_eq!(
+            frame_wait(true, Some(100_000), None, false),
+            Some(FRAME_WAIT)
+        );
+        // A measurement overrides the player's choice, both ways.
+        assert_eq!(frame_wait(true, fast, Some("off"), false), None);
+        assert_eq!(
+            frame_wait(false, Some(60_000), Some("12.5"), false),
+            Some(Duration::from_micros(12_500))
+        );
+        // Nonsense is no override.
+        assert_eq!(
+            frame_wait(true, fast, Some("fast"), false),
+            Some(FRAME_WAIT)
+        );
+        assert_eq!(frame_wait(false, fast, Some("0"), false), None);
+        // An uncapped run measures the machine, never the limit.
+        assert_eq!(frame_wait(true, fast, Some("12"), true), None);
+        // Sixty of them make a second.
+        assert!((FRAME_WAIT.as_secs_f64() * 60.0 - 1.0).abs() < 1e-6);
+        // A settings file from before the switch adopts it.
+        let old: Settings = serde_json::from_str("{}").unwrap();
+        assert!(old.limit_60_fps);
+    }
+
     #[test]
     fn minimal_is_chosen_or_picked_by_auto_on_a_weak_machine() {
         use super::Graphics;

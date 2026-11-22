@@ -89,6 +89,7 @@ pub const DEVICE: &[&str] = &[
     "fx_intensity",
     "input_map",
     "watch_folder",
+    "limit_60_fps",
     "room_lights",
     "room_stage_url",
     "anthropic_api_key",

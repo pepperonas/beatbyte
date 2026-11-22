@@ -1437,6 +1437,19 @@ Local packaging:
   app closed them, and the runs ended with exit 0 and no verdict. Check
   the idle time and the load before a run; over a load of ~10 a frame
   count measures the other processes.
+- **Vsync does not hold the main loop to a refresh.** Rendering runs on
+  its own thread; a main loop told to wait 10.6 ms a frame "so that vsync
+  rounds it up to 16.7" ran at 94 frames a second (measured, the first
+  cut of LIMIT TO 60 FPS). A frame limit in this engine is the timer
+  itself (`config::frame_wait`), and the frame-time log times the main
+  loop, never what reached the screen.
+- **One step of the device position is one buffer request, and a busy
+  machine serves them late and then in a hurry.** Reading only steps
+  (0.19.14) still snapped the clock in pairs 45 ms apart; a step far off
+  the clock must be confirmed by the next ones (`audio_sys::weigh_step`).
+- **`osascript` asking System Events who is frontmost stalls a frame.**
+  A measuring loop that asked every two seconds put a 40 ms frame into
+  the log every 2.27 s, main thread idle. `lsappinfo front` does not.
 - **A disk that fills during a release link leaves a 2 KB binary that
   cargo calls fresh.** The strip step failed with "No space left on
   device", `target/release/beatbyte` was 2 464 bytes, and the next build

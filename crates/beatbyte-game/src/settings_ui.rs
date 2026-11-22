@@ -192,6 +192,7 @@ impl Row {
         Subtitle::Text("ENTER selects folder - ◄/► presets - BACKSPACE default")
     );
     pub(crate) const LOUDNESS_MATCH: Row = row!("LOUDNESS MATCH", toggle!(normalize_loudness));
+    pub(crate) const LIMIT_60_FPS: Row = row!("LIMIT TO 60 FPS", toggle!(limit_60_fps));
     pub(crate) const LYRICS: Row = row!("LYRICS", toggle!(lyrics));
     pub(crate) const LYRICS_LEAD_IN: Row = row!(
         "LYRICS LEAD-IN",
@@ -454,7 +455,7 @@ impl Row {
     /// Every row, in the order the screen shows them: **alphabetical
     /// by label**, and kept that way by a test — a new row goes where
     /// its name falls, not at the end of the list.
-    pub(crate) const ALL: [Row; 48] = [
+    pub(crate) const ALL: [Row; 49] = [
         Row::AI_SEARCH,
         Row::BEAT_PULSE,
         Row::CALIBRATION,
@@ -469,6 +470,7 @@ impl Row {
         Row::INPUT_TEST,
         Row::LATENCY_OFFSET,
         Row::LIBRARY,
+        Row::LIMIT_60_FPS,
         Row::LOUDNESS_MATCH,
         Row::LYRICS,
         Row::LYRICS_LEAD_IN,
@@ -742,6 +744,7 @@ impl Category {
                 Row::HIGH_CONTRAST,
                 Row::REDUCED_FLASHING,
                 Row::GRAPHICS,
+                Row::LIMIT_60_FPS,
                 Row::TELEMETRY,
                 Row::EXPORT_HISTORY,
             ],

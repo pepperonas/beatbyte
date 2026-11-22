@@ -14,6 +14,31 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.19.15] - 2026-11-22
+
+### Fixed
+
+- **The notes still jerked on a busy machine.** 0.19.14 read the audio
+  output's position only when it stepped, which halved the clock's
+  snaps and did not end them: a loaded machine serves one buffer late
+  and the next in a hurry, the position reads 40 ms behind and then
+  40 ms ahead while the sound never falters, and the clock followed
+  both (58 snaps in 150 seconds of a loaded run, nearly all in pairs
+  45 ms apart). A step that far off is now believed only when three in
+  a row say the same, or when it is a quarter second off and so no late
+  buffer at all. The same machine under the same kind of load: no snap
+  in 190 seconds.
+
+### Added
+
+- **LIMIT TO 60 FPS** (SETTINGS > SYSTEM, on by default). On a display
+  that refreshes faster than 60 times a second the game now draws 60
+  frames a second and no more, which leaves the machine twice the time
+  for each one. A 60 Hz display paces the game through vsync as before
+  and is left alone. Turn it off to draw at the display's rate. Input
+  is read once a frame, so at 60 a key press is timed to the nearest
+  17 ms rather than 8.
+
 ## [0.19.14] - 2026-11-22
 
 ### Fixed

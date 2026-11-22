@@ -60,6 +60,9 @@ pub struct GameClock {
     /// clock is corrected only when the device reports a NEW one (see
     /// [`fresh_position`]).
     pub last_position: Option<f64>,
+    /// Steps in a row that disagreed with the clock by a snap's worth,
+    /// signed by direction (see [`weigh_step`]).
+    pub outliers: i8,
 }
 
 impl GameClock {
@@ -189,6 +192,59 @@ pub fn fresh_position(last: Option<f64>, position: f64, frame_s: f64) -> Option<
     Some(position - step / 2.0 + frame_s.clamp(0.0, 0.05) / 2.0)
 }
 
+/// What one step of the device position does to the clock.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepVerdict {
+    /// Within a snap of the clock, or far enough off to be believed:
+    /// hand it to the clock.
+    Reconcile,
+    /// A snap's worth off and not yet confirmed: leave the clock alone.
+    Wait,
+}
+
+/// How many steps in a row must disagree the same way before the clock
+/// snaps to them.
+pub const CONFIRM_STEPS: i8 = 3;
+
+/// A drift this large is no late buffer: a seek, a restart, a stall
+/// the clock must follow at once.
+pub const BELIEVED_AT_ONCE_S: f64 = 0.25;
+
+/// Decide what a step that is `drift` seconds off the clock is worth,
+/// keeping the count of disagreeing steps in `outliers`. Pure.
+///
+/// One step is one buffer request, and a busy machine serves requests
+/// late and then in a hurry: the position reads 40 ms behind on one
+/// step and 40 ms ahead on the next while the sound never faltered.
+/// Snapping to each of them jerked the highway back and forth (58
+/// snaps in 150 s of a loaded run, nearly all in pairs 45 ms apart).
+/// So a step that is a snap's worth off is believed only when the
+/// steps after it say the same — or when it is too far off to be a
+/// late buffer at all.
+#[must_use]
+pub fn weigh_step(outliers: &mut i8, drift: f64) -> StepVerdict {
+    if drift.abs() < beatbyte_audio::clock::SNAP_THRESHOLD_S {
+        *outliers = 0;
+        return StepVerdict::Reconcile;
+    }
+    if drift.abs() >= BELIEVED_AT_ONCE_S {
+        *outliers = 0;
+        return StepVerdict::Reconcile;
+    }
+    let sign: i8 = if drift > 0.0 { 1 } else { -1 };
+    *outliers = if outliers.signum() == sign {
+        *outliers + sign
+    } else {
+        sign
+    };
+    if outliers.abs() >= CONFIRM_STEPS {
+        *outliers = 0;
+        StepVerdict::Reconcile
+    } else {
+        StepVerdict::Wait
+    }
+}
+
 /// Reconcile the song clock against the device-reported position.
 fn sync_clock(
     time: Res<Time>,
@@ -219,6 +275,7 @@ fn sync_clock(
             game_clock.anchored = true;
             game_clock.clock.start(mono, position);
             game_clock.last_position = Some(position);
+            game_clock.outliers = 0;
         }
         // The browser's own music is not a timeline. Adopting the
         // generation here is what keeps the NEXT bump — the song the
@@ -232,6 +289,13 @@ fn sync_clock(
             let Some(target) = target else {
                 return;
             };
+            let drift = game_clock
+                .clock
+                .song_time(mono)
+                .map_or(0.0, |ours| target - ours);
+            if weigh_step(&mut game_clock.outliers, drift) == StepVerdict::Wait {
+                return;
+            }
             let correction = game_clock.clock.reconcile(mono, target);
             // A correction this large is a visible jump of the
             // highway. Say so, with what the frame looked like: the
@@ -283,6 +347,7 @@ mod tests {
         let mut clock = beatbyte_audio::SongClock::default();
         clock.start(0.0, 0.0);
         let mut last = Some(0.0);
+        let mut outliers = 0;
         let (mut snaps, mut lead, mut counted) = (0, 0.0, 0);
         for frame in 1..=frames {
             let mono = frame as f64 * frame_s;
@@ -299,6 +364,10 @@ mod tests {
             };
             last = Some(position);
             if let Some(target) = target {
+                let drift = target - clock.song_time(mono).unwrap();
+                if !every_frame && weigh_step(&mut outliers, drift) == StepVerdict::Wait {
+                    continue;
+                }
                 let correction = clock.reconcile(mono, target);
                 if correction.abs() >= beatbyte_audio::clock::SNAP_THRESHOLD_S {
                     snaps += 1;
@@ -355,6 +424,40 @@ mod tests {
             if (100..104).contains(&k) { 0.2 } else { 0.0 }
         });
         assert!((1..=5).contains(&snaps), "{snaps}");
+    }
+
+    /// A loaded machine: every seventh buffer is asked for 40 ms late
+    /// and the next one on time again. The sound never stopped, and
+    /// the clock does not move for it.
+    #[test]
+    fn a_single_late_buffer_does_not_snap_the_clock() {
+        let late = |k: usize| if k % 7 == 3 { 0.040 } else { 0.0 };
+        let (snaps, lead) = run_staircase(false, 120 * 60, 1.0 / 120.0, 0.045, late);
+        assert_eq!(snaps, 0);
+        assert!(lead.abs() < 0.006, "{lead}");
+    }
+
+    #[test]
+    fn a_step_far_off_the_clock_must_be_confirmed_or_be_huge() {
+        let mut n = 0;
+        // Small drift: always the clock's to slew.
+        assert_eq!(weigh_step(&mut n, 0.012), StepVerdict::Reconcile);
+        // One late buffer, then one early: neither is believed.
+        assert_eq!(weigh_step(&mut n, -0.046), StepVerdict::Wait);
+        assert_eq!(weigh_step(&mut n, 0.050), StepVerdict::Wait);
+        assert_eq!(n, 1, "the other direction starts its own count");
+        // Three the same way are.
+        assert_eq!(weigh_step(&mut n, 0.050), StepVerdict::Wait);
+        assert_eq!(weigh_step(&mut n, 0.050), StepVerdict::Reconcile);
+        assert_eq!(n, 0);
+        // A good step in between forgets the count.
+        assert_eq!(weigh_step(&mut n, -0.05), StepVerdict::Wait);
+        assert_eq!(weigh_step(&mut n, -0.05), StepVerdict::Wait);
+        assert_eq!(weigh_step(&mut n, 0.0), StepVerdict::Reconcile);
+        assert_eq!(weigh_step(&mut n, -0.05), StepVerdict::Wait);
+        // A seek's worth is believed at once.
+        assert_eq!(weigh_step(&mut n, 0.25), StepVerdict::Reconcile);
+        assert_eq!(weigh_step(&mut n, -90.0), StepVerdict::Reconcile);
     }
 
     #[test]
