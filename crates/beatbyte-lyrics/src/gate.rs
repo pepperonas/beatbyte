@@ -349,19 +349,15 @@ pub fn gate(
     } else {
         median.unwrap_or(0.0)
     };
-    let line_count = alignment.lines.len();
-    for i in 0..line_count {
+    for (i, line) in alignment.lines.iter_mut().enumerate() {
         let stamp = stamps.get(i).copied().flatten();
-        let delta = stamp.map(|s| alignment.lines[i].start - s);
+        let delta = stamp.map(|s| line.start - s);
         let outlier =
             delta.is_some_and(|d| (d - shift).abs() > config.line_outlier_s) && source_is_reference;
-        let share = {
-            let line = &alignment.lines[i];
-            if line.words.is_empty() {
-                0.0
-            } else {
-                line.words.iter().filter(|w| w.estimated).count() as f32 / line.words.len() as f32
-            }
+        let share = if line.words.is_empty() {
+            0.0
+        } else {
+            line.words.iter().filter(|w| w.estimated).count() as f32 / line.words.len() as f32
         };
         let falls_back =
             verdict == Verdict::Failed || outlier || share > config.line_fallback_share;
@@ -381,12 +377,8 @@ pub fn gate(
                     .max(start + 0.5);
                 (start, end)
             }
-            _ => (
-                alignment.lines[i].start,
-                alignment.lines[i].end.max(alignment.lines[i].start + 0.5),
-            ),
+            _ => (line.start, line.end.max(line.start + 0.5)),
         };
-        let line = &mut alignment.lines[i];
         line.start = start;
         line.end = end;
         let n = line.words.len().max(1) as f64;

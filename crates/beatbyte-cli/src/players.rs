@@ -59,7 +59,6 @@ pub fn save_roster(roster: &Roster) -> Result<(), String> {
 ///
 /// The exit code is the house convention: 2 for a refusal the user
 /// can fix (a blank or taken name), 0 otherwise.
-#[must_use]
 pub fn run(add_name: Option<&str>) -> ExitCode {
     match add_name {
         Some(name) => match add(name) {
@@ -77,7 +76,6 @@ pub fn run(add_name: Option<&str>) -> ExitCode {
 }
 
 /// Print one player's statistics.
-#[must_use]
 pub fn stats(name: Option<&str>) -> ExitCode {
     match report(name) {
         Ok(()) => ExitCode::SUCCESS,
