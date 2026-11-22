@@ -119,7 +119,7 @@ pub fn setup_spark_assets(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    if !super::stage3d::active(&settings) {
+    if !super::stage3d::venue(&settings) {
         return;
     }
     // A coarse ball: at two centimetres on screen nobody counts the
@@ -145,7 +145,7 @@ pub fn setup_spark_assets(
 /// the particles setting. Pure — tested.
 #[must_use]
 pub fn throws_sparks(settings: &Settings) -> bool {
-    super::stage3d::active(settings) && settings.particles
+    super::stage3d::venue(settings) && settings.particles
 }
 
 /// Throw sparks from the receptor that was struck.

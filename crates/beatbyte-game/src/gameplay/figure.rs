@@ -1134,7 +1134,12 @@ pub fn setup_figure_assets(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     theme: Res<crate::theme::ActiveTheme>,
+    settings: Res<crate::config::Settings>,
 ) {
+    // Nobody stands in the room MINIMAL does not build.
+    if !super::stage3d::venue(&settings) {
+        return;
+    }
     commands.insert_resource(FigureAssets::build(&mut meshes, &mut materials, theme.0));
 }
 

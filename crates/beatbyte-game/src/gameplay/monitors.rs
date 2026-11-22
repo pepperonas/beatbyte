@@ -250,12 +250,8 @@ pub fn open_ears(
     mut ears: ResMut<Ears>,
 ) {
     let has_vocals = song.is_some_and(|song| song.vocals.is_some());
-    ears.0 = ears_wanted(
-        stage3d::active(&settings),
-        settings.vocal_charts,
-        has_vocals,
-    )
-    .then(Listener::open);
+    ears.0 = ears_wanted(stage3d::venue(&settings), settings.vocal_charts, has_vocals)
+        .then(Listener::open);
 }
 
 /// Drop the listener with the venue: the thread stops, the device
@@ -280,7 +276,7 @@ pub fn tend_monitors(
     time: Res<Time>,
     mut reported_at: Local<f32>,
 ) {
-    if !stage3d::active(&settings) {
+    if !stage3d::venue(&settings) {
         return;
     }
     let measuring = ears.0.as_ref().is_some_and(Listener::measuring);

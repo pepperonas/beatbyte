@@ -418,7 +418,7 @@ fn spawn_fog(
 ) {
     *schedule = FogSchedule::default();
     // The lighter venue has no fog machines: no pool, nothing fires.
-    if !stage3d::active(&settings) || stage3d::lite_venue() {
+    if !stage3d::venue(&settings) || stage3d::lite_venue() {
         return;
     }
     // The sprites cost a moment to draw; they are made once per run.
@@ -505,7 +505,7 @@ pub fn drive_low_fog(
     time: Res<Time>,
     mut clouds: Query<(&LowFog, &mut Transform, &mut Visibility)>,
 ) {
-    let on = stage3d::active(&settings) && settings.backdrop_motion;
+    let on = stage3d::venue(&settings) && settings.backdrop_motion;
     let t = game_clock.song_time(&time).unwrap_or(0.0) as f32;
     for (cloud, mut transform, mut visibility) in &mut clouds {
         let wanted = if on {
@@ -544,7 +544,7 @@ pub fn drive_fog(
     )>,
     look: Option<Res<FogLook>>,
 ) {
-    if !stage3d::active(&settings) || !settings.backdrop_motion {
+    if !stage3d::venue(&settings) || !settings.backdrop_motion {
         return;
     }
     let (Some(now), Some(look)) = (game_clock.song_time(&time), look) else {

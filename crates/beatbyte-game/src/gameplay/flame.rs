@@ -532,7 +532,7 @@ pub fn spawn_flames(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    if !super::stage3d::active(&settings) {
+    if !super::stage3d::venue(&settings) {
         return;
     }
     let layer_mask = RenderLayers::layer(STAGE_LAYER);

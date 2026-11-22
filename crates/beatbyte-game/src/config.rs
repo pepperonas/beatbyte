@@ -215,7 +215,7 @@ pub struct Settings {
     pub stage_3d: bool,
     /// The GRAPHICS choice. `performance_mode` below is what it means
     /// on this machine.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "graphics_lenient")]
     pub graphics: Graphics,
     /// Reduce expensive rendering effects to keep input and notes smooth.
     /// DERIVED from `graphics` (`set_graphics`, `sanitize`); still
@@ -405,11 +405,19 @@ pub enum Graphics {
     Full,
     /// None of the four, and the stage's render scale may drop.
     Performance,
+    /// Performance mode without the room and without effects: the
+    /// neck, the notes and the display, and nothing else.
+    Minimal,
 }
 
 impl Graphics {
     /// Every choice, in the order the setting cycles through them.
-    pub const ALL: [Graphics; 3] = [Graphics::Auto, Graphics::Full, Graphics::Performance];
+    pub const ALL: [Graphics; 4] = [
+        Graphics::Auto,
+        Graphics::Full,
+        Graphics::Performance,
+        Graphics::Minimal,
+    ];
 
     /// The name the settings row shows.
     #[must_use]
@@ -418,6 +426,7 @@ impl Graphics {
             Graphics::Auto => "AUTO",
             Graphics::Full => "FULL",
             Graphics::Performance => "PERFORMANCE",
+            Graphics::Minimal => "MINIMAL",
         }
     }
 
@@ -435,8 +444,26 @@ impl Graphics {
         match self {
             Graphics::Auto => capable,
             Graphics::Full => true,
-            Graphics::Performance => false,
+            Graphics::Performance | Graphics::Minimal => false,
         }
+    }
+
+    /// Whether this choice draws the game alone — no venue, no band,
+    /// no crowd, no effects — on a machine that is (`weak`) or is not
+    /// one AUTO picks that for. Pure.
+    #[must_use]
+    pub fn minimal_on(self, weak: bool) -> bool {
+        match self {
+            Graphics::Minimal => true,
+            Graphics::Auto => weak,
+            Graphics::Full | Graphics::Performance => false,
+        }
+    }
+
+    /// [`Self::minimal_on`] for this machine.
+    #[must_use]
+    pub fn minimal(self) -> bool {
+        self.minimal_on(wants_minimal())
     }
 
     /// [`Self::smooth_edges_on`] for this machine.
@@ -465,6 +492,15 @@ impl Graphics {
 #[must_use]
 pub fn affords_smooth_edges() -> bool {
     cfg!(all(target_os = "macos", target_arch = "aarch64"))
+}
+
+/// Whether `Graphics::Auto` means MINIMAL here: Intel Macs, whose GPUs
+/// do not hold 60 Hz with the room drawn (the 2015 MacBook Pro's R9
+/// M370X: 99th percentile 25 ms under vsync with the lighter venue at
+/// the lowest render scale, 12 ms with no stage at all).
+#[must_use]
+pub fn wants_minimal() -> bool {
+    cfg!(all(target_os = "macos", target_arch = "x86_64"))
 }
 
 /// The sound of moving through a menu.
@@ -750,6 +786,20 @@ where
         .unwrap_or_default())
 }
 
+/// Reads the GRAPHICS choice by its label, in any case; a name this
+/// build does not know is AUTO. A file written by a newer build with a
+/// choice this one lacks must not cost the player every other setting.
+fn graphics_lenient<'de, D>(de: D) -> Result<Graphics, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let name = String::deserialize(de)?;
+    Ok(Graphics::ALL
+        .into_iter()
+        .find(|choice| choice.label().eq_ignore_ascii_case(&name))
+        .unwrap_or_default())
+}
+
 /// The browser's default sort label.
 fn default_browser_sort() -> String {
     "standard".to_owned()
@@ -868,6 +918,8 @@ impl Plugin for ConfigPlugin {
             match std::env::var("BEATBYTE_BENCH_QUALITY").as_deref() {
                 Ok("performance") => settings.set_graphics(Graphics::Performance),
                 Ok("full") => settings.set_graphics(Graphics::Full),
+                Ok("minimal") => settings.set_graphics(Graphics::Minimal),
+                Ok("auto") => settings.set_graphics(Graphics::Auto),
                 _ => {}
             }
         }
@@ -953,13 +1005,19 @@ fn apply_settings(
     // Mute is a gate inside the player, not a factor here: it stays
     // shut whatever volume anyone asks for.
     music.0.set_volume(settings.music_volume);
-    effects.particles = settings.particles;
-    effects.screen_shake = settings.screen_shake;
-    effects.beat_pulse = settings.beat_pulse;
-    effects.backdrop_motion = settings.backdrop_motion;
+    // MINIMAL is the game without effects, whatever the effect rows say.
+    let effects_on = !settings.graphics.minimal();
+    effects.particles = effects_on && settings.particles;
+    effects.screen_shake = effects_on && settings.screen_shake;
+    effects.beat_pulse = effects_on && settings.beat_pulse;
+    effects.backdrop_motion = effects_on && settings.backdrop_motion;
     effects.stage_3d = settings.stage_3d;
-    effects.reduced_flashing = settings.reduced_flashing;
-    effects.intensity = settings.fx_intensity;
+    effects.reduced_flashing = !effects_on || settings.reduced_flashing;
+    effects.intensity = if effects_on {
+        settings.fx_intensity
+    } else {
+        0.0
+    };
     if let Ok(mut window) = windows.single_mut() {
         // A full-screen bench run is full screen whatever the file says.
         let wanted = if settings.fullscreen
@@ -1064,12 +1122,62 @@ mod tests {
         assert!((back.latency_offset_ms - 23.5).abs() < f32::EPSILON);
     }
 
+    /// MINIMAL is itself everywhere, AUTO is MINIMAL on a weak machine
+    /// only, and the two full-room choices never are: all eight cases.
+    #[test]
+    fn minimal_is_chosen_or_picked_by_auto_on_a_weak_machine() {
+        use super::Graphics;
+        for weak in [false, true] {
+            assert!(Graphics::Minimal.minimal_on(weak));
+            assert_eq!(Graphics::Auto.minimal_on(weak), weak);
+            assert!(!Graphics::Full.minimal_on(weak));
+            assert!(!Graphics::Performance.minimal_on(weak));
+        }
+    }
+
+    /// The room follows the choice: MINIMAL builds none of it.
+    #[test]
+    fn minimal_builds_no_venue() {
+        use crate::gameplay::stage3d::venue;
+        let mut settings = Settings::default();
+        for choice in super::Graphics::ALL {
+            settings.set_graphics(choice);
+            assert_eq!(venue(&settings), !choice.minimal(), "{choice:?}");
+        }
+        settings.set_graphics(super::Graphics::Minimal);
+        assert!(!venue(&settings));
+        settings.set_graphics(super::Graphics::Full);
+        assert!(venue(&settings));
+    }
+
+    /// Every choice survives the file, and a name from a build this one
+    /// does not know costs the GRAPHICS row alone, not the whole file.
+    #[test]
+    fn a_graphics_choice_round_trips_and_an_unknown_one_is_auto() {
+        use super::Graphics;
+        for choice in Graphics::ALL {
+            let mut settings = Settings::default();
+            settings.set_graphics(choice);
+            settings.latency_offset_ms = 23.5;
+            let json = serde_json::to_string(&settings).unwrap();
+            let back: Settings = serde_json::from_str(&json).unwrap();
+            assert_eq!(back.graphics, choice);
+        }
+        let mut value = serde_json::to_value(Settings::default()).unwrap();
+        value["graphics"] = "raytraced".into();
+        value["latency_offset_ms"] = 23.5.into();
+        let back: Settings = serde_json::from_value(value).unwrap();
+        assert_eq!(back.graphics, Graphics::Auto);
+        assert!((back.latency_offset_ms - 23.5).abs() < f32::EPSILON);
+    }
+
     #[test]
     fn only_full_leaves_performance_mode() {
         use super::Graphics;
         assert!(Graphics::Auto.performance());
         assert!(Graphics::Performance.performance());
         assert!(!Graphics::Full.performance());
+        assert!(Graphics::Minimal.performance());
         // Smooth edges: AUTO takes them where they are free, FULL
         // always, PERFORMANCE never.
         assert!(Graphics::Auto.smooth_edges_on(true));
@@ -1077,6 +1185,7 @@ mod tests {
         for capable in [true, false] {
             assert!(Graphics::Full.smooth_edges_on(capable));
             assert!(!Graphics::Performance.smooth_edges_on(capable));
+            assert!(!Graphics::Minimal.smooth_edges_on(capable));
         }
         // A file from before GRAPHICS: the default (on) was nobody's
         // choice, a switched-off PERFORMANCE MODE was.

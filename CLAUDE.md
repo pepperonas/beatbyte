@@ -1419,6 +1419,24 @@ Local packaging:
   the whole run (macOS paces a background window at 60 Hz; check who is
   frontmost every two seconds and raise only when it was lost — a raise
   every two seconds is itself a 40 ms hitch on that beat).
+- **The audio device's position is a staircase, and a clock that reads
+  it every frame snaps without any frame being late.** The output moves
+  its position once per buffer (45 ms on the M1's built-in output) and
+  the song clock compared a running time with that standing number;
+  when the buffers' timing leaned, the drift crossed the 30 ms snap and
+  the notes jerked back and forth — reported for weeks as "frame drops
+  every few seconds", and invisible in every frame-time log because no
+  frame was long. `BEATBYTE_FPS` now marks long frames (`L`, `S`, `C`)
+  and logs every snap; when a stutter is reported, look for
+  `clock: snapped` BEFORE measuring the renderer. Reconcile on steps
+  only (`audio_sys::fresh_position`), and keep the half-step: the mean
+  the clock settles on is what players calibrated against.
+- **A measuring run raises its window, and the owner may be at the
+  machine.** At 3 a.m. with the mouse moving (`HIDIdleTime` under a
+  second) the game windows took the focus, a keystroke meant for another
+  app closed them, and the runs ended with exit 0 and no verdict. Check
+  the idle time and the load before a run; over a load of ~10 a frame
+  count measures the other processes.
 - **A disk that fills during a release link leaves a 2 KB binary that
   cargo calls fresh.** The strip step failed with "No space left on
   device", `target/release/beatbyte` was 2 464 bytes, and the next build

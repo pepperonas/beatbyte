@@ -172,7 +172,7 @@ pub fn pump_drivers(
     players: Query<&PlayerSession>,
     mut cones: Query<(&DriverCone, &mut Transform)>,
 ) {
-    if !stage3d::active(&settings) || !settings.backdrop_motion {
+    if !stage3d::venue(&settings) || !settings.backdrop_motion {
         return;
     }
     let (Some(now), Some(player)) = (game_clock.song_time(&time), players.iter().next()) else {

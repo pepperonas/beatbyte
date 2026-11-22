@@ -253,6 +253,15 @@ pub fn active(settings: &Settings) -> bool {
     settings.stage_3d
 }
 
+/// Whether the room around the neck is built and its effects run: the
+/// venue, the band, the crowd, the rig, flames, sparks, arcs and the
+/// light show. Not under GRAPHICS: MINIMAL, which draws the neck, the
+/// notes and the display alone.
+#[must_use]
+pub fn venue(settings: &Settings) -> bool {
+    active(settings) && !settings.graphics.minimal()
+}
+
 /// Whether this machine gets the lighter venue: no fog machine, no
 /// haze sheets, one row of the LED wall instead of three, and only the
 /// front row of the crowd, without cards and phones. On Intel Macs,
@@ -1592,7 +1601,7 @@ pub fn pulse_led_wall(
     players: Query<&PlayerSession>,
     mut panels: Query<(&LedPanel, &mut Transform)>,
 ) {
-    if !active(&settings) || !settings.backdrop_motion {
+    if !venue(&settings) || !settings.backdrop_motion {
         return;
     }
     let (Some(now), Some(player)) = (game_clock.song_time(&time), players.iter().next()) else {
@@ -2259,16 +2268,18 @@ pub fn setup_stage(
         RenderLayers::layer(STAGE_LAYER),
     ));
 
-    spawn_venue(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
-        &mut images,
-        &shapes,
-        &surfaces,
-        stage,
-        settings.backdrop_motion,
-    );
+    if venue(&settings) {
+        spawn_venue(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            &mut images,
+            &shapes,
+            &surfaces,
+            stage,
+            settings.backdrop_motion,
+        );
+    }
 
     let board = images.add(board_texture());
     let bed = meshes.add(Cuboid::new(1.0, 0.06, HIGHWAY_LENGTH + HIGHWAY_BEHIND));

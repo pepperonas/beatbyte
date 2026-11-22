@@ -14,6 +14,36 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.19.14] - 2026-11-22
+
+### Fixed
+
+- **The notes jerked every few seconds although no frame was late.**
+  The audio output reports its position in steps, one per buffer — 45 ms
+  on the M1's built-in output — and the song clock compared itself with
+  that standing number on every frame. Whenever the output's timing
+  leaned a little, the difference crossed the 30 ms at which the clock
+  snaps, and the highway jumped back and, one buffer later, forward
+  again: 233 times in 130 seconds of one (heavily loaded) run. The clock
+  now corrects itself only when the output reports a new position, and
+  against where that step puts the song; it settles where it always
+  did, so nobody's calibration moves. A real stall of the output is
+  still one snap.
+
+### Added
+
+- **GRAPHICS: MINIMAL** draws the game alone: the neck, the notes, the
+  receptors and the display. No venue, band, crowd, rig or PA, no
+  flames, sparks, arcs, light show, fog, particles, shake or beat pulse.
+  It is a choice on every machine, and what AUTO means on an Intel Mac,
+  whose GPU does not hold 60 Hz with the room drawn.
+- A settings file whose GRAPHICS value this build does not know reads
+  as AUTO instead of costing every other setting.
+- `BEATBYTE_FPS` marks each long frame with what fell into it (`L` a
+  lyric line change, `S` a strobe flash, `C` a clock snap), and every
+  clock snap of 30 ms or more is logged; `BEATBYTE_BENCH_QUALITY` takes
+  `minimal` and `auto`, and the bench result names the choice.
+
 ## [0.19.13] - 2026-11-11
 
 ### Fixed

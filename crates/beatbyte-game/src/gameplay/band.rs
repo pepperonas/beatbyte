@@ -571,15 +571,19 @@ pub fn spawn_band(
     mut commands: Commands,
     settings: Res<Settings>,
     theme: Res<crate::theme::ActiveTheme>,
-    assets: Res<FigureAssets>,
+    assets: Option<Res<FigureAssets>>,
     surfaces: Res<crate::surfaces::StageSurfaces>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     profiles: Option<Res<crate::players::Players>>,
 ) {
-    if !super::stage3d::active(&settings) {
+    if !super::stage3d::venue(&settings) {
         return;
     }
+    // Baked just before this in the same chain, whenever the venue is.
+    let Some(assets) = assets else {
+        return;
+    };
     // The guitarist plays with the same hand as whoever is playing.
     let lefty = super::first_highway_mirrored(
         profiles

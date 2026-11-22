@@ -381,8 +381,51 @@ struct FrameLog {
     began: Option<std::time::Instant>,
     main_ms: [f32; 2],
     /// The long frames of this window: wall seconds since start, the
-    /// frame's length, and the main-schedule time of the frame it spans.
-    long: Vec<(f32, f32, f32)>,
+    /// frame's length, the main-schedule time of the frame it spans, and
+    /// what [`frame_marks`] saw happen around it.
+    long: Vec<(f32, f32, f32, u8)>,
+    /// The marks taken on the frame before this one: a frame's delta
+    /// spans the previous frame's work.
+    marks_before: u8,
+}
+
+/// What happened in a frame, for the `BEATBYTE_FPS` log: a system that
+/// does something a stutter could come from says so here, and a long
+/// frame is printed with the letters of what fell into it.
+///
+/// One atomic for the whole process, so a system needs no parameter for
+/// it (two of the systems worth marking are at Bevy's parameter limit)
+/// and a build without `BEATBYTE_FPS` pays one relaxed store.
+pub(crate) mod frame_marks {
+    use core::sync::atomic::{AtomicU8, Ordering};
+
+    /// The lyric board rebuilt its row of glyphs.
+    pub(crate) const LYRICS: u8 = 1;
+    /// A strobe flash lit the rig.
+    pub(crate) const STROBE: u8 = 2;
+    /// The song clock snapped to the audio device's position.
+    pub(crate) const CLOCK: u8 = 4;
+
+    static MARKS: AtomicU8 = AtomicU8::new(0);
+
+    /// Record that `mark` happened in this frame.
+    pub(crate) fn note(mark: u8) {
+        MARKS.fetch_or(mark, Ordering::Relaxed);
+    }
+
+    /// The marks since the last call, cleared.
+    pub(super) fn take() -> u8 {
+        MARKS.swap(0, Ordering::Relaxed)
+    }
+
+    /// The letters a long frame is printed with; empty for none. Pure.
+    pub(super) fn letters(marks: u8) -> String {
+        [(LYRICS, 'L'), (STROBE, 'S'), (CLOCK, 'C')]
+            .iter()
+            .filter(|(bit, _)| marks & bit != 0)
+            .map(|&(_, letter)| letter)
+            .collect()
+    }
 }
 
 fn mark_frame_start(mut log: ResMut<FrameLog>) {
@@ -411,10 +454,15 @@ fn report_frame_times(time: Res<Time<Real>>, mut log: Option<ResMut<FrameLog>>) 
         log.samples.push(delta * 1000.0);
     }
     let elapsed = time.elapsed_secs();
-    // This frame's delta spans the PREVIOUS frame's work.
+    // This frame's delta spans the PREVIOUS frame's work; where this
+    // system ran against the marking ones in either frame is not
+    // ordered, so a long frame carries both frames' marks.
+    let marks = frame_marks::take();
+    let around = marks | log.marks_before;
+    log.marks_before = marks;
     if is_long_frame(delta * 1000.0, log.median_ms) && log.long.len() < 64 {
         let main = log.main_ms[1];
-        log.long.push((elapsed, delta * 1000.0, main));
+        log.long.push((elapsed, delta * 1000.0, main, around));
     }
     if elapsed < log.next_report_s || log.samples.len() < 30 {
         return;
@@ -437,7 +485,12 @@ fn report_frame_times(time: Res<Time<Real>>, mut log: Option<ResMut<FrameLog>>) 
     if !long.is_empty() {
         let list: Vec<String> = long
             .iter()
-            .map(|(at, ms, main)| format!("{at:.2}s {ms:.1} (main {main:.1})"))
+            .map(|(at, ms, main, marks)| {
+                format!(
+                    "{at:.2}s {ms:.1} (main {main:.1}){}",
+                    frame_marks::letters(*marks)
+                )
+            })
             .collect();
         info!("long frames: {}", list.join(", "));
     }
@@ -563,6 +616,20 @@ mod tests {
         assert!(!is_long_frame(40.0, 0.0));
         assert!(is_long_frame(16.7, 8.33));
         assert!(!is_long_frame(9.5, 8.33));
+    }
+
+    /// A mark is seen once, by the next take, and prints as its letter.
+    #[test]
+    fn a_frame_mark_is_taken_once_and_named() {
+        use super::frame_marks::{CLOCK, LYRICS, STROBE, letters, note, take};
+        let _ = take();
+        note(LYRICS);
+        note(CLOCK);
+        let seen = take();
+        assert_eq!(letters(seen), "LC");
+        assert_eq!(take(), 0, "taking clears");
+        assert_eq!(letters(STROBE), "S");
+        assert_eq!(letters(0), "");
     }
     /// The parser, lifted out of [`parse_window_env`] so it can be
     /// tested without touching the process environment — a test that

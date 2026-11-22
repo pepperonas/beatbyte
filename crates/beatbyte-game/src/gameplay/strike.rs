@@ -304,7 +304,7 @@ pub fn spawn_strikes(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    if !super::stage3d::active(&settings) {
+    if !super::stage3d::venue(&settings) {
         return;
     }
     let layer = RenderLayers::layer(STAGE_LAYER);

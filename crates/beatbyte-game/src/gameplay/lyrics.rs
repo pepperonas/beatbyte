@@ -553,6 +553,7 @@ pub fn update_lyrics(
         if clears_again(cleared) {
             clear_glyphs(&mut commands, &glyphs);
         }
+        crate::frame_marks::note(crate::frame_marks::LYRICS);
         display.line = cue.active;
         display.size_step = settings.lyrics_size;
         display.entered_at = time.elapsed_secs();

@@ -56,6 +56,10 @@ pub struct GameClock {
     /// bound, so `song_len_s` could not catch it. The autopilot then
     /// played 371 notes in that frame; a human would have missed them.
     pub anchored: bool,
+    /// The device position the clock was last reconciled against: the
+    /// clock is corrected only when the device reports a NEW one (see
+    /// [`fresh_position`]).
+    pub last_position: Option<f64>,
 }
 
 impl GameClock {
@@ -153,6 +157,38 @@ pub fn clock_move(
     }
 }
 
+/// The song position a device report stands for, or `None` when the
+/// report is the one already seen. Pure.
+///
+/// The device does not report a line, it reports a STAIRCASE: the
+/// position moves when the output asks for its next buffer, and stands
+/// still in between — 45 ms a step on the M1's built-in output
+/// (measured: the same position on consecutive frames, then +45 ms).
+/// Reconciling against every frame's reading compared a running clock
+/// with a standing number: the drift swung through a whole step, and
+/// whenever the output's timing leaned a little it crossed the 30 ms
+/// snap threshold — the notes jerked back and, one step later, forward
+/// again, with no long frame anywhere (233 snaps in 130 s of one run).
+///
+/// So only a step is a measurement. At the instant of a step the line
+/// through the staircase's tops reads exactly the reported position;
+/// what the clock has always settled on is the staircase's MEAN, half
+/// a step under that line, and players' calibration is set against it
+/// — hence half the step comes off. The frame that notices a step
+/// notices it half a frame late on average, which goes back on.
+#[must_use]
+pub fn fresh_position(last: Option<f64>, position: f64, frame_s: f64) -> Option<f64> {
+    let last = last?;
+    // Exact: the position is the same atomic read twice.
+    #[allow(clippy::float_cmp)]
+    if position == last {
+        return None;
+    }
+    // A seek or a new song is no step of the staircase.
+    let step = (position - last).clamp(0.0, 0.1);
+    Some(position - step / 2.0 + frame_s.clamp(0.0, 0.05) / 2.0)
+}
+
 /// Reconcile the song clock against the device-reported position.
 fn sync_clock(
     time: Res<Time>,
@@ -182,6 +218,7 @@ fn sync_clock(
             game_clock.expect_song = false;
             game_clock.anchored = true;
             game_clock.clock.start(mono, position);
+            game_clock.last_position = Some(position);
         }
         // The browser's own music is not a timeline. Adopting the
         // generation here is what keeps the NEXT bump — the song the
@@ -190,17 +227,35 @@ fn sync_clock(
             game_clock.generation = generation;
         }
         ClockMove::Reconcile => {
-            let correction = game_clock.clock.reconcile(mono, position);
+            let target = fresh_position(game_clock.last_position, position, time.delta_secs_f64());
+            game_clock.last_position = Some(position);
+            let Some(target) = target else {
+                return;
+            };
+            let correction = game_clock.clock.reconcile(mono, target);
             // A correction this large is a visible jump of the
             // highway. Say so, with what the frame looked like: the
             // one line that tells a stalled frame (virtual time
             // clamped) from a stalled audio thread (the device
             // position lagging, then catching up).
+            let snapped = correction.abs() >= beatbyte_audio::clock::SNAP_THRESHOLD_S;
+            if snapped {
+                crate::frame_marks::note(crate::frame_marks::CLOCK);
+            }
             if correction.abs() > 0.1 {
                 warn!(
                     "clock: snapped {correction:+.3} s at song {position:.3} (frame: wall {:.3} s, virtual {:.3} s)",
                     real.delta_secs_f64(),
                     time.delta_secs_f64()
+                );
+            } else if snapped {
+                // Under the warning's size a snap is still a jerk of the
+                // highway the eye sees, and it is no long frame: without
+                // this line it leaves no trace at all.
+                info!(
+                    "clock: snapped {:+.1} ms at song {position:.3} (frame: wall {:.1} ms)",
+                    correction * 1000.0,
+                    real.delta_secs_f64() * 1000.0
                 );
             }
         }
@@ -209,8 +264,119 @@ fn sync_clock(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    /// A clock driven the way `sync_clock` drives it, against an output
+    /// that reports its position in buffer-sized steps: `frames` frames
+    /// of `frame_s`, a step of `step_s` every `step_s`, each step
+    /// arriving `lean(k)` seconds off its time. Returns the snaps and
+    /// the clock's mean lead over the staircase's mean line.
+    fn run_staircase(
+        every_frame: bool,
+        frames: usize,
+        frame_s: f64,
+        step_s: f64,
+        lean: impl Fn(usize) -> f64,
+    ) -> (usize, f64) {
+        let mut clock = beatbyte_audio::SongClock::default();
+        clock.start(0.0, 0.0);
+        let mut last = Some(0.0);
+        let (mut snaps, mut lead, mut counted) = (0, 0.0, 0);
+        for frame in 1..=frames {
+            let mono = frame as f64 * frame_s;
+            // The newest step whose (leaning) time has come.
+            let mut k = (mono / step_s) as usize;
+            if k > 0 && k as f64 * step_s + lean(k) > mono {
+                k -= 1;
+            }
+            let position = k as f64 * step_s;
+            let target = if every_frame {
+                Some(position)
+            } else {
+                fresh_position(last, position, frame_s)
+            };
+            last = Some(position);
+            if let Some(target) = target {
+                let correction = clock.reconcile(mono, target);
+                if correction.abs() >= beatbyte_audio::clock::SNAP_THRESHOLD_S {
+                    snaps += 1;
+                }
+            }
+            if frame > frames / 2 {
+                // The staircase's mean line: half a step under its tops.
+                lead += clock.song_time(mono).unwrap() - (mono - step_s / 2.0);
+                counted += 1;
+            }
+        }
+        (snaps, lead / f64::from(counted))
+    }
+
+    /// The output's timing leaning by a few milliseconds, the way a
+    /// real one does: a slow wobble plus a late buffer now and then.
+    fn leaning(k: usize) -> f64 {
+        let wobble = 0.006 * (k as f64 * 0.37).sin();
+        if k % 53 == 17 { wobble + 0.012 } else { wobble }
+    }
+
+    /// The fault, and its fix, on the M1's 45 ms staircase at 120 Hz:
+    /// read every frame the clock snaps again and again; read on steps
+    /// it never does, and settles where it always has.
+    #[test]
+    fn a_stepped_device_position_no_longer_snaps_the_clock() {
+        let frames = 120 * 120;
+        let (old_snaps, old_lead) = run_staircase(true, frames, 1.0 / 120.0, 0.045, leaning);
+        let (snaps, lead) = run_staircase(false, frames, 1.0 / 120.0, 0.045, leaning);
+        assert!(old_snaps > 10, "the fault is in the fixture: {old_snaps}");
+        assert_eq!(snaps, 0);
+        assert!(
+            (lead - old_lead).abs() < 0.006,
+            "calibration moved: {lead} against {old_lead}"
+        );
+        assert!(lead.abs() < 0.006, "{lead}");
+        // At 60 Hz, and on an output with small buffers, the same.
+        for (frame_s, step_s) in [
+            (1.0 / 60.0, 0.045),
+            (1.0 / 120.0, 0.010),
+            (1.0 / 60.0, 0.010),
+        ] {
+            let (snaps, lead) = run_staircase(false, 7200, frame_s, step_s, leaning);
+            assert_eq!(snaps, 0, "{frame_s} {step_s}");
+            assert!(lead.abs() < 0.008, "{frame_s} {step_s}: {lead}");
+        }
+    }
+
+    /// A real stall is still a snap: the output stops for 200 ms, and
+    /// the clock comes back to it in one move.
+    #[test]
+    fn a_stalled_output_still_snaps_once() {
+        let (snaps, _) = run_staircase(false, 1200, 1.0 / 120.0, 0.045, |k| {
+            if (100..104).contains(&k) { 0.2 } else { 0.0 }
+        });
+        assert!((1..=5).contains(&snaps), "{snaps}");
+    }
+
+    #[test]
+    fn only_a_step_of_the_device_position_is_a_measurement() {
+        assert_eq!(
+            fresh_position(None, 1.0, 0.008),
+            None,
+            "nothing to step from"
+        );
+        assert_eq!(
+            fresh_position(Some(1.0), 1.0, 0.008),
+            None,
+            "the same report"
+        );
+        let target = fresh_position(Some(1.0), 1.045, 0.008).unwrap();
+        assert!((target - (1.045 - 0.0225 + 0.004)).abs() < 1e-9);
+        // A seek: no half step of 90 seconds comes off.
+        let seek = fresh_position(Some(1.0), 91.0, 0.008).unwrap();
+        assert!((seek - 91.0).abs() < 0.06);
+        let back = fresh_position(Some(91.0), 1.0, 0.008).unwrap();
+        assert!((back - 1.0).abs() < 0.01);
+    }
 
     #[test]
     fn only_a_generation_the_game_asked_for_moves_the_clock() {

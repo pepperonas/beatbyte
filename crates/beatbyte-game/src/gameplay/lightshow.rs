@@ -651,7 +651,7 @@ pub fn drive_highlight(
     mut show: Local<Option<bool>>,
     mut tally: Local<(u32, u32)>,
 ) {
-    if !stage3d::active(&settings) {
+    if !stage3d::venue(&settings) {
         return;
     }
     let now = time.elapsed_secs();
@@ -774,6 +774,7 @@ pub fn drive_highlight(
         }
         if hit > 0.0 && hits.len() == 1 {
             tally.1 += 1;
+            crate::frame_marks::note(crate::frame_marks::STROBE);
         }
         // A phrase impulse lights the ceiling whether or not the
         // room-level strobe happens to be firing, and the two simply
@@ -1157,7 +1158,7 @@ pub fn spawn_strips(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    if !stage3d::active(&settings) {
+    if !stage3d::venue(&settings) {
         return;
     }
     let layer = RenderLayers::layer(STAGE_LAYER);
@@ -1233,7 +1234,7 @@ pub fn run_strips(
     mut bars: Query<(&StripBar, &mut Transform, &mut Visibility)>,
     mut show: Local<Option<bool>>,
 ) {
-    if !stage3d::active(&settings) || !settings.backdrop_motion {
+    if !stage3d::venue(&settings) || !settings.backdrop_motion {
         return;
     }
     let now = time.elapsed_secs();

@@ -310,6 +310,8 @@ fn write_result(
         "settings": {
             "stage_3d": settings.stage_3d,
             "performance_mode": settings.performance_mode,
+            "graphics": settings.graphics.label(),
+            "minimal": settings.graphics.minimal(),
             "fx_intensity": settings.fx_intensity,
             "particles": settings.particles,
             "reduced_flashing": settings.reduced_flashing,

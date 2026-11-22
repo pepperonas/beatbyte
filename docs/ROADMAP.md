@@ -4,6 +4,35 @@
 Rules of engagement live in [`CLAUDE.md`](../CLAUDE.md); this file
 holds the work itself.
 
+## The notes jerked without a late frame; GRAPHICS: MINIMAL (2026-11-22, v0.19.14)
+
+*Verified: 2384 tests in the source inventory, including documentation examples;
+the game crate's suite in the release profile (1015 passed); a frame of MINIMAL
+on the M1 Pro looked at (neck, gems, receptors, display, nothing else). NOT
+verified: the clock fix in a live run and any frame count — the machine stood
+at a load of 30–135 with its owner at work on it, and the two runs that did
+reach a song are not measurements. Nothing ran on the 2015 MacBook: the M1's
+disk (1.8 GB free) had no room for the Intel build. No mutation probes (each
+is a ten-minute build on that disk); the staircase test carries its own
+counter-proof, the old reading snapping in the same fixture.*
+
+- [x] Cause of the jerk every few seconds: the audio output's position is a
+  staircase (45 ms a step), read on every frame; the clock snapped back and
+  forth across it (233 snaps in 130 s under load, none of them a long frame).
+  Reconciled on steps only (`audio_sys::fresh_position`).
+- [x] GRAPHICS: MINIMAL — `stage3d::venue` gates the room and every effect;
+  AUTO is MINIMAL on Intel Macs (`config::wants_minimal`).
+- [ ] M1, quiet machine, under vsync: no `clock: snapped` line and no long
+  frame in 90 s of play, on the built-in and the external display. Then the
+  rest of the plan's exclusions if anything is left (lyric line change `L`,
+  strobe `S`, the leftover `info!` lines, the telemetry flush).
+- [ ] 2015 MacBook: Intel build, bench `normal`/`dense`/`hype` in MINIMAL
+  against PERFORMANCE under vsync, engine screenshots LOOKED at there. If the
+  99th percentile stays over 16.7 ms: the 2D highway (`notes.rs`, gated off
+  since August) as MINIMAL's view — `nostage` measured 7.5 ms median there.
+- [ ] A wired test that a MINIMAL song start spawns no venue entity (today:
+  the gate's truth table and the frame looked at).
+
 ## The full look was too dear for 120 Hz (2026-11-11, v0.19.13)
 
 *Verified: 2377 tests in the source inventory, including documentation examples;

@@ -515,13 +515,17 @@ pub fn spawn_crowd(
     mut commands: Commands,
     settings: Res<Settings>,
     song: Res<crate::boot::LoadedSong>,
-    assets: Res<FigureAssets>,
+    assets: Option<Res<FigureAssets>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    if !stage3d::active(&settings) {
+    if !stage3d::venue(&settings) {
         return;
     }
+    // Baked just before this in the same chain, whenever the venue is.
+    let Some(assets) = assets else {
+        return;
+    };
     let layer = bevy::camera::visibility::RenderLayers::layer(STAGE_LAYER);
     // Barriers, seated on the deck: matte black with a metal top rail.
     let barrier = meshes.add(Cuboid::new(0.5, 1.1, 22.0));
@@ -599,7 +603,7 @@ pub fn crowd_count(lite: bool) -> usize {
 /// tested.
 #[must_use]
 pub fn crowd_moves(settings: &Settings) -> bool {
-    stage3d::active(settings) && settings.backdrop_motion
+    stage3d::venue(settings) && settings.backdrop_motion
 }
 
 /// Dance. One pose per person from the song's beat, the bar and the
@@ -1002,6 +1006,11 @@ mod tests {
         app.init_asset::<StandardMaterial>();
         app.init_asset::<Image>();
         app.insert_resource(crate::theme::ActiveTheme::default());
+        // The figures belong to the room: a choice that builds it, on
+        // every machine (AUTO is MINIMAL on an Intel Mac).
+        let mut settings = Settings::default();
+        settings.set_graphics(crate::config::Graphics::Full);
+        app.insert_resource(settings);
         app.world_mut()
             .run_system_once(figure::setup_figure_assets)
             .unwrap();

@@ -170,7 +170,7 @@ impl Row {
             set: |s: &mut Settings, i| s.set_graphics(Graphics::ALL[i]),
             ends: Ends::Wrap,
         },
-        Subtitle::Text("AUTO smooths edges; FULL adds lights, bloom and shadows")
+        Subtitle::Text("FULL adds lights and bloom; MINIMAL is the neck alone")
     );
     pub(crate) const HIGH_CONTRAST: Row = row!("HIGH CONTRAST", toggle!(high_contrast));
     pub(crate) const HIT_LABELS: Row = row!("HIT LABELS", toggle!(hit_labels));

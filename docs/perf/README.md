@@ -32,10 +32,12 @@ adds work.
 
 ## Rules
 
-The settings screen has **GRAPHICS**: AUTO (the default), FULL or
-PERFORMANCE. Performance mode disables MSAA, bloom, the directional
+The settings screen has **GRAPHICS**: AUTO (the default), FULL,
+PERFORMANCE or MINIMAL. MINIMAL is performance mode without the room
+and without effects — the neck, the notes and the display — and is what
+AUTO means on an Intel Mac (`config::wants_minimal`). Performance mode disables MSAA, bloom, the directional
 shadow map and extra point/spot lights, and lets the stage's render
-scale drop. AUTO is performance mode on every machine; on Apple silicon it keeps
+scale drop. Elsewhere AUTO is performance mode; on Apple silicon it keeps
 4x MSAA, which costs nothing there (`baseline.md`).
 
 **Measure a quality decision under vsync, not uncapped.** Uncapped, the
@@ -45,7 +47,7 @@ the other 120 frames a second. Count frames per 5 s window
 (`BEATBYTE_FPS`) in a bench run (a 1280×720 window; a plain autopilot
 run opens 320×180), with the window on the display it is played on and
 frontmost for the whole run — macOS paces a background window at 60 Hz. For comparison runs, set
-`BEATBYTE_BENCH_QUALITY=full` or `performance`; this overrides the
+`BEATBYTE_BENCH_QUALITY=full`, `performance`, `minimal` or `auto`; this overrides the
 setting for that benchmark process only. Benchmark JSON records the
 choice. Keep window
 size, display, quality mode and load comparable between runs; the
