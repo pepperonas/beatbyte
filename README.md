@@ -56,7 +56,7 @@
 [![Autopilot](https://img.shields.io/badge/releases-autopilot%20verified-success)](#testing)
 [![ADRs](https://img.shields.io/badge/decisions-24%20ADRs-lightgrey)](docs/decisions/README.md)
 [![MSRV](https://img.shields.io/badge/MSRV-1.95-orange?logo=rust)](Cargo.toml)
-[![Harnesses](https://img.shields.io/badge/harness%20switches-55-success)](docs/development/harness.md)
+[![Harnesses](https://img.shields.io/badge/harness%20switches-56-success)](docs/development/harness.md)
 [![Achievements](https://img.shields.io/badge/achievements-300-ffd940)](docs/achievements.md)
 [![Docs pages](https://img.shields.io/badge/documentation-114%20pages-blue)](docs/)
 [![Docs](https://img.shields.io/badge/docs-architecture%20%C2%B7%20ADRs%20%C2%B7%20specs-blue)](docs/)
