@@ -304,7 +304,7 @@ pub fn spawn_strikes(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    if !super::stage3d::venue(&settings) {
+    if !super::stage3d::neck_fx(&settings) {
         return;
     }
     let layer = RenderLayers::layer(STAGE_LAYER);
@@ -343,6 +343,9 @@ pub fn spawn_strikes(
                         ));
                     });
             }
+        }
+        if !super::stage3d::venue(&settings) {
+            continue;
         }
         commands.spawn((
             GameplayScreen,

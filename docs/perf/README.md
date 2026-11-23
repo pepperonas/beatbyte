@@ -34,7 +34,8 @@ adds work.
 
 The settings screen has **GRAPHICS**: AUTO (the default), FULL,
 PERFORMANCE or MINIMAL. MINIMAL is performance mode without the room
-and without effects — the neck, the notes and the display — and is what
+— the neck, the notes, the display and the neck's own effects (hit
+flames, star-power lightning) — and is what
 AUTO means on an Intel Mac (`config::wants_minimal`). Performance mode disables MSAA, bloom, the directional
 shadow map and extra point/spot lights, and lets the stage's render
 scale drop. Elsewhere AUTO is performance mode; on Apple silicon it keeps

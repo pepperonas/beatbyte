@@ -14,6 +14,19 @@ soon as the code carries that version; the git tags record which of
 them were published. `apps/beatbyte/tests/docs_stay_true.rs` fails if
 the manifest ever carries a version this file does not describe.
 
+## [0.19.16] - 2026-11-23
+
+### Changed
+
+- **GRAPHICS: MINIMAL has its flames and its lightning back.** MINIMAL
+  drew the neck, the notes and the display and nothing else, which also
+  took away what a hit and a star-power phrase look like. The hit
+  flames, the arcs along the rails while Hype runs and the strike on a
+  completed phrase are built again; the venue, the band, the crowd, the
+  rig and the light show stay out. The effects' point lights are not
+  built in MINIMAL: its neck is unlit, and a light would shine on
+  nothing.
+
 ## [0.19.15] - 2026-11-22
 
 ### Fixed

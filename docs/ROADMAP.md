@@ -4,6 +4,31 @@
 Rules of engagement live in [`CLAUDE.md`](../CLAUDE.md); this file
 holds the work itself.
 
+## MINIMAL measured on the 2015, and its flames and lightning back (2026-11-23, v0.19.16)
+
+*Verified: 2388 tests in the source inventory, including documentation examples;
+fmt, clippy `--all-features`, the workspace suite in the release profile and
+rustdoc on the M1 Pro. On the 2015 MacBook Pro (AMD R9 M370X, window 2560x1440,
+display unlocked, load 1.3 to 4.5, screen sharing connected but idle): engine
+screenshots of MINIMAL LOOKED at, before and after the effects came back, and
+the bench in `normal`, `dense` and `hype`. NOT verified: no mutation probe of
+the new test (a ten-minute build each); the M1 was not measured again.*
+
+- [x] The 2015, MINIMAL against PERFORMANCE (0.19.15): uncapped at 100 % render
+  scale 11.4 ms median / 15.7 ms p99 against 19.6 / 43.0; under vsync both sit
+  on the refresh (16.8 ms median), p99 22.7 against 28.1. The player called
+  MINIMAL a steady 60 and PERFORMANCE 45 to 50. Numbers: `docs/perf/baseline.md`.
+- [x] The 3D neck stays MINIMAL's view: uncapped it has 5 ms to spare, so the
+  2D highway is not needed.
+- [x] Hit flames, rail arcs and the phrase strike are built in MINIMAL again
+  (`stage3d::neck_fx`), without their point lights. With them, uncapped: 11.4
+  to 12.2 ms median, p99 16.3 to 17.1 ms across the three scenes.
+- [x] A wired test that MINIMAL builds the neck's effects and no light
+  (`arc::tests::minimal_keeps_the_necks_effects_and_builds_no_light`).
+- [ ] The first `hype` run of 0.19.15 failed with 99 misses in a perfect run
+  and was not counted; the same scene passed twice on 0.19.16. Cause unknown.
+- [ ] A wired test that a MINIMAL song start spawns no venue entity.
+
 ## Late buffers no longer move the clock; LIMIT TO 60 FPS (2026-11-22, v0.19.15)
 
 *Verified: the game crate's suite in the release profile (1018 passed) and
@@ -24,8 +49,8 @@ mutation probes.*
   `pace_frames`); `BEATBYTE_FRAME_CAP` for measurements.
 - [ ] Look at the limit on the built-in panel and on the external monitor; if
   it stutters, the timer is beating against the refresh and needs a lock.
-- [ ] The 2015: MINIMAL against PERFORMANCE under vsync, pictures looked at
-  (`~/bench/run-2015p.sh`, to be rebuilt as 0.19.15).
+- [x] The 2015: MINIMAL against PERFORMANCE under vsync, pictures looked at
+  (done 2026-11-23, see the entry above).
 - [ ] Mutation probes for `weigh_step` and `frame_wait`.
 
 ## The notes jerked without a late frame; GRAPHICS: MINIMAL (2026-11-22, v0.19.14)
@@ -50,8 +75,9 @@ counter-proof, the old reading snapping in the same fixture.*
   frame in 90 s of play, on the built-in and the external display. Then the
   rest of the plan's exclusions if anything is left (lyric line change `L`,
   strobe `S`, the leftover `info!` lines, the telemetry flush).
-- [ ] 2015 MacBook: Intel build, bench `normal`/`dense`/`hype` in MINIMAL
-  against PERFORMANCE under vsync, engine screenshots LOOKED at there. If the
+- [x] 2015 MacBook: Intel build, bench `normal`/`dense`/`hype` in MINIMAL
+  against PERFORMANCE under vsync, engine screenshots LOOKED at there (done
+  2026-11-23: the 3D neck holds, the 2D highway is not needed). If the
   99th percentile stays over 16.7 ms: the 2D highway (`notes.rs`, gated off
   since August) as MINIMAL's view — `nostage` measured 7.5 ms median there.
 - [ ] A wired test that a MINIMAL song start spawns no venue entity (today:

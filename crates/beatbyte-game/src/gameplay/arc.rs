@@ -182,7 +182,7 @@ pub fn spawn_arcs(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    if !super::stage3d::venue(&settings) {
+    if !super::stage3d::neck_fx(&settings) {
         return;
     }
     let layer = RenderLayers::layer(STAGE_LAYER);
@@ -436,5 +436,64 @@ mod tests {
         assert!((mid - Vec3::new(1.0, 0.0, 1.0)).length() < 1e-6);
         assert!((rot * Vec3::X - Vec3::Z).length() < 1e-5);
         assert_eq!(segment_pose(a, a).2, 0.0);
+    }
+
+    /// GRAPHICS: MINIMAL keeps what a hit and a phrase look like — the
+    /// flames, the rail arcs and the strike — and builds none of their
+    /// lights: its neck is unlit, a light would shine on nothing.
+    #[test]
+    fn minimal_keeps_the_necks_effects_and_builds_no_light() {
+        use super::super::flame::{FlameBody, spawn_flames};
+        use super::super::strike::{StrikeSegment, spawn_strikes};
+        use crate::config::Graphics;
+        use beatbyte_core::{
+            Difficulty, Lane, LaneSet, NoteEvent, ScoreConfig, TempoMap, TimingWindows, Track,
+            TrackSession,
+        };
+        use bevy::ecs::system::RunSystemOnce;
+        for (choice, lights) in [(Graphics::Minimal, false), (Graphics::Full, true)] {
+            let mut settings = Settings {
+                stage_3d: true,
+                ..default()
+            };
+            settings.set_graphics(choice);
+            let mut app = App::new();
+            app.init_resource::<Assets<Mesh>>()
+                .init_resource::<Assets<StandardMaterial>>()
+                .init_resource::<crate::theme::ActiveTheme>()
+                .insert_resource(settings)
+                .insert_resource(HighwayLayout::for_players(1));
+            let track = Track::new(
+                Difficulty::Medium,
+                TempoMap::constant(120.0, 0.0),
+                vec![NoteEvent::tap(1.0, LaneSet::single(Lane::Three))],
+                vec![],
+            )
+            .expect("valid track");
+            app.world_mut().spawn((
+                PlayerIndex(0),
+                PlayerSession {
+                    session: TrackSession::new(
+                        track,
+                        TimingWindows::default(),
+                        ScoreConfig::default(),
+                    ),
+                    frame_events: Vec::new(),
+                    spawn_cursor: 0,
+                },
+            ));
+            let world = app.world_mut();
+            world.run_system_once(spawn_flames).expect("flames");
+            world.run_system_once(spawn_arcs).expect("arcs");
+            world.run_system_once(spawn_strikes).expect("strikes");
+            let flames = world.query::<&FlameBody>().iter(world).count();
+            let rails = world.query::<&BoltSegment>().iter(world).count();
+            let bolts = world.query::<&StrikeSegment>().iter(world).count();
+            assert!(flames > 0, "{choice:?}: no flame was built");
+            assert_eq!(rails, 2 * SEGMENTS, "{choice:?}");
+            assert!(bolts > 0, "{choice:?}: no strike was built");
+            let lit = world.query::<&PointLight>().iter(world).count();
+            assert_eq!(lit > 0, lights, "{choice:?}: {lit} point lights");
+        }
     }
 }

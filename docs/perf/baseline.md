@@ -181,6 +181,37 @@ is still open; it may also explain the "hot phases" earlier series
 attributed to heat. **Check `pgrep -l ScreensharingAgent` before any
 2015 measurement.**
 
+### GRAPHICS: MINIMAL (2026-11-23, 0.19.15 and 0.19.16)
+
+Window 2560x1440, one run each, "Dear Maria" medium unless named; load
+1.3 to 4.5, screen sharing connected and idle. Uncapped runs pin the
+render scale at 100 %.
+
+| Run | median | p95 | p99 |
+|---|---|---|---|
+| 0.19.15 MINIMAL, vsync (two rounds) | 16.8 ms | 20.5–20.7 | 22.7–22.9 |
+| 0.19.15 PERFORMANCE, vsync (two rounds) | 16.7 | 20.9–21.3 | 27.6–28.1 |
+| 0.19.15 MINIMAL, uncapped | 11.4 | 13.9 | 15.7 |
+| 0.19.15 PERFORMANCE, uncapped | 19.6 | 40.5 | 43.0 |
+| 0.19.16 MINIMAL, vsync (two rounds) | 16.9 | 21.4–21.5 | 23.1–23.2 |
+| 0.19.16 MINIMAL, uncapped | 11.4 | 14.3 | 17.1 |
+| 0.19.16 MINIMAL, uncapped, `dense` | 12.2 | 15.1 | 16.9 |
+| 0.19.16 MINIMAL, uncapped, `hype` | 11.8 | 14.3 | 16.3 |
+| 0.19.16 MINIMAL, vsync, `dense` | 16.5 | 22.7 | 23.6 |
+| 0.19.16 MINIMAL, vsync, `hype` | 16.4 | 22.3 | 23.3 |
+
+0.19.15 is MINIMAL without any effect; 0.19.16 builds the hit flames,
+the rail arcs and the phrase strike again, without their lights. The
+effects cost nothing at the median and about 1.4 ms at the 99th
+percentile. Under vsync the main loop's times scatter around the
+refresh (the log times the main loop, not what reached the screen), so
+the uncapped rows are the ones that say how much room there is: 5 ms at
+the median. The player, watching: MINIMAL a steady 60, PERFORMANCE
+uncapped at 100 % scale 45 to 50.
+
+A `hype` run of 0.19.15 failed its autopilot verdict (99 misses) and is
+not in the table; cause unknown, the scene passed twice on 0.19.16.
+
 ### Findings the bench made on the way
 
 - **The song clock jumped forward** 0.7–1.0 s in a single short frame

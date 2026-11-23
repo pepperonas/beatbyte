@@ -1106,7 +1106,8 @@ fn apply_settings(
     // Mute is a gate inside the player, not a factor here: it stays
     // shut whatever volume anyone asks for.
     music.0.set_volume(settings.music_volume);
-    // MINIMAL is the game without effects, whatever the effect rows say.
+    // MINIMAL has none of the 2D effects, whatever the effect rows say;
+    // the flames and the lightning on the neck read `Settings` themselves.
     let effects_on = !settings.graphics.minimal();
     effects.particles = effects_on && settings.particles;
     effects.screen_shake = effects_on && settings.screen_shake;
@@ -1284,6 +1285,11 @@ mod tests {
         assert!(!venue(&settings));
         settings.set_graphics(super::Graphics::Full);
         assert!(venue(&settings));
+        // The neck's own effects are not the room: every choice has them.
+        for choice in super::Graphics::ALL {
+            settings.set_graphics(choice);
+            assert!(crate::gameplay::stage3d::neck_fx(&settings), "{choice:?}");
+        }
     }
 
     /// Every choice survives the file, and a name from a build this one

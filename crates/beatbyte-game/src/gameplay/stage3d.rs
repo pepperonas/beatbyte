@@ -254,12 +254,24 @@ pub fn active(settings: &Settings) -> bool {
 }
 
 /// Whether the room around the neck is built and its effects run: the
-/// venue, the band, the crowd, the rig, flames, sparks, arcs and the
-/// light show. Not under GRAPHICS: MINIMAL, which draws the neck, the
-/// notes and the display alone.
+/// venue, the band, the crowd, the rig, sparks and the light show. Not
+/// under GRAPHICS: MINIMAL, which draws the neck, the notes, the
+/// display and the neck's own effects ([`neck_fx`]).
 #[must_use]
 pub fn venue(settings: &Settings) -> bool {
     active(settings) && !settings.graphics.minimal()
+}
+
+/// Whether the effects that belong to the neck itself are built: the
+/// hit flames, the star-power arcs along the rails and the strike on a
+/// completed phrase. They are what a hit and a phrase look like, so
+/// GRAPHICS: MINIMAL keeps them — a few dozen unlit, additive meshes
+/// that held 60 Hz on the 2015 MacBook Pro. Their point lights are
+/// built only with the [`venue`]: MINIMAL's neck is unlit and a light
+/// would shine on nothing.
+#[must_use]
+pub fn neck_fx(settings: &Settings) -> bool {
+    active(settings)
 }
 
 /// Whether this machine gets the lighter venue: no fog machine, no
